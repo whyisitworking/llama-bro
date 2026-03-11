@@ -29,5 +29,23 @@ set(GGML_STANDALONE OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(external/llama.cpp)
 
-add_library(llama-bro SHARED lb-interop.cpp)
+add_library(llama-bro
+    SHARED
+        engine.cpp
+        session.cpp
+
+        # The interops
+        jni/llama_engine_jni.cpp
+        jni/llama_session_jni.cpp
+)
+
+target_include_directories(llama-bro
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+
+    SYSTEM PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/llama.cpp/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/llama.cpp/ggml/include
+)
+
 target_link_libraries(llama-bro PRIVATE llama log)
