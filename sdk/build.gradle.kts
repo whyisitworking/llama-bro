@@ -4,6 +4,8 @@ plugins {
 
 android {
     namespace = "com.suhel.llamabro.sdk"
+    ndkVersion = "29.0.14206865"
+
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -13,8 +15,27 @@ android {
     defaultConfig {
         minSdk = 24
 
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
+
+        externalNativeBuild {
+            cmake {
+                arguments += listOf(
+                    "-DCMAKE_BUILD_TYPE=Release", // For testing
+                )
+            }
+        }
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = File("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     buildTypes {
@@ -26,6 +47,7 @@ android {
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
