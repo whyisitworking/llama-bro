@@ -19,5 +19,5 @@ LlamaEngine::~LlamaEngine() {
 }
 
 LlamaSession *LlamaEngine::session(const NativeSessionParams &config) {
-    return new LlamaSession(this->llama_model.get(), this->threads, config);
+    return new LlamaSession(llama_model.get(), threads, config);
 }

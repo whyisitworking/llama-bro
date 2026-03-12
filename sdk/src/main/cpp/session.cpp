@@ -1,12 +1,13 @@
 #include "session.h"
 
-#include "llama.h"
+#include "tools/mtmd/mtmd.h"
 #include "utils/llama_utils.h"
 #include "utils/utf8_utils.h"
+
 #include <exception>
 #include <vector>
 
-#define DEFAULT_BATCH_SIZE 512
+#include "llama.h"
 
 LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionParams &config) {
     auto params = llama_context_default_params();
@@ -14,12 +15,15 @@ LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionP
     params.n_ctx = config.context_size;
     params.n_threads = threads;
     params.n_threads_batch = threads;
-    params.n_batch = DEFAULT_BATCH_SIZE;
-    params.n_ubatch = DEFAULT_BATCH_SIZE;
+    params.n_batch = 2048;
+    params.n_ubatch = 512;
     params.n_seq_max = 1;
     params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
+    params.type_k = GGML_TYPE_Q8_0;
+    params.type_v = GGML_TYPE_Q8_0;
 
     auto ctx = llama_init_from_model(model, params);
+
     if (!ctx) {
         throw std::runtime_error("Failed to create llama context");
     }
@@ -66,198 +70,195 @@ LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionP
                                 llama_sampler_init_dist(config.seed));
     }
 
-    this->llama_context.reset(ctx);
-    this->llama_sampler_chain.reset(sampler_chain);
-    this->llama_batch = llama_batch_init(static_cast<int32_t>(llama_n_batch(ctx)), 0, 1);
-    this->llama_vocab = llama_model_get_vocab(model);
+    llama_context.reset(ctx);
+    llama_sampler_chain.reset(sampler_chain);
+    llama_batch = llama_batch_init(static_cast<int32_t>(llama_n_batch(ctx)), 0, 1);
 
     switch (config.overflow_strategy_id) {
         case 0:
-            this->overflow_strategy = HALT;
+            overflow_strategy = HALT;
             break;
         case 1:
-            this->overflow_strategy = CLEAR_HISTORY;
+            overflow_strategy = CLEAR_HISTORY;
             break;
         case 2:
-            this->overflow_strategy = ROLLING_WINDOW;
-            this->n_drop = config.overflow_drop_tokens;
+            overflow_strategy = ROLLING_WINDOW;
+            n_drop = config.overflow_drop_tokens;
             break;
         default:
-            this->overflow_strategy = ROLLING_WINDOW;
-            this->n_drop = 500; // TODO: make this configurable
+            overflow_strategy = ROLLING_WINDOW;
+            n_drop = 500; // TODO: make this configurable
             break;
     }
 }
 
 LlamaSession::~LlamaSession() {
-    llama_batch_free(this->llama_batch);
+    llama_batch_free(llama_batch);
 }
 
 bool LlamaSession::roll_kv_cache_if_needed(uint32_t required_tokens) {
-    auto ctx = this->llama_context.get();
-    uint32_t n_ctx = llama_n_ctx(ctx);
+    auto ctx = llama_context.get();
+    auto n_ctx = llama_n_ctx(ctx);
 
-    // If we have enough room, just proceed.
-    if (this->n_past + required_tokens <= n_ctx) {
+    if (n_past + required_tokens <= n_ctx) {
         return true;
     }
 
-    // Context is full. Execute the requested overflow strategy.
-    switch (this->overflow_strategy) {
-
-        case 0: { // Strategy: Halt
-            // We cannot make space. Tell the caller to abort generation/ingestion.
+    switch (overflow_strategy) {
+        case HALT: {
             return false;
         }
 
-        case 1: { // Strategy: Clear History
+        case CLEAR_HISTORY: {
             // Wipe everything EXCEPT the protected system prompt.
             // Passing -1 as the end position tells it to delete until the end of the cache.
-            llama_memory_seq_rm(llama_get_memory(ctx), 0, this->n_keep, -1);
+            llama_memory_seq_rm(llama_get_memory(ctx), 0, n_keep, -1);
 
             // Reset our tracking pointer right back to the end of the system prompt.
-            this->n_past = this->n_keep;
+            n_past = n_keep;
             return true;
         }
 
-        case 2: // Strategy: Rolling Window
+        case ROLLING_WINDOW:
         default: {
-            while (this->n_past + required_tokens > n_ctx) {
-                int32_t safe_drop = std::min(this->n_drop, this->n_past - this->n_keep);
+            while (n_past + required_tokens > n_ctx) {
+                auto safe_drop = std::min(n_drop, n_past - n_keep);
 
-                // Edge case: If the system prompt itself fills the entire context,
-                // we can't roll without deleting it. Halt instead.
-                if (safe_drop <= 0) return false;
+                if (safe_drop <= 0) {
+                    return false;
+                }
 
-                llama_memory_seq_rm(llama_get_memory(ctx), 0, this->n_keep,
-                                    this->n_keep + safe_drop);
-                llama_memory_seq_add(llama_get_memory(ctx), 0, this->n_keep + safe_drop, -1,
-                                     -safe_drop);
+                llama_memory_seq_rm(llama_get_memory(ctx), 0, n_keep,
+                                    n_keep + safe_drop);
+                llama_memory_seq_add(llama_get_memory(ctx), 0, n_keep + safe_drop,
+                                     -1, -safe_drop);
 
-                this->n_past -= safe_drop;
+                n_past -= safe_drop;
             }
             return true;
         }
     }
 }
 
-void LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt) {
-    auto tokens = utils::tokenize_text(this->llama_vocab, text, true, true);
-    if (tokens.empty()) return;
+bool LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt) {
+    auto ctx = llama_context.get();
+    auto model = llama_get_model(ctx);
+    auto vocab = llama_model_get_vocab(model);
 
-    auto ctx = this->llama_context.get();
+    auto tokens = utils::tokenize(vocab, text, true, true);
+    if (tokens.empty()) return false;
+
     uint32_t n_ctx = llama_n_ctx(ctx);
     uint32_t n_batch_limit = llama_n_batch(ctx);
-
-    // --- Dynamic Trimming ---
-    // If it's the system prompt, we have the full context window available.
-    // If it's a user prompt, we must respect the locked system prompt (n_keep).
     uint32_t max_usable_tokens = is_system_prompt
                                  ? (n_ctx - 100) // TODO: Hardcoded
-                                 : (n_ctx - this->n_keep - 100);
+                                 : (n_ctx - n_keep - 100);
 
     if (tokens.size() > max_usable_tokens) {
         tokens.erase(tokens.begin(), tokens.end() - max_usable_tokens);
     }
 
-    // --- Chunked Decoding Loop ---
     for (size_t i = 0; i < tokens.size(); i += n_batch_limit) {
         auto chunk_size = std::min(n_batch_limit, static_cast<uint32_t>(tokens.size() - i));
 
         if (!roll_kv_cache_if_needed(chunk_size)) {
-            break; // Halt strategy triggered
+            return false;
         }
 
-        this->llama_batch.n_tokens = 0;
+        utils::batch_clear(llama_batch);
         for (int32_t j = 0; j < chunk_size; j++) {
-            this->llama_batch.token[this->llama_batch.n_tokens] = tokens[i + j];
-            this->llama_batch.pos[this->llama_batch.n_tokens] = this->n_past + j;
-            this->llama_batch.n_seq_id[this->llama_batch.n_tokens] = 1;
-            this->llama_batch.seq_id[this->llama_batch.n_tokens][0] = 0;
-
-            this->llama_batch.logits[this->llama_batch.n_tokens] =
-                    (i + j == tokens.size() - 1) ? 1 : 0;
-
-            this->llama_batch.n_tokens++;
+            utils::batch_add(
+                    llama_batch,
+                    tokens[i + j],
+                    n_past + j,
+                    {0},
+                    i + j == tokens.size() - 1
+            );
         }
 
-        if (llama_decode(ctx, this->llama_batch) != 0) {
-            return; // Decode failed
+        if (llama_decode(ctx, llama_batch) != 0) {
+            return false;
         }
 
-        this->n_past += static_cast<int32_t>(chunk_size);
+        n_past += static_cast<int32_t>(chunk_size);
     }
 
-    // --- The KV Cache Lock ---
-    // If we just ingested the system prompt, protect these tokens from ever being rolled.
     if (is_system_prompt) {
-        this->n_keep = this->n_past;
+        n_keep = n_past;
     }
+
+    return true;
 }
 
-void LlamaSession::set_system_prompt(const std::string &system_prompt) {
-    if (system_prompt.empty()) return;
-
-    this->clear();
-
-    ingest_prompt(system_prompt, true);
+bool LlamaSession::is_token_buffer_valid() {
+    return !token_buffer.empty() && utils::llm_is_valid_utf8(token_buffer);
 }
 
-void LlamaSession::prompt(const std::string &user_message) {
-    ingest_prompt(user_message, false);
+std::u16string LlamaSession::get_token_buffer_as_u16string() {
+    auto result = utils::llm_utf8_to_utf16_sanitized(token_buffer);
+    token_buffer.clear();
+    return result;
+}
+
+bool LlamaSession::set_system_prompt(const std::string &system_prompt) {
+    if (system_prompt.empty()) {
+        return false;
+    }
+
+    clear();
+
+    return ingest_prompt(system_prompt, true);
+}
+
+bool LlamaSession::prompt(const std::string &user_message) {
+    return ingest_prompt(user_message, false);
 }
 
 std::optional<std::u16string> LlamaSession::generate() {
-    auto ctx = this->llama_context.get();
+    auto ctx = llama_context.get();
+    auto model = llama_get_model(ctx);
+    auto vocab = llama_model_get_vocab(model);
+    auto sampler = llama_sampler_chain.get();
 
     while (true) {
-        auto new_token = llama_sampler_sample(this->llama_sampler_chain.get(), ctx, -1);
+        auto new_token = llama_sampler_sample(sampler, ctx, -1);
 
-        if (llama_vocab_is_eog(this->llama_vocab, new_token)) { // TODO: Repeating
-            if (!this->token_buffer.empty()) {
-                auto result = utils::llm_utf8_to_utf16_sanitized(token_buffer);
-                this->token_buffer.clear();
-                return result;
+        if (llama_vocab_is_eog(vocab, new_token)) {
+            if (is_token_buffer_valid()) {
+                return get_token_buffer_as_u16string();
             }
             return std::nullopt;
         }
 
-        auto n = llama_token_to_piece(this->llama_vocab, new_token, piece, sizeof(piece), 0, true);
-        if (n < 0) return std::nullopt;
-        this->token_buffer.append(piece, n);
+        auto piece = utils::token_to_piece(vocab, new_token, true);
+        token_buffer.append(piece);
 
-        if (!roll_kv_cache_if_needed(1)) { // TODO: This is repeating a lot
-            if (!this->token_buffer.empty() && utils::llm_is_valid_utf8(token_buffer)) {
-                auto result = utils::llm_utf8_to_utf16_sanitized(token_buffer);
-                this->token_buffer.clear();
-                return result;
+        if (!roll_kv_cache_if_needed(1)) {
+            if (is_token_buffer_valid()) {
+                return get_token_buffer_as_u16string();
             }
-            return std::nullopt; // Safely terminate the generation stream
-        }
-
-        this->llama_batch.token[0] = new_token;
-        this->llama_batch.pos[0] = this->n_past;
-        this->llama_batch.n_seq_id[0] = 1;
-        this->llama_batch.seq_id[0][0] = 0;
-        this->llama_batch.logits[0] = 1;
-        this->llama_batch.n_tokens = 1;
-
-        if (llama_decode(ctx, this->llama_batch) != 0) {
             return std::nullopt;
         }
 
-        this->n_past += 1;
+        utils::batch_clear(llama_batch);
+        utils::batch_add(llama_batch, new_token, n_past, {0}, true);
 
-        if (utils::llm_is_valid_utf8(this->token_buffer)) {
-            auto result = utils::llm_utf8_to_utf16_sanitized(this->token_buffer);
-            this->token_buffer.clear();
-            return result;
+        if (llama_decode(ctx, llama_batch) != 0) {
+            return std::nullopt;
+        }
+
+        n_past += 1;
+
+        if (is_token_buffer_valid()) {
+            return get_token_buffer_as_u16string();
         }
     }
 }
 
 void LlamaSession::clear() {
-    llama_memory_clear(llama_get_memory(this->llama_context.get()), true);
-    this->n_past = 0;
-    this->token_buffer.clear();
+    auto ctx = llama_context.get();
+    auto memory = llama_get_memory(ctx);
+    llama_memory_clear(memory, true);
+    n_past = 0;
+    token_buffer.clear();
 }

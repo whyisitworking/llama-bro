@@ -44,8 +44,7 @@ target_include_directories(llama-bro
         ${CMAKE_CURRENT_SOURCE_DIR}
 
     SYSTEM PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/external/llama.cpp/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/external/llama.cpp/ggml/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/llama.cpp
 )
 
 target_link_libraries(llama-bro PRIVATE llama log)

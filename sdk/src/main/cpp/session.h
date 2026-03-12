@@ -34,12 +34,10 @@ class LlamaSession {
 private:
     llama_context_ptr llama_context;
     llama_sampler_ptr llama_sampler_chain;
-    const llama_vocab *llama_vocab;
 
     // Core Memory State
     llama_batch llama_batch{0};
     std::string token_buffer;
-    char piece[128]{0};
 
     int32_t n_past = 0;
     int32_t n_keep = 0;
@@ -47,7 +45,9 @@ private:
     int32_t n_drop = 500;
 
     bool roll_kv_cache_if_needed(uint32_t required_tokens);
-    void ingest_prompt(const std::string &text, bool is_system_prompt);
+    bool ingest_prompt(const std::string &text, bool is_system_prompt);
+    bool is_token_buffer_valid();
+    std::u16string get_token_buffer_as_u16string();
 
 public:
     LlamaSession(llama_model *model, int threads, const NativeSessionParams &config);
@@ -61,9 +61,9 @@ public:
 
     LlamaSession &operator=(LlamaSession &&) = delete;
 
-    void set_system_prompt(const std::string &system_prompt);
+    bool set_system_prompt(const std::string &system_prompt);
 
-    void prompt(const std::string &prompt);
+    bool prompt(const std::string &prompt);
 
     std::optional<std::u16string> generate();
 
