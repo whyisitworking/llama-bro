@@ -1,5 +1,7 @@
 #include <jni.h>
 #include "utils/jni_config_reader.h"
+#include "utils/jni_error_thrower.h"
+#include "utils/error_codes.h"
 #include "engine.h"
 #include "llama.h"
 
@@ -21,8 +23,16 @@ Java_com_suhel_llamabro_sdk_internal_LlamaEngineImpl_00024Jni_create(JNIEnv *env
             .use_mlock = useMlock,
     };
 
-    auto instance = new LlamaEngine(config);
-    return reinterpret_cast<jlong>(instance);
+    try {
+        auto instance = new LlamaEngine(config);
+        return reinterpret_cast<jlong>(instance);
+    } catch (const std::runtime_error &e) {
+        // The error message is already formatted as "<code>:<detail>" by engine.cpp
+        jclass exc = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exc, e.what());
+        env->DeleteLocalRef(exc);
+        return 0L;
+    }
 }
 
 extern "C"

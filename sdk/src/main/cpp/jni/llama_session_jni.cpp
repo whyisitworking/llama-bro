@@ -1,5 +1,7 @@
 #include <jni.h>
 #include "utils/jni_config_reader.h"
+#include "utils/jni_error_thrower.h"
+#include "utils/error_codes.h"
 #include "engine.h"
 
 extern "C"
@@ -11,42 +13,36 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_create(JNIEnv *en
     auto engine = reinterpret_cast<LlamaEngine *>(kEnginePtr);
     auto configReader = JniConfigReader(env, kParams);
 
-    auto contextSize = configReader.getInt("contextSize");
-    auto systemPrompt = configReader.getString("systemPrompt");
-    auto overflowStrategyId = configReader.getInt("overflowStrategyId");
-    auto overflowDropTokens = configReader.getInt("overflowDropTokens");
-    auto topKEnabled = configReader.getBool("topKEnabled");
-    auto topK = configReader.getInt("topK");
-    auto topPEnabled = configReader.getBool("topPEnabled");
-    auto topP = configReader.getFloat("topP");
-    auto minPEnabled = configReader.getBool("minPEnabled");
-    auto minP = configReader.getFloat("minP");
-    auto repPenEnabled = configReader.getBool("repPenEnabled");
-    auto repPen = configReader.getFloat("repPen");
-    auto tempEnabled = configReader.getBool("tempEnabled");
-    auto temp = configReader.getFloat("temp");
-    auto seed = configReader.getInt("seed");
-
     auto config = NativeSessionParams{
-            .context_size = contextSize,
-            .system_prompt = systemPrompt,
-            .overflow_strategy_id = overflowStrategyId,
-            .overflow_drop_tokens = overflowDropTokens,
-            .top_k_enabled = topKEnabled,
-            .top_k = topK,
-            .top_p_enabled = topPEnabled,
-            .top_p = topP,
-            .min_p_enabled = minPEnabled,
-            .min_p = minP,
-            .rep_pen_enabled = repPenEnabled,
-            .rep_pen = repPen,
-            .temp_enabled = tempEnabled,
-            .temp = temp,
-            .seed = seed,
+            .context_size          = configReader.getInt("contextSize"),
+            .system_prompt         = configReader.getString("systemPrompt"),
+            .overflow_strategy_id  = configReader.getInt("overflowStrategyId"),
+            .overflow_drop_tokens  = configReader.getInt("overflowDropTokens"),
+            .top_k_enabled         = configReader.getBool("topKEnabled"),
+            .top_k                 = configReader.getInt("topK"),
+            .top_p_enabled         = configReader.getBool("topPEnabled"),
+            .top_p                 = configReader.getFloat("topP"),
+            .min_p_enabled         = configReader.getBool("minPEnabled"),
+            .min_p                 = configReader.getFloat("minP"),
+            // Always-on samplers — no enable guard
+            .rep_pen               = configReader.getFloat("repPen"),
+            .temp                  = configReader.getFloat("temp"),
+            .seed                  = configReader.getInt("seed"),
+            // Decode tuning (was hardcoded)
+            .batch_size            = configReader.getInt("batchSize"),
+            .micro_batch_size      = configReader.getInt("microBatchSize"),
+            .system_prompt_reserve = configReader.getInt("systemPromptReserve"),
     };
 
-    auto instance = engine->session(config);
-    return reinterpret_cast<jlong>(instance);
+    try {
+        auto instance = engine->session(config);
+        return reinterpret_cast<jlong>(instance);
+    } catch (const std::runtime_error &e) {
+        jclass exc = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exc, e.what());
+        env->DeleteLocalRef(exc);
+        return 0L;
+    }
 }
 
 extern "C"

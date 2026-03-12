@@ -3,20 +3,23 @@
 #include "tools/mtmd/mtmd.h"
 #include "utils/llama_utils.h"
 #include "utils/utf8_utils.h"
+#include "utils/error_codes.h"
 
 #include <exception>
+#include <stdexcept>
 #include <vector>
 
 #include "llama.h"
 
 LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionParams &config) {
-    auto params = llama_context_default_params();
+    system_prompt_reserve = config.system_prompt_reserve;
 
+    auto params = llama_context_default_params();
     params.n_ctx = config.context_size;
     params.n_threads = threads;
     params.n_threads_batch = threads;
-    params.n_batch = 2048;
-    params.n_ubatch = 512;
+    params.n_batch = config.batch_size;
+    params.n_ubatch = config.micro_batch_size;
     params.n_seq_max = 1;
     params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
     params.type_k = GGML_TYPE_Q8_0;
@@ -25,49 +28,42 @@ LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionP
     auto ctx = llama_init_from_model(model, params);
 
     if (!ctx) {
-        throw std::runtime_error("Failed to create llama context");
+        throw std::runtime_error(
+            std::to_string(static_cast<int>(LlamaErrorCode::CONTEXT_INIT_FAILED))
+        );
     }
 
     auto sampler_chain = llama_sampler_chain_init(llama_sampler_chain_default_params());
 
+    // Optional samplers — only added to chain when enabled
     if (config.top_k_enabled) {
-        // Hard limit: Keep only the top K tokens
-        llama_sampler_chain_add(sampler_chain,
-                                llama_sampler_init_top_k(config.top_k));
+        llama_sampler_chain_add(sampler_chain, llama_sampler_init_top_k(config.top_k));
     }
 
     if (config.top_p_enabled) {
-        // Nucleus limit: Keep tokens until cumulative probability hits P
-        llama_sampler_chain_add(sampler_chain,
-                                llama_sampler_init_top_p(config.top_p, 1));
+        llama_sampler_chain_add(sampler_chain, llama_sampler_init_top_p(config.top_p, 1));
     }
 
     if (config.min_p_enabled) {
-        // Dynamic limit: Keep tokens with probability >= (minP * max_probability)
-        llama_sampler_chain_add(sampler_chain,
-                                llama_sampler_init_min_p(config.min_p, 1));
+        llama_sampler_chain_add(sampler_chain, llama_sampler_init_min_p(config.min_p, 1));
     }
 
-    if (config.rep_pen_enabled) {
-        llama_sampler_chain_add(sampler_chain,
-                                llama_sampler_init_penalties(
-                                        static_cast<int32_t>(config.context_size / 2),
-                                        config.rep_pen,
-                                        0.05f,
-                                        0.05f
-                                ));
-    }
+    // Always-on samplers — no enable guard needed
+    llama_sampler_chain_add(sampler_chain,
+        llama_sampler_init_penalties(
+            static_cast<int32_t>(config.context_size / 2),
+            config.rep_pen,
+            0.05f,
+            0.05f
+        )
+    );
 
-    if (config.temp_enabled) {
-        llama_sampler_chain_add(sampler_chain, llama_sampler_init_temp(config.temp));
-    }
-
-    if (config.temp_enabled && config.temp == 0.0f) {
-        llama_sampler_chain_add(sampler_chain,
-                                llama_sampler_init_greedy());
+    if (config.temp == 0.0f) {
+        // Greedy decoding: deterministic, always picks highest-probability token
+        llama_sampler_chain_add(sampler_chain, llama_sampler_init_greedy());
     } else {
-        llama_sampler_chain_add(sampler_chain,
-                                llama_sampler_init_dist(config.seed));
+        llama_sampler_chain_add(sampler_chain, llama_sampler_init_temp(config.temp));
+        llama_sampler_chain_add(sampler_chain, llama_sampler_init_dist(config.seed));
     }
 
     llama_context.reset(ctx);
@@ -82,13 +78,15 @@ LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionP
             overflow_strategy = CLEAR_HISTORY;
             break;
         case 2:
+        default:
             overflow_strategy = ROLLING_WINDOW;
             n_drop = config.overflow_drop_tokens;
             break;
-        default:
-            overflow_strategy = ROLLING_WINDOW;
-            n_drop = 500; // TODO: make this configurable
-            break;
+    }
+
+    // Ingest the system prompt immediately if provided
+    if (!config.system_prompt.empty()) {
+        ingest_prompt(config.system_prompt, true);
     }
 }
 
@@ -111,10 +109,7 @@ bool LlamaSession::roll_kv_cache_if_needed(uint32_t required_tokens) {
 
         case CLEAR_HISTORY: {
             // Wipe everything EXCEPT the protected system prompt.
-            // Passing -1 as the end position tells it to delete until the end of the cache.
             llama_memory_seq_rm(llama_get_memory(ctx), 0, n_keep, -1);
-
-            // Reset our tracking pointer right back to the end of the system prompt.
             n_past = n_keep;
             return true;
         }
@@ -123,16 +118,11 @@ bool LlamaSession::roll_kv_cache_if_needed(uint32_t required_tokens) {
         default: {
             while (n_past + required_tokens > n_ctx) {
                 auto safe_drop = std::min(n_drop, n_past - n_keep);
-
                 if (safe_drop <= 0) {
                     return false;
                 }
-
-                llama_memory_seq_rm(llama_get_memory(ctx), 0, n_keep,
-                                    n_keep + safe_drop);
-                llama_memory_seq_add(llama_get_memory(ctx), 0, n_keep + safe_drop,
-                                     -1, -safe_drop);
-
+                llama_memory_seq_rm(llama_get_memory(ctx), 0, n_keep, n_keep + safe_drop);
+                llama_memory_seq_add(llama_get_memory(ctx), 0, n_keep + safe_drop, -1, -safe_drop);
                 n_past -= safe_drop;
             }
             return true;
@@ -151,8 +141,8 @@ bool LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt)
     uint32_t n_ctx = llama_n_ctx(ctx);
     uint32_t n_batch_limit = llama_n_batch(ctx);
     uint32_t max_usable_tokens = is_system_prompt
-                                 ? (n_ctx - 100) // TODO: Hardcoded
-                                 : (n_ctx - n_keep - 100);
+            ? (n_ctx - system_prompt_reserve)
+            : (n_ctx - n_keep - system_prompt_reserve);
 
     if (tokens.size() > max_usable_tokens) {
         tokens.erase(tokens.begin(), tokens.end() - max_usable_tokens);
@@ -204,9 +194,7 @@ bool LlamaSession::set_system_prompt(const std::string &system_prompt) {
     if (system_prompt.empty()) {
         return false;
     }
-
     clear();
-
     return ingest_prompt(system_prompt, true);
 }
 
@@ -260,5 +248,6 @@ void LlamaSession::clear() {
     auto memory = llama_get_memory(ctx);
     llama_memory_clear(memory, true);
     n_past = 0;
+    n_keep = 0;
     token_buffer.clear();
 }
