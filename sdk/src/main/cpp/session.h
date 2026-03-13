@@ -38,10 +38,13 @@ struct NativeSessionParams {
 };
 
 
+#include <atomic>
+
 class LlamaSession {
 private:
     llama_context_ptr llama_context;
     llama_sampler_ptr llama_sampler_chain;
+    std::atomic<bool> is_aborted{false};
 
     // Core Memory State
     llama_batch llama_batch{0};
@@ -57,7 +60,7 @@ private:
     void roll_kv_cache_till_system_prompt();
     bool roll_kv_cache_to_accommodate(uint32_t required_tokens);
 
-    bool ingest_prompt(const std::string &text, bool is_system_prompt);
+    void ingest_prompt(const std::string &text, bool is_system_prompt);
     bool is_token_buffer_valid();
     std::u16string get_token_buffer_as_u16string();
 
@@ -73,9 +76,11 @@ public:
 
     LlamaSession &operator=(LlamaSession &&) = delete;
 
-    bool prompt(const std::string &prompt);
+    void prompt(const std::string &prompt);
 
     std::optional<std::u16string> generate();
 
     void clear();
+
+    void abort();
 };

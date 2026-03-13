@@ -141,13 +141,13 @@ bool LlamaSession::roll_kv_cache_to_accommodate(uint32_t required_tokens) {
     return true;
 }
 
-bool LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt) {
+void LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt) {
     auto ctx = llama_context.get();
     auto model = llama_get_model(ctx);
     auto vocab = llama_model_get_vocab(model);
 
     auto tokens = utils::tokenize(vocab, text, true, true);
-    if (tokens.empty()) return false;
+    if (tokens.empty()) return;
 
     uint32_t n_ctx = llama_n_ctx(ctx);
     uint32_t n_batch_limit = llama_n_batch(ctx);
@@ -160,10 +160,12 @@ bool LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt)
     }
 
     for (size_t i = 0; i < tokens.size(); i += n_batch_limit) {
+        if (is_aborted.load()) return;
+
         auto chunk_size = std::min(n_batch_limit, static_cast<uint32_t>(tokens.size() - i));
 
         if (!roll_kv_cache_if_needed(chunk_size)) {
-            return false;
+            throw LlamaException(LlamaErrorCode::CONTEXT_OVERFLOW);
         }
 
         utils::batch_clear(llama_batch);
@@ -177,8 +179,10 @@ bool LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt)
             );
         }
 
-        if (llama_decode(ctx, llama_batch) != 0) {
-            return false;
+        auto decode_result = llama_decode(ctx, llama_batch);
+        if (decode_result != 0) {
+            throw LlamaException(LlamaErrorCode::DECODE_FAILED,
+                                 std::to_string(decode_result));
         }
 
         n_past += static_cast<int32_t>(chunk_size);
@@ -187,8 +191,6 @@ bool LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt)
     if (is_system_prompt) {
         n_keep = n_past;
     }
-
-    return true;
 }
 
 bool LlamaSession::is_token_buffer_valid() {
@@ -201,8 +203,8 @@ std::u16string LlamaSession::get_token_buffer_as_u16string() {
     return result;
 }
 
-bool LlamaSession::prompt(const std::string &user_message) {
-    return ingest_prompt(user_message, false);
+void LlamaSession::prompt(const std::string &user_message) {
+    ingest_prompt(user_message, false);
 }
 
 std::optional<std::u16string> LlamaSession::generate() {
@@ -211,7 +213,13 @@ std::optional<std::u16string> LlamaSession::generate() {
     auto vocab = llama_model_get_vocab(model);
     auto sampler = llama_sampler_chain.get();
 
+    is_aborted.store(false);
+
     while (true) {
+        if (is_aborted.load()) {
+            return std::nullopt;
+        }
+
         auto new_token = llama_sampler_sample(sampler, ctx, -1);
 
         if (llama_vocab_is_eog(vocab, new_token)) {
@@ -249,4 +257,8 @@ std::optional<std::u16string> LlamaSession::generate() {
 void LlamaSession::clear() {
     roll_kv_cache_till_system_prompt();
     token_buffer.clear();
+}
+
+void LlamaSession::abort() {
+    is_aborted.store(true);
 }

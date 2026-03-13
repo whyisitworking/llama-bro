@@ -1,5 +1,11 @@
 package com.suhel.llamabro.sdk.model
 
+/**
+ * Represents the lifecycle of an asynchronous resource load (engine or session).
+ *
+ * Collect a `Flow<LoadEvent<T>>` to observe progress, receive the loaded resource,
+ * or handle errors.
+ */
 sealed interface LoadEvent<out T> {
     data class Loading(val progress: Float? = null) : LoadEvent<Nothing>
     data class Ready<T>(val resource: T) : LoadEvent<T>

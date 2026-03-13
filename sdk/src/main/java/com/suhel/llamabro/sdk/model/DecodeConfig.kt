@@ -18,4 +18,8 @@ data class DecodeConfig(
     val batchSize: Int = 2048,
     val microBatchSize: Int = 512,
     val systemPromptReserve: Int = 100,
-)
+) {
+    init {
+        require(batchSize >= microBatchSize) { "batchSize ($batchSize) must be >= microBatchSize ($microBatchSize)" }
+    }
+}

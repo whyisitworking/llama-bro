@@ -6,14 +6,18 @@ import com.suhel.llamabro.sdk.model.OverflowStrategy
 import com.suhel.llamabro.sdk.model.PromptFormat
 import com.suhel.llamabro.sdk.model.SessionConfig
 import com.suhel.llamabro.sdk.util.PromptFormatter
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
-class LlamaSessionImpl(
+internal class LlamaSessionImpl(
     enginePtr: Long,
     promptFormat: PromptFormat,
     sessionConfig: SessionConfig
 ) : LlamaSession {
 
     private val promptFormatter = PromptFormatter(promptFormat)
+    private val mutex = Mutex()
 
     private val ptr: Long = try {
         Jni.create(
@@ -46,24 +50,36 @@ class LlamaSessionImpl(
         throw mapNativeError(e)
     }
 
-    override fun prompt(message: Message) {
-        try {
-            Jni.prompt(ptr, promptFormatter.format(message))
-        } catch (e: RuntimeException) {
-            throw mapNativeError(e)
+    override suspend fun prompt(message: Message) {
+        mutex.withLock {
+            try {
+                runInterruptible {
+                    Jni.prompt(ptr, promptFormatter.format(message))
+                }
+            } catch (e: RuntimeException) {
+                throw mapNativeError(e)
+            }
         }
     }
 
-    override fun generate(): String? {
-        return try {
-            Jni.generate(ptr)
-        } catch (e: RuntimeException) {
-            throw mapNativeError(e)
+    override suspend fun generate(): String? {
+        return mutex.withLock {
+            try {
+                runInterruptible {
+                    Jni.generate(ptr)
+                }
+            } catch (e: RuntimeException) {
+                throw mapNativeError(e)
+            }
         }
     }
 
     override fun clear() {
         Jni.clear(ptr)
+    }
+
+    override fun abort() {
+        Jni.abort(ptr)
     }
 
     override fun close() {
@@ -73,7 +89,6 @@ class LlamaSessionImpl(
     // ── JNI params ───────────────────────────────────────────────────────────
 
     class NativeCreateParams(
-        // TODO: Can be made private?
         val contextSize: Int,
         val systemPrompt: String,
         val overflowStrategyId: Int,
@@ -103,6 +118,9 @@ class LlamaSessionImpl(
 
         @JvmStatic
         external fun clear(sessionPtr: Long)
+
+        @JvmStatic
+        external fun abort(sessionPtr: Long)
 
         @JvmStatic
         external fun generate(sessionPtr: Long): String?

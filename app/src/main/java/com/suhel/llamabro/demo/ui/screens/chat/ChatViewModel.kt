@@ -119,7 +119,7 @@ class ChatViewModel @Inject constructor(
                 thinking = generation.thinkingText
             )
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_0000), null)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun sendMessage(text: String) {
         sendMessageTrigger.tryEmit(text)

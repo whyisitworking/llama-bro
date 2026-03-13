@@ -46,16 +46,30 @@ Java_com_suhel_llamabro_sdk_internal_LlamaEngineImpl_00024Jni_createWithProgress
     jmethodID onProgress = env->GetMethodID(listenerClass, "onProgress", "(F)Z");
     env->DeleteLocalRef(listenerClass);
 
-    // env + kListener + onProgressId are all valid for the lifetime of this JNI call
-    // (llama_model_load_from_file is synchronous — the callback never outlives this frame)
-    config.progress_callback = [env, kListener, onProgress](float progress) -> bool {
-        return env->CallBooleanMethod(kListener, onProgress,
-                                      static_cast<jfloat>(progress)) == JNI_TRUE;
+    // Create a GlobalRef to guarantee the object survives the JNI frame securely
+    auto globalListener = env->NewGlobalRef(kListener);
+
+    // Get the JavaVM so the lambda can attach/detach thread or use the current env
+    JavaVM* jvm;
+    env->GetJavaVM(&jvm);
+
+    config.progress_callback = [jvm, globalListener, onProgress](float progress) -> bool {
+        JNIEnv *currentEnv;
+        // In this specific codebase, llama_model_load_from_file is synchronous,
+        // but getting the env from JVM is the correct modern JNI pattern.
+        auto res = jvm->GetEnv(reinterpret_cast<void**>(&currentEnv), JNI_VERSION_1_6);
+        if (res == JNI_OK) {
+            return currentEnv->CallBooleanMethod(globalListener, onProgress, static_cast<jfloat>(progress)) == JNI_TRUE;
+        }
+        return false;
     };
 
     try {
-        return reinterpret_cast<jlong>(new LlamaEngine(config));
+        auto *engine = new LlamaEngine(config);
+        env->DeleteGlobalRef(globalListener); // Safe to delete after synchronous load
+        return reinterpret_cast<jlong>(engine);
     } catch (const LlamaException &ex) {
+        env->DeleteGlobalRef(globalListener); // Clean up on error
         throwLlamaError(env, ex);
         return 0L;
     }

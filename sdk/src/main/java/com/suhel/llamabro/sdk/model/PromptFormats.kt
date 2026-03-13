@@ -1,5 +1,11 @@
 package com.suhel.llamabro.sdk.model
 
+/**
+ * Pre-defined [PromptFormat] templates for popular model families.
+ *
+ * Choose the format that matches the model's training template. Using the wrong
+ * format will produce garbled output or poor quality responses.
+ */
 object PromptFormats {
     val ChatML = PromptFormat(
         systemPrefix = "<|im_start|>system\n",

@@ -51,8 +51,14 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_prompt(JNIEnv *en
                                                                       jstring kText) {
     auto session = reinterpret_cast<LlamaSession *>(kSessionPtr);
     auto text = env->GetStringUTFChars(kText, nullptr);
-    session->prompt(text);
+    std::string textStr(text);
     env->ReleaseStringUTFChars(kText, text);
+
+    try {
+        session->prompt(textStr);
+    } catch (const LlamaException &ex) {
+        throwLlamaError(env, ex);
+    }
 }
 
 // ── clear ─────────────────────────────────────────────────────────────────────
@@ -62,6 +68,15 @@ JNIEXPORT void JNICALL
 Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_clear(JNIEnv *, jclass,
                                                                      jlong kSessionPtr) {
     reinterpret_cast<LlamaSession *>(kSessionPtr)->clear();
+}
+
+// ── abort ─────────────────────────────────────────────────────────────────────
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_abort(JNIEnv *, jclass,
+                                                                     jlong kSessionPtr) {
+    reinterpret_cast<LlamaSession *>(kSessionPtr)->abort();
 }
 
 // ── generate ─────────────────────────────────────────────────────────────────

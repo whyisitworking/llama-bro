@@ -2,6 +2,7 @@ package com.suhel.llamabro.sdk.internal
 
 import com.suhel.llamabro.sdk.LlamaEngine
 import com.suhel.llamabro.sdk.LlamaSession
+
 import com.suhel.llamabro.sdk.model.LlamaError
 import com.suhel.llamabro.sdk.model.LoadEvent
 import com.suhel.llamabro.sdk.model.ModelConfig
@@ -70,7 +71,6 @@ internal class LlamaEngineImpl(
     }
 
     class NativeCreateParams(
-        // TODO: Can be made private?
         val modelPath: String,
         val useMmap: Boolean,
         val useMlock: Boolean,
