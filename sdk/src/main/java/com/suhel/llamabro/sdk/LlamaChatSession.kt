@@ -29,9 +29,9 @@ class LlamaChatSession(private val rawSession: LlamaSession) {
      * Each emission is a progressively accumulated snapshot: thinking text,
      * content text, and finally tokens-per-second with [ChatGeneration.isComplete] = true.
      */
-    fun chat(message: String) = callbackFlow<Chunk> {
+    fun chat(message: String) = callbackFlow {
         tagBuffer.clear()
-        
+
         // This runs the suspension on IO and allows proper cancellation
         launch(Dispatchers.IO) {
             try {
@@ -46,7 +46,8 @@ class LlamaChatSession(private val rawSession: LlamaSession) {
 
                     if (token == null) {
                         val endTime = System.nanoTime()
-                        val tokensPerSecond = (tokenCount.toDouble() / (endTime - startTime) * 1e9).toFloat()
+                        val tokensPerSecond =
+                            (tokenCount.toDouble() / (endTime - startTime) * 1e9).toFloat()
                         flushBuffer(isInThinkingBlock)
                         send(Chunk.Metric(tokensPerSecond))
                         break
@@ -78,6 +79,17 @@ class LlamaChatSession(private val rawSession: LlamaSession) {
      */
     fun reset() {
         rawSession.clear()
+    }
+
+    /**
+     * Synchronously ingest a list of historical messages into the conversation.
+     * This feeds the messages into the underlying native KV cache to restore context.
+     * No token generation is performed during loading.
+     */
+    suspend fun loadHistory(messages: List<Message>) {
+        messages.forEach { msg ->
+            rawSession.prompt(msg)
+        }
     }
 
     // ── Streaming thinking-tag parser ───────────────────────────────────────
@@ -119,14 +131,14 @@ class LlamaChatSession(private val rawSession: LlamaSession) {
         val buf = tagBuffer.toString()
 
         // Check for complete opening tag
-        val openIdx = buf.indexOf("<think>")
+        val openIdx = buf.indexOf(OPEN_TAG)
         if (openIdx != -1) {
             // Emit any content before the tag
             if (openIdx > 0) {
                 send(Chunk.Content(buf.substring(0, openIdx)))
             }
             // Keep anything after the tag in the buffer for further processing
-            val after = buf.substring(openIdx + "<think>".length)
+            val after = buf.substring(openIdx + OPEN_TAG.length)
             tagBuffer.clear()
             if (after.isNotEmpty()) {
                 tagBuffer.append(after)
@@ -136,14 +148,14 @@ class LlamaChatSession(private val rawSession: LlamaSession) {
         }
 
         // Check for complete closing tag
-        val closeIdx = buf.indexOf("</think>")
+        val closeIdx = buf.indexOf(CLOSE_TAG)
         if (closeIdx != -1) {
             // Emit any thinking text before the tag
             if (closeIdx > 0) {
                 send(Chunk.Thinking(buf.substring(0, closeIdx)))
             }
             // Keep anything after the tag in the buffer for further processing
-            val after = buf.substring(closeIdx + "</think>".length)
+            val after = buf.substring(closeIdx + CLOSE_TAG.length)
             tagBuffer.clear()
             if (after.isNotEmpty()) {
                 tagBuffer.append(after)

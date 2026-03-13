@@ -13,7 +13,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class RootViewModel @Inject constructor(
-    modelRepository: ModelRepository
+    private val modelRepository: ModelRepository
 ) : ViewModel() {
     val state = modelRepository.currentModelFlow
         .map { modelLoadEvent ->
@@ -31,4 +31,8 @@ class RootViewModel @Inject constructor(
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RootUiState.NoModelLoaded)
+
+    fun ejectModel() {
+        modelRepository.ejectModel()
+    }
 }

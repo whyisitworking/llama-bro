@@ -11,11 +11,19 @@ import com.suhel.llamabro.demo.ui.screens.chat.ChatScreen
 import com.suhel.llamabro.demo.ui.screens.conversations.ConversationsScreen
 import com.suhel.llamabro.demo.ui.screens.models.ModelSelectionScreen
 
+import androidx.compose.ui.Modifier
+
 @Composable
-fun AppNavigation() {
+fun AppNavigation(
+    modifier: Modifier = Modifier
+) {
     val navController = rememberNavController()
 
-    NavHost(navController = navController, startDestination = ModelSelection) {
+    NavHost(
+        navController = navController,
+        startDestination = ModelSelection,
+        modifier = modifier
+    ) {
         composable<ModelSelection> {
             ModelSelectionScreen(
                 onModelReady = {

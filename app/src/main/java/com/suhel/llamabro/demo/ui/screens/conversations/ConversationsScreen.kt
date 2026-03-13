@@ -151,6 +151,11 @@ private fun ConversationCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Active ${formatRelativeTime(conversation.updatedAt)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceMuted
+                )
             }
             IconButton(onClick = { showDeleteDialog = true }) {
                 Icon(

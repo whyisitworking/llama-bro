@@ -1,5 +1,6 @@
 package com.suhel.llamabro.demo.ui.screens.chat
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -19,20 +20,17 @@ import com.suhel.llamabro.sdk.LlamaChatSession
 import com.suhel.llamabro.sdk.model.LoadEvent
 import com.suhel.llamabro.sdk.model.SessionConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flattenConcat
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
@@ -49,7 +47,10 @@ class ChatViewModel @Inject constructor(
                     "Keep answers clear and to the point."
     }
 
-    private val sendMessageTrigger = MutableSharedFlow<String>()
+    private val _incomingMessage = MutableStateFlow<ChatMessage?>(null)
+    val incomingMessage = _incomingMessage.asStateFlow()
+
+    private var generationJob: Job? = null
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val chatSessionLoad = modelRepository.currentModelFlow
@@ -62,13 +63,30 @@ class ChatViewModel @Inject constructor(
                 )
             )
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, 0), null)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val chatSession = chatSessionLoad
         .mapNotNull { (it as? LoadEvent.Ready)?.resource }
         .distinctUntilChanged()
-        .map { LlamaChatSession(it) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, 0), null)
+        .map { engineSession ->
+            val chatSession = LlamaChatSession(engineSession)
+            
+            // Load and inject history before emitting the session
+            val history = chatRepository.getMessages(args.conversationId)
+            val sdkHistory = history.mapNotNull { entity ->
+                when (entity.role) {
+                    "user" -> com.suhel.llamabro.sdk.model.Message.User(entity.content)
+                    "assistant" -> com.suhel.llamabro.sdk.model.Message.Assistant(entity.content, entity.thinking)
+                    else -> null // Ignore unknown roles
+                }
+            }
+            if (sdkHistory.isNotEmpty()) {
+                chatSession.loadHistory(sdkHistory)
+            }
+            
+            chatSession
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val messages = Pager(
         config = PagingConfig(
@@ -83,45 +101,52 @@ class ChatViewModel @Inject constructor(
         }
         .cachedIn(viewModelScope)
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val incomingMessage = combine(
-        chatSession.filterNotNull(),
-        sendMessageTrigger
-            .distinctUntilChanged()
-            .onEach {
-                withContext(Dispatchers.IO) {
-                    chatRepository.addMessage(
-                        conversationId = args.conversationId,
-                        role = MessageRole.User.toRaw(),
-                        content = it
-                    )
-                }
-            }
-    ) { session, message -> session.chat(message) }
-        .flattenConcat()
-        .onEach { generation ->
-            if (generation.isComplete) {
-                withContext(Dispatchers.IO) {
-                    chatRepository.addMessage(
-                        conversationId = args.conversationId,
-                        role = MessageRole.Assistant.toRaw(),
-                        content = generation.contentText.orEmpty(),
-                        thinking = generation.thinkingText,
-                        tokensPerSecond = generation.tokensPerSecond
-                    )
-                }
-            }
-        }
-        .map { generation ->
-            if (generation.isComplete) null else ChatMessage(
-                id = "streaming",
-                role = MessageRole.Assistant,
-                thinking = generation.thinkingText
+    fun sendMessage(text: String) {
+        val session = chatSession.value ?: return
+
+        // Persist the user message immediately
+        viewModelScope.launch {
+            chatRepository.addMessage(
+                conversationId = args.conversationId,
+                role = MessageRole.User.toRaw(),
+                content = text
             )
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    fun sendMessage(text: String) {
-        sendMessageTrigger.tryEmit(text)
+        generationJob?.cancel()
+        generationJob = viewModelScope.launch {
+            try {
+                session.chat(text).collect { chunk ->
+                    Log.e("Chunk", chunk.toString())
+                    if (chunk.isComplete) {
+                        // Persist the complete response
+                        chatRepository.addMessage(
+                            conversationId = args.conversationId,
+                            role = MessageRole.Assistant.toRaw(),
+                            content = chunk.contentText.orEmpty(),
+                            thinking = chunk.thinkingText,
+                            tokensPerSecond = chunk.tokensPerSecond
+                        )
+                        _incomingMessage.value = null
+                    } else {
+                        // Push intermediate stream chunks to the UI
+                        _incomingMessage.value = ChatMessage(
+                            id = "streaming",
+                            role = MessageRole.Assistant,
+                            content = chunk.contentText,
+                            thinking = chunk.thinkingText
+                        )
+                    }
+                }
+            } finally {
+                // Failsafe in case of cancellation
+                _incomingMessage.value = null
+            }
+        }
+    }
+
+    fun stopGeneration() {
+        generationJob?.cancel()
+        generationJob = null
     }
 }

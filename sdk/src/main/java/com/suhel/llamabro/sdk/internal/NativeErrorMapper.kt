@@ -25,6 +25,7 @@ internal fun mapNativeError(e: RuntimeException): LlamaError {
             val decodeCode = detail.toIntOrNull() ?: -1
             LlamaError.DecodeFailed(decodeCode)
         }
+
         else -> LlamaError.NativeException(detail, e)
     }
 }

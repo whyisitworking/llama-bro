@@ -7,10 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -45,7 +42,6 @@ import com.suhel.llamabro.demo.ui.AppScaffold
 import com.suhel.llamabro.demo.ui.theme.OnSurface
 import com.suhel.llamabro.demo.ui.theme.OnSurfaceFaint
 import com.suhel.llamabro.demo.ui.theme.SurfaceBorder
-import com.suhel.llamabro.demo.ui.theme.SurfaceVariant
 import com.suhel.llamabro.demo.ui.theme.Violet
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -54,22 +50,22 @@ fun ChatScreen(
     onBack: () -> Unit,
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
-    val messages = viewModel.messages.collectAsLazyPagingItems()
-    val incomingMessage by viewModel.incomingMessage.collectAsStateWithLifecycle()
-    val listState = rememberLazyListState()
-
-    // Auto-scroll to bottom when new messages arrive or streaming updates
-    LaunchedEffect(messages.itemCount, incomingMessage) {
-        if (messages.itemCount == 0 || incomingMessage != null) {
-            val target = messages.itemCount + (if (incomingMessage != null) 1 else 0)
-            listState.animateScrollToItem((target - 1).coerceAtLeast(0))
-        }
-    }
-
     AppScaffold(
         title = "Chat",
         onBack = onBack
     ) {
+        val messages = viewModel.messages.collectAsLazyPagingItems()
+        val incomingMessage by viewModel.incomingMessage.collectAsStateWithLifecycle()
+        val listState = rememberLazyListState()
+
+        // Auto-scroll to bottom when new messages arrive or streaming updates
+        LaunchedEffect(messages.itemCount, incomingMessage) {
+            if (messages.itemCount == 0 || incomingMessage != null) {
+                val target = messages.itemCount + (if (incomingMessage != null) 1 else 0)
+                listState.animateScrollToItem((target - 1).coerceAtLeast(0))
+            }
+        }
+
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f),
@@ -90,20 +86,12 @@ fun ChatScreen(
                     MessageBubble(safeIncomingMessage)
                 }
             }
-
-            item {
-                Spacer(
-                    Modifier
-                        .navigationBarsPadding()
-                        .height(72.dp)
-                )
-            }
         }
 
         InputBar(
             isGenerating = incomingMessage != null,
             onStartGeneration = viewModel::sendMessage,
-            onStopGeneration = { },
+            onStopGeneration = viewModel::stopGeneration,
         )
     }
 }
@@ -122,7 +110,6 @@ private fun InputBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -170,7 +157,7 @@ private fun InputBar(
                         )
                     } else {
                         Icon(
-                            painter = painterResource(R.drawable.stop_circle_24px),
+                            painter = painterResource(R.drawable.arrow_circle_up_24px),
                             contentDescription = "Send"
                         )
                     }
@@ -204,7 +191,13 @@ private fun MessageBubble(message: ChatMessage) {
             message.content?.let { contentText ->
                 Box(
                     modifier = Modifier
-                        .background(if (isUser) Violet.copy(alpha = 0.75f) else SurfaceVariant)
+                        .background(
+                            if (isUser) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        )
                         .padding(16.dp)
                 ) {
                     Text(

@@ -6,7 +6,6 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.cachedIn
 import androidx.paging.map
-import com.suhel.llamabro.demo.data.db.entity.ConversationEntity
 import com.suhel.llamabro.demo.data.repository.ChatRepository
 import com.suhel.llamabro.demo.toDomain
 import dagger.hilt.android.lifecycle.HiltViewModel

@@ -9,7 +9,8 @@ import com.suhel.llamabro.demo.model.MessageRole
 fun ConversationEntity.toDomain(): Conversation =
     Conversation(
         id = this.id,
-        title = this.title
+        title = this.title,
+        updatedAt = this.updatedAt
     )
 
 fun MessageEntity.toDomain(): ChatMessage =

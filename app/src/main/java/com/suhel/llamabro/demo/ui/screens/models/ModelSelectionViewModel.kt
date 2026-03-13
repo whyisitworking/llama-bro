@@ -1,9 +1,9 @@
 package com.suhel.llamabro.demo.ui.screens.models
 
 import androidx.lifecycle.ViewModel
+import com.suhel.llamabro.demo.data.repository.ModelRepository
 import com.suhel.llamabro.demo.model.Model
 import com.suhel.llamabro.demo.model.ModelDownloadState
-import com.suhel.llamabro.demo.data.repository.ModelRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject

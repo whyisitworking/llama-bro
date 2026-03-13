@@ -17,12 +17,4 @@ object DatabaseModule {
     fun provideDatabase(app: Application): AppDatabase =
         Room.databaseBuilder<AppDatabase>(app, "llama-bro-db")
             .build()
-
-    @Provides
-    @Singleton
-    fun provideConversationDao(db: AppDatabase) = db.conversationDao()
-
-    @Provides
-    @Singleton
-    fun provideMessageDao(db: AppDatabase) = db.messageDao()
 }

@@ -142,6 +142,8 @@ bool LlamaSession::roll_kv_cache_to_accommodate(uint32_t required_tokens) {
 }
 
 void LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt) {
+    is_aborted.store(false);
+
     auto ctx = llama_context.get();
     auto model = llama_get_model(ctx);
     auto vocab = llama_model_get_vocab(model);

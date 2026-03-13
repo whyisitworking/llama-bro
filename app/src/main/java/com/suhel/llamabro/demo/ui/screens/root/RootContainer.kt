@@ -1,6 +1,5 @@
 package com.suhel.llamabro.demo.ui.screens.root
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,9 +9,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -23,49 +25,64 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 fun RootContainer(vm: RootViewModel = hiltViewModel()) {
     Column(modifier = Modifier.fillMaxSize()) {
         val state by vm.state.collectAsStateWithLifecycle()
-        StatusBar(state)
-        AppNavigation()
+        StatusBar(state, onEjectModel = vm::ejectModel)
+        AppNavigation(modifier = Modifier.weight(1f))
     }
 }
 
 @Composable
-private fun StatusBar(state: RootUiState) {
+private fun StatusBar(
+    state: RootUiState,
+    onEjectModel: () -> Unit,
+) {
     val backgroundColor = when (state) {
-        RootUiState.NoModelLoaded -> MaterialTheme.colorScheme.surfaceDim
+        RootUiState.NoModelLoaded,
+        is RootUiState.ModelLoading,
+        is RootUiState.ModelLoaded -> MaterialTheme.colorScheme.surfaceDim
+
         is RootUiState.ModelLoadError -> MaterialTheme.colorScheme.error
-        is RootUiState.ModelLoading -> MaterialTheme.colorScheme.surfaceContainerHigh
-        is RootUiState.ModelLoaded -> MaterialTheme.colorScheme.surfaceContainer
     }
 
-    val text = when (state) {
-        RootUiState.NoModelLoaded -> "No model loaded"
-        is RootUiState.ModelLoadError -> "Error loading model"
-        is RootUiState.ModelLoading -> "Loading model"
-        is RootUiState.ModelLoaded -> "Loaded ${state.model.name}"
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .background(backgroundColor)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+    Surface(
+        color = backgroundColor,
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Row {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Row(
+            modifier = Modifier
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (state is RootUiState.ModelLoading) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    progress = { state.progress }
+                )
+            } else {
+                val text = when (state) {
+                    RootUiState.NoModelLoaded -> "No model loaded"
+                    is RootUiState.ModelLoadError -> "Error loading model"
+                    is RootUiState.ModelLoaded -> "Loaded ${state.model.name}"
+                }
 
-        (state as? RootUiState.ModelLoading)?.let {
-            LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth(),
-                progress = { it.progress }
-            )
+                Text(
+                    text = text,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
+                if (state is RootUiState.ModelLoaded) {
+                    TextButton(onClick = onEjectModel) {
+                        Text(
+                            text = "Eject",
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                }
+            }
         }
     }
 }

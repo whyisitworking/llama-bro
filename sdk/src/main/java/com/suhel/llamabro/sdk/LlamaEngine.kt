@@ -48,7 +48,10 @@ interface LlamaEngine : AutoCloseable {
          * @param onProgress  Optional progress callback (0.0..1.0). Return `true` to continue, `false` to abort.
          * @throws LlamaError on model load failure.
          */
-        fun create(modelConfig: ModelConfig, onProgress: ((Float) -> Boolean)? = null): LlamaEngine {
+        fun create(
+            modelConfig: ModelConfig,
+            onProgress: ((Float) -> Boolean)? = null
+        ): LlamaEngine {
             ensureNativeLoaded()
             val listener = onProgress?.let { callback ->
                 object : ProgressListener {

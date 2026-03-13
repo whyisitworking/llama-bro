@@ -87,13 +87,9 @@ class ModelRepository @Inject constructor(
 
     fun getAllModels(): List<Model> = CURATED_MODELS
 
-    fun getModel(modelId: String): Model? = modelByIdMap[modelId]
-
     fun getStateFor(model: Model): Flow<ModelDownloadState> = downloadStateMap.map {
         it.getOrDefault(model, ModelDownloadState.NotDownloaded)
     }
-
-    fun getFileFor(model: Model): File = model.file()
 
     fun startDownload(model: Model) {
         downloadModelTrigger.tryEmit(model)
@@ -107,11 +103,12 @@ class ModelRepository @Inject constructor(
         loadModelTrigger.tryEmit(null)
     }
 
-    private fun Model.downloadState(): ModelDownloadState {
-        return if (this.file()
-                .exists()
-        ) ModelDownloadState.Downloaded else ModelDownloadState.NotDownloaded
-    }
+    private fun Model.downloadState(): ModelDownloadState =
+        if (this.file().exists()) {
+            ModelDownloadState.Downloaded
+        } else {
+            ModelDownloadState.NotDownloaded
+        }
 
     private fun Model.file(): File = File(modelsDir, "${this.id}.gguf")
 

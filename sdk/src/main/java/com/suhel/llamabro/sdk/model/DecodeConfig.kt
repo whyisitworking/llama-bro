@@ -20,6 +20,8 @@ data class DecodeConfig(
     val systemPromptReserve: Int = 100,
 ) {
     init {
-        require(batchSize >= microBatchSize) { "batchSize ($batchSize) must be >= microBatchSize ($microBatchSize)" }
+        require(batchSize >= microBatchSize) {
+            "batchSize ($batchSize) must be >= microBatchSize ($microBatchSize)"
+        }
     }
 }

@@ -5,7 +5,6 @@ import androidx.room.withTransaction
 import com.suhel.llamabro.demo.data.db.AppDatabase
 import com.suhel.llamabro.demo.data.db.entity.ConversationEntity
 import com.suhel.llamabro.demo.data.db.entity.MessageEntity
-import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,6 +19,9 @@ class ChatRepository @Inject constructor(private val db: AppDatabase) {
 
     fun messagesPagingSource(conversationId: String): PagingSource<Int, MessageEntity> =
         msgDao.messagesPagingSource(conversationId)
+
+    suspend fun getMessages(conversationId: String): List<MessageEntity> =
+        msgDao.getMessages(conversationId)
 
     suspend fun createConversation(): ConversationEntity {
         val now = System.currentTimeMillis()
