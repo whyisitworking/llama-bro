@@ -1,6 +1,6 @@
 package com.suhel.llamabro.sdk.internal
 
-import com.suhel.llamabro.sdk.api.LlamaError
+import com.suhel.llamabro.sdk.model.LlamaError
 
 /**
  * Maps a [RuntimeException] thrown by JNI into a typed [LlamaError].

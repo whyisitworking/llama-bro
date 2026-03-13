@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <functional>
 
 #include "llama-cpp.h"
 #include "session.h"
@@ -10,6 +11,8 @@ struct NativeEngineParams {
     int threads;
     bool use_mmap;
     bool use_mlock;
+    // Optional progress callback; nullptr means no progress reporting
+    std::function<bool(float)> progress_callback = nullptr;
 };
 
 class LlamaEngine {
@@ -23,11 +26,8 @@ public:
     ~LlamaEngine();
 
     LlamaEngine(const LlamaEngine &) = delete;
-
     LlamaEngine(LlamaEngine &&) = delete;
-
     LlamaEngine &operator=(const LlamaEngine &) = delete;
-
     LlamaEngine &operator=(LlamaEngine &&) = delete;
 
     LlamaSession *session(const NativeSessionParams &config);

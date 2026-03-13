@@ -1,13 +1,15 @@
 #include <jni.h>
 #include "utils/jni_config_reader.h"
 #include "utils/jni_error_thrower.h"
-#include "utils/error_codes.h"
+#include "utils/llama_exception.h"
 #include "engine.h"
+
+// ── create ────────────────────────────────────────────────────────────────────
 
 extern "C"
 JNIEXPORT jlong JNICALL
 Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_create(JNIEnv *env,
-                                                                      jclass clazz,
+                                                                      jclass,
                                                                       jlong kEnginePtr,
                                                                       jobject kParams) {
     auto engine = reinterpret_cast<LlamaEngine *>(kEnginePtr);
@@ -24,30 +26,27 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_create(JNIEnv *en
             .top_p                 = configReader.getFloat("topP"),
             .min_p_enabled         = configReader.getBool("minPEnabled"),
             .min_p                 = configReader.getFloat("minP"),
-            // Always-on samplers — no enable guard
             .rep_pen               = configReader.getFloat("repPen"),
             .temp                  = configReader.getFloat("temp"),
             .seed                  = configReader.getInt("seed"),
-            // Decode tuning (was hardcoded)
             .batch_size            = configReader.getInt("batchSize"),
             .micro_batch_size      = configReader.getInt("microBatchSize"),
             .system_prompt_reserve = configReader.getInt("systemPromptReserve"),
     };
 
     try {
-        auto instance = engine->session(config);
-        return reinterpret_cast<jlong>(instance);
-    } catch (const std::runtime_error &e) {
-        jclass exc = env->FindClass("java/lang/RuntimeException");
-        env->ThrowNew(exc, e.what());
-        env->DeleteLocalRef(exc);
+        return reinterpret_cast<jlong>(engine->session(config));
+    } catch (const LlamaException &ex) {
+        throwLlamaError(env, ex);
         return 0L;
     }
 }
 
+// ── prompt ────────────────────────────────────────────────────────────────────
+
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_prompt(JNIEnv *env, jclass clazz,
+Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_prompt(JNIEnv *env, jclass,
                                                                       jlong kSessionPtr,
                                                                       jstring kText) {
     auto session = reinterpret_cast<LlamaSession *>(kSessionPtr);
@@ -56,35 +55,36 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_prompt(JNIEnv *en
     env->ReleaseStringUTFChars(kText, text);
 }
 
+// ── clear ─────────────────────────────────────────────────────────────────────
+
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_clear(JNIEnv *env, jclass clazz,
+Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_clear(JNIEnv *, jclass,
                                                                      jlong kSessionPtr) {
-    auto session = reinterpret_cast<LlamaSession *>(kSessionPtr);
-    session->clear();
+    reinterpret_cast<LlamaSession *>(kSessionPtr)->clear();
 }
+
+// ── generate ─────────────────────────────────────────────────────────────────
 
 extern "C"
 JNIEXPORT jstring JNICALL
-Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_generate(JNIEnv *env, jclass clazz,
+Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_generate(JNIEnv *env, jclass,
                                                                         jlong kSessionPtr) {
-    auto session = reinterpret_cast<LlamaSession *>(kSessionPtr);
-    auto result = session->generate();
+    auto result = reinterpret_cast<LlamaSession *>(kSessionPtr)->generate();
 
     if (result.has_value()) {
         const auto &utf16 = result.value();
         return env->NewString(reinterpret_cast<const jchar *>(utf16.data()),
                               static_cast<jsize>(utf16.size()));
-    } else {
-        return nullptr;
     }
+    return nullptr;
 }
+
+// ── destroy ───────────────────────────────────────────────────────────────────
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_destroy(JNIEnv *env,
-                                                                       jclass clazz,
+Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_destroy(JNIEnv *, jclass,
                                                                        jlong kSessionPtr) {
-    auto instance = reinterpret_cast<LlamaSession *>(kSessionPtr);
-    delete instance;
+    delete reinterpret_cast<LlamaSession *>(kSessionPtr);
 }

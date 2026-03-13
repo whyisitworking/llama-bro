@@ -54,6 +54,9 @@ private:
     int32_t n_drop = 500;
 
     bool roll_kv_cache_if_needed(uint32_t required_tokens);
+    void roll_kv_cache_till_system_prompt();
+    bool roll_kv_cache_to_accommodate(uint32_t required_tokens);
+
     bool ingest_prompt(const std::string &text, bool is_system_prompt);
     bool is_token_buffer_valid();
     std::u16string get_token_buffer_as_u16string();
@@ -70,13 +73,9 @@ public:
 
     LlamaSession &operator=(LlamaSession &&) = delete;
 
-    bool set_system_prompt(const std::string &system_prompt);
-
     bool prompt(const std::string &prompt);
 
     std::optional<std::u16string> generate();
 
     void clear();
-
-    void set_n_keep(int32_t keep) { this->n_keep = keep; }
 };

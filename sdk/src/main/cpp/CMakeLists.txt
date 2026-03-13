@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22.1)
-project(llama-bro C CXX)
+project(llama_bro C CXX)
 
 # Enforce C11 for GGML
 set(CMAKE_C_STANDARD 11)
@@ -29,7 +29,7 @@ set(GGML_STANDALONE OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(external/llama.cpp)
 
-add_library(llama-bro
+add_library(llama_bro
     SHARED
         engine.cpp
         session.cpp
@@ -39,7 +39,7 @@ add_library(llama-bro
         jni/llama_session_jni.cpp
 )
 
-target_include_directories(llama-bro
+target_include_directories(llama_bro
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
 
@@ -47,4 +47,4 @@ target_include_directories(llama-bro
         ${CMAKE_CURRENT_SOURCE_DIR}/external/llama.cpp
 )
 
-target_link_libraries(llama-bro PRIVATE llama log)
+target_link_libraries(llama_bro PRIVATE llama log)

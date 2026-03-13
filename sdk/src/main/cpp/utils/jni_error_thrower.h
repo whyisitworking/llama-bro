@@ -3,26 +3,30 @@
 #include <jni.h>
 #include <string>
 #include "error_codes.h"
+#include "llama_exception.h"
 
 /**
- * Throws a Java RuntimeException via JNI that encodes a [LlamaErrorCode].
+ * The single, exclusive point where Java/JNI exceptions are thrown from native code.
  *
- * Message format: "<code_int>:<detail>"
- * e.g. "2:Failed to open /data/local/model.gguf"
+ * Message format sent to Kotlin: "<code_int>:<detail>"
+ * The Kotlin NativeErrorMapper parses this into a typed LlamaError subclass.
  *
- * The Kotlin internal layer parses the leading integer to map it to the
- * correct LlamaError subclass before re-throwing to API consumers.
- *
- * Usage:
- *   throwLlamaError(env, LlamaErrorCode::MODEL_NOT_FOUND, config.model_path.c_str());
- *   return 0L; // always return immediately after throwing
+ * ── Rules ────────────────────────────────────────────────────────────────────
+ * 1. Native code (engine.cpp, session.cpp) MUST throw LlamaException — never call this directly.
+ * 2. JNI bridge code MUST catch LlamaException and call throwLlamaError(env, ex) — never call
+ *    env->ThrowNew() directly.
+ * 3. Always return a zero/null sentinel from the JNI function immediately after calling this.
  */
 inline void throwLlamaError(JNIEnv *env, LlamaErrorCode code, const char *detail = "") {
-    int code_int = static_cast<int>(code);
-    std::string message = std::to_string(code_int) + ":" + detail;
+    std::string message = std::to_string(static_cast<int>(code)) + ":" + detail;
     jclass clazz = env->FindClass("java/lang/RuntimeException");
     if (clazz != nullptr) {
         env->ThrowNew(clazz, message.c_str());
         env->DeleteLocalRef(clazz);
     }
+}
+
+/** Convenience overload: converts a LlamaException directly. One-liner at every catch site. */
+inline void throwLlamaError(JNIEnv *env, const LlamaException &ex) {
+    throwLlamaError(env, ex.code, ex.what());
 }

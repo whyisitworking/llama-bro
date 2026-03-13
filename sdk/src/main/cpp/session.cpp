@@ -3,10 +3,8 @@
 #include "tools/mtmd/mtmd.h"
 #include "utils/llama_utils.h"
 #include "utils/utf8_utils.h"
-#include "utils/error_codes.h"
+#include "utils/llama_exception.h"
 
-#include <exception>
-#include <stdexcept>
 #include <vector>
 
 #include "llama.h"
@@ -28,9 +26,7 @@ LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionP
     auto ctx = llama_init_from_model(model, params);
 
     if (!ctx) {
-        throw std::runtime_error(
-            std::to_string(static_cast<int>(LlamaErrorCode::CONTEXT_INIT_FAILED))
-        );
+        throw LlamaException(LlamaErrorCode::CONTEXT_INIT_FAILED);
     }
 
     auto sampler_chain = llama_sampler_chain_init(llama_sampler_chain_default_params());
@@ -50,12 +46,12 @@ LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionP
 
     // Always-on samplers — no enable guard needed
     llama_sampler_chain_add(sampler_chain,
-        llama_sampler_init_penalties(
-            static_cast<int32_t>(config.context_size / 2),
-            config.rep_pen,
-            0.05f,
-            0.05f
-        )
+                            llama_sampler_init_penalties(
+                                    static_cast<int32_t>(config.context_size / 2),
+                                    config.rep_pen,
+                                    0.05f,
+                                    0.05f
+                            )
     );
 
     if (config.temp == 0.0f) {
@@ -108,26 +104,41 @@ bool LlamaSession::roll_kv_cache_if_needed(uint32_t required_tokens) {
         }
 
         case CLEAR_HISTORY: {
-            // Wipe everything EXCEPT the protected system prompt.
-            llama_memory_seq_rm(llama_get_memory(ctx), 0, n_keep, -1);
-            n_past = n_keep;
+            roll_kv_cache_till_system_prompt();
             return true;
         }
 
         case ROLLING_WINDOW:
         default: {
-            while (n_past + required_tokens > n_ctx) {
-                auto safe_drop = std::min(n_drop, n_past - n_keep);
-                if (safe_drop <= 0) {
-                    return false;
-                }
-                llama_memory_seq_rm(llama_get_memory(ctx), 0, n_keep, n_keep + safe_drop);
-                llama_memory_seq_add(llama_get_memory(ctx), 0, n_keep + safe_drop, -1, -safe_drop);
-                n_past -= safe_drop;
-            }
-            return true;
+            return roll_kv_cache_to_accommodate(required_tokens);
         }
     }
+}
+
+void LlamaSession::roll_kv_cache_till_system_prompt() {
+    auto ctx = llama_context.get();
+    auto memory = llama_get_memory(ctx);
+
+    // Wipe everything EXCEPT the protected system prompt.
+    llama_memory_seq_rm(memory, 0, n_keep, -1);
+    n_past = n_keep;
+}
+
+bool LlamaSession::roll_kv_cache_to_accommodate(uint32_t required_tokens) {
+    auto ctx = llama_context.get();
+    auto n_ctx = llama_n_ctx(ctx);
+    auto memory = llama_get_memory(ctx);
+
+    while (n_past + required_tokens > n_ctx) {
+        auto safe_drop = std::min(n_drop, n_past - n_keep);
+        if (safe_drop <= 0) {
+            return false;
+        }
+        llama_memory_seq_rm(memory, 0, n_keep, n_keep + safe_drop);
+        llama_memory_seq_add(memory, 0, n_keep + safe_drop, -1, -safe_drop);
+        n_past -= safe_drop;
+    }
+    return true;
 }
 
 bool LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt) {
@@ -141,8 +152,8 @@ bool LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt)
     uint32_t n_ctx = llama_n_ctx(ctx);
     uint32_t n_batch_limit = llama_n_batch(ctx);
     uint32_t max_usable_tokens = is_system_prompt
-            ? (n_ctx - system_prompt_reserve)
-            : (n_ctx - n_keep - system_prompt_reserve);
+                                 ? (n_ctx - system_prompt_reserve)
+                                 : (n_ctx - n_keep - system_prompt_reserve);
 
     if (tokens.size() > max_usable_tokens) {
         tokens.erase(tokens.begin(), tokens.end() - max_usable_tokens);
@@ -188,14 +199,6 @@ std::u16string LlamaSession::get_token_buffer_as_u16string() {
     auto result = utils::llm_utf8_to_utf16_sanitized(token_buffer);
     token_buffer.clear();
     return result;
-}
-
-bool LlamaSession::set_system_prompt(const std::string &system_prompt) {
-    if (system_prompt.empty()) {
-        return false;
-    }
-    clear();
-    return ingest_prompt(system_prompt, true);
 }
 
 bool LlamaSession::prompt(const std::string &user_message) {
@@ -244,10 +247,6 @@ std::optional<std::u16string> LlamaSession::generate() {
 }
 
 void LlamaSession::clear() {
-    auto ctx = llama_context.get();
-    auto memory = llama_get_memory(ctx);
-    llama_memory_clear(memory, true);
-    n_past = 0;
-    n_keep = 0;
+    roll_kv_cache_till_system_prompt();
     token_buffer.clear();
 }
