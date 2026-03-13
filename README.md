@@ -1,6 +1,8 @@
 # Llama Bro
 **On-device LLM inference SDK for Android, powered by [llama.cpp](https://github.com/ggerganov/llama.cpp).**
 
+[![](https://jitpack.io/v/whyisitworking/llama-bro.svg)](https://jitpack.io/#whyisitworking/llama-bro)
+
 Run GGUF models directly on Android devices with a clean Kotlin coroutine API — no server, no network, and fully privacy-preserving. Built specifically for modern Android development architectures.
 
 ---
@@ -28,7 +30,7 @@ Add the dependency to your app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.suhel.llamabro:sdk:0.1.0")
+    implementation("com.github.whyisitworking:llama-bro:0.1.0")
 }
 ```
 
