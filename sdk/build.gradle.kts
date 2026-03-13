@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.library)
-    `maven-publish`
 }
 
 android {
@@ -52,26 +51,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    publishing {
-        singleVariant("release") {
-            withSourcesJar()
-        }
-    }
-}
-
-publishing {
-    publications {
-        register<MavenPublication>("release") {
-            groupId = "com.suhel.llamabro"
-            artifactId = "sdk"
-            version = "0.1.0"
-
-            afterEvaluate {
-                from(components["release"])
-            }
-        }
     }
 }
 

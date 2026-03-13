@@ -22,6 +22,7 @@ import com.suhel.llamabro.sdk.model.SessionConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
@@ -113,8 +114,9 @@ class ChatViewModel @Inject constructor(
             )
         }
 
-        generationJob?.cancel()
+        val oldJob = generationJob
         generationJob = viewModelScope.launch {
+            oldJob?.cancelAndJoin()
             try {
                 session.chat(text).collect { chunk ->
                     Log.e("Chunk", chunk.toString())
@@ -146,7 +148,10 @@ class ChatViewModel @Inject constructor(
     }
 
     fun stopGeneration() {
-        generationJob?.cancel()
+        val oldJob = generationJob
         generationJob = null
+        viewModelScope.launch {
+            oldJob?.cancelAndJoin()
+        }
     }
 }

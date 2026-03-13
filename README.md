@@ -16,6 +16,12 @@ Run GGUF models directly on Android devices with a clean Kotlin coroutine API �
 
 ---
 
+## 📈 Performance
+Llama Bro is highly optimized for modern mobile silicon, leveraging multi-threading and target-specific GGML backends. 
+- Benchmarked **~20 tok/s** on a **OnePlus 13 (Snapdragon 8 Elite)** running the **Gemma 3n 2B (Q4_K_M)** quantized model.
+
+---
+
 ## 📦 Installation
 
 Add the dependency to your app's `build.gradle.kts`:
