@@ -30,7 +30,7 @@ Add the dependency to your app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.whyisitworking:llama-bro:0.1.0")
+    implementation("com.github.whyisitworking:llama-bro:1.0.0")
 }
 ```
 
