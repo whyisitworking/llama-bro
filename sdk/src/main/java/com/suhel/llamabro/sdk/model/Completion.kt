@@ -3,11 +3,11 @@ package com.suhel.llamabro.sdk.model
 /**
  * Accumulated snapshot of an in-progress or completed generation.
  *
- * Each emission from [com.suhel.llamabro.sdk.LlamaChatSession.chat] is a progressively
+ * Each emission from [com.suhel.llamabro.sdk.internal.LlamaChatSessionImpl.completion] is a progressively
  * growing instance. The final emission has [isComplete] = true and includes [tokensPerSecond].
  * Errors propagate as Flow exceptions (typed [LlamaError] subclasses).
  */
-data class ChatGeneration(
+data class Completion(
     val thinkingText: String? = null,
     val contentText: String? = null,
     val tokensPerSecond: Float? = null,

@@ -1,5 +1,6 @@
 package com.suhel.llamabro.sdk.util
 
+import com.suhel.llamabro.sdk.internal.PromptFormatter
 import com.suhel.llamabro.sdk.model.Message
 import com.suhel.llamabro.sdk.model.PromptFormat
 import com.suhel.llamabro.sdk.model.PromptFormats

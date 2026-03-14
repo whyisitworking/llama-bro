@@ -17,7 +17,6 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_create(JNIEnv *en
 
     auto config = NativeSessionParams{
             .context_size          = configReader.getInt("contextSize"),
-            .system_prompt         = configReader.getString("systemPrompt"),
             .overflow_strategy_id  = configReader.getInt("overflowStrategyId"),
             .overflow_drop_tokens  = configReader.getInt("overflowDropTokens"),
             .top_k_enabled         = configReader.getBool("topKEnabled"),
@@ -27,6 +26,7 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_create(JNIEnv *en
             .min_p_enabled         = configReader.getBool("minPEnabled"),
             .min_p                 = configReader.getFloat("minP"),
             .rep_pen               = configReader.getFloat("repPen"),
+            .presence_pen          = configReader.getFloat("presencePen"),
             .temp                  = configReader.getFloat("temp"),
             .seed                  = configReader.getInt("seed"),
             .batch_size            = configReader.getInt("batchSize"),
@@ -46,16 +46,33 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_create(JNIEnv *en
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_prompt(JNIEnv *env, jclass,
-                                                                      jlong kSessionPtr,
-                                                                      jstring kText) {
+Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_setSystemPrompt(JNIEnv *env, jclass,
+                                                                               jlong kSessionPtr,
+                                                                               jstring kText) {
     auto session = reinterpret_cast<LlamaSession *>(kSessionPtr);
     auto text = env->GetStringUTFChars(kText, nullptr);
     std::string textStr(text);
     env->ReleaseStringUTFChars(kText, text);
 
     try {
-        session->prompt(textStr);
+        session->setSystemPrompt(textStr);
+    } catch (const LlamaException &ex) {
+        throwLlamaError(env, ex);
+    }
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_injectPrompt(JNIEnv *env, jclass,
+                                                                            jlong kSessionPtr,
+                                                                            jstring kText) {
+    auto session = reinterpret_cast<LlamaSession *>(kSessionPtr);
+    auto text = env->GetStringUTFChars(kText, nullptr);
+    std::string textStr(text);
+    env->ReleaseStringUTFChars(kText, text);
+
+    try {
+        session->injectPrompt(textStr);
     } catch (const LlamaException &ex) {
         throwLlamaError(env, ex);
     }

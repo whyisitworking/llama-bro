@@ -9,6 +9,7 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.cachedIn
 import androidx.paging.map
+import com.suhel.llamabro.demo.asMessageRole
 import com.suhel.llamabro.demo.data.repository.ChatRepository
 import com.suhel.llamabro.demo.data.repository.ModelRepository
 import com.suhel.llamabro.demo.model.ChatMessage
@@ -16,8 +17,8 @@ import com.suhel.llamabro.demo.model.MessageRole
 import com.suhel.llamabro.demo.navigation.Chat
 import com.suhel.llamabro.demo.toDomain
 import com.suhel.llamabro.demo.toRaw
-import com.suhel.llamabro.sdk.LlamaChatSession
 import com.suhel.llamabro.sdk.model.LoadEvent
+import com.suhel.llamabro.sdk.model.Message
 import com.suhel.llamabro.sdk.model.SessionConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -43,9 +44,26 @@ class ChatViewModel @Inject constructor(
     private val args = savedStateHandle.toRoute<Chat>()
 
     companion object {
-        private const val SYSTEM_PROMPT =
-            "You are a helpful, concise AI assistant running entirely on-device. " +
-                    "Keep answers clear and to the point."
+        private val SYSTEM_PROMPT = """
+            (You are a highly capable, precise, and brutally efficient AI assistant. Your primary directive is to provide maximum value with minimum token overhead.
+            
+            ### Tone and Style
+            * Speak directly to the user. Do not use filler introductions or conclusions (e.g., "Sure, I can help with that," or "Let me know if you need anything else!").
+            * Be objective, clear, and concise. 
+            * Never apologize. Never use the phrase "As an AI language model..." or similar disclaimers.
+            
+            ### Formatting
+            * Use Markdown extensively to structure your responses.
+            * Use bold text for emphasis and key terms.
+            * Use bullet points and numbered lists to break down complex information.
+            * Always enclose code blocks with the appropriate language tags.
+            
+            ### Constraints & Logic
+            * If you do not know the answer, state "I do not know." Do not hallucinate or guess.
+            * If a request is ambiguous, provide the most likely answer and state your assumptions immediately.
+            * When writing code, provide only the code and a brief explanation of the core logic. Skip trivial setup instructions unless explicitly requested.
+            * Prioritize factual accuracy over conversational politeness.)
+        """.trimIndent()
     }
 
     private val _incomingMessage = MutableStateFlow<ChatMessage?>(null)
@@ -54,38 +72,30 @@ class ChatViewModel @Inject constructor(
     private var generationJob: Job? = null
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val chatSessionLoad = modelRepository.currentModelFlow
+    private val chatSession = modelRepository.currentModelFlow
         .mapNotNull { (it as? LoadEvent.Ready)?.resource }
         .flatMapLatest { currentModel ->
             currentModel.engine.createSessionFlow(
-                SessionConfig(
-                    systemPrompt = SYSTEM_PROMPT,
-                    inferenceConfig = currentModel.model.defaultInferenceConfig
-                )
-            )
-        }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+                SessionConfig(inferenceConfig = currentModel.model.defaultInferenceConfig)
+            ).mapNotNull { (it as? LoadEvent.Ready)?.resource }
+                .distinctUntilChanged()
+                .map { session ->
+                    val chatSession = session.createChatSession(SYSTEM_PROMPT)
+                    val history = chatRepository.getMessages(args.conversationId)
+                    val sdkHistory = history.map { entity ->
+                        when (entity.role.asMessageRole()) {
+                            MessageRole.User -> Message.User(entity.content)
+                            MessageRole.Assistant -> Message.Assistant(
+                                entity.content, entity.thinking
+                            )
+                        }
+                    }
+                    if (sdkHistory.isNotEmpty()) {
+                        chatSession.loadHistory(sdkHistory)
+                    }
 
-    private val chatSession = chatSessionLoad
-        .mapNotNull { (it as? LoadEvent.Ready)?.resource }
-        .distinctUntilChanged()
-        .map { engineSession ->
-            val chatSession = LlamaChatSession(engineSession)
-            
-            // Load and inject history before emitting the session
-            val history = chatRepository.getMessages(args.conversationId)
-            val sdkHistory = history.mapNotNull { entity ->
-                when (entity.role) {
-                    "user" -> com.suhel.llamabro.sdk.model.Message.User(entity.content)
-                    "assistant" -> com.suhel.llamabro.sdk.model.Message.Assistant(entity.content, entity.thinking)
-                    else -> null // Ignore unknown roles
+                    chatSession
                 }
-            }
-            if (sdkHistory.isNotEmpty()) {
-                chatSession.loadHistory(sdkHistory)
-            }
-            
-            chatSession
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -118,7 +128,7 @@ class ChatViewModel @Inject constructor(
         generationJob = viewModelScope.launch {
             oldJob?.cancelAndJoin()
             try {
-                session.chat(text).collect { chunk ->
+                session.completion(text).collect { chunk ->
                     Log.e("Chunk", chunk.toString())
                     if (chunk.isComplete) {
                         // Persist the complete response
@@ -148,10 +158,9 @@ class ChatViewModel @Inject constructor(
     }
 
     fun stopGeneration() {
-        val oldJob = generationJob
-        generationJob = null
         viewModelScope.launch {
-            oldJob?.cancelAndJoin()
+            generationJob?.cancelAndJoin()
+            generationJob = null
         }
     }
 }

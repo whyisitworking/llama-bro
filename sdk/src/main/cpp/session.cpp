@@ -1,6 +1,5 @@
 #include "session.h"
 
-#include "tools/mtmd/mtmd.h"
 #include "utils/llama_utils.h"
 #include "utils/utf8_utils.h"
 #include "utils/llama_exception.h"
@@ -20,7 +19,7 @@ LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionP
     params.n_ubatch = config.micro_batch_size;
     params.n_seq_max = 1;
     params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
-    params.type_k = GGML_TYPE_Q8_0;
+    params.type_k = GGML_TYPE_Q8_0; // Very little loss compared to 50% less size
     params.type_v = GGML_TYPE_Q8_0;
 
     auto ctx = llama_init_from_model(model, params);
@@ -31,7 +30,18 @@ LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionP
 
     auto sampler_chain = llama_sampler_chain_init(llama_sampler_chain_default_params());
 
-    // Optional samplers — only added to chain when enabled
+    // Penalties first — modify logits before any truncation so filters
+    // operate on already-penalised probabilities (matches llama.cpp canonical order).
+    llama_sampler_chain_add(sampler_chain,
+                            llama_sampler_init_penalties(
+                                    static_cast<int32_t>(config.context_size / 2),
+                                    config.rep_pen,
+                                    0.0f,
+                                    config.presence_pen
+                            )
+    );
+
+    // Optional truncation samplers
     if (config.top_k_enabled) {
         llama_sampler_chain_add(sampler_chain, llama_sampler_init_top_k(config.top_k));
     }
@@ -44,18 +54,8 @@ LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionP
         llama_sampler_chain_add(sampler_chain, llama_sampler_init_min_p(config.min_p, 1));
     }
 
-    // Always-on samplers — no enable guard needed
-    llama_sampler_chain_add(sampler_chain,
-                            llama_sampler_init_penalties(
-                                    static_cast<int32_t>(config.context_size / 2),
-                                    config.rep_pen,
-                                    0.05f,
-                                    0.05f
-                            )
-    );
-
+    // Temperature and final selection
     if (config.temp == 0.0f) {
-        // Greedy decoding: deterministic, always picks highest-probability token
         llama_sampler_chain_add(sampler_chain, llama_sampler_init_greedy());
     } else {
         llama_sampler_chain_add(sampler_chain, llama_sampler_init_temp(config.temp));
@@ -78,11 +78,6 @@ LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionP
             overflow_strategy = ROLLING_WINDOW;
             n_drop = config.overflow_drop_tokens;
             break;
-    }
-
-    // Ingest the system prompt immediately if provided
-    if (!config.system_prompt.empty()) {
-        ingest_prompt(config.system_prompt, true);
     }
 }
 
@@ -115,12 +110,16 @@ bool LlamaSession::roll_kv_cache_if_needed(uint32_t required_tokens) {
     }
 }
 
-void LlamaSession::roll_kv_cache_till_system_prompt() {
+void LlamaSession::clear_kv_cache(int32_t start_pos, int32_t end_pos) {
     auto ctx = llama_context.get();
     auto memory = llama_get_memory(ctx);
 
+    llama_memory_seq_rm(memory, 0, start_pos, end_pos);
+}
+
+void LlamaSession::roll_kv_cache_till_system_prompt() {
     // Wipe everything EXCEPT the protected system prompt.
-    llama_memory_seq_rm(memory, 0, n_keep, -1);
+    clear_kv_cache(n_keep, -1);
     n_past = n_keep;
 }
 
@@ -132,10 +131,14 @@ bool LlamaSession::roll_kv_cache_to_accommodate(uint32_t required_tokens) {
     while (n_past + required_tokens > n_ctx) {
         auto safe_drop = std::min(n_drop, n_past - n_keep);
         if (safe_drop <= 0) {
-            return false;
+            return false; // Cannot drop enough tokens without eating system prompt
         }
-        llama_memory_seq_rm(memory, 0, n_keep, n_keep + safe_drop);
+
+        // Remove old tokens
+        clear_kv_cache(n_keep, n_keep + safe_drop);
+        // Shift remaining tokens left by 'safe_drop' amount
         llama_memory_seq_add(memory, 0, n_keep + safe_drop, -1, -safe_drop);
+
         n_past -= safe_drop;
     }
     return true;
@@ -205,7 +208,21 @@ std::u16string LlamaSession::get_token_buffer_as_u16string() {
     return result;
 }
 
-void LlamaSession::prompt(const std::string &user_message) {
+void LlamaSession::setSystemPrompt(const std::string &prompt) {
+    // 1. Total wipe of the KV cache
+    clear_kv_cache(0, -1);
+
+    // 2. Reset state machine counters
+    n_past = 0;
+    n_keep = 0;
+    token_buffer.clear();
+
+    // 3. Ingest the new system prompt
+    // ingest_prompt already handles setting n_keep = n_past at the end
+    ingest_prompt(prompt, true);
+}
+
+void LlamaSession::injectPrompt(const std::string &user_message) {
     ingest_prompt(user_message, false);
 }
 

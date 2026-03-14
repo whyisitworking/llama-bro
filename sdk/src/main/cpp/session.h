@@ -13,7 +13,6 @@ enum OverflowStrategy {
 
 struct NativeSessionParams {
     int context_size;
-    std::string system_prompt;
     int overflow_strategy_id;
     int overflow_drop_tokens;
 
@@ -26,8 +25,9 @@ struct NativeSessionParams {
     float min_p;
 
     // Always-on samplers (no enable guard)
-    float rep_pen;   // 1.0f = no effect
-    float temp;      // 0.0f = greedy
+    float rep_pen;       // 1.0f = no effect
+    float presence_pen;  // 0.0f = no effect
+    float temp;          // 0.0f = greedy
 
     int seed;
 
@@ -57,15 +57,22 @@ private:
     int32_t n_drop = 500;
 
     bool roll_kv_cache_if_needed(uint32_t required_tokens);
+
+    void clear_kv_cache(int32_t start_pos, int32_t end_pos);
+
     void roll_kv_cache_till_system_prompt();
+
     bool roll_kv_cache_to_accommodate(uint32_t required_tokens);
 
     void ingest_prompt(const std::string &text, bool is_system_prompt);
+
     bool is_token_buffer_valid();
+
     std::u16string get_token_buffer_as_u16string();
 
 public:
     LlamaSession(llama_model *model, int threads, const NativeSessionParams &config);
+
     ~LlamaSession();
 
     LlamaSession(const LlamaSession &) = delete;
@@ -76,7 +83,9 @@ public:
 
     LlamaSession &operator=(LlamaSession &&) = delete;
 
-    void prompt(const std::string &prompt);
+    void setSystemPrompt(const std::string &prompt);
+
+    void injectPrompt(const std::string &prompt);
 
     std::optional<std::u16string> generate();
 

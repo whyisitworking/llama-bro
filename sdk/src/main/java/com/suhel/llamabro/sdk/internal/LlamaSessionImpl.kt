@@ -1,22 +1,27 @@
 package com.suhel.llamabro.sdk.internal
 
+import com.suhel.llamabro.sdk.LlamaChatSession
 import com.suhel.llamabro.sdk.LlamaSession
-import com.suhel.llamabro.sdk.model.Message
+import com.suhel.llamabro.sdk.model.LlamaError
+import com.suhel.llamabro.sdk.model.LoadEvent
+import com.suhel.llamabro.sdk.model.ModelConfig
 import com.suhel.llamabro.sdk.model.OverflowStrategy
-import com.suhel.llamabro.sdk.model.PromptFormat
 import com.suhel.llamabro.sdk.model.SessionConfig
-import com.suhel.llamabro.sdk.util.PromptFormatter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 internal class LlamaSessionImpl(
     enginePtr: Long,
-    promptFormat: PromptFormat,
-    sessionConfig: SessionConfig
+    sessionConfig: SessionConfig,
+    override val modelConfig: ModelConfig,
 ) : LlamaSession {
-
-    private val promptFormatter = PromptFormatter(promptFormat)
     private val mutex = Mutex()
 
     private val ptr: Long = try {
@@ -24,7 +29,6 @@ internal class LlamaSessionImpl(
             enginePtr = enginePtr,
             params = NativeCreateParams(
                 contextSize = sessionConfig.contextSize,
-                systemPrompt = sessionConfig.systemPrompt,
                 overflowStrategyId = when (sessionConfig.overflowStrategy) {
                     OverflowStrategy.Halt -> 0
                     OverflowStrategy.ClearHistory -> 1
@@ -39,6 +43,7 @@ internal class LlamaSessionImpl(
                 minPEnabled = sessionConfig.inferenceConfig.minP != null,
                 minP = sessionConfig.inferenceConfig.minP ?: 0f,
                 repPen = sessionConfig.inferenceConfig.repeatPenalty,
+                presencePen = sessionConfig.inferenceConfig.presencePenalty,
                 temp = sessionConfig.inferenceConfig.temperature,
                 seed = sessionConfig.seed,
                 batchSize = sessionConfig.decodeConfig.batchSize,
@@ -50,11 +55,11 @@ internal class LlamaSessionImpl(
         throw mapNativeError(e)
     }
 
-    override suspend fun prompt(message: Message) {
+    override suspend fun setSystemPrompt(text: String) = withContext(Dispatchers.IO) {
         mutex.withLock {
             try {
                 runInterruptible {
-                    Jni.prompt(ptr, promptFormatter.format(message))
+                    Jni.setSystemPrompt(ptr, text)
                 }
             } catch (e: RuntimeException) {
                 throw mapNativeError(e)
@@ -62,8 +67,20 @@ internal class LlamaSessionImpl(
         }
     }
 
-    override suspend fun generate(): String? {
-        return mutex.withLock {
+    override suspend fun prompt(text: String) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            try {
+                runInterruptible {
+                    Jni.injectPrompt(ptr, text)
+                }
+            } catch (e: RuntimeException) {
+                throw mapNativeError(e)
+            }
+        }
+    }
+
+    override suspend fun generate(): String? = withContext(Dispatchers.IO) {
+        mutex.withLock {
             try {
                 runInterruptible {
                     Jni.generate(ptr)
@@ -74,8 +91,16 @@ internal class LlamaSessionImpl(
         }
     }
 
-    override fun clear() {
-        Jni.clear(ptr)
+    override suspend fun clear() = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            try {
+                runInterruptible {
+                    Jni.clear(ptr)
+                }
+            } catch (e: RuntimeException) {
+                throw mapNativeError(e)
+            }
+        }
     }
 
     override fun abort() {
@@ -86,11 +111,30 @@ internal class LlamaSessionImpl(
         Jni.destroy(ptr)
     }
 
+    override suspend fun createChatSession(systemPrompt: String): LlamaChatSession =
+        withContext(Dispatchers.IO) {
+            LlamaChatSessionImpl(this@LlamaSessionImpl, systemPrompt).also { it.initialize() }
+        }
+
+    override fun createChatSessionFlow(systemPrompt: String): Flow<LoadEvent<LlamaChatSession>> =
+        callbackFlow {
+            try {
+                send(LoadEvent.Loading())
+                val session = createChatSession(systemPrompt)
+                send(LoadEvent.Ready(session))
+            } catch (e: Exception) {
+                val llamaError = e as? LlamaError
+                    ?: LlamaError.NativeException(e.message ?: "Unknown", e)
+                send(LoadEvent.Error(llamaError))
+            }
+
+            awaitClose()
+        }.flowOn(Dispatchers.IO)
+
     // ── JNI params ───────────────────────────────────────────────────────────
 
-    class NativeCreateParams(
+    private class NativeCreateParams(
         val contextSize: Int,
-        val systemPrompt: String,
         val overflowStrategyId: Int,
         val overflowDropTokens: Int,
         val topKEnabled: Boolean,
@@ -101,6 +145,7 @@ internal class LlamaSessionImpl(
         val minP: Float,
         // Always-on (no enable field)
         val repPen: Float,
+        val presencePen: Float,
         val temp: Float,
         val seed: Int,
         // Decode tuning
@@ -109,12 +154,15 @@ internal class LlamaSessionImpl(
         val systemPromptReserve: Int,
     )
 
-    object Jni {
+    private object Jni {
         @JvmStatic
         external fun create(enginePtr: Long, params: NativeCreateParams): Long
 
         @JvmStatic
-        external fun prompt(sessionPtr: Long, text: String)
+        external fun setSystemPrompt(sessionPtr: Long, text: String)
+
+        @JvmStatic
+        external fun injectPrompt(sessionPtr: Long, text: String)
 
         @JvmStatic
         external fun clear(sessionPtr: Long)

@@ -5,6 +5,8 @@ import androidx.room.withTransaction
 import com.suhel.llamabro.demo.data.db.AppDatabase
 import com.suhel.llamabro.demo.data.db.entity.ConversationEntity
 import com.suhel.llamabro.demo.data.db.entity.MessageEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -21,19 +23,22 @@ class ChatRepository @Inject constructor(private val db: AppDatabase) {
         msgDao.messagesPagingSource(conversationId)
 
     suspend fun getMessages(conversationId: String): List<MessageEntity> =
-        msgDao.getMessages(conversationId)
+        withContext(Dispatchers.IO) {
+            msgDao.getMessages(conversationId)
+        }
 
-    suspend fun createConversation(): ConversationEntity {
-        val now = System.currentTimeMillis()
-        val entity = ConversationEntity(
-            id = UUID.randomUUID().toString(),
-            title = "New conversation",
-            createdAt = now,
-            updatedAt = now,
-        )
-        convDao.upsert(entity)
-        return entity
-    }
+    suspend fun createConversation(): ConversationEntity =
+        withContext(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            val entity = ConversationEntity(
+                id = UUID.randomUUID().toString(),
+                title = "New conversation",
+                createdAt = now,
+                updatedAt = now,
+            )
+            convDao.upsert(entity)
+            entity
+        }
 
     suspend fun addMessage(
         conversationId: String,
@@ -41,7 +46,7 @@ class ChatRepository @Inject constructor(private val db: AppDatabase) {
         content: String,
         thinking: String? = null,
         tokensPerSecond: Float? = null,
-    ): MessageEntity {
+    ): MessageEntity = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         val entity = MessageEntity(
             id = UUID.randomUUID().toString(),
@@ -56,14 +61,16 @@ class ChatRepository @Inject constructor(private val db: AppDatabase) {
             msgDao.insert(entity)
             convDao.touch(conversationId, now)
         }
-        return entity
+        entity
     }
 
-    suspend fun updateConversationTitle(id: String, title: String) {
-        convDao.updateTitle(id, title, System.currentTimeMillis())
-    }
+    suspend fun updateConversationTitle(id: String, title: String) =
+        withContext(Dispatchers.IO) {
+            convDao.updateTitle(id, title, System.currentTimeMillis())
+        }
 
-    suspend fun deleteConversation(id: String) {
-        convDao.delete(id)
-    }
+    suspend fun deleteConversation(id: String) =
+        withContext(Dispatchers.IO) {
+            convDao.delete(id)
+        }
 }

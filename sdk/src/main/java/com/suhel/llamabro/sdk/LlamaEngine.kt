@@ -29,7 +29,7 @@ import kotlinx.coroutines.isActive
 interface LlamaEngine : AutoCloseable {
 
     /** Creates a session synchronously. Blocks while the system prompt is ingested. */
-    fun createSession(sessionConfig: SessionConfig): LlamaSession
+    suspend fun createSession(sessionConfig: SessionConfig): LlamaSession
 
     /** Creates a session asynchronously, emitting [LoadEvent] progress updates. */
     fun createSessionFlow(sessionConfig: SessionConfig): Flow<LoadEvent<LlamaSession>>

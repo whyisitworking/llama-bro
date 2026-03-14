@@ -3,7 +3,6 @@ package com.suhel.llamabro.sdk.model
 /**
  * Configuration for creating an inference session.
  *
- * @param systemPrompt     The system instruction ingested into the KV cache before any user messages.
  * @param contextSize      Context window size in tokens. Default: 4096.
  * @param overflowStrategy How to handle context overflow. Default: [OverflowStrategy.RollingWindow].
  * @param inferenceConfig  Sampling parameters (temperature, penalties, etc.).
@@ -11,7 +10,6 @@ package com.suhel.llamabro.sdk.model
  * @param seed             RNG seed for reproducible sampling. -1 for random. Default: -1.
  */
 data class SessionConfig(
-    val systemPrompt: String,
     val contextSize: Int = 4096,
     val overflowStrategy: OverflowStrategy = OverflowStrategy.RollingWindow(),
     val inferenceConfig: InferenceConfig = InferenceConfig(),
