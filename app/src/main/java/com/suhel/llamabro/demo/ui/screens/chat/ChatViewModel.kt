@@ -1,6 +1,5 @@
 package com.suhel.llamabro.demo.ui.screens.chat
 
-import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -12,40 +11,43 @@ import androidx.paging.map
 import com.suhel.llamabro.demo.asMessageRole
 import com.suhel.llamabro.demo.data.repository.ChatRepository
 import com.suhel.llamabro.demo.data.repository.ModelRepository
-import com.suhel.llamabro.demo.model.ChatMessage
 import com.suhel.llamabro.demo.model.MessageRole
 import com.suhel.llamabro.demo.navigation.Chat
-import com.suhel.llamabro.demo.toDomain
-import com.suhel.llamabro.demo.toRaw
-import com.suhel.llamabro.sdk.model.LoadEvent
 import com.suhel.llamabro.sdk.model.Message
 import com.suhel.llamabro.sdk.model.SessionConfig
+import com.suhel.llamabro.sdk.model.filterSuccess
+import com.suhel.llamabro.sdk.model.flatMapSuccess
+import com.suhel.llamabro.sdk.model.getOrNull
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val modelRepository: ModelRepository,
+    modelRepository: ModelRepository,
     private val chatRepository: ChatRepository
 ) : ViewModel() {
     private val args = savedStateHandle.toRoute<Chat>()
 
     companion object {
+        private const val TAG = "ChatViewModel"
+
         private val SYSTEM_PROMPT = """
-            (You are a highly capable, precise, and brutally efficient AI assistant. Your primary directive is to provide maximum value with minimum token overhead.
+            You are a highly capable, precise, and brutally efficient AI assistant. Your primary directive is to provide maximum value with minimum token overhead.
             
             ### Tone and Style
             * Speak directly to the user. Do not use filler introductions or conclusions (e.g., "Sure, I can help with that," or "Let me know if you need anything else!").
@@ -62,40 +64,39 @@ class ChatViewModel @Inject constructor(
             * If you do not know the answer, state "I do not know." Do not hallucinate or guess.
             * If a request is ambiguous, provide the most likely answer and state your assumptions immediately.
             * When writing code, provide only the code and a brief explanation of the core logic. Skip trivial setup instructions unless explicitly requested.
-            * Prioritize factual accuracy over conversational politeness.)
+            * Prioritize factual accuracy over conversational politeness.
         """.trimIndent()
     }
 
-    private val _incomingMessage = MutableStateFlow<ChatMessage?>(null)
-    val incomingMessage = _incomingMessage.asStateFlow()
-
-    private var generationJob: Job? = null
+    private val sendMessageTrigger = MutableSharedFlow<String?>(extraBufferCapacity = 1)
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val chatSession = modelRepository.currentModelFlow
-        .mapNotNull { (it as? LoadEvent.Ready)?.resource }
-        .flatMapLatest { currentModel ->
-            currentModel.engine.createSessionFlow(
-                SessionConfig(inferenceConfig = currentModel.model.defaultInferenceConfig)
-            ).mapNotNull { (it as? LoadEvent.Ready)?.resource }
-                .distinctUntilChanged()
-                .map { session ->
-                    val chatSession = session.createChatSession(SYSTEM_PROMPT)
-                    val history = chatRepository.getMessages(args.conversationId)
-                    val sdkHistory = history.map { entity ->
-                        when (entity.role.asMessageRole()) {
-                            MessageRole.User -> Message.User(entity.content)
-                            MessageRole.Assistant -> Message.Assistant(
-                                entity.content, entity.thinking
-                            )
-                        }
+    private val chatSessionFlow = modelRepository.currentInferenceContextFlow
+        .flatMapLatest { currentInferenceContext ->
+            currentInferenceContext?.engine
+                ?.getOrNull()
+                ?.createSessionFlow(
+                    SessionConfig(
+                        inferenceConfig = currentInferenceContext.model.defaultInferenceConfig
+                    )
+                )
+                ?: flowOf(null)
+        }
+        .filterNotNull()
+        .flatMapSuccess { session ->
+            session.createChatSessionFlow(SYSTEM_PROMPT)
+        }
+        .filterSuccess()
+        .onEach { chatSession ->
+            val history = chatRepository.getMessages(args.conversationId)
+                .map { chatMessage ->
+                    when (chatMessage.role) {
+                        MessageRole.User -> Message.User(chatMessage.content)
+                        MessageRole.Assistant -> Message.Assistant(chatMessage.content)
                     }
-                    if (sdkHistory.isNotEmpty()) {
-                        chatSession.loadHistory(sdkHistory)
-                    }
-
-                    chatSession
                 }
+
+            chatSession.loadHistory(history)
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -108,59 +109,76 @@ class ChatViewModel @Inject constructor(
     )
         .flow
         .map { pagingData ->
-            pagingData.map { entity -> entity.toDomain() }
+            pagingData.map { entity ->
+                UiChatMessage(
+                    id = entity.id,
+                    role = entity.role.asMessageRole(),
+                    content = entity.content,
+                    thinking = entity.thinking,
+                    tokensPerSecond = entity.tokensPerSecond,
+                    timestamp = entity.createdAt
+                )
+            }
         }
         .cachedIn(viewModelScope)
 
-    fun sendMessage(text: String) {
-        val session = chatSession.value ?: return
-
-        // Persist the user message immediately
-        viewModelScope.launch {
-            chatRepository.addMessage(
-                conversationId = args.conversationId,
-                role = MessageRole.User.toRaw(),
-                content = text
-            )
-        }
-
-        val oldJob = generationJob
-        generationJob = viewModelScope.launch {
-            oldJob?.cancelAndJoin()
-            try {
-                session.completion(text).collect { chunk ->
-                    Log.e("Chunk", chunk.toString())
-                    if (chunk.isComplete) {
-                        // Persist the complete response
-                        chatRepository.addMessage(
-                            conversationId = args.conversationId,
-                            role = MessageRole.Assistant.toRaw(),
-                            content = chunk.contentText.orEmpty(),
-                            thinking = chunk.thinkingText,
-                            tokensPerSecond = chunk.tokensPerSecond
-                        )
-                        _incomingMessage.value = null
-                    } else {
-                        // Push intermediate stream chunks to the UI
-                        _incomingMessage.value = ChatMessage(
+    @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
+    val incomingMessage = sendMessageTrigger
+        .distinctUntilChanged()
+        .flatMapLatest { message ->
+            if (message != null) {
+                flow {
+                    emit(
+                        UiChatMessage(
                             id = "streaming",
                             role = MessageRole.Assistant,
-                            content = chunk.contentText,
-                            thinking = chunk.thinkingText
+                            isProcessing = true,
                         )
-                    }
+                    )
+
+                    chatRepository.addMessage(
+                        conversationId = args.conversationId,
+                        role = MessageRole.User,
+                        content = message
+                    )
+
+                    val session = chatSessionFlow.filterNotNull().first()
+
+                    emitAll(
+                        session.completion(message)
+                            .map { chunk ->
+                                if (chunk.isComplete && chunk.contentText != null) {
+                                    chatRepository.addMessage(
+                                        conversationId = args.conversationId,
+                                        role = MessageRole.Assistant,
+                                        content = chunk.contentText!!,
+                                        thinking = chunk.thinkingText,
+                                        tokensPerSecond = chunk.tokensPerSecond
+                                    )
+
+                                    null
+                                } else {
+                                    UiChatMessage(
+                                        id = "streaming",
+                                        role = MessageRole.Assistant,
+                                        content = chunk.contentText,
+                                        thinking = chunk.thinkingText
+                                    )
+                                }
+                            }
+                    )
                 }
-            } finally {
-                // Failsafe in case of cancellation
-                _incomingMessage.value = null
+            } else {
+                flowOf(null as UiChatMessage?)
             }
         }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun sendMessage(text: String) {
+        sendMessageTrigger.tryEmit(text)
     }
 
     fun stopGeneration() {
-        viewModelScope.launch {
-            generationJob?.cancelAndJoin()
-            generationJob = null
-        }
+        sendMessageTrigger.tryEmit(null)
     }
 }

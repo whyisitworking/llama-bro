@@ -3,8 +3,7 @@ package com.suhel.llamabro.demo.ui.screens.root
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.demo.data.repository.ModelRepository
-import com.suhel.llamabro.demo.model.CurrentModel
-import com.suhel.llamabro.sdk.model.LoadEvent
+import com.suhel.llamabro.sdk.model.fold
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
@@ -15,20 +14,25 @@ import javax.inject.Inject
 class RootViewModel @Inject constructor(
     private val modelRepository: ModelRepository
 ) : ViewModel() {
-    val state = modelRepository.currentModelFlow
-        .map { modelLoadEvent ->
-            when (modelLoadEvent) {
-                null -> RootUiState.NoModelLoaded
-                is LoadEvent.Error -> RootUiState.ModelLoadError(
-                    modelLoadEvent.error.message ?: "Unknown"
-                )
-
-                is LoadEvent.Loading -> RootUiState.ModelLoading(
-                    modelLoadEvent.progress ?: 0f
-                )
-
-                is LoadEvent.Ready<CurrentModel> -> RootUiState.ModelLoaded(modelLoadEvent.resource.model)
-            }
+    val state = modelRepository.currentInferenceContextFlow
+        .map { currentInferenceContext ->
+            currentInferenceContext?.engine?.fold(
+                onLoading = { progress ->
+                    RootUiState.ModelLoading(
+                        model = currentInferenceContext.model,
+                        progress = progress ?: 0f
+                    )
+                },
+                onSuccess = {
+                    RootUiState.ModelLoaded(model = currentInferenceContext.model)
+                },
+                onFailure = { error ->
+                    RootUiState.ModelLoadError(
+                        model = currentInferenceContext.model,
+                        message = error.message ?: "Unknown"
+                    )
+                },
+            ) ?: RootUiState.NoModelLoaded
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RootUiState.NoModelLoaded)
 

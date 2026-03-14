@@ -4,7 +4,7 @@ import com.suhel.llamabro.sdk.LlamaEngine
 import com.suhel.llamabro.sdk.LlamaSession
 
 import com.suhel.llamabro.sdk.model.LlamaError
-import com.suhel.llamabro.sdk.model.LoadEvent
+import com.suhel.llamabro.sdk.model.ResourceState
 import com.suhel.llamabro.sdk.model.ModelConfig
 import com.suhel.llamabro.sdk.model.SessionConfig
 import kotlinx.coroutines.Dispatchers
@@ -40,18 +40,18 @@ internal class LlamaEngineImpl(
             LlamaSessionImpl(enginePtr, sessionConfig, modelConfig)
         }
 
-    override fun createSessionFlow(sessionConfig: SessionConfig): Flow<LoadEvent<LlamaSession>> =
+    override fun createSessionFlow(sessionConfig: SessionConfig): Flow<ResourceState<LlamaSession>> =
         callbackFlow {
             var session: LlamaSession? = null
 
             try {
-                send(LoadEvent.Loading())
+                send(ResourceState.Loading())
                 session = createSession(sessionConfig)
-                send(LoadEvent.Ready(session))
+                send(ResourceState.Success(session))
             } catch (e: Exception) {
                 val llamaError = e as? LlamaError
                     ?: LlamaError.NativeException(e.message ?: "Unknown", e)
-                send(LoadEvent.Error(llamaError))
+                send(ResourceState.Failure(llamaError))
             }
 
             awaitClose {

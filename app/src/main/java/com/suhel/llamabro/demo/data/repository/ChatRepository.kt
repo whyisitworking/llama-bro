@@ -5,6 +5,10 @@ import androidx.room.withTransaction
 import com.suhel.llamabro.demo.data.db.AppDatabase
 import com.suhel.llamabro.demo.data.db.entity.ConversationEntity
 import com.suhel.llamabro.demo.data.db.entity.MessageEntity
+import com.suhel.llamabro.demo.model.ChatMessage
+import com.suhel.llamabro.demo.model.MessageRole
+import com.suhel.llamabro.demo.toDomain
+import com.suhel.llamabro.demo.toRaw
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -22,9 +26,11 @@ class ChatRepository @Inject constructor(private val db: AppDatabase) {
     fun messagesPagingSource(conversationId: String): PagingSource<Int, MessageEntity> =
         msgDao.messagesPagingSource(conversationId)
 
-    suspend fun getMessages(conversationId: String): List<MessageEntity> =
+    suspend fun getMessages(conversationId: String): List<ChatMessage> =
         withContext(Dispatchers.IO) {
-            msgDao.getMessages(conversationId)
+            msgDao.getMessages(conversationId).map {
+                it.toDomain()
+            }
         }
 
     suspend fun createConversation(): ConversationEntity =
@@ -42,7 +48,7 @@ class ChatRepository @Inject constructor(private val db: AppDatabase) {
 
     suspend fun addMessage(
         conversationId: String,
-        role: String,
+        role: MessageRole,
         content: String,
         thinking: String? = null,
         tokensPerSecond: Float? = null,
@@ -51,7 +57,7 @@ class ChatRepository @Inject constructor(private val db: AppDatabase) {
         val entity = MessageEntity(
             id = UUID.randomUUID().toString(),
             conversationId = conversationId,
-            role = role,
+            role = role.toRaw(),
             content = content,
             thinking = thinking,
             tokensPerSecond = tokensPerSecond,

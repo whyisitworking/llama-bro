@@ -25,21 +25,40 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("releaseTest") {
+            storeFile = file(project.findProperty("GLOBAL_TEST_KEYSTORE_PATH") ?: "")
+            storePassword = project.findProperty("GLOBAL_TEST_STORE_PASSWORD") as String?
+            keyAlias = project.findProperty("GLOBAL_TEST_ALIAS") as String?
+            keyPassword = project.findProperty("GLOBAL_TEST_KEY_PASSWORD") as String?
+        }
+    }
+
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            resValue("string", "app_name", "Llama Bro Demo (Debug)")
+        }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("releaseTest")
+            resValue("string", "app_name", "Llama Bro Demo")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
     buildFeatures {
         compose = true
+        resValues = true
     }
 }
 

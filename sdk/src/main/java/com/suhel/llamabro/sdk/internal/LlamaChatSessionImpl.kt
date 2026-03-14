@@ -75,8 +75,10 @@ internal class LlamaChatSessionImpl(
         val endTime = System.nanoTime()
         val tps = (tokens.toDouble() / (endTime - startTime) * 1e9).toFloat()
         return state.copy(
+            thinkingText = state.thinkingText?.trim(),
+            contentText = state.contentText?.trim(),
             tokensPerSecond = tps,
-            isComplete = true
+            isComplete = true,
         )
     }
 

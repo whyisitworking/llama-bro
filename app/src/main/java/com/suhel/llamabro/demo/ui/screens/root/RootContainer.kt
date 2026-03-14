@@ -1,7 +1,9 @@
 package com.suhel.llamabro.demo.ui.screens.root
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,7 +28,7 @@ fun RootContainer(vm: RootViewModel = hiltViewModel()) {
     Column(modifier = Modifier.fillMaxSize()) {
         val state by vm.state.collectAsStateWithLifecycle()
         StatusBar(state, onEjectModel = vm::ejectModel)
-        AppNavigation(modifier = Modifier.weight(1f))
+        AppNavigation(state, modifier = Modifier.weight(1f))
     }
 }
 
@@ -47,41 +49,52 @@ private fun StatusBar(
         color = backgroundColor,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .animateContentSize(),
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (state is RootUiState.ModelLoading) {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth(),
-                    progress = { state.progress }
-                )
-            } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 val text = when (state) {
                     RootUiState.NoModelLoaded -> "No model loaded"
-                    is RootUiState.ModelLoadError -> "Error loading model"
+                    is RootUiState.ModelLoading -> "Loading ${state.model.name}"
                     is RootUiState.ModelLoaded -> "Loaded ${state.model.name}"
+                    is RootUiState.ModelLoadError -> "Error loading ${state.model.name}"
                 }
 
                 Text(
                     text = text,
                     modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Ellipsis
                 )
 
                 if (state is RootUiState.ModelLoaded) {
-                    TextButton(onClick = onEjectModel) {
+                    TextButton(
+                        onClick = onEjectModel,
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
                         Text(
                             text = "Eject",
-                            style = MaterialTheme.typography.labelMedium
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
+            }
+
+            if (state is RootUiState.ModelLoading) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    progress = { state.progress }
+                )
             }
         }
     }

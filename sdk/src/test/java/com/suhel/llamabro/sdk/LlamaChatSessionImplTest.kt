@@ -1,8 +1,7 @@
 package com.suhel.llamabro.sdk
 
 import com.suhel.llamabro.sdk.internal.LlamaChatSessionImpl
-import com.suhel.llamabro.sdk.model.Completion
-import com.suhel.llamabro.sdk.model.LoadEvent
+import com.suhel.llamabro.sdk.model.ResourceState
 import com.suhel.llamabro.sdk.model.Message
 import com.suhel.llamabro.sdk.model.ModelConfig
 import com.suhel.llamabro.sdk.model.PromptFormat
@@ -55,7 +54,7 @@ class LlamaChatSessionImplTest {
             return LlamaChatSessionImpl(this, systemPrompt)
         }
 
-        override fun createChatSessionFlow(systemPrompt: String): Flow<LoadEvent<LlamaChatSession>> {
+        override fun createChatSessionFlow(systemPrompt: String): Flow<ResourceState<LlamaChatSession>> {
             return emptyFlow()
         }
     }

@@ -3,7 +3,7 @@ package com.suhel.llamabro.sdk.internal
 import com.suhel.llamabro.sdk.LlamaChatSession
 import com.suhel.llamabro.sdk.LlamaSession
 import com.suhel.llamabro.sdk.model.LlamaError
-import com.suhel.llamabro.sdk.model.LoadEvent
+import com.suhel.llamabro.sdk.model.ResourceState
 import com.suhel.llamabro.sdk.model.ModelConfig
 import com.suhel.llamabro.sdk.model.OverflowStrategy
 import com.suhel.llamabro.sdk.model.SessionConfig
@@ -116,16 +116,16 @@ internal class LlamaSessionImpl(
             LlamaChatSessionImpl(this@LlamaSessionImpl, systemPrompt).also { it.initialize() }
         }
 
-    override fun createChatSessionFlow(systemPrompt: String): Flow<LoadEvent<LlamaChatSession>> =
+    override fun createChatSessionFlow(systemPrompt: String): Flow<ResourceState<LlamaChatSession>> =
         callbackFlow {
             try {
-                send(LoadEvent.Loading())
+                send(ResourceState.Loading())
                 val session = createChatSession(systemPrompt)
-                send(LoadEvent.Ready(session))
+                send(ResourceState.Success(session))
             } catch (e: Exception) {
                 val llamaError = e as? LlamaError
                     ?: LlamaError.NativeException(e.message ?: "Unknown", e)
-                send(LoadEvent.Error(llamaError))
+                send(ResourceState.Failure(llamaError))
             }
 
             awaitClose()

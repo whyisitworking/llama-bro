@@ -36,7 +36,6 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.suhel.llamabro.demo.R
-import com.suhel.llamabro.demo.model.ChatMessage
 import com.suhel.llamabro.demo.model.MessageRole
 import com.suhel.llamabro.demo.ui.AppScaffold
 import com.suhel.llamabro.demo.ui.theme.OnSurface
@@ -168,7 +167,7 @@ private fun InputBar(
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(message: UiChatMessage) {
     val isUser = message.role == MessageRole.User
 
     Row(
@@ -180,6 +179,14 @@ private fun MessageBubble(message: ChatMessage) {
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (message.isProcessing) {
+                Text(
+                    text = "Processing...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             message.thinking?.let { thinkingText ->
                 Text(
                     text = thinkingText,

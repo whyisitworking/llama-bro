@@ -1,6 +1,6 @@
 package com.suhel.llamabro.sdk
 
-import com.suhel.llamabro.sdk.model.LoadEvent
+import com.suhel.llamabro.sdk.model.ResourceState
 import com.suhel.llamabro.sdk.model.ModelConfig
 import kotlinx.coroutines.flow.Flow
 
@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.Flow
  * tokens one at a time. Use [clear] to wipe the conversation while keeping the
  * system prompt.
  *
- * For a higher-level conversational API, see [com.suhel.llamabro.sdk.internal.LlamaChatSessionImpl].
+ * For a higher-level conversational API, see [LlamaChatSession].
  *
  * **Thread safety:** Instances are **not** thread-safe. All calls must come from
  * a single coroutine (or be externally synchronised). Close sessions before
@@ -36,5 +36,5 @@ interface LlamaSession : AutoCloseable {
 
     suspend fun createChatSession(systemPrompt: String): LlamaChatSession
 
-    fun createChatSessionFlow(systemPrompt: String): Flow<LoadEvent<LlamaChatSession>>
+    fun createChatSessionFlow(systemPrompt: String): Flow<ResourceState<LlamaChatSession>>
 }

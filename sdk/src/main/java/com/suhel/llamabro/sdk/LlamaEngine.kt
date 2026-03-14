@@ -3,7 +3,7 @@ package com.suhel.llamabro.sdk
 import com.suhel.llamabro.sdk.internal.LlamaEngineImpl
 import com.suhel.llamabro.sdk.internal.ProgressListener
 import com.suhel.llamabro.sdk.model.LlamaError
-import com.suhel.llamabro.sdk.model.LoadEvent
+import com.suhel.llamabro.sdk.model.ResourceState
 import com.suhel.llamabro.sdk.model.ModelConfig
 import com.suhel.llamabro.sdk.model.SessionConfig
 import kotlinx.coroutines.Dispatchers
@@ -31,8 +31,8 @@ interface LlamaEngine : AutoCloseable {
     /** Creates a session synchronously. Blocks while the system prompt is ingested. */
     suspend fun createSession(sessionConfig: SessionConfig): LlamaSession
 
-    /** Creates a session asynchronously, emitting [LoadEvent] progress updates. */
-    fun createSessionFlow(sessionConfig: SessionConfig): Flow<LoadEvent<LlamaSession>>
+    /** Creates a session asynchronously, emitting [ResourceState] events. */
+    fun createSessionFlow(sessionConfig: SessionConfig): Flow<ResourceState<LlamaSession>>
 
     companion object {
         private val nativeLoaded by lazy { System.loadLibrary("llama_bro") }
@@ -62,16 +62,17 @@ interface LlamaEngine : AutoCloseable {
         }
 
         /**
-         * Loads a model asynchronously, emitting [LoadEvent] progress updates.
+         * Loads a model asynchronously, emitting [ResourceState.Loading], [ResourceState.Success],
+         * or [ResourceState.Failure] events.
          *
          * The engine is automatically closed when the returned flow's collector is cancelled.
          */
-        fun createFlow(modelConfig: ModelConfig): Flow<LoadEvent<LlamaEngine>> = callbackFlow {
+        fun createFlow(modelConfig: ModelConfig): Flow<ResourceState<LlamaEngine>> = callbackFlow {
             ensureNativeLoaded()
 
             val listener = object : ProgressListener {
                 override fun onProgress(progress: Float): Boolean {
-                    trySend(LoadEvent.Loading(progress))
+                    trySend(ResourceState.Loading(progress))
                     return isActive
                 }
             }
@@ -79,13 +80,13 @@ interface LlamaEngine : AutoCloseable {
             var engine: LlamaEngine? = null
 
             try {
-                send(LoadEvent.Loading())
+                send(ResourceState.Loading())
                 engine = LlamaEngineImpl(modelConfig, listener)
-                send(LoadEvent.Ready(engine))
+                send(ResourceState.Success(engine))
             } catch (e: Exception) {
                 val llamaError = e as? LlamaError
                     ?: LlamaError.NativeException(e.message ?: "Unknown", e)
-                send(LoadEvent.Error(llamaError))
+                send(ResourceState.Failure(llamaError))
             }
 
             awaitClose {

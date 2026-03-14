@@ -3,12 +3,11 @@ package com.suhel.llamabro.demo.data.repository
 import android.content.Context
 import com.suhel.llamabro.demo.di.ApplicationScope
 import com.suhel.llamabro.demo.model.CURATED_MODELS
-import com.suhel.llamabro.demo.model.CurrentModel
+import com.suhel.llamabro.demo.model.CurrentInferenceContext
 import com.suhel.llamabro.demo.model.Model
 import com.suhel.llamabro.demo.model.ModelDownloadState
 import com.suhel.llamabro.sdk.LlamaEngine
 import com.suhel.llamabro.sdk.model.ModelConfig
-import com.suhel.llamabro.sdk.model.map
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -52,8 +51,6 @@ class ModelRepository @Inject constructor(
         extraBufferCapacity = 1
     )
 
-    private val modelByIdMap = CURATED_MODELS.associateBy { it.id }
-
     private val downloadStateMap: StateFlow<Map<Model, ModelDownloadState>> =
         merge(
             downloadModelTrigger.flatMapMerge { model ->
@@ -68,22 +65,25 @@ class ModelRepository @Inject constructor(
             .scan(emptyMap<Model, ModelDownloadState>()) { acc, pair -> acc + pair }
             .stateIn(scope, SharingStarted.Eagerly, emptyMap())
 
-    val currentModelFlow = loadModelTrigger.filter {
-        downloadStateMap.value[it] is ModelDownloadState.Downloaded
-    }.distinctUntilChanged().flatMapLatest { model ->
-        if (model != null) {
-            LlamaEngine.createFlow(
-                ModelConfig(
-                    modelPath = model.file().absolutePath,
-                    promptFormat = model.promptFormat
-                )
-            ).map { loadEvent ->
-                loadEvent.map { CurrentModel(model, it) }
+    val currentInferenceContextFlow = loadModelTrigger
+        .distinctUntilChanged()
+        .flatMapLatest { model ->
+            if (model != null) {
+                LlamaEngine.createFlow(
+                    ModelConfig(
+                        modelPath = model.file().absolutePath,
+                        promptFormat = model.promptFormat
+                    )
+                ).map { engine -> CurrentInferenceContext(model, engine) }
+            } else {
+                flowOf(null)
             }
-        } else {
-            flowOf(null)
         }
-    }.stateIn(scope, SharingStarted.WhileSubscribed(5_000, 0), null)
+        .stateIn(
+            scope = scope,
+            started = SharingStarted.WhileSubscribed(5_000, 0),
+            initialValue = null
+        )
 
     fun getAllModels(): List<Model> = CURATED_MODELS
 

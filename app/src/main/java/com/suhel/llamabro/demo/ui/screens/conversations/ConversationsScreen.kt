@@ -56,7 +56,6 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationsScreen(
-    onBack: () -> Unit,
     onOpenChat: (conversationId: String) -> Unit,
     viewModel: ConversationsViewModel = hiltViewModel(),
 ) {
@@ -64,7 +63,6 @@ fun ConversationsScreen(
 
     AppScaffold(
         title = "Conversations",
-        onBack = onBack,
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { viewModel.newConversation { onOpenChat(it) } },
