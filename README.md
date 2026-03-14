@@ -26,11 +26,23 @@ Llama Bro is highly optimized for modern mobile silicon, leveraging multi-thread
 
 ## 📦 Installation
 
+Add it in your root `settings.gradle.kts` at the end of repositories
+
+```kotlin
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        mavenCentral()
+        maven { uri("https://jitpack.io") }
+    }
+}
+```
+
 Add the dependency to your app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.whyisitworking:llama-bro:1.0.0")
+    implementation("com.github.whyisitworking:llama-bro:1.0.2")
 }
 ```
 
