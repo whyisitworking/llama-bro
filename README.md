@@ -1,6 +1,6 @@
 # Llama Bro
 
-**On-device LLM inference SDK for Android, powered by [llama.cpp](https://github.com/ggml-org/llama.cpp).**
+> **Run a full AI model in your pocket. On your terms. No servers. No subscriptions. No data leaving your phone.**
 
 [![Build](https://github.com/whyisitworking/llama-bro/actions/workflows/build.yml/badge.svg)](https://github.com/whyisitworking/llama-bro/actions/workflows/build.yml)
 [![JitPack](https://jitpack.io/v/whyisitworking/llama-bro.svg)](https://jitpack.io/#whyisitworking/llama-bro)
@@ -8,459 +8,489 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![ABI](https://img.shields.io/badge/ABI-arm64--v8a-orange.svg)](https://developer.android.com/ndk/guides/abis)
 
-Run quantized GGUF models directly on Android — no server, no network call, no data ever leaving the device. Built for modern Android development with a Kotlin-first coroutine API designed around structured concurrency.
+Llama Bro is a thin, performant Android SDK that runs quantized LLM models directly on-device via [llama.cpp](https://github.com/ggml-org/llama.cpp). Built with Kotlin coroutines and structured concurrency for modern Android development. Whether you're a privacy-focused builder, an offline-first enthusiast, or just curious about what's possible on a phone, Llama Bro makes AI inference as simple as a single Gradle dependency.
 
 ---
 
-## Table of Contents
+## Why Llama Bro?
 
-- [Overview](#overview)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Performance](#performance)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [API Reference](#api-reference)
-- [Configuration](#configuration)
-- [Supported Models & Prompt Formats](#supported-models--prompt-formats)
-- [Overflow Strategies](#overflow-strategies)
-- [Error Handling](#error-handling)
-- [Building from Source](#building-from-source)
-- [Native Dependencies](#native-dependencies)
-- [ProGuard / R8](#proguard--r8)
-- [Limitations](#limitations)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [License](#license)
+**🔒 True Privacy**
+No API keys. No telemetry. No models calling home. Your data never leaves the device.
 
----
+**💰 Zero Token Cost**
+Run models as much as you want—no usage limits, no payment APIs, no surprise bills.
 
-## Overview
+**⚡ Fast Local Inference**
+Tap the device's SIMD capabilities (NEON, dotprod, i8mm) for real-time responses. ~20 tokens/second on modern flagships.
 
-Llama Bro is an Android library that wraps [llama.cpp](https://github.com/ggml-org/llama.cpp) via JNI, exposing a clean, safe Kotlin API for on-device LLM inference. The entire stack — model loading, KV cache management, token sampling, and memory lifecycle — is handled by the library, letting you focus on building the product rather than wrestling with native pointers.
+**📱 Built for Android**
+Kotlin-native coroutine API. No threading headaches. No callback hell. Just `suspend fun` and `Flow`.
 
-The library ships as a compiled AAR with a pre-built `arm64-v8a` shared library and automatically selects the optimal GGML compute backend at runtime based on the CPU's supported instruction sets (NEON, dotprod, i8mm, SVE).
+**🎯 Production-Ready**
+Thread-safe sessions. Memory-safe lifecycle management. Structured error handling. Works with Hilt. Works with architecture patterns you already use.
 
-**Target audience:** Android engineers building privacy-first AI features, offline assistants, on-device RAG, or any product that cannot send user data to a remote model.
+**🧠 Reasoning Models Included**
+Built-in thinking-block parsing for DeepSeek-R1, QwQ, and other reasoning models. See the model's thought process.
 
 ---
 
-## Features
+## Quick Start (3 minutes)
 
-- **Fully local inference** — zero network dependency; model weights stay on the device at all times.
-- **Kotlin-first, coroutine-native API** — every operation is a `suspend` function or a typed `Flow`; no callbacks, no threading boilerplate.
-- **Safe memory lifecycle** — all native engine/session pointers are wrapped in `AutoCloseable` interfaces and managed via `callbackFlow`, preventing leaks on cancellation or error.
-- **Thread-safe sessions** — session operations are serialised with a Kotlin `Mutex`; supports preemptive `abort()` without deadlocking the coroutine.
-- **SIMD auto-selection** — dynamically loads the best GGML backend for the host SoC; no manual CPU feature detection required.
-- **Thinking-block parsing** — built-in `<think>...</think>` tag extraction for reasoning models (DeepSeek-R1, QwQ, etc.).
-- **Configurable overflow handling** — three strategies for context-window exhaustion: `Halt`, `ClearHistory`, and `RollingWindow`.
-- **Built-in prompt templates** — `ChatML`, `Llama3`, `Mistral`, and `Gemma3` included; custom `PromptFormat` supported for any model.
-- **Token streaming with metrics** — real-time `Completion` snapshots accumulate tokens and expose `tokensPerSecond` for live performance display.
-- **Conversation history** — load prior messages into a session via `loadHistory()` to restore persistent chats.
-- **JitPack distribution** — single Gradle dependency, no local build required.
-
----
-
-## Architecture
-
-The SDK is a strictly layered stack with clean boundaries between Kotlin and native code.
-
-```
-┌──────────────────────────────────────────────────────┐
-│  LlamaChatSession  (high-level conversational API)   │
-│  ├─ message formatting via PromptFormat              │
-│  ├─ thinking-tag / stop-suffix stream parsing        │
-│  ├─ token accumulation via Flow.scan()               │
-│  ├─ tokens-per-second metrics                        │
-│  └─ conversation history (loadHistory / reset)       │
-├──────────────────────────────────────────────────────┤
-│  LlamaSession  (raw prompt / generate)               │
-│  ├─ suspend fun setSystemPrompt / prompt / generate  │
-│  ├─ Coroutine Mutex serialisation + abort()          │
-│  └─ KV cache overflow strategy enforcement           │
-├──────────────────────────────────────────────────────┤
-│  LlamaEngine  (model loading + session factory)      │
-│  ├─ progress callbacks during model load             │
-│  └─ ResourceState<T> Flow lifecycle wrapper          │
-├──────────────────────────────────────────────────────┤
-│  JNI Bridge  (Kotlin ↔ C++)                          │
-│  ├─ typed error codes mapped to LlamaError sealed    │
-│  ├─ config reading from Kotlin data classes          │
-│  └─ ProgressListener callback interface              │
-├──────────────────────────────────────────────────────┤
-│  C++ Engine & Session  (llama.cpp)                   │
-│  ├─ RAII model / context pointer management          │
-│  ├─ GGML backend selection (NEON / dotprod / i8mm)   │
-│  ├─ KV cache batch decode + rolling window eviction  │
-│  └─ UTF-16 token streaming back to JVM               │
-└──────────────────────────────────────────────────────┘
-```
-
-The `internal` package is intentionally not part of the public API surface. Consumers interact exclusively through `LlamaEngine`, `LlamaSession`, `LlamaChatSession`, and the model data classes in `com.suhel.llamabro.sdk.model`.
-
----
-
-## Performance
-
-Performance is highly model- and device-dependent. The following benchmark uses `Q4_K_M` quantisation with default `SessionConfig`.
-
-| Device     | SoC                | Model                | Tokens / sec |
-|------------|--------------------|----------------------|--------------|
-| OnePlus 13 | Snapdragon 8 Elite | Gemma 3n 2B (Q4_K_M) | ~20 tok/s    |
-
-**Tuning tips:**
-- `Q4_K_M` offers the best quality-to-speed tradeoff for most models on mobile.
-- Increase `threads` in `ModelConfig` up to the number of performance cores (check `Runtime.availableProcessors()`; the default is `availableProcessors / 2`).
-- Set `useMmap = true` (default) to avoid loading the full model into RAM on capable devices.
-- Increase `decodeConfig.batchSize` to `4096` for faster prefill on long system prompts.
-- Models larger than ~4 GB will require `useMlock = false` on most devices to avoid OOM.
-
----
-
-## Installation
-
-### 1. Add the JitPack repository
-
-In your root `settings.gradle.kts`:
+### 1. Add the dependency
 
 ```kotlin
+// settings.gradle.kts
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
         maven { url = uri("https://jitpack.io") }
     }
 }
-```
 
-### 2. Add the dependency
-
-In your module's `build.gradle.kts`:
-
-```kotlin
+// build.gradle.kts (app)
 dependencies {
     implementation("com.github.whyisitworking:llama-bro:1.0.3")
 }
 ```
 
-> The AAR includes the compiled `arm64-v8a` shared library. No NDK setup is required in the consuming project.
+### 2. Download a model
 
-### 3. Obtain a model
+Grab a GGUF-quantised model from [Hugging Face](https://huggingface.co/models?library=gguf). **Recommended for first-time users:**
 
-Download a GGUF-format model and place it somewhere readable by your app (e.g., `filesDir`, external storage, or downloaded via `DownloadManager`). [Hugging Face](https://huggingface.co/models?library=gguf) is the canonical source.
+- **Gemma 3n (2B, Q4_K_M, ~3 GB)** — Best balance of speed and quality
+  - [unsloth/gemma-3n-E2B-it-GGUF](https://huggingface.co/unsloth/gemma-3n-E2B-it-GGUF)
+- **Llama 3.2 (1B, Q4_K_M, ~600 MB)** — Ultra-lightweight; good for testing
+  - [bartowski/Llama-3.2-1B-Instruct-GGUF](https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF)
+- **DeepSeek-R1 (7B, Q4_K_M, ~5 GB)** — For reasoning/thinking blocks
+  - [bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF](https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF)
 
-```
-# Example: Gemma 3n E2B (Q4_K_M) — ~3.03 GB
-https://huggingface.co/unsloth/gemma-3n-E2B-it-GGUF
-```
+**Quantisation guide:** `Q4_K_M` is the gold standard on mobile (best quality-to-speed tradeoff). For maximum speed on low-RAM devices, try `Q3_K_M` or `Q2_K`. For quality-first, try `Q5_K_M` (slower, larger).
 
----
-
-## Quick Start
-
-### Flow-based usage (recommended)
-
-The `createSessionFlow` / `createChatSessionFlow` overloads return a `Flow<ResourceState<T>>` that automatically closes the underlying native resource when the flow terminates, is cancelled, or errors.
+### 3. Load and chat
 
 ```kotlin
-import com.suhel.llamabro.sdk.LlamaEngine
-import com.suhel.llamabro.sdk.model.*
+import com.suhel.llamabro.sdk.*
+import com.suhel.llamabro.sdk.model.flatMapSuccess
+import com.suhel.llamabro.sdk.model.filterSuccess
+import com.suhel.llamabro.sdk.model.onEachLoading
 
-val modelConfig = ModelConfig(
-    modelPath = "${filesDir.absolutePath}/gemma-3n-E2B-it-Q4_K_M.gguf",
-    promptFormat = PromptFormats.Gemma3
-)
-
-val sessionConfig = SessionConfig(
-    contextSize = 4096,
-    overflowStrategy = OverflowStrategy.RollingWindow(dropTokens = 500)
-)
-
+// Declarative flow composition (auto-cleanup on cancellation)
 lifecycleScope.launch {
-    LlamaEngine.createFlow(modelConfig).collect { engineEvent ->
-        when (engineEvent) {
-            is ResourceState.Loading -> updateProgressBar(engineEvent.progress ?: 0f)
-            is ResourceState.Failure -> showError(engineEvent.error)
-            is ResourceState.Success -> {
-                engineEvent.value.createChatSessionFlow("You are a helpful assistant.")
-                    .collect { sessionEvent ->
-                        when (sessionEvent) {
-                            is ResourceState.Success -> {
-                                val chat = sessionEvent.value
-                                chat.completion("Explain coroutines in one paragraph.")
-                                    .collect { completion ->
-                                        updateTextView(completion.contentText.orEmpty())
-                                        if (completion.isComplete) {
-                                            Log.d("LlamaBro", "${completion.tokensPerSecond} t/s")
-                                        }
-                                    }
-                            }
-                            else -> { /* handle loading / error */ }
-                        }
-                    }
-            }
+    LlamaEngine.createFlow(
+        ModelConfig(
+            modelPath = "/path/to/model.gguf",
+            promptFormat = PromptFormats.ChatML,
+        )
+    )
+    .onEachLoading { progress -> 
+        updateProgressBar(progress ?: 0f) 
+    }
+    .flatMapSucces { engine ->
+        engine.createSessionFlow(
+            SessionConfig(
+                contextSize = 4096,
+                overflowStrategy = OverflowStrategy.RollingWindow(500),
+                inferenceConfig = InferenceConfig(
+                    temperature = 0.7,
+                    repeatPenalty = 1.15,
+                )
+            )
+        )
+    }
+    .flatMapSuccess { session ->
+        session.createChatSessionFlow("You are a helpful assistant.")
+    }
+    .filterSuccess()  // Extract chat session, drop Loading/Failure
+    .flatMapLatest { chatSession ->
+        chatSession.completion("Explain coroutines in one paragraph.")
+    }
+    .collect { completion ->
+        updateTextView(completion.contentText.orEmpty())
+      
+        if (completion.isComplete) {
+            logPerformance("${completion.tokensPerSecond} tokens/sec")
         }
     }
 }
 ```
 
-### Manual lifecycle management
-
-Use this pattern when you manage the engine lifetime explicitly (e.g., a singleton in a ViewModel or a Hilt-scoped component).
-
-```kotlin
-class ChatViewModel @Inject constructor() : ViewModel() {
-
-    private var engine: LlamaEngine? = null
-    private var chatSession: LlamaChatSession? = null
-
-    fun init(modelPath: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            engine = LlamaEngine.create(
-                ModelConfig(modelPath, PromptFormats.Llama3)
-            ) { progress ->
-                _loadProgress.value = progress
-                true // return false to cancel load
-            }
-            val session = engine!!.createSession(SessionConfig())
-            chatSession = session.createChatSession("You are a helpful assistant.")
-        }
-    }
-
-    fun send(message: String): Flow<Completion> =
-        chatSession?.completion(message) ?: emptyFlow()
-
-    override fun onCleared() {
-        super.onCleared()
-        viewModelScope.launch(Dispatchers.IO) {
-            chatSession = null
-            engine?.close() // releases native model memory
-        }
-    }
-}
-```
+That's it. No callbacks. No manual resource management. Flow handles cleanup when cancelled.
 
 ---
 
-## API Reference
+## Use Cases
 
-### `LlamaEngine`
+**Privacy-First Chat**
+Build conversational features for health, finance, or sensitive domains without worrying about data residency.
 
-The top-level factory. Owns the loaded model weights. Expensive to create — keep one instance per model.
+**Offline Assistants**
+Code editor plugins, keyboard assistants, or writing tools that work on a flight.
+
+**Local RAG**
+Combine embeddings with on-device inference for document search without cloud infrastructure.
+
+**Real-Time Reasoning**
+Run models that can think step-by-step (DeepSeek-R1, QwQ) and extract their reasoning for debugging or transparency.
+
+**Reducing Latency**
+No round-trip to a remote server. Get responses in milliseconds, not seconds.
+
+---
+
+## API Overview
+
+Llama Bro's API is tiered by abstraction level. Use what you need:
+
+### `LlamaEngine` — Model loading and session factory
+
+Responsibility: Load the GGUF file, manage model weights, create sessions.
 
 ```kotlin
-interface LlamaEngine : AutoCloseable {
-    // Suspends until session context is initialised
-    suspend fun createSession(sessionConfig: SessionConfig): LlamaSession
+// Recommended: Flow-based (auto-cleanup on cancellation)
+LlamaEngine.createFlow(modelConfig)
+    .collect { resourceState -> /* handle loading/success/error */ }
 
-    // Flow-based; closes session automatically on flow completion
-    fun createSessionFlow(sessionConfig: SessionConfig): Flow<ResourceState<LlamaSession>>
+// Manual: Explicit lifecycle control
+val engine = LlamaEngine.create(modelConfig) { progress ->
+    updateProgressBar(progress)
+    true  // Return false to cancel load
+}
 
-    companion object {
-        // Blocking (call on Dispatchers.IO); optional progress callback returns false to cancel
-        fun create(modelConfig: ModelConfig, onProgress: ((Float) -> Boolean)? = null): LlamaEngine
+val session = engine.createSession(sessionConfig)
+// ... use session ...
+engine.close()  // Release model memory
+```
 
-        // Flow-based with Loading / Success / Failure events
-        fun createFlow(modelConfig: ModelConfig): Flow<ResourceState<LlamaEngine>>
+**When to use:** Always start here. Keep one engine per model.
+
+### `LlamaSession` — Token-level inference
+
+Responsibility: Manage KV cache, encode/decode tokens, sample.
+
+```kotlin
+// Full control: manually encode, then generate tokens one by one
+suspend fun manualInference(session: LlamaSession) {
+    session.setSystemPrompt("You are helpful.")
+    session.prompt("What's 2+2?")
+
+    val output = StringBuilder()
+    while (true) {
+        val token = session.generate() ?: break  // null = EOS
+        output.append(token)
     }
+    return output.toString()
 }
 ```
 
-### `LlamaSession`
+**When to use:** Building custom sampling loops, token-level debugging, or advanced inference control. Most use cases don't need this.
 
-Raw token-level access. Use when you need fine-grained control over prompt injection and sampling.
+### `LlamaChatSession` — High-level conversation API
+
+Responsibility: Format messages, handle stop tokens, extract thinking blocks, compute metrics.
 
 ```kotlin
-interface LlamaSession : AutoCloseable {
-    val modelConfig: ModelConfig
-
-    suspend fun setSystemPrompt(text: String)
-    suspend fun prompt(text: String)       // ingest text into KV cache
-    suspend fun generate(): String?        // sample one token; null = EOS
-    suspend fun clear()                    // reset KV cache and history
-    fun abort()                            // preempt any active operation
-
-    suspend fun createChatSession(systemPrompt: String): LlamaChatSession
-    fun createChatSessionFlow(systemPrompt: String): Flow<ResourceState<LlamaChatSession>>
+// Simple: One-liner for chat completions
+chat.completion("Explain coroutines.").collect { completion ->
+    println(completion.contentText)
 }
 ```
 
-### `LlamaChatSession`
+**When to use:** 95% of use cases. Handles formatting, thinking block extraction, metrics.
 
-High-level conversational API. Handles prompt formatting, stop detection, thinking-block extraction, and metrics.
+---
 
-```kotlin
-interface LlamaChatSession {
-    // Streams accumulated Completion snapshots until EOS
-    fun completion(message: String): Flow<Completion>
-
-    // Reset KV cache and conversation history
-    suspend fun reset()
-
-    // Restore prior conversation (e.g., from a database)
-    suspend fun loadHistory(messages: List<Message>)
-}
-```
-
-### `Completion`
-
-Each emission from `completion()` is a cumulative snapshot of the current generation:
-
-```kotlin
-data class Completion(
-    val thinkingText: String?,      // content inside <think> blocks (reasoning models)
-    val contentText: String?,       // visible response text
-    val tokensPerSecond: Float?,    // rolling average; populated once generation begins
-    val isComplete: Boolean         // true on the final emission (EOS reached)
-)
-```
-
-### `ResourceState<T>`
-
-Represents the lifecycle of an async resource load. All Flow-returning APIs emit this type.
-
-```kotlin
-sealed interface ResourceState<out T> {
-    data class Loading(val progress: Float?)  : ResourceState<Nothing>
-    data class Success<T>(val value: T)       : ResourceState<T>
-    data class Failure(val error: LlamaError) : ResourceState<Nothing>
-}
-```
-
-A set of extension functions is provided for idiomatic consumption:
-
-```kotlin
-// Exhaustive handler — replaces when blocks
-resourceState.fold(
-    onLoading = { progress -> /* show progress bar */ },
-    onSuccess = { value   -> /* use loaded resource */ },
-    onFailure = { error   -> /* show error UI */ }
-)
-
-// Extract value or supply a default
-val engine: LlamaEngine = resourceState.getOrElse { error -> fallbackEngine }
-
-// Extract value or null
-val engine: LlamaEngine? = resourceState.getOrNull()
-
-// Transform the success value while preserving Loading / Failure
-val mapped: ResourceState<String> = resourceState.map { it.toString() }
-
-// Transform success values in a flow — short-circuits Loading/Failure transparently
-engineFlow.mapSuccess { engine -> MyWrapper(engine) }
-
-// Chain a second resource-loading flow on success
-engineFlow.flatMapSuccess { engine -> engine.createSessionFlow(config) }
-```
-
-### `Message`
-
-Sealed type for conversation history entries:
-
-```kotlin
-sealed interface Message {
-    val content: String
-
-    data class User(override val content: String) : Message
-    data class Assistant(
-        override val content: String,
-        val thinking: String? = null,
-        val tokensPerSecond: Float? = null
-    ) : Message
-}
-```
+**All operations are `suspend` functions or `Flow`—no callbacks, no blocking threads.**
 
 ---
 
 ## Configuration
 
-### `ModelConfig`
+### Model Config
 
-| Parameter      | Type           | Default                   | Description                                       |
-|----------------|----------------|---------------------------|---------------------------------------------------|
-| `modelPath`    | `String`       | required                  | Absolute path to the `.gguf` model file           |
-| `promptFormat` | `PromptFormat` | required                  | Chat template for the model family                |
-| `useMmap`      | `Boolean`      | `true`                    | Memory-map the model file; reduces peak RAM usage |
-| `useMlock`     | `Boolean`      | `false`                   | Lock model pages in RAM to prevent swapping       |
-| `threads`      | `Int`          | `availableProcessors / 2` | Inference thread count                            |
+| Option         | Default | Purpose                              |
+|---|---|---|
+| `modelPath`    | required | Absolute path to `.gguf` model file |
+| `promptFormat` | required | Chat template (`Llama3`, `Gemma3`, `ChatML`, `Mistral`, or custom) |
+| `threads`      | `availableProcessors / 2` | Inference thread count; tune for performance cores |
+| `useMmap`      | `true` | Memory-map model file (faster loading, lower peak RAM) |
+| `useMlock`     | `false` | Lock model in RAM (prevents swapping; use on capable devices only) |
 
-### `SessionConfig`
-
-| Parameter          | Type               | Default              | Description                       |
-|--------------------|--------------------|----------------------|-----------------------------------|
-| `contextSize`      | `Int`              | `4096`               | Maximum KV cache size in tokens   |
-| `overflowStrategy` | `OverflowStrategy` | `RollingWindow(500)` | Behaviour when context is full    |
-| `inferenceConfig`  | `InferenceConfig`  | see below            | Sampling parameters               |
-| `decodeConfig`     | `DecodeConfig`     | see below            | Batch decode tuning               |
-| `seed`             | `Int`              | `-1` (random)        | RNG seed for reproducible outputs |
-
-### `InferenceConfig`
-
-| Parameter         | Type     | Default | Description                             |
-|-------------------|----------|---------|-----------------------------------------|
-| `temperature`     | `Float`  | `0.8`   | Sampling temperature; `0.0` = greedy    |
-| `repeatPenalty`   | `Float`  | `1.1`   | Penalty for repeating recent tokens     |
-| `presencePenalty` | `Float`  | `0.0`   | Penalty for tokens already present      |
-| `minP`            | `Float?` | `0.1`   | Min-P sampling floor; `null` to disable |
-| `topP`            | `Float?` | `null`  | Nucleus sampling threshold              |
-| `topK`            | `Int?`   | `null`  | Top-K sampling ceiling                  |
-
-### `DecodeConfig`
-
-| Parameter             | Type  | Default | Description                                                 |
-|-----------------------|-------|---------|-------------------------------------------------------------|
-| `batchSize`           | `Int` | `2048`  | Maximum tokens processed per decode call                    |
-| `microBatchSize`      | `Int` | `512`   | Internal batch chunk size                                   |
-| `systemPromptReserve` | `Int` | `100`   | Token slots reserved for system prompt in overflow eviction |
-
----
-
-## Supported Models & Prompt Formats
-
-The library is model-agnostic at the inference level. Any model that runs in llama.cpp will work as long as you supply the correct `PromptFormat`. Built-in formats:
-
-| Constant                | Format                                   | Models                                                |
-|-------------------------|------------------------------------------|-------------------------------------------------------|
-| `PromptFormats.ChatML`  | `<\|im_start\|>` / `<\|im_end\|>`        | Qwen 2.5, Yi, InternLM, general instruction finetunes |
-| `PromptFormats.Llama3`  | `<\|start_header_id\|>` / `<\|eot_id\|>` | Llama 3 / 3.1 / 3.2 / 3.3                             |
-| `PromptFormats.Mistral` | `[INST]` / `[/INST]`                     | Mistral 7B, Mixtral 8x7B                              |
-| `PromptFormats.Gemma3`  | `<start_of_turn>` / `<end_of_turn>`      | Gemma 3, Gemma 3n                                     |
-
-**Custom formats** are first-class; pass a `PromptFormat` data class with your own prefix/suffix strings:
-
+**Example:**
 ```kotlin
-val myFormat = PromptFormat(
-    systemPrefix    = "<<SYS>>\n",
-    systemSuffix    = "\n<</SYS>>\n\n",
-    userPrefix      = "[INST] ",
-    userSuffix      = " [/INST]",
-    assistantPrefix = "",
-    assistantSuffix = "</s>"
+ModelConfig(
+    modelPath = "/data/models/gemma-3n.gguf",
+    promptFormat = PromptFormats.Gemma3,
+    threads = 8,  // Match your device's performance core count
+    useMmap = true,
+    useMlock = false
+)
+```
+
+### Session Config
+
+| Option            | Default | Purpose                          |
+|---|---|---|
+| `contextSize`     | `4096` | KV cache size in tokens (max prompt + response) |
+| `overflowStrategy`| `RollingWindow(500)` | Behavior when cache is exhausted |
+| `inferenceConfig` | (see below) | Sampling parameters |
+| `decodeConfig`    | (see below) | Batch decoding tuning |
+| `seed`            | `-1` (random) | Set to a fixed value for reproducibility |
+
+### Inference Config (Sampling)
+
+Control token generation quality and diversity:
+
+| Option         | Default | Range | Purpose                          |
+|---|---|---|---|
+| `temperature`  | `0.8` | `0.0–2.0` | Sampling creativity; `0.0` = greedy (always pick best), `1.0` = neutral |
+| `repeatPenalty`| `1.1` | `1.0–2.0` | Penalize recent tokens to avoid loops |
+| `presencePenalty` | `0.0` | `0.0–2.0` | Penalize all previously seen tokens |
+| `minP`         | `0.1` | `0.0–1.0` | Min-probability threshold; `null` to disable |
+| `topP`         | `null` | `0.0–1.0` | Nucleus sampling; `null` = disabled |
+| `topK`         | `null` | `1–∞` | Top-K sampling; `null` = disabled |
+
+**Example:**
+```kotlin
+InferenceConfig(
+    temperature = 0.7,        // Slightly conservative
+    repeatPenalty = 1.15,     // Discourage repetition
+    minP = 0.05,              // Filter low-probability tokens
+    topP = 0.9                // Nucleus sampling for diversity
+)
+```
+
+### Decode Config (Performance Tuning)
+
+| Option             | Default | Purpose |
+|---|---|---|
+| `batchSize`        | `2048` | Max tokens processed per decode step |
+| `microBatchSize`   | `512` | Internal chunking for memory efficiency |
+| `systemPromptReserve` | `100` | Tokens reserved for system prompt in rollover |
+
+Increase `batchSize` to `4096` for faster prefill on long system prompts; decrease if memory-constrained.
+
+### Overflow Strategies
+
+When the KV cache reaches `contextSize`, select one:
+
+- **`Halt`** — Throw `LlamaError.ContextOverflow`. Use for strict determinism.
+- **`ClearHistory`** — Discard all prior messages, reload system prompt, continue.
+- **`RollingWindow(dropTokens)`** — Evict oldest `dropTokens` tokens, keep chatting (recommended).
+
+**Example:**
+```kotlin
+SessionConfig(
+    contextSize = 4096,
+    overflowStrategy = OverflowStrategy.RollingWindow(dropTokens = 500)
 )
 ```
 
 ---
 
-## Overflow Strategies
+## Supported Models
 
-When the KV cache reaches `SessionConfig.contextSize`, the selected `OverflowStrategy` determines what happens:
+Llama Bro works with any GGUF model that runs in `llama.cpp`. Built-in templates cover the major families:
 
-| Strategy                                     | Behaviour                                                                     |
-|----------------------------------------------|-------------------------------------------------------------------------------|
-| `OverflowStrategy.Halt`                      | Throws `LlamaError.ContextOverflow`. Use when you need deterministic failure. |
-| `OverflowStrategy.ClearHistory`              | Discards all conversation history and reloads the system prompt.              |
-| `OverflowStrategy.RollingWindow(dropTokens)` | Evicts the oldest `dropTokens` tokens from the cache and continues.           |
+| Template | Format | Recommended Models | Size Range |
+|---|---|---|---|
+| `Gemma3` | `<start_of_turn>` / `<end_of_turn>` | Gemma 3, Gemma 3n | 2B–27B (Q4_K_M: 1.5–16 GB) |
+| `Llama3` | `<\|start_header_id\|>` / `<\|eot_id\|>` | Llama 3 / 3.1 / 3.2 / 3.3 | 8B–70B (Q4_K_M: 5–40 GB) |
+| `ChatML` | `<\|im_start\|>` / `<\|im_end\|>` | Qwen 2.5, Yi, InternLM, Hermes | 1B–72B (varies) |
+| `Mistral` | `[INST]` / `[/INST]` | Mistral 7B, Mixtral 8x7B | 7B–46B (Q4_K_M: 4.5–30 GB) |
 
-`RollingWindow` is the default and is the best choice for long-running sessions. `dropTokens` trades memory pressure against the amount of history lost per eviction cycle.
+**Finding models:** Browse [Hugging Face](https://huggingface.co/models?library=gguf) for GGUF quantisations. **Starting recommendation:** Gemma 3n (2B, ~3 GB) or Llama 3.2 (1B, ~600 MB) for testing.
+
+**Custom templates:** For models not listed above, define your own:
+
+```kotlin
+val custom = PromptFormat(
+    systemPrefix = "<<SYS>>\n",
+    systemSuffix = "\n<</SYS>>\n\n",
+    userPrefix = "[INST] ",
+    userSuffix = " [/INST]",
+    assistantPrefix = "",
+    assistantSuffix = "</s>"
+)
+
+LlamaEngine.create(
+    ModelConfig(modelPath = "/path/to/model.gguf", promptFormat = custom)
+)
+```
+
+**How to find the right template:** Check the model's Hugging Face card or README for the "chat template" field. It usually tells you the exact markers and order.
+
+---
+
+## ResourceState Flow Extensions
+
+Llama Bro provides declarative flow operators to compose resource lifecycles cleanly:
+
+```kotlin
+// Extract success value or null
+val engine: LlamaEngine? = resourceState.getOrNull()
+
+// Transform success value, preserving Loading/Failure
+val mapped: ResourceState<String> = resourceState.map { it.toString() }
+
+// Transform success values in a flow
+engineFlow.mapSuccess { engine -> MyWrapper(engine) }
+
+// Chain sequential resource flows (Engine → Session → Chat)
+engineFlow
+    .flatMapSuccess { engine -> engine.createSessionFlow(config) }
+    .flatMapSuccess { session -> session.createChatSessionFlow("System") }
+    .filterSuccess()  // Emit only loaded chat sessions
+    .collect { chat -> /* use chat */ }
+
+// React to success without transforming the value
+engineFlow.onEachSuccess { engine ->
+    updateProgressBar(1.0f)  // Engine loaded
+}
+
+// Extract only successful values from a flow
+chatFlow.filterSuccess()  // Flow<LlamaChatSession> instead of Flow<ResourceState<...>>
+
+// Exhaustive pattern matching
+resourceState.fold(
+    onLoading = { progress -> showLoadingUI(progress ?: 0f) },
+    onSuccess = { value -> showSuccessUI(value) },
+    onFailure = { error -> showErrorUI(error) }
+)
+
+// Extract value or supply a default on error/loading
+val engine = resourceState.getOrElse { error -> fallbackEngine }
+```
+
+These operators enable **declarative, type-safe composition** without nested `when` blocks.
+
+---
+
+## Thinking Blocks & Reasoning Models
+
+Reasoning models like DeepSeek-R1 and QwQ expose internal thoughts via `<think>...</think>` tags. Llama Bro extracts them automatically:
+
+```kotlin
+chat.completion("Hard problem").collect { completion ->
+    // View the model's reasoning
+    completion.thinkingText?.let { thinking ->
+        println("Model reasoning:\n$thinking")
+    }
+
+    // View the final answer
+    println("Final answer:\n${completion.contentText}")
+
+    // Check performance
+    if (completion.isComplete) {
+        println("Generated at ${completion.tokensPerSecond} tokens/sec")
+    }
+}
+```
+
+Perfect for explainability, debugging, or understanding complex model behavior. The `Completion` data class provides:
+
+- **`thinkingText`** — Content inside `<think>...</think>` blocks (reasoning models only)
+- **`contentText`** — Visible response text (everything outside thinking blocks)
+- **`tokensPerSecond`** — Streaming performance metric
+- **`isComplete`** — True when generation ends (EOS reached)
+
+---
+
+## Architecture
+
+Llama Bro is a clean, layered stack:
+
+```
+┌────────────────────────────────┐
+│ LlamaChatSession               │  High-level chat API
+│ (formatting, stop detection)   │
+├────────────────────────────────┤
+│ LlamaSession                   │  Token-level control
+│ (mutex-serialized, abort-safe) │
+├────────────────────────────────┤
+│ LlamaEngine                    │  Model loader
+│ (ResourceState<T> lifecycle)   │
+├────────────────────────────────┤
+│ JNI Bridge                     │  Kotlin ↔ C++
+│ (error codes, callbacks)       │
+├────────────────────────────────┤
+│ C++ Engine (llama.cpp)         │  GGML, SIMD backends
+│ (NEON, dotprod, i8mm, SVE)     │
+└────────────────────────────────┘
+```
+
+All native pointers are wrapped in `AutoCloseable` interfaces. Cancellation is safe. Leaks are prevented.
+
+---
+
+## Performance Tips
+
+**Benchmark:** ~20 tokens/second on OnePlus 13 (Gemma 3n 2B, Q4_K_M).
+
+**Tune for your device:**
+
+1. Use `Q4_K_M` quantisation—best quality-to-speed tradeoff on mobile.
+2. Set `threads` to match your device's performance core count.
+3. Keep `useMmap = true` (default) to avoid loading the full model into RAM.
+4. Increase `decodeConfig.batchSize` to `4096` for faster prefill on long prompts.
+5. Models > 4 GB may need `useMlock = false` to avoid out-of-memory on mid-range phones.
+
+---
+
+## Completion Streaming
+
+Each emission from `chat.completion(message)` is a `Completion` snapshot:
+
+```kotlin
+data class Completion(
+    val thinkingText: String?,       // Internal reasoning (reasoning models only)
+    val contentText: String?,        // Visible response text
+    val tokensPerSecond: Float?,     // Performance metric (rolling average)
+    val isComplete: Boolean          // True when EOS reached (generation done)
+)
+```
+
+The flow emits cumulative snapshots—each one contains all tokens generated so far, not just new tokens. Use `isComplete` to detect end-of-generation:
+
+```kotlin
+chat.completion("Hello").collect { completion ->
+    if (!completion.isComplete) {
+        // Still generating
+        updateUI(completion.contentText)  // Partial response
+    } else {
+        // Generation finished
+        saveToDatabase(completion)
+        logMetrics("Final speed: ${completion.tokensPerSecond} t/s")
+    }
+}
+```
+
+---
+
+## Conversation History
+
+Restore prior chats from a database:
+
+```kotlin
+val history = listOf(
+    Message.User("What's Kotlin?"),
+    Message.Assistant("Kotlin is a JVM language..."),
+    Message.User("And coroutines?")
+)
+
+chat.loadHistory(history)
+chat.completion("Explain together").collect { /* ... */ }
+```
+
+The session's KV cache is pre-populated with the history, so the next response is contextual and faster.
 
 ---
 
 ## Error Handling
 
-All errors cross the JNI boundary as typed exceptions mapped to the `LlamaError` sealed class:
+All errors cross the JNI boundary as typed exceptions:
 
-```
+```kotlin
 sealed class LlamaError : Exception {
     class ModelNotFound(val path: String)
     class ModelLoadFailed(val path: String, cause: Throwable?)
@@ -472,132 +502,316 @@ sealed class LlamaError : Exception {
 }
 ```
 
-Errors surface as `ResourceState.Failure` in Flow-based usage, or are thrown from `suspend` functions in manual usage. Structured exception handling with `try/catch` or `.catch {}` on the flow is idiomatic.
+Handle them with idiomatic Kotlin:
 
 ```kotlin
 LlamaEngine.createFlow(modelConfig)
     .catch { e ->
-        if (e is LlamaError.ModelNotFound) showFilePicker()
-        else throw e
+        when (e) {
+            is LlamaError.ModelNotFound -> showFilePicker()
+            is LlamaError.ContextOverflow -> handleFullContext()
+            else -> throw e
+        }
     }
     .collect { /* ... */ }
 ```
 
 ---
 
+## Installation & Setup
+
+### Requirements
+
+- **Android API 24+** (Android 7.0+)
+- **arm64-v8a architecture** (physical device or ARM emulator)
+- **JDK 17+**
+- **No NDK setup needed** — the AAR ships with pre-built natives
+
+### Adding to Your Project
+
+1. **Add JitPack to your repositories** (see Quick Start above).
+2. **Add the dependency** — single line in `build.gradle.kts`.
+3. **Get a model** — download a GGUF file from Hugging Face.
+4. **Start coding** — see examples below.
+
+---
+
+## Examples
+
+### Example 1: ViewModel with Declarative Flow Composition
+
+```kotlin
+@HiltViewModel
+class ChatViewModel @Inject constructor(
+    modelRepository: ModelRepository  // Injected model source
+) : ViewModel() {
+
+    private val modelPath = "/data/models/gemma-3n.gguf"
+
+    // Single declarative flow chain for the entire lifecycle
+    private val chatSessionFlow = LlamaEngine.createFlow(
+        ModelConfig(modelPath, PromptFormats.Gemma3)
+    )
+    .onEachSuccess { _loadingProgress.value = 1.0f }  // Model ready
+    .flatMapSuccess { engine ->
+        engine.createChatSessionFlow(
+            systemPrompt = "You are a helpful assistant.",
+            sessionConfig = SessionConfig(
+                contextSize = 4096,
+                overflowStrategy = OverflowStrategy.RollingWindow(500)
+            )
+        )
+    }
+    .filterSuccess()  // Only emit loaded chat sessions
+    .stateIn(viewModelScope, SharingStarted.Lazily, null)
+
+    fun sendMessage(userMessage: String): Flow<String> =
+        chatSessionFlow
+            .filterNotNull()
+            .flatMapLatest { chat ->
+                chat.completion(userMessage)
+                    .map { it.contentText.orEmpty() }
+            }
+}
+```
+
+No manual `onCleared()` cleanup needed—the flow scoping handles lifecycle automatically.
+
+### Example 2: Real-Time Streaming to UI
+
+```kotlin
+@HiltViewModel
+class ResponseViewModel @Inject constructor() : ViewModel() {
+    private val _uiState = MutableStateFlow<ResponseUiState>(ResponseUiState.Idle)
+    val uiState = _uiState.asStateFlow()
+
+    fun generateResponse(message: String) {
+        viewModelScope.launch {
+            chatSession.completion(message)
+                .onStart { _uiState.value = ResponseUiState.Loading }
+                .collect { completion ->
+                    _uiState.value = ResponseUiState.Streaming(
+                        text = completion.contentText.orEmpty(),
+                        tokensPerSecond = completion.tokensPerSecond,
+                        thinking = completion.thinkingText,
+                        isComplete = completion.isComplete
+                    )
+                }
+        }
+    }
+}
+
+// In Compose or XML Fragment
+uiState.collect { state ->
+    when (state) {
+        is ResponseUiState.Streaming -> {
+            Text(state.text)  // Updates in real-time
+            if (state.thinking != null) {
+                CollapsibleThinkingBlock(state.thinking)
+            }
+            if (state.isComplete) {
+                PerformanceLabel("${state.tokensPerSecond} tokens/sec")
+            }
+        }
+        ResponseUiState.Loading -> LoadingSpinner()
+        ResponseUiState.Idle -> {}
+    }
+}
+```
+
+### Example 3: Extracting Reasoning from DeepSeek-R1
+
+```kotlin
+// Use with reasoning models (DeepSeek-R1, QwQ)
+val engine = LlamaEngine.create(
+    ModelConfig(
+        modelPath = "/data/models/deepseek-r1-7b-q4.gguf",
+        promptFormat = PromptFormats.ChatML
+    )
+)
+
+val chat = engine.createSession(SessionConfig()).createChatSession("You are a math tutor.")
+
+chat.completion("Solve: 2^10 + 3^4 - 5^2").collect { completion ->
+    if (!completion.isComplete) return@collect  // Wait for final token
+
+    val reasoning = completion.thinkingText ?: ""
+    val answer = completion.contentText ?: ""
+
+    println("=== Model's Reasoning ===")
+    println(reasoning.take(500) + "...")  // First 500 chars
+
+    println("\n=== Final Answer ===")
+    println(answer)
+
+    println("\nPerformance: ${completion.tokensPerSecond} tokens/sec")
+}
+```
+
+The thinking block is stripped from the visible response automatically—you get both simultaneously.
+
+### Example 4: Custom Prompt Format for Unsupported Models
+
+```kotlin
+// For models not in the built-in templates, define your own format
+val customFormat = PromptFormat(
+    systemPrefix = "<<SYS>>\n",
+    systemSuffix = "\n<</SYS>>\n\n",
+    userPrefix = "[INST] ",
+    userSuffix = " [/INST]\n",
+    assistantPrefix = "",
+    assistantSuffix = "</s>\n"
+)
+
+val modelConfig = ModelConfig(
+    modelPath = "/data/models/my-custom-model.gguf",
+    promptFormat = customFormat
+)
+
+// Use it like any built-in template
+val engine = LlamaEngine.create(modelConfig)
+val session = engine.createSession(SessionConfig())
+val chat = session.createChatSession("You are helpful.")
+
+// Test it with a known good prompt to verify format correctness
+chat.completion("Test message").collect { completion ->
+    if (completion.contentText == null || completion.contentText.isEmpty()) {
+        println("⚠️ Format may be incorrect; model produced no output")
+    } else {
+        println("✓ Format working: ${completion.contentText}")
+    }
+}
+```
+
+**Tip:** If responses are garbled or empty, double-check that the prefixes/suffixes match the model's training format exactly. Check the model's repository or card for the correct template.
+
+---
+
 ## Building from Source
 
-The project requires a recursive clone because `llama.cpp` is vendored as a Git submodule.
+Clone with the llama.cpp submodule:
 
 ```bash
 git clone --recursive https://github.com/whyisitworking/llama-bro.git
 cd llama-bro
 ```
 
-If you already cloned without `--recursive`:
+Build the SDK:
 
 ```bash
-git submodule update --init --recursive
-```
-
-### Build commands
-
-```bash
-# Build the SDK AAR
 ./gradlew :sdk:assembleRelease
-
-# Run unit tests
-./gradlew :sdk:test
-
-# Build the demo app
-./gradlew :app:assembleDebug
 ```
 
-### Requirements
+Run tests:
 
-| Tool        | Version       |
-|-------------|---------------|
-| JDK         | 17+           |
-| Android SDK | API 36        |
-| NDK         | 29.0.14206865 |
-| CMake       | 3.22.1        |
+```bash
+./gradlew :sdk:test
+```
 
-NDK and CMake are installed automatically via the Android SDK manager if listed in `local.properties` or through Android Studio's SDK Tools panel. The CI workflow (`.github/workflows/build.yml`) installs them explicitly and can be used as a reference.
+### Build Requirements
+
+| Tool      | Version |
+|---|---|
+| JDK       | 17+ |
+| Android SDK | API 36 |
+| NDK       | 29.0.14206865 |
+| CMake     | 3.22.1+ |
+
+NDK and CMake are installed automatically via the Android SDK manager.
 
 ---
 
 ## Native Dependencies
 
-The SDK embeds `llama.cpp` as a vendored Git submodule at `sdk/src/main/cpp/external/llama.cpp`. The CMake build compiles it directly into the `llama_bro` shared library — no separate `.so` is shipped for llama.cpp itself.
+The SDK embeds `llama.cpp` as a vendored Git submodule. The CMake build compiles it directly into the `llama_bro` shared library. Key flags:
 
-**Key CMake flags set by the library:**
+- **`GGML_OPENCL = OFF`** — No GPU drivers; prevents UI stalls.
+- **`GGML_OPENMP = ON`** — Multi-threaded decode.
+- **`GGML_CPU_ALL_VARIANTS = ON`** — All CPU backends; best one selected at runtime.
+- **`LLAMA_BUILD_COMMON = ON`** — Required for backend dispatch.
 
-| Flag                    | Value | Reason                                                   |
-|-------------------------|-------|----------------------------------------------------------|
-| `GGML_OPENCL`           | `OFF` | Prevents GPU-driver-induced UI thread stalls             |
-| `GGML_OPENMP`           | `ON`  | Multi-threaded decode across performance cores           |
-| `GGML_CPU_ALL_VARIANTS` | `ON`  | Emits all CPU backends; best variant selected at runtime |
-| `LLAMA_BUILD_COMMON`    | `ON`  | Required for backend dispatch                            |
+**Supported ABI:** `arm64-v8a` only. x86_64 emulator support is coming.
 
-**Supported ABI:** `arm64-v8a` only. `x86_64` (emulator) is not currently supported.
+---
+
+## Limitations & Roadmap
+
+### Current Limitations
+
+- **arm64-v8a only.** No x86_64 emulator support yet.
+- **Single session per engine.** Creating two sessions concurrently from one engine is serialised.
+- **No GPU acceleration.** OpenCL is intentionally disabled.
+- **Models must be local.** The library doesn't download; you manage model acquisition.
+- **No multimodal.** Vision/audio models are not yet supported.
+- **Memory constraints.** Full model must fit in RAM; typically limits practical use to 7B Q4 or smaller.
+
+### Roadmap
+
+- [ ] x86_64 emulator support
+- [ ] Vulkan GPU backend
+- [ ] Streaming grammar / JSON-mode
+- [ ] Function calling / tool use
+- [ ] GGUF metadata reading
+- [ ] LoRA adapter support
+- [ ] Maven Central publishing
+- [ ] Multi-model sessions
 
 ---
 
 ## ProGuard / R8
 
-Consumer ProGuard rules are bundled with the AAR and applied automatically. No additional configuration is required in the consuming app. The rules preserve:
+Consumer ProGuard rules are built-in. The AAR automatically preserves:
 
-- JNI-accessible classes and native method declarations in `LlamaEngineImpl` and `LlamaSessionImpl`
-- Fields on `NativeCreateParams` inner classes read reflectively by JNI
-- `ProgressListener.onProgress` called from native code during model load
+- JNI-accessible classes
+- Native method signatures
+- Fields read reflectively by JNI
+- Callbacks invoked from native code
 
-If you are using a custom shrinking configuration that strips `internal` packages, ensure the package `com.suhel.llamabro.sdk.internal` is not excluded.
-
----
-
-## Limitations
-
-- **arm64-v8a only.** No x86_64/emulator support. Run on a physical device or an arm64 emulator image.
-- **Single active session per engine.** Creating two sessions from the same engine concurrently is not supported; the second `createSession` call will be serialised.
-- **No GPU acceleration.** OpenCL is intentionally disabled. Vulkan and OpenGL compute are not yet implemented.
-- **Model files must be local.** The library does not perform downloads; model acquisition is the caller's responsibility.
-- **No multimodal support.** Vision / audio models are not currently supported regardless of llama.cpp capability.
-- **Large models and RAM.** Models are not split across RAM and flash; the full model must fit in available memory. On most Android devices this limits practical use to 7B Q4 or smaller.
+No additional configuration required in your app.
 
 ---
 
-## Roadmap
+## Best Practices
 
-- [ ] **x86_64 emulator support** — for faster development iteration
-- [ ] **Vulkan GPU backend** — for significant inference speedups on supported SoCs
-- [ ] **Streaming grammar / JSON-mode** — constrained decoding for structured output
-- [ ] **Function calling / tool use** — structured output with tool schema
-- [ ] **GGUF metadata reading** — expose embedded chat template and model metadata
-- [ ] **LoRA adapter support** — dynamic adapter loading without full model reload
-- [ ] **Maven Central publishing** — reduce dependency on JitPack for production use
-- [ ] **Multi-model session** — allow multiple loaded models with shared context management
+**Keep one engine per model.** Creating multiple engines for the same model wastes memory. Reuse the engine to create many sessions.
+
+**Use flow-based APIs for lifecycle safety.** `LlamaEngine.createFlow()` and `createSessionFlow()` automatically clean up resources on cancellation. Manual `.create()` requires explicit `.close()`.
+
+**Set `threads` to match performance cores.** Use `Runtime.availableProcessors() / 2` as a starting point, then benchmark. Too many threads causes contention; too few leaves cores idle.
+
+**Use `useMmap = true` by default.** Memory-mapping reduces peak RAM and doesn't hurt performance. Disable only if you have specific memory constraints.
+
+**Test your prompt format.** If responses are empty or gibberish, your `PromptFormat` is wrong. Try the model's README or a format from a similar model.
+
+**Handle `ContextOverflow` gracefully.** Use `OverflowStrategy.RollingWindow` for long conversations, or implement a "new conversation" flow when `LlamaError.ContextOverflow` is thrown.
+
+**Cache thinking blocks.** If using reasoning models, save `completion.thinkingText` separately from `contentText` for debugging or audit trails.
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Model loads but generation is **slow** | Too few threads; wrong quantisation | Increase `threads` to match core count; use Q4_K_M |
+| **Out of memory (OOM)** on load | Model too large; `useMlock = true` | Use smaller model/quantisation; disable `useMlock` |
+| **Blank or gibberish** responses | `PromptFormat` mismatch | Check model card for correct template; try built-in formats |
+| **Crash on load** | File path wrong or file missing | Verify path exists; check file permissions |
+| **Very slow prefill** on long prompts | Batch size too small | Increase `decodeConfig.batchSize` to `4096` |
+| **Reasoning models** producing no thinking | Thinking not enabled in model config | Ensure model is trained with thinking blocks (DeepSeek-R1, QwQ); check `<think>` tags in response |
+| **Flow never completes** | Resource leak or cancellation not propagated | Use `.takeUntil()` to cancel flows; ensure lifecycle scope is cancellable |
 
 ---
 
 ## Contributing
 
-Contributions are welcome. Before opening a pull request, please:
+Contributions are welcome. Before opening a PR:
 
-1. **Open an issue first** for non-trivial changes to align on approach.
-2. **Run the full test suite** (`./gradlew :sdk:test`) and ensure it passes.
-3. **Build the release AAR** (`./gradlew :sdk:assembleRelease`) and verify it compiles.
-4. Follow the existing code style (Kotlin official style guide; `kotlin.code.style=official` is enforced in `gradle.properties`).
-5. Keep native changes to the `sdk/src/main/cpp` directory minimal and well-commented; JNI bugs are difficult to diagnose.
-
-### Local development
-
-```bash
-# After changes to native code, a clean rebuild is recommended
-./gradlew :sdk:clean :sdk:assembleRelease
-
-# Run only unit tests (fast; does not require a device)
-./gradlew :sdk:testDebugUnitTest
-```
+1. Open an issue to discuss non-trivial changes.
+2. Run the full test suite: `./gradlew :sdk:test`
+3. Build the release AAR: `./gradlew :sdk:assembleRelease`
+4. Follow the Kotlin official style guide.
+5. Keep native code minimal and well-commented.
 
 ---
 
@@ -620,3 +834,8 @@ limitations under the License.
 ```
 
 The embedded `llama.cpp` library is distributed under the [MIT License](https://github.com/ggml-org/llama.cpp/blob/master/LICENSE).
+
+---
+
+**What's next?**
+Start with the [Quick Start](#quick-start). Download Gemma 3n. Build something.

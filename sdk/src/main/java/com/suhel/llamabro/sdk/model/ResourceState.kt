@@ -107,6 +107,16 @@ inline fun <T> Flow<ResourceState<T>>.onEachSuccess(
         }
     }
 
+/** Executes an action only when the state is [ResourceState.Loading]. */
+inline fun <T> Flow<ResourceState<T>>.onEachLoading(
+    crossinline action: suspend (Float?) -> Unit
+): Flow<ResourceState<T>> =
+    onEach { state ->
+        if (state is ResourceState.Loading) {
+            action(state.progress)
+        }
+    }
+
 /** Filters a [Flow<ResourceState<T>>] to only emit the successful values. */
 fun <T> Flow<ResourceState<T>>.filterSuccess(): Flow<T> =
     filterIsInstance<ResourceState.Success<T>>()
