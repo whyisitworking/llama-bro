@@ -27,10 +27,14 @@ android {
 
     signingConfigs {
         create("releaseTest") {
-            storeFile = file(project.findProperty("GLOBAL_TEST_KEYSTORE_PATH") ?: "")
-            storePassword = project.findProperty("GLOBAL_TEST_STORE_PASSWORD") as String?
-            keyAlias = project.findProperty("GLOBAL_TEST_ALIAS") as String?
-            keyPassword = project.findProperty("GLOBAL_TEST_KEY_PASSWORD") as String?
+            val keystorePath = project.findProperty("GLOBAL_TEST_KEYSTORE_PATH") as String?
+
+            if (!keystorePath.isNullOrEmpty()) {
+                storeFile = file(keystorePath)
+                storePassword = project.findProperty("GLOBAL_TEST_STORE_PASSWORD") as String?
+                keyAlias = project.findProperty("GLOBAL_TEST_ALIAS") as String?
+                keyPassword = project.findProperty("GLOBAL_TEST_KEY_PASSWORD") as String?
+            }
         }
     }
 
