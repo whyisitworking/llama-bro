@@ -50,13 +50,7 @@ jobs:
           SIGNING_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease \
-              -PRELEASE_KEYSTORE_PATH=$SIGNING_STORE_FILE \
-              -PRELEASE_STORE_PASSWORD=$SIGNING_STORE_PASSWORD \
-              -PRELEASE_KEY_ALIAS=$SIGNING_KEY_ALIAS \
-              -PRELEASE_KEY_PASSWORD=$SIGNING_KEY_PASSWORD \
-              -PVERSION_NAME=${{ inputs.version_name }} \
-              -PVERSION_CODE=${{ github.run_number }}
+        run: ./gradlew :app:assembleRelease -PRELEASE_KEYSTORE_PATH=$SIGNING_STORE_FILE -PRELEASE_STORE_PASSWORD=$SIGNING_STORE_PASSWORD -PRELEASE_KEY_ALIAS=$SIGNING_KEY_ALIAS -PRELEASE_KEY_PASSWORD=$SIGNING_KEY_PASSWORD -PVERSION_NAME=${{ inputs.version_name }} -PVERSION_CODE=${{ github.run_number }}
 
       - name: Rename APK
         run: mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/LlamaBro-Demo.apk

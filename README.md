@@ -56,9 +56,9 @@ dependencyResolutionManagement {
     }
 }
 
-// build.gradle.kts (app)
+// Check the JitPack/Github badge above for the latest version number. build.gradle.kts (app)
 dependencies {
-    implementation("com.github.whyisitworking:llama-bro:1.0.3")
+    implementation("com.github.whyisitworking:llama-bro:<LATEST_VERSION>")
 }
 ```
 
