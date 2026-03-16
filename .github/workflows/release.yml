@@ -53,12 +53,12 @@ jobs:
         run: ./gradlew :app:assembleRelease -Pandroid.injected.signing.store.file=$SIGNING_STORE_FILE -Pandroid.injected.signing.store.password=$SIGNING_STORE_PASSWORD -Pandroid.injected.signing.key.alias=$SIGNING_KEY_ALIAS -Pandroid.injected.signing.key.password=$SIGNING_KEY_PASSWORD
 
       - name: Rename APK
-        run: mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/LlamaBro-v${{ inputs.version_name }}.apk
+        run: mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/LlamaBro-Demo.apk
 
       - name: Create GitHub Release & Tag
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ inputs.version_name }}
           name: Llama SDK & App v${{ inputs.version_name }}
-          files: app/build/outputs/apk/release/LlamaBro-v${{ inputs.version_name }}.apk
+          files: app/build/outputs/apk/release/LlamaBro-Demo.apk
           generate_release_notes: true

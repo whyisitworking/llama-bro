@@ -14,7 +14,7 @@ Llama Bro is a thin, performant Android SDK that runs quantized LLM models direc
 ### 🚀 Try the Demo App
 Want to see the inference speed and reasoning capabilities in action before writing any code? 
 
-[![Download APK](https://img.shields.io/badge/Download_Demo_APK-Latest_Release-2ea44f?style=for-the-badge&logo=android)](https://github.com/whyisitworking/llama-bro/releases/latest)
+[![Download APK](https://img.shields.io/badge/Download_Demo_APK-Latest_Release-2ea44f?style=for-the-badge&logo=android)](https://github.com/whyisitworking/llama-bro/releases/latest/download/LlamaBro-Demo.apk)
 
 ---
 
