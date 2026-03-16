@@ -66,7 +66,7 @@ inline fun <T, R> Flow<ResourceState<T>>.mapSuccess(
  * Ideal for sequential resource initialization (e.g., Engine -> Session).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-inline fun <T, R> Flow<ResourceState<T>>.flatMapSuccess(
+inline fun <T, R> Flow<ResourceState<T>>.flatMapResource(
     crossinline mapper: suspend (T) -> Flow<ResourceState<R>>
 ): Flow<ResourceState<R>> =
     flatMapLatest { state ->

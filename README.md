@@ -1,6 +1,8 @@
-# Llama Bro
+# Llama Bro SDK Android
 
 > **Run a full AI model in your pocket. On your terms. No servers. No subscriptions. No data leaving your phone.**
+
+<img src="assets/llama-bro-banner.png" width="100%"  alt="Banner"/>
 
 [![Build](https://img.shields.io/github/actions/workflow/status/whyisitworking/llama-bro/build.yml?style=flat-square&logo=github&label=Build)](https://github.com/whyisitworking/llama-bro/actions/workflows/build.yml)
 [![Release](https://img.shields.io/github/v/release/whyisitworking/llama-bro?style=flat-square&logo=android&label=Demo%20APK&color=success)](https://github.com/github/whyisitworking/llama-bro/releases/latest)
@@ -77,7 +79,7 @@ Grab a GGUF-quantised model from [Hugging Face](https://huggingface.co/models?li
 
 ```kotlin
 import com.suhel.llamabro.sdk.*
-import com.suhel.llamabro.sdk.model.flatMapSuccess
+import com.suhel.llamabro.sdk.model.flatMapResource
 import com.suhel.llamabro.sdk.model.filterSuccess
 import com.suhel.llamabro.sdk.model.onEachLoading
 
@@ -92,7 +94,7 @@ lifecycleScope.launch {
     .onEachLoading { progress -> 
         updateProgressBar(progress ?: 0f) 
     }
-    .flatMapSucces { engine ->
+    .flatMapResource { engine ->
         engine.createSessionFlow(
             SessionConfig(
                 contextSize = 4096,
@@ -104,7 +106,7 @@ lifecycleScope.launch {
             )
         )
     }
-    .flatMapSuccess { session ->
+    .flatMapResource { session ->
         session.createChatSessionFlow("You are a helpful assistant.")
     }
     .filterSuccess()  // Extract chat session, drop Loading/Failure
@@ -132,9 +134,6 @@ Build conversational features for health, finance, or sensitive domains without 
 
 **Offline Assistants**
 Code editor plugins, keyboard assistants, or writing tools that work on a flight.
-
-**Local RAG**
-Combine embeddings with on-device inference for document search without cloud infrastructure.
 
 **Real-Time Reasoning**
 Run models that can think step-by-step (DeepSeek-R1, QwQ) and extract their reasoning for debugging or transparency.
@@ -214,13 +213,13 @@ chat.completion("Explain coroutines.").collect { completion ->
 
 ### Model Config
 
-| Option         | Default | Purpose                              |
-|---|---|---|
-| `modelPath`    | required | Absolute path to `.gguf` model file |
-| `promptFormat` | required | Chat template (`Llama3`, `Gemma3`, `ChatML`, `Mistral`, or custom) |
-| `threads`      | `availableProcessors / 2` | Inference thread count; tune for performance cores |
-| `useMmap`      | `true` | Memory-map model file (faster loading, lower peak RAM) |
-| `useMlock`     | `false` | Lock model in RAM (prevents swapping; use on capable devices only) |
+| Option         | Default                   | Purpose                                                            |
+|----------------|---------------------------|--------------------------------------------------------------------|
+| `modelPath`    | required                  | Absolute path to `.gguf` model file                                |
+| `promptFormat` | required                  | Chat template (`Llama3`, `Gemma3`, `ChatML`, `Mistral`, or custom) |
+| `threads`      | `availableProcessors / 2` | Inference thread count; tune for performance cores                 |
+| `useMmap`      | `true`                    | Memory-map model file (faster loading, lower peak RAM)             |
+| `useMlock`     | `false`                   | Lock model in RAM (prevents swapping; use on capable devices only) |
 
 **Example:**
 ```kotlin
@@ -235,26 +234,26 @@ ModelConfig(
 
 ### Session Config
 
-| Option            | Default | Purpose                          |
-|---|---|---|
-| `contextSize`     | `4096` | KV cache size in tokens (max prompt + response) |
-| `overflowStrategy`| `RollingWindow(500)` | Behavior when cache is exhausted |
-| `inferenceConfig` | (see below) | Sampling parameters |
-| `decodeConfig`    | (see below) | Batch decoding tuning |
-| `seed`            | `-1` (random) | Set to a fixed value for reproducibility |
+| Option             | Default              | Purpose                                         |
+|--------------------|----------------------|-------------------------------------------------|
+| `contextSize`      | `4096`               | KV cache size in tokens (max prompt + response) |
+| `overflowStrategy` | `RollingWindow(500)` | Behavior when cache is exhausted                |
+| `inferenceConfig`  | (see below)          | Sampling parameters                             |
+| `decodeConfig`     | (see below)          | Batch decoding tuning                           |
+| `seed`             | `-1` (random)        | Set to a fixed value for reproducibility        |
 
 ### Inference Config (Sampling)
 
 Control token generation quality and diversity:
 
-| Option         | Default | Range | Purpose                          |
-|---|---|---|---|
-| `temperature`  | `0.8` | `0.0–2.0` | Sampling creativity; `0.0` = greedy (always pick best), `1.0` = neutral |
-| `repeatPenalty`| `1.1` | `1.0–2.0` | Penalize recent tokens to avoid loops |
-| `presencePenalty` | `0.0` | `0.0–2.0` | Penalize all previously seen tokens |
-| `minP`         | `0.1` | `0.0–1.0` | Min-probability threshold; `null` to disable |
-| `topP`         | `null` | `0.0–1.0` | Nucleus sampling; `null` = disabled |
-| `topK`         | `null` | `1–∞` | Top-K sampling; `null` = disabled |
+| Option            | Default | Range     | Purpose                                                                 |
+|-------------------|---------|-----------|-------------------------------------------------------------------------|
+| `temperature`     | `0.8`   | `0.0–2.0` | Sampling creativity; `0.0` = greedy (always pick best), `1.0` = neutral |
+| `repeatPenalty`   | `1.1`   | `1.0–2.0` | Penalize recent tokens to avoid loops                                   |
+| `presencePenalty` | `0.0`   | `0.0–2.0` | Penalize all previously seen tokens                                     |
+| `minP`            | `0.1`   | `0.0–1.0` | Min-probability threshold; `null` to disable                            |
+| `topP`            | `null`  | `0.0–1.0` | Nucleus sampling; `null` = disabled                                     |
+| `topK`            | `null`  | `1–∞`     | Top-K sampling; `null` = disabled                                       |
 
 **Example:**
 ```kotlin
@@ -268,11 +267,11 @@ InferenceConfig(
 
 ### Decode Config (Performance Tuning)
 
-| Option             | Default | Purpose |
-|---|---|---|
-| `batchSize`        | `2048` | Max tokens processed per decode step |
-| `microBatchSize`   | `512` | Internal chunking for memory efficiency |
-| `systemPromptReserve` | `100` | Tokens reserved for system prompt in rollover |
+| Option                | Default | Purpose                                       |
+|-----------------------|---------|-----------------------------------------------|
+| `batchSize`           | `2048`  | Max tokens processed per decode step          |
+| `microBatchSize`      | `512`   | Internal chunking for memory efficiency       |
+| `systemPromptReserve` | `100`   | Tokens reserved for system prompt in rollover |
 
 Increase `batchSize` to `4096` for faster prefill on long system prompts; decrease if memory-constrained.
 
@@ -298,12 +297,12 @@ SessionConfig(
 
 Llama Bro works with any GGUF model that runs in `llama.cpp`. Built-in templates cover the major families:
 
-| Template | Format | Recommended Models | Size Range |
-|---|---|---|---|
-| `Gemma3` | `<start_of_turn>` / `<end_of_turn>` | Gemma 3, Gemma 3n | 2B–27B (Q4_K_M: 1.5–16 GB) |
-| `Llama3` | `<\|start_header_id\|>` / `<\|eot_id\|>` | Llama 3 / 3.1 / 3.2 / 3.3 | 8B–70B (Q4_K_M: 5–40 GB) |
-| `ChatML` | `<\|im_start\|>` / `<\|im_end\|>` | Qwen 2.5, Yi, InternLM, Hermes | 1B–72B (varies) |
-| `Mistral` | `[INST]` / `[/INST]` | Mistral 7B, Mixtral 8x7B | 7B–46B (Q4_K_M: 4.5–30 GB) |
+| Template  | Format                                   | Recommended Models             | Size Range                 |
+|-----------|------------------------------------------|--------------------------------|----------------------------|
+| `Gemma3`  | `<start_of_turn>` / `<end_of_turn>`      | Gemma 3, Gemma 3n              | 2B–27B (Q4_K_M: 1.5–16 GB) |
+| `Llama3`  | `<\|start_header_id\|>` / `<\|eot_id\|>` | Llama 3 / 3.1 / 3.2 / 3.3      | 8B–70B (Q4_K_M: 5–40 GB)   |
+| `ChatML`  | `<\|im_start\|>` / `<\|im_end\|>`        | Qwen 2.5, Yi, InternLM, Hermes | 1B–72B (varies)            |
+| `Mistral` | `[INST]` / `[/INST]`                     | Mistral 7B, Mixtral 8x7B       | 7B–46B (Q4_K_M: 4.5–30 GB) |
 
 **Finding models:** Browse [Hugging Face](https://huggingface.co/models?library=gguf) for GGUF quantisations. **Starting recommendation:** Gemma 3n (2B, ~3 GB) or Llama 3.2 (1B, ~600 MB) for testing.
 
@@ -344,8 +343,8 @@ engineFlow.mapSuccess { engine -> MyWrapper(engine) }
 
 // Chain sequential resource flows (Engine → Session → Chat)
 engineFlow
-    .flatMapSuccess { engine -> engine.createSessionFlow(config) }
-    .flatMapSuccess { session -> session.createChatSessionFlow("System") }
+    .flatMapResource { engine -> engine.createSessionFlow(config) }
+    .flatMapResource { session -> session.createChatSessionFlow("System") }
     .filterSuccess()  // Emit only loaded chat sessions
     .collect { chat -> /* use chat */ }
 
@@ -524,24 +523,6 @@ LlamaEngine.createFlow(modelConfig)
 
 ---
 
-## Installation & Setup
-
-### Requirements
-
-- **Android API 24+** (Android 7.0+)
-- **arm64-v8a architecture** (physical device or ARM emulator)
-- **JDK 17+**
-- **No NDK setup needed** — the AAR ships with pre-built natives
-
-### Adding to Your Project
-
-1. **Add JitPack to your repositories** (see Quick Start above).
-2. **Add the dependency** — single line in `build.gradle.kts`.
-3. **Get a model** — download a GGUF file from Hugging Face.
-4. **Start coding** — see examples below.
-
----
-
 ## Examples
 
 ### Example 1: ViewModel with Declarative Flow Composition
@@ -552,14 +533,14 @@ class ChatViewModel @Inject constructor(
     modelRepository: ModelRepository  // Injected model source
 ) : ViewModel() {
 
-    private val modelPath = "/data/models/gemma-3n.gguf"
+    private val modelPath = "/data/models/gemma-3n.gguf" // Inject through adb/Android file explorer for testing
 
     // Single declarative flow chain for the entire lifecycle
     private val chatSessionFlow = LlamaEngine.createFlow(
         ModelConfig(modelPath, PromptFormats.Gemma3)
     )
     .onEachSuccess { _loadingProgress.value = 1.0f }  // Model ready
-    .flatMapSuccess { engine ->
+    .flatMapResource { engine ->
         engine.createChatSessionFlow(
             systemPrompt = "You are a helpful assistant.",
             sessionConfig = SessionConfig(
@@ -716,12 +697,12 @@ Run tests:
 
 ### Build Requirements
 
-| Tool      | Version |
-|---|---|
-| JDK       | 17+ |
-| Android SDK | API 36 |
-| NDK       | 29.0.14206865 |
-| CMake     | 3.22.1+ |
+| Tool        | Version       |
+|-------------|---------------|
+| JDK         | 17+           |
+| Android SDK | API 36        |
+| NDK         | 29.0.14206865 |
+| CMake       | 3.22.1+       |
 
 NDK and CMake are installed automatically via the Android SDK manager.
 
@@ -731,12 +712,11 @@ NDK and CMake are installed automatically via the Android SDK manager.
 
 The SDK embeds `llama.cpp` as a vendored Git submodule. The CMake build compiles it directly into the `llama_bro` shared library. Key flags:
 
-- **`GGML_OPENCL = OFF`** — No GPU drivers; prevents UI stalls.
+- **`GGML_OPENCL = OFF`** — No GPU drivers; buggy, prevents UI stalls.
 - **`GGML_OPENMP = ON`** — Multi-threaded decode.
 - **`GGML_CPU_ALL_VARIANTS = ON`** — All CPU backends; best one selected at runtime.
-- **`LLAMA_BUILD_COMMON = ON`** — Required for backend dispatch.
 
-**Supported ABI:** `arm64-v8a` only. x86_64 emulator support is coming.
+**Supported ABI:** `arm64-v8a` only.
 
 ---
 
@@ -745,22 +725,17 @@ The SDK embeds `llama.cpp` as a vendored Git submodule. The CMake build compiles
 ### Current Limitations
 
 - **arm64-v8a only.** No x86_64 emulator support yet.
-- **Single session per engine.** Creating two sessions concurrently from one engine is serialised.
-- **No GPU acceleration.** OpenCL is intentionally disabled.
+- **No GPU acceleration.** OpenCL is intentionally disabled, as it causes stalls.
 - **Models must be local.** The library doesn't download; you manage model acquisition.
 - **No multimodal.** Vision/audio models are not yet supported.
 - **Memory constraints.** Full model must fit in RAM; typically limits practical use to 7B Q4 or smaller.
 
 ### Roadmap
 
-- [ ] x86_64 emulator support
-- [ ] Vulkan GPU backend
 - [ ] Streaming grammar / JSON-mode
 - [ ] Function calling / tool use
 - [ ] GGUF metadata reading
 - [ ] LoRA adapter support
-- [ ] Maven Central publishing
-- [ ] Multi-model sessions
 
 ---
 
@@ -797,15 +772,15 @@ No additional configuration required in your app.
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| Model loads but generation is **slow** | Too few threads; wrong quantisation | Increase `threads` to match core count; use Q4_K_M |
-| **Out of memory (OOM)** on load | Model too large; `useMlock = true` | Use smaller model/quantisation; disable `useMlock` |
-| **Blank or gibberish** responses | `PromptFormat` mismatch | Check model card for correct template; try built-in formats |
-| **Crash on load** | File path wrong or file missing | Verify path exists; check file permissions |
-| **Very slow prefill** on long prompts | Batch size too small | Increase `decodeConfig.batchSize` to `4096` |
-| **Reasoning models** producing no thinking | Thinking not enabled in model config | Ensure model is trained with thinking blocks (DeepSeek-R1, QwQ); check `<think>` tags in response |
-| **Flow never completes** | Resource leak or cancellation not propagated | Use `.takeUntil()` to cancel flows; ensure lifecycle scope is cancellable |
+| Symptom                                    | Cause                                        | Fix                                                                                               |
+|--------------------------------------------|----------------------------------------------|---------------------------------------------------------------------------------------------------|
+| Model loads but generation is **slow**     | Too few threads; wrong quantisation          | Increase `threads` to match core count; use Q4_K_M                                                |
+| **Out of memory (OOM)** on load            | Model too large; `useMlock = true`           | Use smaller model/quantisation; disable `useMlock`                                                |
+| **Blank or gibberish** responses           | `PromptFormat` mismatch                      | Check model card for correct template; try built-in formats                                       |
+| **Crash on load**                          | File path wrong or file missing              | Verify path exists; check file permissions                                                        |
+| **Very slow prefill** on long prompts      | Batch size too small                         | Increase `decodeConfig.batchSize` to `4096`                                                       |
+| **Reasoning models** producing no thinking | Thinking not enabled in model config         | Ensure model is trained with thinking blocks (DeepSeek-R1, QwQ); check `<think>` tags in response |
+| **Flow never completes**                   | Resource leak or cancellation not propagated | Use `.takeUntil()` to cancel flows; ensure lifecycle scope is cancellable                         |
 
 ---
 

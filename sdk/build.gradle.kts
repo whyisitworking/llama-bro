@@ -3,6 +3,8 @@ plugins {
     `maven-publish`
 }
 
+val dynamicVersionName = (project.findProperty("VERSION_NAME") as? String) ?: "1.0.0-SNAPSHOT"
+
 android {
     namespace = "com.suhel.llamabro.sdk"
     ndkVersion = "29.0.14206865"
@@ -69,7 +71,7 @@ afterEvaluate {
 
                 groupId = "com.github.whyisitworking"
                 artifactId = "llamabro-sdk"
-                version = "1.0.3"
+                version = dynamicVersionName
             }
         }
     }

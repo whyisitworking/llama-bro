@@ -2,10 +2,10 @@ package com.suhel.llamabro.demo.data.repository
 
 import android.content.Context
 import com.suhel.llamabro.demo.di.ApplicationScope
-import com.suhel.llamabro.demo.model.ModelZoo
 import com.suhel.llamabro.demo.model.CurrentInferenceContext
 import com.suhel.llamabro.demo.model.Model
 import com.suhel.llamabro.demo.model.ModelDownloadState
+import com.suhel.llamabro.demo.model.ModelZoo
 import com.suhel.llamabro.sdk.LlamaEngine
 import com.suhel.llamabro.sdk.model.ModelConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
@@ -46,8 +47,16 @@ class ModelRepository @Inject constructor(
         extraBufferCapacity = 64
     )
 
-    private val loadModelTrigger = MutableSharedFlow<Model?>(
-        extraBufferCapacity = 1
+    private val deleteModelTrigger = MutableSharedFlow<Model>(
+        extraBufferCapacity = 64
+    )
+
+    private val loadModelTrigger = MutableSharedFlow<Model>(
+        extraBufferCapacity = 64
+    )
+
+    private val ejectModelTrigger = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 64
     )
 
     private val downloadStateMap: StateFlow<Map<Model, ModelDownloadState>> =
@@ -57,6 +66,9 @@ class ModelRepository @Inject constructor(
                     model to state
                 }
             },
+            deleteModelTrigger.map { model ->
+                model to ModelDownloadState.NotDownloaded
+            },
             ModelZoo.map { model ->
                 model to model.downloadState()
             }.asFlow()
@@ -64,18 +76,35 @@ class ModelRepository @Inject constructor(
             .scan(emptyMap<Model, ModelDownloadState>()) { acc, pair -> acc + pair }
             .stateIn(scope, SharingStarted.Eagerly, emptyMap())
 
-    val currentInferenceContextFlow = loadModelTrigger
+    sealed interface Action {
+        data class Delete(val model: Model) : Action
+        data class Load(val model: Model) : Action
+        data object Eject : Action
+    }
+
+    val currentInferenceContextFlow = merge(
+        loadModelTrigger
+            .filter { model -> model.file().exists() }
+            .map { model -> Action.Load(model) },
+        ejectModelTrigger.map { Action.Eject },
+        deleteModelTrigger.map { model -> Action.Delete(model) }
+    )
         .distinctUntilChanged()
-        .flatMapLatest { model ->
-            if (model != null) {
-                LlamaEngine.createFlow(
+        .flatMapLatest { action ->
+            when (action) {
+                is Action.Load -> LlamaEngine.createFlow(
                     ModelConfig(
-                        modelPath = model.file().absolutePath,
-                        promptFormat = model.promptFormat
+                        modelPath = action.model.file().absolutePath,
+                        promptFormat = action.model.promptFormat
                     )
-                ).map { engine -> CurrentInferenceContext(model, engine) }
-            } else {
-                flowOf(null)
+                ).map { engine -> CurrentInferenceContext(action.model, engine) }
+
+                Action.Eject -> flowOf(null)
+
+                is Action.Delete -> flow {
+                    action.model.file().let { if (it.exists()) it.delete() }
+                    emit(null)
+                }
             }
         }
         .stateIn(
@@ -86,12 +115,16 @@ class ModelRepository @Inject constructor(
 
     fun getAllModels(): List<Model> = ModelZoo
 
-    fun getStateFor(model: Model): Flow<ModelDownloadState> = downloadStateMap.map {
-        it.getOrDefault(model, ModelDownloadState.NotDownloaded)
+    fun getStateFor(model: Model): Flow<ModelDownloadState> = downloadStateMap.map { map ->
+        map.getOrDefault(model, ModelDownloadState.NotDownloaded)
     }
 
     fun startDownload(model: Model) {
         downloadModelTrigger.tryEmit(model)
+    }
+
+    fun deleteModel(model: Model) {
+        deleteModelTrigger.tryEmit(model)
     }
 
     fun loadModel(model: Model) {
@@ -99,7 +132,7 @@ class ModelRepository @Inject constructor(
     }
 
     fun ejectModel() {
-        loadModelTrigger.tryEmit(null)
+        ejectModelTrigger.tryEmit(Unit)
     }
 
     private fun Model.downloadState(): ModelDownloadState =

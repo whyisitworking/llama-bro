@@ -16,7 +16,7 @@ import com.suhel.llamabro.demo.navigation.Chat
 import com.suhel.llamabro.sdk.model.Message
 import com.suhel.llamabro.sdk.model.SessionConfig
 import com.suhel.llamabro.sdk.model.filterSuccess
-import com.suhel.llamabro.sdk.model.flatMapSuccess
+import com.suhel.llamabro.sdk.model.flatMapResource
 import com.suhel.llamabro.sdk.model.getOrNull
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -83,7 +83,7 @@ class ChatViewModel @Inject constructor(
                 ?: flowOf(null)
         }
         .filterNotNull()
-        .flatMapSuccess { session ->
+        .flatMapResource { session ->
             session.createChatSessionFlow(SYSTEM_PROMPT)
         }
         .filterSuccess()

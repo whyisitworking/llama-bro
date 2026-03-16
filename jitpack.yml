@@ -1,0 +1,9 @@
+jdk:
+  - openjdk17
+
+before_install:
+  - yes | sdkmanager --licenses
+  - yes | sdkmanager "ndk;29.0.14206865" "cmake;3.22.1"
+
+install:
+  - ./gradlew :sdk:assembleRelease

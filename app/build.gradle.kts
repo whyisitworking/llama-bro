@@ -6,6 +6,9 @@ plugins {
     alias(libs.plugins.kotlinx.serialization)
 }
 
+val dynamicVersionName = (project.findProperty("VERSION_NAME") as? String) ?: "1.0.0-SNAPSHOT"
+val dynamicVersionCode = (project.findProperty("VERSION_CODE") as? String)?.toInt() ?: 1
+
 android {
     namespace = "com.suhel.llamabro.demo"
 
@@ -19,21 +22,21 @@ android {
         applicationId = "com.suhel.llamabro.demo"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionName = dynamicVersionName
+        versionCode = dynamicVersionCode
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
-        create("releaseTest") {
-            val keystorePath = project.findProperty("GLOBAL_TEST_KEYSTORE_PATH") as String?
+        create("release") {
+            val keystorePath = project.findProperty("RELEASE_KEYSTORE_PATH") as String?
 
             if (!keystorePath.isNullOrEmpty()) {
                 storeFile = file(keystorePath)
-                storePassword = project.findProperty("GLOBAL_TEST_STORE_PASSWORD") as String?
-                keyAlias = project.findProperty("GLOBAL_TEST_ALIAS") as String?
-                keyPassword = project.findProperty("GLOBAL_TEST_KEY_PASSWORD") as String?
+                storePassword = project.findProperty("RELEASE_STORE_PASSWORD") as String?
+                keyAlias = project.findProperty("RELEASE_KEY_ALIAS") as String?
+                keyPassword = project.findProperty("RELEASE_KEY_PASSWORD") as String?
             }
         }
     }
@@ -46,7 +49,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("releaseTest")
+            signingConfig = signingConfigs.getByName("release")
             resValue("string", "app_name", "Llama Bro Demo")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

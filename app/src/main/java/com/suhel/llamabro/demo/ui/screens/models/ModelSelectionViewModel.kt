@@ -19,6 +19,10 @@ class ModelSelectionViewModel @Inject constructor(
         modelRepository.startDownload(model)
     }
 
+    fun delete(model: Model) {
+        modelRepository.deleteModel(model)
+    }
+
     fun load(model: Model) {
         modelRepository.loadModel(model)
     }

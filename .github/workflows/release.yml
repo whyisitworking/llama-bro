@@ -50,7 +50,13 @@ jobs:
           SIGNING_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease -Pandroid.injected.signing.store.file=$SIGNING_STORE_FILE -Pandroid.injected.signing.store.password=$SIGNING_STORE_PASSWORD -Pandroid.injected.signing.key.alias=$SIGNING_KEY_ALIAS -Pandroid.injected.signing.key.password=$SIGNING_KEY_PASSWORD
+        run: ./gradlew :app:assembleRelease \
+              -PRELEASE_KEYSTORE_PATH=$SIGNING_STORE_FILE \
+              -PRELEASE_STORE_PASSWORD=$SIGNING_STORE_PASSWORD \
+              -PRELEASE_KEY_ALIAS=$SIGNING_KEY_ALIAS \
+              -PRELEASE_KEY_PASSWORD=$SIGNING_KEY_PASSWORD \
+              -PVERSION_NAME=${{ inputs.version_name }} \
+              -PVERSION_CODE=${{ github.run_number }}
 
       - name: Rename APK
         run: mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/LlamaBro-Demo.apk
@@ -58,7 +64,7 @@ jobs:
       - name: Create GitHub Release & Tag
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ inputs.version_name }}
-          name: Llama SDK & App v${{ inputs.version_name }}
+          tag_name: ${{ inputs.version_name }}
+          name: v${{ inputs.version_name }}
           files: app/build/outputs/apk/release/LlamaBro-Demo.apk
           generate_release_notes: true

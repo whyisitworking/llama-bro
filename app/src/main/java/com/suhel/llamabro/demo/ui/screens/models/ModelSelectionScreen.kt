@@ -76,6 +76,7 @@ fun ModelSelectionScreen(
                         viewModel.load(model)
                         onModelReady()
                     },
+                    onDelete = { viewModel.delete(model) }
                 )
             }
         }
@@ -88,6 +89,7 @@ private fun ModelCard(
     state: ModelDownloadState,
     onDownload: () -> Unit,
     onLoad: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -179,20 +181,22 @@ private fun ModelCard(
             }
 
             Spacer(Modifier.height(16.dp))
-            ModelActionButton(
+            ModelActionButtons(
                 state = state,
                 onDownload = onDownload,
                 onLoad = onLoad,
+                onDelete = onDelete,
             )
         }
     }
 }
 
 @Composable
-private fun ModelActionButton(
+private fun ModelActionButtons(
     state: ModelDownloadState,
     onDownload: () -> Unit,
     onLoad: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     when (state) {
         is ModelDownloadState.NotDownloaded ->
@@ -212,19 +216,40 @@ private fun ModelActionButton(
             }
 
         is ModelDownloadState.Downloaded ->
-            Button(
-                onClick = onLoad,
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Violet),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    painterResource(R.drawable.play_arrow_24px),
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text("Load model", fontWeight = FontWeight.SemiBold)
+                Button(
+                    onClick = onLoad,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Violet),
+                ) {
+                    Icon(
+                        painterResource(R.drawable.play_arrow_24px),
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Load model", fontWeight = FontWeight.SemiBold)
+                }
+
+                OutlinedButton(
+                    onClick = onDelete,
+                    modifier = Modifier.height(40.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(0.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Error),
+                    border = BorderStroke(1.dp, Error.copy(alpha = 0.5f)),
+                ) {
+                    Icon(
+                        painterResource(R.drawable.delete_sweep_24px),
+                        contentDescription = "Delete",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
 
         is ModelDownloadState.Error ->
