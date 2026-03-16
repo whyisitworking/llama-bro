@@ -7,34 +7,82 @@ import kotlinx.coroutines.flow.Flow
 /**
  * Low-level inference session backed by a llama.cpp context.
  *
- * Feed raw formatted text with [prompt], then call [generate] in a loop to sample
- * tokens one at a time. Use [clear] to wipe the conversation while keeping the
- * system prompt.
+ * A session provides direct access to the KV cache and token generation loop.
+ * It is suitable for applications requiring fine-grained control over prompt
+ * ingestion and token sampling.
  *
- * For a higher-level conversational API, see [LlamaChatSession].
+ * For a higher-level, conversational API that handles chat templates and
+ * reasoning blocks, use [createChatSession].
  *
- * **Thread safety:** Instances are **not** thread-safe. All calls must come from
- * a single coroutine (or be externally synchronised). Close sessions before
- * closing the parent [LlamaEngine].
+ * ### Thread Safety
+ * **Instances are not thread-safe.** A session must be accessed from a single
+ * coroutine at a time. All suspending methods are safe to call from any
+ * dispatcher (they internally switch to [kotlinx.coroutines.Dispatchers.IO]).
+ *
+ * ### Lifecycle
+ * Sessions are bound to the parent [LlamaEngine]. Always call [close] when finished
+ * to release the native context memory.
  */
 interface LlamaSession : AutoCloseable {
+    /** The configuration used to load the parent engine. */
     val modelConfig: ModelConfig
 
+    /**
+     * Sets the system prompt for the session.
+     *
+     * This prompt is usually pinned at the start of the context and is preserved
+     * even during history clearing or rolling window overflows.
+     */
     suspend fun setSystemPrompt(text: String)
 
-    /** Ingests raw text into the KV cache. Blocks softly but is cancellable. */
+    /**
+     * Ingests raw text into the KV cache.
+     *
+     * This method blocks until the text is fully processed (pre-filled).
+     * It is cancellable; if the coroutine is cancelled, the native pre-fill
+     * loop will be interrupted.
+     *
+     * @param text Raw text to add to the context.
+     * @throws LlamaError.ContextOverflow if the context is full and cannot be recovered.
+     */
     suspend fun prompt(text: String)
 
-    /** Samples the next token. Returns `null` when generation is complete. Blocks softly but is cancellable. */
+    /**
+     * Samples the next token from the model based on the current context.
+     *
+     * Call this in a loop to generate a complete response.
+     *
+     * @return The generated token as a String, or `null` if the model emits an
+     *         End-of-Generation (EOG) token.
+     * @throws LlamaError.DecodeFailed if the native sampling loop fails.
+     */
     suspend fun generate(): String?
 
-    /** Clears conversation history, keeping only the system prompt. */
+    /**
+     * Clears the conversation history from the KV cache.
+     *
+     * The system prompt (if set via [setSystemPrompt]) is preserved.
+     */
     suspend fun clear()
 
-    /** Asynchronously signals the native engine to preempt any active prompt ingestion or token generation. */
+    /**
+     * Asynchronously signals the native engine to stop any active computation.
+     *
+     * Use this to immediately halt a long-running [prompt] or [generate] call
+     * from another thread or UI action.
+     */
     fun abort()
 
+    /**
+     * Creates a high-level chat session on top of this low-level session.
+     *
+     * @param systemPrompt The instruction defining the assistant's persona.
+     * @return A ready-to-use [LlamaChatSession].
+     */
     suspend fun createChatSession(systemPrompt: String): LlamaChatSession
 
+    /**
+     * Creates a high-level chat session asynchronously.
+     */
     fun createChatSessionFlow(systemPrompt: String): Flow<ResourceState<LlamaChatSession>>
 }

@@ -14,10 +14,18 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 
+/**
+ * Concrete implementation of [LlamaEngine] that interacts with the native llama.cpp backend.
+ *
+ * This class handles the native lifecycle of the llama_model pointer and serves as a
+ * bridge for session creation.
+ */
 internal class LlamaEngineImpl(
     private val modelConfig: ModelConfig,
     listener: ProgressListener? = null,
 ) : LlamaEngine {
+    
+    /** Pointer to the native llama_bro_engine structure. */
     private val enginePtr: Long = try {
         val params = NativeCreateParams(
             modelPath = modelConfig.modelPath,
@@ -55,6 +63,7 @@ internal class LlamaEngineImpl(
             }
 
             awaitClose {
+                // If the flow is cancelled, we ensure the session is closed to prevent leaks.
                 session?.close()
             }
         }.flowOn(Dispatchers.IO)
@@ -63,6 +72,7 @@ internal class LlamaEngineImpl(
         Jni.destroy(enginePtr)
     }
 
+    /** Helper class for passing model configuration to the Jni layer. */
     private class NativeCreateParams(
         val modelPath: String,
         val useMmap: Boolean,

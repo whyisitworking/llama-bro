@@ -3,9 +3,9 @@ package com.suhel.llamabro.sdk.internal
 import com.suhel.llamabro.sdk.LlamaChatSession
 import com.suhel.llamabro.sdk.LlamaSession
 import com.suhel.llamabro.sdk.model.LlamaError
-import com.suhel.llamabro.sdk.model.ResourceState
 import com.suhel.llamabro.sdk.model.ModelConfig
 import com.suhel.llamabro.sdk.model.OverflowStrategy
+import com.suhel.llamabro.sdk.model.ResourceState
 import com.suhel.llamabro.sdk.model.SessionConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -17,6 +17,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+/**
+ * Internal implementation of [LlamaSession] managing a single llama.cpp context.
+ *
+ * This class uses a [Mutex] to ensure that only one operation (prompting or generating)
+ * is active at a time, as the underlying native context is not thread-safe.
+ */
 internal class LlamaSessionImpl(
     enginePtr: Long,
     sessionConfig: SessionConfig,
@@ -24,6 +30,7 @@ internal class LlamaSessionImpl(
 ) : LlamaSession {
     private val mutex = Mutex()
 
+    /** Pointer to the native llama_bro_session structure. */
     private val ptr: Long = try {
         Jni.create(
             enginePtr = enginePtr,
@@ -55,53 +62,57 @@ internal class LlamaSessionImpl(
         throw mapNativeError(e)
     }
 
-    override suspend fun setSystemPrompt(text: String) = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            try {
-                runInterruptible {
-                    Jni.setSystemPrompt(ptr, text)
+    override suspend fun setSystemPrompt(text: String) =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                try {
+                    runInterruptible {
+                        Jni.setSystemPrompt(ptr, text)
+                    }
+                } catch (e: RuntimeException) {
+                    throw mapNativeError(e)
                 }
-            } catch (e: RuntimeException) {
-                throw mapNativeError(e)
             }
         }
-    }
 
-    override suspend fun prompt(text: String) = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            try {
-                runInterruptible {
-                    Jni.injectPrompt(ptr, text)
+    override suspend fun prompt(text: String) =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                try {
+                    runInterruptible {
+                        Jni.injectPrompt(ptr, text)
+                    }
+                } catch (e: RuntimeException) {
+                    throw mapNativeError(e)
                 }
-            } catch (e: RuntimeException) {
-                throw mapNativeError(e)
             }
         }
-    }
 
-    override suspend fun generate(): String? = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            try {
-                runInterruptible {
-                    Jni.generate(ptr)
+    override suspend fun generate(): String? =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                try {
+                    runInterruptible {
+                        Jni.generate(ptr)
+                    }
+                } catch (e: RuntimeException) {
+                    throw mapNativeError(e)
                 }
-            } catch (e: RuntimeException) {
-                throw mapNativeError(e)
             }
         }
-    }
 
-    override suspend fun clear() = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            try {
-                runInterruptible {
-                    Jni.clear(ptr)
+    override suspend fun clear() =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                try {
+                    runInterruptible {
+                        Jni.clear(ptr)
+                    }
+                } catch (e: RuntimeException) {
+                    throw mapNativeError(e)
                 }
-            } catch (e: RuntimeException) {
-                throw mapNativeError(e)
             }
         }
-    }
 
     override fun abort() {
         Jni.abort(ptr)

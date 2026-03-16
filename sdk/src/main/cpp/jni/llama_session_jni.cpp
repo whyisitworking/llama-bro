@@ -82,9 +82,13 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_injectPrompt(JNIE
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_clear(JNIEnv *, jclass,
+Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_clear(JNIEnv *env, jclass,
                                                                      jlong kSessionPtr) {
-    reinterpret_cast<LlamaSession *>(kSessionPtr)->clear();
+    try {
+        reinterpret_cast<LlamaSession *>(kSessionPtr)->clear();
+    } catch (const LlamaException &ex) {
+        throwLlamaError(env, ex);
+    }
 }
 
 // ── abort ─────────────────────────────────────────────────────────────────────
@@ -102,14 +106,19 @@ extern "C"
 JNIEXPORT jstring JNICALL
 Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_generate(JNIEnv *env, jclass,
                                                                         jlong kSessionPtr) {
-    auto result = reinterpret_cast<LlamaSession *>(kSessionPtr)->generate();
+    try {
+        auto result = reinterpret_cast<LlamaSession *>(kSessionPtr)->generate();
 
-    if (result.has_value()) {
-        const auto &utf16 = result.value();
-        return env->NewString(reinterpret_cast<const jchar *>(utf16.data()),
-                              static_cast<jsize>(utf16.size()));
+        if (result.has_value()) {
+            const auto &utf16 = result.value();
+            return env->NewString(reinterpret_cast<const jchar *>(utf16.data()),
+                                  static_cast<jsize>(utf16.size()));
+        }
+        return nullptr;
+    } catch (const LlamaException &ex) {
+        throwLlamaError(env, ex);
+        return nullptr;
     }
-    return nullptr;
 }
 
 // ── destroy ───────────────────────────────────────────────────────────────────

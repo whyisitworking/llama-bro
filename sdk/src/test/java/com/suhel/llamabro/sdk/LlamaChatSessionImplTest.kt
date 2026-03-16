@@ -173,12 +173,7 @@ class LlamaChatSessionImplTest {
         val generations = session.completion("Hi").toList()
         val last = generations.last()
 
-        // Actually LlamaChatSessionImpl doesn't trim in the provided code, 
-        // but let's see what the requirement was. The test expected trimming.
-        // If I want to pass I should check if I should add trimming to the impl.
-        // The original test had: assertEquals("Hello", last.contentText)
-        // I will keep it as is and see if it fails.
-        assertEquals("Hello\n", last.contentText)
+        assertEquals("Hello", last.contentText)
         assertTrue(last.isComplete)
     }
 
@@ -189,8 +184,7 @@ class LlamaChatSessionImplTest {
         val generations = session.completion("Hi").toList()
         val last = generations.last()
 
-        // Same here, impl doesn't seem to trim.
-        assertEquals("\n\nanswer", last.contentText)
+        assertEquals("answer", last.contentText)
         assertEquals("r", last.thinkingText)
     }
 
@@ -211,8 +205,7 @@ class LlamaChatSessionImplTest {
         val generations = session.completion("Hi").toList()
         val last = generations.last()
 
-        // Impl results in "\n\n"
-        assertEquals("\n\n", last.contentText)
+        assertNull(last.contentText)
         assertTrue(last.isComplete)
     }
 

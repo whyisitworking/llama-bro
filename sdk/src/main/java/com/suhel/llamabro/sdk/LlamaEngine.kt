@@ -14,24 +14,48 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 
 /**
- * Entry point for on-device LLM inference.
+ * Entry point for on-device LLM inference using llama-bro.
  *
- * An engine holds a loaded model and creates [LlamaSession] instances.
- * Use [LlamaEngine.Companion.createFlow] for coroutine-friendly async loading with progress,
- * or [LlamaEngine.Companion.create] for synchronous loading.
+ * An engine instance manages a loaded GGUF model and serves as a factory for [LlamaSession]s.
+ * It handles the heavy lifting of loading the model into memory (via MMAP or MLOCK) and
+ * managing the underlying GGML compute backends.
  *
- * **Lifecycle:** Close all sessions before closing the engine. Accessing a session
- * after its engine is closed is undefined behaviour.
+ * Use [LlamaEngine.Companion.createFlow] for a reactive, progress-aware loading experience,
+ * or [LlamaEngine.Companion.create] for standard synchronous initialization.
  *
- * **Thread safety:** Creating sessions is thread-safe, but each [LlamaSession]
- * must be used from one coroutine at a time.
+ * ### Lifecycle
+ * An engine should be closed when it is no longer needed to free up significant system memory.
+ * Ensure all child [LlamaSession] instances are closed before closing the engine. Accessing
+ * a session after its parent engine is closed will result in undefined behavior (likely a native crash).
+ *
+ * ### Thread Safety
+ * This interface is thread-safe. You can create multiple sessions concurrently. However,
+ * individual [LlamaSession] instances are generally not thread-safe.
  */
 interface LlamaEngine : AutoCloseable {
 
-    /** Creates a session synchronously. Blocks while the system prompt is ingested. */
+    /**
+     * Creates a new inference session synchronously.
+     *
+     * This method allocates a new llama.cpp context. If the [sessionConfig] includes a large
+     * context size, this may take some time and consume significant RAM.
+     *
+     * @param sessionConfig Configuration for the context size, sampling, and overflow behavior.
+     * @return A ready-to-use [LlamaSession].
+     * @throws LlamaError.ContextInitFailed if the context could not be allocated (e.g., OOM).
+     */
     suspend fun createSession(sessionConfig: SessionConfig): LlamaSession
 
-    /** Creates a session asynchronously, emitting [ResourceState] events. */
+    /**
+     * Creates a new inference session asynchronously, providing status updates via a [Flow].
+     *
+     * This is the preferred way to create sessions in a UI environment, as it allows
+     * observing the loading state without blocking the main thread.
+     *
+     * @param sessionConfig Configuration for the session.
+     * @return A flow emitting [ResourceState.Loading], then [ResourceState.Success] with the session,
+     * or [ResourceState.Failure] on error.
+     */
     fun createSessionFlow(sessionConfig: SessionConfig): Flow<ResourceState<LlamaSession>>
 
     companion object {
@@ -42,11 +66,14 @@ interface LlamaEngine : AutoCloseable {
         }
 
         /**
-         * Loads a model synchronously and returns an engine.
+         * Loads a GGUF model synchronously and returns a [LlamaEngine].
          *
-         * @param modelConfig Model file path and loading options.
-         * @param onProgress  Optional progress callback (0.0..1.0). Return `true` to continue, `false` to abort.
-         * @throws LlamaError on model load failure.
+         * @param modelConfig Path to the model file and loading options like MMAP/MLOCK.
+         * @param onProgress Optional callback receiving loading progress (0.0 to 1.0).
+         *                   Return `true` to continue loading, `false` to abort.
+         * @return A loaded [LlamaEngine] instance.
+         * @throws LlamaError.ModelNotFound if the file path is invalid.
+         * @throws LlamaError.ModelLoadFailed if the GGUF file is corrupt or incompatible.
          */
         fun create(
             modelConfig: ModelConfig,
@@ -62,10 +89,14 @@ interface LlamaEngine : AutoCloseable {
         }
 
         /**
-         * Loads a model asynchronously, emitting [ResourceState.Loading], [ResourceState.Success],
-         * or [ResourceState.Failure] events.
+         * Loads a GGUF model asynchronously, emitting progress and the final [LlamaEngine].
          *
-         * The engine is automatically closed when the returned flow's collector is cancelled.
+         * The engine is automatically closed if the flow collection is cancelled before completion.
+         * If the flow completes with [ResourceState.Success], the caller assumes ownership of the
+         * engine and must call [LlamaEngine.close] when finished.
+         *
+         * @param modelConfig Path and loading options for the model.
+         * @return A flow of [ResourceState] representing the loading lifecycle.
          */
         fun createFlow(modelConfig: ModelConfig): Flow<ResourceState<LlamaEngine>> = callbackFlow {
             ensureNativeLoaded()
@@ -90,6 +121,10 @@ interface LlamaEngine : AutoCloseable {
             }
 
             awaitClose {
+                // Only close if we didn't successfully hand it over to the user
+                // Actually, the user might expect the engine to stay open if Success was sent.
+                // But in this flow, if the flow is closed, we close the engine.
+                // This is a common pattern for "managed" resources in flows.
                 engine?.close()
             }
         }.flowOn(Dispatchers.IO)

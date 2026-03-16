@@ -1,14 +1,24 @@
 package com.suhel.llamabro.sdk.model
 
 /**
- * Sampling parameters for token generation.
+ * Parameters for controlling token generation and sampling.
  *
- * @param temperature     Controls randomness. 0 = greedy (deterministic), higher = more creative. Default: 0.8.
- * @param repeatPenalty   Penalises repeated tokens. 1.0 = no penalty. Default: 1.1.
- * @param presencePenalty Penalises tokens that have appeared at all. 0.0 = no penalty. Default: 0.0.
- * @param minP            Min-P sampling threshold. Null to disable. Default: 0.1.
- * @param topP            Top-P (nucleus) sampling threshold. Null to disable. Default: null.
- * @param topK            Top-K sampling. Null to disable. Default: null.
+ * These settings influence the "creativity" and structure of the model's response.
+ *
+ * @property temperature     Controls the randomness of predictions. Lower values (e.g., 0.1) 
+ *                            make the output more deterministic (greedy), while higher 
+ *                            values (e.g., 1.2) make it more diverse and creative.
+ * @property repeatPenalty   Discourages the model from repeating the same sequence of 
+ *                            tokens. 1.0 means no penalty.
+ * @property presencePenalty Penalizes tokens based on whether they have already appeared 
+ *                            in the generated text. Higher values encourage the model to 
+ *                            talk about new topics.
+ * @property minP            A threshold for sampling. Only tokens with a probability 
+ *                            relative to the most likely token greater than this 
+ *                            value are considered. This is often preferred over Top-P.
+ * @property topP            Nucleus sampling: only the smallest set of most probable 
+ *                            tokens whose cumulative probability exceeds P are considered.
+ * @property topK            Only the K most likely tokens are considered for sampling.
  */
 data class InferenceConfig(
     val temperature: Float = 0.8f,

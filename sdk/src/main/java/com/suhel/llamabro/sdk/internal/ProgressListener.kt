@@ -2,12 +2,16 @@ package com.suhel.llamabro.sdk.internal
 
 /**
  * Internal JNI callback invoked by the native layer during model loading.
- * Each call corresponds to one progress_callback invocation in llama.cpp.
+ *
+ * Each invocation corresponds to a progress update from the llama.cpp model 
+ * loader, typically reflecting the percentage of the model file read into memory.
  */
 internal interface ProgressListener {
     /**
-     * @param progress 0.0..1.0 reflecting how much of the model file has been read.
-     * @return true to continue loading, false to abort (e.g., coroutine cancelled).
+     * Called by the native layer with the current loading progress.
+     *
+     * @param progress A value from 0.0 to 1.0 reflecting loading status.
+     * @return true to continue loading, false to abort the operation.
      */
     fun onProgress(progress: Float): Boolean
 }

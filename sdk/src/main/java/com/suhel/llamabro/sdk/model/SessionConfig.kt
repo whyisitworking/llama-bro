@@ -1,13 +1,20 @@
 package com.suhel.llamabro.sdk.model
 
 /**
- * Configuration for creating an inference session.
+ * Configuration for creating a [com.suhel.llamabro.sdk.LlamaSession].
  *
- * @param contextSize      Context window size in tokens. Default: 4096.
- * @param overflowStrategy How to handle context overflow. Default: [OverflowStrategy.RollingWindow].
- * @param inferenceConfig  Sampling parameters (temperature, penalties, etc.).
- * @param decodeConfig     Low-level llama.cpp tuning parameters.
- * @param seed             RNG seed for reproducible sampling. -1 for random. Default: -1.
+ * This class bundles together the context size, sampling behavior, and 
+ * resource management strategies for a single inference session.
+ *
+ * @property contextSize      The total number of tokens (system prompt + history + generation) 
+ *                            that can be held in memory. Larger values consume more RAM.
+ * @property overflowStrategy How the session reacts when the [contextSize] is reached. 
+ *                            Defaults to [OverflowStrategy.RollingWindow].
+ * @property inferenceConfig  Parameters controlling token selection (sampling) like 
+ *                            temperature and penalties.
+ * @property decodeConfig     Low-level tuning for the llama.cpp compute loop.
+ * @property seed             The random seed for deterministic generation. Use -1 
+ *                            for a random seed on every run.
  */
 data class SessionConfig(
     val contextSize: Int = 4096,

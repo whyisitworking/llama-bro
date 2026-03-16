@@ -165,7 +165,9 @@ void LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt)
     }
 
     for (size_t i = 0; i < tokens.size(); i += n_batch_limit) {
-        if (is_aborted.load()) return;
+        if (is_aborted.load()) {
+            throw LlamaException(LlamaErrorCode::CANCELLED);
+        }
 
         auto chunk_size = std::min(n_batch_limit, static_cast<uint32_t>(tokens.size() - i));
 
@@ -236,7 +238,7 @@ std::optional<std::u16string> LlamaSession::generate() {
 
     while (true) {
         if (is_aborted.load()) {
-            return std::nullopt;
+            throw LlamaException(LlamaErrorCode::CANCELLED);
         }
 
         auto new_token = llama_sampler_sample(sampler, ctx, -1);
@@ -261,8 +263,10 @@ std::optional<std::u16string> LlamaSession::generate() {
         utils::batch_clear(llama_batch);
         utils::batch_add(llama_batch, new_token, n_past, {0}, true);
 
-        if (llama_decode(ctx, llama_batch) != 0) {
-            return std::nullopt;
+        auto decode_result = llama_decode(ctx, llama_batch);
+        if (decode_result != 0) {
+            throw LlamaException(LlamaErrorCode::DECODE_FAILED,
+                                 std::to_string(decode_result));
         }
 
         n_past += 1;

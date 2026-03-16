@@ -1,5 +1,13 @@
 package com.suhel.llamabro.sdk.internal
 
+/**
+ * Internal parser that processes a stream of raw tokens from the LLM.
+ *
+ * It is responsible for:
+ * 1. Identifying and extracting "thinking" blocks (e.g., `<think>...</think>`).
+ * 2. Detecting the assistant's stop sequence (e.g., `<|im_end|>`) to halt generation.
+ * 3. Handling partial matches at token boundaries to ensure tags are not missed.
+ */
 internal class TokenStreamParser(
     private val stopSuffix: String?,
     private val openTag: String = THINKING_START,
@@ -8,6 +16,10 @@ internal class TokenStreamParser(
     private var buffer = ""
     private var isThinking = false
 
+    /** 
+     * Processes a new token and returns a list of [StreamAction]s. 
+     * This handles buffering of partial matches.
+     */
     fun process(token: String): List<StreamAction> = buildList {
         buffer += token
 
@@ -77,6 +89,7 @@ internal class TokenStreamParser(
         }
     }
 
+    /** Flushes any remaining text in the buffer as a final action. */
     fun flush(): List<StreamAction> =
         if (buffer.isNotEmpty()) {
             val action = if (isThinking) {
@@ -91,6 +104,7 @@ internal class TokenStreamParser(
             listOf()
         }
 
+    /** Checks if the end of [text] matches the beginning of [target]. */
     private fun hasPartialMatch(text: String, target: String?): Boolean {
         if (target.isNullOrEmpty() || text.isEmpty()) {
             return false

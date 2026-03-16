@@ -1,13 +1,24 @@
 package com.suhel.llamabro.sdk.model
 
 /**
- * Configuration for loading a GGUF model into an [com.suhel.llamabro.sdk.LlamaEngine].
+ * Configuration for loading a GGUF model into a [com.suhel.llamabro.sdk.LlamaEngine].
  *
- * @param modelPath    Absolute path to the `.gguf` model file on the device.
- * @param promptFormat The chat template that matches the model's training format.
- * @param useMmap      Whether to memory-map the model file (faster cold-start, shared pages). Default: true.
- * @param useMlock     Whether to lock model pages in RAM (prevents paging, needs sufficient free memory). Default: false.
- * @param threads      Number of threads for inference. Default: half of available processors (at least 1).
+ * This class defines how the model file is read and held in memory. Choosing the 
+ * right parameters here is crucial for performance and stability on mobile devices.
+ *
+ * @property modelPath    The absolute filesystem path to the `.gguf` model file.
+ * @property promptFormat The chat template that matches how the model was trained. 
+ *                        Use [PromptFormats] for common models.
+ * @property useMmap      If true, the model is memory-mapped. This allows faster 
+ *                        initialization and lets the OS manage memory paging. 
+ *                        Usually set to true.
+ * @property useMlock     If true, the model's memory pages are locked in RAM. 
+ *                        This prevents the OS from swapping them out, ensuring 
+ *                        consistent performance but potentially causing OOMs if 
+ *                        the model is larger than available RAM.
+ * @property threads      The number of CPU threads to use for compute-heavy 
+ *                        inference tasks. Defaults to half the available cores 
+ *                        to balance performance and battery/thermal impact.
  */
 data class ModelConfig(
     val modelPath: String,
