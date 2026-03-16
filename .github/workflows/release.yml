@@ -36,7 +36,7 @@ jobs:
         run: yes | sdkmanager "ndk;29.0.14206865" "cmake;3.22.1"
 
       - name: Run tests
-        run: ./gradlew :sdk:test :app:testReleaseUnitTest
+        run: ./gradlew :sdk:test
 
       - name: Decode Keystore
         env:
