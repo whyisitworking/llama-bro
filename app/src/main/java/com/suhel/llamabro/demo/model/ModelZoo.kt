@@ -3,7 +3,7 @@ package com.suhel.llamabro.demo.model
 import com.suhel.llamabro.sdk.model.InferenceConfig
 import com.suhel.llamabro.sdk.model.PromptFormats
 
-val CURATED_MODELS = listOf(
+val ModelZoo = listOf(
     Model(
         id = "gemma-3n-2b",
         name = "Gemma 3n 2B",
@@ -31,6 +31,20 @@ val CURATED_MODELS = listOf(
             minP = 0.0f,
             presencePenalty = 1.5f,
             repeatPenalty = 1.0f,
+        )
+    ),
+
+    Model(
+        id = "llama-3.2-1b-instruct",
+        name = "Llama 3.2 1B Instruct",
+        description = "The Llama 3.2 collection of multilingual large language models (LLMs) is a collection of pretrained and instruction-tuned generative models.",
+        downloadUrl = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q5_K_M.gguf",
+        promptFormat = PromptFormats.Llama3,
+        defaultInferenceConfig = InferenceConfig(
+            temperature = 0.6f,
+            topP = 0.9f,
+            topK = 50,
+            repeatPenalty = 1.2f,
         )
     )
 )

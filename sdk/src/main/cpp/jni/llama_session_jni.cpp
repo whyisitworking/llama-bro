@@ -48,14 +48,15 @@ extern "C"
 JNIEXPORT void JNICALL
 Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_setSystemPrompt(JNIEnv *env, jclass,
                                                                                jlong kSessionPtr,
-                                                                               jstring kText) {
+                                                                               jstring kText,
+                                                                               jboolean kAddSpecial) {
     auto session = reinterpret_cast<LlamaSession *>(kSessionPtr);
     auto text = env->GetStringUTFChars(kText, nullptr);
     std::string textStr(text);
     env->ReleaseStringUTFChars(kText, text);
 
     try {
-        session->setSystemPrompt(textStr);
+        session->setSystemPrompt(textStr, kAddSpecial);
     } catch (const LlamaException &ex) {
         throwLlamaError(env, ex);
     }
@@ -65,14 +66,15 @@ extern "C"
 JNIEXPORT void JNICALL
 Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_injectPrompt(JNIEnv *env, jclass,
                                                                             jlong kSessionPtr,
-                                                                            jstring kText) {
+                                                                            jstring kText,
+                                                                            jboolean kAddSpecial) {
     auto session = reinterpret_cast<LlamaSession *>(kSessionPtr);
     auto text = env->GetStringUTFChars(kText, nullptr);
     std::string textStr(text);
     env->ReleaseStringUTFChars(kText, text);
 
     try {
-        session->injectPrompt(textStr);
+        session->injectPrompt(textStr, kAddSpecial);
     } catch (const LlamaException &ex) {
         throwLlamaError(env, ex);
     }

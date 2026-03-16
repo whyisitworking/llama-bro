@@ -64,7 +64,7 @@ private:
 
     bool roll_kv_cache_to_accommodate(uint32_t required_tokens);
 
-    void ingest_prompt(const std::string &text, bool is_system_prompt);
+    void ingest_prompt(const std::string &text, bool is_system_prompt, bool add_special);
 
     bool is_token_buffer_valid();
 
@@ -83,9 +83,9 @@ public:
 
     LlamaSession &operator=(LlamaSession &&) = delete;
 
-    void setSystemPrompt(const std::string &prompt);
+    void setSystemPrompt(const std::string &prompt, bool add_special);
 
-    void injectPrompt(const std::string &prompt);
+    void injectPrompt(const std::string &prompt, bool add_special);
 
     std::optional<std::u16string> generate();
 

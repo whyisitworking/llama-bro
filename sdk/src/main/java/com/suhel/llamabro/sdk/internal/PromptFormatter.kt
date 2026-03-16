@@ -10,6 +10,12 @@ import com.suhel.llamabro.sdk.model.PromptFormat
  * and suffixed correctly according to the [PromptFormat] provided by the model.
  */
 internal class PromptFormatter(private val formatter: PromptFormat) {
+    /** Beginning of stream token. */
+    fun bos(): String = formatter.bos ?: ""
+
+    /** End of stream token. */
+    fun eos(): String = formatter.eos ?: ""
+
     /** Formats a single user message. */
     fun user(text: String): String =
         "${formatter.userPrefix}$text${formatter.userSuffix}"
@@ -24,7 +30,7 @@ internal class PromptFormatter(private val formatter: PromptFormat) {
      */
     fun assistant(text: String?): String =
         if (text != null) {
-            "${formatter.assistantPrefix}$text${formatter.assistantSuffix}"
+            "${formatter.assistantPrefix}$text${formatter.assistantSuffix}${eos()}"
         } else {
             formatter.assistantPrefix
         }

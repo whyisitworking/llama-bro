@@ -135,9 +135,10 @@ internal class LlamaChatSessionImpl(
             }
         }
 
-    /** Initial injection of the system prompt during session creation. */
+    /** Initial injection of the BOS and system prompt during session creation. */
     internal suspend fun initialize() =
         withContext(Dispatchers.IO) {
-            session.setSystemPrompt(promptFormatter.system(systemPrompt))
+            val formattedPrompt = promptFormatter.bos() + promptFormatter.system(systemPrompt)
+            session.setSystemPrompt(formattedPrompt)
         }
 }

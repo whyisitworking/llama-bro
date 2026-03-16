@@ -144,14 +144,14 @@ bool LlamaSession::roll_kv_cache_to_accommodate(uint32_t required_tokens) {
     return true;
 }
 
-void LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt) {
+void LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt, bool add_special) {
     is_aborted.store(false);
 
     auto ctx = llama_context.get();
     auto model = llama_get_model(ctx);
     auto vocab = llama_model_get_vocab(model);
 
-    auto tokens = utils::tokenize(vocab, text, true, true);
+    auto tokens = utils::tokenize(vocab, text, add_special, true);
     if (tokens.empty()) return;
 
     uint32_t n_ctx = llama_n_ctx(ctx);
@@ -210,7 +210,7 @@ std::u16string LlamaSession::get_token_buffer_as_u16string() {
     return result;
 }
 
-void LlamaSession::setSystemPrompt(const std::string &prompt) {
+void LlamaSession::setSystemPrompt(const std::string &prompt, bool add_special) {
     // 1. Total wipe of the KV cache
     clear_kv_cache(0, -1);
 
@@ -221,11 +221,11 @@ void LlamaSession::setSystemPrompt(const std::string &prompt) {
 
     // 3. Ingest the new system prompt
     // ingest_prompt already handles setting n_keep = n_past at the end
-    ingest_prompt(prompt, true);
+    ingest_prompt(prompt, true, add_special);
 }
 
-void LlamaSession::injectPrompt(const std::string &user_message) {
-    ingest_prompt(user_message, false);
+void LlamaSession::injectPrompt(const std::string &user_message, bool add_special) {
+    ingest_prompt(user_message, false, add_special);
 }
 
 std::optional<std::u16string> LlamaSession::generate() {

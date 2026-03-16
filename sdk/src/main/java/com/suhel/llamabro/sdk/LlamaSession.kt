@@ -32,8 +32,11 @@ interface LlamaSession : AutoCloseable {
      *
      * This prompt is usually pinned at the start of the context and is preserved
      * even during history clearing or rolling window overflows.
+     *
+     * @param text       Raw text to add to the context.
+     * @param addSpecial If true, prepends the model's default BOS token.
      */
-    suspend fun setSystemPrompt(text: String)
+    suspend fun setSystemPrompt(text: String, addSpecial: Boolean = true)
 
     /**
      * Ingests raw text into the KV cache.
@@ -42,10 +45,11 @@ interface LlamaSession : AutoCloseable {
      * It is cancellable; if the coroutine is cancelled, the native pre-fill
      * loop will be interrupted.
      *
-     * @param text Raw text to add to the context.
+     * @param text       Raw text to add to the context.
+     * @param addSpecial If true, prepends the model's default BOS token.
      * @throws LlamaError.ContextOverflow if the context is full and cannot be recovered.
      */
-    suspend fun prompt(text: String)
+    suspend fun prompt(text: String, addSpecial: Boolean = false)
 
     /**
      * Samples the next token from the model based on the current context.

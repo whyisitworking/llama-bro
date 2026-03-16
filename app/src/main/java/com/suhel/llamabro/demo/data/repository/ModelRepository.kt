@@ -2,7 +2,7 @@ package com.suhel.llamabro.demo.data.repository
 
 import android.content.Context
 import com.suhel.llamabro.demo.di.ApplicationScope
-import com.suhel.llamabro.demo.model.CURATED_MODELS
+import com.suhel.llamabro.demo.model.ModelZoo
 import com.suhel.llamabro.demo.model.CurrentInferenceContext
 import com.suhel.llamabro.demo.model.Model
 import com.suhel.llamabro.demo.model.ModelDownloadState
@@ -18,7 +18,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
@@ -58,7 +57,7 @@ class ModelRepository @Inject constructor(
                     model to state
                 }
             },
-            CURATED_MODELS.map { model ->
+            ModelZoo.map { model ->
                 model to model.downloadState()
             }.asFlow()
         )
@@ -85,7 +84,7 @@ class ModelRepository @Inject constructor(
             initialValue = null
         )
 
-    fun getAllModels(): List<Model> = CURATED_MODELS
+    fun getAllModels(): List<Model> = ModelZoo
 
     fun getStateFor(model: Model): Flow<ModelDownloadState> = downloadStateMap.map {
         it.getOrDefault(model, ModelDownloadState.NotDownloaded)

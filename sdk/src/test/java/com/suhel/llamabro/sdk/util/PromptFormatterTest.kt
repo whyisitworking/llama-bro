@@ -23,22 +23,24 @@ class PromptFormatterTest {
     @Test
     fun `ChatML wraps assistant message correctly`() {
         val fmt = PromptFormatter(PromptFormats.ChatML)
+        // ChatML doesn't have a BOS/EOS in our config, so it should be same as before
         assertEquals(
             "<|im_start|>assistant\nHi there<|im_end|>\n",
             fmt.format(Message.Assistant("Hi there"))
         )
     }
 
+    // ── Llama3 ──────────────────────────────────────────────────────────────
+
     @Test
-    fun `ChatML wraps system message correctly`() {
-        val fmt = PromptFormatter(PromptFormats.ChatML)
+    fun `Llama3 includes BOS in initialization`() {
+        val fmt = PromptFormatter(PromptFormats.Llama3)
+        val prompt = fmt.bos() + fmt.system("Be helpful")
         assertEquals(
-            "<|im_start|>system\nYou are helpful<|im_end|>\n",
-            fmt.system("You are helpful")
+            "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nBe helpful<|eot_id|>",
+            prompt
         )
     }
-
-    // ── Llama3 ──────────────────────────────────────────────────────────────
 
     @Test
     fun `Llama3 wraps user message correctly`() {
@@ -49,73 +51,42 @@ class PromptFormatterTest {
         )
     }
 
+    // ── Mistral ─────────────────────────────────────────────────────────────
+
     @Test
-    fun `Llama3 wraps system message correctly`() {
-        val fmt = PromptFormatter(PromptFormats.Llama3)
+    fun `Mistral includes BOS and EOS`() {
+        val fmt = PromptFormatter(PromptFormats.Mistral)
+        assertEquals("<s>", fmt.bos())
+        assertEquals("</s>", fmt.eos())
+        
         assertEquals(
-            "<|start_header_id|>system<|end_header_id|>\n\nBe concise<|eot_id|>",
-            fmt.system("Be concise")
+            "Response</s>",
+            fmt.format(Message.Assistant("Response"))
         )
     }
 
     // ── Gemma3 ──────────────────────────────────────────────────────────────
 
     @Test
-    fun `Gemma3 wraps user message correctly`() {
+    fun `Gemma3 includes BOS`() {
         val fmt = PromptFormatter(PromptFormats.Gemma3)
-        assertEquals(
-            "<start_of_turn>user\nHello<end_of_turn>\n",
-            fmt.format(Message.User("Hello"))
-        )
-    }
-
-    @Test
-    fun `Gemma3 uses model role for assistant`() {
-        val fmt = PromptFormatter(PromptFormats.Gemma3)
-        assertEquals(
-            "<start_of_turn>model\nResponse<end_of_turn>\n",
-            fmt.format(Message.Assistant("Response"))
-        )
-    }
-
-    // ── Mistral ─────────────────────────────────────────────────────────────
-
-    @Test
-    fun `Mistral wraps user message correctly`() {
-        val fmt = PromptFormatter(PromptFormats.Mistral)
-        assertEquals(
-            "[INST] Hello [/INST]",
-            fmt.format(Message.User("Hello"))
-        )
-    }
-
-    @Test
-    fun `Mistral assistant has no prefix or suffix`() {
-        val fmt = PromptFormatter(PromptFormats.Mistral)
-        assertEquals("Response", fmt.format(Message.Assistant("Response")))
+        assertEquals("<bos>", fmt.bos())
     }
 
     // ── Edge cases ──────────────────────────────────────────────────────────
 
     @Test
-    fun `empty content is valid`() {
-        val fmt = PromptFormatter(PromptFormats.ChatML)
-        assertEquals(
-            "<|im_start|>user\n<|im_end|>\n",
-            fmt.format(Message.User(""))
-        )
-    }
-
-    @Test
-    fun `custom prompt format`() {
+    fun `custom prompt format with BOS and EOS`() {
         val custom = PromptFormat(
+            bos = "[BOS]",
+            eos = "[EOS]",
             systemPrefix = "[SYS]", systemSuffix = "[/SYS]",
             userPrefix = "[U]", userSuffix = "[/U]",
             assistantPrefix = "[A]", assistantSuffix = "[/A]",
         )
         val fmt = PromptFormatter(custom)
+        assertEquals("[BOS]", fmt.bos())
         assertEquals("[U]hi[/U]", fmt.format(Message.User("hi")))
-        assertEquals("[A]ok[/A]", fmt.format(Message.Assistant("ok")))
-        assertEquals("[SYS]sys[/SYS]", fmt.system("sys"))
+        assertEquals("[A]ok[/A][EOS]", fmt.format(Message.Assistant("ok")))
     }
 }

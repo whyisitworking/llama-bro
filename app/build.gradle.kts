@@ -101,6 +101,9 @@ dependencies {
     implementation(libs.androidx.paging.runtime)
     implementation(libs.androidx.paging.compose)
 
+    // Markdown
+    implementation(libs.compose.markdown)
+
     // SDK
     implementation(project(":sdk"))
 

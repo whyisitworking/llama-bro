@@ -42,6 +42,7 @@ import com.suhel.llamabro.demo.ui.theme.OnSurface
 import com.suhel.llamabro.demo.ui.theme.OnSurfaceFaint
 import com.suhel.llamabro.demo.ui.theme.SurfaceBorder
 import com.suhel.llamabro.demo.ui.theme.Violet
+import dev.jeziellago.compose.markdowntext.MarkdownText
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,11 +58,18 @@ fun ChatScreen(
         val incomingMessage by viewModel.incomingMessage.collectAsStateWithLifecycle()
         val listState = rememberLazyListState()
 
-        // Auto-scroll to bottom when new messages arrive or streaming updates
-        LaunchedEffect(messages.itemCount, incomingMessage) {
-            if (messages.itemCount == 0 || incomingMessage != null) {
-                val target = messages.itemCount + (if (incomingMessage != null) 1 else 0)
-                listState.animateScrollToItem((target - 1).coerceAtLeast(0))
+        // Auto-scroll to bottom when a NEW generation starts
+        LaunchedEffect(incomingMessage?.isProcessing) {
+            if (incomingMessage?.isProcessing == true) {
+                listState.animateScrollToItem(0)
+            }
+        }
+
+        // When generation ends, the new message is added to 'messages'.
+        // We might want to ensure we stay at the bottom.
+        LaunchedEffect(messages.itemCount) {
+            if (listState.firstVisibleItemIndex <= 1) {
+                listState.animateScrollToItem(0)
             }
         }
 
@@ -70,19 +78,20 @@ fun ChatScreen(
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
+            reverseLayout = true
         ) {
+            incomingMessage?.let { safeIncomingMessage ->
+                item(key = "streaming") {
+                    MessageBubble(safeIncomingMessage)
+                }
+            }
+
             items(
                 count = messages.itemCount,
                 key = { idx -> messages[idx]?.id ?: idx }
             ) { idx ->
                 messages[idx]?.let { msg ->
                     MessageBubble(msg)
-                }
-            }
-
-            incomingMessage?.let { safeIncomingMessage ->
-                item(key = "streaming") {
-                    MessageBubble(safeIncomingMessage)
                 }
             }
         }
@@ -175,11 +184,11 @@ private fun MessageBubble(message: UiChatMessage) {
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
     ) {
         Column(
-            modifier = Modifier.widthIn(max = 300.dp),
+            modifier = if (isUser) Modifier.widthIn(max = 300.dp) else Modifier.fillMaxWidth(),
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (message.isProcessing) {
+            if (message.isProcessing && (message.content.isNullOrBlank() && message.thinking.isNullOrBlank())) {
                 Text(
                     text = "Processing...",
                     style = MaterialTheme.typography.bodySmall,
@@ -196,20 +205,26 @@ private fun MessageBubble(message: UiChatMessage) {
             }
 
             message.content?.let { contentText ->
-                Box(
-                    modifier = Modifier
-                        .background(
-                            if (isUser) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant
-                            }
+                if (isUser) {
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                MaterialTheme.colorScheme.primary,
+                                MaterialTheme.shapes.medium
+                            )
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = contentText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimary
                         )
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = contentText,
+                    }
+                } else {
+                    MarkdownText(
+                        markdown = contentText,
                         style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
@@ -218,6 +233,7 @@ private fun MessageBubble(message: UiChatMessage) {
                 Text(
                     text = "%.1f tok/s".format(message.tokensPerSecond),
                     style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

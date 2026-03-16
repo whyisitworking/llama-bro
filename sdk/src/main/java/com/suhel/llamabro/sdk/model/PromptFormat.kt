@@ -9,6 +9,9 @@ package com.suhel.llamabro.sdk.model
  *
  * Use [PromptFormats] to select a pre-defined template for popular models.
  *
+ * @property bos             The Beginning of Sentence token (e.g., "<s>" or "<|begin_of_text|>").
+ *                           Inserted once at the very start of a session.
+ * @property eos             The End of Sentence token (e.g., "</s>" or "<|end_of_text|>").
  * @property systemPrefix    The token(s) that start a system instruction.
  * @property systemSuffix    The token(s) that end a system instruction.
  * @property userPrefix      The token(s) that start a user message.
@@ -17,6 +20,8 @@ package com.suhel.llamabro.sdk.model
  * @property assistantSuffix The token(s) that end an assistant response (often used as a stop sequence).
  */
 data class PromptFormat(
+    val bos: String? = null,
+    val eos: String? = null,
     val systemPrefix: String,
     val systemSuffix: String,
     val userPrefix: String,

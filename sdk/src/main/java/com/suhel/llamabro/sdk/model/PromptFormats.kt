@@ -29,6 +29,7 @@ object PromptFormats {
      * Uses `<|start_header_id|>` and `<|eot_id|>` tags.
      */
     val Llama3 = PromptFormat(
+        bos = "<|begin_of_text|>",
         systemPrefix = "<|start_header_id|>system<|end_header_id|>\n\n",
         systemSuffix = "<|eot_id|>",
         userPrefix = "<|start_header_id|>user<|end_header_id|>\n\n",
@@ -43,6 +44,8 @@ object PromptFormats {
      * an explicit system role in its base template.
      */
     val Mistral = PromptFormat(
+        bos = "<s>",
+        eos = "</s>",
         userPrefix = "[INST] ",
         userSuffix = " [/INST]",
         assistantPrefix = "",
@@ -56,6 +59,7 @@ object PromptFormats {
      * Uses `<start_of_turn>` and `<end_of_turn>` tags.
      */
     val Gemma3 = PromptFormat(
+        bos = "<bos>",
         systemPrefix = "<start_of_turn>system\n",
         systemSuffix = "<end_of_turn>\n",
         userPrefix = "<start_of_turn>user\n",

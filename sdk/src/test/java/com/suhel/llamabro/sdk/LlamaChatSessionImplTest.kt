@@ -6,6 +6,7 @@ import com.suhel.llamabro.sdk.model.Message
 import com.suhel.llamabro.sdk.model.ModelConfig
 import com.suhel.llamabro.sdk.model.PromptFormat
 import com.suhel.llamabro.sdk.model.PromptFormats
+import com.suhel.llamabro.sdk.model.LlamaError
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.toList
@@ -16,28 +17,38 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * Unit tests for [LlamaChatSessionImpl], focusing on token processing, 
+ * thinking block extraction, and prompt formatting.
+ */
 class LlamaChatSessionImplTest {
 
     // ── Test double ─────────────────────────────────────────────────────────
 
-    /** A fake [LlamaSession] that returns a pre-configured token sequence. */
+    /** 
+     * A fake [LlamaSession] that returns a pre-configured token sequence. 
+     * Used to simulate model output without running native code.
+     */
     private class FakeSession(
         private val tokens: List<String>,
-        override val modelConfig: ModelConfig = ModelConfig("fake.gguf", PASSTHROUGH)
+        override val modelConfig: ModelConfig = ModelConfig("fake.gguf", PASSTHROUGH),
+        private val shouldThrow: LlamaError? = null
     ) : LlamaSession {
         private var index = 0
         val prompts = mutableListOf<String>()
         var cleared = false
+        var aborted = false
 
-        override suspend fun setSystemPrompt(text: String) {
+        override suspend fun setSystemPrompt(text: String, addSpecial: Boolean) {
             prompts.add(text)
         }
 
-        override suspend fun prompt(text: String) {
+        override suspend fun prompt(text: String, addSpecial: Boolean) {
             prompts.add(text)
         }
 
         override suspend fun generate(): String? {
+            shouldThrow?.let { throw it }
             return if (index < tokens.size) tokens[index++] else null
         }
 
@@ -46,7 +57,9 @@ class LlamaChatSessionImplTest {
             index = 0
         }
 
-        override fun abort() {}
+        override fun abort() {
+            aborted = true
+        }
 
         override fun close() {}
 
@@ -71,7 +84,7 @@ class LlamaChatSessionImplTest {
         )
     }
 
-    // ── Token-per-second ────────────────────────────────────────────────────
+    // ── Performance Metrics ─────────────────────────────────────────────────
 
     @Test
     fun `tokensPerSecond is non-zero for non-empty generation`() = runTest {
@@ -280,7 +293,7 @@ class LlamaChatSessionImplTest {
         assertEquals("<|im_start|>assistant\nhi there<|im_end|>\n", fake.prompts[1])
     }
 
-    // ── Reset ───────────────────────────────────────────────────────────────
+    // ── Reset and Error Handling ───────────────────────────────────────────
 
     @Test
     fun `reset delegates to session clear`() = runTest {
@@ -288,5 +301,28 @@ class LlamaChatSessionImplTest {
         val session = LlamaChatSessionImpl(fake, "")
         session.reset()
         assertTrue(fake.cleared)
+    }
+
+    @Test
+    fun `cancelled error emits interrupted state`() = runTest {
+        val fake = FakeSession(
+            tokens = emptyList(), 
+            shouldThrow = LlamaError.Cancelled()
+        )
+        val session = LlamaChatSessionImpl(fake, "")
+        val generations = session.completion("Hi").toList()
+        
+        assertTrue(generations.last().isInterrupted)
+        assertTrue(generations.last().isComplete)
+    }
+
+    @Test(expected = LlamaError.DecodeFailed::class)
+    fun `other llama errors are propagated`() = runTest {
+        val fake = FakeSession(
+            tokens = emptyList(), 
+            shouldThrow = LlamaError.DecodeFailed(1)
+        )
+        val session = LlamaChatSessionImpl(fake, "")
+        session.completion("Hi").toList()
     }
 }

@@ -10,7 +10,7 @@ import com.suhel.llamabro.demo.data.db.entity.MessageEntity
 @Dao
 interface MessageDao {
 
-    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC")
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt DESC")
     fun messagesPagingSource(conversationId: String): PagingSource<Int, MessageEntity>
 
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC")

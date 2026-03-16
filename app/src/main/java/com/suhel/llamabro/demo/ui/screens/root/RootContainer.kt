@@ -1,23 +1,29 @@
 package com.suhel.llamabro.demo.ui.screens.root
 
-import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -37,64 +43,94 @@ private fun StatusBar(
     state: RootUiState,
     onEjectModel: () -> Unit,
 ) {
-    val backgroundColor = when (state) {
-        RootUiState.NoModelLoaded,
-        is RootUiState.ModelLoading,
-        is RootUiState.ModelLoaded -> MaterialTheme.colorScheme.surfaceDim
+    val animatedProgress by animateFloatAsState(
+        targetValue = if (state is RootUiState.ModelLoading) state.progress else 0f,
+        label = "progress"
+    )
 
-        is RootUiState.ModelLoadError -> MaterialTheme.colorScheme.error
-    }
+    val backgroundColor by animateColorAsState(
+        targetValue = when (state) {
+            is RootUiState.ModelLoadError -> MaterialTheme.colorScheme.errorContainer
+            else -> MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        label = "backgroundColor"
+    )
 
     Surface(
         color = backgroundColor,
+        tonalElevation = 3.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 4.dp)
-                .animateContentSize(),
-            horizontalAlignment = Alignment.Start,
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                .height(48.dp)
+                .fillMaxWidth()
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val text = when (state) {
-                    RootUiState.NoModelLoaded -> "No model loaded"
-                    is RootUiState.ModelLoading -> "Loading ${state.model.name}"
-                    is RootUiState.ModelLoaded -> "Loaded ${state.model.name}"
-                    is RootUiState.ModelLoadError -> "Error loading ${state.model.name}"
-                }
-
-                Text(
-                    text = text,
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            // Background Progress Layer
+            if (state is RootUiState.ModelLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(animatedProgress)
+                        .background(MaterialTheme.colorScheme.primary)
                 )
+            }
 
-                if (state is RootUiState.ModelLoaded) {
-                    TextButton(
-                        onClick = onEjectModel,
-                        contentPadding = PaddingValues(0.dp)
+            // Centralized Status Text
+            val text = when (state) {
+                RootUiState.NoModelLoaded -> "No model loaded"
+                is RootUiState.ModelLoading -> "Loading ${state.model.name} (${(animatedProgress * 100).toInt()}%)"
+                is RootUiState.ModelLoaded -> "Loaded ${state.model.name}"
+                is RootUiState.ModelLoadError -> "Error loading ${state.model.name}"
+            }
+
+            val textColor by animateColorAsState(
+                targetValue = when (state) {
+                    is RootUiState.ModelLoading -> MaterialTheme.colorScheme.onPrimary
+                    is RootUiState.ModelLoadError -> MaterialTheme.colorScheme.onErrorContainer
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                label = "textColor"
+            )
+
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = textColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.CenterStart)
+                    .padding(horizontal = 16.dp)
+            )
+
+            // Functional Eject Button
+            AnimatedVisibility(
+                visible = state is RootUiState.ModelLoaded,
+                enter = slideInHorizontally { it } + fadeIn(),
+                exit = slideOutHorizontally { it } + fadeOut(),
+                modifier = Modifier.align(Alignment.CenterEnd)
+            ) {
+                Surface(
+                    onClick = onEjectModel,
+                    color = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.fillMaxHeight()
+                ) {
+                    Box(
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "Eject",
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold
                         )
                     }
                 }
-            }
-
-            if (state is RootUiState.ModelLoading) {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth(),
-                    progress = { state.progress }
-                )
             }
         }
     }

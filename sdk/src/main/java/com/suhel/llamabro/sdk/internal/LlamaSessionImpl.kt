@@ -62,12 +62,12 @@ internal class LlamaSessionImpl(
         throw mapNativeError(e)
     }
 
-    override suspend fun setSystemPrompt(text: String) =
+    override suspend fun setSystemPrompt(text: String, addSpecial: Boolean) =
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 try {
                     runInterruptible {
-                        Jni.setSystemPrompt(ptr, text)
+                        Jni.setSystemPrompt(ptr, text, addSpecial)
                     }
                 } catch (e: RuntimeException) {
                     throw mapNativeError(e)
@@ -75,12 +75,12 @@ internal class LlamaSessionImpl(
             }
         }
 
-    override suspend fun prompt(text: String) =
+    override suspend fun prompt(text: String, addSpecial: Boolean) =
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 try {
                     runInterruptible {
-                        Jni.injectPrompt(ptr, text)
+                        Jni.injectPrompt(ptr, text, addSpecial)
                     }
                 } catch (e: RuntimeException) {
                     throw mapNativeError(e)
@@ -170,10 +170,10 @@ internal class LlamaSessionImpl(
         external fun create(enginePtr: Long, params: NativeCreateParams): Long
 
         @JvmStatic
-        external fun setSystemPrompt(sessionPtr: Long, text: String)
+        external fun setSystemPrompt(sessionPtr: Long, text: String, addSpecial: Boolean)
 
         @JvmStatic
-        external fun injectPrompt(sessionPtr: Long, text: String)
+        external fun injectPrompt(sessionPtr: Long, text: String, addSpecial: Boolean)
 
         @JvmStatic
         external fun clear(sessionPtr: Long)
