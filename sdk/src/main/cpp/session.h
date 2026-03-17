@@ -84,7 +84,7 @@ public:
 
     void setSystemPrompt(const std::string &prompt, bool add_special);
 
-    void injectPrompt(const std::string &prompt, bool add_special);
+    void ingestPrompt(const std::string &prompt, bool add_special);
 
     Generation generate();
 

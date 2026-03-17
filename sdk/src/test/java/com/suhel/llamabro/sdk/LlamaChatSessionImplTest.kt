@@ -44,13 +44,17 @@ class LlamaChatSessionImplTest {
             prompts.add(text)
         }
 
-        override suspend fun prompt(text: String, addSpecial: Boolean) {
-            prompts.add(text)
+        override suspend fun ingestPrompt(prompt: String, addSpecial: Boolean) {
+            prompts.add(prompt)
         }
 
         override suspend fun generate(): TokenGenerationResult {
             shouldThrow?.let { throw it }
-            return TokenGenerationResult(tokens[index++], index == tokens.size)
+            if (tokens.isEmpty()) return TokenGenerationResult(null, true)
+            
+            val token = tokens[index]
+            index++
+            return TokenGenerationResult(token, index == tokens.size)
         }
 
         override suspend fun clear() {
@@ -248,24 +252,17 @@ class LlamaChatSessionImplTest {
 
         // Only prompt: user turn + assistant turn opening (no Kotlin-side closing)
         assertEquals(
-            "\n<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n",
+            "<|im_start|>user\nHi<|im_end|><|im_start|>assistant\n",
             fake.prompts[0]
         )
         assertEquals("No Kotlin-side turn closing should occur", 1, fake.prompts.size)
     }
 
     @Test
-    fun `assistant suffix is stripped from final content`() = runTest {
-        val modelConfig = ModelConfig("fake.gguf", PromptFormats.ChatML)
-        val fake = FakeSession(listOf("Hello world", "<|im_end|>"), modelConfig)
-        val session = LlamaChatSessionImpl(fake, "")
-        val last = session.completion("Hi").toList().last()
-
-        assertEquals("Hello world", last.contentText)
-    }
-
-    @Test
-    fun `content without suffix is not affected by stripping`() = runTest {
+    fun `content is not affected by manually provided eog tokens`() = runTest {
+        // Since the C++ engine already consumes EOG, we simulate that here by 
+        // NOT including it in the tokens returned by FakeSession, as it would
+        // have been filtered out by the real session.cpp.
         val modelConfig = ModelConfig("fake.gguf", PromptFormats.ChatML)
         val fake = FakeSession(listOf("Hello world"), modelConfig)
         val session = LlamaChatSessionImpl(fake, "")
@@ -297,8 +294,8 @@ class LlamaChatSessionImplTest {
             )
         )
 
-        assertEquals("\n<|im_start|>user\nhello<|im_end|>", fake.prompts[0])
-        assertEquals("\n<|im_start|>assistant\nhi there<|im_end|>", fake.prompts[1])
+        assertEquals("<|im_start|>user\nhello<|im_end|>", fake.prompts[0])
+        assertEquals("<|im_start|>assistant\nhi there<|im_end|>", fake.prompts[1])
     }
 
     // ── Reset and Error Handling ───────────────────────────────────────────

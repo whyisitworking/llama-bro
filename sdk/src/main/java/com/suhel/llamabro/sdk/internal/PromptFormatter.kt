@@ -32,12 +32,12 @@ internal class PromptFormatter(private val fmt: PromptFormat) {
     fun shouldAddSpecial(): Boolean = fmt.bos == null
 
     /** Formats a single user message (complete turn). */
-    fun user(text: String): String =
-        "${fmt.userPrefix}$text${fmt.userSuffix}"
+    fun user(prompt: String): String =
+        "${fmt.userPrefix}$prompt${fmt.userSuffix}"
 
     /** Formats a single system instruction (complete turn with BOS). */
-    fun system(text: String): String =
-        "${bos()}${fmt.systemPrefix}$text${fmt.systemSuffix}"
+    fun system(prompt: String): String =
+        "${bos()}${fmt.systemPrefix}$prompt${fmt.systemSuffix}"
 
     /** Returns the assistant turn opening prefix (injected before generation). */
     fun assistantStart(): String = fmt.assistantPrefix
@@ -46,12 +46,12 @@ internal class PromptFormatter(private val fmt: PromptFormat) {
     fun assistantEnd(): String = "${fmt.assistantSuffix}${eos()}"
 
     /** Formats a complete assistant message (used for history loading). */
-    fun assistant(text: String, thinking: String? = null): String {
+    fun assistant(prompt: String, thinking: String? = null): String {
         val thinkingBlock = if (!thinking.isNullOrBlank()) {
             "${fmt.thinkStart}$thinking${fmt.thinkEnd}"
         } else ""
 
-        return "${assistantStart()}$thinkingBlock$text${assistantEnd()}"
+        return "${assistantStart()}$thinkingBlock$prompt${assistantEnd()}"
     }
 
     /** Dispatches formatting based on the message role. */

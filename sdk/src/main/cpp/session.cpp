@@ -217,8 +217,8 @@ void LlamaSession::setSystemPrompt(const std::string &prompt, bool add_special) 
     ingest_prompt(prompt, true, add_special);
 }
 
-void LlamaSession::injectPrompt(const std::string &user_message, bool add_special) {
-    ingest_prompt(user_message, false, add_special);
+void LlamaSession::ingestPrompt(const std::string &prompt, bool add_special) {
+    ingest_prompt(prompt, false, add_special);
 }
 
 Generation LlamaSession::generate() {

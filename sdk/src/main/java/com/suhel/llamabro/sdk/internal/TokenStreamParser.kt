@@ -1,127 +1,92 @@
 package com.suhel.llamabro.sdk.internal
 
-/**
- * Internal parser that processes a stream of raw tokens from the LLM.
- *
- * It is responsible for:
- * 1. Identifying and extracting "thinking" blocks (e.g., `<think>...</think>`).
- * 2. Detecting the assistant's stop sequence (e.g., `<|im_end|>`) to halt generation.
- * 3. Handling partial matches at token boundaries to ensure tags are not missed.
- */
 internal class TokenStreamParser(
-    private val stopSuffix: String?,
-    private val openTag: String = THINKING_START,
-    private val closeTag: String = THINKING_END,
+    private val thinkingStart: String = DEFAULT_THINKING_START,
+    private val thinkingEnd: String = DEFAULT_THINKING_END,
 ) {
-    private var buffer = ""
-    private var isThinking = false
+    private val buffer = StringBuilder(maxOf(thinkingStart.length, thinkingEnd.length))
 
-    /** 
-     * Processes a new token and returns a list of [StreamAction]s. 
-     * This handles buffering of partial matches.
-     */
-    fun process(token: String): List<StreamAction> = buildList {
-        buffer += token
+    var isThinking = false
+        private set
 
-        while (buffer.isNotEmpty()) {
-            val stopIdx = if (!stopSuffix.isNullOrEmpty()) buffer.indexOf(stopSuffix) else -1
-            val openIdx = buffer.indexOf(openTag)
-            val closeIdx = buffer.indexOf(closeTag)
+    fun process(
+        token: String,
+        contentBuilder: StringBuilder,
+        thinkingBuilder: StringBuilder
+    ) {
+        buffer.append(token)
 
-            // 1. Intercept Stop Suffix first
-            if (stopIdx != -1) {
-                val before = buffer.substring(0, stopIdx)
-                if (before.isNotEmpty()) {
-                    add(
-                        if (isThinking) {
-                            StreamAction.Thinking(before)
-                        } else {
-                            StreamAction.Content(before)
-                        }
-                    )
-                }
-                add(StreamAction.Stop)
-                buffer = ""
+        while (true) {
+            val targetTag = if (isThinking) thinkingEnd else thinkingStart
+            val tagIdx = buffer.indexOf(targetTag)
+
+            if (tagIdx != -1) {
+                // 1. Tag found! Route the text BEFORE the tag to the correct builder.
+                val dest = if (isThinking) thinkingBuilder else contentBuilder
+
+                // Using .append(CharSequence, start, end) copies the raw chars
+                // without ever allocating a String on the heap.
+                if (tagIdx > 0) dest.append(buffer, 0, tagIdx)
+
+                isThinking = !isThinking
+                buffer.delete(0, tagIdx + targetTag.length)
+            } else {
                 break
             }
+        }
 
-            // 2. Intercept Open Tag
-            if (!isThinking && openIdx != -1) {
-                val before = buffer.substring(0, openIdx)
-                if (before.isNotEmpty()) {
-                    add(StreamAction.Content(before))
-                }
+        // 2. No full tags left. Check if the very end of the buffer is a partial tag.
+        val targetTag = if (isThinking) thinkingEnd else thinkingStart
+        val partialLen = getPartialMatchLength(buffer, targetTag)
 
-                isThinking = true
-                buffer = buffer.substring(openIdx + openTag.length)
-                continue
-            }
+        // 3. Everything before the partial match is 100% safe to route to the builders.
+        val safeLen = buffer.length - partialLen
+        if (safeLen > 0) {
+            val dest = if (isThinking) thinkingBuilder else contentBuilder
+            dest.append(buffer, 0, safeLen)
 
-            // 3. Intercept Close Tag
-            if (isThinking && closeIdx != -1) {
-                val before = buffer.substring(0, closeIdx)
-                if (before.isNotEmpty()) {
-                    add(StreamAction.Thinking(before))
-                }
-
-                isThinking = false
-                buffer = buffer.substring(closeIdx + closeTag.length)
-                continue
-            }
-
-            // 4. Hold buffer if it ends with a partial match of any target
-            if (hasPartialMatch(buffer, stopSuffix) ||
-                (!isThinking && hasPartialMatch(buffer, openTag)) ||
-                (isThinking && hasPartialMatch(buffer, closeTag))
-            ) {
-                break
-            }
-
-            // 5. Safe to flush the verified text
-            add(
-                if (isThinking) {
-                    StreamAction.Thinking(buffer)
-                } else {
-                    StreamAction.Content(buffer)
-                }
-            )
-            buffer = ""
+            // Delete the safe text. The buffer now ONLY holds the partial match.
+            buffer.delete(0, safeLen)
         }
     }
 
-    /** Flushes any remaining text in the buffer as a final action. */
-    fun flush(): List<StreamAction> =
+    fun flush(contentBuilder: StringBuilder, thinkingBuilder: StringBuilder) {
         if (buffer.isNotEmpty()) {
-            val action = if (isThinking) {
-                StreamAction.Thinking(buffer)
-            } else {
-                StreamAction.Content(buffer)
+            val dest = if (isThinking) thinkingBuilder else contentBuilder
+            dest.append(buffer)
+            buffer.clear()
+        }
+    }
+
+    fun reset() {
+        buffer.clear()
+        isThinking = false
+    }
+
+    /**
+     * Custom primitive check. maxOverlap guarantees this loop runs a maximum of
+     * 7 times (for a 8-char tag), making it mathematically O(1) in practice.
+     */
+    private fun getPartialMatchLength(sb: StringBuilder, pattern: String): Int {
+        // -1 because a full match would have been caught by indexOf earlier
+        val maxOverlap = minOf(sb.length, pattern.length - 1)
+        if (maxOverlap == 0) return 0
+
+        for (i in (sb.length - maxOverlap) until sb.length) {
+            var isMatch = true
+            for (j in 0 until (sb.length - i)) {
+                if (sb[i + j] != pattern[j]) {
+                    isMatch = false
+                    break
+                }
             }
-
-            buffer = ""
-            listOf(action)
-        } else {
-            listOf()
+            if (isMatch) return sb.length - i
         }
-
-    /** Checks if the end of [text] matches the beginning of [target]. */
-    private fun hasPartialMatch(text: String, target: String?): Boolean {
-        if (target.isNullOrEmpty() || text.isEmpty()) {
-            return false
-        }
-
-        val start = maxOf(0, text.length - target.length + 1)
-        for (i in start until text.length) {
-            if (target.startsWith(text.substring(i))) {
-                return true
-            }
-        }
-
-        return false
+        return 0
     }
 
     companion object {
-        private const val THINKING_START = "<think>"
-        private const val THINKING_END = "</think>"
+        private const val DEFAULT_THINKING_START = "<think>"
+        private const val DEFAULT_THINKING_END = "</think>"
     }
 }

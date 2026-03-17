@@ -91,7 +91,7 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_setSystemPrompt(J
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_injectPrompt(JNIEnv *env, jclass,
+Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_ingestPrompt(JNIEnv *env, jclass,
                                                                             jlong jSessionPtr,
                                                                             jstring jText,
                                                                             jboolean jAddSpecial) {
@@ -101,7 +101,7 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_injectPrompt(JNIE
     env->ReleaseStringUTFChars(jText, text);
 
     try {
-        session->injectPrompt(textStr, jAddSpecial);
+        session->ingestPrompt(textStr, jAddSpecial);
     } catch (const LlamaException &ex) {
         throwLlamaError(env, ex);
     }

@@ -15,7 +15,7 @@ class PromptFormatterTest {
     fun `ChatML wraps user message correctly`() {
         val fmt = PromptFormatter(PromptFormats.ChatML)
         assertEquals(
-            "\n<|im_start|>user\nHello<|im_end|>",
+            "<|im_start|>user\nHello<|im_end|>",
             fmt.format(Message.User("Hello"))
         )
     }
@@ -24,7 +24,7 @@ class PromptFormatterTest {
     fun `ChatML wraps assistant message correctly`() {
         val fmt = PromptFormatter(PromptFormats.ChatML)
         assertEquals(
-            "\n<|im_start|>assistant\nHi there<|im_end|>",
+            "<|im_start|>assistant\nHi there<|im_end|>",
             fmt.format(Message.Assistant("Hi there"))
         )
     }
@@ -32,7 +32,7 @@ class PromptFormatterTest {
     @Test
     fun `ChatML turn lifecycle produces symmetric open and close`() {
         val fmt = PromptFormatter(PromptFormats.ChatML)
-        assertEquals("\n<|im_start|>assistant\n", fmt.assistantStart())
+        assertEquals("<|im_start|>assistant\n", fmt.assistantStart())
         assertEquals("<|im_end|>", fmt.assistantEnd())
         // assistantStart() + content + assistantEnd() == assistant(content)
         val content = "Hello world"
@@ -166,7 +166,7 @@ class PromptFormatterTest {
     fun `assistant message with thinking block`() {
         val fmt = PromptFormatter(PromptFormats.ChatML)
         assertEquals(
-            "\n<|im_start|>assistant\n<think>reasoning</think>answer<|im_end|>",
+            "<|im_start|>assistant\n<think>reasoning</think>answer<|im_end|>",
             fmt.assistant("answer", thinking = "reasoning")
         )
     }

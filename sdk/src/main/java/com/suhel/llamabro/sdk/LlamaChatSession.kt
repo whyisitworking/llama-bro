@@ -35,10 +35,10 @@ interface LlamaChatSession {
      * If the collector's coroutine is cancelled, the underlying native generation
      * is automatically aborted.
      *
-     * @param message The user's input text.
+     * @param prompt The user's input text.
      * @return A flow of [Completion] updates.
      */
-    fun completion(message: String): Flow<Completion>
+    fun completion(prompt: String): Flow<Completion>
 
     /**
      * Clears the current conversation history while retaining the system prompt.

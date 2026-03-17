@@ -46,11 +46,11 @@ interface LlamaSession : AutoCloseable {
      * It is cancellable; if the coroutine is cancelled, the native pre-fill
      * loop will be interrupted.
      *
-     * @param text       Raw text to add to the context.
+     * @param prompt       Raw text to add to the context.
      * @param addSpecial If true, prepends the model's default BOS token.
      * @throws LlamaError.ContextOverflow if the context is full and cannot be recovered.
      */
-    suspend fun prompt(text: String, addSpecial: Boolean = false)
+    suspend fun ingestPrompt(prompt: String, addSpecial: Boolean = false)
 
     /**
      * Samples the next token from the model based on the current context.
@@ -73,7 +73,7 @@ interface LlamaSession : AutoCloseable {
     /**
      * Asynchronously signals the native engine to stop any active computation.
      *
-     * Use this to immediately halt a long-running [prompt] or [generate] call
+     * Use this to immediately halt a long-running [ingestPrompt] or [generate] call
      * from another thread or UI action.
      */
     fun abort()

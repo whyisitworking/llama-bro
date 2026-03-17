@@ -9,7 +9,7 @@ package com.suhel.llamabro.sdk.model
  * all text generated so far.
  *
  * @property thinkingText The accumulated reasoning or "thinking" output from the model.
- *                        Commonly used with reasoning models that output `<think>` blocks.
+ *                        Commonly used with reasoning models that output `<think></think>` blocks.
  * @property contentText  The accumulated final response text.
  * @property tokensPerSecond The generation speed in tokens per second. Only populated when
  *                           [isComplete] is true.

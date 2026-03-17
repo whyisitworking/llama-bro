@@ -24,10 +24,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -78,7 +78,10 @@ class ChatViewModel @Inject constructor(
             val history = chatRepository.getMessages(args.conversationId)
                 .map { chatMessage ->
                     when (chatMessage.role) {
-                        MessageRole.User -> Message.User(chatMessage.content)
+                        MessageRole.User -> Message.User(
+                            content = chatMessage.content
+                        )
+
                         MessageRole.Assistant -> Message.Assistant(
                             content = chatMessage.content,
                             thinking = chatMessage.thinking
@@ -116,50 +119,64 @@ class ChatViewModel @Inject constructor(
     val incomingMessage = sendMessageTrigger
         .distinctUntilChanged()
         .flatMapLatest { message ->
-            if (message != null) {
-                flow {
-                    emit(
-                        UiChatMessage(
-                            id = "streaming",
-                            role = MessageRole.Assistant,
-                            isProcessing = true,
-                        )
+            if (message == null) {
+                return@flatMapLatest flowOf(null)
+            }
+
+            flow<UiChatMessage?> {
+                emit(
+                    UiChatMessage(
+                        id = "streaming",
+                        role = MessageRole.Assistant,
+                        isProcessing = true,
                     )
+                )
 
-                    chatRepository.addMessage(
-                        conversationId = args.conversationId,
-                        role = MessageRole.User,
-                        content = message
-                    )
+                chatRepository.addMessage(
+                    conversationId = args.conversationId,
+                    role = MessageRole.User,
+                    content = message
+                )
 
-                    val session = chatSessionFlow.filterNotNull().first()
-
-                    emitAll(
-                        session.completion(message)
-                            .map { chunk ->
-                                if (chunk.isComplete && chunk.contentText != null) {
-                                    chatRepository.addMessage(
-                                        conversationId = args.conversationId,
-                                        role = MessageRole.Assistant,
-                                        content = chunk.contentText!!,
-                                        thinking = chunk.thinkingText,
-                                        tokensPerSecond = chunk.tokensPerSecond
-                                    )
-
-                                    null
-                                } else {
-                                    UiChatMessage(
-                                        id = "streaming",
-                                        role = MessageRole.Assistant,
-                                        content = chunk.contentText,
-                                        thinking = chunk.thinkingText
-                                    )
-                                }
+                emitAll(
+                    chatSessionFlow
+                        .filterNotNull()
+                        .flatMapLatest { chatSession ->
+                            chatSession.completion(message)
+                        }
+                        .onEach { chunk ->
+                            if (chunk.isComplete && chunk.contentText != null) {
+                                chatRepository.addMessage(
+                                    conversationId = args.conversationId,
+                                    role = MessageRole.Assistant,
+                                    content = chunk.contentText!!,
+                                    thinking = chunk.thinkingText,
+                                    tokensPerSecond = chunk.tokensPerSecond
+                                )
                             }
-                    )
-                }
-            } else {
-                flowOf(null as UiChatMessage?)
+                        }
+                        .map { chunk ->
+                            if (chunk.isComplete) {
+                                null
+                            } else {
+                                UiChatMessage(
+                                    id = "streaming",
+                                    role = MessageRole.Assistant,
+                                    content = chunk.contentText,
+                                    thinking = chunk.thinkingText
+                                )
+                            }
+                        }
+                        .catch { e ->
+                            emit(
+                                UiChatMessage(
+                                    id = "streaming",
+                                    role = MessageRole.Assistant,
+                                    error = e.message
+                                )
+                            )
+                        }
+                )
             }
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
