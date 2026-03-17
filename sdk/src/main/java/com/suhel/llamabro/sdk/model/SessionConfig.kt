@@ -17,7 +17,7 @@ package com.suhel.llamabro.sdk.model
  *                            for a random seed on every run.
  */
 data class SessionConfig(
-    val contextSize: Int = 4096,
+    val contextSize: Int = 2048,
     val overflowStrategy: OverflowStrategy = OverflowStrategy.RollingWindow(),
     val inferenceConfig: InferenceConfig = InferenceConfig(),
     val decodeConfig: DecodeConfig = DecodeConfig(),

@@ -3,14 +3,13 @@
 #include "utils/llama_utils.h"
 #include "utils/utf8_utils.h"
 #include "utils/llama_exception.h"
+#include "utils/log.h"
 
 #include <vector>
 
 #include "llama.h"
 
 LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionParams &config) {
-    system_prompt_reserve = config.system_prompt_reserve;
-
     auto params = llama_context_default_params();
     params.n_ctx = config.context_size;
     params.n_threads = threads;
@@ -19,7 +18,7 @@ LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionP
     params.n_ubatch = config.micro_batch_size;
     params.n_seq_max = 1;
     params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
-    params.type_k = GGML_TYPE_Q8_0; // Very little loss compared to 50% less size
+    params.type_k = GGML_TYPE_Q8_0; // Saves 50% space with very little loss
     params.type_v = GGML_TYPE_Q8_0;
 
     auto ctx = llama_init_from_model(model, params);
@@ -118,7 +117,6 @@ void LlamaSession::clear_kv_cache(int32_t start_pos, int32_t end_pos) {
 }
 
 void LlamaSession::roll_kv_cache_till_system_prompt() {
-    // Wipe everything EXCEPT the protected system prompt.
     clear_kv_cache(n_keep, -1);
     n_past = n_keep;
 }
@@ -145,6 +143,7 @@ bool LlamaSession::roll_kv_cache_to_accommodate(uint32_t required_tokens) {
 }
 
 void LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt, bool add_special) {
+    LOGI("ingest_prompt:\n%s", text.c_str());
     is_aborted.store(false);
 
     auto ctx = llama_context.get();
@@ -156,9 +155,7 @@ void LlamaSession::ingest_prompt(const std::string &text, bool is_system_prompt,
 
     uint32_t n_ctx = llama_n_ctx(ctx);
     uint32_t n_batch_limit = llama_n_batch(ctx);
-    uint32_t max_usable_tokens = is_system_prompt
-                                 ? (n_ctx - system_prompt_reserve)
-                                 : (n_ctx - n_keep - system_prompt_reserve);
+    uint32_t max_usable_tokens = is_system_prompt ? n_ctx : (n_ctx - n_keep);
 
     if (tokens.size() > max_usable_tokens) {
         tokens.erase(tokens.begin(), tokens.end() - max_usable_tokens);
@@ -211,16 +208,12 @@ std::u16string LlamaSession::get_token_buffer_as_u16string() {
 }
 
 void LlamaSession::setSystemPrompt(const std::string &prompt, bool add_special) {
-    // 1. Total wipe of the KV cache
     clear_kv_cache(0, -1);
 
-    // 2. Reset state machine counters
     n_past = 0;
     n_keep = 0;
     token_buffer.clear();
 
-    // 3. Ingest the new system prompt
-    // ingest_prompt already handles setting n_keep = n_past at the end
     ingest_prompt(prompt, true, add_special);
 }
 
@@ -244,6 +237,16 @@ std::optional<std::u16string> LlamaSession::generate() {
         auto new_token = llama_sampler_sample(sampler, ctx, -1);
 
         if (llama_vocab_is_eog(vocab, new_token)) {
+            // Decode the EOG token into the KV cache so the turn delimiter
+            // is present for subsequent turns (logits=false — no sampling needed).
+            if (roll_kv_cache_if_needed(1)) {
+                utils::batch_clear(llama_batch);
+                utils::batch_add(llama_batch, new_token, n_past, {0}, false);
+                if (llama_decode(ctx, llama_batch) == 0) {
+                    n_past += 1;
+                }
+            }
+
             if (is_token_buffer_valid()) {
                 return get_token_buffer_as_u16string();
             }

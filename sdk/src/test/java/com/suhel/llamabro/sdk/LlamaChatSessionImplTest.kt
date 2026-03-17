@@ -242,14 +242,18 @@ class LlamaChatSessionImplTest {
         val session = LlamaChatSessionImpl(fake, "")
         session.completion("Hi").toList()
 
-        // systemPrompt is empty, so system call is called with ""
-        assertEquals("<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n", fake.prompts.last())
+        // Only prompt: user turn + assistant turn opening (no Kotlin-side closing)
+        assertEquals(
+            "\n<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n",
+            fake.prompts[0]
+        )
+        assertEquals("No Kotlin-side turn closing should occur", 1, fake.prompts.size)
     }
 
     @Test
     fun `assistant suffix is stripped from final content`() = runTest {
         val modelConfig = ModelConfig("fake.gguf", PromptFormats.ChatML)
-        val fake = FakeSession(listOf("Hello world", "<|im_end|>\n"), modelConfig)
+        val fake = FakeSession(listOf("Hello world", "<|im_end|>"), modelConfig)
         val session = LlamaChatSessionImpl(fake, "")
         val last = session.completion("Hi").toList().last()
 
@@ -289,8 +293,8 @@ class LlamaChatSessionImplTest {
             )
         )
 
-        assertEquals("<|im_start|>user\nhello<|im_end|>\n", fake.prompts[0])
-        assertEquals("<|im_start|>assistant\nhi there<|im_end|>\n", fake.prompts[1])
+        assertEquals("\n<|im_start|>user\nhello<|im_end|>", fake.prompts[0])
+        assertEquals("\n<|im_start|>assistant\nhi there<|im_end|>", fake.prompts[1])
     }
 
     // ── Reset and Error Handling ───────────────────────────────────────────

@@ -12,15 +12,10 @@ package com.suhel.llamabro.sdk.model
  * @property microBatchSize        Physical GGML compute batch size (n_ubatch). Must be less 
  *                                 than or equal to [batchSize]. Affects SIMD register 
  *                                 utilization and memory bandwidth.
- * @property systemPromptReserve   Number of tokens reserved at the start of the context 
- *                                 boundary. This ensures that even when the context shifts 
- *                                 or truncates, the system prompt role is never overwritten 
- *                                 by user content.
  */
 data class DecodeConfig(
     val batchSize: Int = 2048,
     val microBatchSize: Int = 512,
-    val systemPromptReserve: Int = 100,
 ) {
     init {
         require(batchSize >= microBatchSize) {

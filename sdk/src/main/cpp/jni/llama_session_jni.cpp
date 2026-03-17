@@ -31,7 +31,6 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_create(JNIEnv *en
             .seed                  = configReader.getInt("seed"),
             .batch_size            = configReader.getInt("batchSize"),
             .micro_batch_size      = configReader.getInt("microBatchSize"),
-            .system_prompt_reserve = configReader.getInt("systemPromptReserve"),
     };
 
     try {

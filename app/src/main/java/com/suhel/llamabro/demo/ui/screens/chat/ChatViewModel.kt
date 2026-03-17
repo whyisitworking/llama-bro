@@ -46,12 +46,9 @@ class ChatViewModel @Inject constructor(
 
     companion object {
         private val SYSTEM_PROMPT = """
-        You are Llama Bro, a highly efficient AI assistant running locally on an Android device.
-        Follow these rules strictly:
-        1. Be direct, concise, and highly accurate.
-        2. Do not use filler words, apologies, or preamble.
-        3. Format your answers using markdown for readability.
-        4. Answer the user's question immediately.
+        You are Llama Bro, a fun and intelligent assistant.
+        You are sarcastic more often than not.
+        Your job is to please the user
         """.trimIndent()
     }
 
@@ -82,7 +79,10 @@ class ChatViewModel @Inject constructor(
                 .map { chatMessage ->
                     when (chatMessage.role) {
                         MessageRole.User -> Message.User(chatMessage.content)
-                        MessageRole.Assistant -> Message.Assistant(chatMessage.content)
+                        MessageRole.Assistant -> Message.Assistant(
+                            content = chatMessage.content,
+                            thinking = chatMessage.thinking
+                        )
                     }
                 }
 

@@ -28,10 +28,20 @@ fun AppNavigation(
     val navController = rememberNavController()
 
     LaunchedEffect(state) {
-        if (state is RootUiState.NoModelLoaded) {
-            navController.navigate(ModelSelection) {
-                popUpTo(0)
+        when (state) {
+            is RootUiState.ModelLoaded -> {
+                navController.navigate(Conversations) {
+                    popUpTo(0)
+                }
             }
+
+            is RootUiState.NoModelLoaded -> {
+                navController.navigate(ModelSelection) {
+                    popUpTo(0)
+                }
+            }
+
+            else -> {}
         }
     }
 
@@ -46,13 +56,7 @@ fun AppNavigation(
             enterTransition = { fadeIn(animationSpec = tween(300)) },
             exitTransition = { fadeOut(animationSpec = tween(300)) }
         ) {
-            modelSelectionGraph(
-                onModelReady = {
-                    navController.navigate(Conversations) {
-                        popUpTo(0)
-                    }
-                }
-            )
+            modelSelectionGraph()
 
             conversationsGraph(
                 onOpenChat = { conversationId ->
@@ -67,11 +71,11 @@ fun AppNavigation(
     }
 }
 
-private fun NavGraphBuilder.modelSelectionGraph(onModelReady: () -> Unit) {
+private fun NavGraphBuilder.modelSelectionGraph() {
     composable<ModelSelection>(
         exitTransition = AppTransitions.scaleOutExit
     ) {
-        ModelSelectionScreen(onModelReady = onModelReady)
+        ModelSelectionScreen()
     }
 }
 

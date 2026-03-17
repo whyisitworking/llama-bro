@@ -55,7 +55,6 @@ internal class LlamaSessionImpl(
                 seed = sessionConfig.seed,
                 batchSize = sessionConfig.decodeConfig.batchSize,
                 microBatchSize = sessionConfig.decodeConfig.microBatchSize,
-                systemPromptReserve = sessionConfig.decodeConfig.systemPromptReserve,
             )
         )
     } catch (e: RuntimeException) {
@@ -162,7 +161,6 @@ internal class LlamaSessionImpl(
         // Decode tuning
         val batchSize: Int,
         val microBatchSize: Int,
-        val systemPromptReserve: Int,
     )
 
     private object Jni {

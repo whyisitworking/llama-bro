@@ -16,7 +16,6 @@ struct NativeSessionParams {
     int overflow_strategy_id;
     int overflow_drop_tokens;
 
-    // Optional samplers (guarded by *_enabled)
     bool top_k_enabled;
     int top_k;
     bool top_p_enabled;
@@ -24,19 +23,15 @@ struct NativeSessionParams {
     bool min_p_enabled;
     float min_p;
 
-    // Always-on samplers (no enable guard)
-    float rep_pen;       // 1.0f = no effect
-    float presence_pen;  // 0.0f = no effect
-    float temp;          // 0.0f = greedy
+    float rep_pen;
+    float presence_pen;
+    float temp;
 
     int seed;
 
-    // Decode tuning (previously hardcoded)
     int batch_size;
     int micro_batch_size;
-    int system_prompt_reserve;
 };
-
 
 #include <atomic>
 
@@ -52,7 +47,6 @@ private:
 
     int32_t n_past = 0;
     int32_t n_keep = 0;
-    int32_t system_prompt_reserve = 100;
     OverflowStrategy overflow_strategy = ROLLING_WINDOW;
     int32_t n_drop = 500;
 

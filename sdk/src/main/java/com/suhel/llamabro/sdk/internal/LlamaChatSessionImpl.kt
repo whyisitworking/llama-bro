@@ -21,6 +21,11 @@ import kotlinx.coroutines.withContext
  * and the [TokenStreamParser] to provide a conversational experience.
  * It manages the token generation loop and transforms raw tokens into
  * structured [Completion] snapshots.
+ *
+ * ### Turn lifecycle
+ * The C++ layer decodes EOG tokens into the KV cache, so every assistant
+ * turn is automatically closed at the native level. This class does not
+ * need to track or inject turn-closing tokens.
  */
 internal class LlamaChatSessionImpl(
     private val session: LlamaSession,
@@ -34,23 +39,21 @@ internal class LlamaChatSessionImpl(
         var completionState = Completion()
         var tokenCount = 0
 
-        // Format and inject the user message and assistant prefix
-        session.prompt(promptFormatter.user(message) + promptFormatter.assistant(null))
+        // Inject user turn + assistant turn prefix
+        session.prompt(promptFormatter.user(message) + promptFormatter.assistantStart())
         val startTime = System.nanoTime()
 
         while (currentCoroutineContext().isActive) {
             val token = try {
                 session.generate()
             } catch (_: LlamaError.Cancelled) {
-                // Handle manual abortion by emitting a final interrupted state
                 emit(completionState.finalize(tokenCount, startTime, true))
                 return@flow
             } catch (e: LlamaError) {
-                // Propagate legitimate errors (OOM, Decode errors) to the consumer
                 throw e
             }
 
-            // End of Generation (EOG) reached by native engine
+            // End of Generation — EOG token is already decoded into KV by native layer.
             if (token == null) {
                 completionState = completionState.applyActions(parser.flush())
                 emit(completionState.finalize(tokenCount, startTime))
@@ -60,13 +63,13 @@ internal class LlamaChatSessionImpl(
             tokenCount++
             val actions = parser.process(token)
 
-            // Emit update if parser produced meaningful content/thinking text
             if (actions.isNotEmpty()) {
                 completionState = completionState.applyActions(actions)
                 emit(completionState)
             }
 
-            // Stop if the parser intercepted a configured stop sequence (e.g. assistant suffix)
+            // Stop if the parser intercepted a configured stop sequence
+            // (e.g. assistant suffix for custom formats where suffix ≠ EOG).
             if (actions.any { it is StreamAction.Stop }) {
                 emit(completionState.finalize(tokenCount, startTime))
                 break
@@ -74,7 +77,6 @@ internal class LlamaChatSessionImpl(
         }
     }
         .onCompletion { cause ->
-            // Ensure native computation stops if the flow collection is cancelled
             if (cause != null) {
                 session.abort()
             }
@@ -138,7 +140,9 @@ internal class LlamaChatSessionImpl(
     /** Initial injection of the BOS and system prompt during session creation. */
     internal suspend fun initialize() =
         withContext(Dispatchers.IO) {
-            val formattedPrompt = promptFormatter.bos() + promptFormatter.system(systemPrompt)
-            session.setSystemPrompt(formattedPrompt)
+            session.setSystemPrompt(
+                text = promptFormatter.system(systemPrompt),
+                addSpecial = promptFormatter.shouldAddSpecial()
+            )
         }
 }

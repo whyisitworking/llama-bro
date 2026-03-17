@@ -53,7 +53,6 @@ import com.suhel.llamabro.demo.ui.theme.Violet
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModelSelectionScreen(
-    onModelReady: () -> Unit,
     viewModel: ModelSelectionViewModel = hiltViewModel(),
 ) {
     AppScaffold(
@@ -74,7 +73,6 @@ fun ModelSelectionScreen(
                     onDownload = { viewModel.download(model) },
                     onLoad = {
                         viewModel.load(model)
-                        onModelReady()
                     },
                     onDelete = { viewModel.delete(model) }
                 )

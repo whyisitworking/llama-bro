@@ -17,11 +17,11 @@ object PromptFormats {
      */
     val ChatML = PromptFormat(
         systemPrefix = "<|im_start|>system\n",
-        systemSuffix = "<|im_end|>\n",
+        systemSuffix = "<|im_end|>",
         userPrefix = "<|im_start|>user\n",
-        userSuffix = "<|im_end|>\n",
+        userSuffix = "<|im_end|>",
         assistantPrefix = "<|im_start|>assistant\n",
-        assistantSuffix = "<|im_end|>\n",
+        assistantSuffix = "<|im_end|>",
     )
 
     /** 
@@ -61,10 +61,10 @@ object PromptFormats {
     val Gemma3 = PromptFormat(
         bos = "<bos>",
         systemPrefix = "<start_of_turn>system\n",
-        systemSuffix = "<end_of_turn>\n",
-        userPrefix = "<start_of_turn>user\n",
-        userSuffix = "<end_of_turn>\n",
-        assistantPrefix = "<start_of_turn>model\n",
-        assistantSuffix = "<end_of_turn>\n",
+        systemSuffix = "<end_of_turn>",
+        userPrefix = "\n<start_of_turn>user\n",
+        userSuffix = "<end_of_turn>",
+        assistantPrefix = "\n<start_of_turn>model\n",
+        assistantSuffix = "<end_of_turn>",
     )
 }
