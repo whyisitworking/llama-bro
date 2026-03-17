@@ -44,7 +44,7 @@ internal class LlamaChatSessionImpl(
         val startTime = System.nanoTime()
 
         while (currentCoroutineContext().isActive) {
-            val token = try {
+            val generation = try {
                 session.generate()
             } catch (_: LlamaError.Cancelled) {
                 emit(completionState.finalize(tokenCount, startTime, true))
@@ -53,26 +53,27 @@ internal class LlamaChatSessionImpl(
                 throw e
             }
 
-            // End of Generation — EOG token is already decoded into KV by native layer.
-            if (token == null) {
+            if (generation.isComplete) {
                 completionState = completionState.applyActions(parser.flush())
                 emit(completionState.finalize(tokenCount, startTime))
                 break
             }
 
-            tokenCount++
-            val actions = parser.process(token)
+            generation.token?.let { generatedToken ->
+                tokenCount++
+                val actions = parser.process(generatedToken)
 
-            if (actions.isNotEmpty()) {
-                completionState = completionState.applyActions(actions)
-                emit(completionState)
-            }
+                if (actions.isNotEmpty()) {
+                    completionState = completionState.applyActions(actions)
+                    emit(completionState)
+                }
 
-            // Stop if the parser intercepted a configured stop sequence
-            // (e.g. assistant suffix for custom formats where suffix ≠ EOG).
-            if (actions.any { it is StreamAction.Stop }) {
-                emit(completionState.finalize(tokenCount, startTime))
-                break
+                // Stop if the parser intercepted a configured stop sequence
+                // (e.g. assistant suffix for custom formats where suffix ≠ EOG).
+                if (actions.any { it is StreamAction.Stop }) {
+                    emit(completionState.finalize(tokenCount, startTime))
+                    break
+                }
             }
         }
     }

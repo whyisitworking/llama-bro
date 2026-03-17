@@ -4,16 +4,44 @@
 #include "utils/llama_exception.h"
 #include "engine.h"
 
+namespace jni_refs {
+    constexpr auto token_generation_result_class = "com/suhel/llamabro/sdk/internal/LlamaSessionImpl$NativeTokenGenerationResult";
+    constexpr auto token_generation_result_constructor_sig = "(Ljava/lang/String;Z)V";
+}
+
+static jclass jTokenGenerationResultClass = nullptr;
+static jmethodID jTokenGenerationResultConstructor = nullptr;
+
+static void cache_refs(JNIEnv *env) {
+    auto local = env->FindClass(jni_refs::token_generation_result_class);
+
+    jTokenGenerationResultClass = reinterpret_cast<jclass>(env->NewGlobalRef(local));
+    jTokenGenerationResultConstructor = env->GetMethodID(jTokenGenerationResultClass,
+                                                         "<init>",
+                                                         jni_refs::token_generation_result_constructor_sig);
+    env->DeleteLocalRef(local);
+}
+
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *) {
+    JNIEnv *env;
+    if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK) {
+        return JNI_ERR;
+    }
+
+    cache_refs(env);
+    return JNI_VERSION_1_6;
+}
+
 // ── create ────────────────────────────────────────────────────────────────────
 
 extern "C"
 JNIEXPORT jlong JNICALL
 Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_create(JNIEnv *env,
                                                                       jclass,
-                                                                      jlong kEnginePtr,
-                                                                      jobject kParams) {
-    auto engine = reinterpret_cast<LlamaEngine *>(kEnginePtr);
-    auto configReader = JniConfigReader(env, kParams);
+                                                                      jlong jEnginePtr,
+                                                                      jobject jParams) {
+    auto engine = reinterpret_cast<LlamaEngine *>(jEnginePtr);
+    auto configReader = JniConfigReader(env, jParams);
 
     auto config = NativeSessionParams{
             .context_size          = configReader.getInt("contextSize"),
@@ -46,16 +74,16 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_create(JNIEnv *en
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_setSystemPrompt(JNIEnv *env, jclass,
-                                                                               jlong kSessionPtr,
-                                                                               jstring kText,
-                                                                               jboolean kAddSpecial) {
-    auto session = reinterpret_cast<LlamaSession *>(kSessionPtr);
-    auto text = env->GetStringUTFChars(kText, nullptr);
-    std::string textStr(text);
-    env->ReleaseStringUTFChars(kText, text);
+                                                                               jlong jSessionPtr,
+                                                                               jstring jText,
+                                                                               jboolean jAddSpecial) {
+    auto session = reinterpret_cast<LlamaSession *>(jSessionPtr);
+    auto text = env->GetStringUTFChars(jText, nullptr);
+    auto textStr = std::string(text);
+    env->ReleaseStringUTFChars(jText, text);
 
     try {
-        session->setSystemPrompt(textStr, kAddSpecial);
+        session->setSystemPrompt(textStr, jAddSpecial);
     } catch (const LlamaException &ex) {
         throwLlamaError(env, ex);
     }
@@ -64,16 +92,16 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_setSystemPrompt(J
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_injectPrompt(JNIEnv *env, jclass,
-                                                                            jlong kSessionPtr,
-                                                                            jstring kText,
-                                                                            jboolean kAddSpecial) {
-    auto session = reinterpret_cast<LlamaSession *>(kSessionPtr);
-    auto text = env->GetStringUTFChars(kText, nullptr);
-    std::string textStr(text);
-    env->ReleaseStringUTFChars(kText, text);
+                                                                            jlong jSessionPtr,
+                                                                            jstring jText,
+                                                                            jboolean jAddSpecial) {
+    auto session = reinterpret_cast<LlamaSession *>(jSessionPtr);
+    auto text = env->GetStringUTFChars(jText, nullptr);
+    auto textStr = std::string(text);
+    env->ReleaseStringUTFChars(jText, text);
 
     try {
-        session->injectPrompt(textStr, kAddSpecial);
+        session->injectPrompt(textStr, jAddSpecial);
     } catch (const LlamaException &ex) {
         throwLlamaError(env, ex);
     }
@@ -84,9 +112,11 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_injectPrompt(JNIE
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_clear(JNIEnv *env, jclass,
-                                                                     jlong kSessionPtr) {
+                                                                     jlong jSessionPtr) {
+    auto session = reinterpret_cast<LlamaSession *>(jSessionPtr);
+
     try {
-        reinterpret_cast<LlamaSession *>(kSessionPtr)->clear();
+        session->clear();
     } catch (const LlamaException &ex) {
         throwLlamaError(env, ex);
     }
@@ -97,25 +127,31 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_clear(JNIEnv *env
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_abort(JNIEnv *, jclass,
-                                                                     jlong kSessionPtr) {
-    reinterpret_cast<LlamaSession *>(kSessionPtr)->abort();
+                                                                     jlong jSessionPtr) {
+    auto session = reinterpret_cast<LlamaSession *>(jSessionPtr);
+    session->abort();
 }
 
 // ── generate ─────────────────────────────────────────────────────────────────
 
 extern "C"
-JNIEXPORT jstring JNICALL
+JNIEXPORT jobject JNICALL
 Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_generate(JNIEnv *env, jclass,
-                                                                        jlong kSessionPtr) {
-    try {
-        auto result = reinterpret_cast<LlamaSession *>(kSessionPtr)->generate();
+                                                                        jlong jSessionPtr) {
+    auto session = reinterpret_cast<LlamaSession *>(jSessionPtr);
 
-        if (result.has_value()) {
-            const auto &utf16 = result.value();
-            return env->NewString(reinterpret_cast<const jchar *>(utf16.data()),
-                                  static_cast<jsize>(utf16.size()));
-        }
-        return nullptr;
+    try {
+        auto gen = session->generate();
+        auto token = gen.token;
+
+        auto jToken = token.has_value()
+                      ? env->NewString(reinterpret_cast<const jchar *>(token.value().data()),
+                                       static_cast<jsize>(token.value().size()))
+                      : nullptr;
+        auto jIsComplete = static_cast<jboolean>(gen.is_complete);
+
+        return env->NewObject(jTokenGenerationResultClass, jTokenGenerationResultConstructor,
+                              jToken, jIsComplete);
     } catch (const LlamaException &ex) {
         throwLlamaError(env, ex);
         return nullptr;
@@ -127,6 +163,7 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_generate(JNIEnv *
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_destroy(JNIEnv *, jclass,
-                                                                       jlong kSessionPtr) {
-    delete reinterpret_cast<LlamaSession *>(kSessionPtr);
+                                                                       jlong jSessionPtr) {
+    auto session = reinterpret_cast<LlamaSession *>(jSessionPtr);
+    delete session;
 }

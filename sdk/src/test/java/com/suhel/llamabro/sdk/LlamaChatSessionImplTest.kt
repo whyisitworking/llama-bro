@@ -1,12 +1,13 @@
 package com.suhel.llamabro.sdk
 
 import com.suhel.llamabro.sdk.internal.LlamaChatSessionImpl
-import com.suhel.llamabro.sdk.model.ResourceState
+import com.suhel.llamabro.sdk.model.LlamaError
 import com.suhel.llamabro.sdk.model.Message
 import com.suhel.llamabro.sdk.model.ModelConfig
 import com.suhel.llamabro.sdk.model.PromptFormat
 import com.suhel.llamabro.sdk.model.PromptFormats
-import com.suhel.llamabro.sdk.model.LlamaError
+import com.suhel.llamabro.sdk.model.ResourceState
+import com.suhel.llamabro.sdk.model.TokenGenerationResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.toList
@@ -47,9 +48,9 @@ class LlamaChatSessionImplTest {
             prompts.add(text)
         }
 
-        override suspend fun generate(): String? {
+        override suspend fun generate(): TokenGenerationResult {
             shouldThrow?.let { throw it }
-            return if (index < tokens.size) tokens[index++] else null
+            return TokenGenerationResult(tokens[index++], index == tokens.size)
         }
 
         override suspend fun clear() {
@@ -94,7 +95,10 @@ class LlamaChatSessionImplTest {
 
         assertTrue("isComplete should be true", last.isComplete)
         assertNotNull("tokensPerSecond should not be null", last.tokensPerSecond)
-        assertTrue("tokensPerSecond should be > 0, was ${last.tokensPerSecond}", (last.tokensPerSecond ?: 0f) > 0f)
+        assertTrue(
+            "tokensPerSecond should be > 0, was ${last.tokensPerSecond}",
+            (last.tokensPerSecond ?: 0f) > 0f
+        )
     }
 
     @Test
@@ -310,12 +314,12 @@ class LlamaChatSessionImplTest {
     @Test
     fun `cancelled error emits interrupted state`() = runTest {
         val fake = FakeSession(
-            tokens = emptyList(), 
+            tokens = emptyList(),
             shouldThrow = LlamaError.Cancelled()
         )
         val session = LlamaChatSessionImpl(fake, "")
         val generations = session.completion("Hi").toList()
-        
+
         assertTrue(generations.last().isInterrupted)
         assertTrue(generations.last().isComplete)
     }
@@ -323,7 +327,7 @@ class LlamaChatSessionImplTest {
     @Test(expected = LlamaError.DecodeFailed::class)
     fun `other llama errors are propagated`() = runTest {
         val fake = FakeSession(
-            tokens = emptyList(), 
+            tokens = emptyList(),
             shouldThrow = LlamaError.DecodeFailed(1)
         )
         val session = LlamaChatSessionImpl(fake, "")

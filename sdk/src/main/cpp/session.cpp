@@ -201,7 +201,7 @@ bool LlamaSession::is_token_buffer_valid() {
     return !token_buffer.empty() && utils::llm_is_valid_utf8(token_buffer);
 }
 
-std::u16string LlamaSession::get_token_buffer_as_u16string() {
+std::u16string LlamaSession::get_and_clear_token_buffer() {
     auto result = utils::llm_utf8_to_utf16_sanitized(token_buffer);
     token_buffer.clear();
     return result;
@@ -221,7 +221,7 @@ void LlamaSession::injectPrompt(const std::string &user_message, bool add_specia
     ingest_prompt(user_message, false, add_special);
 }
 
-std::optional<std::u16string> LlamaSession::generate() {
+Generation LlamaSession::generate() {
     auto ctx = llama_context.get();
     auto model = llama_get_model(ctx);
     auto vocab = llama_model_get_vocab(model);
@@ -247,20 +247,24 @@ std::optional<std::u16string> LlamaSession::generate() {
                 }
             }
 
-            if (is_token_buffer_valid()) {
-                return get_token_buffer_as_u16string();
-            }
-            return std::nullopt;
+            return Generation{
+                    .token = is_token_buffer_valid()
+                             ? std::make_optional(get_and_clear_token_buffer())
+                             : std::nullopt,
+                    .is_complete = true,
+            };
         }
 
         auto piece = utils::token_to_piece(vocab, new_token, true);
         token_buffer.append(piece);
 
         if (!roll_kv_cache_if_needed(1)) {
-            if (is_token_buffer_valid()) {
-                return get_token_buffer_as_u16string();
-            }
-            return std::nullopt;
+            return Generation{
+                    .token = is_token_buffer_valid()
+                             ? std::make_optional(get_and_clear_token_buffer())
+                             : std::nullopt,
+                    .is_complete = true,
+            };
         }
 
         utils::batch_clear(llama_batch);
@@ -275,7 +279,12 @@ std::optional<std::u16string> LlamaSession::generate() {
         n_past += 1;
 
         if (is_token_buffer_valid()) {
-            return get_token_buffer_as_u16string();
+            return Generation{
+                    .token = is_token_buffer_valid()
+                             ? std::make_optional(get_and_clear_token_buffer())
+                             : std::nullopt,
+                    .is_complete = false,
+            };
         }
     }
 }

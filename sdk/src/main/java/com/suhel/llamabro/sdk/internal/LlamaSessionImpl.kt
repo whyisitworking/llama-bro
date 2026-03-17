@@ -7,6 +7,7 @@ import com.suhel.llamabro.sdk.model.ModelConfig
 import com.suhel.llamabro.sdk.model.OverflowStrategy
 import com.suhel.llamabro.sdk.model.ResourceState
 import com.suhel.llamabro.sdk.model.SessionConfig
+import com.suhel.llamabro.sdk.model.TokenGenerationResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -87,12 +88,17 @@ internal class LlamaSessionImpl(
             }
         }
 
-    override suspend fun generate(): String? =
+    override suspend fun generate(): TokenGenerationResult =
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 try {
                     runInterruptible {
-                        Jni.generate(ptr)
+                        Jni.generate(ptr).let {
+                            TokenGenerationResult(
+                                token = it.token,
+                                isComplete = it.isComplete,
+                            )
+                        }
                     }
                 } catch (e: RuntimeException) {
                     throw mapNativeError(e)
@@ -163,6 +169,11 @@ internal class LlamaSessionImpl(
         val microBatchSize: Int,
     )
 
+    private class NativeTokenGenerationResult(
+        val token: String?,
+        val isComplete: Boolean,
+    )
+
     private object Jni {
         @JvmStatic
         external fun create(enginePtr: Long, params: NativeCreateParams): Long
@@ -180,7 +191,7 @@ internal class LlamaSessionImpl(
         external fun abort(sessionPtr: Long)
 
         @JvmStatic
-        external fun generate(sessionPtr: Long): String?
+        external fun generate(sessionPtr: Long): NativeTokenGenerationResult
 
         @JvmStatic
         external fun destroy(sessionPtr: Long)

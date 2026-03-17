@@ -33,6 +33,11 @@ struct NativeSessionParams {
     int micro_batch_size;
 };
 
+struct Generation {
+    std::optional<std::u16string> token;
+    bool is_complete;
+};
+
 #include <atomic>
 
 class LlamaSession {
@@ -62,7 +67,7 @@ private:
 
     bool is_token_buffer_valid();
 
-    std::u16string get_token_buffer_as_u16string();
+    std::u16string get_and_clear_token_buffer();
 
 public:
     LlamaSession(llama_model *model, int threads, const NativeSessionParams &config);
@@ -81,7 +86,7 @@ public:
 
     void injectPrompt(const std::string &prompt, bool add_special);
 
-    std::optional<std::u16string> generate();
+    Generation generate();
 
     void clear();
 

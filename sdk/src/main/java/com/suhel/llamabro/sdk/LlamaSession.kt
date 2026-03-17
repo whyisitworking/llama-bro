@@ -2,6 +2,7 @@ package com.suhel.llamabro.sdk
 
 import com.suhel.llamabro.sdk.model.ResourceState
 import com.suhel.llamabro.sdk.model.ModelConfig
+import com.suhel.llamabro.sdk.model.TokenGenerationResult
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -60,7 +61,7 @@ interface LlamaSession : AutoCloseable {
      *         End-of-Generation (EOG) token.
      * @throws LlamaError.DecodeFailed if the native sampling loop fails.
      */
-    suspend fun generate(): String?
+    suspend fun generate(): TokenGenerationResult
 
     /**
      * Clears the conversation history from the KV cache.
