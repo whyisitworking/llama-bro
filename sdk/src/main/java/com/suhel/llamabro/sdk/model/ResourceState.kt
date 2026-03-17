@@ -20,13 +20,13 @@ sealed interface ResourceState<out T> {
      * @param progress Optional progress value between 0.0 and 1.0.
      */
     data class Loading(val progress: Float? = null) : ResourceState<Nothing>
-    
+
     /** 
      * The resource was successfully loaded. 
      * @param value The loaded resource instance.
      */
     data class Success<T>(val value: T) : ResourceState<T>
-    
+
     /** 
      * An error occurred during loading. 
      * @param error The [LlamaError] describing what went wrong.
@@ -38,7 +38,7 @@ sealed interface ResourceState<out T> {
 fun <T> ResourceState<T>.getOrNull(): T? =
     (this as? ResourceState.Success)?.value
 
-/** Maps the success value to a new type while preserving [Loading] and [Failure] states. */
+/** Maps the success value to a new type while preserving [ResourceState.Loading] and [ResourceState.Failure] states. */
 inline fun <T, R> ResourceState<T>.map(mapper: (T) -> R): ResourceState<R> =
     when (this) {
         is ResourceState.Loading -> ResourceState.Loading(progress)
@@ -97,6 +97,14 @@ inline fun <T> ResourceState<T>.getOrElse(default: (LlamaError?) -> T): T =
         is ResourceState.Loading -> default(null)
     }
 
+/** Returns the success value or a default value. */
+fun <T> ResourceState<T>.getOrDefault(default: T): T =
+    when (this) {
+        is ResourceState.Success -> value
+        is ResourceState.Failure,
+        is ResourceState.Loading -> default
+    }
+
 /** Executes an action only when the state is [ResourceState.Success]. */
 inline fun <T> Flow<ResourceState<T>>.onEachSuccess(
     crossinline action: suspend (T) -> Unit
@@ -117,7 +125,24 @@ inline fun <T> Flow<ResourceState<T>>.onEachLoading(
         }
     }
 
-/** Filters a [Flow<ResourceState<T>>] to only emit the successful values. */
+/** Executes an action only when the state is [ResourceState.Failure]. */
+inline fun <T> Flow<ResourceState<T>>.onEachFailure(
+    crossinline action: suspend (LlamaError) -> Unit
+): Flow<ResourceState<T>> =
+    onEach { state ->
+        if (state is ResourceState.Failure) {
+            action(state.error)
+        }
+    }
+
+/** Filters the [ResourceState.Success] events and unwraps it. */
 fun <T> Flow<ResourceState<T>>.filterSuccess(): Flow<T> =
-    filterIsInstance<ResourceState.Success<T>>()
-        .map { it.value }
+    filterIsInstance<ResourceState.Success<T>>().map { it.value }
+
+/** Filters the [ResourceState.Loading] events and unwraps it. */
+fun <T> Flow<ResourceState<T>>.filterLoading(): Flow<Float?> =
+    filterIsInstance<ResourceState.Loading>().map { it.progress }
+
+/** Filters the [ResourceState.Failure] events and unwraps it. */
+fun <T> Flow<ResourceState<T>>.filterFailure(): Flow<LlamaError> =
+    filterIsInstance<ResourceState.Failure>().map { it.error }

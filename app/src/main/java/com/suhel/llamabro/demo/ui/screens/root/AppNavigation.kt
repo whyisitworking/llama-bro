@@ -1,8 +1,15 @@
 package com.suhel.llamabro.demo.ui.screens.root
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -28,33 +35,63 @@ fun AppNavigation(
         }
     }
 
-    NavHost(
-        navController = navController,
-        startDestination = ModelSelection,
-        modifier = modifier
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
     ) {
-        composable<ModelSelection> {
-            ModelSelectionScreen(
+        NavHost(
+            navController = navController,
+            startDestination = ModelSelection,
+            modifier = modifier,
+            enterTransition = { fadeIn(animationSpec = tween(300)) },
+            exitTransition = { fadeOut(animationSpec = tween(300)) }
+        ) {
+            modelSelectionGraph(
                 onModelReady = {
                     navController.navigate(Conversations) {
                         popUpTo(0)
                     }
                 }
             )
-        }
 
-        composable<Conversations> {
-            ConversationsScreen(
+            conversationsGraph(
                 onOpenChat = { conversationId ->
                     navController.navigate(Chat(conversationId))
                 }
             )
-        }
 
-        composable<Chat> {
-            ChatScreen(
-                onBack = { navController.popBackStack() },
+            chatGraph(
+                onBack = { navController.popBackStack() }
             )
         }
+    }
+}
+
+private fun NavGraphBuilder.modelSelectionGraph(onModelReady: () -> Unit) {
+    composable<ModelSelection>(
+        exitTransition = AppTransitions.scaleOutExit
+    ) {
+        ModelSelectionScreen(onModelReady = onModelReady)
+    }
+}
+
+private fun NavGraphBuilder.conversationsGraph(onOpenChat: (String) -> Unit) {
+    composable<Conversations>(
+        enterTransition = AppTransitions.scaleInEnter,
+        exitTransition = AppTransitions.parallaxOutForward,
+        popEnterTransition = AppTransitions.parallaxInBackward
+    ) {
+        ConversationsScreen(onOpenChat = onOpenChat)
+    }
+}
+
+private fun NavGraphBuilder.chatGraph(onBack: () -> Unit) {
+    composable<Chat>(
+        enterTransition = AppTransitions.slideInForward,
+        popExitTransition = AppTransitions.slideOutBackward
+    ) {
+        ChatScreen(
+            onBack = onBack
+        )
     }
 }

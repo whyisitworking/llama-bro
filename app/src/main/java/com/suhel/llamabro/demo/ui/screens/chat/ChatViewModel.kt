@@ -18,6 +18,7 @@ import com.suhel.llamabro.sdk.model.SessionConfig
 import com.suhel.llamabro.sdk.model.filterSuccess
 import com.suhel.llamabro.sdk.model.flatMapResource
 import com.suhel.llamabro.sdk.model.getOrNull
+import com.suhel.llamabro.sdk.model.mapSuccess
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -44,27 +45,13 @@ class ChatViewModel @Inject constructor(
     private val args = savedStateHandle.toRoute<Chat>()
 
     companion object {
-        private const val TAG = "ChatViewModel"
-
         private val SYSTEM_PROMPT = """
-            You are a highly capable, precise, and brutally efficient AI assistant. Your primary directive is to provide maximum value with minimum token overhead.
-            
-            ### Tone and Style
-            * Speak directly to the user. Do not use filler introductions or conclusions (e.g., "Sure, I can help with that," or "Let me know if you need anything else!").
-            * Be objective, clear, and concise. 
-            * Never apologize. Never use the phrase "As an AI language model..." or similar disclaimers.
-            
-            ### Formatting
-            * Use Markdown extensively to structure your responses.
-            * Use bold text for emphasis and key terms.
-            * Use bullet points and numbered lists to break down complex information.
-            * Always enclose code blocks with the appropriate language tags.
-            
-            ### Constraints & Logic
-            * If you do not know the answer, state "I do not know." Do not hallucinate or guess.
-            * If a request is ambiguous, provide the most likely answer and state your assumptions immediately.
-            * When writing code, provide only the code and a brief explanation of the core logic. Skip trivial setup instructions unless explicitly requested.
-            * Prioritize factual accuracy over conversational politeness.
+        You are Llama Bro, a highly efficient AI assistant running locally on an Android device.
+        Follow these rules strictly:
+        1. Be direct, concise, and highly accurate.
+        2. Do not use filler words, apologies, or preamble.
+        3. Format your answers using markdown for readability.
+        4. Answer the user's question immediately.
         """.trimIndent()
     }
 
@@ -80,11 +67,14 @@ class ChatViewModel @Inject constructor(
                         inferenceConfig = currentInferenceContext.model.defaultInferenceConfig
                     )
                 )
+                ?.mapSuccess { session ->
+                    currentInferenceContext.model to session
+                }
                 ?: flowOf(null)
         }
         .filterNotNull()
-        .flatMapResource { session ->
-            session.createChatSessionFlow(SYSTEM_PROMPT)
+        .flatMapResource { (model, session) ->
+            session.createChatSessionFlow(model.defaultSystemPrompt ?: SYSTEM_PROMPT)
         }
         .filterSuccess()
         .onEach { chatSession ->

@@ -5,46 +5,94 @@ import com.suhel.llamabro.sdk.model.PromptFormats
 
 val ModelZoo = listOf(
     Model(
-        id = "gemma-3n-2b",
-        name = "Gemma 3n 2B",
-        description = "Google’s Gemma 3n multimodal model handles image, audio, video, and text inputs. Available in 2B and 4B sizes, it supports 140 languages for text and multimodal tasks.",
-        downloadUrl = "https://huggingface.co/unsloth/gemma-3n-E2B-it-GGUF/resolve/main/gemma-3n-E2B-it-Q4_K_M.gguf",
-        promptFormat = PromptFormats.Gemma3,
-        defaultInferenceConfig = InferenceConfig(
-            temperature = 1.0f,
-            topK = 64,
-            minP = 0.01f,
-            topP = 0.95f,
-        )
-    ),
-
-    Model(
-        id = "qwen3.5-4b",
-        name = "Qwen3.5 4B",
-        description = "Qwen3.5 is Alibaba’s new model family. The multimodal hybrid reasoning LLMs deliver the strongest performances for their sizes",
-        downloadUrl = "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf",
+        id = "smollm2-135m-instruct",
+        name = "SmolLM2 135M Instruct",
+        description = "Ultra-lightweight model for absolute maximum tokens-per-second. Perfect for baseline speed tests.",
+        downloadUrl = "https://huggingface.co/unsloth/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-F16.gguf",
         promptFormat = PromptFormats.ChatML,
         defaultInferenceConfig = InferenceConfig(
-            temperature = 1.0f,
-            topP = 0.95f,
-            topK = 20,
-            minP = 0.0f,
-            presencePenalty = 1.5f,
-            repeatPenalty = 1.0f,
+            temperature = 0.6f,
+            repeatPenalty = 1.15f,
+            presencePenalty = 0.15f,
+            minP = 0.05f,
+            topP = 0.9f,
+            topK = 40,
         )
     ),
-
+    Model(
+        id = "smollm2-360m-instruct",
+        name = "SmolLM2 360M Instruct",
+        description = "Highly efficient sub-0.5B model balancing sheer speed with improved coherence.",
+        downloadUrl = "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct-GGUF/resolve/main/smollm2-360m-instruct-q8_0.gguf",
+        promptFormat = PromptFormats.ChatML,
+        defaultInferenceConfig = InferenceConfig(
+            temperature = 0.7f,
+            repeatPenalty = 1.15f,
+            presencePenalty = 0.15f,
+            minP = 0.05f,
+            topP = 0.9f,
+            topK = 40,
+        )
+    ),
+    Model(
+        id = "qwen2.5-0.5b-instruct",
+        name = "Qwen2.5 0.5B Instruct",
+        description = "Exceptional speed with strong multilingual support and structured JSON formatting capabilities.",
+        downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf",
+        promptFormat = PromptFormats.ChatML,
+        defaultInferenceConfig = InferenceConfig(
+            temperature = 0.7f,
+            repeatPenalty = 1.05f,
+            presencePenalty = 0.15f,
+            minP = 0.1f,
+            topP = 0.8f,
+            topK = 40,
+        )
+    ),
     Model(
         id = "llama-3.2-1b-instruct",
-        name = "Llama 3.2 1B Instruct",
-        description = "The Llama 3.2 collection of multilingual large language models (LLMs) is a collection of pretrained and instruction-tuned generative models.",
+        name = "Llama-3.2 1B Instruct",
+        description = "Meta's highly optimized 1B mobile model. The industry standard for reliable on-device chat.",
         downloadUrl = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q5_K_M.gguf",
         promptFormat = PromptFormats.Llama3,
         defaultInferenceConfig = InferenceConfig(
             temperature = 0.6f,
+            repeatPenalty = 1.1f,
+            presencePenalty = 0.15f,
+            minP = 0.05f,
             topP = 0.9f,
-            topK = 50,
-            repeatPenalty = 1.2f,
+            topK = 40,
+        )
+    ),
+    Model(
+        id = "deepseek-r1-distill-qwen-1.5b",
+        name = "DeepSeek-R1 1.5B (Distilled)",
+        description = "Advanced reasoning capabilities on-device. Uses chain-of-thought processing.",
+        downloadUrl = "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q8_0.gguf",
+        promptFormat = PromptFormats.ChatML,
+        defaultInferenceConfig = InferenceConfig(
+            temperature = 0.6f,
+            repeatPenalty = 1.0f,
+            presencePenalty = 0.0f,
+            minP = null,
+            topP = 0.95f,
+            topK = 40,
+        ),
+        defaultSystemPrompt = "You are a helpful and harmless assistant. You are Llama Bro."
+    ),
+    Model(
+        id = "smollm2-1.7b-instruct",
+        name = "SmolLM2 1.7B Instruct",
+        description = "High-quality, nuanced text generation that punches above its weight class.",
+        downloadUrl = "https://huggingface.co/bartowski/SmolLM2-1.7B-Instruct-GGUF/resolve/main/SmolLM2-1.7B-Instruct-Q5_K_M.gguf",
+        promptFormat = PromptFormats.ChatML,
+        defaultInferenceConfig = InferenceConfig(
+            temperature = 0.7f,
+            repeatPenalty = 1.1f,
+            presencePenalty = 0.15f,
+            minP = 0.1f,
+            topP = 0.9f,
+            topK = 40,
         )
     )
 )

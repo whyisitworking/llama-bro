@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.suhel.llamabro.demo.R
 import com.suhel.llamabro.demo.model.Conversation
@@ -64,60 +65,83 @@ fun ConversationsScreen(
     AppScaffold(
         title = "Conversations",
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { viewModel.newConversation { onOpenChat(it) } },
-                shape = RoundedCornerShape(18.dp),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.add_24px),
-                    contentDescription = "New conversation"
-                )
-            }
+            NewConversationFab(
+                onClick = { viewModel.newConversation { onOpenChat(it) } }
+            )
         }
     ) {
         if (conversations.itemCount == 0) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    "No conversations yet", color = OnSurfaceMuted,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Tap + to start chatting", color = OnSurfaceFaint,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
+            EmptyConversationsState()
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                items(
-                    count = conversations.itemCount,
-                    key = { idx -> conversations[idx]?.id ?: idx }
-                ) { idx ->
-                    conversations[idx]?.let { conversation ->
-                        ConversationCard(
-                            conversation = conversation,
-                            onClick = {
-                                onOpenChat(conversation.id)
-                            },
-                            onDelete = {
-                                viewModel.deleteConversation(conversation.id)
-                            },
-                        )
-                    }
-                }
+            ConversationsList(
+                conversations = conversations,
+                onOpenChat = onOpenChat,
+                onDelete = { conversationId -> viewModel.deleteConversation(conversationId) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun NewConversationFab(onClick: () -> Unit) {
+    FloatingActionButton(
+        onClick = onClick,
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.add_24),
+            contentDescription = "New conversation"
+        )
+    }
+}
+
+@Composable
+private fun EmptyConversationsState() {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "No conversations yet",
+            color = OnSurfaceMuted,
+            style = MaterialTheme.typography.bodyLarge
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "Tap + to start chatting",
+            color = OnSurfaceFaint,
+            style = MaterialTheme.typography.bodySmall
+        )
+    }
+}
+
+@Composable
+private fun ConversationsList(
+    conversations: LazyPagingItems<Conversation>,
+    onOpenChat: (String) -> Unit,
+    onDelete: (String) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        items(
+            count = conversations.itemCount,
+            key = { idx -> conversations[idx]?.id ?: idx }
+        ) { idx ->
+            conversations[idx]?.let { conversation ->
+                ConversationCard(
+                    conversation = conversation,
+                    onClick = { onOpenChat(conversation.id) },
+                    onDelete = { onDelete(conversation.id) },
+                )
             }
         }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ConversationCard(
     conversation: Conversation,
@@ -126,11 +150,37 @@ private fun ConversationCard(
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
 
+    ConversationCardContent(
+        conversation = conversation,
+        onClick = onClick,
+        onLongClick = { showDeleteDialog = true },
+        onDeleteClick = { showDeleteDialog = true }
+    )
+
+    if (showDeleteDialog) {
+        DeleteConversationDialog(
+            onConfirm = {
+                onDelete()
+                showDeleteDialog = false
+            },
+            onDismiss = { showDeleteDialog = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ConversationCardContent(
+    conversation: Conversation,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onDeleteClick: () -> Unit
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .animateContentSize()
-            .combinedClickable(onClick = onClick, onLongClick = { showDeleteDialog = true }),
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Surface),
         border = androidx.compose.foundation.BorderStroke(0.5.dp, SurfaceBorder),
@@ -139,25 +189,15 @@ private fun ConversationCard(
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = conversation.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = OnSurface,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Active ${formatRelativeTime(conversation.updatedAt)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceMuted
-                )
-            }
-            IconButton(onClick = { showDeleteDialog = true }) {
+            ConversationDetails(
+                title = conversation.title,
+                updatedAt = conversation.updatedAt,
+                modifier = Modifier.weight(1f)
+            )
+
+            IconButton(onClick = onDeleteClick) {
                 Icon(
-                    painter = painterResource(R.drawable.delete_sweep_24px),
+                    painter = painterResource(R.drawable.delete_sweep_24),
                     contentDescription = "Delete",
                     tint = OnSurfaceFaint,
                     modifier = Modifier.size(18.dp)
@@ -165,29 +205,54 @@ private fun ConversationCard(
             }
         }
     }
+}
 
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete conversation?") },
-            text = { Text("This cannot be undone.", color = OnSurfaceMuted) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onDelete()
-                        showDeleteDialog = false
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Error)
-                ) {
-                    Text("Delete")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
-            },
-            containerColor = SurfaceVariant,
+@Composable
+private fun ConversationDetails(
+    title: String,
+    updatedAt: Long,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            color = OnSurface,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "Active ${formatRelativeTime(updatedAt)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = OnSurfaceMuted
         )
     }
+}
+
+@Composable
+private fun DeleteConversationDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete conversation?") },
+        text = { Text("This cannot be undone.", color = OnSurfaceMuted) },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(contentColor = Error)
+            ) {
+                Text("Delete")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+        containerColor = SurfaceVariant,
+    )
 }
 
 private fun formatRelativeTime(timestamp: Long): String {

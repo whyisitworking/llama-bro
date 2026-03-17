@@ -24,11 +24,13 @@ import com.suhel.llamabro.demo.R
 @Composable
 fun AppScaffold(
     title: String,
+    modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
     floatingActionButton: @Composable () -> Unit = {},
     content: @Composable ColumnScope.() -> Unit
 ) {
     Scaffold(
+        modifier = modifier,
         topBar = {
             TopAppBar(
                 title = {
@@ -38,7 +40,7 @@ fun AppScaffold(
                     if (onBack != null) {
                         IconButton(onBack) {
                             Icon(
-                                painter = painterResource(R.drawable.arrow_back_24px),
+                                painter = painterResource(R.drawable.arrow_back_24),
                                 contentDescription = "Back"
                             )
                         }

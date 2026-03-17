@@ -126,7 +126,7 @@ private fun ModelCard(
                     when (s) {
                         is ModelDownloadState.Downloaded ->
                             Icon(
-                                painterResource(R.drawable.check_circle_24px),
+                                painterResource(R.drawable.check_circle_24),
                                 contentDescription = null,
                                 tint = Success,
                                 modifier = Modifier.size(20.dp)
@@ -134,7 +134,7 @@ private fun ModelCard(
 
                         else ->
                             Icon(
-                                painterResource(R.drawable.cloud_24px),
+                                painterResource(R.drawable.cloud_24),
                                 contentDescription = null,
                                 tint = OnSurfaceFaint,
                                 modifier = Modifier.size(20.dp)
@@ -207,7 +207,7 @@ private fun ModelActionButtons(
                 colors = ButtonDefaults.buttonColors(containerColor = Violet),
             ) {
                 Icon(
-                    painterResource(R.drawable.cloud_24px),
+                    painterResource(R.drawable.cloud_24),
                     contentDescription = null,
                     modifier = Modifier.size(16.dp)
                 )
@@ -228,7 +228,7 @@ private fun ModelActionButtons(
                     colors = ButtonDefaults.buttonColors(containerColor = Violet),
                 ) {
                     Icon(
-                        painterResource(R.drawable.play_arrow_24px),
+                        painterResource(R.drawable.play_arrow_24),
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )
@@ -245,7 +245,7 @@ private fun ModelActionButtons(
                     border = BorderStroke(1.dp, Error.copy(alpha = 0.5f)),
                 ) {
                     Icon(
-                        painterResource(R.drawable.delete_sweep_24px),
+                        painterResource(R.drawable.delete_sweep_24),
                         contentDescription = "Delete",
                         modifier = Modifier.size(20.dp)
                     )

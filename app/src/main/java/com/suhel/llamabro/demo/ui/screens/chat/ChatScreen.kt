@@ -1,7 +1,10 @@
 package com.suhel.llamabro.demo.ui.screens.chat
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +32,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.keepScreenOn
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -52,6 +58,7 @@ fun ChatScreen(
 ) {
     AppScaffold(
         title = "Chat",
+        modifier = Modifier.keepScreenOn(),
         onBack = onBack
     ) {
         val messages = viewModel.messages.collectAsLazyPagingItems()
@@ -160,12 +167,12 @@ private fun InputBar(
                 ) { generating ->
                     if (generating) {
                         Icon(
-                            painter = painterResource(R.drawable.stop_circle_24px),
+                            painter = painterResource(R.drawable.stop_circle_24),
                             contentDescription = "Stop"
                         )
                     } else {
                         Icon(
-                            painter = painterResource(R.drawable.arrow_circle_up_24px),
+                            painter = painterResource(R.drawable.arrow_circle_up_24),
                             contentDescription = "Send"
                         )
                     }
@@ -186,56 +193,117 @@ private fun MessageBubble(message: UiChatMessage) {
         Column(
             modifier = if (isUser) Modifier.widthIn(max = 300.dp) else Modifier.fillMaxWidth(),
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            if (message.isProcessing && (message.content.isNullOrBlank() && message.thinking.isNullOrBlank())) {
-                Text(
-                    text = "Processing...",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            if (message.isProcessing && message.content.isNullOrBlank() && message.thinking.isNullOrBlank()) {
+                ProcessingIndicator()
             }
 
             message.thinking?.let { thinkingText ->
-                Text(
-                    text = thinkingText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primaryFixedDim,
-                )
+                ExpandableThinkingBlock(thinkingText = thinkingText)
             }
 
             message.content?.let { contentText ->
                 if (isUser) {
-                    Box(
-                        modifier = Modifier
-                            .background(
-                                MaterialTheme.colorScheme.primary,
-                                MaterialTheme.shapes.medium
-                            )
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = contentText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
+                    UserMessageContent(contentText = contentText)
                 } else {
-                    MarkdownText(
-                        markdown = contentText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    AssistantMessageContent(contentText = contentText)
                 }
             }
 
             if (!isUser && message.tokensPerSecond != null) {
-                Text(
-                    text = "%.1f tok/s".format(message.tokensPerSecond),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                GenerationMetrics(tokensPerSecond = message.tokensPerSecond)
             }
         }
     }
+}
+
+@Composable
+private fun ProcessingIndicator() {
+    Text(
+        text = "Processing...",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+@Composable
+private fun ExpandableThinkingBlock(thinkingText: String) {
+    var isExpanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                MaterialTheme.shapes.small
+            )
+            .animateContentSize()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.small)
+                .clickable { isExpanded = !isExpanded }
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (isExpanded) "Hide thought process" else "Show thought process",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            Image(
+                painter = painterResource(R.drawable.keyboard_arrow_down_24),
+                contentDescription = "chevron-thinking",
+                modifier = Modifier.rotate(if (isExpanded) 180f else 0f)
+            )
+        }
+
+        if (isExpanded) {
+            MarkdownText(
+                markdown = thinkingText,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun UserMessageContent(contentText: String) {
+    Box(
+        modifier = Modifier
+            .background(
+                MaterialTheme.colorScheme.primary,
+                MaterialTheme.shapes.medium
+            )
+            .padding(16.dp)
+    ) {
+        Text(
+            text = contentText,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onPrimary
+        )
+    }
+}
+
+@Composable
+private fun AssistantMessageContent(contentText: String) {
+    MarkdownText(
+        markdown = contentText,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+private fun GenerationMetrics(tokensPerSecond: Float) {
+    Text(
+        text = "%.1f tok/s".format(tokensPerSecond),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }

@@ -1,15 +1,12 @@
 package com.suhel.llamabro.demo.ui.screens.root
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +25,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
+private val STATUS_BAR_HEIGHT = 48.dp
 
 @Composable
 fun RootContainer(vm: RootViewModel = hiltViewModel()) {
@@ -61,76 +60,109 @@ private fun StatusBar(
         tonalElevation = 3.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Box(
+        Row(
             modifier = Modifier
                 .statusBarsPadding()
-                .height(48.dp)
+                .height(STATUS_BAR_HEIGHT)
                 .fillMaxWidth()
         ) {
-            // Background Progress Layer
-            if (state is RootUiState.ModelLoading) {
-                Box(
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .weight(1f)
+            ) {
+                LoadingProgressBar(
+                    isLoading = state is RootUiState.ModelLoading,
+                    progress = animatedProgress
+                )
+
+                StatusText(
+                    state = state,
+                    animatedProgress = animatedProgress,
                     modifier = Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth(animatedProgress)
-                        .background(MaterialTheme.colorScheme.primary)
+                        .fillMaxWidth()
+                        .align(Alignment.CenterStart)
+                        .padding(horizontal = 16.dp)
                 )
             }
 
-            // Centralized Status Text
-            val text = when (state) {
-                RootUiState.NoModelLoaded -> "No model loaded"
-                is RootUiState.ModelLoading -> "Loading ${state.model.name} (${(animatedProgress * 100).toInt()}%)"
-                is RootUiState.ModelLoaded -> "Loaded ${state.model.name}"
-                is RootUiState.ModelLoadError -> "Error loading ${state.model.name}"
-            }
-
-            val textColor by animateColorAsState(
-                targetValue = when (state) {
-                    is RootUiState.ModelLoading -> MaterialTheme.colorScheme.onPrimary
-                    is RootUiState.ModelLoadError -> MaterialTheme.colorScheme.onErrorContainer
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                label = "textColor"
+            EjectButton(
+                isVisible = state is RootUiState.ModelLoaded,
+                onEject = onEjectModel,
             )
+        }
+    }
+}
 
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                color = textColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.CenterStart)
-                    .padding(horizontal = 16.dp)
-            )
+@Composable
+private fun LoadingProgressBar(
+    isLoading: Boolean,
+    progress: Float,
+    modifier: Modifier = Modifier
+) {
+    if (isLoading) {
+        Box(
+            modifier = modifier
+                .fillMaxHeight()
+                .fillMaxWidth(progress)
+                .background(MaterialTheme.colorScheme.primary)
+        )
+    }
+}
 
-            // Functional Eject Button
-            AnimatedVisibility(
-                visible = state is RootUiState.ModelLoaded,
-                enter = slideInHorizontally { it } + fadeIn(),
-                exit = slideOutHorizontally { it } + fadeOut(),
-                modifier = Modifier.align(Alignment.CenterEnd)
+@Composable
+private fun StatusText(
+    state: RootUiState,
+    animatedProgress: Float,
+    modifier: Modifier = Modifier
+) {
+    val text = when (state) {
+        RootUiState.NoModelLoaded -> "No model loaded"
+        is RootUiState.ModelLoading -> "${state.model.name} (${(animatedProgress * 100).toInt()}%)"
+        is RootUiState.ModelLoaded -> state.model.name
+        is RootUiState.ModelLoadError -> "Error loading ${state.model.name}"
+    }
+
+    val textColor by animateColorAsState(
+        targetValue = when (state) {
+            is RootUiState.ModelLoading -> MaterialTheme.colorScheme.onPrimary
+            is RootUiState.ModelLoadError -> MaterialTheme.colorScheme.onErrorContainer
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        label = "textColor"
+    )
+
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = textColor,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun EjectButton(
+    isVisible: Boolean,
+    onEject: () -> Unit
+) {
+    if (isVisible) {
+        Surface(
+            onClick = onEject,
+            color = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier.fillMaxHeight()
+        ) {
+            Box(
+                modifier = Modifier.padding(horizontal = 24.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Surface(
-                    onClick = onEjectModel,
-                    color = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.fillMaxHeight()
-                ) {
-                    Box(
-                        modifier = Modifier.padding(horizontal = 24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Eject",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
-                }
+                Text(
+                    text = "Eject",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.ExtraBold
+                )
             }
         }
     }

@@ -6,8 +6,9 @@ import com.suhel.llamabro.sdk.model.PromptFormat
 data class Model(
     val id: String,
     val name: String,
-    val description: String?,
+    val description: String? = null,
     val downloadUrl: String,
     val promptFormat: PromptFormat,
     val defaultInferenceConfig: InferenceConfig,
+    val defaultSystemPrompt: String? = null
 )
