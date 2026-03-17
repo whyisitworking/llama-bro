@@ -5,7 +5,7 @@
 <img src="assets/llama-bro-banner.png" width="100%"  alt="Banner"/>
 
 [![Build](https://img.shields.io/github/actions/workflow/status/whyisitworking/llama-bro/build.yml?style=flat-square&logo=github&label=Build)](https://github.com/whyisitworking/llama-bro/actions/workflows/build.yml)
-[![Release](https://img.shields.io/github/v/release/whyisitworking/llama-bro?style=flat-square&logo=android&label=Demo%20APK&color=success)](https://github.com/github/whyisitworking/llama-bro/releases/latest)
+[![Release](https://img.shields.io/github/v/release/whyisitworking/llama-bro?style=flat-square&logo=android&label=Demo%20APK&color=success)](https://github.com/whyisitworking/llama-bro/releases/latest/download/LlamaBro-Demo.apk)
 [![JitPack](https://img.shields.io/jitpack/v/github/whyisitworking/llama-bro?style=flat-square&logo=git&color=brightgreen)](https://jitpack.io/#whyisitworking/llama-bro)
 [![API](https://img.shields.io/badge/API-24%2B-brightgreen.svg?style=flat-square&logo=android)](https://android-arsenal.com/api?level=24)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square&logo=apache)](LICENSE)

@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.android.library)
-    `maven-publish`
+    id("maven-publish")
 }
 
 val dynamicVersionName = (project.findProperty("VERSION_NAME") as? String) ?: "1.0.0-SNAPSHOT"
@@ -70,7 +70,7 @@ afterEvaluate {
                 from(components["release"])
 
                 groupId = "com.github.whyisitworking"
-                artifactId = "llamabro-sdk"
+                artifactId = "llama-bro"
                 version = dynamicVersionName
             }
         }
