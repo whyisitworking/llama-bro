@@ -1,5 +1,6 @@
 package com.suhel.llamabro.demo.ui.screens.chat
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -25,6 +26,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filterNotNull
@@ -52,7 +54,8 @@ class ChatViewModel @Inject constructor(
         """.trimIndent()
     }
 
-    private val sendMessageTrigger = MutableSharedFlow<String?>(extraBufferCapacity = 1)
+    private val sendMessageTrigger =
+        MutableSharedFlow<Pair<String, Boolean>?>(extraBufferCapacity = 1)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val chatSessionFlow = modelRepository.currentInferenceContextFlow
@@ -61,6 +64,7 @@ class ChatViewModel @Inject constructor(
                 ?.getOrNull()
                 ?.createSessionFlow(
                     SessionConfig(
+                        contextSize = 8192,
                         inferenceConfig = currentInferenceContext.model.defaultInferenceConfig
                     )
                 )
@@ -117,11 +121,12 @@ class ChatViewModel @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
     val incomingMessage = sendMessageTrigger
-        .distinctUntilChanged()
         .flatMapLatest { message ->
             if (message == null) {
                 return@flatMapLatest flowOf(null)
             }
+
+            val (prompt, enableThinking) = message
 
             flow<UiChatMessage?> {
                 emit(
@@ -135,17 +140,17 @@ class ChatViewModel @Inject constructor(
                 chatRepository.addMessage(
                     conversationId = args.conversationId,
                     role = MessageRole.User,
-                    content = message
+                    content = prompt
                 )
 
                 emitAll(
                     chatSessionFlow
                         .filterNotNull()
                         .flatMapLatest { chatSession ->
-                            chatSession.completion(message)
+                            chatSession.completion(prompt, enableThinking)
                         }
                         .onEach { chunk ->
-                            if (chunk.isComplete && chunk.contentText != null) {
+                            if (chunk.isComplete && (chunk.contentText != null || chunk.thinkingText != null)) {
                                 chatRepository.addMessage(
                                     conversationId = args.conversationId,
                                     role = MessageRole.Assistant,
@@ -181,8 +186,18 @@ class ChatViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    fun sendMessage(text: String) {
-        sendMessageTrigger.tryEmit(text)
+    val inputConfig = combine(
+        chatSessionFlow.map { it?.supportsThinking == true },
+        incomingMessage.map { it != null }
+    ) { (supportsThinking, isGenerating) ->
+        UiChatInputConfig(
+            thinkingSupported = supportsThinking,
+            isGenerating = isGenerating
+        )
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, UiChatInputConfig())
+
+    fun sendMessage(text: String, enableThinking: Boolean = false) {
+        sendMessageTrigger.tryEmit(text to enableThinking)
     }
 
     fun stopGeneration() {

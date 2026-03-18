@@ -10,5 +10,6 @@ data class Model(
     val downloadUrl: String,
     val promptFormat: PromptFormat,
     val defaultInferenceConfig: InferenceConfig,
+    val thinkingSupported: Boolean = false,
     val defaultSystemPrompt: String? = null
 )

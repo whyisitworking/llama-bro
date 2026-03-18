@@ -9,6 +9,12 @@
 
 #include "llama.h"
 
+namespace constants {
+    constexpr int STRATEGY_ID_HALT = 0;
+    constexpr int STRATEGY_ID_CLEAR_HISTORY = 1;
+    constexpr int STRATEGY_ID_ROLLING_WINDOW = 2;
+}
+
 LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionParams &config) {
     auto params = llama_context_default_params();
     params.n_ctx = config.context_size;
@@ -66,17 +72,25 @@ LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionP
     llama_batch = llama_batch_init(static_cast<int32_t>(llama_n_batch(ctx)), 0, 1);
 
     switch (config.overflow_strategy_id) {
-        case 0:
+        case constants::STRATEGY_ID_HALT:
             overflow_strategy = HALT;
             break;
-        case 1:
+        case constants::STRATEGY_ID_CLEAR_HISTORY:
             overflow_strategy = CLEAR_HISTORY;
             break;
-        case 2:
-        default:
-            overflow_strategy = ROLLING_WINDOW;
-            n_drop = config.overflow_drop_tokens;
+        case constants::STRATEGY_ID_ROLLING_WINDOW:
+        default: {
+            auto memory = llama_get_memory(ctx);
+            if (llama_memory_can_shift(memory)) {
+                overflow_strategy = ROLLING_WINDOW;
+                n_drop = config.overflow_drop_tokens;
+            } else {
+                // Model uses M-RoPE / I-MRoPE (e.g. Qwen3.5) — KV-cache position
+                // shifting is not supported, so fall back to clearing history instead.
+                overflow_strategy = CLEAR_HISTORY;
+            }
             break;
+        }
     }
 }
 

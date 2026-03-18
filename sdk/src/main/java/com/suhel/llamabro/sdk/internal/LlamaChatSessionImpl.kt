@@ -19,16 +19,23 @@ internal class LlamaChatSessionImpl(
     private val systemPrompt: String
 ) : LlamaChatSession {
     private val parser = TokenStreamParser()
-    private val promptFormatter = PromptFormatter(session.modelConfig.promptFormat)
+    private val prompter = Prompter(session.modelConfig.promptFormat)
 
-    override fun completion(prompt: String): Flow<Completion> = flow {
+    override val supportsThinking: Boolean
+        get() = session.modelConfig.supportsThinking
+
+    override fun completion(prompt: String, enableThinking: Boolean): Flow<Completion> = flow {
         var completionState = Completion()
         var tokenCount = 0
         val contentBuilder = StringBuilder()
         val thinkingBuilder = StringBuilder()
+        val thinkingEnabled = enableThinking && session.modelConfig.supportsThinking
 
-        parser.reset()
-        session.ingestPrompt(promptFormatter.user(prompt) + promptFormatter.assistantStart())
+        parser.reset(thinkingEnabled)
+        session.ingestPrompt(
+            prompt = prompter.user(prompt) + prompter.assistantStart(thinkingEnabled),
+            addSpecial = prompter.shouldAddSpecial()
+        )
 
         val startTime = System.nanoTime()
 
@@ -125,7 +132,7 @@ internal class LlamaChatSessionImpl(
     override suspend fun loadHistory(messages: List<Message>) =
         withContext(Dispatchers.IO) {
             messages.forEach { msg ->
-                session.ingestPrompt(promptFormatter.format(msg))
+                session.ingestPrompt(prompter.format(msg))
             }
         }
 
@@ -133,8 +140,8 @@ internal class LlamaChatSessionImpl(
     internal suspend fun initialize() =
         withContext(Dispatchers.IO) {
             session.setSystemPrompt(
-                text = promptFormatter.system(systemPrompt),
-                addSpecial = promptFormatter.shouldAddSpecial()
+                text = prompter.system(systemPrompt),
+                addSpecial = prompter.shouldAddSpecial()
             )
         }
 }

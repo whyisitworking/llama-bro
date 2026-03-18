@@ -95,7 +95,8 @@ class ModelRepository @Inject constructor(
                 is Action.Load -> LlamaEngine.createFlow(
                     ModelConfig(
                         modelPath = action.model.file().absolutePath,
-                        promptFormat = action.model.promptFormat
+                        promptFormat = action.model.promptFormat,
+                        supportsThinking = action.model.thinkingSupported
                     )
                 ).map { engine -> CurrentInferenceContext(action.model, engine) }
 

@@ -50,6 +50,22 @@ val ModelZoo = listOf(
         )
     ),
     Model(
+        id = "qwen3.5-2b",
+        name = "Qwen3.5 2B",
+        description = "Multimodal thinking model with advanced reasoning capabilities.",
+        downloadUrl = "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-UD-Q5_K_XL.gguf",
+        promptFormat = PromptFormats.ChatML,
+        defaultInferenceConfig = InferenceConfig(
+            temperature = 1.0f,
+            topP = 0.95f,
+            topK = 20,
+            minP = 0.0f,
+            presencePenalty = 1.5f,
+            repeatPenalty = 1.0f,
+        ),
+        thinkingSupported = true,
+    ),
+    Model(
         id = "llama-3.2-1b-instruct",
         name = "Llama-3.2 1B Instruct",
         description = "Meta's highly optimized 1B mobile model. The industry standard for reliable on-device chat.",
@@ -78,6 +94,7 @@ val ModelZoo = listOf(
             topP = 0.95f,
             topK = 40,
         ),
+        thinkingSupported = true,
         defaultSystemPrompt = "You are a helpful and harmless assistant. You are Llama Bro."
     ),
     Model(

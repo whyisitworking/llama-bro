@@ -15,7 +15,7 @@ import com.suhel.llamabro.sdk.model.PromptFormat
  * - [assistant]       — formats a complete turn (prefix + content + suffix + eos,
  *                       used for history loading).
  */
-internal class PromptFormatter(private val fmt: PromptFormat) {
+internal class Prompter(private val fmt: PromptFormat) {
     /** Beginning of stream token. */
     fun bos(): String = fmt.bos.orEmpty()
 
@@ -40,7 +40,8 @@ internal class PromptFormatter(private val fmt: PromptFormat) {
         "${bos()}${fmt.systemPrefix}$prompt${fmt.systemSuffix}"
 
     /** Returns the assistant turn opening prefix (injected before generation). */
-    fun assistantStart(): String = fmt.assistantPrefix
+    fun assistantStart(appendThinking: Boolean = false): String =
+        if(appendThinking) "${fmt.assistantPrefix}${fmt.thinkStart}\n" else fmt.assistantPrefix
 
     /** Returns the assistant turn closing tokens (injected after generation). */
     fun assistantEnd(): String = "${fmt.assistantSuffix}${eos()}"

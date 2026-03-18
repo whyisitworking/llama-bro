@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -52,6 +53,7 @@ import com.suhel.llamabro.demo.R
 import com.suhel.llamabro.demo.model.MessageRole
 import com.suhel.llamabro.demo.ui.AppScaffold
 import dev.jeziellago.compose.markdowntext.MarkdownText
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -108,7 +110,7 @@ fun ChatScreen(
         }
 
         InputBar(
-            isGenerating = incomingMessage != null,
+            configFlow = viewModel.inputConfig,
             onStartGeneration = viewModel::sendMessage,
             onStopGeneration = viewModel::stopGeneration,
         )
@@ -117,24 +119,20 @@ fun ChatScreen(
 
 @Composable
 private fun InputBar(
-    isGenerating: Boolean,
-    onStartGeneration: (String) -> Unit,
+    configFlow: StateFlow<UiChatInputConfig>,
+    onStartGeneration: (String, Boolean) -> Unit,
     onStopGeneration: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    Column {
         var inputText by remember("input_text") { mutableStateOf("") }
 
         TextField(
             value = inputText,
             onValueChange = { inputText = it },
             maxLines = 8,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
             placeholder = { Text("Talk with Llama Bro") },
             shape = RoundedCornerShape(32.dp),
             colors = TextFieldDefaults.colors(
@@ -150,34 +148,51 @@ private fun InputBar(
             )
         )
 
-        IconButton(
-            onClick = {
-                if (isGenerating) {
-                    onStopGeneration()
-                } else {
-                    val text = inputText
-                    inputText = ""
-                    onStartGeneration(text)
-                }
-            },
-            enabled = isGenerating || inputText.isNotBlank(),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            AnimatedContent(
-                targetState = isGenerating,
-                label = "send-stop"
-            ) { generating ->
-                if (generating) {
-                    Icon(
-                        painter = painterResource(R.drawable.stop_circle_24),
-                        contentDescription = "Stop",
-                        modifier = Modifier.size(48.dp),
-                    )
-                } else {
-                    Icon(
-                        painter = painterResource(R.drawable.arrow_circle_up_24),
-                        contentDescription = "Send",
-                        modifier = Modifier.size(48.dp),
-                    )
+            var thinkingEnabled by remember("thinking_enabled") { mutableStateOf(false) }
+            val config by configFlow.collectAsStateWithLifecycle()
+
+            if (config.thinkingSupported) {
+                FilterChip(
+                    selected = thinkingEnabled,
+                    onClick = { thinkingEnabled = !thinkingEnabled },
+                    label = { Text("Think") },
+                )
+            }
+
+            IconButton(
+                onClick = {
+                    if (config.isGenerating) {
+                        onStopGeneration()
+                    } else {
+                        val text = inputText
+                        inputText = ""
+                        onStartGeneration(text, thinkingEnabled)
+                    }
+                },
+                enabled = config.isGenerating || inputText.isNotBlank(),
+            ) {
+                AnimatedContent(
+                    targetState = config.isGenerating,
+                    label = "send-stop"
+                ) { generating ->
+                    if (generating) {
+                        Icon(
+                            painter = painterResource(R.drawable.stop_circle_24),
+                            contentDescription = "Stop",
+                            modifier = Modifier.size(48.dp),
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(R.drawable.arrow_circle_up_24),
+                            contentDescription = "Send",
+                            modifier = Modifier.size(48.dp),
+                        )
+                    }
                 }
             }
         }

@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.Flow
  * flow is active.
  */
 interface LlamaChatSession {
+    val supportsThinking: Boolean
     /**
      * Sends a message to the model and returns a reactive [Completion] flow.
      *
@@ -36,9 +37,10 @@ interface LlamaChatSession {
      * is automatically aborted.
      *
      * @param prompt The user's input text.
+     * @param enableThinking Whether to enable "thinking" mode.
      * @return A flow of [Completion] updates.
      */
-    fun completion(prompt: String): Flow<Completion>
+    fun completion(prompt: String, enableThinking: Boolean = false): Flow<Completion>
 
     /**
      * Clears the current conversation history while retaining the system prompt.

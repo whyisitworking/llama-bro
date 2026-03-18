@@ -17,36 +17,49 @@ internal class TokenStreamParser(
         buffer.append(token)
 
         while (true) {
-            val targetTag = if (isThinking) thinkingEnd else thinkingStart
-            val tagIdx = buffer.indexOf(targetTag)
+            if (!isThinking) {
+                val startIdx = buffer.indexOf(thinkingStart)
 
-            if (tagIdx != -1) {
-                // 1. Tag found! Route the text BEFORE the tag to the correct builder.
-                val dest = if (isThinking) thinkingBuilder else contentBuilder
+                if (startIdx != -1) {
+                    // 1. Found <think>. Everything before it is guaranteed Content.
+                    if (startIdx > 0) contentBuilder.append(buffer, 0, startIdx)
 
-                // Using .append(CharSequence, start, end) copies the raw chars
-                // without ever allocating a String on the heap.
-                if (tagIdx > 0) dest.append(buffer, 0, tagIdx)
+                    isThinking = true
+                    buffer.delete(0, startIdx + thinkingStart.length)
+                    continue // Loop again to process the rest of the buffer in 'thinking' mode
+                } else {
+                    // 2. No <think> found. Check if the very end of the buffer is starting to form "<think>"
+                    val partialLen = getPartialMatchLength(buffer, thinkingStart)
+                    val safeLen = buffer.length - partialLen
 
-                isThinking = !isThinking
-                buffer.delete(0, tagIdx + targetTag.length)
+                    if (safeLen > 0) {
+                        contentBuilder.append(buffer, 0, safeLen)
+                        buffer.delete(0, safeLen)
+                    }
+                    break // Stop looping and wait for the next token to arrive
+                }
             } else {
-                break
+                val endIdx = buffer.indexOf(thinkingEnd)
+
+                if (endIdx != -1) {
+                    // 1. Found </think>. Everything before it is guaranteed Thinking.
+                    if (endIdx > 0) thinkingBuilder.append(buffer, 0, endIdx)
+
+                    isThinking = false
+                    buffer.delete(0, endIdx + thinkingEnd.length)
+                    continue // Loop again to process the rest of the buffer in 'content' mode
+                } else {
+                    // 2. No </think> found. Check if the very end is starting to form "</think>"
+                    val partialLen = getPartialMatchLength(buffer, thinkingEnd)
+                    val safeLen = buffer.length - partialLen
+
+                    if (safeLen > 0) {
+                        thinkingBuilder.append(buffer, 0, safeLen)
+                        buffer.delete(0, safeLen)
+                    }
+                    break // Stop looping and wait for the next token to arrive
+                }
             }
-        }
-
-        // 2. No full tags left. Check if the very end of the buffer is a partial tag.
-        val targetTag = if (isThinking) thinkingEnd else thinkingStart
-        val partialLen = getPartialMatchLength(buffer, targetTag)
-
-        // 3. Everything before the partial match is 100% safe to route to the builders.
-        val safeLen = buffer.length - partialLen
-        if (safeLen > 0) {
-            val dest = if (isThinking) thinkingBuilder else contentBuilder
-            dest.append(buffer, 0, safeLen)
-
-            // Delete the safe text. The buffer now ONLY holds the partial match.
-            buffer.delete(0, safeLen)
         }
     }
 
@@ -58,9 +71,9 @@ internal class TokenStreamParser(
         }
     }
 
-    fun reset() {
+    fun reset(startThinking: Boolean = false) {
         buffer.clear()
-        isThinking = false
+        isThinking = startThinking
     }
 
     /**
