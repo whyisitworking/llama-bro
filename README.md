@@ -18,6 +18,10 @@ Want to see the inference speed and reasoning capabilities in action before writ
 
 [![Download APK](https://img.shields.io/badge/Download_Demo_APK-Latest_Release-2ea44f?style=for-the-badge&logo=android)](https://github.com/whyisitworking/llama-bro/releases/latest/download/LlamaBro-Demo.apk)
 
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/b6c3b4f0-efc7-4e43-8350-4df3e0646882" width="250" autoplay loop muted playsinline></video>
+</div>
+
 ---
 
 ## Why Llama Bro?
@@ -29,7 +33,7 @@ No API keys. No telemetry. No models calling home. Your data never leaves the de
 Run models as much as you want—no usage limits, no payment APIs, no surprise bills.
 
 **⚡ Fast Local Inference**
-Tap the device's SIMD capabilities (NEON, dotprod, i8mm) for real-time responses. ~20 tokens/second on modern flagships.
+Tap the device's SIMD capabilities (NEON, dotprod, i8mm) for real-time responses. ~30 tokens/second on Snapdragon 8 Elite with Llama 3.2 1B.
 
 **📱 Built for Android**
 Kotlin-native coroutine API. No threading headaches. No callback hell. Just `suspend fun` and `Flow`.
