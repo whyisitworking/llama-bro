@@ -3,61 +3,83 @@ package com.suhel.llamabro.sdk.internal
 internal class TokenStreamParser(
     private val thinkingStart: String = DEFAULT_THINKING_START,
     private val thinkingEnd: String = DEFAULT_THINKING_END,
+    private val stopStrings: List<String> = emptyList(),
 ) {
-    private val buffer = StringBuilder(maxOf(thinkingStart.length, thinkingEnd.length))
+    private val buffer = StringBuilder(
+        maxOf(
+            thinkingStart.length,
+            thinkingEnd.length,
+            stopStrings.maxOfOrNull { it.length } ?: 0,
+        )
+    )
 
     var isThinking = false
+        private set
+
+    /** True once a stop string has been matched. Further [process] calls are no-ops. */
+    var isStopped = false
         private set
 
     fun process(
         token: String,
         contentBuilder: StringBuilder,
-        thinkingBuilder: StringBuilder
+        thinkingBuilder: StringBuilder,
     ) {
+        if (isStopped) return
         buffer.append(token)
 
         while (true) {
             if (!isThinking) {
-                val startIdx = buffer.indexOf(thinkingStart)
+                val tagIdx = buffer.indexOf(thinkingStart)
+                val stopMatch = findEarliestStop()
 
-                if (startIdx != -1) {
-                    // 1. Found <think>. Everything before it is guaranteed Content.
-                    if (startIdx > 0) contentBuilder.append(buffer, 0, startIdx)
-
-                    isThinking = true
-                    buffer.delete(0, startIdx + thinkingStart.length)
-                    continue // Loop again to process the rest of the buffer in 'thinking' mode
-                } else {
-                    // 2. No <think> found. Check if the very end of the buffer is starting to form "<think>"
-                    val partialLen = getPartialMatchLength(buffer, thinkingStart)
-                    val safeLen = buffer.length - partialLen
-
-                    if (safeLen > 0) {
-                        contentBuilder.append(buffer, 0, safeLen)
-                        buffer.delete(0, safeLen)
+                when {
+                    // Stop string fires at or before the think tag — stop wins on a tie.
+                    stopMatch != null && (tagIdx == -1 || stopMatch.first <= tagIdx) -> {
+                        if (stopMatch.first > 0) contentBuilder.append(buffer, 0, stopMatch.first)
+                        buffer.clear()
+                        isStopped = true
+                        return
                     }
-                    break // Stop looping and wait for the next token to arrive
+
+                    // Think-start found with no earlier stop string.
+                    tagIdx != -1 -> {
+                        if (tagIdx > 0) contentBuilder.append(buffer, 0, tagIdx)
+                        isThinking = true
+                        buffer.delete(0, tagIdx + thinkingStart.length)
+                        continue
+                    }
+
+                    // No full match — hold back as much as could be the start of any pattern.
+                    else -> {
+                        val hold = maxOf(
+                            getPartialMatchLength(buffer, thinkingStart),
+                            stopStrings.maxOfOrNull { getPartialMatchLength(buffer, it) } ?: 0,
+                        )
+                        val safe = buffer.length - hold
+                        if (safe > 0) {
+                            contentBuilder.append(buffer, 0, safe)
+                            buffer.delete(0, safe)
+                        }
+                        break
+                    }
                 }
             } else {
+                // In thinking mode: only watch for the closing tag.
                 val endIdx = buffer.indexOf(thinkingEnd)
-
                 if (endIdx != -1) {
-                    // 1. Found </think>. Everything before it is guaranteed Thinking.
                     if (endIdx > 0) thinkingBuilder.append(buffer, 0, endIdx)
-
                     isThinking = false
                     buffer.delete(0, endIdx + thinkingEnd.length)
-                    continue // Loop again to process the rest of the buffer in 'content' mode
+                    continue
                 } else {
-                    // 2. No </think> found. Check if the very end is starting to form "</think>"
-                    val partialLen = getPartialMatchLength(buffer, thinkingEnd)
-                    val safeLen = buffer.length - partialLen
-
-                    if (safeLen > 0) {
-                        thinkingBuilder.append(buffer, 0, safeLen)
-                        buffer.delete(0, safeLen)
+                    val hold = getPartialMatchLength(buffer, thinkingEnd)
+                    val safe = buffer.length - hold
+                    if (safe > 0) {
+                        thinkingBuilder.append(buffer, 0, safe)
+                        buffer.delete(0, safe)
                     }
-                    break // Stop looping and wait for the next token to arrive
+                    break
                 }
             }
         }
@@ -74,17 +96,29 @@ internal class TokenStreamParser(
     fun reset(startThinking: Boolean = false) {
         buffer.clear()
         isThinking = startThinking
+        isStopped = false
+    }
+
+    /** Returns the (startIndex, length) of the earliest stop-string match, or null. */
+    private fun findEarliestStop(): Pair<Int, Int>? {
+        if (stopStrings.isEmpty()) return null
+        var result: Pair<Int, Int>? = null
+        for (ss in stopStrings) {
+            val idx = buffer.indexOf(ss)
+            if (idx != -1 && (result == null || idx < result.first)) {
+                result = idx to ss.length
+            }
+        }
+        return result
     }
 
     /**
-     * Custom primitive check. maxOverlap guarantees this loop runs a maximum of
-     * 7 times (for a 8-char tag), making it mathematically O(1) in practice.
+     * Returns how many characters at the END of [sb] could be the beginning of [pattern].
+     * Bounded by pattern.length - 1, so it is O(pattern.length) in the worst case.
      */
     private fun getPartialMatchLength(sb: StringBuilder, pattern: String): Int {
-        // -1 because a full match would have been caught by indexOf earlier
         val maxOverlap = minOf(sb.length, pattern.length - 1)
         if (maxOverlap == 0) return 0
-
         for (i in (sb.length - maxOverlap) until sb.length) {
             var isMatch = true
             for (j in 0 until (sb.length - i)) {

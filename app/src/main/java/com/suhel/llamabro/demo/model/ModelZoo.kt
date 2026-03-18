@@ -64,6 +64,7 @@ val ModelZoo = listOf(
             repeatPenalty = 1.0f,
         ),
         thinkingSupported = true,
+        defaultMaxThinkingTokens = 1024,
     ),
     Model(
         id = "llama-3.2-1b-instruct",
@@ -95,7 +96,7 @@ val ModelZoo = listOf(
             topK = 40,
         ),
         thinkingSupported = true,
-        defaultSystemPrompt = "You are a helpful and harmless assistant. You are Llama Bro."
+        defaultMaxThinkingTokens = 1024
     ),
     Model(
         id = "smollm2-1.7b-instruct",

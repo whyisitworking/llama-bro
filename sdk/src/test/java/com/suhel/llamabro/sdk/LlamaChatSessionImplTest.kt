@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -321,13 +322,17 @@ class LlamaChatSessionImplTest {
         assertTrue(generations.last().isComplete)
     }
 
-    @Test(expected = LlamaError.DecodeFailed::class)
-    fun `other llama errors are propagated`() = runTest {
+    @Test
+    fun `fatal errors are emitted as a completion with error field`() = runTest {
         val fake = FakeSession(
             tokens = emptyList(),
             shouldThrow = LlamaError.DecodeFailed(1)
         )
         val session = LlamaChatSessionImpl(fake, "")
-        session.completion("Hi").toList()
+        val last = session.completion("Hi").toList().last()
+
+        assertTrue(last.isComplete)
+        assertFalse(last.isInterrupted)
+        assertTrue(last.error is LlamaError.DecodeFailed)
     }
 }

@@ -22,6 +22,7 @@ object PromptFormats {
         userSuffix = "<|im_end|>",
         assistantPrefix = "<|im_start|>assistant\n",
         assistantSuffix = "<|im_end|>",
+        stopStrings = listOf("<|im_start|>"),
     )
 
     /** 
@@ -36,6 +37,7 @@ object PromptFormats {
         userSuffix = "<|eot_id|>",
         assistantPrefix = "<|start_header_id|>assistant<|end_header_id|>\n\n",
         assistantSuffix = "<|eot_id|>",
+        stopStrings = listOf("<|start_header_id|>"),
     )
 
     /** 
@@ -52,6 +54,7 @@ object PromptFormats {
         assistantSuffix = "",
         systemPrefix = "",
         systemSuffix = "",
+        stopStrings = listOf("[INST]"),
     )
 
     /** 
@@ -66,5 +69,6 @@ object PromptFormats {
         userSuffix = "<end_of_turn>",
         assistantPrefix = "\n<start_of_turn>model\n",
         assistantSuffix = "<end_of_turn>",
+        stopStrings = listOf("<start_of_turn>"),
     )
 }

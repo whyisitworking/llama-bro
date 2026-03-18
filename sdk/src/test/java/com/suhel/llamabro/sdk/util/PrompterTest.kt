@@ -166,7 +166,7 @@ class PrompterTest {
     fun `assistant message with thinking block`() {
         val fmt = Prompter(PromptFormats.ChatML)
         assertEquals(
-            "<|im_start|>assistant\n<think>reasoning</think>answer<|im_end|>",
+            "<|im_start|>assistant\n<think>\nreasoning</think>\nanswer<|im_end|>",
             fmt.assistant("answer", thinking = "reasoning")
         )
     }

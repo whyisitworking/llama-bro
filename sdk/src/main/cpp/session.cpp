@@ -18,6 +18,15 @@ namespace constants {
 LlamaSession::LlamaSession(llama_model *model, int threads, const NativeSessionParams &config) {
     auto params = llama_context_default_params();
     params.n_ctx = config.context_size;
+
+    // Clamp to training context to avoid OOM and RoPE degradation on mobile.
+    auto n_ctx_train = static_cast<uint32_t>(llama_model_n_ctx_train(model));
+    if (params.n_ctx > n_ctx_train) {
+        LOGW("Requested context size %u exceeds model training context %u; clamping.",
+             params.n_ctx, n_ctx_train);
+        params.n_ctx = n_ctx_train;
+    }
+
     params.n_threads = threads;
     params.n_threads_batch = threads;
     params.n_batch = config.batch_size;
@@ -273,12 +282,8 @@ Generation LlamaSession::generate() {
         token_buffer.append(piece);
 
         if (!roll_kv_cache_if_needed(1)) {
-            return Generation{
-                    .token = is_token_buffer_valid()
-                             ? std::make_optional(get_and_clear_token_buffer())
-                             : std::nullopt,
-                    .is_complete = true,
-            };
+            token_buffer.clear();
+            throw LlamaException(LlamaErrorCode::CONTEXT_OVERFLOW);
         }
 
         utils::batch_clear(llama_batch);

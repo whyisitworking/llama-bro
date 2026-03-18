@@ -3,7 +3,6 @@ package com.suhel.llamabro.demo.ui.screens.chat
 import android.content.ClipData
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -37,7 +36,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.keepScreenOn
@@ -123,16 +121,19 @@ private fun InputBar(
     onStartGeneration: (String, Boolean) -> Unit,
     onStopGeneration: () -> Unit,
 ) {
-    Column {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         var inputText by remember("input_text") { mutableStateOf("") }
 
         TextField(
             value = inputText,
             onValueChange = { inputText = it },
             maxLines = 8,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("Talk with Llama Bro") },
             shape = RoundedCornerShape(32.dp),
             colors = TextFieldDefaults.colors(
@@ -210,7 +211,7 @@ private fun MessageBubble(message: UiChatMessage) {
         Column(
             modifier = if (isUser) Modifier.widthIn(max = 300.dp) else Modifier.fillMaxWidth(),
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (message.isProcessing && message.content.isNullOrBlank() && message.thinking.isNullOrBlank()) {
                 ProcessingIndicator()
@@ -254,29 +255,30 @@ private fun ExpandableThinkingBlock(thinkingText: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 16.dp)
             .background(
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                MaterialTheme.shapes.small
+                MaterialTheme.colorScheme.surfaceVariant,
+                MaterialTheme.shapes.medium
             )
-            .animateContentSize()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .animateContentSize(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(MaterialTheme.shapes.small)
-                .clickable { isExpanded = !isExpanded }
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                .clickable { isExpanded = !isExpanded },
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = if (isExpanded) "Hide thought process" else "Show thought process",
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f)
             )
-            Image(
+            Icon(
                 painter = painterResource(R.drawable.keyboard_arrow_down_24),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 contentDescription = "chevron-thinking",
                 modifier = Modifier.rotate(if (isExpanded) 180f else 0f)
             )
@@ -285,8 +287,9 @@ private fun ExpandableThinkingBlock(thinkingText: String) {
         if (isExpanded) {
             MarkdownText(
                 markdown = thinkingText,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp)
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                ),
             )
         }
     }

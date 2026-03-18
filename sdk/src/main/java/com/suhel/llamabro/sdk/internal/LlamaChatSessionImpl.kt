@@ -18,22 +18,42 @@ internal class LlamaChatSessionImpl(
     private val session: LlamaSession,
     private val systemPrompt: String
 ) : LlamaChatSession {
-    private val parser = TokenStreamParser()
-    private val prompter = Prompter(session.modelConfig.promptFormat)
+    private val fmt = session.modelConfig.promptFormat
+    private val parser = TokenStreamParser(
+        thinkingStart = fmt.thinkStart,
+        thinkingEnd = fmt.thinkEnd,
+        stopStrings = fmt.stopStrings,
+    )
+    private val prompter = Prompter(fmt)
 
     override val supportsThinking: Boolean
         get() = session.modelConfig.supportsThinking
 
-    override fun completion(prompt: String, enableThinking: Boolean): Flow<Completion> = flow {
+    override fun completion(
+        prompt: String,
+        enableThinking: Boolean,
+        maxThinkingTokens: Int?,
+    ): Flow<Completion> = flow {
         var completionState = Completion()
         var tokenCount = 0
+        var thinkingTokenCount = 0
         val contentBuilder = StringBuilder()
         val thinkingBuilder = StringBuilder()
         val thinkingEnabled = enableThinking && session.modelConfig.supportsThinking
 
         parser.reset(thinkingEnabled)
+
+        val formattedPrompt = buildString {
+            append(prompter.user(prompt))
+            append(prompter.assistantStart())
+
+            if(thinkingEnabled) {
+                append(prompter.thinkingStart())
+            }
+        }
+
         session.ingestPrompt(
-            prompt = prompter.user(prompt) + prompter.assistantStart(thinkingEnabled),
+            prompt = formattedPrompt,
             addSpecial = prompter.shouldAddSpecial()
         )
 
@@ -53,12 +73,37 @@ internal class LlamaChatSessionImpl(
                     )
                 )
                 return@flow
+            } catch (_: LlamaError.ContextOverflow) {
+                // Context exhausted and strategy cannot recover — surface as an interrupted completion.
+                emit(
+                    completionState.finalize(
+                        tokenCount = tokenCount,
+                        startTime = startTime,
+                        isInterrupted = true,
+                        contentBuilder = contentBuilder,
+                        thinkingBuilder = thinkingBuilder
+                    )
+                )
+                return@flow
             } catch (e: LlamaError) {
-                throw e
+                // Fatal errors (DecodeFailed, NativeException, etc.) are emitted as data,
+                // not thrown — the flow always terminates cleanly.
+                emit(
+                    completionState.finalize(
+                        tokenCount = tokenCount,
+                        startTime = startTime,
+                        isInterrupted = false,
+                        contentBuilder = contentBuilder,
+                        thinkingBuilder = thinkingBuilder,
+                        error = e
+                    )
+                )
+                return@flow
             }
 
             generation.token?.let { token ->
                 tokenCount++
+                if (parser.isThinking) thinkingTokenCount++
 
                 val contentLenBefore = contentBuilder.length
                 val thinkingLenBefore = thinkingBuilder.length
@@ -67,7 +112,7 @@ internal class LlamaChatSessionImpl(
                 // The parser directly modifies the builders. 0 allocations.
                 parser.process(token, contentBuilder, thinkingBuilder)
 
-                // Only emit a new state if the parser actually appended text or flipped state
+                // Only emit a new state if the parser actually appended text or flipped state.
                 if (
                     contentBuilder.length > contentLenBefore ||
                     thinkingBuilder.length > thinkingLenBefore ||
@@ -79,6 +124,36 @@ internal class LlamaChatSessionImpl(
                     )
                     emit(completionState)
                 }
+
+                // Stop string detected — treat as a clean end of generation.
+                if (parser.isStopped) {
+                    emit(
+                        completionState.finalize(
+                            tokenCount = tokenCount,
+                            startTime = startTime,
+                            isInterrupted = false,
+                            contentBuilder = contentBuilder,
+                            thinkingBuilder = thinkingBuilder
+                        )
+                    )
+                    return@flow
+                }
+            }
+
+            // Thinking budget exhausted — force-close the thinking block so the model
+            // begins its response. Done outside the token `let` to allow suspension.
+            if (
+                parser.isThinking &&
+                maxThinkingTokens != null &&
+                thinkingTokenCount >= maxThinkingTokens
+            ) {
+                val closeTag = prompter.thinkingEnd()
+                session.ingestPrompt(closeTag, addSpecial = false)
+                parser.process(closeTag, contentBuilder, thinkingBuilder)
+                completionState = completionState.copy(
+                    thinkingText = thinkingBuilder.ifBlank { null }?.toString()?.trim()
+                )
+                emit(completionState)
             }
 
             if (generation.isComplete) {
@@ -109,7 +184,8 @@ internal class LlamaChatSessionImpl(
         startTime: Long,
         isInterrupted: Boolean,
         contentBuilder: StringBuilder,
-        thinkingBuilder: StringBuilder
+        thinkingBuilder: StringBuilder,
+        error: LlamaError? = null,
     ): Completion {
         val endTime = System.nanoTime()
         val durationNs = (endTime - startTime).coerceAtLeast(1)
@@ -121,6 +197,7 @@ internal class LlamaChatSessionImpl(
             tokensPerSecond = tps,
             isComplete = true,
             isInterrupted = isInterrupted,
+            error = error,
         )
     }
 
@@ -129,10 +206,25 @@ internal class LlamaChatSessionImpl(
             session.clear()
         }
 
+    /**
+     * Ingests [messages] into the session, oldest-first. If the context fills up mid-load,
+     * the oldest message is dropped and the remaining slice is retried from the system-prompt
+     * boundary — ensuring the most recent history always fits.
+     */
     override suspend fun loadHistory(messages: List<Message>) =
         withContext(Dispatchers.IO) {
-            messages.forEach { msg ->
-                session.ingestPrompt(prompter.format(msg))
+            var start = 0
+            retry@ while (start < messages.size) {
+                session.clear()
+                for (i in start until messages.size) {
+                    try {
+                        session.ingestPrompt(prompter.format(messages[i]))
+                    } catch (_: LlamaError.ContextOverflow) {
+                        start++
+                        continue@retry
+                    }
+                }
+                return@withContext
             }
         }
 

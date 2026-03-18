@@ -1,6 +1,5 @@
 package com.suhel.llamabro.demo.ui.screens.chat
 
-import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -19,7 +18,6 @@ import com.suhel.llamabro.sdk.model.SessionConfig
 import com.suhel.llamabro.sdk.model.filterSuccess
 import com.suhel.llamabro.sdk.model.flatMapResource
 import com.suhel.llamabro.sdk.model.getOrNull
-import com.suhel.llamabro.sdk.model.mapSuccess
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -27,7 +25,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
@@ -57,6 +54,10 @@ class ChatViewModel @Inject constructor(
     private val sendMessageTrigger =
         MutableSharedFlow<Pair<String, Boolean>?>(extraBufferCapacity = 1)
 
+    private val currentModelFlow = modelRepository.currentInferenceContextFlow
+        .map { it?.model }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     @OptIn(ExperimentalCoroutinesApi::class)
     private val chatSessionFlow = modelRepository.currentInferenceContextFlow
         .flatMapLatest { currentInferenceContext ->
@@ -68,14 +69,11 @@ class ChatViewModel @Inject constructor(
                         inferenceConfig = currentInferenceContext.model.defaultInferenceConfig
                     )
                 )
-                ?.mapSuccess { session ->
-                    currentInferenceContext.model to session
-                }
                 ?: flowOf(null)
         }
         .filterNotNull()
-        .flatMapResource { (model, session) ->
-            session.createChatSessionFlow(model.defaultSystemPrompt ?: SYSTEM_PROMPT)
+        .flatMapResource { session ->
+            session.createChatSessionFlow(SYSTEM_PROMPT)
         }
         .filterSuccess()
         .onEach { chatSession ->
@@ -120,8 +118,11 @@ class ChatViewModel @Inject constructor(
         .cachedIn(viewModelScope)
 
     @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
-    val incomingMessage = sendMessageTrigger
-        .flatMapLatest { message ->
+    val incomingMessage = combine(
+        sendMessageTrigger,
+        currentModelFlow.filterNotNull()
+    ) { message, model -> message to model }
+        .flatMapLatest { (message, model) ->
             if (message == null) {
                 return@flatMapLatest flowOf(null)
             }
@@ -147,24 +148,30 @@ class ChatViewModel @Inject constructor(
                     chatSessionFlow
                         .filterNotNull()
                         .flatMapLatest { chatSession ->
-                            chatSession.completion(prompt, enableThinking)
+                            chatSession.completion(prompt, enableThinking, model.defaultMaxThinkingTokens)
                         }
                         .onEach { chunk ->
-                            if (chunk.isComplete && (chunk.contentText != null || chunk.thinkingText != null)) {
+                            if (chunk.isComplete && chunk.error == null && (chunk.contentText != null || chunk.thinkingText != null)) {
                                 chatRepository.addMessage(
                                     conversationId = args.conversationId,
                                     role = MessageRole.Assistant,
-                                    content = chunk.contentText!!,
+                                    content = chunk.contentText ?: "",
                                     thinking = chunk.thinkingText,
                                     tokensPerSecond = chunk.tokensPerSecond
                                 )
                             }
                         }
                         .map { chunk ->
-                            if (chunk.isComplete) {
-                                null
-                            } else {
-                                UiChatMessage(
+                            when {
+                                chunk.error != null -> UiChatMessage(
+                                    id = "streaming",
+                                    role = MessageRole.Assistant,
+                                    error = chunk.error!!.message
+                                )
+
+                                chunk.isComplete -> null
+
+                                else -> UiChatMessage(
                                     id = "streaming",
                                     role = MessageRole.Assistant,
                                     content = chunk.contentText,
@@ -173,6 +180,7 @@ class ChatViewModel @Inject constructor(
                             }
                         }
                         .catch { e ->
+                            // Safety net for unexpected non-LlamaError exceptions.
                             emit(
                                 UiChatMessage(
                                     id = "streaming",

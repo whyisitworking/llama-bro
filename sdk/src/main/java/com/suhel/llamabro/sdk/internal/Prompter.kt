@@ -39,9 +39,12 @@ internal class Prompter(private val fmt: PromptFormat) {
     fun system(prompt: String): String =
         "${bos()}${fmt.systemPrefix}$prompt${fmt.systemSuffix}"
 
+    fun thinkingStart(): String = "${fmt.thinkStart}\n"
+
+    fun thinkingEnd(): String = "${fmt.thinkEnd}\n"
+
     /** Returns the assistant turn opening prefix (injected before generation). */
-    fun assistantStart(appendThinking: Boolean = false): String =
-        if(appendThinking) "${fmt.assistantPrefix}${fmt.thinkStart}\n" else fmt.assistantPrefix
+    fun assistantStart(): String = fmt.assistantPrefix
 
     /** Returns the assistant turn closing tokens (injected after generation). */
     fun assistantEnd(): String = "${fmt.assistantSuffix}${eos()}"
@@ -49,7 +52,7 @@ internal class Prompter(private val fmt: PromptFormat) {
     /** Formats a complete assistant message (used for history loading). */
     fun assistant(prompt: String, thinking: String? = null): String {
         val thinkingBlock = if (!thinking.isNullOrBlank()) {
-            "${fmt.thinkStart}$thinking${fmt.thinkEnd}"
+            "${thinkingStart()}$thinking${thinkingEnd()}"
         } else ""
 
         return "${assistantStart()}$thinkingBlock$prompt${assistantEnd()}"

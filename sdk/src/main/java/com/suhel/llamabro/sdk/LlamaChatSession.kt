@@ -33,14 +33,24 @@ interface LlamaChatSession {
      * the latest thinking text, content text, and eventually performance metrics
      * like tokens-per-second once generation finishes.
      *
+     * The flow **never throws**. All error conditions including fatal native errors
+     * are surfaced as a terminal [Completion] with [Completion.error] set.
+     *
      * If the collector's coroutine is cancelled, the underlying native generation
      * is automatically aborted.
      *
      * @param prompt The user's input text.
      * @param enableThinking Whether to enable "thinking" mode.
+     * @param maxThinkingTokens Maximum number of tokens the model may spend thinking.
+     *   When the limit is reached the closing tag is injected into the context,
+     *   forcing the model to begin its response. `null` means no limit.
      * @return A flow of [Completion] updates.
      */
-    fun completion(prompt: String, enableThinking: Boolean = false): Flow<Completion>
+    fun completion(
+        prompt: String,
+        enableThinking: Boolean = false,
+        maxThinkingTokens: Int? = null,
+    ): Flow<Completion>
 
     /**
      * Clears the current conversation history while retaining the system prompt.

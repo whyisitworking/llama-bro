@@ -1,6 +1,5 @@
 package com.suhel.llamabro.demo.ui.screens.models
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -117,27 +116,30 @@ private fun ModelCard(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
 
-                AnimatedContent(
-                    targetState = state,
-                    label = "state-icon"
-                ) { s ->
-                    when (s) {
-                        is ModelDownloadState.Downloaded ->
-                            Icon(
-                                painterResource(R.drawable.check_circle_24),
-                                contentDescription = null,
-                                tint = Success,
-                                modifier = Modifier.size(20.dp)
-                            )
+                when (state) {
+                    is ModelDownloadState.Downloaded ->
+                        Icon(
+                            painterResource(R.drawable.check_circle_24),
+                            contentDescription = null,
+                            tint = Success,
+                            modifier = Modifier.size(20.dp)
+                        )
 
-                        else ->
-                            Icon(
-                                painterResource(R.drawable.cloud_24),
-                                contentDescription = null,
-                                tint = OnSurfaceFaint,
-                                modifier = Modifier.size(20.dp)
-                            )
-                    }
+                    else ->
+                        Icon(
+                            painterResource(R.drawable.cloud_24),
+                            contentDescription = null,
+                            tint = OnSurfaceFaint,
+                            modifier = Modifier.size(20.dp)
+                        )
+                }
+
+                if (item.thinkingSupported) {
+                    Text(
+                        text = "Supports thinking",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
 

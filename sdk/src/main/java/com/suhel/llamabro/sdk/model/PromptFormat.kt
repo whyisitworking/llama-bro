@@ -32,4 +32,5 @@ data class PromptFormat(
     val eos: String? = null,
     val thinkStart: String = "<think>",
     val thinkEnd: String = "</think>",
+    val stopStrings: List<String> = emptyList(),
 )

@@ -11,5 +11,5 @@ data class Model(
     val promptFormat: PromptFormat,
     val defaultInferenceConfig: InferenceConfig,
     val thinkingSupported: Boolean = false,
-    val defaultSystemPrompt: String? = null
+    val defaultMaxThinkingTokens: Int? = null,
 )
