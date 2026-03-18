@@ -282,9 +282,7 @@ private fun ExpandableThinkingBlock(thinkingText: String) {
         if (isExpanded) {
             MarkdownText(
                 markdown = thinkingText,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                ),
+                style = MaterialTheme.typography.bodyLarge,
             )
         }
     }
@@ -311,13 +309,16 @@ private fun UserMessageContent(contentText: String) {
 
 @Composable
 private fun AssistantMessageContent(contentText: String) {
-    MarkdownText(
-        markdown = contentText,
-        style = MaterialTheme.typography.bodyLarge,
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-    )
+    ) {
+        MarkdownText(
+            markdown = contentText,
+            style = MaterialTheme.typography.bodyLarge,
+        )
+    }
 }
 
 @Composable

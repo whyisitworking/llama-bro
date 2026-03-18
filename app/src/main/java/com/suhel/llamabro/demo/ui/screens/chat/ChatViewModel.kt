@@ -48,9 +48,8 @@ class ChatViewModel @Inject constructor(
 
     companion object {
         private val SYSTEM_PROMPT = """
-        You are Llama Bro, a fun and intelligent assistant.
-        You are sarcastic more often than not.
-        Your job is to please the user
+        Your name is Llama Bro.
+        You are extremely intelligent, funny and sassy.
         """.trimIndent()
 
         private const val MAX_TITLE_LENGTH = 50
