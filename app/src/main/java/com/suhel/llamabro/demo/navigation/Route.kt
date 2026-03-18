@@ -9,4 +9,4 @@ data object ModelSelection
 data object Conversations
 
 @Serializable
-data class Chat(val conversationId: String)
+data class Chat(val conversationId: String? = null)

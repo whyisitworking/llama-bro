@@ -1,7 +1,6 @@
 package com.suhel.llamabro.demo.ui.screens.chat
 
 import android.content.ClipData
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,7 +18,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -121,19 +119,22 @@ private fun InputBar(
     onStartGeneration: (String, Boolean) -> Unit,
     onStopGeneration: () -> Unit,
 ) {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         var inputText by remember("input_text") { mutableStateOf("") }
+        var thinkingEnabled by remember("thinking_enabled") { mutableStateOf(false) }
+        val config by configFlow.collectAsStateWithLifecycle()
 
         TextField(
             value = inputText,
             onValueChange = { inputText = it },
             maxLines = 8,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.weight(1f),
             placeholder = { Text("Talk with Llama Bro") },
             shape = RoundedCornerShape(32.dp),
             colors = TextFieldDefaults.colors(
@@ -149,53 +150,47 @@ private fun InputBar(
             )
         )
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            var thinkingEnabled by remember("thinking_enabled") { mutableStateOf(false) }
-            val config by configFlow.collectAsStateWithLifecycle()
-
-            if (config.thinkingSupported) {
-                FilterChip(
-                    selected = thinkingEnabled,
-                    onClick = { thinkingEnabled = !thinkingEnabled },
-                    label = { Text("Think") },
+        if (config.thinkingSupported) {
+            IconButton(
+                onClick = { thinkingEnabled = !thinkingEnabled }
+            ) {
+                Icon(
+                    painter = painterResource(
+                        if (thinkingEnabled) {
+                            R.drawable.cognition_filled_24
+                        } else {
+                            R.drawable.cognition_24
+                        }
+                    ),
+                    contentDescription = "Thinking",
+                    modifier = Modifier.size(40.dp),
                 )
             }
+        }
 
-            IconButton(
-                onClick = {
-                    if (config.isGenerating) {
-                        onStopGeneration()
-                    } else {
-                        val text = inputText
-                        inputText = ""
-                        onStartGeneration(text, thinkingEnabled)
-                    }
-                },
-                enabled = config.isGenerating || inputText.isNotBlank(),
-            ) {
-                AnimatedContent(
-                    targetState = config.isGenerating,
-                    label = "send-stop"
-                ) { generating ->
-                    if (generating) {
-                        Icon(
-                            painter = painterResource(R.drawable.stop_circle_24),
-                            contentDescription = "Stop",
-                            modifier = Modifier.size(48.dp),
-                        )
-                    } else {
-                        Icon(
-                            painter = painterResource(R.drawable.arrow_circle_up_24),
-                            contentDescription = "Send",
-                            modifier = Modifier.size(48.dp),
-                        )
-                    }
+        IconButton(
+            onClick = {
+                if (config.isGenerating) {
+                    onStopGeneration()
+                } else {
+                    val text = inputText
+                    inputText = ""
+                    onStartGeneration(text, thinkingEnabled)
                 }
-            }
+            },
+            enabled = config.isGenerating || inputText.isNotBlank(),
+        ) {
+            Icon(
+                painter = painterResource(
+                    if (config.isGenerating) {
+                        R.drawable.stop_circle_24
+                    } else {
+                        R.drawable.arrow_circle_up_24
+                    }
+                ),
+                contentDescription = "send-stop",
+                modifier = Modifier.size(40.dp),
+            )
         }
     }
 }

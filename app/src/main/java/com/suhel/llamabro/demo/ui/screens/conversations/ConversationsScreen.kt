@@ -57,7 +57,7 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationsScreen(
-    onOpenChat: (conversationId: String) -> Unit,
+    onOpenChat: (conversationId: String?) -> Unit,
     viewModel: ConversationsViewModel = hiltViewModel(),
 ) {
     val conversations = viewModel.conversations.collectAsLazyPagingItems()
@@ -66,7 +66,7 @@ fun ConversationsScreen(
         title = "Conversations",
         floatingActionButton = {
             NewConversationFab(
-                onClick = { viewModel.newConversation { onOpenChat(it) } }
+                onClick = { onOpenChat(null) }
             )
         }
     ) {

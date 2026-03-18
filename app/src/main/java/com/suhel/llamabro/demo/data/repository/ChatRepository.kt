@@ -33,12 +33,12 @@ class ChatRepository @Inject constructor(private val db: AppDatabase) {
             }
         }
 
-    suspend fun createConversation(): ConversationEntity =
+    suspend fun createConversation(title: String): ConversationEntity =
         withContext(Dispatchers.IO) {
             val now = System.currentTimeMillis()
             val entity = ConversationEntity(
                 id = UUID.randomUUID().toString(),
-                title = "New conversation",
+                title = title,
                 createdAt = now,
                 updatedAt = now,
             )

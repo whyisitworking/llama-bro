@@ -51,7 +51,11 @@ fun AppNavigation(
     ) {
         NavHost(
             navController = navController,
-            startDestination = ModelSelection,
+            startDestination = if (state is RootUiState.ModelLoaded) {
+                Conversations
+            } else {
+                ModelSelection
+            },
             modifier = modifier,
             enterTransition = { fadeIn(animationSpec = tween(300)) },
             exitTransition = { fadeOut(animationSpec = tween(300)) }
@@ -79,7 +83,7 @@ private fun NavGraphBuilder.modelSelectionGraph() {
     }
 }
 
-private fun NavGraphBuilder.conversationsGraph(onOpenChat: (String) -> Unit) {
+private fun NavGraphBuilder.conversationsGraph(onOpenChat: (String?) -> Unit) {
     composable<Conversations>(
         enterTransition = AppTransitions.scaleInEnter,
         exitTransition = AppTransitions.parallaxOutForward,

@@ -135,10 +135,11 @@ private fun ModelCard(
                 }
 
                 if (item.thinkingSupported) {
-                    Text(
-                        text = "Supports thinking",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    Icon(
+                        painterResource(R.drawable.cognition_24),
+                        contentDescription = null,
+                        tint = OnSurfaceFaint,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }

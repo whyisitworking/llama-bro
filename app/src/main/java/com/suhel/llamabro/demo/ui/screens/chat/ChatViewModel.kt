@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
+import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.map
 import com.suhel.llamabro.demo.asMessageRole
@@ -22,6 +23,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
@@ -33,6 +35,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.updateAndGet
 import javax.inject.Inject
 
 @HiltViewModel
@@ -49,7 +52,12 @@ class ChatViewModel @Inject constructor(
         You are sarcastic more often than not.
         Your job is to please the user
         """.trimIndent()
+
+        private const val MAX_TITLE_LENGTH = 50
     }
+
+    /** Null until the first message is sent (new conversation flow). */
+    private val conversationId = MutableStateFlow(args.conversationId)
 
     private val sendMessageTrigger =
         MutableSharedFlow<Pair<String, Boolean>?>(extraBufferCapacity = 1)
@@ -77,7 +85,9 @@ class ChatViewModel @Inject constructor(
         }
         .filterSuccess()
         .onEach { chatSession ->
-            val history = chatRepository.getMessages(args.conversationId)
+            // For existing conversations, restore the message history.
+            val id = conversationId.value ?: return@onEach
+            val history = chatRepository.getMessages(id)
                 .map { chatMessage ->
                     when (chatMessage.role) {
                         MessageRole.User -> Message.User(
@@ -95,24 +105,36 @@ class ChatViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    val messages = Pager(
-        config = PagingConfig(
-            pageSize = 20,
-            enablePlaceholders = false
-        ),
-        pagingSourceFactory = { chatRepository.messagesPagingSource(args.conversationId) }
-    )
-        .flow
-        .map { pagingData ->
-            pagingData.map { entity ->
-                UiChatMessage(
-                    id = entity.id,
-                    role = entity.role.asMessageRole(),
-                    content = entity.content,
-                    thinking = entity.thinking,
-                    tokensPerSecond = entity.tokensPerSecond,
-                    timestamp = entity.createdAt
+    /**
+     * Emits an empty list until a conversation is created, then switches to
+     * the real paging source for that conversation.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val messages = conversationId
+        .flatMapLatest { conversationId ->
+            if (conversationId == null) {
+                flowOf(PagingData.empty())
+            } else {
+                Pager(
+                    config = PagingConfig(
+                        pageSize = 20,
+                        enablePlaceholders = false
+                    ),
+                    pagingSourceFactory = { chatRepository.messagesPagingSource(conversationId) }
                 )
+                    .flow
+                    .map { pagingData ->
+                        pagingData.map { entity ->
+                            UiChatMessage(
+                                id = entity.id,
+                                role = entity.role.asMessageRole(),
+                                content = entity.content,
+                                thinking = entity.thinking,
+                                tokensPerSecond = entity.tokensPerSecond,
+                                timestamp = entity.createdAt
+                            )
+                        }
+                    }
             }
         }
         .cachedIn(viewModelScope)
@@ -138,8 +160,24 @@ class ChatViewModel @Inject constructor(
                     )
                 )
 
+                // Lazily create the conversation on the first message, deriving
+                // its title from the first non-blank line of the user's prompt.
+                val conversationId = conversationId.updateAndGet { id ->
+                    if (id == null) {
+                        val title = prompt.lines()
+                            .firstOrNull { it.isNotBlank() }
+                            ?.trim()
+                            ?.take(MAX_TITLE_LENGTH)
+                            ?: "New conversation"
+                        val conv = chatRepository.createConversation(title)
+                        conv.id
+                    } else {
+                        id
+                    }
+                } ?: return@flow
+
                 chatRepository.addMessage(
-                    conversationId = args.conversationId,
+                    conversationId = conversationId,
                     role = MessageRole.User,
                     content = prompt
                 )
@@ -148,14 +186,20 @@ class ChatViewModel @Inject constructor(
                     chatSessionFlow
                         .filterNotNull()
                         .flatMapLatest { chatSession ->
-                            chatSession.completion(prompt, enableThinking, model.defaultMaxThinkingTokens)
+                            chatSession.completion(
+                                prompt,
+                                enableThinking,
+                                model.defaultMaxThinkingTokens
+                            )
                         }
                         .onEach { chunk ->
-                            if (chunk.isComplete && chunk.error == null && (chunk.contentText != null || chunk.thinkingText != null)) {
+                            if (chunk.isComplete && chunk.error == null
+                                && (chunk.contentText != null || chunk.thinkingText != null)
+                            ) {
                                 chatRepository.addMessage(
-                                    conversationId = args.conversationId,
+                                    conversationId = conversationId,
                                     role = MessageRole.Assistant,
-                                    content = chunk.contentText ?: "",
+                                    content = chunk.contentText.orEmpty(),
                                     thinking = chunk.thinkingText,
                                     tokensPerSecond = chunk.tokensPerSecond
                                 )
