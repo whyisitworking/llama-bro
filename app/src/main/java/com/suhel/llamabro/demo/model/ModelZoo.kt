@@ -5,6 +5,17 @@ import com.suhel.llamabro.sdk.model.PromptFormats
 
 val ModelZoo = listOf(
     Model(
+        id = "nemotron-mini-4b-instruct",
+        name = "Nemotron Mini 4B Instruct",
+        description = "Nemotron-Mini-4B-Instruct is a model for generating responses for roleplaying, retrieval augmented generation, and function calling.",
+        downloadUrl = "https://huggingface.co/bartowski/Nemotron-Mini-4B-Instruct-GGUF/resolve/main/Nemotron-Mini-4B-Instruct-Q6_K.gguf",
+        promptFormat = PromptFormats.Nemotron,
+        defaultInferenceConfig = InferenceConfig(
+            temperature = 1.0f,
+            topP = 1.0f,
+        )
+    ),
+    Model(
         id = "smollm2-135m-instruct",
         name = "SmolLM2 135M Instruct",
         description = "Ultra-lightweight model for absolute maximum tokens-per-second. Perfect for baseline speed tests.",

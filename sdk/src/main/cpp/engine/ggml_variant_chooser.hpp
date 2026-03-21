@@ -1,9 +1,10 @@
 #pragma once
 
+#include <string_view>
 #include <asm/hwcap.h>
 #include <sys/auxv.h>
 
-const char *resolve_best_ggml_backend() {
+std::string_view resolve_best_ggml_backend() {
     unsigned long hwcap = getauxval(AT_HWCAP);
     unsigned long hwcap2 = getauxval(AT_HWCAP2);
 

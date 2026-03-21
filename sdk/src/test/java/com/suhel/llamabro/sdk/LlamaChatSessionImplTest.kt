@@ -45,7 +45,7 @@ class LlamaChatSessionImplTest {
             prompts.add(text)
         }
 
-        override suspend fun ingestPrompt(prompt: String, addSpecial: Boolean) {
+        override suspend fun addUserPrompt(prompt: String, addSpecial: Boolean) {
             prompts.add(prompt)
         }
 

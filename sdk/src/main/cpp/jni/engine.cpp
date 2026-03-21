@@ -1,8 +1,7 @@
 #include <jni.h>
-#include "utils/jni_config_reader.h"
-#include "utils/jni_error_thrower.h"
-#include "utils/llama_exception.h"
-#include "engine.h"
+#include "config_reader.hpp"
+#include "result/codes.hpp"
+#include "engine/engine.hpp"
 #include "llama.h"
 
 // ── Shared helper ─────────────────────────────────────────────────────────────
@@ -12,10 +11,10 @@ namespace jni_refs {
     constexpr auto progress_listener_method_sig = "(F)Z";
 }
 
-static NativeEngineParams readEngineParams(JNIEnv *env,
+static engine::NativeEngineParams readEngineParams(JNIEnv *env,
                                            jobject jConfig) {
     auto configReader = JniConfigReader(env, jConfig);
-    return NativeEngineParams{
+    return engine::NativeEngineParams{
             .model_path = configReader.getString("modelPath"),
             .threads    = configReader.getInt("threads"),
             .use_mmap   = configReader.getBool("useMmap"),
@@ -30,10 +29,9 @@ JNIEXPORT jlong JNICALL
 Java_com_suhel_llamabro_sdk_internal_LlamaEngineImpl_00024Jni_create(JNIEnv *env, jclass,
                                                                      jobject jConfig) {
     try {
-        auto instance = new LlamaEngine(readEngineParams(env, jConfig));
+        auto instance = new engine::Engine(readEngineParams(env, jConfig));
         return reinterpret_cast<jlong>(instance);
-    } catch (const LlamaException &ex) {
-        throwLlamaError(env, ex);
+    } catch (const std::exception &ex) {
         return 0L;
     }
 }
@@ -62,10 +60,9 @@ Java_com_suhel_llamabro_sdk_internal_LlamaEngineImpl_00024Jni_createWithProgress
     };
 
     try {
-        auto instance = new LlamaEngine(config);
+        auto instance = new engine::Engine(config);
         return reinterpret_cast<jlong>(instance);
-    } catch (const LlamaException &ex) {
-        throwLlamaError(env, ex);
+    } catch (const std::exception &ex) {
         return 0L;
     }
 }
@@ -74,5 +71,5 @@ extern "C"
 JNIEXPORT void JNICALL
 Java_com_suhel_llamabro_sdk_internal_LlamaEngineImpl_00024Jni_destroy(JNIEnv *, jclass,
                                                                       jlong jEnginePtr) {
-    delete reinterpret_cast<LlamaEngine *>(jEnginePtr);
+    delete reinterpret_cast<engine::Engine *>(jEnginePtr);
 }

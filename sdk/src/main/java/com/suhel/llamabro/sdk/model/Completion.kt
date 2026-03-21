@@ -9,10 +9,10 @@ package com.suhel.llamabro.sdk.model
  * all text generated so far.
  *
  * ### Terminal state
- * The final emission always has [isComplete] = true. Inspect [isInterrupted] and [error]
+ * The final emission always has [isComplete] = true. Inspect [isInterrupted] and [result]
  * to determine how generation ended:
  *
- * | [isComplete] | [isInterrupted] | [error] | Meaning                                    |
+ * | [isComplete] | [isInterrupted] | [result] | Meaning                                    |
  * |---|---|---|---|
  * | true         | false           | null    | Natural EOS or stop-string hit             |
  * | true         | true            | null    | Cancelled by user or context overflow      |
@@ -26,7 +26,7 @@ package com.suhel.llamabro.sdk.model
  * @property tokensPerSecond  Generation speed. Only populated on the final emission.
  * @property isComplete       True on the last emission.
  * @property isInterrupted    True if generation was cut short by cancellation or overflow.
- * @property error            Non-null only for fatal errors (e.g. [LlamaError.DecodeFailed]).
+ * @property result            Non-null only for fatal errors (e.g. [LlamaError.DecodeFailed]).
  */
 data class Completion(
     val thinkingText: String? = null,

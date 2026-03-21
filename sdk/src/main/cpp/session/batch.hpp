@@ -4,28 +4,29 @@
 #include <vector>
 #include "llama.h"
 
-namespace utils {
-    // Taken from common.h/cpp
+namespace session {
+    // Taken from common
     static void batch_clear(struct llama_batch &batch) {
         batch.n_tokens = 0;
     }
 
-    static bool batch_add(
-            struct llama_batch &batch,
-            llama_token id,
-            llama_pos pos,
-            const std::vector<llama_seq_id> &seq_ids,
-            bool output) {
+    static bool batch_add(struct llama_batch &batch,
+                          llama_token id,
+                          llama_pos pos,
+                          bool output) {
         if (!batch.seq_id[batch.n_tokens]) {
             return false;
         }
 
         batch.token[batch.n_tokens] = id;
         batch.pos[batch.n_tokens] = pos;
-        batch.n_seq_id[batch.n_tokens] = static_cast<int32_t>(seq_ids.size());
-        for (size_t i = 0; i < seq_ids.size(); ++i) {
-            batch.seq_id[batch.n_tokens][i] = seq_ids[i];
-        }
+//        Since we aren't batching yet
+//        batch.n_seq_id[batch.n_tokens] = static_cast<int32_t>(seq_ids.size());
+//        for (size_t i = 0; i < seq_ids.size(); ++i) {
+//            batch.seq_id[batch.n_tokens][i] = seq_ids[i];
+//        }
+        batch.n_seq_id[batch.n_tokens] = 1;
+        batch.seq_id[batch.n_tokens][0] = 0;
         batch.logits[batch.n_tokens] = output ? 1 : 0;
 
         batch.n_tokens++;
@@ -33,11 +34,10 @@ namespace utils {
         return true;
     }
 
-    static std::vector<llama_token> tokenize(
-            const struct llama_vocab *vocab,
-            const std::string &text,
-            bool add_special,
-            bool parse_special) {
+    static std::vector<llama_token> tokenize(const struct llama_vocab *vocab,
+                                             std::string_view text,
+                                             bool add_special,
+                                             bool parse_special) {
         // upper limit for the number of tokens
         auto n_tokens = text.length() + 2 * add_special;
         std::vector<llama_token> result(n_tokens);
@@ -62,8 +62,8 @@ namespace utils {
         return result;
     }
 
-    static std::string
-    token_to_piece(const struct llama_vocab *vocab, llama_token token, bool special) {
+    static std::string token_to_piece(const struct llama_vocab *vocab,
+                                      llama_token token, bool special) {
         std::string piece;
         piece.resize(piece.capacity());  // using string internal cache, 15 bytes + '\n'
         const int n_chars = llama_token_to_piece(vocab, token, &piece[0],

@@ -52,10 +52,7 @@ internal class LlamaChatSessionImpl(
             }
         }
 
-        session.ingestPrompt(
-            prompt = formattedPrompt,
-            addSpecial = prompter.shouldAddSpecial()
-        )
+        session.addUserPrompt(formattedPrompt)
 
         val startTime = System.nanoTime()
 
@@ -148,7 +145,7 @@ internal class LlamaChatSessionImpl(
                 thinkingTokenCount >= maxThinkingTokens
             ) {
                 val closeTag = prompter.thinkingEnd()
-                session.ingestPrompt(closeTag, addSpecial = false)
+                session.addUserPrompt(closeTag)
                 parser.process(closeTag, contentBuilder, thinkingBuilder)
                 completionState = completionState.copy(
                     thinkingText = thinkingBuilder.ifBlank { null }?.toString()?.trim()
@@ -218,7 +215,7 @@ internal class LlamaChatSessionImpl(
                 session.clear()
                 for (i in start until messages.size) {
                     try {
-                        session.ingestPrompt(prompter.format(messages[i]))
+                        session.addUserPrompt(prompter.format(messages[i]))
                     } catch (_: LlamaError.ContextOverflow) {
                         start++
                         continue@retry
@@ -231,9 +228,6 @@ internal class LlamaChatSessionImpl(
     /** Initial injection of the BOS and system prompt during session creation. */
     internal suspend fun initialize() =
         withContext(Dispatchers.IO) {
-            session.setSystemPrompt(
-                text = prompter.system(systemPrompt),
-                addSpecial = prompter.shouldAddSpecial()
-            )
+            session.setSystemPrompt(prompter.system(systemPrompt))
         }
 }

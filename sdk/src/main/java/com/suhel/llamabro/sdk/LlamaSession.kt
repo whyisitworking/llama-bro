@@ -37,7 +37,7 @@ interface LlamaSession : AutoCloseable {
      * @param text       Raw text to add to the context.
      * @param addSpecial If true, prepends the model's default BOS token.
      */
-    suspend fun setSystemPrompt(text: String, addSpecial: Boolean = true)
+    suspend fun setSystemPrompt(text: String)
 
     /**
      * Ingests raw text into the KV cache.
@@ -50,7 +50,7 @@ interface LlamaSession : AutoCloseable {
      * @param addSpecial If true, prepends the model's default BOS token.
      * @throws LlamaError.ContextOverflow if the context is full and cannot be recovered.
      */
-    suspend fun ingestPrompt(prompt: String, addSpecial: Boolean = false)
+    suspend fun addUserPrompt(prompt: String)
 
     /**
      * Samples the next token from the model based on the current context.
@@ -73,7 +73,7 @@ interface LlamaSession : AutoCloseable {
     /**
      * Asynchronously signals the native engine to stop any active computation.
      *
-     * Use this to immediately halt a long-running [ingestPrompt] or [generate] call
+     * Use this to immediately halt a long-running [addUserPrompt] or [generate] call
      * from another thread or UI action.
      */
     fun abort()

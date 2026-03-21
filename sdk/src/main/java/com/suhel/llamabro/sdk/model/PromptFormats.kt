@@ -17,11 +17,11 @@ object PromptFormats {
      */
     val ChatML = PromptFormat(
         systemPrefix = "<|im_start|>system\n",
-        systemSuffix = "<|im_end|>",
+        systemSuffix = "<|im_end|>\n",
         userPrefix = "<|im_start|>user\n",
-        userSuffix = "<|im_end|>",
+        userSuffix = "<|im_end|>\n",
         assistantPrefix = "<|im_start|>assistant\n",
-        assistantSuffix = "<|im_end|>",
+        assistantSuffix = "<|im_end|>\n",
         stopStrings = listOf("<|im_start|>"),
     )
 
@@ -32,11 +32,11 @@ object PromptFormats {
     val Llama3 = PromptFormat(
         bos = "<|begin_of_text|>",
         systemPrefix = "<|start_header_id|>system<|end_header_id|>\n\n",
-        systemSuffix = "<|eot_id|>",
+        systemSuffix = "<|eot_id|>\n",
         userPrefix = "<|start_header_id|>user<|end_header_id|>\n\n",
-        userSuffix = "<|eot_id|>",
+        userSuffix = "<|eot_id|>\n",
         assistantPrefix = "<|start_header_id|>assistant<|end_header_id|>\n\n",
-        assistantSuffix = "<|eot_id|>",
+        assistantSuffix = "<|eot_id|>\n",
         stopStrings = listOf("<|start_header_id|>"),
     )
 
@@ -64,11 +64,21 @@ object PromptFormats {
     val Gemma3 = PromptFormat(
         bos = "<bos>",
         systemPrefix = "<start_of_turn>system\n",
-        systemSuffix = "<end_of_turn>",
-        userPrefix = "\n<start_of_turn>user\n",
-        userSuffix = "<end_of_turn>",
-        assistantPrefix = "\n<start_of_turn>model\n",
-        assistantSuffix = "<end_of_turn>",
+        systemSuffix = "<end_of_turn>\n",
+        userPrefix = "<start_of_turn>user\n",
+        userSuffix = "<end_of_turn>\n",
+        assistantPrefix = "<start_of_turn>model\n",
+        assistantSuffix = "<end_of_turn>\n",
         stopStrings = listOf("<start_of_turn>"),
+    )
+
+    val Nemotron = PromptFormat(
+        systemPrefix = "<extra_id_0>System\n",
+        systemSuffix = "\n",
+        userPrefix = "<extra_id_1>User\n",
+        userSuffix = "\n",
+        assistantPrefix = "<extra_id_1>Assistant\n",
+        assistantSuffix = "\n",
+        stopStrings = listOf("<extra_id_1>Assistant")
     )
 }

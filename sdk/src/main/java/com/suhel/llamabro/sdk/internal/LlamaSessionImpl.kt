@@ -62,28 +62,20 @@ internal class LlamaSessionImpl(
         throw mapNativeError(e)
     }
 
-    override suspend fun setSystemPrompt(text: String, addSpecial: Boolean) =
+    override suspend fun setSystemPrompt(text: String) =
         withContext(Dispatchers.IO) {
             mutex.withLock {
-                try {
-                    runInterruptible {
-                        Jni.setSystemPrompt(ptr, text, addSpecial)
-                    }
-                } catch (e: RuntimeException) {
-                    throw mapNativeError(e)
+                runInterruptible {
+                    Jni.setSystemPrompt(ptr, text)
                 }
             }
         }
 
-    override suspend fun ingestPrompt(prompt: String, addSpecial: Boolean) =
+    override suspend fun addUserPrompt(prompt: String) =
         withContext(Dispatchers.IO) {
             mutex.withLock {
-                try {
-                    runInterruptible {
-                        Jni.ingestPrompt(ptr, prompt, addSpecial)
-                    }
-                } catch (e: RuntimeException) {
-                    throw mapNativeError(e)
+                runInterruptible {
+                    Jni.addUserPrompt(ptr, prompt)
                 }
             }
         }
@@ -91,17 +83,13 @@ internal class LlamaSessionImpl(
     override suspend fun generate(): TokenGenerationResult =
         withContext(Dispatchers.IO) {
             mutex.withLock {
-                try {
-                    runInterruptible {
-                        Jni.generate(ptr).let {
-                            TokenGenerationResult(
-                                token = it.token,
-                                isComplete = it.isComplete,
-                            )
-                        }
+                runInterruptible {
+                    Jni.generate(ptr).let {
+                        TokenGenerationResult(
+                            token = it.token,
+                            isComplete = it.isComplete,
+                        )
                     }
-                } catch (e: RuntimeException) {
-                    throw mapNativeError(e)
                 }
             }
         }
@@ -109,12 +97,8 @@ internal class LlamaSessionImpl(
     override suspend fun clear() =
         withContext(Dispatchers.IO) {
             mutex.withLock {
-                try {
-                    runInterruptible {
-                        Jni.clear(ptr)
-                    }
-                } catch (e: RuntimeException) {
-                    throw mapNativeError(e)
+                runInterruptible {
+                    Jni.clear(ptr)
                 }
             }
         }
@@ -159,11 +143,13 @@ internal class LlamaSessionImpl(
         val topP: Float,
         val minPEnabled: Boolean,
         val minP: Float,
+
         // Always-on (no enable field)
         val repPen: Float,
         val presencePen: Float,
         val temp: Float,
         val seed: Int,
+
         // Decode tuning
         val batchSize: Int,
         val microBatchSize: Int,
@@ -179,10 +165,10 @@ internal class LlamaSessionImpl(
         external fun create(enginePtr: Long, params: NativeCreateParams): Long
 
         @JvmStatic
-        external fun setSystemPrompt(sessionPtr: Long, text: String, addSpecial: Boolean)
+        external fun setSystemPrompt(sessionPtr: Long, prompt: String)
 
         @JvmStatic
-        external fun ingestPrompt(sessionPtr: Long, text: String, addSpecial: Boolean)
+        external fun addUserPrompt(sessionPtr: Long, prompt: String)
 
         @JvmStatic
         external fun clear(sessionPtr: Long)
