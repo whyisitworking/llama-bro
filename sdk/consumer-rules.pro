@@ -19,6 +19,6 @@
 }
 
 # Keep ProgressListener.onProgress — called from native code via JNI CallBooleanMethod
--keepclassmembers class * implements com.suhel.llamabro.sdk.internal.ProgressListener {
+-keepclassmembers class * implements com.suhel.llamabro.sdk.ProgressListener {
     boolean onProgress(float);
 }

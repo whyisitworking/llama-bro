@@ -37,7 +37,7 @@ sealed class LlamaError(message: String, cause: Throwable? = null) : Exception(m
 
     /** 
      * The operation was explicitly cancelled or aborted. 
-     * This is thrown if [com.suhel.llamabro.sdk.LlamaSession.abort] is called or 
+     * This is thrown if [com.suhel.llamabro.sdk.LlamaSession.abort] is called or
      * if the coroutine is cancelled during a native loop.
      */
     class Cancelled :
@@ -48,14 +48,14 @@ sealed class LlamaError(message: String, cause: Throwable? = null) : Exception(m
     /** 
      * llama_init_from_model returned null. 
      * This typically indicates an Out Of Memory (OOM) condition or an invalid 
-     * [SessionConfig].
+     * [com.suhel.llamabro.sdk.SessionConfig].
      */
     class ContextInitFailed(cause: Throwable? = null) :
         LlamaError("Failed to initialize inference context", cause)
 
     /**
-     * The context window is full and the configured [OverflowStrategy] cannot recover.
-     * This is only thrown by [OverflowStrategy.Halt] — other strategies handle 
+     * The context window is full and the configured [com.suhel.llamabro.sdk.OverflowStrategy] cannot recover.
+     * This is only thrown by [com.suhel.llamabro.sdk.OverflowStrategy.Halt] — other strategies handle
      * this silently by clearing or shifting history.
      */
     class ContextOverflow :

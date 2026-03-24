@@ -14,8 +14,8 @@ import com.suhel.llamabro.demo.data.repository.ChatRepository
 import com.suhel.llamabro.demo.data.repository.ModelRepository
 import com.suhel.llamabro.demo.model.MessageRole
 import com.suhel.llamabro.demo.navigation.Chat
-import com.suhel.llamabro.sdk.model.Message
-import com.suhel.llamabro.sdk.model.SessionConfig
+import com.suhel.llamabro.sdk.models.ChatEvent
+import com.suhel.llamabro.sdk.config.SessionConfig
 import com.suhel.llamabro.sdk.model.filterSuccess
 import com.suhel.llamabro.sdk.model.flatMapResource
 import com.suhel.llamabro.sdk.model.getOrNull
@@ -53,6 +53,8 @@ class ChatViewModel @Inject constructor(
         """.trimIndent()
 
         private const val MAX_TITLE_LENGTH = 50
+
+        private const val STREAMING_ID = "streaming"
     }
 
     /** Null until the first message is sent (new conversation flow). */
@@ -89,18 +91,20 @@ class ChatViewModel @Inject constructor(
             val history = chatRepository.getMessages(id)
                 .map { chatMessage ->
                     when (chatMessage.role) {
-                        MessageRole.User -> Message.User(
-                            content = chatMessage.content
+                        MessageRole.User -> ChatEvent.UserEvent(
+                            content = chatMessage.content,
+                            think = false
                         )
 
-                        MessageRole.Assistant -> Message.Assistant(
-                            content = chatMessage.content,
-                            thinking = chatMessage.thinking
+                        MessageRole.Assistant -> ChatEvent.AssistantEvent(
+                            parts = listOf(
+                                ChatEvent.AssistantEvent.Part.TextPart(chatMessage.content)
+                            )
                         )
                     }
                 }
 
-            chatSession.loadHistory(history)
+            chatSession.feedHistory(history)
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -186,30 +190,31 @@ class ChatViewModel @Inject constructor(
                         .filterNotNull()
                         .flatMapLatest { chatSession ->
                             chatSession.completion(
-                                prompt,
-                                enableThinking,
-                                model.defaultMaxThinkingTokens
+                                ChatEvent.UserEvent(
+                                    content = prompt,
+                                    think = enableThinking
+                                )
                             )
                         }
                         .onEach { chunk ->
-                            if (chunk.isComplete && chunk.error == null
-                                && (chunk.contentText != null || chunk.thinkingText != null)
+                            if (chunk.isComplete && !chunk.isError
+                                && (chunk.message.text.isNotEmpty() || chunk.message.thinkingText.isNotEmpty())
                             ) {
                                 chatRepository.addMessage(
                                     conversationId = conversationId,
                                     role = MessageRole.Assistant,
-                                    content = chunk.contentText.orEmpty(),
-                                    thinking = chunk.thinkingText,
+                                    content = chunk.message.text,
+                                    thinking = chunk.message.thinkingText.takeIf { it.isNotEmpty() },
                                     tokensPerSecond = chunk.tokensPerSecond
                                 )
                             }
                         }
                         .map { chunk ->
                             when {
-                                chunk.error != null -> UiChatMessage(
+                                chunk.isError -> UiChatMessage(
                                     id = "streaming",
                                     role = MessageRole.Assistant,
-                                    error = chunk.error!!.message
+                                    error = chunk.error
                                 )
 
                                 chunk.isComplete -> null
@@ -217,8 +222,8 @@ class ChatViewModel @Inject constructor(
                                 else -> UiChatMessage(
                                     id = "streaming",
                                     role = MessageRole.Assistant,
-                                    content = chunk.contentText,
-                                    thinking = chunk.thinkingText
+                                    content = chunk.message.text.takeIf { it.isNotEmpty() },
+                                    thinking = chunk.message.thinkingText.takeIf { it.isNotEmpty() }
                                 )
                             }
                         }
@@ -238,9 +243,9 @@ class ChatViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val inputConfig = combine(
-        chatSessionFlow.map { it?.supportsThinking == true },
+        currentModelFlow.map { it?.thinkingSupported == true },
         incomingMessage.map { it != null }
-    ) { (supportsThinking, isGenerating) ->
+    ) { supportsThinking, isGenerating ->
         UiChatInputConfig(
             thinkingSupported = supportsThinking,
             isGenerating = isGenerating

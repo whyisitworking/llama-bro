@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Llama Bro** is an Android SDK for on-device LLM inference, wrapping [llama.cpp](https://github.com/ggerganov/llama.cpp) via JNI. It consists of two modules:
+**Llama Bro** is an Android SDK for on-device LLM inference, wrapping [llama.cpp](https://github.com/ggml-org/llama.cpp) via JNI. It consists of two modules:
 - **`:sdk`** — reusable Android library (published to JitPack)
 - **`:app`** — demo application showcasing the SDK
 
@@ -25,20 +25,17 @@ git submodule update --init --recursive
 # Install debug app on connected device
 ./gradlew :app:installDebug
 
-# Run unit tests (SDK only; no instrumentation tests exist)
-./gradlew :sdk:test
+# Run unit tests (SDK only)
+./gradlew :sdk:testDebugUnitTest
 
 # Run a single test class
-./gradlew :sdk:test --tests "com.suhel.llamabro.sdk.util.PromptFormatterTest"
-
-# Publish SDK to local Maven repository (used by JitPack)
-./gradlew :sdk:publishToMavenLocal
+./gradlew :sdk:testDebugUnitTest --tests "com.suhel.llamabro.sdk.chat.internal.LlamaChatSessionImplTest"
 
 # Clean
 ./gradlew clean
 ```
 
-**NDK requirement:** NDK 29.0.14206865 and CMake 3.22.1 must be installed via the Android SDK Manager. The project only builds for `arm64-v8a` — x86_64 emulators are not supported.
+**NDK requirement:** NDK 29.0.14206865 and CMake 3.22.1 must be installed via the Android SDK Manager. The project only builds for `arm64-v8a`.
 
 ## Architecture
 
@@ -49,40 +46,39 @@ UI (Jetpack Compose)
   ↓
 ViewModels (MVVM, Hilt-injected)
   ↓
-Repositories (ChatRepository, ModelRepository)
-  ↓
-SDK Public API  ─────────────────────────────────────────────
+SDK Public API (internal implementations)
   LlamaEngine → LlamaSession → LlamaChatSession
   ↓
-JNI Bridge (llama_engine_jni.cpp, llama_session_jni.cpp)
+Internal Pipeline (Declarative Flows)
+  session.generateFlow() -> Lexer -> Semantic Chunks -> Snapshot
   ↓
-Native C++ (session.cpp, engine.cpp → llama.cpp)
+JNI Bridge (Kotlin ↔ Native Structs)
+  ↓
+Native C++ (llama.cpp)
 ```
 
 ### SDK Module
 
 Three tiers of API, each building on the previous:
 
-1. **`LlamaEngine`** — loads a GGUF model file from disk; creates sessions. Use `LlamaEngine.createFlow(modelConfig)` for reactive loading that emits `ResourceState<LlamaEngine>`.
+1. **`LlamaEngine`** — manages model weights. Use `LlamaEngine.createFlow(modelDefinition)` for reactive loading that emits `ResourceState<LlamaEngine>`.
 
-2. **`LlamaSession`** — low-level token control. Call `setSystemPrompt()`, then loop `prompt()` + `generate()` to produce tokens. Wrap using `createChatSession()` to get the high-level API.
+2. **`LlamaSession`** — mutex-serialized token control. Call `setPrefixedPrompt()`, then use `generateFlow()` to stream native tokens via `channelFlow`.
 
-3. **`LlamaChatSession`** — high-level conversational API. `completion(message)` returns `Flow<Completion>`. Handles prompt template formatting, thinking-block extraction (`<think>...</think>`), and `OverflowStrategy`.
+3. **`LlamaChatSession`** — high-level conversational API. `completion(ChatEvent.UserEvent)` returns `Flow<CompletionSnapshot>`. Internally uses a DFA-based `AllocationOptimizedScanner` to extract text, thinking blocks, and tool calls.
 
-**`ResourceState<T>`** is the lifecycle ADT used throughout. It has subtypes `Loading(progress)`, `Success(value)`, `Failure(error)` and rich Flow extension operators (`flatMapResource`, `filterSuccess`, etc.) for composing resource loads.
+**`ResourceState<T>`** — lifecycle ADT (`Loading`, `Success`, `Failure`) with rich Flow extension operators (`flatMapResource`, `filterSuccess`).
 
-**`PromptFormat`** / **`PromptFormats`** — chat template definitions. Built-in formats: `Llama3`, `Gemma3`, `ChatML` (Qwen/Yi), `Mistral`. Each model in `ModelZoo` references one of these.
+**`ChatEvent`** — sealed hierarchy for conversation history. `AssistantEvent` is parts-based (Text, Thinking, ToolCall).
 
-**`LlamaError`** — sealed error hierarchy (`ModelNotFound`, `ModelLoadFailed`, `ContextOverflow`, `DecodeFailed`, `Cancelled`, `NativeException`, etc.).
+**`LlamaError`** — sealed error hierarchy mapped from native codes/exceptions.
 
 ### App Module
 
 Standard MVVM with Hilt DI:
-
-- **`ModelRepository`** — singleton managing model download/load/eject lifecycle. Download state is a FSM: `NotDownloaded → Downloading → Downloaded`. The currently loaded engine is exposed as `currentInferenceContextFlow: StateFlow<CurrentInferenceContext?>`.
-- **`ChatRepository`** — Room-backed CRUD for conversations and messages.
-- **`ModelZoo`** — hardcoded list of 6 pre-curated GGUF models (SmolLM2 135M–1.7B, Qwen2.5 0.5B, Llama-3.2 1B, DeepSeek-R1 1.5B) with download URLs and default configs.
-- Navigation uses type-safe `Route` sealed class with Jetpack Navigation Compose.
+- **`ModelRepository`** — manages engine lifecycle.
+- **`ChatRepository`** — Room-backed storage.
+- **`ModelZoo`** — curated list of GGUF models with optimal `ModelDefinition` presets.
 
 ### JNI / Native
 
@@ -94,12 +90,14 @@ Standard MVVM with Hilt DI:
 
 | Class | Purpose |
 |---|---|
-| `ModelConfig` | Model path, `PromptFormat`, MMAP/MLOCK flags, thread count |
-| `SessionConfig` | Context size, `OverflowStrategy`, `InferenceConfig`, `DecodeConfig` |
-| `InferenceConfig` | Temperature, top-p/k, min-p, repeat penalty |
-| `DecodeConfig` | Batch sizes for performance tuning |
-| `PromptFormat` | Per-role prefix/suffix tokens, BOS/EOS, `<think>` tag markers |
+| `ModelDefinition` | `ModelLoadConfig` (path, threads, mmap) + `PromptFormat` + `FeatureMarker` |
+| `SessionConfig` | `contextSize`, `OverflowStrategy`, `InferenceConfig`, `DecodeConfig` |
+| `PromptFormat` | Role markers, `stopStrings`, prefix injection logic |
 
 ## Testing
 
-Unit tests live in `sdk/src/test/` — currently only `PromptFormatterTest` covering chat template formatting. There are no instrumentation tests. New SDK behavior should be covered in this test source set.
+Unit tests in `sdk/src/test/`:
+- `AllocationOptimizedScannerTest` — DFA lexing logic.
+- `PromptFormatterTest` — chat template serialization.
+- `LlamaChatSessionImplTest` — full pipeline integration (replayed via FakeSession).
+- `ResourceStateTest` — state transition logic.

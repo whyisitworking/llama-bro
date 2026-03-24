@@ -29,7 +29,7 @@ sealed interface ResourceState<out T> {
 
     /** 
      * An error occurred during loading. 
-     * @param error The [LlamaError] describing what went wrong.
+     * @param result The [LlamaError] describing what went wrong.
      */
     data class Failure(val error: LlamaError) : ResourceState<Nothing>
 }
