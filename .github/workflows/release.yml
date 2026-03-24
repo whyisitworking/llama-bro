@@ -38,6 +38,12 @@ jobs:
       - name: Run tests
         run: ./gradlew :sdk:test
 
+      - name: Decode google-services.json
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          echo $GOOGLE_SERVICES_JSON_BASE64 | base64 -d > app/google-services.json
+
       - name: Decode Keystore
         env:
           ENCODED_STRING: ${{ secrets.KEYSTORE_BASE64 }}
