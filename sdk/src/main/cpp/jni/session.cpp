@@ -7,21 +7,27 @@
 #include "session/session.hpp"
 
 namespace jni_refs {
-    constexpr auto token_generation_result_class = "com/suhel/llamabro/sdk/internal/LlamaSessionImpl$NativeTokenGenerationResult";
-    constexpr auto token_generation_result_constructor_sig = "(Ljava/lang/String;Z)V";
+    constexpr auto result_class = "com/suhel/llamabro/sdk/internal/LlamaSessionImpl$NativeTokenGenerationResult";
+    constexpr auto result_field_token = "token";
+    constexpr auto result_field_result = "resultCode";
+    constexpr auto result_field_is_complete = "isComplete";
 }
 
-static jclass jTokenGenerationResultClass = nullptr;
-static jmethodID jTokenGenerationResultConstructor = nullptr;
+static jfieldID jResultFieldToken = nullptr;
+static jfieldID jResultFieldResultCode = nullptr;
+static jfieldID jResultFieldIsComplete = nullptr;
 
 static void cache_refs(JNIEnv *env) {
-    auto local = env->FindClass(jni_refs::token_generation_result_class);
+    auto class_ref = env->FindClass(jni_refs::result_class);
 
-    jTokenGenerationResultClass = reinterpret_cast<jclass>(env->NewGlobalRef(local));
-    jTokenGenerationResultConstructor = env->GetMethodID(jTokenGenerationResultClass,
-                                                         "<init>",
-                                                         jni_refs::token_generation_result_constructor_sig);
-    env->DeleteLocalRef(local);
+    jResultFieldToken = env->GetFieldID(class_ref,
+                                        jni_refs::result_field_token, "Ljava/lang/String;");
+    jResultFieldResultCode = env->GetFieldID(class_ref,
+                                             jni_refs::result_field_result, "I");
+    jResultFieldIsComplete = env->GetFieldID(class_ref,
+                                             jni_refs::result_field_is_complete, "Z");
+
+    env->DeleteLocalRef(class_ref);
 }
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *) {
@@ -121,21 +127,25 @@ Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_abort(JNIEnv *, j
 // ── generate ─────────────────────────────────────────────────────────────────
 
 extern "C"
-JNIEXPORT jobject JNICALL
+JNIEXPORT void JNICALL
 Java_com_suhel_llamabro_sdk_internal_LlamaSessionImpl_00024Jni_generate(JNIEnv *env, jclass,
-                                                                        jlong jSessionPtr) {
+                                                                        jlong jSessionPtr,
+                                                                        jobject jResultObj) {
     auto session = reinterpret_cast<session::Session *>(jSessionPtr);
     auto gen = session->generate();
     auto token = gen.token;
+    auto result_code = gen.result_code;
 
-    auto jToken = token.has_value()
-                  ? env->NewString(reinterpret_cast<const jchar *>(token.value().data()),
-                                   static_cast<jsize>(token.value().size()))
+    auto jToken = token
+                  ? env->NewString(reinterpret_cast<const jchar *>(token->data()),
+                                   static_cast<jsize>(token->size()))
                   : nullptr;
+    auto jResultCode = static_cast<jint>(result_code);
     auto jIsComplete = static_cast<jboolean>(gen.is_complete);
 
-    return env->NewObject(jTokenGenerationResultClass, jTokenGenerationResultConstructor,
-                          jToken, jIsComplete);
+    env->SetObjectField(jResultObj, jResultFieldToken, jToken);
+    env->SetIntField(jResultObj, jResultFieldResultCode, jResultCode);
+    env->SetBooleanField(jResultObj, jResultFieldIsComplete, jIsComplete);
 }
 
 // ── destroy ───────────────────────────────────────────────────────────────────

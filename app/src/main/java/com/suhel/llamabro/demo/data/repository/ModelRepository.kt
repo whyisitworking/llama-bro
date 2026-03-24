@@ -6,8 +6,9 @@ import com.suhel.llamabro.demo.model.CurrentInferenceContext
 import com.suhel.llamabro.demo.model.Model
 import com.suhel.llamabro.demo.model.ModelDownloadState
 import com.suhel.llamabro.demo.model.ModelZoo
-import com.suhel.llamabro.sdk.LlamaEngine
-import com.suhel.llamabro.sdk.model.ModelConfig
+import com.suhel.llamabro.sdk.engine.LlamaEngine
+import com.suhel.llamabro.sdk.config.ModelDefinition
+import com.suhel.llamabro.sdk.config.ModelLoadConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -93,10 +94,11 @@ class ModelRepository @Inject constructor(
         .flatMapLatest { action ->
             when (action) {
                 is Action.Load -> LlamaEngine.createFlow(
-                    ModelConfig(
-                        modelPath = action.model.file().absolutePath,
-                        promptFormat = action.model.promptFormat,
-                        supportsThinking = action.model.thinkingSupported
+                    ModelDefinition(
+                        loadConfig = ModelLoadConfig(
+                            path = action.model.file().absolutePath
+                        ),
+                        promptFormat = action.model.promptFormat
                     )
                 ).map { engine -> CurrentInferenceContext(action.model, engine) }
 

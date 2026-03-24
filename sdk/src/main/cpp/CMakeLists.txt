@@ -2,7 +2,10 @@ cmake_minimum_required(VERSION 3.22.1)
 project(llama_bro C CXX)
 
 set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED true)
+
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED true)
 
 # Needed for multiple CPU variants
 set(GGML_BACKEND_DL ON)
@@ -11,11 +14,13 @@ set(GGML_BACKEND_DL ON)
 set(GGML_CPU ON)
 
 # Compile GGML for all CPU variants
-# We'll choose at runtime based on CPU features
 set(GGML_CPU_ALL_VARIANTS ON)
 
 # OpenMP mismanages big.LITTLE architectures
 set(GGML_OPENMP OFF)
+
+# Use optimized kernels
+set(GGML_CPU_KLEIDIAI ON)
 
 add_subdirectory(external/llama.cpp)
 

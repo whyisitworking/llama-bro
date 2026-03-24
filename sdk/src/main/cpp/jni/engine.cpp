@@ -17,8 +17,8 @@ static engine::NativeEngineParams readEngineParams(JNIEnv *env,
     return engine::NativeEngineParams{
             .model_path = configReader.getString("modelPath"),
             .threads    = configReader.getInt("threads"),
-            .use_mmap   = configReader.getBool("useMmap"),
-            .use_mlock  = configReader.getBool("useMlock"),
+            .use_mmap   = configReader.getBool("useMMap"),
+            .use_mlock  = configReader.getBool("useMLock"),
     };
 }
 

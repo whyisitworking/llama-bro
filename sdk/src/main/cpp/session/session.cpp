@@ -110,6 +110,9 @@ namespace session {
             throw std::runtime_error("Failed to initialize llama context.");
         }
 
+        auto system_info = llama_print_system_info();
+        LOGI("Initialized llama context with system info:\n%s", system_info);
+
         llama_context.reset(ctx);
         llama_sampler_chain.reset(create_sampler(config));
         llama_batch = llama_batch_init(static_cast<int32_t>(llama_n_batch(ctx)), 0, 1);
@@ -174,7 +177,7 @@ namespace session {
             if (token.has_value()) {
                 return {
                         .token = token,
-                        .result = ResultCode::OK,
+                        .result_code = ResultCode::OK,
                         .is_complete = false,
                 };
             }
@@ -182,7 +185,7 @@ namespace session {
 
         return {
                 .token = std::nullopt,
-                .result = result,
+                .result_code = result,
                 .is_complete = true,
         };
     }

@@ -1,15 +1,17 @@
 #include <exception>
 
 #include "engine.hpp"
-#include "engine/ggml_variant_chooser.hpp"
+#include "ggml_variant_chooser.hpp"
+
 #include "session/session.hpp"
 #include "result/codes.hpp"
 #include "ggml-backend.h"
+#include "utils/log.hpp"
 
 namespace engine {
     Engine::Engine(const NativeEngineParams &config) {
         auto backend = resolve_best_ggml_backend();
-        auto backend_result = ggml_backend_load(backend.data());
+        auto backend_result = ggml_backend_load(backend);
         if (backend_result == nullptr) {
             throw std::runtime_error("Failed to load GGML backend.");
         }

@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
-    id("maven-publish")
+    alias(libs.plugins.kotlinx.serialization)
+    alias(libs.plugins.maven.publish)
 }
 
 val dynamicVersionName = (project.findProperty("VERSION_NAME") as? String) ?: "1.0.0-SNAPSHOT"
@@ -84,4 +85,6 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+
+    implementation(libs.kotlinx.serialization.json)
 }

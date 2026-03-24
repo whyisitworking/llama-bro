@@ -77,12 +77,13 @@ Grab a GGUF-quantised model from [Hugging Face](https://huggingface.co/models?li
 - **DeepSeek-R1 (7B, Q4_K_M, ~5 GB)** — For reasoning/thinking blocks
   - [bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF](https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF)
 
-**Quantisation guide:** `Q4_K_M` is the gold standard on mobile (best quality-to-speed tradeoff). For maximum speed on low-RAM devices, try `Q3_K_M` or `Q2_K`. For quality-first, try `Q5_K_M` (slower, larger).
-
-### 3. Load and chat
+**Quantisation guide:** `Q4_K_M` is the gold standard on mobile (best quality-to-speed tradeoff). For maximum speed on low-RAM devices, try `Q3_K_M` or `Q2_K`. For quality-first, try `### 3. Load and chat
 
 ```kotlin
 import com.suhel.llamabro.sdk.*
+import com.suhel.llamabro.sdk.config.*
+import com.suhel.llamabro.sdk.models.*
+import com.suhel.llamabro.sdk.format.PromptFormats
 import com.suhel.llamabro.sdk.model.flatMapResource
 import com.suhel.llamabro.sdk.model.filterSuccess
 import com.suhel.llamabro.sdk.model.onEachLoading
@@ -90,9 +91,9 @@ import com.suhel.llamabro.sdk.model.onEachLoading
 // Declarative flow composition (auto-cleanup on cancellation)
 lifecycleScope.launch {
     LlamaEngine.createFlow(
-        ModelConfig(
-            modelPath = "/path/to/model.gguf",
-            promptFormat = PromptFormats.ChatML,
+        ModelDefinition(
+            loadConfig = ModelLoadConfig(path = "/path/to/model.gguf"),
+            promptFormat = PromptFormats.CHAT_ML,
         )
     )
     .onEachLoading { progress -> 
@@ -104,8 +105,8 @@ lifecycleScope.launch {
                 contextSize = 4096,
                 overflowStrategy = OverflowStrategy.RollingWindow(500),
                 inferenceConfig = InferenceConfig(
-                    temperature = 0.7,
-                    repeatPenalty = 1.15,
+                    temperature = 0.7f,
+                    repeatPenalty = 1.15f,
                 )
             )
         )
@@ -115,13 +116,13 @@ lifecycleScope.launch {
     }
     .filterSuccess()  // Extract chat session, drop Loading/Failure
     .flatMapLatest { chatSession ->
-        chatSession.completion("Explain coroutines in one paragraph.")
+        chatSession.completion(ChatEvent.UserEvent("Explain coroutines.", think = false))
     }
-    .collect { completion ->
-        updateTextView(completion.contentText.orEmpty())
+    .collect { snapshot ->
+        updateTextView(snapshot.message.text)
       
-        if (completion.isComplete) {
-            logPerformance("${completion.tokensPerSecond} tokens/sec")
+        if (snapshot.isComplete) {
+            logPerformance("${snapshot.tokensPerSecond} tokens/sec")
         }
     }
 }
@@ -157,11 +158,11 @@ Responsibility: Load the GGUF file, manage model weights, create sessions.
 
 ```kotlin
 // Recommended: Flow-based (auto-cleanup on cancellation)
-LlamaEngine.createFlow(modelConfig)
+LlamaEngine.createFlow(modelDefinition)
     .collect { resourceState -> /* handle loading/success/error */ }
 
 // Manual: Explicit lifecycle control
-val engine = LlamaEngine.create(modelConfig) { progress ->
+val engine = LlamaEngine.create(modelDefinition) { progress ->
     updateProgressBar(progress)
     true  // Return false to cancel load
 }
@@ -180,19 +181,18 @@ Responsibility: Manage KV cache, encode/decode tokens, sample.
 ```kotlin
 // Full control: manually encode, then generate tokens one by one
 suspend fun manualInference(session: LlamaSession) {
-    session.setSystemPrompt("You are helpful.")
-    session.prompt("What's 2+2?")
+    session.setPrefixedPrompt("<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n")
 
     val output = StringBuilder()
-    while (true) {
-        val token = session.generate() ?: break  // null = EOS
-        output.append(token)
+    session.generateFlow().collect { result ->
+        output.append(result.token ?: "")
+        if (result.isComplete) return@collect
     }
     return output.toString()
 }
 ```
 
-**When to use:** Building custom sampling loops, token-level debugging, or advanced inference control. Most use cases don't need this.
+**When to use:** Building custom mapping layers, tool-call injection, or advanced inference control. Most use cases don't need this.
 
 ### `LlamaChatSession` — High-level conversation API
 
@@ -200,8 +200,9 @@ Responsibility: Format messages, handle stop tokens, extract thinking blocks, co
 
 ```kotlin
 // Simple: One-liner for chat completions
-chat.completion("Explain coroutines.").collect { completion ->
-    println(completion.contentText)
+chat.completion(ChatEvent.UserEvent("Hello", think = true)).collect { snapshot ->
+    println(snapshot.message.text)
+    println(snapshot.message.thinkingText)
 }
 ```
 
@@ -219,20 +220,21 @@ chat.completion("Explain coroutines.").collect { completion ->
 
 | Option         | Default                   | Purpose                                                            |
 |----------------|---------------------------|--------------------------------------------------------------------|
-| `modelPath`    | required                  | Absolute path to `.gguf` model file                                |
-| `promptFormat` | required                  | Chat template (`Llama3`, `Gemma3`, `ChatML`, `Mistral`, or custom) |
+| `path`         | required                  | Absolute path to `.gguf` model file                                |
+| `promptFormat` | required                  | Chat template (`LLAMA_3`, `GEMMA_3`, `CHAT_ML`, `MISTRAL`, etc.)    |
 | `threads`      | `availableProcessors / 2` | Inference thread count; tune for performance cores                 |
-| `useMmap`      | `true`                    | Memory-map model file (faster loading, lower peak RAM)             |
-| `useMlock`     | `false`                   | Lock model in RAM (prevents swapping; use on capable devices only) |
+| `useMMap`      | `true`                    | Memory-map model file (faster loading, lower peak RAM)             |
+| `useMLock`     | `false`                   | Lock model in RAM (prevents swapping; use on capable devices only) |
 
 **Example:**
 ```kotlin
-ModelConfig(
-    modelPath = "/data/models/gemma-3n.gguf",
-    promptFormat = PromptFormats.Gemma3,
-    threads = 8,  // Match your device's performance core count
-    useMmap = true,
-    useMlock = false
+ModelDefinition(
+    loadConfig = ModelLoadConfig(
+        path = "/data/models/gwas.gguf",
+        threads = 8,
+        useMMap = true
+    ),
+    promptFormat = PromptFormats.GEMMA_2
 )
 ```
 
@@ -240,7 +242,7 @@ ModelConfig(
 
 | Option             | Default              | Purpose                                         |
 |--------------------|----------------------|-------------------------------------------------|
-| `contextSize`      | `4096`               | KV cache size in tokens (max prompt + response) |
+| `contextSize`      | `2048`               | KV cache size in tokens (max prompt + response) |
 | `overflowStrategy` | `RollingWindow(500)` | Behavior when cache is exhausted                |
 | `inferenceConfig`  | (see below)          | Sampling parameters                             |
 | `decodeConfig`     | (see below)          | Batch decoding tuning                           |
@@ -253,7 +255,7 @@ Control token generation quality and diversity:
 | Option            | Default | Range     | Purpose                                                                 |
 |-------------------|---------|-----------|-------------------------------------------------------------------------|
 | `temperature`     | `0.8`   | `0.0–2.0` | Sampling creativity; `0.0` = greedy (always pick best), `1.0` = neutral |
-| `repeatPenalty`   | `1.1`   | `1.0–2.0` | Penalize recent tokens to avoid loops                                   |
+| `repeatPenalty`   | `1.0`   | `1.0–2.0` | Penalize recent tokens to avoid loops                                   |
 | `presencePenalty` | `0.0`   | `0.0–2.0` | Penalize all previously seen tokens                                     |
 | `minP`            | `0.1`   | `0.0–1.0` | Min-probability threshold; `null` to disable                            |
 | `topP`            | `null`  | `0.0–1.0` | Nucleus sampling; `null` = disabled                                     |
@@ -262,20 +264,18 @@ Control token generation quality and diversity:
 **Example:**
 ```kotlin
 InferenceConfig(
-    temperature = 0.7,        // Slightly conservative
-    repeatPenalty = 1.15,     // Discourage repetition
-    minP = 0.05,              // Filter low-probability tokens
-    topP = 0.9                // Nucleus sampling for diversity
+    temperature = 0.7f,        // Slightly conservative
+    repeatPenalty = 1.15f,     // Discourage repetition
+    minP = 0.05f               // Filter low-probability tokens
 )
 ```
 
 ### Decode Config (Performance Tuning)
 
-| Option                | Default | Purpose                                       |
-|-----------------------|---------|-----------------------------------------------|
-| `batchSize`           | `2048`  | Max tokens processed per decode step          |
-| `microBatchSize`      | `512`   | Internal chunking for memory efficiency       |
-| `systemPromptReserve` | `100`   | Tokens reserved for system prompt in rollover |
+| Option           | Default | Purpose                                 |
+|------------------|---------|-----------------------------------------|
+| `batchSize`      | `2048`  | Max tokens processed per decode step    |
+| `microBatchSize` | `512`   | Internal chunking for memory efficiency |
 
 Increase `batchSize` to `4096` for faster prefill on long system prompts; decrease if memory-constrained.
 
@@ -301,29 +301,29 @@ SessionConfig(
 
 Llama Bro works with any GGUF model that runs in `llama.cpp`. Built-in templates cover the major families:
 
-| Template  | Format                                   | Recommended Models             | Size Range                 |
-|-----------|------------------------------------------|--------------------------------|----------------------------|
-| `Gemma3`  | `<start_of_turn>` / `<end_of_turn>`      | Gemma 3, Gemma 3n              | 2B–27B (Q4_K_M: 1.5–16 GB) |
-| `Llama3`  | `<\|start_header_id\|>` / `<\|eot_id\|>` | Llama 3 / 3.1 / 3.2 / 3.3      | 8B–70B (Q4_K_M: 5–40 GB)   |
-| `ChatML`  | `<\|im_start\|>` / `<\|im_end\|>`        | Qwen 2.5, Yi, InternLM, Hermes | 1B–72B (varies)            |
-| `Mistral` | `[INST]` / `[/INST]`                     | Mistral 7B, Mixtral 8x7B       | 7B–46B (Q4_K_M: 4.5–30 GB) |
+| Template    | Format                                   | Recommended Models                 |
+|-------------|------------------------------------------|------------------------------------|
+| `GEMMA_2`   | `<start_of_turn>` / `<end_of_turn>`      | Gemma 2, Gemma 3n                  |
+| `LLAMA_3`   | `<\|start_header_id\|>` / `<\|eot_id\|>` | Llama 3 / 3.1 / 3.2 / 3.3          |
+| `CHAT_ML`   | `<\|im_start\|>` / `<\|im_end\|>`        | Qwen 2.5, DeepSeek-R1, Yi, Hermes  |
+| `MISTRAL`   | `[INST]` / `[/INST]`                     | Mistral 7B, Mixtral 8x7B           |
+| `NEMOTRON`  | `<extra_id_0>` / `<extra_id_1>`          | Nemotron                           |
 
-**Finding models:** Browse [Hugging Face](https://huggingface.co/models?library=gguf) for GGUF quantisations. **Starting recommendation:** Gemma 3n (2B, ~3 GB) or Llama 3.2 (1B, ~600 MB) for testing.
+**Finding models:** Browse [Hugging Face](https://huggingface.co/models?library=gguf) for GGUF quantisations. **Starting recommendation:** Llama 3.2 (1B, ~600 MB) for testing.
 
 **Custom templates:** For models not listed above, define your own:
 
 ```kotlin
 val custom = PromptFormat(
     systemPrefix = "<<SYS>>\n",
-    systemSuffix = "\n<</SYS>>\n\n",
     userPrefix = "[INST] ",
-    userSuffix = " [/INST]",
-    assistantPrefix = "",
-    assistantSuffix = "</s>"
+    assistantPrefix = "[/INST] ",
+    endOfTurn = "</s>\n",
+    emitAssistantPrefixOnGeneration = true
 )
 
 LlamaEngine.create(
-    ModelConfig(modelPath = "/path/to/model.gguf", promptFormat = custom)
+    ModelDefinition(loadConfig = ModelLoadConfig("/path/to/model.gguf"), promptFormat = custom)
 )
 ```
 
@@ -377,31 +377,29 @@ These operators enable **declarative, type-safe composition** without nested `wh
 
 ## Thinking Blocks & Reasoning Models
 
-Reasoning models like DeepSeek-R1 and QwQ expose internal thoughts via `<think>...</think>` tags. Llama Bro extracts them automatically:
+Reasoning models like DeepSeek-R1 and QwQ expose internal thoughts via `<think>...</think>` tags. Llama Bro extracts them into semantic parts:
 
 ```kotlin
-chat.completion("Hard problem").collect { completion ->
+chat.completion(ChatEvent.UserEvent("Hard problem", think = true)).collect { snapshot ->
     // View the model's reasoning
-    completion.thinkingText?.let { thinking ->
-        println("Model reasoning:\n$thinking")
-    }
+    println("Model reasoning:\n${snapshot.message.thinkingText}")
 
     // View the final answer
-    println("Final answer:\n${completion.contentText}")
+    println("Final answer:\n${snapshot.message.text}")
 
     // Check performance
-    if (completion.isComplete) {
-        println("Generated at ${completion.tokensPerSecond} tokens/sec")
+    if (snapshot.isComplete) {
+        println("Generated at ${snapshot.tokensPerSecond} tokens/sec")
     }
 }
 ```
 
-Perfect for explainability, debugging, or understanding complex model behavior. The `Completion` data class provides:
+Perfect for explainability, debugging, or understanding complex model behavior. The `CompletionSnapshot` data class provides:
 
-- **`thinkingText`** — Content inside `<think>...</think>` blocks (reasoning models only)
-- **`contentText`** — Visible response text (everything outside thinking blocks)
-- **`tokensPerSecond`** — Streaming performance metric
-- **`isComplete`** — True when generation ends (EOS reached)
+- **`message`** — An `AssistantEvent` containing text, thinking, and tool call parts.
+- **`tokensPerSecond`** — Final performance metric.
+- **`isComplete`** — True when generation ends (EOS reached).
+- **`isError`** — True if a decode error occurred.
 
 ---
 
@@ -448,28 +446,29 @@ All native pointers are wrapped in `AutoCloseable` interfaces. Cancellation is s
 
 ## Completion Streaming
 
-Each emission from `chat.completion(message)` is a `Completion` snapshot:
+Each emission from `chat.completion(userEvent)` is a `CompletionSnapshot`:
 
 ```kotlin
-data class Completion(
-    val thinkingText: String?,       // Internal reasoning (reasoning models only)
-    val contentText: String?,        // Visible response text
-    val tokensPerSecond: Float?,     // Performance metric (rolling average)
-    val isComplete: Boolean          // True when EOS reached (generation done)
+data class CompletionSnapshot(
+    val message: AssistantEvent,   // Parts-based message (text, thinking, tools)
+    val tokensPerSecond: Float,    // Performance metric
+    val isComplete: Boolean,       // True when generation ends
+    val isError: Boolean,          // True if decode failed
+    val error: String?             // Optional error message
 )
 ```
 
-The flow emits cumulative snapshots—each one contains all tokens generated so far, not just new tokens. Use `isComplete` to detect end-of-generation:
+The flow emits cumulative snapshots—each one contains all parts generated so far. Use `isComplete` to detect end-of-generation:
 
 ```kotlin
-chat.completion("Hello").collect { completion ->
-    if (!completion.isComplete) {
+chat.completion(ChatEvent.UserEvent("Hello", think = false)).collect { snapshot ->
+    if (!snapshot.isComplete) {
         // Still generating
-        updateUI(completion.contentText)  // Partial response
+        updateUI(snapshot.message.text)  // Partial response
     } else {
         // Generation finished
-        saveToDatabase(completion)
-        logMetrics("Final speed: ${completion.tokensPerSecond} t/s")
+        saveToDatabase(snapshot.message)
+        logMetrics("Final speed: ${snapshot.tokensPerSecond} t/s")
     }
 }
 ```
@@ -478,17 +477,17 @@ chat.completion("Hello").collect { completion ->
 
 ## Conversation History
 
-Restore prior chats from a database:
+Restore prior chats:
 
 ```kotlin
 val history = listOf(
-    Message.User("What's Kotlin?"),
-    Message.Assistant("Kotlin is a JVM language..."),
-    Message.User("And coroutines?")
+    ChatEvent.UserEvent("What's Kotlin?", think = false),
+    ChatEvent.AssistantEvent(listOf(Part.TextPart("Kotlin is a JVM language..."))),
+    ChatEvent.UserEvent("And coroutines?", think = false)
 )
 
-chat.loadHistory(history)
-chat.completion("Explain together").collect { /* ... */ }
+chat.feedHistory(history)
+chat.completion(ChatEvent.UserEvent("Explain together", think = false)).collect { /* ... */ }
 ```
 
 The session's KV cache is pre-populated with the history, so the next response is contextual and faster.
@@ -541,7 +540,10 @@ class ChatViewModel @Inject constructor(
 
     // Single declarative flow chain for the entire lifecycle
     private val chatSessionFlow = LlamaEngine.createFlow(
-        ModelConfig(modelPath, PromptFormats.Gemma3)
+        ModelDefinition(
+            loadConfig = ModelLoadConfig(modelPath),
+            promptFormat = PromptFormats.GEMMA_2
+        )
     )
     .onEachSuccess { _loadingProgress.value = 1.0f }  // Model ready
     .flatMapResource { engine ->
@@ -582,7 +584,7 @@ class ResponseViewModel @Inject constructor() : ViewModel() {
                 .onStart { _uiState.value = ResponseUiState.Loading }
                 .collect { completion ->
                     _uiState.value = ResponseUiState.Streaming(
-                        text = completion.contentText.orEmpty(),
+                        text = completion.message.text,
                         tokensPerSecond = completion.tokensPerSecond,
                         thinking = completion.thinkingText,
                         isComplete = completion.isComplete
@@ -615,9 +617,9 @@ uiState.collect { state ->
 ```kotlin
 // Use with reasoning models (DeepSeek-R1, QwQ)
 val engine = LlamaEngine.create(
-    ModelConfig(
-        modelPath = "/data/models/deepseek-r1-7b-q4.gguf",
-        promptFormat = PromptFormats.ChatML
+    ModelDefinition(
+        loadConfig = ModelLoadConfig(path = "/data/models/deepseek-r1-7b-q4.gguf"),
+        promptFormat = PromptFormats.CHAT_ML
     )
 )
 
@@ -654,13 +656,13 @@ val customFormat = PromptFormat(
     assistantSuffix = "</s>\n"
 )
 
-val modelConfig = ModelConfig(
-    modelPath = "/data/models/my-custom-model.gguf",
+val modelDefinition = ModelDefinition(
+    loadConfig = ModelLoadConfig(modelPath = "/data/models/my-custom-model.gguf"),
     promptFormat = customFormat
 )
 
 // Use it like any built-in template
-val engine = LlamaEngine.create(modelConfig)
+val engine = LlamaEngine.create(modelDefinition)
 val session = engine.createSession(SessionConfig())
 val chat = session.createChatSession("You are helpful.")
 

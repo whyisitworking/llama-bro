@@ -1,7 +1,7 @@
 package com.suhel.llamabro.demo.model
 
-import com.suhel.llamabro.sdk.model.InferenceConfig
-import com.suhel.llamabro.sdk.model.PromptFormat
+import com.suhel.llamabro.sdk.config.InferenceConfig
+import com.suhel.llamabro.sdk.format.PromptFormat
 
 data class Model(
     val id: String,

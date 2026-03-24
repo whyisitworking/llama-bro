@@ -42,7 +42,7 @@ namespace session {
 
     struct Generation {
         std::optional<std::u16string> token;
-        ResultCode result;
+        ResultCode result_code;
         bool is_complete;
     };
 
