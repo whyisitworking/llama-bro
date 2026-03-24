@@ -2,16 +2,16 @@ package com.suhel.llamabro.sdk.chat.pipeline
 
 /**
  * An allocation-conscious DFA scanner that processes a stream of strings
- * extracting distinct tags and text. 
+ * extracting distinct tags and text.
  *
  * Designed to minimize GC overhead by tracking a single running StringBuilder
  * and yielding explicit allocations ONLY upon confirmed semantic token emission.
  */
 internal class AllocationOptimizedScanner(
-    private val markers: List<FeatureMarker>
+    private val delimiters: List<TagDelimiter>
 ) {
     private val buffer = StringBuilder()
-    private var activeMarker: FeatureMarker? = null
+    private var activeDelimiter: TagDelimiter? = null
 
     /**
      * Feeds a raw token into the scanner and returns any definitively parsed events.
@@ -25,20 +25,20 @@ internal class AllocationOptimizedScanner(
         val events = mutableListOf<LexerEvent>()
 
         while (buffer.isNotEmpty()) {
-            if (activeMarker == null) {
-                var nearestMarker: FeatureMarker? = null
+            if (activeDelimiter == null) {
+                var nearestDelimiter: TagDelimiter? = null
                 var nearestFullIdx = -1
                 var nearestPartialIdx = -1
 
-                for (marker in markers) {
-                    val fullIdx = buffer.indexOf(marker.open)
+                for (delimiter in delimiters) {
+                    val fullIdx = buffer.indexOf(delimiter.open)
                     if (fullIdx != -1) {
                         if (nearestFullIdx == -1 || fullIdx < nearestFullIdx) {
                             nearestFullIdx = fullIdx
-                            nearestMarker = marker
+                            nearestDelimiter = delimiter
                         }
                     } else {
-                        val partialIdx = findPartialMatch(buffer, marker.open)
+                        val partialIdx = findPartialMatch(buffer, delimiter.open)
                         if (partialIdx != -1) {
                             if (nearestPartialIdx == -1 || partialIdx < nearestPartialIdx) {
                                 nearestPartialIdx = partialIdx
@@ -47,61 +47,57 @@ internal class AllocationOptimizedScanner(
                     }
                 }
 
-                if (nearestMarker != null) {
+                if (nearestDelimiter != null) {
                     if (nearestFullIdx > 0) {
                         // Flush preceding pure text
-                        events.add(LexerEvent.Text(buffer.substring(0, nearestFullIdx)))
+                        events += LexerEvent.Text(buffer.substring(0, nearestFullIdx))
                     }
-                    events.add(LexerEvent.TagOpened(nearestMarker))
-                    activeMarker = nearestMarker
-                    buffer.delete(0, nearestFullIdx + nearestMarker.open.length)
+                    events += LexerEvent.TagOpened(nearestDelimiter)
+                    activeDelimiter = nearestDelimiter
+                    buffer.delete(0, nearestFullIdx + nearestDelimiter.open.length)
                 } else if (nearestPartialIdx != -1) {
                     if (nearestPartialIdx > 0) {
-                        events.add(LexerEvent.Text(buffer.substring(0, nearestPartialIdx)))
+                        events += LexerEvent.Text(buffer.substring(0, nearestPartialIdx))
                         buffer.delete(0, nearestPartialIdx)
                     }
                     // Wait for more tokens to complete or reject the partial tag boundary
                     break
                 } else {
                     // Entire buffer is pure text. Flush completely.
-                    events.add(LexerEvent.Text(buffer.toString()))
+                    events += LexerEvent.Text(buffer.toString())
                     buffer.clear()
                     break
                 }
             } else {
-                val currentMarker = activeMarker!!
-                val closingTag = currentMarker.close
+                val current = activeDelimiter!!
+                val closingTag = current.close
                 val fullIdx = buffer.indexOf(closingTag)
 
                 if (fullIdx != -1) {
                     if (fullIdx > 0) {
-                        events.add(LexerEvent.TagContent(currentMarker, buffer.substring(0, fullIdx)))
+                        events += LexerEvent.TagContent(current, buffer.substring(0, fullIdx))
                     }
-                    events.add(LexerEvent.TagClosed(currentMarker))
-                    activeMarker = null
+                    events += LexerEvent.TagClosed(current)
+                    activeDelimiter = null
                     buffer.delete(0, fullIdx + closingTag.length)
                 } else {
                     val partialIdx = findPartialMatch(buffer, closingTag)
                     if (partialIdx != -1) {
                         if (partialIdx > 0) {
-                            events.add(LexerEvent.TagContent(currentMarker, buffer.substring(0, partialIdx)))
+                            events += LexerEvent.TagContent(current, buffer.substring(0, partialIdx))
                             buffer.delete(0, partialIdx)
                         }
                         // Stop and safely wait for the remainder of the closing tag across future feeds
-                        break 
+                        break
                     } else {
                         // Safely flush entire tag content
-                        events.add(LexerEvent.TagContent(currentMarker, buffer.toString()))
+                        events += LexerEvent.TagContent(current, buffer.toString())
                         buffer.clear()
                         break
                     }
                 }
             }
         }
-
-        // If end of stream and activeMarker is still open, we close out forcefully or hold?
-        // Since LLMs can gracefully stop, the stream ending usually stops cleanly. 
-        // We defer to pipeline if it matters.
 
         return events
     }

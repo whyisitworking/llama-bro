@@ -1,7 +1,7 @@
 package com.suhel.llamabro.sdk.engine
 
 import com.suhel.llamabro.sdk.ProgressListener
-import com.suhel.llamabro.sdk.config.ModelDefinition
+import com.suhel.llamabro.sdk.config.LoadableModel
 import com.suhel.llamabro.sdk.config.SessionConfig
 import com.suhel.llamabro.sdk.internal.LlamaEngineImpl
 import com.suhel.llamabro.sdk.model.LlamaError
@@ -76,7 +76,7 @@ interface LlamaEngine : AutoCloseable {
          * @throws LlamaError.ModelLoadFailed if the GGUF file is corrupt or incompatible.
          */
         fun create(
-            modelConfig: ModelDefinition,
+            modelConfig: LoadableModel,
             onProgress: ((Float) -> Boolean)? = null
         ): LlamaEngine {
             ensureNativeLoaded()
@@ -98,7 +98,7 @@ interface LlamaEngine : AutoCloseable {
          * @param modelConfig Path and loading options for the model.
          * @return A flow of [ResourceState] representing the loading lifecycle.
          */
-        fun createFlow(modelConfig: ModelDefinition): Flow<ResourceState<LlamaEngine>> = callbackFlow {
+        fun createFlow(modelConfig: LoadableModel): Flow<ResourceState<LlamaEngine>> = callbackFlow {
             ensureNativeLoaded()
 
             val listener = object : ProgressListener {

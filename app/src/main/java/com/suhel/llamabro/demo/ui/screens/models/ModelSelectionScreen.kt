@@ -134,7 +134,7 @@ private fun ModelCard(
                         )
                 }
 
-                if (item.thinkingSupported) {
+                if (item.profile.supportsThinking) {
                     Icon(
                         painterResource(R.drawable.cognition_24),
                         contentDescription = null,

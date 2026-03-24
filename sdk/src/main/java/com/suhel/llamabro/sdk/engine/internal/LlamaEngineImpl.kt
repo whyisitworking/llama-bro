@@ -2,7 +2,7 @@ package com.suhel.llamabro.sdk.internal
 
 import com.suhel.llamabro.sdk.engine.LlamaEngine
 import com.suhel.llamabro.sdk.engine.LlamaSession
-import com.suhel.llamabro.sdk.config.ModelDefinition
+import com.suhel.llamabro.sdk.config.LoadableModel
 import com.suhel.llamabro.sdk.config.SessionConfig
 import com.suhel.llamabro.sdk.ProgressListener
 import com.suhel.llamabro.sdk.model.LlamaError
@@ -21,17 +21,17 @@ import kotlinx.coroutines.withContext
  * bridge for session creation.
  */
 internal class LlamaEngineImpl(
-    private val modelDefinition: ModelDefinition,
+    private val loadableModel: LoadableModel,
     listener: ProgressListener? = null,
 ) : LlamaEngine {
 
     /** Pointer to the native llama_bro_engine structure. */
     private val enginePtr: Long = run {
         val params = NativeCreateParams(
-            modelPath = modelDefinition.loadConfig.path,
-            useMMap = modelDefinition.loadConfig.useMMap,
-            useMLock = modelDefinition.loadConfig.useMLock,
-            threads = modelDefinition.loadConfig.threads,
+            modelPath = loadableModel.loadConfig.path,
+            useMMap = loadableModel.loadConfig.useMMap,
+            useMLock = loadableModel.loadConfig.useMLock,
+            threads = loadableModel.loadConfig.threads,
         )
 
         if (listener != null) {
@@ -43,7 +43,7 @@ internal class LlamaEngineImpl(
 
     override suspend fun createSession(sessionConfig: SessionConfig): LlamaSession =
         withContext(Dispatchers.IO) {
-            LlamaSessionImpl(enginePtr, sessionConfig, modelDefinition)
+            LlamaSessionImpl(enginePtr, sessionConfig, loadableModel)
         }
 
     override fun createSessionFlow(sessionConfig: SessionConfig): Flow<ResourceState<LlamaSession>> =

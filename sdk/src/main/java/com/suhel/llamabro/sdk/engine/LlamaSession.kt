@@ -1,12 +1,12 @@
 package com.suhel.llamabro.sdk.engine
 
 import com.suhel.llamabro.sdk.chat.LlamaChatSession
-import com.suhel.llamabro.sdk.config.ModelDefinition
+import com.suhel.llamabro.sdk.config.LoadableModel
 import com.suhel.llamabro.sdk.model.ResourceState
 import kotlinx.coroutines.flow.Flow
 
 interface LlamaSession : AutoCloseable {
-    val modelDefinition: ModelDefinition
+    val loadableModel: LoadableModel
 
     suspend fun setPrefixedPrompt(text: String)
 

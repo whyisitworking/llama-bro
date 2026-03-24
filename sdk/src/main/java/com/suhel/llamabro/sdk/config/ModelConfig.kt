@@ -1,18 +1,9 @@
 package com.suhel.llamabro.sdk.config
 
-import com.suhel.llamabro.sdk.chat.pipeline.FeatureMarker
-import com.suhel.llamabro.sdk.chat.pipeline.ThinkingMarker
-import com.suhel.llamabro.sdk.format.PromptFormat
-import com.suhel.llamabro.sdk.toolcall.ToolCallDefinition
-
-data class ModelDefinition(
+data class LoadableModel(
     val loadConfig: ModelLoadConfig,
-    val promptFormat: PromptFormat,
-    val features: List<FeatureMarker> = emptyList(),
-    val toolCall: ToolCallDefinition? = null
-) {
-    val supportsThinking: Boolean get() = features.any { it is ThinkingMarker }
-}
+    val profile: ModelProfile,
+)
 
 data class ModelLoadConfig(
     val path: String,

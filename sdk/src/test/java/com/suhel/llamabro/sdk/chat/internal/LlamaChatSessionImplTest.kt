@@ -1,15 +1,17 @@
 package com.suhel.llamabro.sdk.chat.internal
 
 import com.suhel.llamabro.sdk.chat.LlamaChatSession
-import com.suhel.llamabro.sdk.chat.pipeline.ThinkingMarker
-import com.suhel.llamabro.sdk.config.ModelDefinition
+import com.suhel.llamabro.sdk.chat.pipeline.TagDelimiter
+import com.suhel.llamabro.sdk.config.LoadableModel
 import com.suhel.llamabro.sdk.config.ModelLoadConfig
+import com.suhel.llamabro.sdk.config.ModelProfile
+import com.suhel.llamabro.sdk.config.ThinkingCapability
 import com.suhel.llamabro.sdk.engine.LlamaSession
 import com.suhel.llamabro.sdk.engine.TokenGenerationResult
 import com.suhel.llamabro.sdk.engine.TokenGenerationResultCode
 import com.suhel.llamabro.sdk.format.PromptFormats
 import com.suhel.llamabro.sdk.model.ResourceState
-import com.suhel.llamabro.sdk.models.ChatEvent
+import com.suhel.llamabro.sdk.chat.ChatEvent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
@@ -33,7 +35,7 @@ class LlamaChatSessionImplTest {
      */
     private class FakeSession(
         private val tokens: List<String>,
-        override val modelDefinition: ModelDefinition = noFeaturesModel()
+        override val loadableModel: LoadableModel = noFeaturesModel()
     ) : LlamaSession {
 
         val addedPrompts = mutableListOf<String>()
@@ -70,15 +72,19 @@ class LlamaChatSessionImplTest {
     }
 
     companion object {
-        private fun noFeaturesModel() = ModelDefinition(
+        private fun noFeaturesModel() = LoadableModel(
             loadConfig = ModelLoadConfig(path = "fake.gguf"),
-            promptFormat = PromptFormats.CHAT_ML,
+            profile = ModelProfile(promptFormat = PromptFormats.CHAT_ML),
         )
 
-        private fun thinkingModel() = ModelDefinition(
+        private fun thinkingModel() = LoadableModel(
             loadConfig = ModelLoadConfig(path = "fake.gguf"),
-            promptFormat = PromptFormats.CHAT_ML,
-            features = listOf(ThinkingMarker(open = "<think>", close = "</think>"))
+            profile = ModelProfile(
+                promptFormat = PromptFormats.CHAT_ML,
+                thinking = ThinkingCapability(
+                    tags = TagDelimiter("<think>", "</think>"),
+                ),
+            ),
         )
     }
 
@@ -123,7 +129,7 @@ class LlamaChatSessionImplTest {
     fun `thinking tags correctly partition text into thinking and content parts`() = runTest {
         val fake = FakeSession(
             tokens = listOf("<think>", "reasoning", "</think>", "answer"),
-            modelDefinition = thinkingModel()
+            loadableModel = thinkingModel()
         )
         val session = LlamaChatSessionImpl(fake, "")
         val last = session.completion(ChatEvent.UserEvent("Hi", think = false)).toList().last()
@@ -136,7 +142,7 @@ class LlamaChatSessionImplTest {
     fun `thinking tag split across token boundaries is correctly assembled`() = runTest {
         val fake = FakeSession(
             tokens = listOf("<thi", "nk>", "deep thought", "</thi", "nk>", "visible"),
-            modelDefinition = thinkingModel()
+            loadableModel = thinkingModel()
         )
         val session = LlamaChatSessionImpl(fake, "")
         val last = session.completion(ChatEvent.UserEvent("Hi", think = false)).toList().last()
@@ -149,7 +155,7 @@ class LlamaChatSessionImplTest {
     fun `text before thinking tag is classified as content`() = runTest {
         val fake = FakeSession(
             tokens = listOf("preamble", "<think>", "thought", "</think>", "answer"),
-            modelDefinition = thinkingModel()
+            loadableModel = thinkingModel()
         )
         val session = LlamaChatSessionImpl(fake, "")
         val last = session.completion(ChatEvent.UserEvent("Hi", think = false)).toList().last()
@@ -162,7 +168,7 @@ class LlamaChatSessionImplTest {
     fun `thinking-only output has empty text`() = runTest {
         val fake = FakeSession(
             tokens = listOf("<think>", "thought", "</think>"),
-            modelDefinition = thinkingModel()
+            loadableModel = thinkingModel()
         )
         val session = LlamaChatSessionImpl(fake, "")
         val last = session.completion(ChatEvent.UserEvent("Hi", think = false)).toList().last()

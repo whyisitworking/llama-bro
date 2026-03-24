@@ -1,4 +1,4 @@
-package com.suhel.llamabro.sdk.models
+package com.suhel.llamabro.sdk.chat
 
 /**
  * A snapshot of the model's completion at a point in time.

@@ -1,7 +1,7 @@
 package com.suhel.llamabro.sdk.chat
 
-import com.suhel.llamabro.sdk.models.ChatEvent
-import com.suhel.llamabro.sdk.models.CompletionSnapshot
+import com.suhel.llamabro.sdk.chat.ChatEvent
+import com.suhel.llamabro.sdk.chat.CompletionSnapshot
 import com.suhel.llamabro.sdk.toolcall.ToolDefinition
 import kotlinx.coroutines.flow.Flow
 

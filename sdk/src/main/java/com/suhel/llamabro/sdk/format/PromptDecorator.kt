@@ -1,6 +1,6 @@
 package com.suhel.llamabro.sdk.format
 
-import com.suhel.llamabro.sdk.models.ChatEvent
+import com.suhel.llamabro.sdk.chat.ChatEvent
 
 /**
  * A capability decorator injects template prefixes for prompts based on features.

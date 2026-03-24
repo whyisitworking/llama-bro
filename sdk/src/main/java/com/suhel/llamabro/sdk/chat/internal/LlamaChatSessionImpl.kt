@@ -1,18 +1,16 @@
 package com.suhel.llamabro.sdk.chat.internal
 
+import com.suhel.llamabro.sdk.chat.ChatEvent
+import com.suhel.llamabro.sdk.chat.CompletionSnapshot
 import com.suhel.llamabro.sdk.chat.LlamaChatSession
+import com.suhel.llamabro.sdk.chat.pipeline.SemanticChunk
+import com.suhel.llamabro.sdk.chat.pipeline.lexTags
+import com.suhel.llamabro.sdk.chat.pipeline.semanticChunks
 import com.suhel.llamabro.sdk.engine.LlamaSession
 import com.suhel.llamabro.sdk.format.PromptDecorator
 import com.suhel.llamabro.sdk.format.PromptFormatter
 import com.suhel.llamabro.sdk.format.ThinkingDecorator
 import com.suhel.llamabro.sdk.format.ToolCallDecorator
-import com.suhel.llamabro.sdk.models.ChatEvent
-import com.suhel.llamabro.sdk.models.CompletionSnapshot
-import com.suhel.llamabro.sdk.chat.pipeline.ThinkingMarker
-import com.suhel.llamabro.sdk.chat.pipeline.ToolCallMarker
-import com.suhel.llamabro.sdk.chat.pipeline.SemanticChunk
-import com.suhel.llamabro.sdk.chat.pipeline.lexTags
-import com.suhel.llamabro.sdk.chat.pipeline.semanticChunks
 import com.suhel.llamabro.sdk.toolcall.ToolCall
 import com.suhel.llamabro.sdk.toolcall.ToolDefinition
 import com.suhel.llamabro.sdk.toolcall.ToolResult
@@ -25,21 +23,16 @@ internal class LlamaChatSessionImpl(
     private val toolCaller: (suspend (List<ToolCall>) -> List<ToolResult>)? = null
 ) : LlamaChatSession {
 
-    private var formatter: PromptFormatter = PromptFormatter(session.modelDefinition)
+    private val profile = session.loadableModel.profile
+    private var formatter: PromptFormatter = PromptFormatter(profile)
 
     override suspend fun initialize(tools: List<ToolDefinition>) {
-        val modelDef = session.modelDefinition
         val decorators = mutableListOf<PromptDecorator>()
-        
-        // Setup Decorators for injection output mappings
-        if (modelDef.features.any { it is ThinkingMarker }) {
-            decorators.add(ThinkingDecorator(modelDef.features.filterIsInstance<ThinkingMarker>().first()))
-        }
-        if (modelDef.toolCall != null) {
-            decorators.add(ToolCallDecorator(modelDef.toolCall, tools))
-        }
 
-        formatter = PromptFormatter(modelDef, decorators)
+        profile.thinking?.let { decorators.add(ThinkingDecorator(it)) }
+        profile.toolCall?.let { decorators.add(ToolCallDecorator(it, tools)) }
+
+        formatter = PromptFormatter(profile, decorators)
 
         val system = ChatEvent.SystemEvent(
             content = systemPrompt,
@@ -60,8 +53,7 @@ internal class LlamaChatSessionImpl(
         session.addPrompt(formatter.formatTurn(message))
 
         // 2. Setup context
-        val features = session.modelDefinition.features
-        val toolCallDef = session.modelDefinition.toolCall
+        val toolCallCapability = profile.toolCall
 
         var completedParts = emptyList<ChatEvent.AssistantEvent.Part>()
         var currentText = ""
@@ -78,8 +70,8 @@ internal class LlamaChatSessionImpl(
             var executionTriggered = false
 
             session.generateFlow()
-                .lexTags(features)
-                .semanticChunks()
+                .lexTags(profile.tagDelimiters)
+                .semanticChunks(profile)
                 .collect { chunk ->
                     // Apply immutable state transitions
                     when (chunk) {
@@ -87,15 +79,19 @@ internal class LlamaChatSessionImpl(
                             currentText += chunk.content
                             tokenCount++
                         }
+
                         is SemanticChunk.Thinking -> {
                             currentThinking += chunk.content
                             tokenCount++
                         }
+
                         is SemanticChunk.ToolCallContent -> currentToolCallBuffer += chunk.content
                         is SemanticChunk.ToolCallComplete -> {
-                            val callDef = toolCallDef ?: throw IllegalStateException("Tool call triggered but model lacks tool definitions.")
-                            val call = callDef.callParser(currentToolCallBuffer)
-                            completedParts = completedParts + ChatEvent.AssistantEvent.Part.ToolCallPart(call)
+                            val capability = toolCallCapability
+                                ?: throw IllegalStateException("Tool call triggered but model lacks tool definitions.")
+                            val call = capability.callParser(currentToolCallBuffer)
+                            completedParts =
+                                completedParts + ChatEvent.AssistantEvent.Part.ToolCallPart(call)
                             currentToolCallBuffer = ""
 
                             val results = toolCaller?.invoke(listOf(call)) ?: emptyList()
@@ -128,7 +124,8 @@ internal class LlamaChatSessionImpl(
 
         // 4. Final Emit
         val elapsedSeconds = (System.currentTimeMillis() - startTimeMs) / 1000f
-        val tokensPerSecond = if (elapsedSeconds > 0f && tokenCount > 0) tokenCount / elapsedSeconds else 0f
+        val tokensPerSecond =
+            if (elapsedSeconds > 0f && tokenCount > 0) tokenCount / elapsedSeconds else 0f
 
         completedParts = buildSnapshotParts(completedParts, currentText, currentThinking)
         emit(

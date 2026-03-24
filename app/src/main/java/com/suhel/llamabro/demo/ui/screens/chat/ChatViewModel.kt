@@ -14,7 +14,7 @@ import com.suhel.llamabro.demo.data.repository.ChatRepository
 import com.suhel.llamabro.demo.data.repository.ModelRepository
 import com.suhel.llamabro.demo.model.MessageRole
 import com.suhel.llamabro.demo.navigation.Chat
-import com.suhel.llamabro.sdk.models.ChatEvent
+import com.suhel.llamabro.sdk.chat.ChatEvent
 import com.suhel.llamabro.sdk.config.SessionConfig
 import com.suhel.llamabro.sdk.model.filterSuccess
 import com.suhel.llamabro.sdk.model.flatMapResource
@@ -75,7 +75,7 @@ class ChatViewModel @Inject constructor(
                 ?.createSessionFlow(
                     SessionConfig(
                         contextSize = 8192,
-                        inferenceConfig = currentInferenceContext.model.defaultInferenceConfig
+                        inferenceConfig = currentInferenceContext.model.profile.defaultInferenceConfig
                     )
                 )
                 ?: flowOf(null)
@@ -243,7 +243,7 @@ class ChatViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val inputConfig = combine(
-        currentModelFlow.map { it?.thinkingSupported == true },
+        currentModelFlow.map { it?.profile?.supportsThinking == true },
         incomingMessage.map { it != null }
     ) { supportsThinking, isGenerating ->
         UiChatInputConfig(

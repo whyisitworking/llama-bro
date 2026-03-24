@@ -84,4 +84,11 @@ object PromptFormats {
         emitAssistantPrefixOnGeneration = true,
         stopStrings = listOf("<extra_id_1>")
     )
+
+    val ZEPHYR = PromptFormat(
+        systemPrefix = "<|system|>\n",
+        userPrefix = "<|user|>\n",
+        assistantPrefix = "<|assistant|>\n",
+        endOfTurn = "</s>\n",
+    )
 }

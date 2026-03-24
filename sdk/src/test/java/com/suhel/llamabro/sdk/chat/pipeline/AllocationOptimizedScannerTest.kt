@@ -12,13 +12,13 @@ import org.junit.Test
  */
 class AllocationOptimizedScannerTest {
 
-    private val thinkMarker = ThinkingMarker(open = "<think>", close = "</think>")
-    private val toolMarker = ToolCallMarker(open = "<tool_call>", close = "</tool_call>")
+    private val thinkDelimiter = TagDelimiter(open = "<think>", close = "</think>")
+    private val toolDelimiter = TagDelimiter(open = "<tool_call>", close = "</tool_call>")
 
-    // ── Pure text (no markers configured) ──────────────────────────────────
+    // ── Pure text (no delimiters configured) ──────────────────────────────────
 
     @Test
-    fun `plain text with no markers emits single Text event`() {
+    fun `plain text with no delimiters emits single Text event`() {
         val scanner = AllocationOptimizedScanner(emptyList())
         val events = scanner.feed("Hello world")
         assertEquals(listOf(LexerEvent.Text("Hello world")), events)
@@ -32,7 +32,7 @@ class AllocationOptimizedScannerTest {
 
     @Test
     fun `null token on empty buffer produces no events`() {
-        val scanner = AllocationOptimizedScanner(listOf(thinkMarker))
+        val scanner = AllocationOptimizedScanner(listOf(thinkDelimiter))
         assertTrue(scanner.feed(null).isEmpty())
     }
 
@@ -40,19 +40,19 @@ class AllocationOptimizedScannerTest {
 
     @Test
     fun `full opening tag is emitted as TagOpened with no preceding text`() {
-        val scanner = AllocationOptimizedScanner(listOf(thinkMarker))
+        val scanner = AllocationOptimizedScanner(listOf(thinkDelimiter))
         val events = scanner.feed("<think>")
-        assertEquals(listOf(LexerEvent.TagOpened(thinkMarker)), events)
+        assertEquals(listOf(LexerEvent.TagOpened(thinkDelimiter)), events)
     }
 
     @Test
     fun `text before opening tag is flushed before TagOpened`() {
-        val scanner = AllocationOptimizedScanner(listOf(thinkMarker))
+        val scanner = AllocationOptimizedScanner(listOf(thinkDelimiter))
         val events = scanner.feed("preamble<think>")
         assertEquals(
             listOf(
                 LexerEvent.Text("preamble"),
-                LexerEvent.TagOpened(thinkMarker),
+                LexerEvent.TagOpened(thinkDelimiter),
             ),
             events
         )
@@ -60,21 +60,21 @@ class AllocationOptimizedScannerTest {
 
     @Test
     fun `content inside tag is emitted as TagContent`() {
-        val scanner = AllocationOptimizedScanner(listOf(thinkMarker))
+        val scanner = AllocationOptimizedScanner(listOf(thinkDelimiter))
         scanner.feed("<think>")
         val events = scanner.feed("deep thought")
-        assertEquals(listOf(LexerEvent.TagContent(thinkMarker, "deep thought")), events)
+        assertEquals(listOf(LexerEvent.TagContent(thinkDelimiter, "deep thought")), events)
     }
 
     @Test
     fun `complete round-trip emits opened, content, closed`() {
-        val scanner = AllocationOptimizedScanner(listOf(thinkMarker))
+        val scanner = AllocationOptimizedScanner(listOf(thinkDelimiter))
         val all = scanner.feed("<think>") + scanner.feed("reasoning") + scanner.feed("</think>")
         assertEquals(
             listOf(
-                LexerEvent.TagOpened(thinkMarker),
-                LexerEvent.TagContent(thinkMarker, "reasoning"),
-                LexerEvent.TagClosed(thinkMarker),
+                LexerEvent.TagOpened(thinkDelimiter),
+                LexerEvent.TagContent(thinkDelimiter, "reasoning"),
+                LexerEvent.TagClosed(thinkDelimiter),
             ),
             all
         )
@@ -82,7 +82,7 @@ class AllocationOptimizedScannerTest {
 
     @Test
     fun `text after closing tag is emitted as Text`() {
-        val scanner = AllocationOptimizedScanner(listOf(thinkMarker))
+        val scanner = AllocationOptimizedScanner(listOf(thinkDelimiter))
         val all = scanner.feed("<think>r</think>") + scanner.feed("answer")
         assertEquals(LexerEvent.Text("answer"), all.last())
     }
@@ -91,16 +91,16 @@ class AllocationOptimizedScannerTest {
 
     @Test
     fun `opening tag split across two tokens is correctly recognized`() {
-        val scanner = AllocationOptimizedScanner(listOf(thinkMarker))
+        val scanner = AllocationOptimizedScanner(listOf(thinkDelimiter))
         val a = scanner.feed("<thi")   // partial — should hold
         val b = scanner.feed("nk>")    // completes the tag
         assertTrue("No events on partial", a.isEmpty())
-        assertEquals(listOf(LexerEvent.TagOpened(thinkMarker)), b)
+        assertEquals(listOf(LexerEvent.TagOpened(thinkDelimiter)), b)
     }
 
     @Test
     fun `closing tag split across two tokens is correctly recognized`() {
-        val scanner = AllocationOptimizedScanner(listOf(thinkMarker))
+        val scanner = AllocationOptimizedScanner(listOf(thinkDelimiter))
         scanner.feed("<think>")
         scanner.feed("content")
         val a = scanner.feed("</thi")  // partial closing tag
@@ -112,31 +112,31 @@ class AllocationOptimizedScannerTest {
 
     @Test
     fun `tag split into single character tokens is correctly assembled`() {
-        val scanner = AllocationOptimizedScanner(listOf(thinkMarker))
+        val scanner = AllocationOptimizedScanner(listOf(thinkDelimiter))
         // Feed "<think>" one char at a time
         val events = "<think>".map { scanner.feed(it.toString()) }.flatten()
-        assertEquals(listOf(LexerEvent.TagOpened(thinkMarker)), events)
+        assertEquals(listOf(LexerEvent.TagOpened(thinkDelimiter)), events)
     }
 
-    // ── Multiple markers ───────────────────────────────────────────────────
+    // ── Multiple delimiters ───────────────────────────────────────────────────
 
     @Test
-    fun `think and tool markers are both recognized independently`() {
-        val markers = listOf(thinkMarker, toolMarker)
-        val scanner = AllocationOptimizedScanner(markers)
+    fun `think and tool delimiters are both recognized independently`() {
+        val delimiters = listOf(thinkDelimiter, toolDelimiter)
+        val scanner = AllocationOptimizedScanner(delimiters)
         val events = scanner.feed("<think>r</think><tool_call>fn</tool_call>")
 
-        assertTrue(events.any { it is LexerEvent.TagOpened && it.marker == thinkMarker })
-        assertTrue(events.any { it is LexerEvent.TagOpened && it.marker == toolMarker })
-        assertTrue(events.any { it is LexerEvent.TagClosed && it.marker == thinkMarker })
-        assertTrue(events.any { it is LexerEvent.TagClosed && it.marker == toolMarker })
+        assertTrue(events.any { it is LexerEvent.TagOpened && it.delimiter == thinkDelimiter })
+        assertTrue(events.any { it is LexerEvent.TagOpened && it.delimiter == toolDelimiter })
+        assertTrue(events.any { it is LexerEvent.TagClosed && it.delimiter == thinkDelimiter })
+        assertTrue(events.any { it is LexerEvent.TagClosed && it.delimiter == toolDelimiter })
     }
 
     // ── Flush on stream end ───────────────────────────────────────────────────
 
     @Test
     fun `null token with no partial tag in buffer produces no events`() {
-        val scanner = AllocationOptimizedScanner(listOf(thinkMarker))
+        val scanner = AllocationOptimizedScanner(listOf(thinkDelimiter))
         // Feed a complete text token — it is immediately flushed
         val textEvents = scanner.feed("Hello")
         assertEquals(listOf(LexerEvent.Text("Hello")), textEvents)
@@ -151,7 +151,7 @@ class AllocationOptimizedScannerTest {
         // The scanner is conservative: if a buffer tail could still be the start of a registered
         // tag, it will NOT emit it speculatively. The LLM stream is expected to disambiguate it
         // by emitting more tokens. Null does not break this invariant.
-        val scanner = AllocationOptimizedScanner(listOf(thinkMarker))
+        val scanner = AllocationOptimizedScanner(listOf(thinkDelimiter))
         // "<thi" is a valid prefix of "<think>" — scanner holds it
         val partial = scanner.feed("<thi")
         assertTrue("Partial tag should be held, no events yet", partial.isEmpty())

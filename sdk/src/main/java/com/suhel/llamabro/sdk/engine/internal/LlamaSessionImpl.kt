@@ -3,7 +3,7 @@ package com.suhel.llamabro.sdk.internal
 import com.suhel.llamabro.sdk.chat.LlamaChatSession
 import com.suhel.llamabro.sdk.chat.internal.LlamaChatSessionImpl
 import com.suhel.llamabro.sdk.engine.LlamaSession
-import com.suhel.llamabro.sdk.config.ModelDefinition
+import com.suhel.llamabro.sdk.config.LoadableModel
 import com.suhel.llamabro.sdk.config.OverflowStrategy
 import com.suhel.llamabro.sdk.config.SessionConfig
 import com.suhel.llamabro.sdk.engine.TokenGenerationResult
@@ -32,7 +32,7 @@ import kotlinx.coroutines.withContext
 internal class LlamaSessionImpl(
     enginePtr: Long,
     sessionConfig: SessionConfig,
-    override val modelDefinition: ModelDefinition
+    override val loadableModel: LoadableModel
 ) : LlamaSession {
     private val mutex = Mutex()
     private val result = NativeTokenGenerationResult()

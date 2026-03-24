@@ -1,4 +1,4 @@
-package com.suhel.llamabro.sdk.models
+package com.suhel.llamabro.sdk.chat
 
 import com.suhel.llamabro.sdk.toolcall.ToolCall
 import com.suhel.llamabro.sdk.toolcall.ToolDefinition
