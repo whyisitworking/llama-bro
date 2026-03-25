@@ -3,6 +3,7 @@ package com.suhel.llamabro.sdk.chat.internal
 import com.suhel.llamabro.sdk.chat.LlamaChatSession
 import com.suhel.llamabro.sdk.chat.CompletionResult
 import com.suhel.llamabro.sdk.chat.pipeline.TagDelimiter
+import com.suhel.llamabro.sdk.config.InferenceConfig
 import com.suhel.llamabro.sdk.config.LoadableModel
 import com.suhel.llamabro.sdk.config.ModelLoadConfig
 import com.suhel.llamabro.sdk.config.ModelProfile
@@ -48,6 +49,7 @@ class LlamaChatSessionImplTest {
             error("Use generateFlow() in tests")
         override suspend fun clear() = Unit
         override fun abort() = Unit
+        override suspend fun updateSampler(config: InferenceConfig) = Unit
         override fun close() = Unit
 
         override fun generateFlow(): Flow<TokenGenerationResult> = flow {

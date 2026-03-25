@@ -1,6 +1,7 @@
 package com.suhel.llamabro.sdk.engine
 
 import com.suhel.llamabro.sdk.chat.LlamaChatSession
+import com.suhel.llamabro.sdk.config.InferenceConfig
 import com.suhel.llamabro.sdk.config.LoadableModel
 import com.suhel.llamabro.sdk.model.ResourceState
 import com.suhel.llamabro.sdk.toolcall.ToolCall
@@ -21,6 +22,8 @@ interface LlamaSession : AutoCloseable {
     suspend fun clear()
 
     fun abort()
+
+    suspend fun updateSampler(config: InferenceConfig)
 
     suspend fun createChatSession(
         systemPrompt: String,

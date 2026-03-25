@@ -25,22 +25,22 @@ public:
         env->DeleteLocalRef(clazz);
     }
 
-    int getInt(const char *fieldName) {
+    int getInt(const char *fieldName) const {
         auto fid = env->GetFieldID(clazz, fieldName, jni_refs::types::int32);
         return env->GetIntField(obj, fid);
     }
 
-    float getFloat(const char *fieldName) {
+    float getFloat(const char *fieldName) const {
         auto fid = env->GetFieldID(clazz, fieldName, jni_refs::types::float32);
         return env->GetFloatField(obj, fid);
     }
 
-    bool getBool(const char *fieldName) {
+    bool getBool(const char *fieldName) const {
         auto fid = env->GetFieldID(clazz, fieldName, jni_refs::types::boolean);
         return env->GetBooleanField(obj, fid);
     }
 
-    std::string getString(const char *fieldName) {
+    std::string getString(const char *fieldName) const {
         jfieldID fid = env->GetFieldID(clazz, fieldName, jni_refs::types::string);
         auto jstr = (jstring) env->GetObjectField(obj, fid);
 
@@ -56,7 +56,7 @@ public:
     }
 
     // Handles nested Kotlin objects (e.g., getting the executionConfig from the EngineConfig)
-    JniConfigReader getNestedObject(const char *fieldName, const char *signature) {
+    JniConfigReader getNestedObject(const char *fieldName, const char *signature) const {
         auto fid = env->GetFieldID(clazz, fieldName, signature);
         auto nestedObj = env->GetObjectField(obj, fid);
         return {env, nestedObj};

@@ -2,6 +2,7 @@ package com.suhel.llamabro.sdk.engine.internal
 
 import com.suhel.llamabro.sdk.chat.LlamaChatSession
 import com.suhel.llamabro.sdk.chat.internal.LlamaChatSessionImpl
+import com.suhel.llamabro.sdk.config.InferenceConfig
 import com.suhel.llamabro.sdk.config.LoadableModel
 import com.suhel.llamabro.sdk.config.OverflowStrategy
 import com.suhel.llamabro.sdk.config.SessionConfig
@@ -52,26 +53,7 @@ internal class LlamaSessionImpl(
                 },
                 overflowDropTokens = (sessionConfig.overflowStrategy as? OverflowStrategy.RollingWindow)
                     ?.dropTokens ?: 0,
-
-                repeatPenalty = sessionConfig.inferenceConfig.repeatPenalty,
-                frequencyPenalty = sessionConfig.inferenceConfig.frequencyPenalty,
-                presencePenalty = sessionConfig.inferenceConfig.presencePenalty,
-                penaltyLastN = sessionConfig.inferenceConfig.penaltyLastN,
-
-                dryMultiplier = sessionConfig.inferenceConfig.dryMultiplier,
-                dryBase = sessionConfig.inferenceConfig.dryBase,
-                dryAllowedLength = sessionConfig.inferenceConfig.dryAllowedLength,
-                dryPenaltyLastN = sessionConfig.inferenceConfig.dryPenaltyLastN,
-
-                topNSigma = sessionConfig.inferenceConfig.topNSigma,
-                topK = sessionConfig.inferenceConfig.topK,
-                typP = sessionConfig.inferenceConfig.typP,
-                topP = sessionConfig.inferenceConfig.topP,
-                minP = sessionConfig.inferenceConfig.minP,
-
-                temperature = sessionConfig.inferenceConfig.temperature,
-                seed = sessionConfig.inferenceConfig.seed,
-
+                inferenceParams = sessionConfig.inferenceConfig.toNativeParams(),
                 batchSize = sessionConfig.decodeConfig.batchSize,
                 microBatchSize = sessionConfig.decodeConfig.microBatchSize,
             )
@@ -152,6 +134,15 @@ internal class LlamaSessionImpl(
         Jni.abort(ptr)
     }
 
+    override suspend fun updateSampler(config: InferenceConfig) =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                runInterruptible {
+                    Jni.updateSampler(ptr, config.toNativeParams())
+                }
+            }
+        }
+
     override fun close() {
         Jni.destroy(ptr)
     }
@@ -191,28 +182,49 @@ internal class LlamaSessionImpl(
         val threads: Int,
         val overflowStrategyId: Int,
         val overflowDropTokens: Int,
+        val inferenceParams: NativeInferenceParams,
+        val batchSize: Int,
+        val microBatchSize: Int,
+    )
 
+    /**
+     * Inference-only params passed to the native sampler — either as a sub-object of
+     * [NativeCreateParams] at session creation, or standalone for [Jni.updateSampler].
+     */
+    private class NativeInferenceParams(
         val repeatPenalty: Float,
         val frequencyPenalty: Float,
         val presencePenalty: Float,
         val penaltyLastN: Int,
-
         val dryMultiplier: Float,
         val dryBase: Float,
         val dryAllowedLength: Int,
         val dryPenaltyLastN: Int,
-
         val topNSigma: Float,
         val topK: Int,
         val typP: Float,
         val topP: Float,
         val minP: Float,
-
         val temperature: Float,
         val seed: Int,
+    )
 
-        val batchSize: Int,
-        val microBatchSize: Int,
+    private fun InferenceConfig.toNativeParams() = NativeInferenceParams(
+        repeatPenalty = repeatPenalty,
+        frequencyPenalty = frequencyPenalty,
+        presencePenalty = presencePenalty,
+        penaltyLastN = penaltyLastN,
+        dryMultiplier = dryMultiplier,
+        dryBase = dryBase,
+        dryAllowedLength = dryAllowedLength,
+        dryPenaltyLastN = dryPenaltyLastN,
+        topNSigma = topNSigma,
+        topK = topK,
+        typP = typP,
+        topP = topP,
+        minP = minP,
+        temperature = temperature,
+        seed = seed,
     )
 
     private class NativeTokenGenerationResult(
@@ -239,6 +251,9 @@ internal class LlamaSessionImpl(
 
         @JvmStatic
         external fun generate(sessionPtr: Long, result: NativeTokenGenerationResult)
+
+        @JvmStatic
+        external fun updateSampler(sessionPtr: Long, params: NativeInferenceParams)
 
         @JvmStatic
         external fun destroy(sessionPtr: Long)

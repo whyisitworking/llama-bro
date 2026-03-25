@@ -1,5 +1,6 @@
 package com.suhel.llamabro.sdk.chat
 
+import com.suhel.llamabro.sdk.config.InferenceConfig
 import com.suhel.llamabro.sdk.toolcall.ToolDefinition
 import kotlinx.coroutines.flow.Flow
 
@@ -9,5 +10,8 @@ import kotlinx.coroutines.flow.Flow
 interface LlamaChatSession {
     suspend fun initialize(tools: List<ToolDefinition> = emptyList())
     suspend fun feedHistory(history: List<ChatEvent>)
-    fun completion(message: ChatEvent.UserEvent): Flow<CompletionResult>
+    fun completion(
+        message: ChatEvent.UserEvent,
+        inferenceConfig: InferenceConfig? = null,
+    ): Flow<CompletionResult>
 }

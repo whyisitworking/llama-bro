@@ -2,10 +2,9 @@
 
 #include <jni.h>
 #include <string>
-#include "result/codes.hpp"
 
-// Cached globally at JNI_OnLoad — safe for the lifetime of the process.
-inline jclass gRuntimeExceptionClass = nullptr;
+#include "result/codes.hpp"
+#include "jni_refs.hpp"
 
 /**
  * Throws a Java RuntimeException whose message is the integer value of the
@@ -14,5 +13,5 @@ inline jclass gRuntimeExceptionClass = nullptr;
  */
 inline void throwResultCode(JNIEnv *env, ResultCode code) {
     auto msg = std::to_string(static_cast<int>(code));
-    env->ThrowNew(gRuntimeExceptionClass, msg.c_str());
+    env->ThrowNew(jni_refs::exceptions::c_runtime_exp, msg.c_str());
 }

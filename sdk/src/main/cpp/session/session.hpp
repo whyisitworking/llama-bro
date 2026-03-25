@@ -17,12 +17,7 @@ namespace session {
         ROLLING_WINDOW,
     };
 
-    struct NativeSessionParams {
-        int context_size;
-        int threads;
-        int overflow_strategy_id;
-        int overflow_drop_tokens;
-
+    struct NativeInferenceParams {
         float repeat_penalty;
         float frequency_penalty;
         float presence_penalty;
@@ -41,6 +36,15 @@ namespace session {
 
         float temp;
         int seed;
+    };
+
+    struct NativeSessionParams {
+        int context_size;
+        int threads;
+        int overflow_strategy_id;
+        int overflow_drop_tokens;
+
+        NativeInferenceParams inference_params;
 
         int batch_size;
         int micro_batch_size;
@@ -54,7 +58,7 @@ namespace session {
 
     class Session {
     public:
-        Session(llama_model *model, const NativeSessionParams &config);
+        Session(llama_model *model, const NativeSessionParams &params);
 
         ~Session();
 
@@ -76,7 +80,10 @@ namespace session {
 
         void abort();
 
+        void update_sampler(const NativeInferenceParams &params);
+
     private:
+        llama_model *llama_model_ptr = nullptr; // borrowed, not owned
         llama_context_ptr llama_context;
         llama_sampler_ptr llama_sampler_chain;
         std::atomic<bool> is_aborted{false};

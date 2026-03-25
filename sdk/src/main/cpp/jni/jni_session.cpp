@@ -9,6 +9,45 @@
 
 // ── create ────────────────────────────────────────────────────────────────────
 
+static session::NativeInferenceParams parse_inference_params(const JniConfigReader &reader) {
+    return {
+            .repeat_penalty        = reader.getFloat(jni_refs::session::pn_repeat_penalty),
+            .frequency_penalty     = reader.getFloat(jni_refs::session::pn_frequency_penalty),
+            .presence_penalty      = reader.getFloat(jni_refs::session::pn_presence_penalty),
+            .penalty_last_n        = reader.getInt(jni_refs::session::pn_penalty_last_n),
+
+            .dry_multiplier        = reader.getFloat(jni_refs::session::pn_dry_multiplier),
+            .dry_base              = reader.getFloat(jni_refs::session::pn_dry_base),
+            .dry_allowed_length    = reader.getInt(jni_refs::session::pn_dry_allowed_length),
+            .dry_penalty_last_n    = reader.getInt(jni_refs::session::pn_dry_penalty_last_n),
+
+            .top_n_sigma           = reader.getFloat(jni_refs::session::pn_top_n_sigma),
+            .top_k                 = reader.getInt(jni_refs::session::pn_top_k),
+            .typ_p                 = reader.getFloat(jni_refs::session::pn_typ_p),
+            .top_p                 = reader.getFloat(jni_refs::session::pn_top_p),
+            .min_p                 = reader.getFloat(jni_refs::session::pn_min_p),
+
+            .temp                  = reader.getFloat(jni_refs::session::pn_temperature),
+            .seed                  = reader.getInt(jni_refs::session::pn_seed),
+    };
+}
+
+static session::NativeSessionParams parse_session_params(const JniConfigReader &reader) {
+    return {
+            .context_size          = reader.getInt(jni_refs::session::pn_context_size),
+            .threads               = reader.getInt(jni_refs::session::pn_threads),
+            .overflow_strategy_id  = reader.getInt(jni_refs::session::pn_overflow_strategy_id),
+            .overflow_drop_tokens  = reader.getInt(jni_refs::session::pn_overflow_drop_tokens),
+
+            .inference_params      = parse_inference_params(
+                    reader.getNestedObject(jni_refs::session::pn_inference_params,
+                                           jni_refs::session::cn_native_inference_params)),
+
+            .batch_size            = reader.getInt(jni_refs::session::pn_batch_size),
+            .micro_batch_size      = reader.getInt(jni_refs::session::pn_micro_batch_size),
+    };
+}
+
 extern "C"
 JNIEXPORT jlong JNICALL
 Java_com_suhel_llamabro_sdk_engine_internal_LlamaSessionImpl_00024Jni_create(JNIEnv *env,
@@ -17,38 +56,10 @@ Java_com_suhel_llamabro_sdk_engine_internal_LlamaSessionImpl_00024Jni_create(JNI
                                                                              jobject jParams) {
     auto engine = reinterpret_cast<engine::Engine *>(jEnginePtr);
     auto configReader = JniConfigReader(env, jParams);
-
-    auto config = session::NativeSessionParams{
-            .context_size          = configReader.getInt("contextSize"),
-            .threads               = configReader.getInt("threads"),
-            .overflow_strategy_id  = configReader.getInt("overflowStrategyId"),
-            .overflow_drop_tokens  = configReader.getInt("overflowDropTokens"),
-
-            .repeat_penalty        = configReader.getFloat("repeatPenalty"),
-            .frequency_penalty     = configReader.getFloat("frequencyPenalty"),
-            .presence_penalty      = configReader.getFloat("presencePenalty"),
-            .penalty_last_n        = configReader.getInt("penaltyLastN"),
-
-            .dry_multiplier        = configReader.getFloat("dryMultiplier"),
-            .dry_base              = configReader.getFloat("dryBase"),
-            .dry_allowed_length    = configReader.getInt("dryAllowedLength"),
-            .dry_penalty_last_n    = configReader.getInt("dryPenaltyLastN"),
-
-            .top_n_sigma           = configReader.getFloat("topNSigma"),
-            .top_k                 = configReader.getInt("topK"),
-            .typ_p                 = configReader.getFloat("typP"),
-            .top_p                 = configReader.getFloat("topP"),
-            .min_p                 = configReader.getFloat("minP"),
-
-            .temp                  = configReader.getFloat("temperature"),
-            .seed                  = configReader.getInt("seed"),
-
-            .batch_size            = configReader.getInt("batchSize"),
-            .micro_batch_size      = configReader.getInt("microBatchSize"),
-    };
+    auto params = parse_session_params(configReader);;
 
     try {
-        return reinterpret_cast<jlong>(engine->session(config));
+        return reinterpret_cast<jlong>(engine->session(params));
     } catch (const result_code_error &ex) {
         throwResultCode(env, ex.code);
     } catch (const std::exception &) {
@@ -143,6 +154,27 @@ Java_com_suhel_llamabro_sdk_engine_internal_LlamaSessionImpl_00024Jni_generate(J
                          static_cast<jint>(ResultCode::UNKNOWN));
         env->SetBooleanField(jResultObj, jni_refs::session::f_result_is_complete,
                              JNI_TRUE);
+    }
+}
+
+// ── updateSampler ─────────────────────────────────────────────────────────────
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_suhel_llamabro_sdk_engine_internal_LlamaSessionImpl_00024Jni_updateSampler(JNIEnv *env,
+                                                                                    jclass,
+                                                                                    jlong jSessionPtr,
+                                                                                    jobject jParams) {
+    auto session = reinterpret_cast<session::Session *>(jSessionPtr);
+    auto configReader = JniConfigReader(env, jParams);
+    auto params = parse_inference_params(configReader);
+
+    try {
+        session->update_sampler(params);
+    } catch (const result_code_error &ex) {
+        throwResultCode(env, ex.code);
+    } catch (const std::exception &) {
+        throwResultCode(env, ResultCode::UNKNOWN);
     }
 }
 

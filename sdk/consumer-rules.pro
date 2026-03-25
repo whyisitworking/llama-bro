@@ -20,6 +20,9 @@
 -keepclassmembers class com.suhel.llamabro.sdk.engine.internal.LlamaSessionImpl$NativeTokenGenerationResult {
     <fields>;
 }
+-keepclassmembers class com.suhel.llamabro.sdk.engine.internal.LlamaSessionImpl$NativeInferenceParams {
+    <fields>;
+}
 
 # Keep ProgressListener.onProgress — called from native code via JNI CallBooleanMethod
 -keepclassmembers class * implements com.suhel.llamabro.sdk.ProgressListener {

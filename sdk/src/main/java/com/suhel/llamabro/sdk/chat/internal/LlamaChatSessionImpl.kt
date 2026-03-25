@@ -1,9 +1,9 @@
 package com.suhel.llamabro.sdk.chat.internal
 
-import android.util.Log
 import com.suhel.llamabro.sdk.chat.ChatEvent
 import com.suhel.llamabro.sdk.chat.CompletionResult
 import com.suhel.llamabro.sdk.chat.LlamaChatSession
+import com.suhel.llamabro.sdk.config.InferenceConfig
 import com.suhel.llamabro.sdk.chat.pipeline.SemanticChunk
 import com.suhel.llamabro.sdk.chat.pipeline.lexTags
 import com.suhel.llamabro.sdk.chat.pipeline.semanticChunks
@@ -61,8 +61,18 @@ internal class LlamaChatSessionImpl(
         }
     }
 
-    override fun completion(message: ChatEvent.UserEvent): Flow<CompletionResult> = flow {
+    override fun completion(
+        message: ChatEvent.UserEvent,
+        inferenceConfig: InferenceConfig?,
+    ): Flow<CompletionResult> = flow {
         try {
+            // Apply effective inference config before generation:
+            // explicit override > thinking override (when think=true) > model default
+            val effectiveConfig = inferenceConfig
+                ?: if (message.think) profile.inferenceConfigForThinking
+                   else profile.defaultInferenceConfig
+            session.updateSampler(effectiveConfig)
+
             // formatGeneration includes assistant prefix + thinking strategy prefill
             session.addPrompt(formatter.formatGeneration(message))
 
@@ -128,8 +138,6 @@ internal class LlamaChatSessionImpl(
 
             val elapsed = (System.currentTimeMillis() - startTimeMs) / 1000f
             val tps = if (elapsed > 0f && tokenCount > 0) tokenCount / elapsed else 0f
-
-            Log.e("LlamaChatSessionImpl", timeline.toString())
             emit(CompletionResult.Complete(timeline.toList(), tps))
         } catch (e: CancellationException) {
             throw e

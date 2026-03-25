@@ -16,6 +16,7 @@ import com.suhel.llamabro.demo.model.MessageRole
 import com.suhel.llamabro.demo.navigation.Chat
 import com.suhel.llamabro.sdk.chat.ChatEvent
 import com.suhel.llamabro.sdk.chat.CompletionResult
+import com.suhel.llamabro.sdk.config.InferenceConfig
 import com.suhel.llamabro.sdk.config.SessionConfig
 import com.suhel.llamabro.sdk.model.filterSuccess
 import com.suhel.llamabro.sdk.model.flatMapResource
@@ -67,6 +68,19 @@ class ChatViewModel @Inject constructor(
     private val currentModelFlow = modelRepository.currentInferenceContextFlow
         .map { it?.model }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /**
+     * User-specified inference config override. Null means use the model profile's default
+     * (or thinking override when thinking is enabled). Set via [setInferenceConfig].
+     */
+    private val _userInferenceConfig = MutableStateFlow<InferenceConfig?>(null)
+
+    /** The active inference config: user override if set, otherwise the model's default. */
+    val activeInferenceConfig = combine(
+        currentModelFlow.filterNotNull(),
+        _userInferenceConfig,
+    ) { model, override -> override ?: model.profile.defaultInferenceConfig }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, InferenceConfig())
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val chatSessionFlow = modelRepository.currentInferenceContextFlow
@@ -191,10 +205,11 @@ class ChatViewModel @Inject constructor(
                         .filterNotNull()
                         .flatMapLatest { chatSession ->
                             chatSession.completion(
-                                ChatEvent.UserEvent(
+                                message = ChatEvent.UserEvent(
                                     content = prompt,
                                     think = enableThinking
-                                )
+                                ),
+                                inferenceConfig = _userInferenceConfig.value,
                             )
                         }
                         .onEach { result ->
@@ -265,5 +280,10 @@ class ChatViewModel @Inject constructor(
 
     fun stopGeneration() {
         sendMessageTrigger.tryEmit(null)
+    }
+
+    /** Override the inference config for all future completions. Pass null to reset to model default. */
+    fun setInferenceConfig(config: InferenceConfig?) {
+        _userInferenceConfig.value = config
     }
 }
