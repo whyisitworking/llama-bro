@@ -6,36 +6,44 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.transform
 
 /**
- * 1. Syntax Layer: Parses raw strings into LexerEvents based on active tag delimiters.
- * Uses an internal AllocationOptimizedScanner for high-performance, low-memory DFA scanning.
+ * 1. Syntax Layer: Parses raw token strings into [LexerEvent]s via DFA scanning.
  */
 internal fun Flow<TokenGenerationResult>.lexTags(delimiters: List<TagDelimiter>): Flow<LexerEvent> {
     val scanner = AllocationOptimizedScanner(delimiters)
     return transform { result ->
-        for (event in scanner.feed(result.token)) {
-            emit(event)
-        }
+        scanner.feed(result.token) { event -> emit(event) }
     }
 }
 
 /**
- * 2. Semantic Layer: Maps tag delimiters to semantic meaning using the model profile.
+ * 2. Semantic Layer: Maps [LexerEvent]s to [SemanticChunk]s using the model profile.
+ *
+ * Tool call content is buffered internally and emitted as a fully-parsed
+ * [SemanticChunk.ToolCall] on tag close — consumers never see raw tool call fragments.
  */
-internal fun Flow<LexerEvent>.semanticChunks(profile: ModelProfile): Flow<SemanticChunk> =
-    transform { event ->
+internal fun Flow<LexerEvent>.semanticChunks(profile: ModelProfile): Flow<SemanticChunk> {
+    val toolCall = profile.toolCall
+    val toolCallBuffer = StringBuilder()
+    return transform { event ->
         when (event) {
             is LexerEvent.Text -> emit(SemanticChunk.Text(event.content))
-            is LexerEvent.TagContent -> {
-                when (event.delimiter) {
-                    profile.thinking?.tags -> emit(SemanticChunk.Thinking(event.content))
-                    profile.toolCall?.tags -> emit(SemanticChunk.ToolCallContent(event.content))
+            is LexerEvent.TagContent -> when (event.delimiter) {
+                profile.thinking?.tags -> {
+                    if (event.content.isNotBlank()) {
+                        emit(SemanticChunk.Thinking(event.content))
+                    }
                 }
+                toolCall?.tags -> toolCallBuffer.append(event.content)
             }
 
             is LexerEvent.TagClosed -> {
-                if (event.delimiter == profile.toolCall?.tags) emit(SemanticChunk.ToolCallComplete)
+                if (toolCall != null && event.delimiter == toolCall.tags) {
+                    emit(SemanticChunk.ToolCall(toolCall.callParser(toolCallBuffer.toString())))
+                    toolCallBuffer.clear()
+                }
             }
 
-            is LexerEvent.TagOpened -> { /* no-op */ }
+            is LexerEvent.TagOpened -> { }
         }
     }
+}

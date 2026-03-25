@@ -14,7 +14,6 @@ object PromptFormats {
         userPrefix = "<|im_start|>user\n",
         assistantPrefix = "<|im_start|>assistant\n",
         endOfTurn = "<|im_end|>\n",
-        emitAssistantPrefixOnGeneration = true,
         stopStrings = listOf("<|im_end|>")
     )
 
@@ -24,7 +23,6 @@ object PromptFormats {
         userPrefix = "<|start_header_id|>user<|end_header_id|>\n\n",
         assistantPrefix = "<|start_header_id|>assistant<|end_header_id|>\n\n",
         endOfTurn = "<|eot_id|>",
-        emitAssistantPrefixOnGeneration = true,
         stopStrings = listOf("<|eot_id|>", "<|eom_id|>")
     )
 
@@ -34,7 +32,6 @@ object PromptFormats {
         userPrefix = "[INST] ",
         assistantPrefix = "",
         endOfTurn = " [/INST]",
-        emitAssistantPrefixOnGeneration = true,
         stopStrings = listOf("</s>", "[/INST]")
     )
 
@@ -44,7 +41,6 @@ object PromptFormats {
         userPrefix = "<start_of_turn>user\n",
         assistantPrefix = "<start_of_turn>model\n",
         endOfTurn = "<end_of_turn>\n",
-        emitAssistantPrefixOnGeneration = true,
         stopStrings = listOf("<end_of_turn>")
     )
 
@@ -54,7 +50,6 @@ object PromptFormats {
         userPrefix = "User: ",
         assistantPrefix = "Assistant: ",
         endOfTurn = "<｜end of sentence｜>",
-        emitAssistantPrefixOnGeneration = true,
         stopStrings = listOf("<｜end of sentence｜>")
     )
 
@@ -81,7 +76,6 @@ object PromptFormats {
         userPrefix = "<extra_id_1>User\n",
         assistantPrefix = "<extra_id_1>Assistant\n",
         endOfTurn = "\n",
-        emitAssistantPrefixOnGeneration = true,
         stopStrings = listOf("<extra_id_1>")
     )
 

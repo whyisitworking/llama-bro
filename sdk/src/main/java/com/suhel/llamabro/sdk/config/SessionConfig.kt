@@ -1,5 +1,7 @@
 package com.suhel.llamabro.sdk.config
 
+import kotlin.random.Random
+
 data class SessionConfig(
     val contextSize: Int = 2048,
     val overflowStrategy: OverflowStrategy = OverflowStrategy.RollingWindow(),
@@ -20,12 +22,24 @@ data class DecodeConfig(
 }
 
 data class InferenceConfig(
-    val temperature: Float = 0.8f,
-    val repeatPenalty: Float = 1.0f,
+    val repeatPenalty: Float = 1.05f,
+    val frequencyPenalty: Float = 0.0f,
     val presencePenalty: Float = 0.0f,
-    val minP: Float? = 0.1f,
-    val topP: Float? = null,
-    val topK: Int? = null,
+    val penaltyLastN: Int = 128,
+
+    val dryMultiplier: Float = 0.0f,
+    val dryBase: Float = 1.75f,
+    val dryAllowedLength: Int = 2,
+    val dryPenaltyLastN: Int = 128,
+
+    val topNSigma: Float = 0.0f,
+    val topK: Int = 40,
+    val typP: Float = 1.0f,
+    val topP: Float = 0.95f,
+    val minP: Float = 0.0f,
+
+    val temperature: Float = 0.8f,
+    val seed: Int = Random.nextInt(),
 )
 
 sealed interface OverflowStrategy {

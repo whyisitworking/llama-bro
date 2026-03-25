@@ -3,6 +3,8 @@ package com.suhel.llamabro.sdk.engine
 import com.suhel.llamabro.sdk.chat.LlamaChatSession
 import com.suhel.llamabro.sdk.config.LoadableModel
 import com.suhel.llamabro.sdk.model.ResourceState
+import com.suhel.llamabro.sdk.toolcall.ToolCall
+import com.suhel.llamabro.sdk.toolcall.ToolResult
 import kotlinx.coroutines.flow.Flow
 
 interface LlamaSession : AutoCloseable {
@@ -20,7 +22,13 @@ interface LlamaSession : AutoCloseable {
 
     fun abort()
 
-    suspend fun createChatSession(systemPrompt: String): LlamaChatSession
+    suspend fun createChatSession(
+        systemPrompt: String,
+        toolCaller: (suspend (List<ToolCall>) -> List<ToolResult>)? = null,
+    ): LlamaChatSession
 
-    fun createChatSessionFlow(systemPrompt: String): Flow<ResourceState<LlamaChatSession>>
+    fun createChatSessionFlow(
+        systemPrompt: String,
+        toolCaller: (suspend (List<ToolCall>) -> List<ToolResult>)? = null,
+    ): Flow<ResourceState<LlamaChatSession>>
 }

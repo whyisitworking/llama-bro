@@ -16,48 +16,101 @@ namespace session {
         constexpr int STRATEGY_ID_ROLLING_WINDOW = 2;
     }
 
-    static llama_sampler *create_sampler(const NativeSessionParams &config) {
-        auto sampler_chain = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    static llama_sampler *create_sampler(llama_model *model, const NativeSessionParams &config) {
+        auto chain = llama_sampler_chain_init(llama_sampler_chain_default_params());
+        auto vocab = llama_model_get_vocab(model);
+        auto n_ctx_train = llama_model_n_ctx_train(model);
 
-        // Penalties first — modify logits before any truncation so filters
-        // operate on already-penalised probabilities (matches llama.cpp canonical order).
-        llama_sampler_chain_add(sampler_chain,
-                                llama_sampler_init_penalties(
-                                        static_cast<int32_t>(config.context_size / 2),
-                                        config.rep_pen,
-                                        0.0f,
-                                        config.presence_pen
-                                )
-        );
+        auto top_p = std::clamp(config.top_p, 0.0f, 1.0f);
+        auto temp = std::max(config.temp, 0.0f);
+        auto top_k = std::max(config.top_k, 0);
 
-        // Optional truncation samplers
-        if (config.top_k_enabled) {
-            llama_sampler_chain_add(sampler_chain,
-                                    llama_sampler_init_top_k(config.top_k));
+        if (config.repeat_penalty != 1.0f ||
+            config.frequency_penalty != 0.0f ||
+            config.presence_penalty != 0.0f) {
+
+            llama_sampler_chain_add(
+                    chain,
+                    llama_sampler_init_penalties(
+                            std::min(config.penalty_last_n, 128),
+                            config.repeat_penalty,
+                            config.frequency_penalty,
+                            config.presence_penalty
+                    )
+            );
         }
 
-        if (config.top_p_enabled) {
-            llama_sampler_chain_add(sampler_chain,
-                                    llama_sampler_init_top_p(config.top_p, 1));
+        if (config.dry_multiplier > 0.0f) {
+            static const char *breakers[] = {"\n", ":", "\""};
+
+            llama_sampler_chain_add(
+                    chain,
+                    llama_sampler_init_dry(
+                            vocab,
+                            n_ctx_train,
+                            config.dry_multiplier,
+                            config.dry_base,
+                            config.dry_allowed_length,
+                            config.dry_penalty_last_n,
+                            breakers,
+                            sizeof(breakers) / sizeof(breakers[0])
+                    )
+            );
         }
 
-        if (config.min_p_enabled) {
-            llama_sampler_chain_add(sampler_chain,
-                                    llama_sampler_init_min_p(config.min_p, 1));
+        if (config.top_n_sigma > 0.0f) {
+            llama_sampler_chain_add(
+                    chain,
+                    llama_sampler_init_top_n_sigma(config.top_n_sigma)
+            );
         }
 
-        // Temperature and final selection
-        if (config.temp == 0.0f) {
-            llama_sampler_chain_add(sampler_chain,
-                                    llama_sampler_init_greedy());
+        if (top_k > 0) {
+            llama_sampler_chain_add(
+                    chain,
+                    llama_sampler_init_top_k(top_k)
+            );
+        }
+
+        if (config.typ_p < 1.0f) {
+            llama_sampler_chain_add(
+                    chain,
+                    llama_sampler_init_typical(config.typ_p, 1)
+            );
+        }
+
+        if (top_p < 1.0f) {
+            llama_sampler_chain_add(
+                    chain,
+                    llama_sampler_init_top_p(top_p, 1)
+            );
+        }
+
+        if (config.min_p > 0.0f) {
+            llama_sampler_chain_add(
+                    chain,
+                    llama_sampler_init_min_p(config.min_p, 1)
+            );
+        }
+
+        if (temp <= 0.0f || top_k == 1) {
+            llama_sampler_chain_add(
+                    chain,
+                    llama_sampler_init_greedy()
+            );
         } else {
-            llama_sampler_chain_add(sampler_chain,
-                                    llama_sampler_init_temp(config.temp));
-            llama_sampler_chain_add(sampler_chain,
-                                    llama_sampler_init_dist(config.seed));
+            llama_sampler_chain_add(
+                    chain,
+                    llama_sampler_init_temp(temp)
+            );
+
+            llama_sampler_chain_add(
+                    chain,
+                    llama_sampler_init_dist(config.seed)
+            );
         }
 
-        return sampler_chain;
+        return chain;
     }
 
     static llama_context_params get_context_init_params(const llama_model *model,
@@ -107,14 +160,14 @@ namespace session {
         auto ctx = llama_init_from_model(model, get_context_init_params(model, config));
 
         if (!ctx) {
-            throw std::runtime_error("Failed to initialize llama context.");
+            throw result_code_error(ResultCode::CONTEXT_INIT_FAILED);
         }
 
         auto system_info = llama_print_system_info();
         LOGI("Initialized llama context with system info:\n%s", system_info);
 
         llama_context.reset(ctx);
-        llama_sampler_chain.reset(create_sampler(config));
+        llama_sampler_chain.reset(create_sampler(model, config));
         llama_batch = llama_batch_init(static_cast<int32_t>(llama_n_batch(ctx)), 0, 1);
 
         overflow_strategy = decide_overflow_strategy(ctx, config);
@@ -197,7 +250,6 @@ namespace session {
     void Session::abort() {
         is_aborted.store(true);
     }
-
 
     //  -------- private ---------------
 

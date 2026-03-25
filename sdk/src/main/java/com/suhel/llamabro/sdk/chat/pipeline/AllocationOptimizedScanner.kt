@@ -6,6 +6,8 @@ package com.suhel.llamabro.sdk.chat.pipeline
  *
  * Designed to minimize GC overhead by tracking a single running StringBuilder
  * and yielding explicit allocations ONLY upon confirmed semantic token emission.
+ *
+ * Uses a callback-based [feed] to avoid per-call list allocations entirely.
  */
 internal class AllocationOptimizedScanner(
     private val delimiters: List<TagDelimiter>
@@ -14,15 +16,14 @@ internal class AllocationOptimizedScanner(
     private var activeDelimiter: TagDelimiter? = null
 
     /**
-     * Feeds a raw token into the scanner and returns any definitively parsed events.
+     * Feeds a raw token into the scanner and invokes [emit] for each definitively parsed event.
      * @param token The string chunk from the LLM, or `null` to signal the end of the stream.
+     * @param emit Callback invoked for each parsed [LexerEvent].
      */
-    fun feed(token: String?): List<LexerEvent> {
+    inline fun feed(token: String?, emit: (LexerEvent) -> Unit) {
         if (token != null) {
             buffer.append(token)
         }
-
-        val events = mutableListOf<LexerEvent>()
 
         while (buffer.isNotEmpty()) {
             if (activeDelimiter == null) {
@@ -49,22 +50,19 @@ internal class AllocationOptimizedScanner(
 
                 if (nearestDelimiter != null) {
                     if (nearestFullIdx > 0) {
-                        // Flush preceding pure text
-                        events += LexerEvent.Text(buffer.substring(0, nearestFullIdx))
+                        emit(LexerEvent.Text(buffer.substring(0, nearestFullIdx)))
                     }
-                    events += LexerEvent.TagOpened(nearestDelimiter)
+                    emit(LexerEvent.TagOpened(nearestDelimiter))
                     activeDelimiter = nearestDelimiter
                     buffer.delete(0, nearestFullIdx + nearestDelimiter.open.length)
                 } else if (nearestPartialIdx != -1) {
                     if (nearestPartialIdx > 0) {
-                        events += LexerEvent.Text(buffer.substring(0, nearestPartialIdx))
+                        emit(LexerEvent.Text(buffer.substring(0, nearestPartialIdx)))
                         buffer.delete(0, nearestPartialIdx)
                     }
-                    // Wait for more tokens to complete or reject the partial tag boundary
                     break
                 } else {
-                    // Entire buffer is pure text. Flush completely.
-                    events += LexerEvent.Text(buffer.toString())
+                    emit(LexerEvent.Text(buffer.toString()))
                     buffer.clear()
                     break
                 }
@@ -75,37 +73,34 @@ internal class AllocationOptimizedScanner(
 
                 if (fullIdx != -1) {
                     if (fullIdx > 0) {
-                        events += LexerEvent.TagContent(current, buffer.substring(0, fullIdx))
+                        emit(LexerEvent.TagContent(current, buffer.substring(0, fullIdx)))
                     }
-                    events += LexerEvent.TagClosed(current)
+                    emit(LexerEvent.TagClosed(current))
                     activeDelimiter = null
                     buffer.delete(0, fullIdx + closingTag.length)
                 } else {
                     val partialIdx = findPartialMatch(buffer, closingTag)
                     if (partialIdx != -1) {
                         if (partialIdx > 0) {
-                            events += LexerEvent.TagContent(current, buffer.substring(0, partialIdx))
+                            emit(LexerEvent.TagContent(current, buffer.substring(0, partialIdx)))
                             buffer.delete(0, partialIdx)
                         }
-                        // Stop and safely wait for the remainder of the closing tag across future feeds
                         break
                     } else {
-                        // Safely flush entire tag content
-                        events += LexerEvent.TagContent(current, buffer.toString())
+                        emit(LexerEvent.TagContent(current, buffer.toString()))
                         buffer.clear()
                         break
                     }
                 }
             }
         }
-
-        return events
     }
 
     /**
      * Quickly identifies if the buffer's tail hosts a prefix of the target tag.
      */
-    private fun findPartialMatch(buffer: CharSequence, tag: String): Int {
+    @PublishedApi
+    internal fun findPartialMatch(buffer: CharSequence, tag: String): Int {
         val searchStart = maxOf(0, buffer.length - tag.length + 1)
         for (i in searchStart until buffer.length) {
             var match = true

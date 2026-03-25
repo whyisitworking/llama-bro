@@ -16,7 +16,7 @@ import org.junit.Test
  */
 class PromptFormatterTest {
 
-    // ── Helpers ─────────────────────────────────────────────────────────────
+    // -- Helpers -----------------------------------------------------------
 
     /** A transparent format — no wrapping — so tests focus on structural logic only. */
     private val passthrough = PromptFormat(
@@ -24,7 +24,6 @@ class PromptFormatterTest {
         userPrefix = "",
         assistantPrefix = "",
         endOfTurn = "",
-        emitAssistantPrefixOnGeneration = false,
         stopStrings = emptyList()
     )
 
@@ -46,7 +45,7 @@ class PromptFormatterTest {
         ),
     )
 
-    // ── System event ────────────────────────────────────────────────────────
+    // -- System event ------------------------------------------------------
 
     @Test
     fun `system event wraps content with systemPrefix and endOfTurn`() {
@@ -55,21 +54,20 @@ class PromptFormatterTest {
             userPrefix = "",
             assistantPrefix = "",
             endOfTurn = "<|im_end|>\n",
-            emitAssistantPrefixOnGeneration = false,
         )
         val formatter = PromptFormatter(profileWith(format))
         assertEquals(
             "<|im_start|>system\nYou are helpful.<|im_end|>\n",
-            formatter.formatTurn(ChatEvent.SystemEvent("You are helpful."))
+            formatter.formatSystem(ChatEvent.SystemEvent("You are helpful."))
         )
     }
 
-    // ── User event ──────────────────────────────────────────────────────────
+    // -- User event (generation mode) --------------------------------------
 
     @Test
-    fun `user event wraps content and emits assistant prefix when configured`() {
+    fun `formatGeneration wraps user content and appends assistant prefix`() {
         val formatter = PromptFormatter(profileWith(PromptFormats.CHAT_ML))
-        val result = formatter.formatTurn(ChatEvent.UserEvent("Hello", think = false))
+        val result = formatter.formatGeneration(ChatEvent.UserEvent("Hello", think = false))
         assertEquals(
             "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n",
             result
@@ -77,104 +75,118 @@ class PromptFormatterTest {
     }
 
     @Test
-    fun `user event with think=true and Prefill strategy inserts forcePrefix after assistant prefix`() {
+    fun `formatGeneration with think=true and Prefill strategy inserts forcePrefix after assistant prefix`() {
         val profile = profileWithThinking(PromptFormats.CHAT_ML)
         val formatter = PromptFormatter(profile)
-        val result = formatter.formatTurn(ChatEvent.UserEvent("Solve this", think = true))
+        val result = formatter.formatGeneration(ChatEvent.UserEvent("Solve this", think = true))
         val expected = "<|im_start|>user\nSolve this<|im_end|>\n<|im_start|>assistant\n<think>\n"
         assertEquals(expected, result)
     }
 
     @Test
-    fun `user event with think=false and Prefill strategy inserts suppressPrefix after assistant prefix`() {
+    fun `formatGeneration with think=false and Prefill strategy inserts suppressPrefix after assistant prefix`() {
         val profile = profileWithThinking(PromptFormats.CHAT_ML)
         val formatter = PromptFormatter(profile)
-        val result = formatter.formatTurn(ChatEvent.UserEvent("Hello", think = false))
+        val result = formatter.formatGeneration(ChatEvent.UserEvent("Hello", think = false))
         val expected = "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>"
         assertEquals(expected, result)
     }
 
     @Test
-    fun `user event with think=true and SoftSwitch strategy appends enableDirective to content`() {
+    fun `formatGeneration with think=true and SoftSwitch strategy appends enableDirective to content`() {
         val profile = profileWithThinking(
             PromptFormats.CHAT_ML,
             strategy = ThinkingStrategy.SoftSwitch(),
         )
         val formatter = PromptFormatter(profile)
-        val result = formatter.formatTurn(ChatEvent.UserEvent("Solve this", think = true))
+        val result = formatter.formatGeneration(ChatEvent.UserEvent("Solve this", think = true))
         val expected = "<|im_start|>user\nSolve this\n/think<|im_end|>\n<|im_start|>assistant\n"
         assertEquals(expected, result)
     }
 
     @Test
-    fun `user event with think=false and SoftSwitch strategy appends disableDirective to content`() {
+    fun `formatGeneration with think=false and SoftSwitch strategy appends disableDirective to content`() {
         val profile = profileWithThinking(
             PromptFormats.CHAT_ML,
             strategy = ThinkingStrategy.SoftSwitch(),
         )
         val formatter = PromptFormatter(profile)
-        val result = formatter.formatTurn(ChatEvent.UserEvent("Hello", think = false))
+        val result = formatter.formatGeneration(ChatEvent.UserEvent("Hello", think = false))
         val expected = "<|im_start|>user\nHello\n/no_think<|im_end|>\n<|im_start|>assistant\n"
         assertEquals(expected, result)
     }
 
     @Test
-    fun `user event with think=true and None strategy does not inject anything`() {
+    fun `formatGeneration with think=true and None strategy does not inject anything`() {
         val profile = profileWithThinking(
             PromptFormats.CHAT_ML,
             strategy = ThinkingStrategy.None,
         )
         val formatter = PromptFormatter(profile)
-        val result = formatter.formatTurn(ChatEvent.UserEvent("Hello", think = true))
+        val result = formatter.formatGeneration(ChatEvent.UserEvent("Hello", think = true))
         assertEquals(
             "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n",
             result
         )
     }
 
-    // ── Assistant event ──────────────────────────────────────────────────────
+    // -- User event (history mode) -----------------------------------------
 
     @Test
-    fun `assistant event with single text part formats correctly in ChatML`() {
+    fun `formatHistory for user event does NOT include assistant prefix`() {
         val formatter = PromptFormatter(profileWith(PromptFormats.CHAT_ML))
-        val event = ChatEvent.AssistantEvent(parts = listOf(ChatEvent.AssistantEvent.Part.TextPart("Hi there")))
-        val result = formatter.formatTurn(event)
-        assertEquals("Hi there<|im_end|>\n", result)
+        val result = formatter.formatHistory(ChatEvent.UserEvent("Hello", think = false))
+        assertEquals(
+            "<|im_start|>user\nHello<|im_end|>\n",
+            result
+        )
+    }
+
+    // -- Assistant event (history mode) ------------------------------------
+
+    @Test
+    fun `formatHistory for assistant event includes assistant prefix and endOfTurn`() {
+        val formatter = PromptFormatter(profileWith(PromptFormats.CHAT_ML))
+        val event = ChatEvent.AssistantEvent(
+            parts = listOf(ChatEvent.AssistantEvent.Part.TextPart("Hi there"))
+        )
+        val result = formatter.formatHistory(event)
+        assertEquals("<|im_start|>assistant\nHi there<|im_end|>\n", result)
     }
 
     @Test
-    fun `assistant event with no text parts emits only endOfTurn`() {
+    fun `formatHistory for assistant event with no text parts emits prefix and endOfTurn only`() {
         val formatter = PromptFormatter(profileWith(PromptFormats.CHAT_ML))
         val event = ChatEvent.AssistantEvent(parts = emptyList())
-        val result = formatter.formatTurn(event)
-        assertEquals("<|im_end|>\n", result)
+        val result = formatter.formatHistory(event)
+        assertEquals("<|im_start|>assistant\n<|im_end|>\n", result)
     }
 
-    // ── Llama3 format ────────────────────────────────────────────────────────
+    // -- Llama3 format -----------------------------------------------------
 
     @Test
-    fun `Llama3 user event wraps with correct header tokens`() {
+    fun `Llama3 formatGeneration wraps with correct header tokens`() {
         val formatter = PromptFormatter(profileWith(PromptFormats.LLAMA_3))
-        val result = formatter.formatTurn(ChatEvent.UserEvent("Hello", think = false))
+        val result = formatter.formatGeneration(ChatEvent.UserEvent("Hello", think = false))
         assertEquals(
             "<|start_header_id|>user<|end_header_id|>\n\nHello<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
             result
         )
     }
 
-    // ── Nemotron format ──────────────────────────────────────────────────────
+    // -- Nemotron format ---------------------------------------------------
 
     @Test
     fun `Nemotron system event uses extra_id_0 sentinel`() {
         val formatter = PromptFormatter(profileWith(PromptFormats.NEMOTRON))
-        val result = formatter.formatTurn(ChatEvent.SystemEvent("You are helpful."))
+        val result = formatter.formatSystem(ChatEvent.SystemEvent("You are helpful."))
         assertEquals("<extra_id_0>System\nYou are helpful.\n", result)
     }
 
     @Test
-    fun `Nemotron user event uses extra_id_1 sentinel`() {
+    fun `Nemotron formatGeneration uses extra_id_1 sentinel`() {
         val formatter = PromptFormatter(profileWith(PromptFormats.NEMOTRON))
-        val result = formatter.formatTurn(ChatEvent.UserEvent("Hello", think = false))
+        val result = formatter.formatGeneration(ChatEvent.UserEvent("Hello", think = false))
         assertEquals("<extra_id_1>User\nHello\n<extra_id_1>Assistant\n", result)
     }
 }

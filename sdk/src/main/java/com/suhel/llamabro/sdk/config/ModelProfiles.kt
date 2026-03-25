@@ -1,27 +1,8 @@
 package com.suhel.llamabro.sdk.config
 
-import com.suhel.llamabro.sdk.chat.pipeline.TagDelimiter
 import com.suhel.llamabro.sdk.format.PromptFormats
 
 object ModelProfiles {
-
-    private val STANDARD_THINK_TAGS = TagDelimiter("<think>", "</think>")
-
-    private val SOFT_SWITCH_THINKING = ThinkingCapability(
-        tags = STANDARD_THINK_TAGS,
-        strategy = ThinkingStrategy.SoftSwitch(),
-        inferenceOverrides = InferenceConfig(temperature = 0.6f, topP = 0.95f),
-    )
-
-    private val PREFILL_THINKING = ThinkingCapability(
-        tags = STANDARD_THINK_TAGS,
-        strategy = ThinkingStrategy.Prefill(
-            forcePrefix = "<think>\n",
-            suppressPrefix = "<think>\n\n</think>",
-        ),
-        inferenceOverrides = InferenceConfig(temperature = 0.6f, topP = 0.95f),
-    )
-
     val SMOLLM2 = ModelProfile(
         promptFormat = PromptFormats.CHAT_ML,
         defaultInferenceConfig = InferenceConfig(
@@ -48,7 +29,7 @@ object ModelProfiles {
 
     val QWEN_3 = ModelProfile(
         promptFormat = PromptFormats.CHAT_ML,
-        thinking = SOFT_SWITCH_THINKING,
+        thinking = ThinkingCapabilities.SOFT_SWITCH_THINKING,
         defaultInferenceConfig = InferenceConfig(
             temperature = 0.6f,
             topP = 0.95f,
@@ -59,7 +40,7 @@ object ModelProfiles {
 
     val QWEN_3_5 = ModelProfile(
         promptFormat = PromptFormats.CHAT_ML,
-        thinking = PREFILL_THINKING,
+        thinking = ThinkingCapabilities.PREFILL_THINKING,
         defaultInferenceConfig = InferenceConfig(
             temperature = 1.0f,
             topP = 0.95f,
@@ -72,7 +53,7 @@ object ModelProfiles {
 
     val DEEPSEEK_R1 = ModelProfile(
         promptFormat = PromptFormats.DEEPSEEK_R1,
-        thinking = PREFILL_THINKING,
+        thinking = ThinkingCapabilities.PREFILL_THINKING,
         defaultInferenceConfig = InferenceConfig(
             temperature = 0.6f,
             topP = 0.95f,
@@ -82,7 +63,7 @@ object ModelProfiles {
 
     val DEEPSEEK_R1_DISTILL_QWEN = ModelProfile(
         promptFormat = PromptFormats.CHAT_ML,
-        thinking = PREFILL_THINKING,
+        thinking = ThinkingCapabilities.PREFILL_THINKING,
         defaultInferenceConfig = InferenceConfig(
             temperature = 0.6f,
             topP = 0.95f,
@@ -102,7 +83,7 @@ object ModelProfiles {
         ),
     )
 
-    val GEMMA_2 = ModelProfile(
+    val GEMMA = ModelProfile(
         promptFormat = PromptFormats.GEMMA,
         defaultInferenceConfig = InferenceConfig(
             temperature = 0.7f,

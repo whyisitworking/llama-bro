@@ -3,21 +3,21 @@
 # They protect JNI-visible classes and fields from being renamed or removed.
 
 # Keep native method declarations (JNI resolves by exact mangled name)
--keepclassmembers class com.suhel.llamabro.sdk.internal.LlamaEngineImpl$Jni {
+-keepclassmembers class com.suhel.llamabro.sdk.engine.internal.LlamaEngineImpl$Jni {
     native <methods>;
 }
--keepclassmembers class com.suhel.llamabro.sdk.internal.LlamaSessionImpl$Jni {
+-keepclassmembers class com.suhel.llamabro.sdk.engine.internal.LlamaSessionImpl$Jni {
     native <methods>;
 }
 
 # Keep config classes whose fields are read reflectively from JNI via JniConfigReader
--keepclassmembers class com.suhel.llamabro.sdk.internal.LlamaEngineImpl$NativeCreateParams {
+-keepclassmembers class com.suhel.llamabro.sdk.engine.internal.LlamaEngineImpl$NativeCreateParams {
     <fields>;
 }
--keepclassmembers class com.suhel.llamabro.sdk.internal.LlamaSessionImpl$NativeCreateParams {
+-keepclassmembers class com.suhel.llamabro.sdk.engine.internal.LlamaSessionImpl$NativeCreateParams {
     <fields>;
 }
--keepclassmembers class com.suhel.llamabro.sdk.internal.LlamaSessionImpl$NativeTokenGenerationResult {
+-keepclassmembers class com.suhel.llamabro.sdk.engine.internal.LlamaSessionImpl$NativeTokenGenerationResult {
     <fields>;
 }
 

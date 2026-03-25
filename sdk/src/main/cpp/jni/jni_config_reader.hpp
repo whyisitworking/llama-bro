@@ -4,6 +4,8 @@
 #include <string>
 #include <exception>
 
+#include "jni_refs.hpp"
+
 class JniConfigReader {
 private:
     JNIEnv *env;
@@ -24,31 +26,30 @@ public:
     }
 
     int getInt(const char *fieldName) {
-        jfieldID fid = env->GetFieldID(clazz, fieldName, "I");
+        auto fid = env->GetFieldID(clazz, fieldName, jni_refs::types::int32);
         return env->GetIntField(obj, fid);
     }
 
     float getFloat(const char *fieldName) {
-        jfieldID fid = env->GetFieldID(clazz, fieldName, "F");
+        auto fid = env->GetFieldID(clazz, fieldName, jni_refs::types::float32);
         return env->GetFloatField(obj, fid);
     }
 
     bool getBool(const char *fieldName) {
-        jfieldID fid = env->GetFieldID(clazz, fieldName, "Z");
+        auto fid = env->GetFieldID(clazz, fieldName, jni_refs::types::boolean);
         return env->GetBooleanField(obj, fid);
     }
 
     std::string getString(const char *fieldName) {
-        jfieldID fid = env->GetFieldID(clazz, fieldName, "Ljava/lang/String;");
+        jfieldID fid = env->GetFieldID(clazz, fieldName, jni_refs::types::string);
         auto jstr = (jstring) env->GetObjectField(obj, fid);
 
         if (jstr == nullptr) return "";
 
-        const char *chars = env->GetStringUTFChars(jstr, nullptr);
+        auto chars = env->GetStringUTFChars(jstr, nullptr);
         std::string result(chars);
-
-        // Crucial: Release memory to prevent JNI table overflows
         env->ReleaseStringUTFChars(jstr, chars);
+
         env->DeleteLocalRef(jstr);
 
         return result;
@@ -56,8 +57,8 @@ public:
 
     // Handles nested Kotlin objects (e.g., getting the executionConfig from the EngineConfig)
     JniConfigReader getNestedObject(const char *fieldName, const char *signature) {
-        jfieldID fid = env->GetFieldID(clazz, fieldName, signature);
-        jobject nestedObj = env->GetObjectField(obj, fid);
+        auto fid = env->GetFieldID(clazz, fieldName, signature);
+        auto nestedObj = env->GetObjectField(obj, fid);
         return {env, nestedObj};
     }
 };

@@ -15,6 +15,7 @@ import com.suhel.llamabro.demo.data.repository.ModelRepository
 import com.suhel.llamabro.demo.model.MessageRole
 import com.suhel.llamabro.demo.navigation.Chat
 import com.suhel.llamabro.sdk.chat.ChatEvent
+import com.suhel.llamabro.sdk.chat.CompletionResult
 import com.suhel.llamabro.sdk.config.SessionConfig
 import com.suhel.llamabro.sdk.model.filterSuccess
 import com.suhel.llamabro.sdk.model.flatMapResource
@@ -157,7 +158,7 @@ class ChatViewModel @Inject constructor(
             flow<UiChatMessage?> {
                 emit(
                     UiChatMessage(
-                        id = "streaming",
+                        id = STREAMING_ID,
                         role = MessageRole.Assistant,
                         isProcessing = true,
                     )
@@ -196,42 +197,48 @@ class ChatViewModel @Inject constructor(
                                 )
                             )
                         }
-                        .onEach { chunk ->
-                            if (chunk.isComplete && !chunk.isError
-                                && (chunk.message.text.isNotEmpty() || chunk.message.thinkingText.isNotEmpty())
-                            ) {
-                                chatRepository.addMessage(
-                                    conversationId = conversationId,
-                                    role = MessageRole.Assistant,
-                                    content = chunk.message.text,
-                                    thinking = chunk.message.thinkingText.takeIf { it.isNotEmpty() },
-                                    tokensPerSecond = chunk.tokensPerSecond
-                                )
+                        .onEach { result ->
+                            if (result is CompletionResult.Complete) {
+                                val assistant = ChatEvent.AssistantEvent(result.events)
+                                if (assistant.text.isNotEmpty() || assistant.thinkingText.isNotEmpty()) {
+                                    chatRepository.addMessage(
+                                        conversationId = conversationId,
+                                        role = MessageRole.Assistant,
+                                        content = assistant.text,
+                                        thinking = assistant.thinkingText.takeIf { it.isNotEmpty() },
+                                        tokensPerSecond = result.tokensPerSecond
+                                    )
+                                }
                             }
                         }
-                        .map { chunk ->
-                            when {
-                                chunk.isError -> UiChatMessage(
-                                    id = "streaming",
-                                    role = MessageRole.Assistant,
-                                    error = chunk.error
-                                )
+                        .map { result ->
+                            when (result) {
+                                is CompletionResult.Error -> {
+                                    UiChatMessage(
+                                        id = STREAMING_ID,
+                                        role = MessageRole.Assistant,
+                                        error = result.error.message
+                                    )
+                                }
 
-                                chunk.isComplete -> null
+                                is CompletionResult.Complete -> null
 
-                                else -> UiChatMessage(
-                                    id = "streaming",
-                                    role = MessageRole.Assistant,
-                                    content = chunk.message.text.takeIf { it.isNotEmpty() },
-                                    thinking = chunk.message.thinkingText.takeIf { it.isNotEmpty() }
-                                )
+                                is CompletionResult.Streaming -> {
+                                    val assistant = ChatEvent.AssistantEvent(result.events)
+                                    UiChatMessage(
+                                        id = STREAMING_ID,
+                                        role = MessageRole.Assistant,
+                                        content = assistant.text.takeIf { it.isNotEmpty() },
+                                        thinking = assistant.thinkingText.takeIf { it.isNotEmpty() }
+                                    )
+                                }
                             }
                         }
                         .catch { e ->
                             // Safety net for unexpected non-LlamaError exceptions.
                             emit(
                                 UiChatMessage(
-                                    id = "streaming",
+                                    id = STREAMING_ID,
                                     role = MessageRole.Assistant,
                                     error = e.message
                                 )

@@ -1,21 +1,22 @@
-package com.suhel.llamabro.sdk.internal
+package com.suhel.llamabro.sdk.engine.internal
 
 import com.suhel.llamabro.sdk.chat.LlamaChatSession
 import com.suhel.llamabro.sdk.chat.internal.LlamaChatSessionImpl
-import com.suhel.llamabro.sdk.engine.LlamaSession
 import com.suhel.llamabro.sdk.config.LoadableModel
 import com.suhel.llamabro.sdk.config.OverflowStrategy
 import com.suhel.llamabro.sdk.config.SessionConfig
+import com.suhel.llamabro.sdk.engine.LlamaSession
 import com.suhel.llamabro.sdk.engine.TokenGenerationResult
 import com.suhel.llamabro.sdk.engine.TokenGenerationResultCode
-import com.suhel.llamabro.sdk.model.LlamaError
 import com.suhel.llamabro.sdk.model.ResourceState
+import com.suhel.llamabro.sdk.toolcall.ToolCall
+import com.suhel.llamabro.sdk.toolcall.ToolResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.channelFlow
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runInterruptible
@@ -38,11 +39,12 @@ internal class LlamaSessionImpl(
     private val result = NativeTokenGenerationResult()
 
     /** Pointer to the native llama_bro_session structure. */
-    private val ptr: Long =
+    private val ptr: Long = try {
         Jni.create(
             enginePtr = enginePtr,
             params = NativeCreateParams(
                 contextSize = sessionConfig.contextSize,
+                threads = loadableModel.loadConfig.threads,
                 overflowStrategyId = when (sessionConfig.overflowStrategy) {
                     OverflowStrategy.Halt -> 0
                     OverflowStrategy.ClearHistory -> 1
@@ -50,20 +52,33 @@ internal class LlamaSessionImpl(
                 },
                 overflowDropTokens = (sessionConfig.overflowStrategy as? OverflowStrategy.RollingWindow)
                     ?.dropTokens ?: 0,
-                topKEnabled = sessionConfig.inferenceConfig.topK != null,
-                topK = sessionConfig.inferenceConfig.topK ?: 0,
-                topPEnabled = sessionConfig.inferenceConfig.topP != null,
-                topP = sessionConfig.inferenceConfig.topP ?: 0f,
-                minPEnabled = sessionConfig.inferenceConfig.minP != null,
-                minP = sessionConfig.inferenceConfig.minP ?: 0f,
-                repPen = sessionConfig.inferenceConfig.repeatPenalty,
-                presencePen = sessionConfig.inferenceConfig.presencePenalty,
-                temp = sessionConfig.inferenceConfig.temperature,
-                seed = sessionConfig.seed,
+
+                repeatPenalty = sessionConfig.inferenceConfig.repeatPenalty,
+                frequencyPenalty = sessionConfig.inferenceConfig.frequencyPenalty,
+                presencePenalty = sessionConfig.inferenceConfig.presencePenalty,
+                penaltyLastN = sessionConfig.inferenceConfig.penaltyLastN,
+
+                dryMultiplier = sessionConfig.inferenceConfig.dryMultiplier,
+                dryBase = sessionConfig.inferenceConfig.dryBase,
+                dryAllowedLength = sessionConfig.inferenceConfig.dryAllowedLength,
+                dryPenaltyLastN = sessionConfig.inferenceConfig.dryPenaltyLastN,
+
+                topNSigma = sessionConfig.inferenceConfig.topNSigma,
+                topK = sessionConfig.inferenceConfig.topK,
+                typP = sessionConfig.inferenceConfig.typP,
+                topP = sessionConfig.inferenceConfig.topP,
+                minP = sessionConfig.inferenceConfig.minP,
+
+                temperature = sessionConfig.inferenceConfig.temperature,
+                seed = sessionConfig.inferenceConfig.seed,
+
                 batchSize = sessionConfig.decodeConfig.batchSize,
                 microBatchSize = sessionConfig.decodeConfig.microBatchSize,
             )
         )
+    } catch (e: Exception) {
+        throw NativeErrorMapper.map(e)
+    }
 
     override suspend fun setPrefixedPrompt(text: String) =
         withContext(Dispatchers.IO) {
@@ -102,7 +117,7 @@ internal class LlamaSessionImpl(
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 var isDone = false
-                while (!isDone && kotlinx.coroutines.currentCoroutineContext().isActive) {
+                while (!isDone && currentCoroutineContext().isActive) {
                     val genResult = runInterruptible {
                         Jni.generate(ptr, result)
                         TokenGenerationResult(
@@ -112,7 +127,13 @@ internal class LlamaSessionImpl(
                         )
                     }
                     send(genResult)
-                    isDone = genResult.isComplete || genResult.resultCode != TokenGenerationResultCode.OK
+                    if (genResult.resultCode != TokenGenerationResultCode.OK
+                        && genResult.resultCode != TokenGenerationResultCode.CANCELLED
+                    ) {
+                        throw NativeErrorMapper.fromResultCode(genResult.resultCode)
+                    }
+                    isDone =
+                        genResult.isComplete || genResult.resultCode != TokenGenerationResultCode.OK
                 }
             }
         }
@@ -135,21 +156,29 @@ internal class LlamaSessionImpl(
         Jni.destroy(ptr)
     }
 
-    override suspend fun createChatSession(systemPrompt: String): LlamaChatSession =
+    override suspend fun createChatSession(
+        systemPrompt: String,
+        toolCaller: (suspend (List<ToolCall>) -> List<ToolResult>)?,
+    ): LlamaChatSession =
         withContext(Dispatchers.IO) {
-            LlamaChatSessionImpl(this@LlamaSessionImpl, systemPrompt).also { it.initialize() }
+            LlamaChatSessionImpl(
+                session = this@LlamaSessionImpl,
+                systemPrompt = systemPrompt,
+                toolCaller = toolCaller,
+            ).also { it.initialize() }
         }
 
-    override fun createChatSessionFlow(systemPrompt: String): Flow<ResourceState<LlamaChatSession>> =
+    override fun createChatSessionFlow(
+        systemPrompt: String,
+        toolCaller: (suspend (List<ToolCall>) -> List<ToolResult>)?,
+    ): Flow<ResourceState<LlamaChatSession>> =
         callbackFlow {
             try {
                 send(ResourceState.Loading())
-                val session = createChatSession(systemPrompt)
+                val session = createChatSession(systemPrompt, toolCaller)
                 send(ResourceState.Success(session))
             } catch (e: Exception) {
-                val llamaError = e as? LlamaError
-                    ?: LlamaError.NativeException(e.message ?: "Unknown", e)
-                send(ResourceState.Failure(llamaError))
+                send(ResourceState.Failure(NativeErrorMapper.map(e)))
             }
 
             awaitClose()
@@ -159,22 +188,29 @@ internal class LlamaSessionImpl(
 
     private class NativeCreateParams(
         val contextSize: Int,
+        val threads: Int,
         val overflowStrategyId: Int,
         val overflowDropTokens: Int,
-        val topKEnabled: Boolean,
+
+        val repeatPenalty: Float,
+        val frequencyPenalty: Float,
+        val presencePenalty: Float,
+        val penaltyLastN: Int,
+
+        val dryMultiplier: Float,
+        val dryBase: Float,
+        val dryAllowedLength: Int,
+        val dryPenaltyLastN: Int,
+
+        val topNSigma: Float,
         val topK: Int,
-        val topPEnabled: Boolean,
+        val typP: Float,
         val topP: Float,
-        val minPEnabled: Boolean,
         val minP: Float,
 
-        // Always-on (no enable field)
-        val repPen: Float,
-        val presencePen: Float,
-        val temp: Float,
+        val temperature: Float,
         val seed: Int,
 
-        // Decode tuning
         val batchSize: Int,
         val microBatchSize: Int,
     )

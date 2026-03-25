@@ -45,10 +45,12 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
+import com.halilibo.richtext.commonmark.CommonMarkdownParseOptions
+import com.halilibo.richtext.commonmark.Markdown
+import com.halilibo.richtext.ui.material3.RichText
 import com.suhel.llamabro.demo.R
 import com.suhel.llamabro.demo.model.MessageRole
 import com.suhel.llamabro.demo.ui.AppScaffold
-import dev.jeziellago.compose.markdowntext.MarkdownText
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -206,7 +208,7 @@ private fun MessageBubble(message: UiChatMessage) {
         Column(
             modifier = if (isUser) Modifier.widthIn(max = 300.dp) else Modifier.fillMaxWidth(),
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (message.isProcessing && message.content.isNullOrBlank() && message.thinking.isNullOrBlank()) {
                 ProcessingIndicator()
@@ -250,11 +252,7 @@ private fun ExpandableThinkingBlock(thinkingText: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .background(
-                MaterialTheme.colorScheme.surfaceVariant,
-                MaterialTheme.shapes.medium
-            )
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .animateContentSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -267,7 +265,7 @@ private fun ExpandableThinkingBlock(thinkingText: String) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = if (isExpanded) "Hide thought process" else "Show thought process",
+                text = "Thinking",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -280,10 +278,7 @@ private fun ExpandableThinkingBlock(thinkingText: String) {
         }
 
         if (isExpanded) {
-            MarkdownText(
-                markdown = thinkingText,
-                style = MaterialTheme.typography.bodyLarge,
-            )
+            MarkdownRenderer(thinkingText)
         }
     }
 }
@@ -314,10 +309,7 @@ private fun AssistantMessageContent(contentText: String) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
     ) {
-        MarkdownText(
-            markdown = contentText,
-            style = MaterialTheme.typography.bodyLarge,
-        )
+        MarkdownRenderer(contentText)
     }
 }
 
@@ -357,5 +349,14 @@ private fun GenerationConclusion(text: String, tokensPerSecond: Float) {
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@Composable
+private fun MarkdownRenderer(content: String) {
+    RichText(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Markdown(content)
     }
 }

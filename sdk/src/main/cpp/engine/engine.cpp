@@ -13,7 +13,7 @@ namespace engine {
         auto backend = resolve_best_ggml_backend();
         auto backend_result = ggml_backend_load(backend);
         if (backend_result == nullptr) {
-            throw std::runtime_error("Failed to load GGML backend.");
+            throw result_code_error(ResultCode::BACKEND_LOAD_FAILED);
         }
 
         llama_backend_init();
@@ -39,7 +39,7 @@ namespace engine {
 
         if (!model) {
             llama_backend_free();
-            throw std::runtime_error("Failed to load model.");
+            throw result_code_error(ResultCode::MODEL_LOAD_FAILED);
         }
 
         llama_model.reset(model);

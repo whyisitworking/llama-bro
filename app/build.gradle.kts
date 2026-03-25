@@ -111,7 +111,8 @@ dependencies {
     implementation(libs.androidx.paging.compose)
 
     // Markdown
-    implementation(libs.compose.markdown)
+    implementation(libs.richtext.ui.material3)
+    implementation(libs.richtext.commonmark)
 
     // Firebase
     implementation(platform(libs.firebase.bom))

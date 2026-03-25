@@ -23,17 +23,23 @@ namespace session {
         int overflow_strategy_id;
         int overflow_drop_tokens;
 
-        bool top_k_enabled;
+        float repeat_penalty;
+        float frequency_penalty;
+        float presence_penalty;
+        int penalty_last_n;
+
+        float dry_multiplier;
+        float dry_base;
+        int dry_allowed_length;
+        int dry_penalty_last_n;
+
+        float top_n_sigma;
         int top_k;
-        bool top_p_enabled;
+        float typ_p;
         float top_p;
-        bool min_p_enabled;
         float min_p;
 
-        float rep_pen;
-        float presence_pen;
         float temp;
-
         int seed;
 
         int batch_size;

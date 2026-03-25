@@ -5,6 +5,5 @@ data class PromptFormat(
     val userPrefix: String,
     val assistantPrefix: String,
     val endOfTurn: String,
-    val emitAssistantPrefixOnGeneration: Boolean = true,
     val stopStrings: List<String> = emptyList(),
 )

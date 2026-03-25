@@ -6,9 +6,9 @@ import com.suhel.llamabro.demo.model.CurrentInferenceContext
 import com.suhel.llamabro.demo.model.Model
 import com.suhel.llamabro.demo.model.ModelDownloadState
 import com.suhel.llamabro.demo.model.ModelZoo
-import com.suhel.llamabro.sdk.engine.LlamaEngine
 import com.suhel.llamabro.sdk.config.LoadableModel
 import com.suhel.llamabro.sdk.config.ModelLoadConfig
+import com.suhel.llamabro.sdk.engine.LlamaEngine
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,7 +39,7 @@ import kotlin.coroutines.cancellation.CancellationException
 @OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
 class ModelRepository @Inject constructor(
-    @param:ApplicationContext private val context: Context,
+    @ApplicationContext context: Context,
     @ApplicationScope scope: CoroutineScope
 ) {
     private val modelsDir = File(context.filesDir, "models").also { it.mkdirs() }
@@ -72,7 +72,7 @@ class ModelRepository @Inject constructor(
             },
             ModelZoo.map { model ->
                 model to model.downloadState()
-            }.asFlow()
+            }.asFlow(),
         )
             .scan(emptyMap<Model, ModelDownloadState>()) { acc, pair -> acc + pair }
             .stateIn(scope, SharingStarted.Eagerly, emptyMap())

@@ -1,7 +1,5 @@
 package com.suhel.llamabro.sdk.chat
 
-import com.suhel.llamabro.sdk.chat.ChatEvent
-import com.suhel.llamabro.sdk.chat.CompletionSnapshot
 import com.suhel.llamabro.sdk.toolcall.ToolDefinition
 import kotlinx.coroutines.flow.Flow
 
@@ -11,5 +9,5 @@ import kotlinx.coroutines.flow.Flow
 interface LlamaChatSession {
     suspend fun initialize(tools: List<ToolDefinition> = emptyList())
     suspend fun feedHistory(history: List<ChatEvent>)
-    fun completion(message: ChatEvent.UserEvent): Flow<CompletionSnapshot>
+    fun completion(message: ChatEvent.UserEvent): Flow<CompletionResult>
 }

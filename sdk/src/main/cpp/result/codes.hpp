@@ -20,3 +20,15 @@ enum class ResultCode : int {
     // ── Catch-all ────────────────────────────────────────────────────────────
     UNKNOWN = 99,
 };
+
+/**
+ * Typed exception carrying a ResultCode. All native failures that should
+ * propagate to the JNI boundary throw this instead of std::runtime_error.
+ */
+class result_code_error : public std::runtime_error {
+public:
+    ResultCode code;
+
+    explicit result_code_error(ResultCode c)
+            : std::runtime_error(std::to_string(static_cast<int>(c))), code(c) {}
+};

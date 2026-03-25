@@ -1,11 +1,10 @@
-package com.suhel.llamabro.sdk.internal
+package com.suhel.llamabro.sdk.engine.internal
 
 import com.suhel.llamabro.sdk.engine.LlamaEngine
 import com.suhel.llamabro.sdk.engine.LlamaSession
 import com.suhel.llamabro.sdk.config.LoadableModel
 import com.suhel.llamabro.sdk.config.SessionConfig
 import com.suhel.llamabro.sdk.ProgressListener
-import com.suhel.llamabro.sdk.model.LlamaError
 import com.suhel.llamabro.sdk.model.ResourceState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -26,7 +25,7 @@ internal class LlamaEngineImpl(
 ) : LlamaEngine {
 
     /** Pointer to the native llama_bro_engine structure. */
-    private val enginePtr: Long = run {
+    private val enginePtr: Long = try {
         val params = NativeCreateParams(
             modelPath = loadableModel.loadConfig.path,
             useMMap = loadableModel.loadConfig.useMMap,
@@ -39,6 +38,8 @@ internal class LlamaEngineImpl(
         } else {
             Jni.create(params)
         }
+    } catch (e: Exception) {
+        throw NativeErrorMapper.map(e, loadableModel.loadConfig.path)
     }
 
     override suspend fun createSession(sessionConfig: SessionConfig): LlamaSession =
@@ -55,9 +56,7 @@ internal class LlamaEngineImpl(
                 session = createSession(sessionConfig)
                 send(ResourceState.Success(session))
             } catch (e: Exception) {
-                val llamaError = e as? LlamaError
-                    ?: LlamaError.NativeException(e.message ?: "Unknown", e)
-                send(ResourceState.Failure(llamaError))
+                send(ResourceState.Failure(NativeErrorMapper.map(e)))
             }
 
             awaitClose {

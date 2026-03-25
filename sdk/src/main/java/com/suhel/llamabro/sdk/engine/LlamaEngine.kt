@@ -3,8 +3,8 @@ package com.suhel.llamabro.sdk.engine
 import com.suhel.llamabro.sdk.ProgressListener
 import com.suhel.llamabro.sdk.config.LoadableModel
 import com.suhel.llamabro.sdk.config.SessionConfig
-import com.suhel.llamabro.sdk.internal.LlamaEngineImpl
-import com.suhel.llamabro.sdk.model.LlamaError
+import com.suhel.llamabro.sdk.engine.internal.LlamaEngineImpl
+import com.suhel.llamabro.sdk.engine.internal.NativeErrorMapper
 import com.suhel.llamabro.sdk.model.ResourceState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -115,9 +115,7 @@ interface LlamaEngine : AutoCloseable {
                 engine = LlamaEngineImpl(modelConfig, listener)
                 send(ResourceState.Success(engine))
             } catch (e: Exception) {
-                val llamaError = e as? LlamaError
-                    ?: LlamaError.NativeException(e.message ?: "Unknown", e)
-                send(ResourceState.Failure(llamaError))
+                send(ResourceState.Failure(NativeErrorMapper.map(e, modelConfig.loadConfig.path)))
             }
 
             awaitClose {

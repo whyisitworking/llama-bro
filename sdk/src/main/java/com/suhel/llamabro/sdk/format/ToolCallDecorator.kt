@@ -3,26 +3,22 @@ package com.suhel.llamabro.sdk.format
 import com.suhel.llamabro.sdk.chat.ChatEvent
 import com.suhel.llamabro.sdk.config.ToolCallCapability
 import com.suhel.llamabro.sdk.toolcall.ToolDefinition
+import kotlin.reflect.KClass
 
 class ToolCallDecorator(
     private val toolCall: ToolCallCapability,
     private val tools: List<ToolDefinition> = emptyList()
 ) : PromptDecorator {
 
-    override fun decorateSystem(content: String): String {
-        val toolsText = if (tools.isNotEmpty()) {
-            toolCall.definitionFormatter(tools)
-        } else {
-            ""
-        }
+    override val partType: KClass<out ChatEvent.AssistantEvent.Part> =
+        ChatEvent.AssistantEvent.Part.ToolCallPart::class
 
-        if (toolsText.isEmpty()) return content
+    override fun decorateSystem(): String? =
+        tools.takeIf { it.isNotEmpty() }
+            ?.let { tools -> toolCall.definitionFormatter(tools) }
 
-        return "$content\n$toolsText"
-    }
-
-    override fun decorateAssistantPart(part: ChatEvent.AssistantEvent.Part): String? {
-        if (part !is ChatEvent.AssistantEvent.Part.ToolCallPart) return null
-        return toolCall.callSerializer(part.call)
+    override fun formatPart(part: ChatEvent.AssistantEvent.Part): String {
+        val toolCallPart = part as ChatEvent.AssistantEvent.Part.ToolCallPart
+        return toolCall.callSerializer(toolCallPart.call)
     }
 }

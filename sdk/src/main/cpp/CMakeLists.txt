@@ -13,7 +13,7 @@ set(GGML_BACKEND_DL ON)
 # CPU is the most stable backend on mobile now
 set(GGML_CPU ON)
 
-# Compile GGML for all CPU variants
+# Compile GGML for all CPU variants so we can choose at runtime
 set(GGML_CPU_ALL_VARIANTS ON)
 
 # OpenMP mismanages big.LITTLE architectures
@@ -29,8 +29,9 @@ add_library(llama_bro
         engine/engine.cpp
         session/session.cpp
 
-        jni/engine.cpp
-        jni/session.cpp
+        jni/jni_engine.cpp
+        jni/jni_session.cpp
+        jni/jni_refs.cpp
 )
 
 target_include_directories(llama_bro
