@@ -1,10 +1,13 @@
 package com.suhel.llamabro.sdk.config
 
-import com.suhel.llamabro.sdk.format.PromptFormats
-
+/**
+ * Curated model profiles with optimal sampling parameters.
+ *
+ * With native Jinja templates handling all prompt formatting and thinking tag detection,
+ * profiles are now purely about inference sampling parameters.
+ */
 object ModelProfiles {
     val SMOLLM2 = ModelProfile(
-        promptFormat = PromptFormats.CHAT_ML,
         defaultInferenceConfig = InferenceConfig(
             temperature = 0.7f,
             repeatPenalty = 1.1f,
@@ -16,7 +19,6 @@ object ModelProfiles {
     )
 
     val QWEN_2_5 = ModelProfile(
-        promptFormat = PromptFormats.CHAT_ML,
         defaultInferenceConfig = InferenceConfig(
             temperature = 0.7f,
             repeatPenalty = 1.05f,
@@ -28,19 +30,21 @@ object ModelProfiles {
     )
 
     val QWEN_3 = ModelProfile(
-        promptFormat = PromptFormats.CHAT_ML,
-        thinking = ThinkingCapabilities.SOFT_SWITCH_THINKING,
+        supportsThinking = true,
         defaultInferenceConfig = InferenceConfig(
             temperature = 0.6f,
             topP = 0.95f,
             topK = 20,
             minP = 0.0f,
         ),
+        thinkingInferenceConfig = InferenceConfig(
+            temperature = 0.6f,
+            topP = 0.95f,
+        ),
     )
 
     val QWEN_3_5 = ModelProfile(
-        promptFormat = PromptFormats.CHAT_ML,
-        thinking = ThinkingCapabilities.PREFILL_THINKING,
+        supportsThinking = true,
         defaultInferenceConfig = InferenceConfig(
             temperature = 1.0f,
             topP = 0.95f,
@@ -49,30 +53,26 @@ object ModelProfiles {
             presencePenalty = 1.5f,
             repeatPenalty = 1.0f,
         ),
+        thinkingInferenceConfig = InferenceConfig(
+            temperature = 0.6f,
+            topP = 0.95f,
+        ),
     )
 
     val DEEPSEEK_R1 = ModelProfile(
-        promptFormat = PromptFormats.DEEPSEEK_R1,
-        thinking = ThinkingCapabilities.PREFILL_THINKING,
+        supportsThinking = true,
         defaultInferenceConfig = InferenceConfig(
             temperature = 0.6f,
             topP = 0.95f,
             topK = 40,
         ),
-    )
-
-    val DEEPSEEK_R1_DISTILL_QWEN = ModelProfile(
-        promptFormat = PromptFormats.CHAT_ML,
-        thinking = ThinkingCapabilities.PREFILL_THINKING,
-        defaultInferenceConfig = InferenceConfig(
+        thinkingInferenceConfig = InferenceConfig(
             temperature = 0.6f,
             topP = 0.95f,
-            topK = 40,
         ),
     )
 
     val LLAMA_3_2 = ModelProfile(
-        promptFormat = PromptFormats.LLAMA_3,
         defaultInferenceConfig = InferenceConfig(
             temperature = 0.6f,
             repeatPenalty = 1.1f,
@@ -84,7 +84,6 @@ object ModelProfiles {
     )
 
     val GEMMA = ModelProfile(
-        promptFormat = PromptFormats.GEMMA,
         defaultInferenceConfig = InferenceConfig(
             temperature = 0.7f,
             topP = 0.9f,

@@ -14,8 +14,9 @@ import com.suhel.llamabro.demo.data.repository.ChatRepository
 import com.suhel.llamabro.demo.data.repository.ModelRepository
 import com.suhel.llamabro.demo.model.MessageRole
 import com.suhel.llamabro.demo.navigation.Chat
-import com.suhel.llamabro.sdk.chat.ChatEvent
-import com.suhel.llamabro.sdk.chat.CompletionResult
+import com.suhel.llamabro.sdk.chat.ChatCompletionEvent
+import com.suhel.llamabro.sdk.chat.ChatCompletionOptions
+import com.suhel.llamabro.sdk.chat.ChatMessage
 import com.suhel.llamabro.sdk.config.InferenceConfig
 import com.suhel.llamabro.sdk.config.SessionConfig
 import com.suhel.llamabro.sdk.model.filterSuccess
@@ -31,11 +32,13 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.scan
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.updateAndGet
 import javax.inject.Inject
@@ -57,6 +60,15 @@ class ChatViewModel @Inject constructor(
         private const val MAX_TITLE_LENGTH = 50
 
         private const val STREAMING_ID = "streaming"
+
+        private const val MESSAGE_ROLE_SYSTEM = "system"
+        private const val MESSAGE_ROLE_USER = "user"
+        private const val MESSAGE_ROLE_ASSISTANT = "assistant"
+
+        private val systemMessage = ChatMessage(
+            role = MESSAGE_ROLE_SYSTEM,
+            content = SYSTEM_PROMPT
+        )
     }
 
     /** Null until the first message is sent (new conversation flow). */
@@ -75,15 +87,8 @@ class ChatViewModel @Inject constructor(
      */
     private val _userInferenceConfig = MutableStateFlow<InferenceConfig?>(null)
 
-    /** The active inference config: user override if set, otherwise the model's default. */
-    val activeInferenceConfig = combine(
-        currentModelFlow.filterNotNull(),
-        _userInferenceConfig,
-    ) { model, override -> override ?: model.profile.defaultInferenceConfig }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, InferenceConfig())
-
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val chatSessionFlow = modelRepository.currentInferenceContextFlow
+    private val chatCompletionFlow = modelRepository.currentInferenceContextFlow
         .flatMapLatest { currentInferenceContext ->
             currentInferenceContext?.engine
                 ?.getOrNull()
@@ -97,38 +102,41 @@ class ChatViewModel @Inject constructor(
         }
         .filterNotNull()
         .flatMapResource { session ->
-            session.createChatSessionFlow(SYSTEM_PROMPT)
+            session.createChatCompletionFlow()
         }
         .filterSuccess()
-        .onEach { chatSession ->
-            // For existing conversations, restore the message history.
-            val id = conversationId.value ?: return@onEach
-            val history = chatRepository.getMessages(id)
-                .map { chatMessage ->
-                    when (chatMessage.role) {
-                        MessageRole.User -> ChatEvent.UserEvent(
-                            content = chatMessage.content,
-                            think = false
-                        )
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-                        MessageRole.Assistant -> ChatEvent.AssistantEvent(
-                            parts = listOf(
-                                ChatEvent.AssistantEvent.Part.TextPart(chatMessage.content)
-                            )
-                        )
-                    }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val messages = conversationId
+        .filterNotNull()
+        .flatMapLatest(chatRepository::getMessages)
+        .scan(listOf(systemMessage)) { history, newMessage ->
+            history + when (newMessage.role) {
+                MessageRole.User -> {
+                    ChatMessage(
+                        role = MESSAGE_ROLE_USER,
+                        content = newMessage.content,
+                    )
                 }
 
-            chatSession.feedHistory(history)
+                MessageRole.Assistant -> {
+                    ChatMessage(
+                        role = MESSAGE_ROLE_ASSISTANT,
+                        content = newMessage.content,
+                        reasoningContent = newMessage.thinking,
+                    )
+                }
+            }
         }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+        .shareIn(viewModelScope, SharingStarted.Eagerly)
 
     /**
      * Emits an empty list until a conversation is created, then switches to
      * the real paging source for that conversation.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    val messages = conversationId
+    val pagedMessages = conversationId
         .flatMapLatest { conversationId ->
             if (conversationId == null) {
                 flowOf(PagingData.empty())
@@ -158,11 +166,11 @@ class ChatViewModel @Inject constructor(
         .cachedIn(viewModelScope)
 
     @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
-    val incomingMessage = combine(
+    val incomingMessageFlow = combine(
         sendMessageTrigger,
         currentModelFlow.filterNotNull()
     ) { message, model -> message to model }
-        .flatMapLatest { (message, model) ->
+        .flatMapLatest { (message, _) ->
             if (message == null) {
                 return@flatMapLatest flowOf(null)
             }
@@ -200,57 +208,80 @@ class ChatViewModel @Inject constructor(
                     content = prompt
                 )
 
+                // Build the full message list for this completion (OpenAI-style stateless API)
+                val chatMessages = messages.first()
+
+                // Accumulate streaming content and thinking
+                var currentContent = StringBuilder()
+                var currentThinking = StringBuilder()
+
                 emitAll(
-                    chatSessionFlow
+                    chatCompletionFlow
                         .filterNotNull()
-                        .flatMapLatest { chatSession ->
-                            chatSession.completion(
-                                message = ChatEvent.UserEvent(
-                                    content = prompt,
-                                    think = enableThinking
-                                ),
-                                inferenceConfig = _userInferenceConfig.value,
+                        .flatMapLatest { chatCompletion ->
+                            // Build options from user config + thinking flag
+                            val userConfig = _userInferenceConfig.value
+                            val options = ChatCompletionOptions(
+                                temperature = userConfig?.temperature,
+                                topP = userConfig?.topP,
+                                topK = userConfig?.topK,
+                                minP = userConfig?.minP,
+                                repeatPenalty = userConfig?.repeatPenalty,
+                                frequencyPenalty = userConfig?.frequencyPenalty,
+                                presencePenalty = userConfig?.presencePenalty,
+                                seed = userConfig?.seed,
+                                enableThinking = enableThinking,
                             )
+
+                            chatCompletion.create(chatMessages, options)
                         }
-                        .onEach { result ->
-                            if (result is CompletionResult.Complete) {
-                                val assistant = ChatEvent.AssistantEvent(result.events)
-                                if (assistant.text.isNotEmpty() || assistant.thinkingText.isNotEmpty()) {
-                                    chatRepository.addMessage(
-                                        conversationId = conversationId,
-                                        role = MessageRole.Assistant,
-                                        content = assistant.text,
-                                        thinking = assistant.thinkingText.takeIf { it.isNotEmpty() },
-                                        tokensPerSecond = result.tokensPerSecond
-                                    )
-                                }
-                            }
-                        }
-                        .map { result ->
-                            when (result) {
-                                is CompletionResult.Error -> {
+                        .map { event ->
+                            when (event) {
+                                is ChatCompletionEvent.Delta -> {
+                                    event.content?.let { currentContent.append(it) }
+                                    event.reasoningContent?.let { currentThinking.append(it) }
+
                                     UiChatMessage(
                                         id = STREAMING_ID,
                                         role = MessageRole.Assistant,
-                                        error = result.error.message
+                                        content = currentContent
+                                            .takeIf { it.isNotEmpty() }
+                                            ?.toString(),
+                                        thinking = currentThinking
+                                            .takeIf { it.isNotEmpty() }
+                                            ?.toString(),
                                     )
                                 }
 
-                                is CompletionResult.Complete -> null
+                                is ChatCompletionEvent.Done -> {
+                                    // Save final message with tps
+                                    val text = currentContent.toString()
+                                    val thinking = currentThinking
+                                        .takeIf { it.isNotEmpty() }
+                                        ?.toString()
 
-                                is CompletionResult.Streaming -> {
-                                    val assistant = ChatEvent.AssistantEvent(result.events)
+                                    if (text.isNotEmpty() || thinking != null) {
+                                        chatRepository.addMessage(
+                                            conversationId = conversationId,
+                                            role = MessageRole.Assistant,
+                                            content = text,
+                                            thinking = thinking,
+                                            tokensPerSecond = event.usage.tokensPerSecond,
+                                        )
+                                    }
+                                    null // Signal completion
+                                }
+
+                                is ChatCompletionEvent.Error -> {
                                     UiChatMessage(
                                         id = STREAMING_ID,
                                         role = MessageRole.Assistant,
-                                        content = assistant.text.takeIf { it.isNotEmpty() },
-                                        thinking = assistant.thinkingText.takeIf { it.isNotEmpty() }
+                                        error = event.error.message
                                     )
                                 }
                             }
                         }
                         .catch { e ->
-                            // Safety net for unexpected non-LlamaError exceptions.
                             emit(
                                 UiChatMessage(
                                     id = STREAMING_ID,
@@ -265,12 +296,12 @@ class ChatViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val inputConfig = combine(
-        currentModelFlow.map { it?.profile?.supportsThinking == true },
-        incomingMessage.map { it != null }
-    ) { supportsThinking, isGenerating ->
+        currentModelFlow.filterNotNull(),
+        incomingMessageFlow
+    ) { model, incomingMessage ->
         UiChatInputConfig(
-            thinkingSupported = supportsThinking,
-            isGenerating = isGenerating
+            thinkingSupported = model.profile.supportsThinking,
+            isGenerating = incomingMessage != null
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, UiChatInputConfig())
 
@@ -282,7 +313,6 @@ class ChatViewModel @Inject constructor(
         sendMessageTrigger.tryEmit(null)
     }
 
-    /** Override the inference config for all future completions. Pass null to reset to model default. */
     fun setInferenceConfig(config: InferenceConfig?) {
         _userInferenceConfig.value = config
     }

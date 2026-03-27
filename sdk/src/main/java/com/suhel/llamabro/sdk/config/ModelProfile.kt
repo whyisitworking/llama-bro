@@ -1,22 +1,20 @@
 package com.suhel.llamabro.sdk.config
 
-import com.suhel.llamabro.sdk.chat.pipeline.TagDelimiter
-import com.suhel.llamabro.sdk.format.PromptFormat
-
+/**
+ * Model-specific configuration for inference behavior.
+ *
+ * With the migration to native Jinja templates, prompt formatting and thinking tag detection
+ * are handled entirely in C++. ModelProfile now only carries inference sampling parameters
+ * and optional tool call capability.
+ *
+ * @param defaultInferenceConfig Default sampling parameters for normal generation.
+ * @param thinkingInferenceConfig Optional sampling overrides when thinking/reasoning is enabled.
+ *   If null, [defaultInferenceConfig] is used for thinking requests too.
+ * @param toolCall Optional tool call capability for function calling models.
+ */
 data class ModelProfile(
-    val promptFormat: PromptFormat,
-    val thinking: ThinkingCapability? = null,
-    val toolCall: ToolCallCapability? = null,
+    val supportsThinking: Boolean = false,
     val defaultInferenceConfig: InferenceConfig = InferenceConfig(),
-) {
-    val supportsThinking: Boolean get() = thinking != null
-    val supportsToolCalls: Boolean get() = toolCall != null
-
-    internal val tagDelimiters: List<TagDelimiter> = listOfNotNull(
-        thinking?.tags,
-        toolCall?.tags,
-    )
-
-    val inferenceConfigForThinking: InferenceConfig =
-        thinking?.inferenceOverrides ?: defaultInferenceConfig
-}
+    val thinkingInferenceConfig: InferenceConfig? = null,
+    val toolCall: ToolCallCapability? = null,
+)

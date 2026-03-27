@@ -69,7 +69,7 @@ val ModelZoo = listOf(
         name = "DeepSeek-R1 1.5B (Distilled)",
         description = "Advanced reasoning capabilities on-device. Uses chain-of-thought processing.",
         downloadUrl = "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q8_0.gguf",
-        profile = ModelProfiles.DEEPSEEK_R1_DISTILL_QWEN,
+        profile = ModelProfiles.DEEPSEEK_R1,
     ),
     Model(
         id = "smollm2-1.7b-instruct",

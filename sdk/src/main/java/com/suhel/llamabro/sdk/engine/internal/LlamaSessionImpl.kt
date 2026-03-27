@@ -1,7 +1,6 @@
 package com.suhel.llamabro.sdk.engine.internal
 
-import com.suhel.llamabro.sdk.chat.LlamaChatSession
-import com.suhel.llamabro.sdk.chat.internal.LlamaChatSessionImpl
+import com.suhel.llamabro.sdk.chat.ChatMessage
 import com.suhel.llamabro.sdk.config.InferenceConfig
 import com.suhel.llamabro.sdk.config.LoadableModel
 import com.suhel.llamabro.sdk.config.OverflowStrategy
@@ -9,16 +8,10 @@ import com.suhel.llamabro.sdk.config.SessionConfig
 import com.suhel.llamabro.sdk.engine.LlamaSession
 import com.suhel.llamabro.sdk.engine.TokenGenerationResult
 import com.suhel.llamabro.sdk.engine.TokenGenerationResultCode
-import com.suhel.llamabro.sdk.model.ResourceState
-import com.suhel.llamabro.sdk.toolcall.ToolCall
-import com.suhel.llamabro.sdk.toolcall.ToolResult
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.channelFlow
-import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
@@ -62,20 +55,37 @@ internal class LlamaSessionImpl(
         throw NativeErrorMapper.map(e)
     }
 
-    override suspend fun setPrefixedPrompt(text: String) =
+    override suspend fun initChatTemplates(): NativeChatTemplateInfo =
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 runInterruptible {
-                    Jni.setSystemPrompt(ptr, text)
+                    Jni.initChatTemplates(ptr)
                 }
             }
         }
 
-    override suspend fun addPrompt(prompt: String) =
+    override suspend fun beginCompletion(
+        messages: List<ChatMessage>,
+        enableThinking: Boolean,
+    ): NativeCompletionInfo =
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 runInterruptible {
-                    Jni.addUserPrompt(ptr, prompt)
+                    // Build parallel arrays for JNI
+                    val roles = Array(messages.size) { messages[it].role }
+                    val contents = Array(messages.size) { messages[it].content }
+                    val reasoningContents = Array(messages.size) { messages[it].reasoningContent ?: "" }
+
+                    // Only pass reasoning array if any message has reasoning content
+                    val hasReasoning = reasoningContents.any { it.isNotEmpty() }
+
+                    Jni.beginCompletion(
+                        sessionPtr = ptr,
+                        roles = roles,
+                        contents = contents,
+                        reasoningContents = if (hasReasoning) reasoningContents else null,
+                        enableThinking = enableThinking,
+                    )
                 }
             }
         }
@@ -147,34 +157,6 @@ internal class LlamaSessionImpl(
         Jni.destroy(ptr)
     }
 
-    override suspend fun createChatSession(
-        systemPrompt: String,
-        toolCaller: (suspend (List<ToolCall>) -> List<ToolResult>)?,
-    ): LlamaChatSession =
-        withContext(Dispatchers.IO) {
-            LlamaChatSessionImpl(
-                session = this@LlamaSessionImpl,
-                systemPrompt = systemPrompt,
-                toolCaller = toolCaller,
-            ).also { it.initialize() }
-        }
-
-    override fun createChatSessionFlow(
-        systemPrompt: String,
-        toolCaller: (suspend (List<ToolCall>) -> List<ToolResult>)?,
-    ): Flow<ResourceState<LlamaChatSession>> =
-        callbackFlow {
-            try {
-                send(ResourceState.Loading())
-                val session = createChatSession(systemPrompt, toolCaller)
-                send(ResourceState.Success(session))
-            } catch (e: Exception) {
-                send(ResourceState.Failure(NativeErrorMapper.map(e)))
-            }
-
-            awaitClose()
-        }.flowOn(Dispatchers.IO)
-
     // ── JNI params ───────────────────────────────────────────────────────────
 
     private class NativeCreateParams(
@@ -238,10 +220,16 @@ internal class LlamaSessionImpl(
         external fun create(enginePtr: Long, params: NativeCreateParams): Long
 
         @JvmStatic
-        external fun setSystemPrompt(sessionPtr: Long, prompt: String)
+        external fun initChatTemplates(sessionPtr: Long): NativeChatTemplateInfo
 
         @JvmStatic
-        external fun addUserPrompt(sessionPtr: Long, prompt: String)
+        external fun beginCompletion(
+            sessionPtr: Long,
+            roles: Array<String>,
+            contents: Array<String>,
+            reasoningContents: Array<String>?,
+            enableThinking: Boolean,
+        ): NativeCompletionInfo
 
         @JvmStatic
         external fun clear(sessionPtr: Long)

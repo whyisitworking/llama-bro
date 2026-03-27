@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.suhel.llamabro.demo.data.db.entity.MessageEntity
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MessageDao {
@@ -14,7 +15,7 @@ interface MessageDao {
     fun messagesPagingSource(conversationId: String): PagingSource<Int, MessageEntity>
 
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC")
-    suspend fun getMessages(conversationId: String): List<MessageEntity>
+    fun getMessages(conversationId: String): Flow<MessageEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(message: MessageEntity)

@@ -10,10 +10,11 @@ package com.suhel.llamabro.sdk.chat.pipeline
  * Uses a callback-based [feed] to avoid per-call list allocations entirely.
  */
 internal class AllocationOptimizedScanner(
-    private val delimiters: List<TagDelimiter>
+    private val delimiters: List<TagDelimiter>,
+    initialActiveDelimiter: TagDelimiter? = null,
 ) {
     private val buffer = StringBuilder()
-    private var activeDelimiter: TagDelimiter? = null
+    private var activeDelimiter: TagDelimiter? = initialActiveDelimiter
 
     /**
      * Feeds a raw token into the scanner and invokes [emit] for each definitively parsed event.

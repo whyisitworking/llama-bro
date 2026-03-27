@@ -22,6 +22,9 @@ set(GGML_OPENMP OFF)
 # Use optimized kernels
 set(GGML_CPU_KLEIDIAI ON)
 
+# Build the common library for chat template support (Jinja, PEG parser, etc.)
+set(LLAMA_BUILD_COMMON ON)
+
 add_subdirectory(external/llama.cpp)
 
 add_library(llama_bro
@@ -40,6 +43,7 @@ target_include_directories(llama_bro
 
     SYSTEM PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/external/llama.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/llama.cpp/common
 )
 
-target_link_libraries(llama_bro PRIVATE llama log)
+target_link_libraries(llama_bro PRIVATE llama common log)

@@ -11,10 +11,10 @@ static engine::NativeEngineParams readEngineParams(JNIEnv *env,
                                                    jobject jConfig) {
     auto configReader = JniConfigReader(env, jConfig);
     return engine::NativeEngineParams{
-            .model_path = configReader.getString("modelPath"),
-            .threads    = configReader.getInt("threads"),
-            .use_mmap   = configReader.getBool("useMMap"),
-            .use_mlock  = configReader.getBool("useMLock"),
+            .model_path = configReader.getString(jni_refs::engine::params::model_path),
+            .threads    = configReader.getInt(jni_refs::engine::params::threads),
+            .use_mmap   = configReader.getBool(jni_refs::engine::params::use_m_map),
+            .use_mlock  = configReader.getBool(jni_refs::engine::params::use_m_lock),
     };
 }
 

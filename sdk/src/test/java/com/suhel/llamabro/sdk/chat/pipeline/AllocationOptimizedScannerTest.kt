@@ -161,4 +161,52 @@ class AllocationOptimizedScannerTest {
         val endEvents = scanner.feedCollect(null)
         assertTrue("Partial tag must not be speculatively emitted as text", endEvents.isEmpty())
     }
+
+    // -- Pre-seeded scanner (initialActiveDelimiter) -----------------------
+
+    @Test
+    fun `pre-seeded scanner emits content as TagContent immediately`() {
+        val scanner = AllocationOptimizedScanner(listOf(thinkDelimiter), initialActiveDelimiter = thinkDelimiter)
+        val events = scanner.feedCollect("reasoning")
+        assertEquals(listOf(LexerEvent.TagContent(thinkDelimiter, "reasoning")), events)
+    }
+
+    @Test
+    fun `pre-seeded scanner detects closing tag and transitions to text`() {
+        val scanner = AllocationOptimizedScanner(listOf(thinkDelimiter), initialActiveDelimiter = thinkDelimiter)
+        val all = scanner.feedCollect("reasoning</think>answer")
+        assertEquals(
+            listOf(
+                LexerEvent.TagContent(thinkDelimiter, "reasoning"),
+                LexerEvent.TagClosed(thinkDelimiter),
+                LexerEvent.Text("answer"),
+            ),
+            all
+        )
+    }
+
+    @Test
+    fun `pre-seeded scanner handles split closing tag`() {
+        val scanner = AllocationOptimizedScanner(listOf(thinkDelimiter), initialActiveDelimiter = thinkDelimiter)
+        val a = scanner.feedCollect("thought</thi")
+        val b = scanner.feedCollect("nk>visible")
+        // First feed: content emitted, partial closing held
+        assertEquals(listOf(LexerEvent.TagContent(thinkDelimiter, "thought")), a)
+        // Second feed: closing resolved, text emitted
+        assertTrue(b.any { it is LexerEvent.TagClosed })
+        assertTrue(b.any { it == LexerEvent.Text("visible") })
+    }
+
+    @Test
+    fun `pre-seeded scanner with no content goes straight to close`() {
+        val scanner = AllocationOptimizedScanner(listOf(thinkDelimiter), initialActiveDelimiter = thinkDelimiter)
+        val events = scanner.feedCollect("</think>answer")
+        assertEquals(
+            listOf(
+                LexerEvent.TagClosed(thinkDelimiter),
+                LexerEvent.Text("answer"),
+            ),
+            events
+        )
+    }
 }

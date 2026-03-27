@@ -45,7 +45,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
-import com.halilibo.richtext.commonmark.CommonMarkdownParseOptions
 import com.halilibo.richtext.commonmark.Markdown
 import com.halilibo.richtext.ui.material3.RichText
 import com.suhel.llamabro.demo.R
@@ -65,8 +64,8 @@ fun ChatScreen(
         modifier = Modifier.keepScreenOn(),
         onBack = onBack
     ) {
-        val messages = viewModel.messages.collectAsLazyPagingItems()
-        val incomingMessage by viewModel.incomingMessage.collectAsStateWithLifecycle()
+        val messages = viewModel.pagedMessages.collectAsLazyPagingItems()
+        val incomingMessage by viewModel.incomingMessageFlow.collectAsStateWithLifecycle()
         val listState = rememberLazyListState()
 
         // Auto-scroll to bottom when a NEW generation starts

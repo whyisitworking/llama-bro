@@ -1,8 +1,8 @@
 #pragma once
 
 #include "llama-cpp.h"
+#include "chat.h"
 
-#include "parsers/tag.hpp"
 #include "parsers/token.hpp"
 #include "result/codes.hpp"
 
@@ -56,6 +56,21 @@ namespace session {
         bool is_complete;
     };
 
+    struct ChatTemplateInfo {
+        bool supports_thinking;
+        std::string thinking_start_tag;
+        std::string thinking_end_tag;
+    };
+
+    struct CompletionInfo {
+        std::string generation_prompt;
+        bool supports_thinking;
+        std::string thinking_start_tag;
+        std::string thinking_end_tag;
+        int32_t n_tokens_cached;
+        int32_t n_tokens_ingested;
+    };
+
     class Session {
     public:
         Session(llama_model *model, const NativeSessionParams &params);
@@ -70,9 +85,15 @@ namespace session {
 
         Session &operator=(Session &&) = delete;
 
-        ResultCode add_user_prompt(std::string_view prompt);
+        // Chat template initialization
+        ChatTemplateInfo init_chat_templates();
 
-        ResultCode set_system_prompt(std::string_view prompt);
+        // Stateless completion entry point (OpenAI-style).
+        // Formats all messages via Jinja, tokenizes, performs token-level prefix
+        // matching against the KV cache, truncates on divergence, ingests only new tokens.
+        CompletionInfo begin_completion(
+                const std::vector<common_chat_msg> &messages,
+                bool enable_thinking);
 
         Generation generate();
 
@@ -97,6 +118,17 @@ namespace session {
         int32_t n_drop = 500;
         OverflowStrategy overflow_strategy = ROLLING_WINDOW;
 
+        // Token-level prompt cache: mirrors the KV cache contents.
+        // Invariant: cached_tokens.size() == n_past
+        std::vector<llama_token> cached_tokens;
+
+        // Chat template state
+        common_chat_templates_ptr chat_templates;
+
+        // Shared decode loop for pre-tokenized tokens.
+        ResultCode ingest_tokens(const llama_token *tokens, int32_t count);
+
+        // Legacy: tokenize a string then ingest. Used by older code paths.
         ResultCode ingest_prompt(std::string_view prompt, bool reset_sequence);
 
         ResultCode decode_current_batch();

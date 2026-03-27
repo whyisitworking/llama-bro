@@ -10,6 +10,8 @@ import com.suhel.llamabro.demo.model.MessageRole
 import com.suhel.llamabro.demo.toDomain
 import com.suhel.llamabro.demo.toRaw
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
@@ -26,12 +28,8 @@ class ChatRepository @Inject constructor(private val db: AppDatabase) {
     fun messagesPagingSource(conversationId: String): PagingSource<Int, MessageEntity> =
         msgDao.messagesPagingSource(conversationId)
 
-    suspend fun getMessages(conversationId: String): List<ChatMessage> =
-        withContext(Dispatchers.IO) {
-            msgDao.getMessages(conversationId).map {
-                it.toDomain()
-            }
-        }
+    fun getMessages(conversationId: String): Flow<ChatMessage> =
+        msgDao.getMessages(conversationId).map(MessageEntity::toDomain)
 
     suspend fun createConversation(title: String): ConversationEntity =
         withContext(Dispatchers.IO) {
