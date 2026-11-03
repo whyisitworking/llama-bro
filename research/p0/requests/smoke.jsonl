@@ -1,0 +1,2 @@
+{"id":"smoke-chat","endpoint":"chat","body":{"messages":[{"role":"user","content":"Name three primary colors. Answer in one short line."}],"stream":true,"temperature":0,"seed":1,"max_tokens":48,"cache_prompt":false,"chat_template_kwargs":{"enable_thinking":false}}}
+{"id":"smoke-cancel","endpoint":"chat","cancel_after_chunks":5,"body":{"messages":[{"role":"user","content":"Count from 1 to 200, separated by spaces."}],"stream":true,"temperature":0,"seed":1,"max_tokens":400,"cache_prompt":false,"chat_template_kwargs":{"enable_thinking":false}}}

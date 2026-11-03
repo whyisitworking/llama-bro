@@ -1,3 +1,7 @@
-[submodule "sdk/src/main/cpp/external/llama.cpp"]
-	path = sdk/src/main/cpp/external/llama.cpp
+[submodule "engine/src/main/cpp/external/llama.cpp"]
+	path = engine/src/main/cpp/external/llama.cpp
 	url = https://github.com/ggml-org/llama.cpp.git
+[submodule "sdk/native/third_party/llama.cpp"]
+	path = sdk/native/third_party/llama.cpp
+	url = https://github.com/ggml-org/llama.cpp.git
+	shallow = true

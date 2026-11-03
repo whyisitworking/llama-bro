@@ -1,0 +1,19 @@
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -478,14 +478,8 @@
+ 
+         int n_text = 0;
+ 
+-        for (int i = 0; i < (int) prompt.tokens.size(); i++) {
+-            const llama_token id = prompt.tokens[i];
+-
+-            if (id != LLAMA_TOKEN_NULL) {
+-                common_sampler_accept(smpl.get(), id, false);
+-                n_text++;
+-            }
+-        }
++        // llama-bro spike (test B2): penalties count generated tokens only, so the prompt is not fed to the sampler chain
++        (void) n_text;
+ 
+         SLT_TRC(*this, "init sampler, took %0.2f ms, tokens: text = %d, total = %d\n",
+                 (ggml_time_us() - t_start) / 1000.0, n_text, (int) prompt.tokens.size());

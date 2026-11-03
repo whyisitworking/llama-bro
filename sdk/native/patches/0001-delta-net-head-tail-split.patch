@@ -1,0 +1,81 @@
+diff --git a/src/models/delta-net-base.cpp b/src/models/delta-net-base.cpp
+index 2e15777ee..18c2fdf5b 100644
+--- a/src/models/delta-net-base.cpp
++++ b/src/models/delta-net-base.cpp
+@@ -560,29 +560,71 @@ ggml_tensor * llm_build_delta_net_base::build_recurrent_attn(
+     const int64_t D = S_v * S_v * H_v;
+     const int64_t K = cparams.n_rs_seq + 1;
+ 
++    // only the last K tokens need snapshots: run the head with K = 1, as some backends have a fast chunked kernel only for K = 1
++    ggml_tensor * output_head = nullptr;
++    if (n_seq_tokens > K) {
++        const int64_t n_head = n_seq_tokens - K;
++
++        // q, k, v need contiguous rows only; g, b must be contiguous
++        auto view_tokens = [&](ggml_tensor * x, int64_t t0, int64_t nt, bool cont) {
++            ggml_tensor * r = ggml_view_4d(ctx0, x, x->ne[0], x->ne[1], nt, x->ne[3], x->nb[1], x->nb[2], x->nb[3], t0 * x->nb[2]);
++            return cont && !ggml_is_contiguous(r) ? ggml_cont(ctx0, r) : r;
++        };
++
++        ggml_tensor * head_out = ggml_gated_delta_net(ctx0,
++            view_tokens(q, 0, n_head, false), view_tokens(k, 0, n_head, false), view_tokens(v, 0, n_head, false),
++            view_tokens(g, 0, n_head, true), view_tokens(b, 0, n_head, true), s, /*K=*/1);
++        res->add_fused_node({LLM_FUSED_OP_GDN_CH, head_out, il});
++
++        output_head = ggml_view_4d(ctx0, head_out,
++            S_v, H_v, n_head, n_seqs,
++            ggml_row_size(head_out->type, S_v),
++            ggml_row_size(head_out->type, S_v * H_v),
++            ggml_row_size(head_out->type, S_v * H_v * n_head),
++            0);
++
++        ggml_tensor * s_head = ggml_view_4d(ctx0, head_out,
++            S_v, S_v, H_v, n_seqs,
++            ggml_row_size(head_out->type, S_v),
++            ggml_row_size(head_out->type, S_v * S_v),
++            ggml_row_size(head_out->type, S_v * S_v * H_v),
++            ggml_row_size(head_out->type, S_v * H_v * n_head * n_seqs));
++
++        q = view_tokens(q, n_head, K, false);
++        k = view_tokens(k, n_head, K, false);
++        v = view_tokens(v, n_head, K, false);
++        g = view_tokens(g, n_head, K, true);
++        b = view_tokens(b, n_head, K, true);
++        s = s_head;
++    }
++    const int64_t n_tail_tokens = q->ne[2];
++
+     // state s is 4D [S_v, S_v, H_v, n_seqs]; K snapshot slots are written into the output.
+     ggml_tensor * gdn_out = ggml_gated_delta_net(ctx0, q, k, v, g, b, s, K);
+-    if (n_seq_tokens > 1) {
++    if (n_tail_tokens > 1) {
+         res->add_fused_node({LLM_FUSED_OP_GDN_CH, gdn_out, il});
+     } else {
+         res->add_fused_node({LLM_FUSED_OP_GDN_AR, gdn_out, il});
+     }
+ 
+-    const int64_t attn_score_elems    = S_v * H_v * n_seq_tokens * n_seqs;
++    const int64_t attn_score_elems    = S_v * H_v * n_tail_tokens * n_seqs;
+     const int64_t state_size_per_snap = S_v * S_v * H_v * n_seqs;
+ 
+     ggml_tensor * output = ggml_view_4d(ctx0, gdn_out,
+-        S_v, H_v, n_seq_tokens, n_seqs,
++        S_v, H_v, n_tail_tokens, n_seqs,
+         ggml_row_size(gdn_out->type, S_v),
+         ggml_row_size(gdn_out->type, S_v * H_v),
+-        ggml_row_size(gdn_out->type, S_v * H_v * n_seq_tokens),
++        ggml_row_size(gdn_out->type, S_v * H_v * n_tail_tokens),
+         0);
++    if (output_head) {
++        output = ggml_concat(ctx0, output_head, output, 2);
++    }
+     cb(output, "attn_output", il);
+ 
+     const size_t row_size = hparams.n_embd_s() * ggml_element_size(ssm_states_all);
+ 
+     // op writes the last min(n_seq_tokens, K) snapshots; trailing slots are left unwritten
+-    const int64_t n_written = std::min<int64_t>(n_seq_tokens, K);
++    const int64_t n_written = std::min<int64_t>(n_tail_tokens, K);
+ 
+     // write the produced snapshots into the recurrent cache (snapshot slot i -> rollback group i)
+     ggml_tensor * src = ggml_view_3d(ctx0, gdn_out,
