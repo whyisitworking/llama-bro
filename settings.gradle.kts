@@ -23,5 +23,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Llama Bro"
-include(":app")
-include(":engine")
+// The SDK is its own Gradle build under sdk/ (./gradlew -p sdk). The v1 app/ and engine/ modules were removed
+// on 2026-11-04; the demo app comes back in phase PD (design §13, D19).

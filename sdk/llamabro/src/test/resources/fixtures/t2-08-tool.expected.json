@@ -1,0 +1,11 @@
+{
+ "content": "",
+ "reasoning_content": "",
+ "tool_calls": [
+  {
+   "name": "get_weather",
+   "arguments": "{\"city\":\"Paris\"}"
+  }
+ ],
+ "finish_reason": "tool_calls"
+}

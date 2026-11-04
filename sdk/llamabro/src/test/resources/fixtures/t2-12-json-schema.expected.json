@@ -1,0 +1,6 @@
+{
+ "content": "{\n  \"name\": \"Bob\",\n  \"age\": 30\n}",
+ "reasoning_content": "",
+ "tool_calls": [],
+ "finish_reason": "stop"
+}
