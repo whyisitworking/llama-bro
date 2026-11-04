@@ -1,0 +1,19 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "host",
+      "displayName": "Host tests (CPU, matches the phone's CPU path)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/host",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "LB_LLAMA_DIR": "${sourceDir}/build/llama.cpp",
+        "LB_BUILD_TESTS": "ON",
+        "LB_HOST_JNI": "ON",
+        "GGML_METAL": "OFF",
+        "GGML_BLAS": "OFF"
+      }
+    }
+  ]
+}

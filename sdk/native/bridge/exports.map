@@ -1,0 +1,8 @@
+/* Android: libllamabro.so exports the C API and JNI_OnLoad only (findings F25). */
+{
+  global:
+    lb_*;
+    JNI_OnLoad;
+  local:
+    *;
+};

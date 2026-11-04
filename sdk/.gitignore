@@ -1,0 +1,6 @@
+native/build/
+build/
+.gradle/
+.kotlin/
+.cxx/
+local.properties
