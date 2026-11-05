@@ -1,0 +1,893 @@
+public abstract interface class com/suhel/llamabro/ContextSize {
+}
+
+public final class com/suhel/llamabro/ContextSize$Auto : com/suhel/llamabro/ContextSize {
+	public static final field INSTANCE Lcom/suhel/llamabro/ContextSize$Auto;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/ContextSize$Fixed : com/suhel/llamabro/ContextSize {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lcom/suhel/llamabro/ContextSize$Fixed;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/ContextSize$Fixed;IILjava/lang/Object;)Lcom/suhel/llamabro/ContextSize$Fixed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getTokens ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/DeviceInfo {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getMemoryFree ()J
+	public final fun getMemoryTotal ()J
+	public final fun getName ()Ljava/lang/String;
+	public final fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/Endpoint {
+	public static final field ApplyTemplate Lcom/suhel/llamabro/Endpoint;
+	public static final field ChatCompletions Lcom/suhel/llamabro/Endpoint;
+	public static final field Companion Lcom/suhel/llamabro/Endpoint$Companion;
+	public static final field Completion Lcom/suhel/llamabro/Endpoint;
+	public static final field CompletionOai Lcom/suhel/llamabro/Endpoint;
+	public static final field Control Lcom/suhel/llamabro/Endpoint;
+	public static final field CountTokens Lcom/suhel/llamabro/Endpoint;
+	public static final field Detokenize Lcom/suhel/llamabro/Endpoint;
+	public static final field Embeddings Lcom/suhel/llamabro/Endpoint;
+	public static final field EmbeddingsNative Lcom/suhel/llamabro/Endpoint;
+	public static final field Health Lcom/suhel/llamabro/Endpoint;
+	public static final field Infill Lcom/suhel/llamabro/Endpoint;
+	public static final field LoraAdapters Lcom/suhel/llamabro/Endpoint;
+	public static final field LoraAdaptersSet Lcom/suhel/llamabro/Endpoint;
+	public static final field Messages Lcom/suhel/llamabro/Endpoint;
+	public static final field MessagesCountTokens Lcom/suhel/llamabro/Endpoint;
+	public static final field Metrics Lcom/suhel/llamabro/Endpoint;
+	public static final field Models Lcom/suhel/llamabro/Endpoint;
+	public static final field Props Lcom/suhel/llamabro/Endpoint;
+	public static final field PropsSet Lcom/suhel/llamabro/Endpoint;
+	public static final field Rerank Lcom/suhel/llamabro/Endpoint;
+	public static final field Responses Lcom/suhel/llamabro/Endpoint;
+	public static final field ResponsesInputTokens Lcom/suhel/llamabro/Endpoint;
+	public static final field Slots Lcom/suhel/llamabro/Endpoint;
+	public static final field SlotsAction Lcom/suhel/llamabro/Endpoint;
+	public static final field SystemOne Lcom/suhel/llamabro/Endpoint;
+	public static final field Tokenize Lcom/suhel/llamabro/Endpoint;
+	public static final field Tts Lcom/suhel/llamabro/Endpoint;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/Endpoint$Companion {
+}
+
+public abstract interface annotation class com/suhel/llamabro/InternalLlamaBroApi : java/lang/annotation/Annotation {
+}
+
+public final class com/suhel/llamabro/LlamaBro {
+	public static final field Companion Lcom/suhel/llamabro/LlamaBro$Companion;
+	public final fun devices (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static final fun getInstance (Landroid/content/Context;)Lcom/suhel/llamabro/LlamaBro;
+	public final fun loadModel (Lcom/suhel/llamabro/ModelSource;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun loadModel$default (Lcom/suhel/llamabro/LlamaBro;Lcom/suhel/llamabro/ModelSource;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static final fun withEngine (Lcom/suhel/llamabro/internal/Engine;Ljava/io/File;Lcom/suhel/llamabro/LlamaBroConfig;)Lcom/suhel/llamabro/LlamaBro;
+}
+
+public final class com/suhel/llamabro/LlamaBro$Companion {
+	public final fun getInstance (Landroid/content/Context;)Lcom/suhel/llamabro/LlamaBro;
+	public final fun withEngine (Lcom/suhel/llamabro/internal/Engine;Ljava/io/File;Lcom/suhel/llamabro/LlamaBroConfig;)Lcom/suhel/llamabro/LlamaBro;
+	public static synthetic fun withEngine$default (Lcom/suhel/llamabro/LlamaBro$Companion;Lcom/suhel/llamabro/internal/Engine;Ljava/io/File;Lcom/suhel/llamabro/LlamaBroConfig;ILjava/lang/Object;)Lcom/suhel/llamabro/LlamaBro;
+}
+
+public abstract interface class com/suhel/llamabro/LlamaBro$ConfigProvider {
+	public abstract fun getLlamaBroConfig ()Lcom/suhel/llamabro/LlamaBroConfig;
+}
+
+public final class com/suhel/llamabro/LlamaBroConfig {
+	public static final field Companion Lcom/suhel/llamabro/LlamaBroConfig$Companion;
+	public static final field Default Lcom/suhel/llamabro/LlamaBroConfig;
+	public final fun copy (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/LlamaBroConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLogLevel ()Lcom/suhel/llamabro/LogLevel;
+	public final fun getLogger ()Lcom/suhel/llamabro/Logger;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/LlamaBroConfig$Builder {
+	public final fun getLogLevel ()Lcom/suhel/llamabro/LogLevel;
+	public final fun getLogger ()Lcom/suhel/llamabro/Logger;
+	public final fun setLogLevel (Lcom/suhel/llamabro/LogLevel;)V
+	public final fun setLogger (Lcom/suhel/llamabro/Logger;)V
+}
+
+public final class com/suhel/llamabro/LlamaBroConfig$Companion {
+}
+
+public final class com/suhel/llamabro/LlamaBroConfigKt {
+	public static final fun LlamaBroConfig (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/LlamaBroConfig;
+}
+
+public abstract class com/suhel/llamabro/LlamaBroException : java/lang/Exception {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class com/suhel/llamabro/LlamaBroException$Busy : com/suhel/llamabro/LlamaBroException {
+}
+
+public final class com/suhel/llamabro/LlamaBroException$CompactionTruncated : com/suhel/llamabro/LlamaBroException {
+}
+
+public final class com/suhel/llamabro/LlamaBroException$ContextExceeded : com/suhel/llamabro/LlamaBroException {
+	public final fun getContextSize ()Ljava/lang/Integer;
+	public final fun getPromptTokens ()Ljava/lang/Integer;
+}
+
+public final class com/suhel/llamabro/LlamaBroException$Incomplete : com/suhel/llamabro/LlamaBroException {
+	public final fun getPartial ()Ljava/lang/String;
+	public final fun getReason ()Lcom/suhel/llamabro/chat/FinishReason;
+}
+
+public final class com/suhel/llamabro/LlamaBroException$InvalidRequest : com/suhel/llamabro/LlamaBroException {
+}
+
+public final class com/suhel/llamabro/LlamaBroException$ModelClosed : com/suhel/llamabro/LlamaBroException {
+	public fun <init> ()V
+}
+
+public final class com/suhel/llamabro/LlamaBroException$ModelLoadFailed : com/suhel/llamabro/LlamaBroException {
+	public final fun getReason ()Lcom/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason;
+}
+
+public final class com/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason : java/lang/Enum {
+	public static final field FileNotFound Lcom/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason;
+	public static final field Other Lcom/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason;
+	public static fun values ()[Lcom/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason;
+}
+
+public final class com/suhel/llamabro/LlamaBroException$NotSupported : com/suhel/llamabro/LlamaBroException {
+}
+
+public final class com/suhel/llamabro/LlamaBroException$ServerError : com/suhel/llamabro/LlamaBroException {
+	public final fun getHttpStatus ()I
+}
+
+public final class com/suhel/llamabro/LlamaBroException$Unavailable : com/suhel/llamabro/LlamaBroException {
+}
+
+public final class com/suhel/llamabro/LogLevel : java/lang/Enum {
+	public static final field Debug Lcom/suhel/llamabro/LogLevel;
+	public static final field Error Lcom/suhel/llamabro/LogLevel;
+	public static final field Info Lcom/suhel/llamabro/LogLevel;
+	public static final field Warn Lcom/suhel/llamabro/LogLevel;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/suhel/llamabro/LogLevel;
+	public static fun values ()[Lcom/suhel/llamabro/LogLevel;
+}
+
+public abstract interface class com/suhel/llamabro/Logger {
+	public abstract fun log (Lcom/suhel/llamabro/LogLevel;Ljava/lang/String;)V
+}
+
+public final class com/suhel/llamabro/Model : java/lang/AutoCloseable {
+	public fun close ()V
+	public final fun closeAndJoin (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun getInfo ()Lcom/suhel/llamabro/ModelInfo;
+	public final fun rawRequest (Lcom/suhel/llamabro/Endpoint;Ljava/lang/String;Ljava/util/Map;)Lkotlinx/coroutines/flow/Flow;
+	public static synthetic fun rawRequest$default (Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/Endpoint;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
+}
+
+public final class com/suhel/llamabro/ModelConfig {
+	public final fun getBatchSize ()I
+	public final fun getCheckpointsPerSlot ()I
+	public final fun getContextSize ()Lcom/suhel/llamabro/ContextSize;
+	public final fun getMicroBatchSize ()I
+	public final fun getParallelSlots ()I
+	public final fun getRamCacheMib ()I
+	public final fun getSpeculative ()Lcom/suhel/llamabro/Speculative;
+	public final fun getThreads ()Ljava/lang/Integer;
+	public final fun onProgress (Lkotlin/jvm/functions/Function1;)V
+	public final fun setBatchSize (I)V
+	public final fun setCheckpointsPerSlot (I)V
+	public final fun setContextSize (Lcom/suhel/llamabro/ContextSize;)V
+	public final fun setMicroBatchSize (I)V
+	public final fun setParallelSlots (I)V
+	public final fun setRamCacheMib (I)V
+	public final fun setSpeculative (Lcom/suhel/llamabro/Speculative;)V
+	public final fun setThreads (Ljava/lang/Integer;)V
+}
+
+public final class com/suhel/llamabro/ModelInfo {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getChatTemplate ()Ljava/lang/String;
+	public final fun getContextSize ()I
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getHasMtp ()Z
+	public final fun getMetadata ()Ljava/util/Map;
+	public final fun getParameterCount ()J
+	public final fun getSizeBytes ()J
+	public final fun getSupportsAudio ()Z
+	public final fun getSupportsVision ()Z
+	public final fun getTemplateCaps ()Ljava/util/Map;
+	public final fun getTrainedContextSize ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/ModelKt {
+	public static final fun chat (Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/chat/ChatRequest;)Lkotlinx/coroutines/flow/Flow;
+	public static final fun conversation (Lcom/suhel/llamabro/Model;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/conversation/Conversation;
+	public static synthetic fun conversation$default (Lcom/suhel/llamabro/Model;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/suhel/llamabro/conversation/Conversation;
+	public static final fun restoreConversation (Lcom/suhel/llamabro/Model;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/conversation/Conversation;
+	public static synthetic fun restoreConversation$default (Lcom/suhel/llamabro/Model;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/suhel/llamabro/conversation/Conversation;
+}
+
+public abstract interface class com/suhel/llamabro/ModelSource {
+	public static final field Companion Lcom/suhel/llamabro/ModelSource$Companion;
+}
+
+public final class com/suhel/llamabro/ModelSource$Companion {
+	public final fun file (Ljava/lang/String;Ljava/lang/String;)Lcom/suhel/llamabro/ModelSource;
+	public static synthetic fun file$default (Lcom/suhel/llamabro/ModelSource$Companion;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/ModelSource;
+}
+
+public abstract interface class com/suhel/llamabro/Speculative {
+}
+
+public final class com/suhel/llamabro/Speculative$Mtp : com/suhel/llamabro/Speculative {
+	public fun <init> ()V
+	public fun <init> (I)V
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun copy (I)Lcom/suhel/llamabro/Speculative$Mtp;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/Speculative$Mtp;IILjava/lang/Object;)Lcom/suhel/llamabro/Speculative$Mtp;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDraftMax ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/Speculative$Off : com/suhel/llamabro/Speculative {
+	public static final field INSTANCE Lcom/suhel/llamabro/Speculative$Off;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/suhel/llamabro/chat/ChatEvent {
+}
+
+public final class com/suhel/llamabro/chat/ChatEvent$ContentDelta : com/suhel/llamabro/chat/ChatEvent {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lcom/suhel/llamabro/chat/ChatEvent$ContentDelta;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/ChatEvent$ContentDelta;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/chat/ChatEvent$ContentDelta;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDelta ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/ChatEvent$Done : com/suhel/llamabro/chat/ChatEvent {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Lcom/suhel/llamabro/chat/FinishReason;
+	public final fun getTimings ()Lcom/suhel/llamabro/chat/Timings;
+	public final fun getUsage ()Lcom/suhel/llamabro/chat/Usage;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/ChatEvent$PromptProgress : com/suhel/llamabro/chat/ChatEvent {
+	public fun <init> (IIIJ)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()J
+	public final fun copy (IIIJ)Lcom/suhel/llamabro/chat/ChatEvent$PromptProgress;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/ChatEvent$PromptProgress;IIIJILjava/lang/Object;)Lcom/suhel/llamabro/chat/ChatEvent$PromptProgress;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCached ()I
+	public final fun getProcessed ()I
+	public final fun getTimeMs ()J
+	public final fun getTotal ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/ChatEvent$ReasoningDelta : com/suhel/llamabro/chat/ChatEvent {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lcom/suhel/llamabro/chat/ChatEvent$ReasoningDelta;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/ChatEvent$ReasoningDelta;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/chat/ChatEvent$ReasoningDelta;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDelta ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/ChatEvent$ToolCallReceived : com/suhel/llamabro/chat/ChatEvent {
+	public fun <init> (Lcom/suhel/llamabro/chat/ToolCall;)V
+	public final fun component1 ()Lcom/suhel/llamabro/chat/ToolCall;
+	public final fun copy (Lcom/suhel/llamabro/chat/ToolCall;)Lcom/suhel/llamabro/chat/ChatEvent$ToolCallReceived;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/ChatEvent$ToolCallReceived;Lcom/suhel/llamabro/chat/ToolCall;ILjava/lang/Object;)Lcom/suhel/llamabro/chat/ChatEvent$ToolCallReceived;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCall ()Lcom/suhel/llamabro/chat/ToolCall;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/ChatEvent$ToolResult : com/suhel/llamabro/chat/ChatEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/suhel/llamabro/chat/ChatEvent$ToolResult;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/ChatEvent$ToolResult;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/chat/ChatEvent$ToolResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCallId ()Ljava/lang/String;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getResult ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/ChatRequest {
+	public final fun copy (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/chat/ChatRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExtra ()Ljava/lang/String;
+	public final fun getMessages ()Ljava/util/List;
+	public final fun getOptions ()Lcom/suhel/llamabro/chat/RequestOptions;
+	public final fun getParallelToolCalls ()Ljava/lang/Boolean;
+	public final fun getReasoning ()Lcom/suhel/llamabro/chat/Reasoning;
+	public final fun getResponseFormat ()Lcom/suhel/llamabro/chat/ResponseFormat;
+	public final fun getSampling ()Lcom/suhel/llamabro/chat/Sampling;
+	public final fun getStop ()Ljava/util/List;
+	public final fun getToolChoice ()Lcom/suhel/llamabro/chat/ToolChoice;
+	public final fun getTools ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/ChatRequest$Builder : com/suhel/llamabro/chat/RequestOptions$Builder {
+	public final fun getMessages ()Ljava/util/List;
+	public final fun getTools ()Ljava/util/List;
+	public final fun messages ([Lcom/suhel/llamabro/chat/Message;)V
+	public final fun setMessages (Ljava/util/List;)V
+	public final fun setTools (Ljava/util/List;)V
+	public final fun tools ([Lcom/suhel/llamabro/chat/Tool;)V
+}
+
+public final class com/suhel/llamabro/chat/ChatRequestKt {
+	public static final fun ChatRequest (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/chat/ChatRequest;
+}
+
+public abstract interface class com/suhel/llamabro/chat/Content {
+}
+
+public final class com/suhel/llamabro/chat/Content$Image : com/suhel/llamabro/chat/Content {
+	public fun <init> ([BLjava/lang/String;)V
+	public synthetic fun <init> ([BLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public final fun getMimeType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/Content$Text : com/suhel/llamabro/chat/Content {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lcom/suhel/llamabro/chat/Content$Text;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/Content$Text;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/chat/Content$Text;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getText ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/FinishReason : java/lang/Enum {
+	public static final field Length Lcom/suhel/llamabro/chat/FinishReason;
+	public static final field Stop Lcom/suhel/llamabro/chat/FinishReason;
+	public static final field ToolCalls Lcom/suhel/llamabro/chat/FinishReason;
+	public static final field ToolCallsPending Lcom/suhel/llamabro/chat/FinishReason;
+	public static final field TurnLimit Lcom/suhel/llamabro/chat/FinishReason;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/suhel/llamabro/chat/FinishReason;
+	public static fun values ()[Lcom/suhel/llamabro/chat/FinishReason;
+}
+
+public abstract interface class com/suhel/llamabro/chat/Message {
+	public static final field Companion Lcom/suhel/llamabro/chat/Message$Companion;
+}
+
+public final class com/suhel/llamabro/chat/Message$Assistant : com/suhel/llamabro/chat/Message {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Lcom/suhel/llamabro/chat/Message$Assistant;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/Message$Assistant;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lcom/suhel/llamabro/chat/Message$Assistant;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContent ()Ljava/lang/String;
+	public final fun getReasoning ()Ljava/lang/String;
+	public final fun getToolCalls ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/Message$Compaction : com/suhel/llamabro/chat/Message {
+	public fun <init> (Ljava/lang/String;I)V
+	public synthetic fun <init> (Ljava/lang/String;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()I
+	public final fun copy (Ljava/lang/String;I)Lcom/suhel/llamabro/chat/Message$Compaction;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/Message$Compaction;Ljava/lang/String;IILjava/lang/Object;)Lcom/suhel/llamabro/chat/Message$Compaction;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKeptSteps ()I
+	public final fun getSummary ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/Message$Companion {
+	public final fun system (Ljava/lang/String;)Lcom/suhel/llamabro/chat/Message;
+	public final fun user (Ljava/lang/String;)Lcom/suhel/llamabro/chat/Message;
+	public final fun user ([Lcom/suhel/llamabro/chat/Content;)Lcom/suhel/llamabro/chat/Message;
+}
+
+public final class com/suhel/llamabro/chat/Message$System : com/suhel/llamabro/chat/Message {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lcom/suhel/llamabro/chat/Message$System;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/Message$System;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/chat/Message$System;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getText ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/Message$ToolResult : com/suhel/llamabro/chat/Message {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lcom/suhel/llamabro/chat/Message$ToolResult;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/Message$ToolResult;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/chat/Message$ToolResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContent ()Ljava/lang/String;
+	public final fun getToolCallId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/Message$User : com/suhel/llamabro/chat/Message {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lcom/suhel/llamabro/chat/Message$User;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/Message$User;Ljava/util/List;ILjava/lang/Object;)Lcom/suhel/llamabro/chat/Message$User;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContent ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/Reasoning {
+	public static final field Companion Lcom/suhel/llamabro/chat/Reasoning$Companion;
+	public static final field Default Lcom/suhel/llamabro/chat/Reasoning;
+	public final fun copy (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/chat/Reasoning;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBudgetMessage ()Ljava/lang/String;
+	public final fun getBudgetTokens ()Ljava/lang/Integer;
+	public final fun getEnableThinking ()Ljava/lang/Boolean;
+	public final fun getFormat ()Lcom/suhel/llamabro/chat/ReasoningFormat;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/Reasoning$Builder {
+	public final fun getBudgetMessage ()Ljava/lang/String;
+	public final fun getBudgetTokens ()Ljava/lang/Integer;
+	public final fun getEnableThinking ()Ljava/lang/Boolean;
+	public final fun getFormat ()Lcom/suhel/llamabro/chat/ReasoningFormat;
+	public final fun setBudgetMessage (Ljava/lang/String;)V
+	public final fun setBudgetTokens (Ljava/lang/Integer;)V
+	public final fun setEnableThinking (Ljava/lang/Boolean;)V
+	public final fun setFormat (Lcom/suhel/llamabro/chat/ReasoningFormat;)V
+}
+
+public final class com/suhel/llamabro/chat/Reasoning$Companion {
+}
+
+public final class com/suhel/llamabro/chat/ReasoningFormat : java/lang/Enum {
+	public static final field Auto Lcom/suhel/llamabro/chat/ReasoningFormat;
+	public static final field DeepSeek Lcom/suhel/llamabro/chat/ReasoningFormat;
+	public static final field None Lcom/suhel/llamabro/chat/ReasoningFormat;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/suhel/llamabro/chat/ReasoningFormat;
+	public static fun values ()[Lcom/suhel/llamabro/chat/ReasoningFormat;
+}
+
+public final class com/suhel/llamabro/chat/ReasoningKt {
+	public static final fun Reasoning (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/chat/Reasoning;
+}
+
+public final class com/suhel/llamabro/chat/RequestOptions {
+	public static final field Companion Lcom/suhel/llamabro/chat/RequestOptions$Companion;
+	public static final field Default Lcom/suhel/llamabro/chat/RequestOptions;
+	public final fun copy (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/chat/RequestOptions;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExtra ()Ljava/lang/String;
+	public final fun getParallelToolCalls ()Ljava/lang/Boolean;
+	public final fun getReasoning ()Lcom/suhel/llamabro/chat/Reasoning;
+	public final fun getResponseFormat ()Lcom/suhel/llamabro/chat/ResponseFormat;
+	public final fun getSampling ()Lcom/suhel/llamabro/chat/Sampling;
+	public final fun getStop ()Ljava/util/List;
+	public final fun getToolChoice ()Lcom/suhel/llamabro/chat/ToolChoice;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public class com/suhel/llamabro/chat/RequestOptions$Builder {
+	public final fun getExtra ()Ljava/lang/String;
+	public final fun getParallelToolCalls ()Ljava/lang/Boolean;
+	public final fun getReasoning ()Lcom/suhel/llamabro/chat/Reasoning;
+	public final fun getResponseFormat ()Lcom/suhel/llamabro/chat/ResponseFormat;
+	public final fun getSampling ()Lcom/suhel/llamabro/chat/Sampling;
+	public final fun getStop ()Ljava/util/List;
+	public final fun getToolChoice ()Lcom/suhel/llamabro/chat/ToolChoice;
+	public final fun reasoning (Lkotlin/jvm/functions/Function1;)V
+	public final fun sampling (Lkotlin/jvm/functions/Function1;)V
+	public final fun setExtra (Ljava/lang/String;)V
+	public final fun setParallelToolCalls (Ljava/lang/Boolean;)V
+	public final fun setReasoning (Lcom/suhel/llamabro/chat/Reasoning;)V
+	public final fun setResponseFormat (Lcom/suhel/llamabro/chat/ResponseFormat;)V
+	public final fun setSampling (Lcom/suhel/llamabro/chat/Sampling;)V
+	public final fun setStop (Ljava/util/List;)V
+	public final fun setToolChoice (Lcom/suhel/llamabro/chat/ToolChoice;)V
+	public final fun stop ([Ljava/lang/String;)V
+}
+
+public final class com/suhel/llamabro/chat/RequestOptions$Companion {
+}
+
+public final class com/suhel/llamabro/chat/RequestOptionsKt {
+	public static final fun RequestOptions (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/chat/RequestOptions;
+}
+
+public abstract interface class com/suhel/llamabro/chat/ResponseFormat {
+}
+
+public final class com/suhel/llamabro/chat/ResponseFormat$JsonObject : com/suhel/llamabro/chat/ResponseFormat {
+	public static final field INSTANCE Lcom/suhel/llamabro/chat/ResponseFormat$JsonObject;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/ResponseFormat$JsonSchema : com/suhel/llamabro/chat/ResponseFormat {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lcom/suhel/llamabro/chat/ResponseFormat$JsonSchema;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/ResponseFormat$JsonSchema;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/chat/ResponseFormat$JsonSchema;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public final fun getSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/Sampling {
+	public static final field Companion Lcom/suhel/llamabro/chat/Sampling$Companion;
+	public static final field Default Lcom/suhel/llamabro/chat/Sampling;
+	public final fun copy (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/chat/Sampling;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAdaptiveDecay ()Ljava/lang/Float;
+	public final fun getAdaptiveTarget ()Ljava/lang/Float;
+	public final fun getBackendSampling ()Ljava/lang/Boolean;
+	public final fun getDryAllowedLength ()Ljava/lang/Integer;
+	public final fun getDryBase ()Ljava/lang/Float;
+	public final fun getDryMultiplier ()Ljava/lang/Float;
+	public final fun getDryPenaltyLastN ()Ljava/lang/Integer;
+	public final fun getDrySequenceBreakers ()Ljava/util/List;
+	public final fun getDynatempExponent ()Ljava/lang/Float;
+	public final fun getDynatempRange ()Ljava/lang/Float;
+	public final fun getFrequencyPenalty ()Ljava/lang/Float;
+	public final fun getIgnoreEos ()Ljava/lang/Boolean;
+	public final fun getLogitBias ()Ljava/util/Map;
+	public final fun getMaxTokens ()Ljava/lang/Integer;
+	public final fun getMinKeep ()Ljava/lang/Integer;
+	public final fun getMinP ()Ljava/lang/Float;
+	public final fun getMirostat ()Ljava/lang/Integer;
+	public final fun getMirostatEta ()Ljava/lang/Float;
+	public final fun getMirostatTau ()Ljava/lang/Float;
+	public final fun getPresencePenalty ()Ljava/lang/Float;
+	public final fun getRepeatLastN ()Ljava/lang/Integer;
+	public final fun getRepeatPenalty ()Ljava/lang/Float;
+	public final fun getSamplers ()Ljava/util/List;
+	public final fun getSeed ()Ljava/lang/Long;
+	public final fun getTemperature ()Ljava/lang/Float;
+	public final fun getTopK ()Ljava/lang/Integer;
+	public final fun getTopNSigma ()Ljava/lang/Float;
+	public final fun getTopP ()Ljava/lang/Float;
+	public final fun getTypicalP ()Ljava/lang/Float;
+	public final fun getXtcProbability ()Ljava/lang/Float;
+	public final fun getXtcThreshold ()Ljava/lang/Float;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/Sampling$Builder {
+	public final fun getAdaptiveDecay ()Ljava/lang/Float;
+	public final fun getAdaptiveTarget ()Ljava/lang/Float;
+	public final fun getBackendSampling ()Ljava/lang/Boolean;
+	public final fun getDryAllowedLength ()Ljava/lang/Integer;
+	public final fun getDryBase ()Ljava/lang/Float;
+	public final fun getDryMultiplier ()Ljava/lang/Float;
+	public final fun getDryPenaltyLastN ()Ljava/lang/Integer;
+	public final fun getDrySequenceBreakers ()Ljava/util/List;
+	public final fun getDynatempExponent ()Ljava/lang/Float;
+	public final fun getDynatempRange ()Ljava/lang/Float;
+	public final fun getFrequencyPenalty ()Ljava/lang/Float;
+	public final fun getIgnoreEos ()Ljava/lang/Boolean;
+	public final fun getLogitBias ()Ljava/util/Map;
+	public final fun getMaxTokens ()Ljava/lang/Integer;
+	public final fun getMinKeep ()Ljava/lang/Integer;
+	public final fun getMinP ()Ljava/lang/Float;
+	public final fun getMirostat ()Ljava/lang/Integer;
+	public final fun getMirostatEta ()Ljava/lang/Float;
+	public final fun getMirostatTau ()Ljava/lang/Float;
+	public final fun getPresencePenalty ()Ljava/lang/Float;
+	public final fun getRepeatLastN ()Ljava/lang/Integer;
+	public final fun getRepeatPenalty ()Ljava/lang/Float;
+	public final fun getSamplers ()Ljava/util/List;
+	public final fun getSeed ()Ljava/lang/Long;
+	public final fun getTemperature ()Ljava/lang/Float;
+	public final fun getTopK ()Ljava/lang/Integer;
+	public final fun getTopNSigma ()Ljava/lang/Float;
+	public final fun getTopP ()Ljava/lang/Float;
+	public final fun getTypicalP ()Ljava/lang/Float;
+	public final fun getXtcProbability ()Ljava/lang/Float;
+	public final fun getXtcThreshold ()Ljava/lang/Float;
+	public final fun setAdaptiveDecay (Ljava/lang/Float;)V
+	public final fun setAdaptiveTarget (Ljava/lang/Float;)V
+	public final fun setBackendSampling (Ljava/lang/Boolean;)V
+	public final fun setDryAllowedLength (Ljava/lang/Integer;)V
+	public final fun setDryBase (Ljava/lang/Float;)V
+	public final fun setDryMultiplier (Ljava/lang/Float;)V
+	public final fun setDryPenaltyLastN (Ljava/lang/Integer;)V
+	public final fun setDrySequenceBreakers (Ljava/util/List;)V
+	public final fun setDynatempExponent (Ljava/lang/Float;)V
+	public final fun setDynatempRange (Ljava/lang/Float;)V
+	public final fun setFrequencyPenalty (Ljava/lang/Float;)V
+	public final fun setIgnoreEos (Ljava/lang/Boolean;)V
+	public final fun setLogitBias (Ljava/util/Map;)V
+	public final fun setMaxTokens (Ljava/lang/Integer;)V
+	public final fun setMinKeep (Ljava/lang/Integer;)V
+	public final fun setMinP (Ljava/lang/Float;)V
+	public final fun setMirostat (Ljava/lang/Integer;)V
+	public final fun setMirostatEta (Ljava/lang/Float;)V
+	public final fun setMirostatTau (Ljava/lang/Float;)V
+	public final fun setPresencePenalty (Ljava/lang/Float;)V
+	public final fun setRepeatLastN (Ljava/lang/Integer;)V
+	public final fun setRepeatPenalty (Ljava/lang/Float;)V
+	public final fun setSamplers (Ljava/util/List;)V
+	public final fun setSeed (Ljava/lang/Long;)V
+	public final fun setTemperature (Ljava/lang/Float;)V
+	public final fun setTopK (Ljava/lang/Integer;)V
+	public final fun setTopNSigma (Ljava/lang/Float;)V
+	public final fun setTopP (Ljava/lang/Float;)V
+	public final fun setTypicalP (Ljava/lang/Float;)V
+	public final fun setXtcProbability (Ljava/lang/Float;)V
+	public final fun setXtcThreshold (Ljava/lang/Float;)V
+}
+
+public final class com/suhel/llamabro/chat/Sampling$Companion {
+}
+
+public final class com/suhel/llamabro/chat/SamplingKt {
+	public static final fun Sampling (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/chat/Sampling;
+}
+
+public final class com/suhel/llamabro/chat/Timings {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCachedTokens ()I
+	public final fun getDraftAccepted ()Ljava/lang/Integer;
+	public final fun getDraftTokens ()Ljava/lang/Integer;
+	public final fun getPredictedPerSecond ()D
+	public final fun getPredictedTokens ()I
+	public final fun getPromptPerSecond ()D
+	public final fun getPromptTokens ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/Tool {
+	public static final field Companion Lcom/suhel/llamabro/chat/Tool$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/suhel/llamabro/chat/Tool;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/Tool;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/chat/Tool;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getParametersSchema ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/Tool$Companion {
+	public final fun function (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/suhel/llamabro/chat/Tool;
+}
+
+public final class com/suhel/llamabro/chat/ToolCall {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/suhel/llamabro/chat/ToolCall;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/ToolCall;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/chat/ToolCall;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArgumentsJson ()Ljava/lang/String;
+	public final fun getId ()Ljava/lang/String;
+	public final fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/suhel/llamabro/chat/ToolChoice {
+}
+
+public final class com/suhel/llamabro/chat/ToolChoice$Auto : com/suhel/llamabro/chat/ToolChoice {
+	public static final field INSTANCE Lcom/suhel/llamabro/chat/ToolChoice$Auto;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/ToolChoice$Function : com/suhel/llamabro/chat/ToolChoice {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lcom/suhel/llamabro/chat/ToolChoice$Function;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/ToolChoice$Function;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/chat/ToolChoice$Function;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/ToolChoice$None : com/suhel/llamabro/chat/ToolChoice {
+	public static final field INSTANCE Lcom/suhel/llamabro/chat/ToolChoice$None;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/ToolChoice$Required : com/suhel/llamabro/chat/ToolChoice {
+	public static final field INSTANCE Lcom/suhel/llamabro/chat/ToolChoice$Required;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/chat/Usage {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCompletionTokens ()I
+	public final fun getPromptTokens ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/conversation/Compaction {
+	public static final field DEFAULT_PRESERVED_STEPS I
+	public static final field DEFAULT_PROMPT Ljava/lang/String;
+	public static final field INSTANCE Lcom/suhel/llamabro/conversation/Compaction;
+}
+
+public final class com/suhel/llamabro/conversation/CompactionKt {
+	public static final fun canCompact (Lcom/suhel/llamabro/conversation/Conversation;I)Z
+	public static synthetic fun canCompact$default (Lcom/suhel/llamabro/conversation/Conversation;IILjava/lang/Object;)Z
+	public static final fun compact (Lcom/suhel/llamabro/conversation/Conversation;ILjava/lang/String;)Lkotlinx/coroutines/flow/Flow;
+	public static synthetic fun compact$default (Lcom/suhel/llamabro/conversation/Conversation;ILjava/lang/String;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
+}
+
+public final class com/suhel/llamabro/conversation/ContextUsage {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lcom/suhel/llamabro/conversation/ContextUsage;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/conversation/ContextUsage;IIILjava/lang/Object;)Lcom/suhel/llamabro/conversation/ContextUsage;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSize ()I
+	public final fun getUsed ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/conversation/Conversation {
+	public final fun ask (Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun ask$default (Lcom/suhel/llamabro/conversation/Conversation;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun endReasoning (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun getContextUsage ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun getMessages ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun getReply ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun isBusy ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun regenerate (Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/flow/Flow;
+	public static synthetic fun regenerate$default (Lcom/suhel/llamabro/conversation/Conversation;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
+	public final fun resume (Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/flow/Flow;
+	public static synthetic fun resume$default (Lcom/suhel/llamabro/conversation/Conversation;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
+	public final fun send (Ljava/lang/String;[Lcom/suhel/llamabro/chat/Content;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/flow/Flow;
+	public static synthetic fun send$default (Lcom/suhel/llamabro/conversation/Conversation;Ljava/lang/String;[Lcom/suhel/llamabro/chat/Content;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
+	public final fun toJson ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/conversation/Conversation$Builder {
+	public final fun defaults (Lkotlin/jvm/functions/Function1;)V
+	public final fun getDefaults ()Lcom/suhel/llamabro/chat/RequestOptions;
+	public final fun getMaxTurns ()I
+	public final fun getPreEncodeAfterReply ()Z
+	public final fun setDefaults (Lcom/suhel/llamabro/chat/RequestOptions;)V
+	public final fun setMaxTurns (I)V
+	public final fun setPreEncodeAfterReply (Z)V
+	public final fun tool (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function2;)V
+	public static synthetic fun tool$default (Lcom/suhel/llamabro/conversation/Conversation$Builder;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
+}
+
+public final class com/suhel/llamabro/conversation/ConversationKt {
+	public static final fun addToolResult (Lcom/suhel/llamabro/conversation/Conversation;Ljava/lang/String;Ljava/lang/String;)V
+}
+
+public final class com/suhel/llamabro/conversation/JsonArgs {
+	public static final field Companion Lcom/suhel/llamabro/conversation/JsonArgs$Companion;
+	public final fun boolean (Ljava/lang/String;)Z
+	public final fun double (Ljava/lang/String;)D
+	public final fun getRaw ()Ljava/lang/String;
+	public final fun has (Ljava/lang/String;)Z
+	public final fun int (Ljava/lang/String;)I
+	public final fun obj (Ljava/lang/String;)Lcom/suhel/llamabro/conversation/JsonArgs;
+	public final fun objList (Ljava/lang/String;)Ljava/util/List;
+	public final fun objOrNull (Ljava/lang/String;)Lcom/suhel/llamabro/conversation/JsonArgs;
+	public static final fun parse (Ljava/lang/String;)Lcom/suhel/llamabro/conversation/JsonArgs;
+	public final fun string (Ljava/lang/String;)Ljava/lang/String;
+	public final fun stringList (Ljava/lang/String;)Ljava/util/List;
+	public final fun stringOrNull (Ljava/lang/String;)Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/conversation/JsonArgs$Companion {
+	public final fun parse (Ljava/lang/String;)Lcom/suhel/llamabro/conversation/JsonArgs;
+}
+
+public abstract interface class com/suhel/llamabro/internal/Engine {
+	public abstract fun devices ()Ljava/lang/String;
+	public abstract fun init (Ljava/lang/String;)Ljava/lang/String;
+	public abstract fun load (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/internal/EngineModel;
+	public abstract fun setLog (Lkotlin/jvm/functions/Function2;)V
+}
+
+public abstract interface class com/suhel/llamabro/internal/EngineModel {
+	public abstract fun close ()V
+	public abstract fun getInfoJson ()Ljava/lang/String;
+	public abstract fun request (Ljava/lang/String;Ljava/lang/String;[BLcom/suhel/llamabro/internal/RequestSink;)Lcom/suhel/llamabro/internal/EngineRequest;
+}
+
+public abstract interface class com/suhel/llamabro/internal/EngineRequest {
+	public abstract fun cancel ()V
+	public abstract fun free ()V
+}
+
+public abstract interface class com/suhel/llamabro/internal/RequestSink {
+	public abstract fun onCancelled ()V
+	public abstract fun onChunk (I[B)V
+	public abstract fun onDone ()V
+}
+

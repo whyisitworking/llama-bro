@@ -96,15 +96,21 @@ class HostNativeTest {
             val events = SseParser().feed(bytes).filter { it != "[DONE]" }.flatMap { decoder.accept(it) } + decoder.finish()
             val done = events.last() as ChatEvent.Done
             return listOf(
-                "content=" + events.filterIsInstance<ChatEvent.Content>().joinToString("") { it.delta },
-                "reasoning=" + events.filterIsInstance<ChatEvent.Reasoning>().joinToString("") { it.delta },
-                "calls=" + events.filterIsInstance<ChatEvent.ToolCall>().map { it.call.name to it.call.argumentsJson },
+                "content=" + events.filterIsInstance<ChatEvent.ContentDelta>().joinToString("") { it.delta },
+                "reasoning=" + events.filterIsInstance<ChatEvent.ReasoningDelta>().joinToString("") { it.delta },
+                "calls=" + events.filterIsInstance<ChatEvent.ToolCallReceived>().map { it.call.name to it.call.argumentsJson },
                 "finish=${done.reason} usage=${done.usage}",
                 "prompt=${done.timings?.promptTokens} cached=${done.timings?.cachedTokens} predicted=${done.timings?.predictedTokens}",
             ).joinToString("\n")
         }
         val text = String(bytes, Charsets.UTF_8)
-        return "status=$status " + (runCatching { strip(Json.parseToJsonElement(text)).toString() }.getOrDefault(text))
+        // A pre-encode (`n_predict: 0`, no sampling, as tools/ui sends it) still samples one token, with a random
+        // seed on both sides (F52): compare its cache counters, not that token.
+        val preEncode = "\"n_predict\":0" in body
+        return "status=$status " + (runCatching {
+            val e = strip(Json.parseToJsonElement(text))
+            (if (preEncode && e is JsonObject) JsonObject(e.filterKeys { it != "choices" }) else e).toString()
+        }.getOrDefault(text))
     }
 
     private fun strip(e: JsonElement): JsonElement = if (e is JsonObject) {
@@ -122,26 +128,32 @@ class HostNativeTest {
         val mmproj = System.getProperty("llamabro.host.mmproj")
 
         val engine = RecordingEngine(JniEngine)
-        val llama = LlamaBro(LlamaBroRuntime(engine, tempDir(), lib, LlamaBroConfig()))
+        val llama = LlamaBro(LlamaBroRuntime(engine, tempDir(), lib, LlamaBroConfig.Default))
         val model = llama.loadModel(ModelSource.file(modelPath, mmproj)) { contextSize = ContextSize.Fixed(8192) }
-        val greedy = Sampling(temperature = 0f, seed = 1, maxTokens = 48)
-        val noThink = Reasoning(enableThinking = false)
+        val greedy = Sampling { temperature = 0f; seed = 1; maxTokens = 48 }
+        val noThink = Reasoning { enableThinking = false }
         val weather = Tool.function("get_weather", "Current weather for a city",
             """{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}""")
 
         // typed chat
-        model.chat(ChatRequest(listOf(Message.system("Be brief."), Message.user("Capital of Japan?")), sampling = greedy, reasoning = noThink)).collect()
-        model.chat(ChatRequest(listOf(Message.user("Is 51 prime?")), sampling = greedy.copy(maxTokens = 96), reasoning = Reasoning(enableThinking = true))).collect()
-        model.chat(ChatRequest(listOf(Message.user("Weather in Paris?")), tools = listOf(weather), sampling = greedy, reasoning = noThink)).collect()
-        model.chat(ChatRequest(listOf(Message.user("A person named Bob aged 30.")), sampling = greedy, reasoning = noThink,
-            responseFormat = ResponseFormat.JsonSchema("""{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer"}},"required":["name","age"]}"""))).collect()
-        model.chat(ChatRequest(listOf(Message.user("Name a colour and a fruit.")), reasoning = noThink,
-            sampling = Sampling(temperature = 0.8f, seed = 7, topK = 40, topP = 0.9f, maxTokens = 32))).collect()
+        model.chat(ChatRequest { messages(Message.system("Be brief."), Message.user("Capital of Japan?")); sampling = greedy; reasoning = noThink }).collect()
+        model.chat(ChatRequest { messages(Message.user("Is 51 prime?")); sampling = greedy.copy { maxTokens = 96 }; reasoning { enableThinking = true } }).collect()
+        model.chat(ChatRequest { messages(Message.user("Weather in Paris?")); tools(weather); sampling = greedy; reasoning = noThink }).collect()
+        model.chat(ChatRequest {
+            messages(Message.user("A person named Bob aged 30.")); sampling = greedy; reasoning = noThink
+            responseFormat = ResponseFormat.JsonSchema("""{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer"}},"required":["name","age"]}""")
+        }).collect()
+        model.chat(ChatRequest {
+            messages(Message.user("Name a colour and a fruit.")); reasoning = noThink
+            sampling { temperature = 0.8f; seed = 7; topK = 40; topP = 0.9f; maxTokens = 32 }
+        }).collect()
         if (mmproj != null) {
             val dataUrl = File("../native/tests/contract/t2.jsonl").readLines().first { "t2-14-image" in it }
                 .substringAfter("base64,").substringBefore("\"")
-            model.chat(ChatRequest(listOf(Message.user(Content.Text("Describe the colours."), Content.Image(Base64.getDecoder().decode(dataUrl), "image/png"))),
-                sampling = greedy, reasoning = noThink)).collect()
+            model.chat(ChatRequest {
+                messages(Message.user(Content.Text("Describe the colours."), Content.Image(Base64.getDecoder().decode(dataUrl), "image/png")))
+                sampling = greedy; reasoning = noThink
+            }).collect()
         }
         // raw endpoints
         model.rawRequest(Endpoint.Tokenize, """{"content":"Hello, wörld! 😀","with_pieces":true}""").collect()
@@ -149,15 +161,14 @@ class HostNativeTest {
         model.rawRequest(Endpoint.CountTokens, """{"messages":[{"role":"user","content":"How long is this?"}]}""").collect()
         // an error: the prompt doesn't fit the 8,192-token context (llama-server's exceed_context_size_error)
         val tooLong = runCatching {
-            model.chat(ChatRequest(listOf(Message.user("word ".repeat(9000))), sampling = greedy, reasoning = noThink)).collect()
+            model.chat(ChatRequest { messages(Message.user("word ".repeat(9000))); sampling = greedy; reasoning = noThink }).collect()
         }.exceptionOrNull()
         assertTrue("$tooLong", tooLong is LlamaBroException.ContextExceeded)
 
         // an agent conversation: two sends with a tool loop, a compaction, and a send on the compacted history
         val chat = model.conversation("You are terse. Use tools for weather.") {
             // room for the compaction summary too: it uses the conversation's sampling, as in tools/ui
-            sampling = greedy.copy(maxTokens = 200)
-            reasoning = noThink
+            defaults { sampling = greedy.copy { maxTokens = 200 }; reasoning = noThink }
             tool("get_weather", "Current weather for a city", """{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}""") { args ->
                 "Sunny, 21 °C in ${args.string("city")}"
             }
@@ -184,5 +195,60 @@ class HostNativeTest {
         }
         println("host end-to-end: ${records.size - mismatches.size}/${records.size} identical")
         assertEquals(mismatches.joinToString("\n"), 0, mismatches.size)
+    }
+
+    // --- load failures over the real core (PA T5, F51) -------------------------------------------------
+
+    private fun hostLlama(): LlamaBro {
+        val lib = System.getProperty("llamabro.host.lib")
+        assumeTrue("host end-to-end runs from sdk/scripts/check.sh", lib != null)
+        return LlamaBro(LlamaBroRuntime(JniEngine, tempDir(), lib, LlamaBroConfig.Default))
+    }
+
+    @Test
+    fun loadReasonFileNotFound() = runBlocking {
+        val llama = hostLlama()
+        val e = runCatching { llama.loadModel(ModelSource.file("/nonexistent-llamabro.gguf")) }.exceptionOrNull()
+        assertTrue("$e", e is LlamaBroException.ModelLoadFailed && e.reason == LlamaBroException.ModelLoadFailed.Reason.FileNotFound)
+        assertTrue("${e!!.message}", e.message!!.contains("/nonexistent-llamabro.gguf"))
+    }
+
+    /** A cut-off download: upstream's reason reaches the message (it only logs it). */
+    @Test
+    fun loadFailureCarriesUpstreamReason() = runBlocking {
+        val llama = hostLlama()
+        val modelPath = System.getProperty("llamabro.host.model")
+        assumeTrue(modelPath != null)
+        val truncated = File(tempDir(), "truncated.gguf")
+        File(modelPath).inputStream().use { input -> truncated.outputStream().use { it.write(input.readNBytes(20_000_000)) } }
+        val e = runCatching { llama.loadModel(ModelSource.file(truncated.path)) { contextSize = ContextSize.Fixed(512) } }.exceptionOrNull()
+        assertTrue("$e", e is LlamaBroException.ModelLoadFailed && e.reason == LlamaBroException.ModelLoadFailed.Reason.Other)
+        assertTrue("${e!!.message}", e.message!!.contains("not within the file bounds"))
+    }
+
+    // --- every route (PA T6, F53) ----------------------------------------------------------------------
+
+    /** Each [Endpoint] reaches an upstream handler: any answer but the bridge's "unknown endpoint" will do. */
+    @Test
+    fun everyEndpointReachesAHandler() = runBlocking {
+        val llama = hostLlama()
+        val modelPath = System.getProperty("llamabro.host.model")
+        assumeTrue(modelPath != null)
+        val model = llama.loadModel(ModelSource.file(modelPath)) { contextSize = ContextSize.Fixed(512) }
+        try {
+            // "[]" is a bad body for every POST route, so nothing generates; GET routes ignore it. The whole cause
+            // chain: coroutines' stack-trace recovery may rethrow a copy whose cause is the original (F53)
+            suspend fun bridgeRejects(e: Endpoint) = generateSequence(runCatching { model.rawRequest(e, "[]").collect() }
+                .exceptionOrNull()) { it.cause }.any { it is com.suhel.llamabro.internal.NativeError }
+            val endpoints = Endpoint::class.java.fields.filter { it.type == Endpoint::class.java }.map { it.get(null) as Endpoint }
+            assertEquals(27, endpoints.size)
+            val unknown = endpoints.filter { bridgeRejects(it) }
+            assertEquals("not in the C API's table: $unknown", emptyList<Endpoint>(), unknown)
+            // the check can fail: a name the table lacks is rejected by the bridge
+            val ctor = Endpoint::class.java.getDeclaredConstructor(String::class.java, String::class.java).apply { isAccessible = true }
+            assertTrue(bridgeRejects(ctor.newInstance("no_such_route", "POST /nope")))
+        } finally {
+            model.closeAndJoin()
+        }
     }
 }

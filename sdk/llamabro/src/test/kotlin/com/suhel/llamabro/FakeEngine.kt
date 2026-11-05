@@ -16,6 +16,10 @@ internal class FakeEngine : Engine {
     val loadConfigs = mutableListOf<String>()
     var devicesJson = """[{"name":"CPU","description":"cpu","type":"cpu","memory_free":1,"memory_total":2}]"""
     val model = FakeModel()
+    /** The model each load returns; [model] unless a test loads several. */
+    var makeModel: () -> FakeModel = { model }
+    /** Reported through onProgress during each load, like llama.cpp's load progress. */
+    var progress: List<Float> = emptyList()
 
     override fun init(configJson: String): String? {
         initConfigs += configJson
@@ -30,7 +34,8 @@ internal class FakeEngine : Engine {
 
     override fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel {
         loadConfigs += configJson
-        return model
+        progress.forEach(onProgress)
+        return makeModel()
     }
 }
 
@@ -40,6 +45,8 @@ internal class FakeModel : EngineModel {
     /** Runs on the calling thread when a request starts: script the reply here. */
     var onRequest: (FakeRequest) -> Unit = {}
     @Volatile var closed = false
+    /** Runs at the start of close(), on the closing thread: block here to model a slow native shutdown. */
+    var onClose: () -> Unit = {}
 
     override fun request(endpoint: String, paramsJson: String?, body: ByteArray, sink: RequestSink): EngineRequest {
         val r = FakeRequest(endpoint, paramsJson, String(body, Charsets.UTF_8), sink)
@@ -50,6 +57,7 @@ internal class FakeModel : EngineModel {
 
     /** Like lb_model_free: every unfinished request gets its terminal event before this returns. */
     override fun close() {
+        onClose()
         closed = true
         synchronized(requests) { requests.toList() }.forEach { it.cancelled() }
     }
@@ -103,5 +111,5 @@ internal fun tempDir(): File = Files.createTempDirectory("llamabro-test").toFile
 
 internal fun testLlamaBro(
     engine: FakeEngine = FakeEngine(),
-    config: LlamaBroConfig = LlamaBroConfig(),
+    config: LlamaBroConfig = LlamaBroConfig.Default,
 ): LlamaBro = LlamaBro(LlamaBroRuntime(engine, tempDir(), "/backends", config))

@@ -33,15 +33,15 @@ class ChatStreamDecoderTest {
     private fun check(fixture: String) {
         val events = decode(fixture)
         val expected = Json.parseToJsonElement(resource("$fixture.expected.json")) as JsonObject
-        assertEquals(expected["content"]!!.jsonPrimitive.content, events.filterIsInstance<ChatEvent.Content>().joinToString("") { it.delta })
-        assertEquals(expected["reasoning_content"]!!.jsonPrimitive.content, events.filterIsInstance<ChatEvent.Reasoning>().joinToString("") { it.delta })
-        val calls = events.filterIsInstance<ChatEvent.ToolCall>().map { it.call.name to it.call.argumentsJson }
+        assertEquals(expected["content"]!!.jsonPrimitive.content, events.filterIsInstance<ChatEvent.ContentDelta>().joinToString("") { it.delta })
+        assertEquals(expected["reasoning_content"]!!.jsonPrimitive.content, events.filterIsInstance<ChatEvent.ReasoningDelta>().joinToString("") { it.delta })
+        val calls = events.filterIsInstance<ChatEvent.ToolCallReceived>().map { it.call.name to it.call.argumentsJson }
         val expectedCalls = (expected["tool_calls"] as JsonArray).map {
             val o = it as JsonObject
             o["name"]!!.jsonPrimitive.content to o["arguments"]!!.jsonPrimitive.content
         }
         assertEquals(expectedCalls, calls)
-        events.filterIsInstance<ChatEvent.ToolCall>().forEach { assertTrue(it.call.id.isNotEmpty()) }
+        events.filterIsInstance<ChatEvent.ToolCallReceived>().forEach { assertTrue(it.call.id.isNotEmpty()) }
         val done = events.last() as ChatEvent.Done
         val reason = when (val r = expected["finish_reason"]) {
             null, JsonNull -> FinishReason.Stop
@@ -49,8 +49,8 @@ class ChatStreamDecoderTest {
         }
         assertEquals(reason, done.reason)
         // tool calls come together, just before Done
-        val firstCall = events.indexOfFirst { it is ChatEvent.ToolCall }
-        if (firstCall >= 0) assertTrue(events.subList(firstCall, events.size - 1).all { it is ChatEvent.ToolCall })
+        val firstCall = events.indexOfFirst { it is ChatEvent.ToolCallReceived }
+        if (firstCall >= 0) assertTrue(events.subList(firstCall, events.size - 1).all { it is ChatEvent.ToolCallReceived })
         assertTrue(done.timings != null)
     }
 

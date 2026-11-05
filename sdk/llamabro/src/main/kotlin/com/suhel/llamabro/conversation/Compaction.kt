@@ -34,6 +34,13 @@ public fun Conversation.compact(
     instruction: String = Compaction.DEFAULT_PROMPT,
 ): Flow<ChatEvent> = compactInternal(preservedSteps, instruction)
 
+/**
+ * Whether [compact] with [preservedSteps] has anything to summarise (tools/ui `canCompactMessages`), e.g. to
+ * enable a Compact button. A step is a user message, or an assistant message with its tool results.
+ */
+public fun Conversation.canCompact(preservedSteps: Int = Compaction.DEFAULT_PRESERVED_STEPS): Boolean =
+    CompactionPlanner.canCompact(messages.value, preservedSteps)
+
 /** Port of llama.cpp b12052 tools/ui/src/lib/utils/compaction.ts. */
 internal object CompactionPlanner {
     /** tools/ui `isPrefix`: what every request keeps first. */

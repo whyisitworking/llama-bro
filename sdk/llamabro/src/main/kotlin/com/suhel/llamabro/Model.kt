@@ -6,6 +6,7 @@ import com.suhel.llamabro.internal.ErrorMapping
 import com.suhel.llamabro.internal.NativeError
 import com.suhel.llamabro.internal.RequestSink
 import com.suhel.llamabro.internal.SseParser
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.channels.awaitClose
@@ -26,15 +27,25 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlin.concurrent.write
 
-/** A loaded model: one llama-server core on its own worker thread (design §3.2). Close it when done. */
-public class Model internal constructor(private val engineModel: EngineModel) : AutoCloseable {
+/**
+ * A loaded model: one llama-server core on its own worker thread (design §3.2). Close it when done; [close] is safe
+ * on the main thread.
+ */
+public class Model internal constructor(
+    private val engineModel: EngineModel,
+    /** Runs the native shutdown off the caller's thread (LlamaBroRuntime.shutdown). */
+    private val shutdown: (() -> Unit) -> Deferred<Unit>,
+) : AutoCloseable {
 
+    /** What the loaded model is and what it supports, read once at load. */
     public val info: ModelInfo = ModelInfo.parse(engineModel.infoJson)
 
     private val closed = AtomicBoolean(false)
     private val gate = java.util.concurrent.locks.ReentrantReadWriteLock()
     private val closedSignal = kotlinx.coroutines.CompletableDeferred<Unit>()
     private val active = mutableSetOf<ActiveCall>()
+    /** Completes when the native shutdown has finished; exists before [close] so a racing [closeAndJoin] waits too. */
+    private val shutdownDone = kotlinx.coroutines.CompletableDeferred<Unit>()
 
     /**
      * Any llama-server endpoint with a raw JSON body, exactly as llama-server's docs describe it.
@@ -57,10 +68,10 @@ public class Model internal constructor(private val engineModel: EngineModel) : 
                 }
             } catch (e: NativeError) {
                 unregister(call)
-                throw if (closed.get()) LlamaBroException.ModelClosed() else LlamaBroException.InvalidRequest(ErrorMapping.nativeMessage(e.errorJson))
+                throw if (closed.get()) LlamaBroException.ModelClosed(e) else LlamaBroException.InvalidRequest(ErrorMapping.nativeMessage(e.errorJson), e)
             } catch (e: IllegalStateException) {
                 unregister(call)
-                throw LlamaBroException.ModelClosed()
+                throw LlamaBroException.ModelClosed(e)
             }
             call.setHandle(handle)
             awaitClose {
@@ -70,21 +81,40 @@ public class Model internal constructor(private val engineModel: EngineModel) : 
         }.buffer(Channel.UNLIMITED)
 
     /**
-     * Cancels every running request (their flows fail with [LlamaBroException.ModelClosed]), waits for the
-     * native side to finish them, and frees the model. Later calls fail with `ModelClosed`.
-     *
-     * Blocks: a streaming request notices the cancel at its next result or within about 1 s (llama-server's
-     * polling interval, findings F23), and the model's worker thread is joined. Call it off the main thread.
+     * Closes the model and returns at once: running requests fail with [LlamaBroException.ModelClosed], later calls
+     * fail the same way, and the native shutdown (cancel, join the worker, free the weights and KV cache) finishes
+     * in the background. The next `loadModel` waits for it, so two models are never in memory together. Use
+     * [closeAndJoin] to wait for the memory to be freed. Calling it again does nothing.
      */
-    @androidx.annotation.WorkerThread
     override fun close() {
-        // waits for any request that is entering native code (a closed check alone leaves a use-after-free window)
-        if (!gate.write { closed.compareAndSet(false, true) }) return
-        val calls = synchronized(active) { active.toList() }
-        calls.forEach { it.scope.close(LlamaBroException.ModelClosed()) }
+        if (!closed.compareAndSet(false, true)) return
+        failActive()
         closedSignal.complete(Unit)
         background.cancel()
-        engineModel.close()
+        shutdown {
+            try {
+                // waits for any request still entering native code (a closed check alone leaves a use-after-free window)
+                gate.write { }
+                failActive()  // one that registered just before the closed flag was set
+                engineModel.close()
+            } finally {
+                shutdownDone.complete(Unit)
+            }
+        }
+    }
+
+    /**
+     * [close], then suspends until the native shutdown has finished and the model's memory is freed. A streaming
+     * request notices the cancel at its next result or within about 1 s (llama-server's polling interval, F23).
+     */
+    public suspend fun closeAndJoin() {
+        close()
+        shutdownDone.await()
+    }
+
+    private fun failActive() {
+        val calls = synchronized(active) { active.toList() }
+        calls.forEach { it.scope.close(LlamaBroException.ModelClosed()) }
     }
 
     internal val isClosed: Boolean get() = closed.get()
@@ -236,9 +266,10 @@ public fun Model.conversation(
     com.suhel.llamabro.conversation.Conversation(this, system, emptyList(), com.suhel.llamabro.conversation.Conversation.Builder().apply(configure))
 
 /**
- * Restores a conversation saved with [com.suhel.llamabro.conversation.Conversation.toJson]. Pass the same
- * [configure] block as the original (sampling, reasoning, tools): they aren't saved, and the next request is
- * byte-identical to the original's (so the server's prompt cache still hits) only when they match.
+ * Restores a conversation saved with [com.suhel.llamabro.conversation.Conversation.toJson], with its saved
+ * settings. Register the tools again in [configure] (handlers aren't saved); anything else set there changes the
+ * saved settings. With the same tools, the next request is byte-identical to the original's, so the server's
+ * prompt cache still hits.
  *
  * @throws IllegalArgumentException if [json] isn't a saved conversation.
  */
@@ -246,6 +277,7 @@ public fun Model.restoreConversation(
     json: String,
     configure: com.suhel.llamabro.conversation.Conversation.Builder.() -> Unit = {},
 ): com.suhel.llamabro.conversation.Conversation {
-    val (system, messages) = com.suhel.llamabro.conversation.ConversationJson.decode(json)
-    return com.suhel.llamabro.conversation.Conversation(this, system, messages, com.suhel.llamabro.conversation.Conversation.Builder().apply(configure))
+    val saved = com.suhel.llamabro.conversation.ConversationJson.decode(json)
+    val builder = com.suhel.llamabro.conversation.Conversation.Builder().apply(saved.settings).apply(configure)
+    return com.suhel.llamabro.conversation.Conversation(this, saved.system, saved.messages, builder)
 }

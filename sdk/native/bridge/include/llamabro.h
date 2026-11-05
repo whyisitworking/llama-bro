@@ -41,10 +41,22 @@ lb_status lb_runtime_init(const char * config_json, char ** error_json);
 void lb_runtime_set_log(lb_log_cb cb, void * user);
 char * lb_runtime_devices(void);                                       // [{"name","description","type","memory_free","memory_total"}]
 
+// On LB_ERR_LOAD_FAILED, error_json is {"error": "<why, with llama.cpp's own reason>"}, plus "code": "file_not_found"
+// when the model or mmproj file can't be opened.
 lb_status lb_model_load(const char * config_json, lb_progress_cb cb, void * user, lb_model ** out, char ** error_json);
 char * lb_model_info(lb_model * model);
-// endpoint: chat, completion, completion_oai, control, embeddings, rerank, tokenize, detokenize,
-//           count_tokens, apply_template, props, slots, slots_action, metrics
+// endpoint: every route tools/server/server.cpp registers for one model (server_register_routes), by name:
+//   chat (/v1/chat/completions), count_tokens (/v1/chat/completions/input_tokens), control (…/control),
+//   completion (/completion), completion_oai (/v1/completions), infill (/infill),
+//   responses (/v1/responses), responses_input_tokens (/v1/responses/input_tokens),
+//   messages (/v1/messages), messages_count_tokens (/v1/messages/count_tokens),
+//   embeddings (/v1/embeddings), embeddings_native (/embeddings), rerank (/v1/rerank), tts (/tts),
+//   systemone (/v1/systemone), tokenize, detokenize, apply_template (/apply-template),
+//   props (GET /props), props_set (POST /props), models (/v1/models), health, slots (GET /slots),
+//   slots_action (POST /slots/:id_slot), metrics, lora_adapters (GET), lora_adapters_set (POST /lora-adapters).
+// Left out: /v1/audio/transcriptions (its audio arrives as a multipart file; this call takes a JSON body),
+//   /v1/realtime (a WebSocket), and the routes that are the HTTP layer's or the router's (/cors-proxy, /tools,
+//   /models/load, /v1/stream and /v1/streams/lookup, the GCP compat routes).
 // params_json: path/query params as a flat JSON object (e.g. {"id_slot":"0","action":"save"}), or NULL.
 lb_status lb_model_request(lb_model * model, const char * endpoint, const char * params_json,
                            const char * body, size_t body_len, lb_request_cb cb, void * user,

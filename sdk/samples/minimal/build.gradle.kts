@@ -35,6 +35,14 @@ dependencies {
     // public API only: the sample must compile without internal access (P1 T12)
     implementation(project(":llamabro"))
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.activity.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+
+    // the ViewModel's JVM test runs on FakeLlamaBro (D27)
+    testImplementation(project(":llamabro-testing"))
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.runner)

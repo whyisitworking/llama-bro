@@ -148,7 +148,7 @@ class ModelRawRequestTest {
             override fun load(configJson: String, onProgress: (Float) -> Unit): com.suhel.llamabro.internal.EngineModel =
                 throw com.suhel.llamabro.internal.NativeError(4, """{"error":"failed to load model: /m.gguf"}""")
         }
-        val e = runCatching { LlamaBro(com.suhel.llamabro.internal.LlamaBroRuntime(engine, tempDir(), "/b", LlamaBroConfig())).loadModel(ModelSource.file("/m.gguf")) }.exceptionOrNull()
+        val e = runCatching { LlamaBro(com.suhel.llamabro.internal.LlamaBroRuntime(engine, tempDir(), "/b", LlamaBroConfig.Default)).loadModel(ModelSource.file("/m.gguf")) }.exceptionOrNull()
         assertTrue("$e", e is LlamaBroException.ModelLoadFailed)
         assertEquals("failed to load model: /m.gguf", e!!.message)
     }

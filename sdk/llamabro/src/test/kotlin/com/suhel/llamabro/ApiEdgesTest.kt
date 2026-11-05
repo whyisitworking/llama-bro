@@ -24,7 +24,9 @@ class ApiEdgesTest {
             """{"version":1,"messages":[{"role":"user"}]}""",
             """{"version":1,"messages":[{"role":"assistant","tool_calls":[{"id":"c"}]}]}""",
             """{"version":1,"messages":["x"]}""",
-            """{"version":2,"messages":[]}""",
+            """{"version":2,"messages":[]}""",  // v2 always has settings
+            """{"version":2,"settings":{"options":{}},"messages":[]}""",
+            """{"version":3,"messages":[]}""",
         )) {
             val e = runCatching { model.restoreConversation(bad) }.exceptionOrNull()
             assertTrue("$bad -> $e", e is IllegalArgumentException)
@@ -36,7 +38,7 @@ class ApiEdgesTest {
         val (engine, model) = setup()
         engine.model.script(Replies.toolCalls(Triple("c1", "nope", "{}")))
         val e = runCatching { model.conversation().ask("x") }.exceptionOrNull()
-        assertTrue("$e", e is IllegalStateException && e.message!!.contains("ToolCallsPending"))
+        assertTrue("$e", e is LlamaBroException.Incomplete && e.reason == com.suhel.llamabro.chat.FinishReason.ToolCallsPending)
     }
 
     @Test
@@ -48,7 +50,17 @@ class ApiEdgesTest {
             tool("t", "t", "{}") { "r" }
         }
         val e = runCatching { chat.ask("x") }.exceptionOrNull()
-        assertTrue("$e", e is IllegalStateException && e.message!!.contains("TurnLimit"))
+        assertTrue("$e", e is LlamaBroException.Incomplete && e.reason == com.suhel.llamabro.chat.FinishReason.TurnLimit)
+    }
+
+    @Test
+    fun askThrowsIncompleteOnLength() = runTest {
+        val (engine, model) = setup()
+        engine.model.script(Replies.text("half an ans", finish = "length"))
+        val e = runCatching { model.conversation().ask("x") }.exceptionOrNull()
+        e as LlamaBroException.Incomplete
+        assertEquals(com.suhel.llamabro.chat.FinishReason.Length, e.reason)
+        assertEquals("half an ans", e.partial)
     }
 
     @Test

@@ -51,8 +51,8 @@ class AgentLoopTest {
         assertEquals("""{"role":"tool","tool_call_id":"c1","content":"sunny"}""", m2.last())
         assertTrue(bodies[0].contains("\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"get_weather\""))
         val kinds = events.map { it::class.simpleName }
-        assertEquals(listOf("ToolCall", "ToolResult"), kinds.take(2))
-        assertTrue(kinds.drop(2).dropLast(1).all { it == "Content" })
+        assertEquals(listOf("ToolCallReceived", "ToolResult"), kinds.take(2))
+        assertTrue(kinds.drop(2).dropLast(1).all { it == "ContentDelta" })
         assertEquals(ChatEvent.ToolResult("c1", "get_weather", "sunny"), events[1])
         assertEquals(FinishReason.Stop, (events.last() as ChatEvent.Done).reason)
         assertEquals(1, events.count { it is ChatEvent.Done })
@@ -83,7 +83,7 @@ class AgentLoopTest {
             listOf("""{"role":"tool","tool_call_id":"a","content":"A"}""", """{"role":"tool","tool_call_id":"b","content":"B"}"""),
             m2.takeLast(2),
         )
-        assertEquals(listOf("ToolCall", "ToolResult", "ToolCall", "ToolResult"), events.take(4).map { it::class.simpleName })
+        assertEquals(listOf("ToolCallReceived", "ToolResult", "ToolCallReceived", "ToolResult"), events.take(4).map { it::class.simpleName })
     }
 
     @Test
@@ -110,7 +110,7 @@ class AgentLoopTest {
         val events = chat.send("x").toList()
         assertEquals(1, engine.model.chatBodies.size)
         assertEquals(FinishReason.ToolCallsPending, (events.last() as ChatEvent.Done).reason)
-        assertTrue(events.any { it is ChatEvent.ToolCall && it.call.name == "nope" })
+        assertTrue(events.any { it is ChatEvent.ToolCallReceived && it.call.name == "nope" })
         chat.addToolResult("c9", "x")
         chat.resume().toList()
         assertEquals("""{"role":"tool","tool_call_id":"c9","content":"x"}""", messagesOf(engine.model.chatBodies[1]).last())

@@ -54,7 +54,7 @@ class ConversationCompactTest {
     }
 
     private suspend fun threeTurns(h: Harness) = h.model.conversation(system = "sys") {
-        sampling = com.suhel.llamabro.chat.Sampling(temperature = 0.2f)
+        defaults { sampling { temperature = 0.2f } }
         tool("get_weather", "w", """{"type":"object"}""")
     }.also { c ->
         c.send("u1").toList()
@@ -148,7 +148,7 @@ class ConversationCompactTest {
         val h = harness(Replies.text("a1"))
         h.model.conversation { preEncodeAfterReply = true }.send("u1").toList()
         val pre = h.awaitPreEncode()
-        h.model.close()
+        h.model.closeAndJoin()
         assertTrue(pre.terminal)
     }
 
@@ -160,7 +160,6 @@ class ConversationCompactTest {
         val saved = chat.toJson()
         chat.send("x").toList()
         val restored = h.model.restoreConversation(saved) {
-            sampling = com.suhel.llamabro.chat.Sampling(temperature = 0.2f)
             tool("get_weather", "w", """{"type":"object"}""")
         }
         restored.send("x").toList()

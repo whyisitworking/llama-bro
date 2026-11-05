@@ -1,6 +1,7 @@
 package com.suhel.llamabro.conversation
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -30,6 +31,34 @@ public class JsonArgs internal constructor(public val raw: String) {
 
     public fun boolean(name: String): Boolean = primitive(name).booleanOrNull ?: throw IllegalArgumentException("argument $name is not a boolean")
 
+    /** A nested object argument. */
+    public fun obj(name: String): JsonArgs = objOrNull(name) ?: throw IllegalArgumentException("missing object argument: $name")
+
+    public fun objOrNull(name: String): JsonArgs? = (obj[name] as? JsonObject)?.let { JsonArgs(it.toString()) }
+
+    /** An array of strings. */
+    public fun stringList(name: String): List<String> = array(name).map {
+        (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content ?: throw IllegalArgumentException("argument $name has a non-string item")
+    }
+
+    /** An array of objects. */
+    public fun objList(name: String): List<JsonArgs> = array(name).map {
+        (it as? JsonObject)?.let { o -> JsonArgs(o.toString()) } ?: throw IllegalArgumentException("argument $name has a non-object item")
+    }
+
+    /** Whether the argument is present (null counts as present). */
+    public fun has(name: String): Boolean = name in obj
+
+    private fun array(name: String): JsonArray = obj[name] as? JsonArray ?: throw IllegalArgumentException("missing array argument: $name")
+
     private fun primitive(name: String): JsonPrimitive =
         (obj[name] as? JsonPrimitive)?.takeIf { !it.isString } ?: throw IllegalArgumentException("missing argument: $name")
+
+    override fun toString(): String = raw
+
+    public companion object {
+        /** Arguments from a JSON object string, as the agent loop parses them; for testing a tool's handler alone. */
+        @JvmStatic
+        public fun parse(json: String): JsonArgs = JsonArgs(json)
+    }
 }

@@ -8,8 +8,7 @@ import com.suhel.llamabro.chat.ChatRequest
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.FinishReason
 import com.suhel.llamabro.chat.Message
-import com.suhel.llamabro.chat.Reasoning
-import com.suhel.llamabro.chat.Sampling
+import com.suhel.llamabro.chat.RequestOptions
 import com.suhel.llamabro.chat.Tool
 import com.suhel.llamabro.chat.ToolCall
 import com.suhel.llamabro.chatInternal
@@ -32,13 +31,14 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
 import com.suhel.llamabro.internal.ChatJson
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * A chat history that behaves like llama.cpp's own web client (`tools/ui`, design §6–§7, D8): it builds each
  * request from the history, appends replies, and only ever appends, so the server reuses its cached prefix.
  *
- * One operation at a time: [send], [resume] (and `compact`) throw [IllegalStateException] while another runs.
+ * Every request carries the conversation's [Builder.defaults]; one [send], [resume] or [regenerate] can change
+ * them for its own requests only. One operation at a time: collecting [send], [resume], [regenerate] (or `compact`)
+ * while another runs ([isBusy]) fails with [LlamaBroException.Busy]; creating the flow never throws.
  */
 public class Conversation internal constructor(
     private val model: Model,
@@ -52,43 +52,83 @@ public class Conversation internal constructor(
     public val messages: StateFlow<List<Message>> = _messages.asStateFlow()
 
     private val _contextUsage = MutableStateFlow(ContextUsage(0, model.info.contextSize))
+    /** Tokens in use of the context, from the last reply's timings. */
     public val contextUsage: StateFlow<ContextUsage> = _contextUsage.asStateFlow()
 
-    private val busy = AtomicBoolean(false)
+    private val _reply = MutableStateFlow<Message.Assistant?>(null)
+
+    /**
+     * The assistant message streaming now (content and reasoning so far), null when no reply is streaming. When a
+     * reply ends it moves to [messages] first, then this turns null, so a UI showing both never shows it twice
+     * or not at all.
+     */
+    public val reply: StateFlow<Message.Assistant?> = _reply.asStateFlow()
+
+    private val busy = MutableStateFlow(false)
+
+    /** True while a send, resume, regenerate or compaction runs. */
+    public val isBusy: StateFlow<Boolean> = busy.asStateFlow()
 
     @Volatile
     private var completionId: String? = null
 
 
-    /** Appends a user message and streams the reply. */
-    public fun send(text: String, vararg attachments: Content): Flow<ChatEvent> {
-        checkIdle()
+    /**
+     * Appends a user message and streams the reply.
+     * @param options changes the [Builder.defaults] for this send's requests only (every turn of its tool loop).
+     */
+    public fun send(text: String, vararg attachments: Content, options: RequestOptions.Builder.() -> Unit = {}): Flow<ChatEvent> {
         val parts = listOf<Content>(Content.Text(text)) + attachments
+        val opts = config.defaults.copy(options)
         return exclusive {
             append(Message.User(parts))
-            runTurns(this)
+            runTurns(this, opts)
         }
     }
 
     /**
      * [send], collected: returns the final reply's content.
-     * @throws IllegalStateException if the reply ended without one: `TurnLimit` or `ToolCallsPending`
-     *   (continue with [resume], after [addToolResult] for pending tools).
+     * @throws LlamaBroException.Incomplete if the reply isn't a complete answer: `Length` (cut at the output limit),
+     *   `TurnLimit` or `ToolCallsPending` (continue with [resume], after [addToolResult] for pending tools).
      */
-    public suspend fun ask(text: String): String {
+    public suspend fun ask(text: String, options: RequestOptions.Builder.() -> Unit = {}): String {
         var done: ChatEvent.Done? = null
-        send(text).collect { if (it is ChatEvent.Done) done = it }
-        val reason = done?.reason
-        check(reason != FinishReason.TurnLimit && reason != FinishReason.ToolCallsPending) {
-            "the reply ended with $reason, not an answer; call resume() to continue"
+        send(text, options = options).collect { if (it is ChatEvent.Done) done = it }
+        val history = _messages.value
+        // this send's last reply: after its user message, so an older reply never counts
+        val reply = history.subList(history.indexOfLast { it is Message.User } + 1, history.size)
+            .lastOrNull { it is Message.Assistant } as Message.Assistant?
+        val content = reply?.content.orEmpty()
+        val reason = done?.reason ?: FinishReason.Stop
+        if (reason == FinishReason.Length || reason == FinishReason.TurnLimit || reason == FinishReason.ToolCallsPending) {
+            throw LlamaBroException.Incomplete(reason, content)
         }
-        return (_messages.value.lastOrNull() as? Message.Assistant)?.content.orEmpty()
+        return content
     }
 
     /** Sends the current history again: after `ContextExceeded` (and a compaction), a turn limit, or pending tool results. */
-    public fun resume(): Flow<ChatEvent> {
-        checkIdle()
-        return exclusive { runTurns(this) }
+    public fun resume(options: RequestOptions.Builder.() -> Unit = {}): Flow<ChatEvent> {
+        val opts = config.defaults.copy(options)
+        return exclusive { runTurns(this, opts) }
+    }
+
+    /**
+     * Drops the replies after the last user message (with their tool calls and results) and asks again, as
+     * tools/ui's regenerate does. The request repeats the original's messages, so the server's cache covers them.
+     * @throws IllegalStateException (when collected) if there is no user message, or a compaction follows it.
+     */
+    public fun regenerate(options: RequestOptions.Builder.() -> Unit = {}): Flow<ChatEvent> {
+        val opts = config.defaults.copy(options)
+        return exclusive {
+            val history = _messages.value
+            val lastUser = history.indexOfLast { it is Message.User }
+            check(lastUser >= 0) { "nothing to regenerate: no user message" }
+            check(history.subList(lastUser + 1, history.size).none { it is Message.Compaction }) {
+                "can't regenerate: a compaction follows the last user message"
+            }
+            _messages.value = history.subList(0, lastUser + 1)
+            runTurns(this, opts)
+        }
     }
 
     /** Asks the server to stop thinking now (llama-server's `reasoning_end` control) for the reply streaming now. */
@@ -98,13 +138,21 @@ public class Conversation internal constructor(
         model.rawRequest(Endpoint.Control, body).collect()
     }
 
-    /** The history as JSON; restore with `model.restoreConversation(json)`. Builder settings and tool handlers aren't saved. */
-    public fun toJson(): String = ConversationJson.encode(system, _messages.value.drop(if (system != null) 1 else 0))
+    /**
+     * The history and settings as JSON; restore with `model.restoreConversation(json)`. Saved: the system prompt,
+     * every message, [Builder.defaults], `maxTurns`, `preEncodeAfterReply`. Not saved: tools, whose handlers are
+     * code; register them again when restoring.
+     */
+    public fun toJson(): String = ConversationJson.encode(system, _messages.value.drop(if (system != null) 1 else 0), config)
 
+    /** The scope of `model.conversation { … }`: defaults, limits and tools. */
     public class Builder internal constructor() {
-        /** Sent with every request; null fields use the model's defaults. */
-        public var sampling: Sampling = Sampling()
-        public var reasoning: Reasoning = Reasoning()
+        /** Sent with every request; unset options use the model's and llama-server's defaults. */
+        public var defaults: RequestOptions = RequestOptions.Default
+
+        /** Changes [defaults] in place: `defaults { sampling { temperature = 0.7f }; stop("END") }`. */
+        public fun defaults(configure: RequestOptions.Builder.() -> Unit) { defaults = defaults.copy(configure) }
+
         /** Model requests per send before `Done(TurnLimit)` (tools/ui `agenticMaxTurns`, default 100). */
         public var maxTurns: Int = 100
         /** Pre-encode the history after each reply (tools/ui "Pre-fill KV cache after response", default off). */
@@ -127,19 +175,18 @@ public class Conversation internal constructor(
     /** tools/ui stores/chat/index.svelte.ts compaction (see [compact]). */
     internal fun compactInternal(preservedSteps: Int, instruction: String): Flow<ChatEvent> {
         require(preservedSteps >= 0) { "preservedSteps must be >= 0" }
-        checkIdle()
         return exclusive {
             val source = CompactionPlanner.modelView(_messages.value)
             val cut = CompactionPlanner.cutIndex(source, preservedSteps)
                 ?: throw IllegalStateException("nothing to compact: no step before the $preservedSteps preserved ones")
             // the request the chat sends, cut before the preserved steps, plus the instruction as a user message
-            val req = request(requestMessages(source.subList(0, cut)) + Message.user(instruction))
+            val req = request(requestMessages(source.subList(0, cut)) + Message.user(instruction), compactionOptions())
             val summary = StringBuilder()
             var done: ChatEvent.Done? = null
             try {
                 model.chatInternal(req) { completionId = it }.collect { ev ->
                     when (ev) {
-                        is ChatEvent.Content -> { summary.append(ev.delta); emit(ev) }
+                        is ChatEvent.ContentDelta -> { summary.append(ev.delta); emit(ev) }
                         is ChatEvent.Done -> done = ev
                         else -> emit(ev)
                     }
@@ -212,17 +259,18 @@ public class Conversation internal constructor(
     // --- internals ------------------------------------------------------------------------------------
 
     private fun checkIdle() {
-        check(!busy.get()) { "another send, resume or compact is running on this conversation" }
+        if (busy.value) throw LlamaBroException.Busy()
     }
 
     private fun exclusive(block: suspend FlowCollector<ChatEvent>.() -> Unit): Flow<ChatEvent> = flow {
-        if (!busy.compareAndSet(false, true)) throw IllegalStateException("another send, resume or compact is running on this conversation")
+        if (!busy.compareAndSet(false, true)) throw LlamaBroException.Busy()
         try {
             model.cancelPreEncode()
             block()
         } finally {
             completionId = null
-            busy.set(false)
+            _reply.value = null
+            busy.value = false
         }
     }
 
@@ -237,12 +285,17 @@ public class Conversation internal constructor(
     private fun requestMessages(view: List<Message> = CompactionPlanner.modelView(_messages.value)): List<Message> =
         CompactionPlanner.forRequest(view).filterNot { it is Message.System && it.text.isBlank() }
 
-    private fun request(messages: List<Message> = requestMessages()): ChatRequest = ChatRequest(
-        messages = messages,
-        tools = config.registry.tools,
-        sampling = config.sampling,
-        reasoning = config.reasoning,
-    )
+    private fun request(messages: List<Message>, options: RequestOptions): ChatRequest =
+        ChatRequest(messages, config.registry.tools, options)
+
+    /**
+     * The summary request (tools/ui sends it like a chat request): the chat's tools, sampling, reasoning and
+     * `extra`, which shape the prompt or the sampler; not its format, stop words or tool choice, which would
+     * constrain a free-text summary.
+     */
+    private fun compactionOptions(): RequestOptions = config.defaults.let { d ->
+        RequestOptions { sampling = d.sampling; reasoning = d.reasoning; extra = d.extra }
+    }
 
     /**
      * The agent loop, ported from tools/ui stores/agentic/index.svelte.ts (design §6.2): send; if the reply calls
@@ -250,7 +303,7 @@ public class Conversation internal constructor(
      * tool calls. The turn check sits at the top of the loop (`turn >= maxTurns`), so maxTurns counts model
      * requests per flow; tools/ui then asks the user to continue, which here is `Done(TurnLimit)` + [resume].
      */
-    private suspend fun runTurns(out: FlowCollector<ChatEvent>) {
+    private suspend fun runTurns(out: FlowCollector<ChatEvent>, options: RequestOptions) {
         var turn = 0
         var last: ChatEvent.Done? = null
         while (true) {
@@ -258,7 +311,7 @@ public class Conversation internal constructor(
                 out.emit(ChatEvent.Done(FinishReason.TurnLimit, last?.timings, last?.usage))
                 return
             }
-            val reply = streamReply(out)
+            val reply = streamReply(out, request(requestMessages(), options))
             last = reply.done
             if (reply.toolCalls.isEmpty()) {
                 out.emit(reply.done)
@@ -267,7 +320,7 @@ public class Conversation internal constructor(
             }
             var pending = false
             for (call in reply.toolCalls) {
-                out.emit(ChatEvent.ToolCall(call))
+                out.emit(ChatEvent.ToolCallReceived(call))
                 val handler = config.registry.handler(call.name)
                 if (handler == null) {
                     pending = true  // manual mode: the app adds the result
@@ -318,7 +371,7 @@ public class Conversation internal constructor(
      * stops early keeps what was streamed, as tools/ui stores/chat/index.svelte.ts savePartialResponseIfNeeded
      * does: content and reasoning stay, partial tool calls are dropped.
      */
-    private suspend fun streamReply(out: FlowCollector<ChatEvent>, req: ChatRequest = request()): Reply {
+    private suspend fun streamReply(out: FlowCollector<ChatEvent>, req: ChatRequest): Reply {
         val content = StringBuilder()
         val reasoning = StringBuilder()
         val calls = mutableListOf<ToolCall>()
@@ -326,9 +379,15 @@ public class Conversation internal constructor(
         try {
             model.chatInternal(req) { completionId = it }.collect { ev ->
                 when (ev) {
-                    is ChatEvent.Content -> content.append(ev.delta)
-                    is ChatEvent.Reasoning -> reasoning.append(ev.delta)
-                    is ChatEvent.ToolCall -> calls += ev.call
+                    is ChatEvent.ContentDelta -> {
+                        content.append(ev.delta)
+                        _reply.value = Message.Assistant(content.toString(), reasoning.toString().ifEmpty { null })
+                    }
+                    is ChatEvent.ReasoningDelta -> {
+                        reasoning.append(ev.delta)
+                        _reply.value = Message.Assistant(content.toString(), reasoning.toString().ifEmpty { null })
+                    }
+                    is ChatEvent.ToolCallReceived -> calls += ev.call
                     is ChatEvent.Done -> {
                         done = ev
                         ev.timings?.let { t ->
@@ -337,12 +396,13 @@ public class Conversation internal constructor(
                     }
                     else -> Unit
                 }
-                if (ev !is ChatEvent.Done && ev !is ChatEvent.ToolCall) out.emit(ev)
+                if (ev !is ChatEvent.Done && ev !is ChatEvent.ToolCallReceived) out.emit(ev)
             }
         } catch (e: CancellationException) {
             // A stop: tools/ui created the assistant message before streaming and never removes it, so the reply
             // stays, empty if nothing came (roles keep alternating); partial tool calls are dropped.
             append(Message.Assistant(content = content.toString(), reasoning = reasoning.toString().ifBlank { null }))
+            _reply.value = null  // after the append, so a UI never loses the text in between
             throw e
         } catch (e: Throwable) {
             // An error (e.g. ContextExceeded): keep what was streamed, nothing when it's empty, so resume()
@@ -350,6 +410,7 @@ public class Conversation internal constructor(
             if (content.isNotBlank() || reasoning.isNotBlank() || calls.isNotEmpty()) {
                 append(Message.Assistant(content = content.toString(), reasoning = reasoning.toString().ifBlank { null }))
             }
+            _reply.value = null
             throw e
         } finally {
             completionId = null
@@ -362,9 +423,13 @@ public class Conversation internal constructor(
                 Message.Assistant(content = content.toString().ifEmpty { null }, reasoning = reasoning.toString().ifEmpty { null }, toolCalls = calls.toList())
             },
         )
+        _reply.value = null
         return Reply(done!!, calls)
     }
 }
 
-/** Adds the result of a pending tool call (after `Done(ToolCallsPending)`); then call [Conversation.resume]. */
+/**
+ * Adds the result of a pending tool call (after `Done(ToolCallsPending)`); then call [Conversation.resume].
+ * @throws LlamaBroException.Busy while a send, resume, regenerate or compaction runs.
+ */
 public fun Conversation.addToolResult(toolCallId: String, result: String): Unit = addToolResultInternal(toolCallId, result)

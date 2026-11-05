@@ -3,10 +3,8 @@ package com.suhel.llamabro
 import com.suhel.llamabro.chat.ChatRequest
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.Message
-import com.suhel.llamabro.chat.Reasoning
 import com.suhel.llamabro.chat.ReasoningFormat
 import com.suhel.llamabro.chat.ResponseFormat
-import com.suhel.llamabro.chat.Sampling
 import com.suhel.llamabro.chat.Tool
 import com.suhel.llamabro.chat.ToolCall
 import com.suhel.llamabro.chat.ToolChoice
@@ -26,7 +24,7 @@ class ChatJsonTest {
 
     @Test
     fun nullSamplingFieldsOmitted() {
-        val b = body(ChatRequest(listOf(Message.user("hi"))))
+        val b = body(ChatRequest { messages(Message.user("hi")) })
         for (k in listOf("temperature", "top_k", "top_p", "min_p", "presence_penalty", "frequency_penalty",
             "repeat_penalty", "repeat_last_n", "seed", "samplers", "max_tokens", "tools", "tool_choice",
             "parallel_tool_calls", "response_format", "stop", "reasoning_format", "reasoning_budget_tokens", "chat_template_kwargs")) {
@@ -40,7 +38,7 @@ class ChatJsonTest {
 
     @Test
     fun imageBecomesDataUrl() {
-        val b = body(ChatRequest(listOf(Message.user(Content.Text("what?"), Content.Image(byteArrayOf(1, 2, 3))))))
+        val b = body(ChatRequest { messages(Message.user(Content.Text("what?"), Content.Image(byteArrayOf(1, 2, 3)))) })
         val parts = b["messages"]!!.jsonArray[0].jsonObject["content"]!!.jsonArray
         assertEquals("""{"type":"text","text":"what?"}""", parts[0].toString())
         val url = parts[1].jsonObject["image_url"]!!.jsonObject["url"]!!.jsonPrimitive.content
@@ -51,7 +49,7 @@ class ChatJsonTest {
 
     @Test
     fun samplersFieldSentWhenSet() {
-        val b = body(ChatRequest(listOf(Message.user("hi")), sampling = Sampling(samplers = listOf("top_k", "temperature"), temperature = 0.7f, maxTokens = 32, seed = 5)))
+        val b = body(ChatRequest { messages(Message.user("hi")); sampling { samplers = listOf("top_k", "temperature"); temperature = 0.7f; maxTokens = 32; seed = 5 } })
         assertEquals("""["top_k","temperature"]""", b["samplers"].toString())
         assertEquals("0.7", b["temperature"].toString())
         assertEquals("32", b["max_tokens"].toString())
@@ -59,28 +57,28 @@ class ChatJsonTest {
     }
 
     @Test
-    fun extraJsonMergedLast() {
-        val b = body(ChatRequest(listOf(Message.user("hi")), sampling = Sampling(temperature = 0.5f), extraJson = """{"temperature":0.1,"n_probs":3}"""))
+    fun extraMergedLast() {
+        val b = body(ChatRequest { messages(Message.user("hi")); sampling { temperature = 0.5f }; extra = """{"temperature":0.1,"n_probs":3}""" })
         assertEquals("0.1", b["temperature"].toString())
         assertEquals("3", b["n_probs"].toString())
     }
 
     @Test
     fun toolsReasoningAndFormatFields() {
-        val b = body(ChatRequest(
-            messages = listOf(
+        val b = body(ChatRequest {
+            messages(
                 Message.system("sys"),
                 Message.user("weather?"),
                 Message.Assistant(content = null, reasoning = "think", toolCalls = listOf(ToolCall("c1", "get_weather", """{"city":"Paris"}"""))),
                 Message.ToolResult("c1", "sunny"),
-            ),
-            tools = listOf(Tool.function("get_weather", "Weather", """{"type":"object","properties":{"city":{"type":"string"}}}""")),
-            toolChoice = ToolChoice.Function("get_weather"),
-            parallelToolCalls = false,
-            responseFormat = ResponseFormat.JsonSchema("""{"type":"object"}""", name = "x"),
-            reasoning = Reasoning(format = ReasoningFormat.DeepSeek, budgetTokens = 64, enableThinking = false),
-            stop = listOf("END"),
-        ))
+            )
+            tools(Tool.function("get_weather", "Weather", """{"type":"object","properties":{"city":{"type":"string"}}}"""))
+            toolChoice = ToolChoice.Function("get_weather")
+            parallelToolCalls = false
+            responseFormat = ResponseFormat.JsonSchema("""{"type":"object"}""", name = "x")
+            reasoning { format = ReasoningFormat.DeepSeek; budgetTokens = 64; enableThinking = false }
+            stop("END")
+        })
         val m = b["messages"]!!.jsonArray
         assertEquals("""{"role":"system","content":"sys"}""", m[0].toString())
         assertEquals("""{"role":"assistant","reasoning_content":"think","tool_calls":[{"id":"c1","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Paris\"}"}}]}""", m[2].toString())

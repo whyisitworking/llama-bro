@@ -62,11 +62,11 @@ class ConversationTest {
     fun restoredConversationSendsIdenticalRequest() = runTest {
         val (engine, model) = setup()
         engine.model.script(Replies.text("A cat.", reasoning = "looks"), Replies.text("x1"), Replies.text("x2"))
-        val original = model.conversation(system = "sys") { sampling = com.suhel.llamabro.chat.Sampling(temperature = 0.3f) }
+        val original = model.conversation(system = "sys") { defaults { sampling { temperature = 0.3f } } }
         original.send("What is this?", Content.Image(byteArrayOf(9, 8, 7), "image/png")).toList()
         val saved = original.toJson()
         original.send("x").toList()
-        val restored = model.restoreConversation(saved) { sampling = com.suhel.llamabro.chat.Sampling(temperature = 0.3f) }
+        val restored = model.restoreConversation(saved)  // the settings were saved with it (format v2)
         assertEquals(original.messages.value.dropLast(2), restored.messages.value)
         restored.send("x").toList()
         val bodies = engine.model.chatBodies
@@ -105,7 +105,7 @@ class ConversationTest {
         }
         val chat = model.conversation()
         val started = CompletableDeferred<Unit>()
-        val job = launch { chat.send("think").collect { if (it is ChatEvent.Reasoning) started.complete(Unit) } }
+        val job = launch { chat.send("think").collect { if (it is ChatEvent.ReasoningDelta) started.complete(Unit) } }
         started.await()
         chat.endReasoning()
         val control = engine.model.requests.single { it.endpoint == "control" }
@@ -125,15 +125,16 @@ class ConversationTest {
     }
 
     @Test
-    fun concurrentSendThrows() = runTest {
+    fun busyRaisedOnCollect() = runTest {
         val (engine, model) = setup()
         engine.model.onRequest = { r -> r.chunk(Replies.text("x").take(2).joinToString("")) }  // never finishes
         val chat = model.conversation()
         val started = CompletableDeferred<Unit>()
         val job = launch { chat.send("a").collect { started.complete(Unit) } }
         started.await()
-        val e = runCatching { chat.send("b").toList() }.exceptionOrNull()
-        assertTrue("$e", e is IllegalStateException)
+        val second = chat.send("b")  // creating the flow doesn't throw
+        val e = runCatching { second.toList() }.exceptionOrNull()
+        assertTrue("$e", e is LlamaBroException.Busy)
         job.cancel()
         job.join()
         // after the first send ends, sending works again
@@ -147,7 +148,7 @@ class ConversationTest {
         engine.model.onRequest = { r -> Replies.text("partial answer").dropLast(2).forEach { r.chunk(it) } }
         val chat = model.conversation()
         val got = CompletableDeferred<Unit>()
-        val job = launch { chat.send("q").collect { if (it is ChatEvent.Content) got.complete(Unit) } }
+        val job = launch { chat.send("q").collect { if (it is ChatEvent.ContentDelta) got.complete(Unit) } }
         got.await()
         job.cancel()
         job.join()

@@ -27,6 +27,19 @@ PATHS = {
     "props": ("GET", "/props"),
     "slots": ("GET", "/slots"),
     "metrics": ("GET", "/metrics"),
+    "infill": ("POST", "/infill"),
+    "responses": ("POST", "/v1/responses"),
+    "responses_input_tokens": ("POST", "/v1/responses/input_tokens"),
+    "messages": ("POST", "/v1/messages"),
+    "messages_count_tokens": ("POST", "/v1/messages/count_tokens"),
+    "embeddings_native": ("POST", "/embeddings"),
+    "tts": ("POST", "/tts"),
+    "systemone": ("POST", "/v1/systemone"),
+    "props_set": ("POST", "/props"),
+    "models": ("GET", "/v1/models"),
+    "health": ("GET", "/health"),
+    "lora_adapters": ("GET", "/lora-adapters"),
+    "lora_adapters_set": ("POST", "/lora-adapters"),
 }
 
 

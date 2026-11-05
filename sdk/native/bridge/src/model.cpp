@@ -13,7 +13,13 @@
 
 #include "llama.h"
 
+#include <cerrno>
 #include <chrono>
+#include <cstdio>
+#include <cstring>
+#if defined(__ANDROID__)
+#include <malloc.h>
+#endif
 #include <vector>
 
 namespace {
@@ -35,6 +41,19 @@ std::map<std::string, server_http_context::handler_t> make_endpoints(server_rout
         { "slots",          ex_wrapper(r.get_slots) },
         { "slots_action",   ex_wrapper(r.post_slots) },
         { "metrics",        ex_wrapper(r.get_metrics) },
+        { "infill",                 ex_wrapper(r.post_infill) },
+        { "responses",              ex_wrapper(r.post_responses_oai) },
+        { "responses_input_tokens", ex_wrapper(r.post_responses_tok_oai) },
+        { "messages",               ex_wrapper(r.post_anthropic_messages) },
+        { "messages_count_tokens",  ex_wrapper(r.post_anthropic_count_tokens) },
+        { "embeddings_native",      ex_wrapper(r.post_embeddings) },
+        { "tts",                    ex_wrapper(r.post_tts) },
+        { "systemone",              ex_wrapper(r.post_systemone) },
+        { "props_set",              ex_wrapper(r.post_props) },
+        { "models",                 ex_wrapper(r.get_models) },
+        { "health",                 ex_wrapper(r.get_health) },
+        { "lora_adapters",          ex_wrapper(r.get_lora_adapters) },
+        { "lora_adapters_set",      ex_wrapper(r.post_lora_adapters) },
     };
 }
 
@@ -47,6 +66,7 @@ void finish_load(lb_model * m, lb_status st, const std::string & error) {
 }
 
 void worker_main(lb_model * m) {
+    lb_error_capture errors;  // llama.cpp logs why a load failed, and only there (F51)
     if (!server_prepare_params(m->params)) {
         finish_load(m, LB_ERR_INVALID_ARG, "invalid model parameters");
         return;
@@ -82,6 +102,7 @@ void worker_main(lb_model * m) {
     } catch (const std::exception & e) {
         error += std::string(": ") + e.what();
     }
+    if (!loaded && !errors.first_line().empty()) error += ": " + errors.first_line();
     if (!loaded) {
         m->ctx_server.terminate();
         finish_load(m, LB_ERR_LOAD_FAILED, error);
@@ -97,6 +118,19 @@ void worker_main(lb_model * m) {
     std::lock_guard<std::mutex> lk(m->mtx);
     m->loop_exited = true;
     m->cv.notify_all();
+}
+
+// A file that can't be opened gets its own code, so apps can tell it apart (F51). llama.cpp would fail on it too,
+// but says why only in its log.
+bool can_open(const std::string & path, std::string & err) {
+    if (path.empty()) return true;
+    FILE * f = std::fopen(path.c_str(), "rb");
+    if (!f) {
+        err = "cannot open " + path + ": " + std::strerror(errno);
+        return false;
+    }
+    std::fclose(f);
+    return true;
 }
 
 // GGUF metadata value, any length (llama_model_meta_val_str_by_index returns the full length, like snprintf)
@@ -150,7 +184,13 @@ lb_status lb_model_load(const char * config_json, lb_progress_cb cb, void * user
         lb_set_error(error_json, err);
         return LB_ERR_INVALID_ARG;
     }
+    if (!can_open(m->params.model.path, err) || !can_open(m->params.mmproj.path, err)) {
+        lb_set_error(error_json, "failed to load model: " + err, "file_not_found");
+        return LB_ERR_LOAD_FAILED;
+    }
+    lb_error_capture errors;
     if (lb_config_wants_auto_ctx(cfg) && !lb_resolve_auto_ctx(m->params, err)) {
+        if (!errors.first_line().empty()) err += ": " + errors.first_line();
         lb_set_error(error_json, "failed to load model: " + err);
         return LB_ERR_LOAD_FAILED;
     }
@@ -227,6 +267,11 @@ void lb_model_free(lb_model * m) {
     lk.unlock();
     m->worker.join();
     delete m;
+#if defined(__ANDROID__)
+    // bionic's allocator keeps the freed weights and KV cache (about the model's size) for reuse instead of
+    // returning them; an app that closes a model expects that memory back (findings F49)
+    mallopt(M_PURGE, 0);
+#endif
 }
 
 }  // extern "C"

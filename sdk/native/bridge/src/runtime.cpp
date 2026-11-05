@@ -37,6 +37,7 @@ struct runtime_state {
 };
 
 thread_local int t_log_depth = 0;  // > 0 while this thread is inside the app's log callback
+thread_local std::string * t_capture = nullptr;  // lb_error_capture on this thread, if any
 
 runtime_state & state() {
     static runtime_state s;  // function-local static: initialised once, thread-safely
@@ -61,11 +62,13 @@ lb_log_level to_lb_level(ggml_log_level level) {
     }
 }
 
-// Same filter as common_log_default_callback (common/log.cpp), then the app's callback.
-// Same filter as common_log_default_callback (common/log.cpp), then the app's callback, called outside the lock:
-// llama's threads don't queue behind a slow logger, and the callback may log or swap the logger itself.
+// Installed from lb_runtime_init on. Error lines go to this thread's lb_error_capture, if any (F51). Then, without
+// an app callback, llama.cpp's default; with one, the same filter as common_log_default_callback (common/log.cpp)
+// and the app's callback, called outside the lock: llama's threads don't queue behind a slow logger, and the
+// callback may log or swap the logger itself.
 void log_trampoline(ggml_log_level level, const char * text, void * /*user*/) {
     auto & s = state();
+    const ggml_log_level raw = level;
     std::shared_ptr<log_entry> entry;
     {
         std::lock_guard<std::mutex> lk(s.log_mtx);
@@ -74,10 +77,14 @@ void log_trampoline(ggml_log_level level, const char * text, void * /*user*/) {
         } else {
             s.last_level = level;
         }
-        if (common_log_get_verbosity(level) > common_log_get_verbosity_thold()) return;
         entry = s.log;
     }
-    if (!entry || !entry->cb) return;
+    if (t_capture && level == GGML_LOG_LEVEL_ERROR && text) t_capture->append(text);
+    if (!entry || !entry->cb) {
+        common_log_default_callback(raw, text, nullptr);
+        return;
+    }
+    if (common_log_get_verbosity(level) > common_log_get_verbosity_thold()) return;
     t_log_depth++;
     entry->cb(entry->user, to_lb_level(level), text);
     t_log_depth--;
@@ -140,8 +147,20 @@ char * lb_strdup(const std::string & s) {
     return out;
 }
 
-void lb_set_error(char ** error_json, const std::string & message) {
-    if (error_json) *error_json = lb_strdup(json{{"error", message}}.dump());
+void lb_set_error(char ** error_json, const std::string & message, const char * code) {
+    if (!error_json) return;
+    json e = {{"error", message}};
+    if (code) e["code"] = code;
+    *error_json = lb_strdup(e.dump());
+}
+
+lb_error_capture::lb_error_capture() : prev_(t_capture) { t_capture = &text_; }
+lb_error_capture::~lb_error_capture() { t_capture = prev_; }
+
+std::string lb_error_capture::first_line() const {
+    std::string line = text_.substr(0, text_.find('\n'));
+    while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+    return line;
 }
 
 bool lb_runtime_is_initialized() {
@@ -204,6 +223,7 @@ lb_status lb_runtime_init(const char * config_json, char ** error_json) {
     // to repeat if an earlier init failed (start_gc returns when already running).
     common_init();
     common_log_set_verbosity_thold(verbosity);
+    llama_log_set(log_trampoline, nullptr);  // replaces common_init's default, which it calls when the app has none
     server_stream_session_manager_start();  // once per process, as llama_server() does
     // Our backend goes in before llama_backend_init: with an empty registry it calls ggml_backend_load_all, which
     // scans the executable's and the current directory and loads GGML_BACKEND_PATH. Backends come only from
@@ -234,11 +254,7 @@ void lb_runtime_set_log(lb_log_cb cb, void * user) {
         const long own = t_log_depth > 0 ? 1 : 0;
         while (old.use_count() > 1 + own) std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    if (cb) {
-        llama_log_set(log_trampoline, nullptr);
-    } else {
-        llama_log_set(common_log_default_callback, nullptr);  // what common_init() installs
-    }
+    llama_log_set(log_trampoline, nullptr);  // without a callback it forwards to llama.cpp's default
 }
 
 char * lb_runtime_devices(void) {
