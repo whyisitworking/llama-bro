@@ -4,7 +4,9 @@
 #   native         host C API tests (ctest)
 #   contract       the C API vs upstream llama-server, same build, same flags, per model (run.sh)
 #   tools-ui       llama.cpp's own tools/ui compaction code regenerated in node; must equal the committed golden
-#   jvm            Kotlin unit tests, including the 400-case tools/ui golden replay
+#   api            the release build's public API equals the reviewed sdk/llamabro/api/llamabro.api (D26)
+#   lint           Android lint on llamabro and llamabro-testing, warnings as errors
+#   jvm            Kotlin unit tests of both libraries and the sample, including the 400-case tools/ui golden replay
 #   e2e            Kotlin + JNI + native on this machine vs upstream llama-server (HostNativeTest)
 #   aar            release AAR: libraries, names, exports, 16 KB alignment (check-aar.sh)
 #   device         (--device) phone tests: native, UI, acceptance per model, and the minified (R8) sample build
@@ -146,7 +148,9 @@ run build    step_build
 run native   ctest --test-dir "$native/build/host" --output-on-failure
 run contract step_contract
 run tools-ui step_tools_ui
-run jvm      gradle :llamabro:testDebugUnitTest
+run api      gradle :llamabro:apiCheck
+run lint     gradle :llamabro:lintRelease :llamabro-testing:lintRelease
+run jvm      gradle :llamabro:testDebugUnitTest :llamabro-testing:testDebugUnitTest :samples:minimal:testDebugUnitTest
 run e2e      step_e2e
 run aar      step_aar
 [ $device -eq 1 ] && run device step_device

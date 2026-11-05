@@ -43,11 +43,6 @@ internal fun interface LogListener {
 }
 
 /** Receives one request's events, on the request's native thread. Exactly one of [onDone] / [onCancelled], last. */
-internal interface RequestSink {
-    fun onChunk(httpStatus: Int, data: ByteArray)
-    fun onDone()
-    fun onCancelled()
-}
 
 /** A failed native call: [status] is `lb_status`, [errorJson] is `{"error": "..."}`. */
 internal class NativeError(val status: Int, val errorJson: String) : RuntimeException(errorJson)

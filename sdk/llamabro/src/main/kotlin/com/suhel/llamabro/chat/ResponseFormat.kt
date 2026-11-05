@@ -1,5 +1,6 @@
 package com.suhel.llamabro.chat
 
+/** OpenAI's `response_format`, enforced by a grammar. */
 public sealed interface ResponseFormat {
     /** Any JSON object. */
     public data object JsonObject : ResponseFormat

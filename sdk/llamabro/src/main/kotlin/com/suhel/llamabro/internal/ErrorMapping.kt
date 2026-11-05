@@ -23,8 +23,9 @@ internal object ErrorMapping {
         val status = error["code"]?.jsonPrimitive?.intOrNull ?: httpStatus
         return when (type) {
             "exceed_context_size_error" -> LlamaBroException.ContextExceeded(
-                promptTokens = error["n_prompt_tokens"]?.jsonPrimitive?.intOrNull ?: -1,
-                contextSize = error["n_ctx"]?.jsonPrimitive?.intOrNull ?: -1,
+                promptTokens = error["n_prompt_tokens"]?.jsonPrimitive?.intOrNull,
+                contextSize = error["n_ctx"]?.jsonPrimitive?.intOrNull,
+                message = message,
             )
             "invalid_request_error", "not_found_error", "authentication_error", "permission_error" ->
                 LlamaBroException.InvalidRequest(message)
@@ -32,6 +33,16 @@ internal object ErrorMapping {
             "unavailable_error" -> LlamaBroException.Unavailable(message)
             else -> LlamaBroException.ServerError(status, message)
         }
+    }
+
+    /** A failed `lb_model_load`: its error JSON carries `"code": "file_not_found"` when a file can't be opened. */
+    fun loadFailed(e: NativeError): LlamaBroException.ModelLoadFailed {
+        val obj = runCatching { json.parseToJsonElement(e.errorJson) as? JsonObject }.getOrNull()
+        val reason = when (obj?.string("code")) {
+            "file_not_found" -> LlamaBroException.ModelLoadFailed.Reason.FileNotFound
+            else -> LlamaBroException.ModelLoadFailed.Reason.Other
+        }
+        return LlamaBroException.ModelLoadFailed(reason, nativeMessage(e.errorJson), e)
     }
 
     /** The message of a C API error JSON (`{"error": "..."}`). */

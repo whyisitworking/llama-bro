@@ -6,10 +6,11 @@ arguments; ids are random, server-common.cpp) and finish_reason. id / created / 
 timing fields are ignored. Non-stream responses are compared as JSON minus those fields.
 
 usage: compare.py DIR_A DIR_B [REQUESTS.jsonl]   -> one line per request, exits 1 on any difference.
-REQUESTS gives per-request options (see make-requests.py): compare=skip|metrics_names, compare_timings.
+REQUESTS gives per-request options (see make-requests.py): compare=skip|metrics_names|events, compare_timings.
 """
 import json
 import os
+import re
 import sys
 
 # ignored only at the top level of a response or stream event; nested "id" (e.g. token ids) is compared
@@ -115,6 +116,34 @@ def metric_names(path):
     return [line if line.startswith("#") else line.split(" ")[0] for line in raw_text(path).splitlines() if line.strip()]
 
 
+# compare="events": the Responses and Anthropic shapes (event: lines, ids and wall-clock times nested anywhere).
+# Every data payload is compared, without random ids (server-common.cpp's random_string) and timestamps.
+WALL_CLOCK = {"created", "created_at", "completed_at"}
+RANDOM_ID = re.compile(r"^(resp|msg|chatcmpl|fc|rs|call)[_-][A-Za-z0-9]{20,}$")
+
+
+def without_random(obj):
+    if isinstance(obj, dict):
+        return {k: without_random(v) for k, v in obj.items() if k not in WALL_CLOCK and k != "timings"}
+    if isinstance(obj, list):
+        return [without_random(v) for v in obj]
+    if isinstance(obj, str) and RANDOM_ID.match(obj):
+        return "<id>"
+    return obj
+
+
+def all_events(path):
+    raw = raw_text(path)
+    payloads = re.findall(r"^data: (.*)$", raw, re.M) or [raw]
+    out = []
+    for p in payloads:
+        try:
+            out.append(without_random(json.loads(p)))
+        except json.JSONDecodeError:
+            out.append(p)
+    return out
+
+
 def main(a, b, requests=None):
     specs = {}
     if requests:
@@ -136,6 +165,8 @@ def main(a, b, requests=None):
             continue
         if spec.get("compare") == "metrics_names":
             na, nb = metric_names(pa), metric_names(pb)
+        elif spec.get("compare") == "events":
+            na, nb = all_events(pa), all_events(pb)
         else:
             na, nb = normalized(pa), normalized(pb)
             fields = spec.get("compare_timings")

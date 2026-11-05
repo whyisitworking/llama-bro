@@ -48,8 +48,8 @@ internal class ChatStreamDecoder {
             val choice = c as? JsonObject ?: return@forEach
             val delta = choice["delta"] as? JsonObject
             if (delta != null) {
-                delta.str("reasoning_content")?.takeIf { it.isNotEmpty() }?.let { out += ChatEvent.Reasoning(it) }
-                delta.str("content")?.takeIf { it.isNotEmpty() }?.let { out += ChatEvent.Content(it) }
+                delta.str("reasoning_content")?.takeIf { it.isNotEmpty() }?.let { out += ChatEvent.ReasoningDelta(it) }
+                delta.str("content")?.takeIf { it.isNotEmpty() }?.let { out += ChatEvent.ContentDelta(it) }
                 (delta["tool_calls"] as? JsonArray)?.forEach { t ->
                     val tc = t as? JsonObject ?: return@forEach
                     val call = calls.getOrPut(tc.int("index") ?: 0) { PendingCall() }
@@ -82,7 +82,7 @@ internal class ChatStreamDecoder {
     /** The tool calls, then [ChatEvent.Done]. Call once, after the stream ends. */
     fun finish(): List<ChatEvent> {
         val out = mutableListOf<ChatEvent>()
-        calls.values.forEach { out += ChatEvent.ToolCall(ToolCall(it.id, it.name.toString(), it.args.toString())) }
+        calls.values.forEach { out += ChatEvent.ToolCallReceived(ToolCall(it.id, it.name.toString(), it.args.toString())) }
         val reason = when (finishReason) {
             "length" -> FinishReason.Length
             "tool_calls" -> FinishReason.ToolCalls

@@ -160,15 +160,28 @@ static void swap_logger_inside_callback(void *, lb_log_level, const char *) {
     lb_runtime_set_log(nullptr, nullptr);  // re-enters the bridge from inside the callback
 }
 
+// A file that exists but isn't a GGUF; the caller removes it.
+static std::string junk_file() {
+    char path[] = "/tmp/lb-junk-XXXXXX";
+    const int fd = mkstemp(path);
+    LB_CHECK(fd >= 0);
+    FILE * f = fdopen(fd, "w");
+    std::fputs("not a model", f);
+    std::fclose(f);
+    return path;
+}
+
 static void log_callback_can_reenter() {
     init_runtime();
     lb_runtime_set_log(swap_logger_inside_callback, nullptr);
     lb_model * model = nullptr;
     char * err = nullptr;
     // n_ctx fixed: skips the GGUF header read, so llama itself logs the failed load
-    const json cfg = {{"model_path", "/nonexistent.gguf"}, {"n_ctx", 512}};
+    const std::string junk = junk_file();
+    const json cfg = {{"model_path", junk}, {"n_ctx", 512}};
     LB_CHECK(lb_model_load(cfg.dump().c_str(), nullptr, nullptr, &model, &err) == LB_ERR_LOAD_FAILED);
     lb_string_free(err);
+    std::remove(junk.c_str());
     LB_CHECK(g_log_calls.load() >= 1);
 }
 
@@ -223,7 +236,27 @@ static void model_load_missing_file_fails() {
     LB_CHECK(st == LB_ERR_LOAD_FAILED);
     LB_CHECK(model == nullptr);
     LB_CHECK(err != nullptr && std::strstr(err, "\"error\"") != nullptr);
+    LB_CHECK(json::parse(err).value("code", "") == "file_not_found");
     lb_string_free(err);
+}
+
+// llama.cpp only logs why; the error carries its line (F51), with or without an app logger, and with no code
+static void model_load_bad_file_has_reason() {
+    init_runtime();
+    const std::string junk = junk_file();
+    for (const char * ctx : {"auto", "fixed"}) {
+        lb_model * model = nullptr;
+        char * err = nullptr;
+        json cfg = {{"model_path", junk}};
+        if (std::string(ctx) == "fixed") cfg["n_ctx"] = 512;
+        LB_CHECK(lb_model_load(cfg.dump().c_str(), nullptr, nullptr, &model, &err) == LB_ERR_LOAD_FAILED);
+        const json e = json::parse(err);
+        std::fprintf(stderr, "%s: %s\n", ctx, e.dump().c_str());
+        LB_CHECK(e.at("error").get<std::string>().find("invalid magic") != std::string::npos);
+        LB_CHECK(!e.contains("code"));
+        lb_string_free(err);
+    }
+    std::remove(junk.c_str());
 }
 
 static void model_load_unknown_key_fails() {
@@ -523,6 +556,7 @@ int main(int argc, char ** argv) {
         {"props_build_info_names_llama_build", props_build_info_names_llama_build},
         {"config_defaults_applied", config_defaults_applied},
         {"model_load_missing_file_fails", model_load_missing_file_fails},
+        {"model_load_bad_file_has_reason", model_load_bad_file_has_reason},
         {"model_load_unknown_key_fails", model_load_unknown_key_fails},
         {"model_free_right_after_load", model_free_right_after_load},
         {"chat_nonstream_ok", chat_nonstream_ok},

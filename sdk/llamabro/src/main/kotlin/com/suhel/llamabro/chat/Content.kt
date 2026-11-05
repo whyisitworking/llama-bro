@@ -2,6 +2,7 @@ package com.suhel.llamabro.chat
 
 /** A part of a user message. */
 public sealed interface Content {
+    /** Text. */
     public data class Text(public val text: String) : Content
 
     /** Sent as a base64 `data:` URL in an `image_url` part, as llama-server takes images. */

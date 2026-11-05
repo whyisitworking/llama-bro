@@ -12,10 +12,15 @@ public data class Tool(
     }
 }
 
+/** OpenAI's `tool_choice`. */
 public sealed interface ToolChoice {
+    /** The model decides. */
     public data object Auto : ToolChoice
+    /** No tool calls. */
     public data object None : ToolChoice
+    /** At least one tool call. */
     public data object Required : ToolChoice
+    /** Call this tool. */
     public data class Function(public val name: String) : ToolChoice
 }
 

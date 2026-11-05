@@ -4,6 +4,7 @@ cases below. Each line: {"id", "endpoint", "body" | "body_raw", options}. Option
   needs: ["mmproj"]                 run only when the model has a projector
   cancel_after_chunks: N            stop the stream after N chunks (both runners)
   compare: "skip" | "metrics_names" skip a request whose output depends on timing, or compare metric names only
+  compare: "events"                 every data payload, without random ids and timestamps at any depth
   compare_timings: ["cache_n", …]   also compare these timings fields (prompt cache parity)
 usage: make-requests.py > requests.jsonl
 """
@@ -92,6 +93,34 @@ add("x-34-error-exceed-context", "chat", chat("word " * 9000, max_tokens=4))
 add("x-35-error-bad-schema", "chat", chat("hi", response_format={"type": "json_schema", "json_schema": {"schema": {"type": "nonsense"}}}))
 add("x-36-error-bad-tool-choice", "chat", chat("hi", tools=[WEATHER], tool_choice={"type": "function", "function": {"name": "missing"}}))
 add("x-37-error-repeat-last-n", "chat", chat("hi", repeat_last_n=-1))
+
+# PA T2: the sampling fields Kotlin's Sampling gained (llama-server's make_llama_cmpl_schema), seeded so they matter
+add("x-38-sampling-dry-xtc", "chat", chat("Tell a very short story.", temperature=0.9, seed=11, dry_multiplier=0.8, dry_base=1.75,
+    dry_allowed_length=2, dry_penalty_last_n=-1, dry_sequence_breakers=["\n", ":"], xtc_probability=0.5, xtc_threshold=0.1))
+add("x-39-sampling-mirostat", "chat", chat("Describe the sea.", temperature=0.8, seed=12, mirostat=2, mirostat_tau=5.0, mirostat_eta=0.1))
+add("x-40-sampling-typical-dynatemp", "chat", chat("Name three birds.", temperature=0.9, seed=13, typical_p=0.9, dynatemp_range=0.3,
+    dynatemp_exponent=1.2, top_n_sigma=1.5, min_keep=2))
+add("x-41-sampling-adaptive", "chat", chat("Name a city.", temperature=0.9, seed=14, adaptive_target=0.5, adaptive_decay=0.9))
+add("x-42-logit-bias-ignore-eos", "chat", chat("Say hello.", max_tokens=12, logit_bias={"Hello": False, "hello": -5.0}, ignore_eos=True))
+
+# PA T6: the routes the C API gained (every route server_register_routes maps for one model); without a FIM, audio,
+# decision or LoRA model the answer is the error (or empty list) both servers give
+NO_THINK = {"chat_template_kwargs": {"enable_thinking": False}}
+add("x-43-infill", "infill", {"input_prefix": "def add(a, b):\n    ", "input_suffix": "\n", "n_predict": 12, "temperature": 0, "seed": 42})
+add("x-44-responses", "responses", {"input": "Name a colour.", "max_output_tokens": 16, "temperature": 0, "seed": 42, "stream": True, **NO_THINK}, compare="events")
+add("x-45-responses-nonstream", "responses", {"input": [{"role": "user", "content": "Name a fruit."}], "max_output_tokens": 16, "temperature": 0, "seed": 42, **NO_THINK}, compare="events")
+add("x-46-responses-input-tokens", "responses_input_tokens", {"input": "How many tokens is this?", "tools": [{"type": "function", "name": "get_weather", "parameters": WEATHER["function"]["parameters"]}]})
+add("x-47-messages", "messages", {"max_tokens": 16, "messages": [{"role": "user", "content": "Name a colour."}], "temperature": 0, "seed": 42, "stream": True, **NO_THINK}, compare="events")
+add("x-48-messages-nonstream", "messages", {"max_tokens": 16, "system": "Be terse.", "messages": [{"role": "user", "content": "Name a fruit."}], "temperature": 0, "seed": 42, **NO_THINK}, compare="events")
+add("x-49-messages-count-tokens", "messages_count_tokens", {"messages": [{"role": "user", "content": "How many tokens is this?"}]})
+add("x-50-embeddings-native", "embeddings_native", {"content": "hello"})
+add("x-51-tts", "tts", {"input": "hello"})
+add("x-52-systemone", "systemone", {"questions": []})
+add("x-53-props-set", "props_set", {})
+add("x-54-models", "models", None, compare="events")
+add("x-55-health", "health", None)
+add("x-56-lora-adapters", "lora_adapters", None)
+add("x-57-lora-adapters-set", "lora_adapters_set", [])
 
 for spec in out:
     print(json.dumps(spec, ensure_ascii=False))

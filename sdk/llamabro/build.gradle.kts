@@ -1,5 +1,12 @@
+import com.android.build.api.artifact.ScopedArtifact
+import com.android.build.api.variant.ScopedArtifacts
+import kotlinx.validation.KotlinApiBuildTask
+import kotlinx.validation.KotlinApiCompareTask
+
 plugins {
     alias(libs.plugins.android.library)
+    // only its task classes: the plugin wires itself to org.jetbrains.kotlin.android, which AGP 9 doesn't apply
+    alias(libs.plugins.kotlinx.bcv) apply false
 }
 
 group = "io.github.whyisitworking"
@@ -47,10 +54,21 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    // run by sdk/scripts/check.sh (PA T1): any warning fails the build
+    lint {
+        abortOnError = true
+        warningsAsErrors = true
+        checkDependencies = false
+        // arm64-v8a only, by design (design §9 "Platform")
+        disable += "ChromeOsAbiSupport"
+    }
 }
 
 kotlin {
     explicitApi()
+    // the SDK uses its own engine seam freely; apps would have to opt in (InternalLlamaBroApi, D27)
+    compilerOptions { optIn.add("com.suhel.llamabro.InternalLlamaBroApi") }
 }
 
 dependencies {
@@ -94,4 +112,57 @@ tasks.withType<Test>().configureEach {
         providers.gradleProperty("llamabro.host.$key").orNull?.let { systemProperty("llamabro.host.$key", it) }
     }
     providers.gradleProperty("llamabro.host.lib").orNull?.let { jvmArgs("-Djava.library.path=$it") }
+}
+
+// Public API dump (PA T1, findings F45). `apiCheck` compares the release build's public API with the checked-in
+// api/llamabro.api; `apiDump` updates it. BCV's plugin would set these up itself only for the
+// org.jetbrains.kotlin.android plugin, which AGP 9's built-in Kotlin doesn't apply, so its tasks are wired here to
+// the release variant's classes through AGP's variant API.
+val bcvRuntime: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    description = "BCV's worker classpath (the same artifacts its plugin resolves)"
+}
+dependencies {
+    bcvRuntime(libs.kotlinx.bcv)
+    bcvRuntime(libs.bcv.asm)
+    bcvRuntime(libs.bcv.asm.tree)
+    bcvRuntime(libs.kotlin.metadata.jvm)
+}
+
+abstract class ReleaseApiBuild : KotlinApiBuildTask() {
+    /** The release variant's class directories (Kotlin and Java); jars there are only R classes. */
+    @get:org.gradle.api.tasks.Internal
+    abstract val classDirs: ListProperty<Directory>
+
+    @get:org.gradle.api.tasks.Internal
+    abstract val classJars: ListProperty<RegularFile>
+
+    init {
+        inputClassesDirs.from(classDirs)
+    }
+}
+
+val apiFile = layout.projectDirectory.file("api/llamabro.api")
+val apiBuild = tasks.register<ReleaseApiBuild>("apiBuild") {
+    description = "Writes the release build's public API to build/api/llamabro.api"
+    outputApiFile.set(layout.buildDirectory.file("api/llamabro.api"))
+    runtimeClasspath.from(bcvRuntime)
+}
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.artifacts.forScope(ScopedArtifacts.Scope.PROJECT)
+            .use(apiBuild)
+            .toGet(ScopedArtifact.CLASSES, ReleaseApiBuild::classJars, ReleaseApiBuild::classDirs)
+    }
+}
+tasks.register<KotlinApiCompareTask>("apiCheck") {
+    description = "Fails if the public API differs from api/llamabro.api (run apiDump after a reviewed change)"
+    group = "verification"
+    projectApiFile.set(apiFile)
+    generatedApiFile.set(apiBuild.flatMap { it.outputApiFile })
+}
+tasks.register<Copy>("apiDump") {
+    description = "Updates api/llamabro.api from the release build"
+    from(apiBuild.flatMap { it.outputApiFile })
+    into(apiFile.asFile.parentFile)
 }

@@ -1,37 +1,35 @@
 package com.suhel.llamabro.sample
 
-import android.app.Activity
 import android.os.Bundle
+import android.util.Log
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.Button
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.suhel.llamabro.LlamaBro
-import com.suhel.llamabro.Model
-import com.suhel.llamabro.ModelSource
-import com.suhel.llamabro.chat.ChatEvent
-import com.suhel.llamabro.conversation
-import com.suhel.llamabro.conversation.Conversation
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.cancel
+import androidx.activity.ComponentActivity
+import androidx.activity.viewModels
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * The smallest useful app on the SDK: loads the first GGUF in filesDir and streams replies.
+ * The smallest useful app on the SDK: loads the first GGUF in filesDir and streams replies. The model lives in
+ * [ChatViewModel], so rotation doesn't reload it.
  * Push a model with: adb shell run-as com.suhel.llamabro.sample cp /data/local/tmp/<file>.gguf files/
  */
-class MainActivity : Activity() {
-    private val scope = MainScope()
-    private var model: Model? = null
-    private var chat: Conversation? = null
-    private var reply: Job? = null
+class MainActivity : ComponentActivity() {
+    private val vm: ChatViewModel by viewModels {
+        val gguf = filesDir.listFiles { f: File -> f.name.endsWith(".gguf") && !f.name.startsWith("mmproj") }?.minByOrNull { it.name }
+        ChatViewModel.factory(application, gguf?.path)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,56 +52,30 @@ class MainActivity : Activity() {
             addView(LinearLayout(context).apply { addView(send); addView(stop) })
         })
 
-        val gguf = filesDir.listFiles { f: File -> f.name.endsWith(".gguf") && !f.name.startsWith("mmproj") }?.minByOrNull { it.name }
-        if (gguf == null) {
-            output.text = "No .gguf in ${filesDir.path}"
-            return
-        }
-        output.text = "Loading ${gguf.name}…"
-        scope.launch {
-            try {
-                val m = LlamaBro.getInstance(this@MainActivity).loadModel(ModelSource.file(gguf.path))
-                model = m
-                chat = m.conversation(system = "You are a helpful assistant.")
-                output.text = "${m.info.description}, context ${m.info.contextSize}\n"
-                android.util.Log.i("LlamaBroSample", "loaded ${m.info.description}")
-                send.isEnabled = true
-            } catch (e: Exception) {
-                output.text = "Load failed: ${e.message}"
-                android.util.Log.e("LlamaBroSample", "load failed", e)
-            }
-        }
-
         send.setOnClickListener {
-            val text = input.text.toString().trim()
-            val c = chat ?: return@setOnClickListener
-            if (text.isEmpty() || reply?.isActive == true) return@setOnClickListener
+            vm.send(input.text.toString().trim())
             input.text.clear()
-            output.append("\n> $text\n")
-            reply = scope.launch {
-                try {
-                    c.send(text).collect { e ->
-                        when (e) {
-                            is ChatEvent.Content -> output.append(e.delta)
-                            is ChatEvent.Done -> e.timings?.let {
-                                output.append("\n[%.1f t/s prefill, %.1f t/s decode]\n".format(it.promptPerSecond, it.predictedPerSecond))
-                            }
-                            else -> Unit
-                        }
+        }
+        stop.setOnClickListener { vm.stop() }
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    vm.ready.collect {
+                        send.isEnabled = it
+                        // check.sh's minified-build step waits for this line (R8 rules, F28)
+                        if (it) Log.i("LlamaBroSample", "loaded: ${vm.status.value}")
+                    }
+                }
+                launch {
+                    combine(vm.status, vm.transcript, vm.stats) { status, transcript, stats ->
+                        status + "\n" + transcript + (stats?.let { "$it\n" } ?: "")
+                    }.collect {
+                        output.text = it
                         scroll.post { scroll.fullScroll(ScrollView.FOCUS_DOWN) }
                     }
-                } catch (e: Exception) {
-                    if (e !is kotlinx.coroutines.CancellationException) output.append("\n[error: ${e.message}]\n")
                 }
             }
         }
-        stop.setOnClickListener { reply?.cancel() }
-    }
-
-    override fun onDestroy() {
-        scope.cancel()
-        // close() blocks for up to about a second while running requests stop: keep it off the main thread
-        model?.let { m -> Thread { m.close() }.start() }
-        super.onDestroy()
     }
 }

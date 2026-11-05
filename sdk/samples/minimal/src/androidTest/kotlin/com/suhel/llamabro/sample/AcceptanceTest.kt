@@ -9,8 +9,6 @@ import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.FinishReason
-import com.suhel.llamabro.chat.Reasoning
-import com.suhel.llamabro.chat.Sampling
 import com.suhel.llamabro.conversation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
@@ -42,8 +40,7 @@ class AcceptanceTest(private val file: String) {
 
     // deterministic and short; thinking off where the template supports the switch
     private fun Model.chat() = conversation(system = "You are a helpful assistant.") {
-        sampling = Sampling(temperature = 0f, seed = 1)
-        reasoning = Reasoning(enableThinking = false)
+        defaults { sampling { temperature = 0f; seed = 1 }; reasoning { enableThinking = false } }
     }
 
     private fun model(): Model = synchronized(Companion) {
@@ -72,10 +69,10 @@ class AcceptanceTest(private val file: String) {
     @Test
     fun streamsReply() = runBlocking {
         val events = model().chat().send("Say hello in five words.").toList()
-        val content = events.filterIsInstance<ChatEvent.Content>().joinToString("") { it.delta }
+        val content = events.filterIsInstance<ChatEvent.ContentDelta>().joinToString("") { it.delta }
         val done = events.last() as ChatEvent.Done
         log("streamsReply", "${timings(done)} reason=${done.reason} content=\"${content.replace("\n", "\\n")}\"")
-        assertTrue(events.any { it is ChatEvent.Content })
+        assertTrue(events.any { it is ChatEvent.ContentDelta })
         assertEquals(FinishReason.Stop, done.reason)
     }
 
@@ -87,16 +84,15 @@ class AcceptanceTest(private val file: String) {
         if (caps["supports_tool_calls"] == false) log("runsToolLoop", "skipped: template supports_tool_calls=false")
         assumeTrue("template has no tool support", caps["supports_tool_calls"] != false)
         val chat = model().conversation(system = "You are a helpful assistant. Use the tools when they help.") {
-            sampling = Sampling(temperature = 0f, seed = 1)
-            reasoning = Reasoning(enableThinking = false)
+            defaults { sampling { temperature = 0f; seed = 1 }; reasoning { enableThinking = false } }
             tool("get_weather", "Current weather for a city", """{"type":"object","properties":{"city":{"type":"string","description":"City name"}},"required":["city"]}""") { args ->
                 "Sunny, 22 °C in ${args.string("city")}"
             }
         }
         val events = chat.send("What's the weather in Paris right now?").toList()
-        val call = events.filterIsInstance<ChatEvent.ToolCall>().firstOrNull()
+        val call = events.filterIsInstance<ChatEvent.ToolCallReceived>().firstOrNull()
         val done = events.last() as ChatEvent.Done
-        val content = events.filterIsInstance<ChatEvent.Content>().joinToString("") { it.delta }
+        val content = events.filterIsInstance<ChatEvent.ContentDelta>().joinToString("") { it.delta }
         log("runsToolLoop", "call=${call?.call?.name}(${call?.call?.argumentsJson}) ${timings(done)} reason=${done.reason} content=\"${content.replace("\n", "\\n")}\"")
         assertEquals("get_weather", call?.call?.name)
         val callAt = events.indexOf<ChatEvent>(call!!)
@@ -151,7 +147,7 @@ class AcceptanceTest(private val file: String) {
         @AfterClass
         @JvmStatic
         fun closeModel() {
-            loaded?.close()
+            runBlocking { loaded?.closeAndJoin() }  // the next test class starts with the memory freed
             loaded = null
             loadedFile = null
         }

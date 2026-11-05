@@ -1,11 +1,13 @@
 package com.suhel.llamabro.sample
 
 import android.content.Intent
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -37,5 +39,29 @@ class SampleUiTest {
         val output = device.findObject(By.res(pkg, "output"))
         assertTrue("no reply with timings", output.wait(Until.textContains("t/s decode"), 120_000))
         assertTrue(output.text.contains("> Say hello in three words."))
+    }
+
+    /**
+     * A configuration change (what rotation does) keeps the model: the recreated activity shows the reply at once
+     * and Send is enabled without a reload. `recreate()` rather than rotating, which would change the phone's
+     * auto-rotate setting.
+     */
+    @Test
+    fun recreateKeepsTheModelAndTheConversation() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            val send = device.wait(Until.findObject(By.res(pkg, "send").enabled(true)), 60_000)
+            assertNotNull("model didn't load (Send stays disabled)", send)
+            device.findObject(By.res(pkg, "input")).text = "Name one colour."
+            device.findObject(By.res(pkg, "send")).click()
+            assertTrue("no reply", device.findObject(By.res(pkg, "output")).wait(Until.textContains("t/s decode"), 120_000))
+
+            scenario.recreate()
+
+            val sendAfter = device.wait(Until.findObject(By.res(pkg, "send").enabled(true)), 2_000)
+            assertNotNull("Send not enabled right after recreate: the model was reloaded", sendAfter)
+            val text = device.findObject(By.res(pkg, "output")).text
+            assertTrue(text, text.contains("> Name one colour.") && text.contains("t/s decode"))
+            assertFalse(text, text.contains("Loading"))
+        }
     }
 }

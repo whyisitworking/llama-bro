@@ -10,33 +10,52 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
+import com.suhel.llamabro.internal.ChatJson
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.util.Base64
 
 /**
- * `Conversation.toJson()` format, version 1: `{"version":1,"system":…,"messages":[…]}`. Each message keeps
- * every field exactly, so a restored conversation sends byte-identical requests (and the server's prompt
- * cache still hits).
+ * `Conversation.toJson()` format. Version 2: `{"version":2,"system":…,"settings":{…},"messages":[…]}`, where
+ * settings holds the defaults as body fields (ChatJson.options), `extra` as written, `max_turns` and
+ * `pre_encode_after_reply`. Version 1 had no settings; it still loads. Each message keeps every field exactly,
+ * so a restored conversation sends byte-identical requests (and the server's prompt cache still hits).
  */
 internal object ConversationJson {
-    const val VERSION = 1
+    const val VERSION = 2
 
-    fun encode(system: String?, messages: List<Message>): String = buildJsonObject {
+    class Saved(val system: String?, val messages: List<Message>, val settings: (Conversation.Builder.() -> Unit))
+
+    fun encode(system: String?, messages: List<Message>, config: Conversation.Builder): String = buildJsonObject {
         put("version", VERSION)
         put("system", system?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("settings", buildJsonObject {
+            put("options", ChatJson.options(config.defaults))
+            put("extra", config.defaults.extra?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("max_turns", config.maxTurns)
+            put("pre_encode_after_reply", config.preEncodeAfterReply)
+        })
         put("messages", JsonArray(messages.map { message(it) }))
     }.toString()
 
-    /** @throws IllegalArgumentException for anything that isn't a version-1 saved conversation. */
-    fun decode(text: String): Pair<String?, List<Message>> = try {
+    /** @throws IllegalArgumentException for anything that isn't a version-1 or version-2 saved conversation. */
+    fun decode(text: String): Saved = try {
         val o = Json.parseToJsonElement(text) as JsonObject
         val version = (o["version"] as? JsonPrimitive)?.int
-        require(version == VERSION) { "unsupported conversation version: $version" }
+        require(version == 1 || version == VERSION) { "unsupported conversation version: $version" }
         val system = (o["system"] as? JsonPrimitive)?.takeIf { it.isString }?.content
         val messages = (o["messages"] as JsonArray).map { message(it as JsonObject) }
-        system to messages
+        val settings = o["settings"] as? JsonObject
+        require(version == 1 || settings != null) { "version-2 conversation without settings" }
+        val apply: Conversation.Builder.() -> Unit = if (settings == null) ({}) else {
+            val defaults = ChatJson.parseOptions(settings["options"] as JsonObject, settings.str("extra"))
+            val maxTurns = settings.getValue("max_turns").jsonPrimitive.int
+            val preEncode = settings.getValue("pre_encode_after_reply").jsonPrimitive.boolean
+            ({ this.defaults = defaults; this.maxTurns = maxTurns; this.preEncodeAfterReply = preEncode })
+        }
+        Saved(system, messages, apply)
     } catch (e: IllegalArgumentException) {
         throw e
     } catch (e: Exception) {

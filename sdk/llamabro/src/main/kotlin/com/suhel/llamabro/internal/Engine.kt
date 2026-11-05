@@ -1,26 +1,46 @@
 package com.suhel.llamabro.internal
 
-/** The native layer as the Kotlin API sees it. [JniEngine] in production; a fake in JVM tests. */
-internal interface Engine {
+import com.suhel.llamabro.InternalLlamaBroApi
+
+/**
+ * The native layer as the Kotlin API sees it: [JniEngine] in production, a fake in tests. Public only for
+ * `llamabro-testing` (D27); apps never implement it.
+ */
+@InternalLlamaBroApi
+public interface Engine {
     /** null = ok, else the error JSON. */
-    fun init(configJson: String): String?
-    fun setLog(listener: ((level: Int, text: String) -> Unit)?)
+    public fun init(configJson: String): String?
+    public fun setLog(listener: ((level: Int, text: String) -> Unit)?)
     /** `lb_runtime_devices` JSON. */
-    fun devices(): String
-    /** Throws [NativeError]. */
-    fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel
+    public fun devices(): String
+    /** `lb_model_load`. A real engine throws on failure. */
+    public fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel
 }
 
-internal interface EngineModel {
-    val infoJson: String
-    /** Throws [NativeError] if the request couldn't start. Callbacks may arrive before this returns. */
-    fun request(endpoint: String, paramsJson: String?, body: ByteArray, sink: RequestSink): EngineRequest
+@InternalLlamaBroApi
+public interface EngineModel {
+    /** `lb_model_info` JSON. */
+    public val infoJson: String
+    /**
+     * `lb_model_request`: [endpoint] is the C API's name for the route (`llamabro.h`). Callbacks may arrive
+     * before this returns. A real engine throws if the request couldn't start.
+     */
+    public fun request(endpoint: String, paramsJson: String?, body: ByteArray, sink: RequestSink): EngineRequest
     /** Cancels every request, waits for their terminal events, frees the model. */
-    fun close()
+    public fun close()
 }
 
-internal interface EngineRequest {
-    fun cancel()
+@InternalLlamaBroApi
+public interface EngineRequest {
+    public fun cancel()
     /** Only after the terminal event. */
-    fun free()
+    public fun free()
+}
+
+/** A request's events: chunks of the HTTP body with its status, then exactly one of [onDone] or [onCancelled]. */
+@InternalLlamaBroApi
+public interface RequestSink {
+    public fun onChunk(httpStatus: Int, data: ByteArray)
+    public fun onDone()
+    public fun onCancelled()
 }

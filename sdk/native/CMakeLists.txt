@@ -164,6 +164,7 @@ if(LB_BUILD_TESTS)
         props_build_info_names_llama_build
         config_defaults_applied
         model_load_missing_file_fails
+        model_load_bad_file_has_reason
         model_load_unknown_key_fails
         model_free_right_after_load
         chat_nonstream_ok
