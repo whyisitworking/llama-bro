@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- the GPU vendor's OpenCL: a public library where the vendor lists it; absent, the backend reports why -->
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
+        <!-- found by the core in the merged manifest (D24, BackendDiscovery) -->
+        <meta-data
+            android:name="com.suhel.llamabro.backend.opencl"
+            android:value="com.suhel.llamabro.opencl.OpenClInstaller" />
+    </application>
+</manifest>

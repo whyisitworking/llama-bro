@@ -49,6 +49,6 @@ class RuntimeTest {
     @Test
     fun devicesParsed() {
         val devices = runBlocking { testLlamaBro().devices() }
-        assertEquals(listOf(DeviceInfo("CPU", "cpu", "cpu", 1, 2)), devices)
+        assertEquals(listOf(DeviceInfo("CPU", "cpu", DeviceKind.Cpu, 1, 2)), devices)
     }
 }

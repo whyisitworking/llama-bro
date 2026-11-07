@@ -1,0 +1,49 @@
+--- a/src/llama-model-loader.h
++++ b/src/llama-model-loader.h
+@@ -251,6 +251,11 @@
+     // data that this context never reads (lazy tensors, -cmoe tensors, ...)
+     std::vector<mapping_range> get_mapping_ranges(uint32_t idx, ggml_context * ctx) const;
+ 
++    // per file: ranges copied out of the mapping into another buffer (e.g. CPU_REPACK), and ranges still read
++    // from the mapping (mmap-backed tensors, lazy tensors); copied minus read is unmapped after the last load
++    std::vector<std::vector<mapping_range>> mmaps_copied;
++    std::vector<std::vector<mapping_range>> mmaps_read;
++
+     // release a weight's mmap pages
+     void unmap_weight(const llama_tensor_weight & w) const;
+ 
+--- a/src/llama-model-loader.cpp
++++ b/src/llama-model-loader.cpp
+@@ -1444,6 +1444,8 @@
+             std::unique_ptr<llama_mmap> mapping = std::make_unique<llama_mmap>(file.get(), prefetch_size, is_numa,
+                     lazy.for_file(idx));
+             mmaps_used.emplace_back(mapping->size(), 0);
++            mmaps_copied.emplace_back();
++            mmaps_read.emplace_back();
+             if (mlock_mmaps) {
+                 std::unique_ptr<llama_mlock> mlock_mmap(new llama_mlock());
+                 mlock_mmap->init(mapping->addr());
+@@ -1745,8 +1747,12 @@
+                 auto & mmap_used = mmaps_used[weight->idx];
+                 mmap_used.first  = std::min(mmap_used.first,  weight->offs);
+                 mmap_used.second = std::max(mmap_used.second, weight->offs + n_size);
++                mmaps_read[weight->idx].push_back({ weight->offs, weight->offs + n_size });
+             } else {
+                 ggml_backend_tensor_set(cur, data, 0, n_size);
++                // a tensor duplicated into another context (tied token_embd/output) may still read the same range
++                auto & ranges = lazy.has(cur) ? mmaps_read : mmaps_copied;
++                ranges[weight->idx].push_back({ weight->offs, weight->offs + n_size });
+             }
+         } else {
+             const auto & file = files.at(weight->idx);
+@@ -1877,6 +1883,10 @@
+                 if (mmap_used.second != 0) {
+                     mapping->unmap_fragment(mmap_used.second, mapping->size());
+                 }
++                // the copied weights' pages: otherwise they stay resident next to the copy
++                for (const auto & r : sub_ranges(merge_ranges(mmaps_copied.at(idx)), merge_ranges(mmaps_read.at(idx)))) {
++                    mapping->unmap_fragment(r.first, r.last);
++                }
+             }
+         }
+         if (progress_callback) {

@@ -47,6 +47,76 @@ class ModelConfigTest {
     }
 
     @Test
+    fun loadFeaturesSentOnlyWhenSet() = runTest {  // F69
+        val engine = FakeEngine()
+        testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf"))
+        val plain = Json.parseToJsonElement(engine.loadConfigs.single()).jsonObject
+        listOf("kv_cache_type", "embeddings", "pooling", "reranking", "lora").forEach { assertFalse(it, plain.containsKey(it)) }
+
+        testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf")) {
+            kvCacheType = KvCacheType.Q8_0
+            task = ModelTask.Embedding(Pooling.Mean)
+            loraAdapters = listOf(LoraAdapter("/a.gguf", 0.5f), LoraAdapter("/b.gguf"))
+        }
+        val set = Json.parseToJsonElement(engine.loadConfigs.last()).jsonObject
+        assertEquals("q8_0", set["kv_cache_type"]!!.jsonPrimitive.content)
+        assertEquals("true", set["embeddings"].toString())
+        assertEquals("mean", set["pooling"]!!.jsonPrimitive.content)
+        assertEquals("""[{"path":"/a.gguf","scale":0.5},{"path":"/b.gguf","scale":1.0}]""", set["lora"].toString())
+
+        testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf")) { task = ModelTask.Embedding() }
+        val modelPooling = Json.parseToJsonElement(engine.loadConfigs.last()).jsonObject
+        assertFalse(modelPooling.containsKey("pooling"))  // the model file's own
+
+        testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf")) { task = ModelTask.Rerank }
+        val rerank = Json.parseToJsonElement(engine.loadConfigs.last()).jsonObject
+        assertEquals("true", rerank["reranking"].toString())
+        assertFalse(rerank.containsKey("embeddings"))
+    }
+
+    @Test
+    fun speculativeAutoIsOffOnEveryChip() = runTest {
+        // the fake model has an MTP head; Auto still sends no speculative setting, as MTP won nowhere (F67)
+        val engine = FakeEngine()
+        val model = testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf"))
+        assertFalse(Json.parseToJsonElement(engine.loadConfigs.single()).jsonObject.containsKey("speculative"))
+        assertEquals(Speculative.Off, model.loadReport.speculative)
+        assertTrue(model.loadReport.speculativeReason, model.loadReport.speculativeReason.startsWith("off: MTP measured slower"))
+        DeviceKind.entries.forEach { assertTrue(com.suhel.llamabro.internal.MtpPolicy.reason(it).contains("F67")) }
+    }
+
+    @Test
+    fun invalidSizesAreRejected() {
+        // ContextSize.Fixed(0) would be upstream's "the training context", reserved at load
+        for (bad in listOf<() -> Any>({ ContextSize.Fixed(0) }, { ContextSize.Fixed(-1) }, { ContextSize.UpTo(0) }, { Speculative.Mtp(0) })) {
+            assertTrue(runCatching(bad).exceptionOrNull() is IllegalArgumentException)
+        }
+    }
+
+    @Test
+    fun speculativeSetByTheAppIsReported() = runTest {
+        val mtp = testLlamaBro().loadModel(ModelSource.file("/m.gguf")) { speculative = Speculative.Mtp(2) }
+        assertEquals(Speculative.Mtp(2), mtp.loadReport.speculative)
+        assertEquals("MTP: set by the app", mtp.loadReport.speculativeReason)
+        val off = testLlamaBro().loadModel(ModelSource.file("/m.gguf")) { speculative = Speculative.Off }
+        assertEquals("off: set by the app", off.loadReport.speculativeReason)
+    }
+
+    @Test
+    fun ngramSentAndReported() = runTest {  // D35
+        val engine = FakeEngine()
+        val alone = testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf")) { speculative = Speculative.Ngram() }
+        val both = testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf")) { speculative = Speculative.Ngram(then = Speculative.Mtp(4)) }
+        val cfgs = engine.loadConfigs.map { Json.parseToJsonElement(it).jsonObject }
+        assertEquals("""{"type":"ngram"}""", cfgs[0]["speculative"].toString())
+        assertEquals("""{"type":"ngram","mtp_n_max":4}""", cfgs[1]["speculative"].toString())
+        assertEquals(Speculative.Ngram(), alone.loadReport.speculative)
+        assertEquals("n-gram: set by the app", alone.loadReport.speculativeReason)
+        assertEquals(Speculative.Ngram(Speculative.Mtp(4)), both.loadReport.speculative)
+        assertEquals("n-gram, then MTP: set by the app", both.loadReport.speculativeReason)
+    }
+
+    @Test
     fun infoParsed() = runTest {
         val info = testLlamaBro().loadModel(ModelSource.file("/m.gguf")).info
         assertEquals(8192, info.contextSize)

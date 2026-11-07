@@ -11,6 +11,8 @@ internal object JniEngine : Engine {
 
     override fun devices(): String = NativeBridge.runtimeDevices()
 
+    override fun backends(): String = NativeBridge.runtimeBackends()
+
     override fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel {
         val handle = NativeBridge.modelLoad(configJson) { onProgress(it) }
         return JniModel(handle)

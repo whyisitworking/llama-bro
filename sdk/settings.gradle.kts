@@ -28,3 +28,5 @@ rootProject.name = "llamabro-sdk"
 include(":llamabro")
 include(":samples:minimal")
 include(":llamabro-testing")
+include(":llamabro-hexagon")
+include(":llamabro-opencl")

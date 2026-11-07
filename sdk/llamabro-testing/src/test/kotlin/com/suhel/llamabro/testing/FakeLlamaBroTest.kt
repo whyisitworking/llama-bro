@@ -19,6 +19,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import com.suhel.llamabro.DeviceKind
+import com.suhel.llamabro.DevicePolicy
+import com.suhel.llamabro.LoadReport
 import org.junit.Test
 
 /**
@@ -52,6 +55,18 @@ class FakeLlamaBroTest {
         }
 
         fun close() { model?.close() }
+    }
+
+    /** P2 T6: device resolution runs over the fake's CPU-only engine, so apps' tests need nothing new. */
+    @Test
+    fun modelLoadsOnCpuWithNoAttempts() = runBlocking {
+        val fake = FakeLlamaBro { reply { content("Hi") } }
+        val model = fake.llamaBro.loadModel(ModelSource.file("/fake.gguf")) { devicePolicy = DevicePolicy.Auto }
+        assertEquals(DeviceKind.Cpu, model.loadReport.device)
+        assertEquals("cpu", model.loadReport.backend)
+        assertEquals(emptyList<LoadReport.Attempt>(), model.loadReport.attempts)
+        assertEquals(listOf(DeviceKind.Cpu), fake.llamaBro.devices().map { it.kind })
+        model.close()
     }
 
     @Test

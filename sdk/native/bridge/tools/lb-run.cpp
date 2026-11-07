@@ -4,6 +4,9 @@
 //
 // usage: lb-run CONFIG_JSON REQUESTS.jsonl OUT_DIR
 //   CONFIG_JSON: the lb_model_load config. Backends load from this executable's directory.
+//   LB_RUN_BACKENDS (env, optional): the runtime config's "backends" array, e.g.
+//     [{"name":"hexagon","files":["libggml-hexagon.so"],"env":{"ADSP_LIBRARY_PATH":"/data/local/tmp/x"}}]
+//   LB_RUN_LOG_LEVEL (env, optional): the runtime's log_level (debug shows where each layer went)
 //   REQUESTS.jsonl: {"id": "...", "endpoint": "chat", "body": {...}} per line (spike/p0 format).
 #include "llamabro.h"
 #include "lb_common.h"
@@ -11,6 +14,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <mutex>
 #include <string>
@@ -72,6 +76,9 @@ int main(int argc, char ** argv) {
     char * err = nullptr;
     json rt = json::object();
     rt["backend_dir"] = exe_dir(argv[0]);
+    // optional backends, as the app passes them (the device contract on the phone, P2 T9)
+    if (const char * b = std::getenv("LB_RUN_BACKENDS"); b && *b) rt["backends"] = json::parse(b);
+    if (const char * l = std::getenv("LB_RUN_LOG_LEVEL"); l && *l) rt["log_level"] = l;
     if (lb_runtime_init(rt.dump().c_str(), &err) != LB_OK) {
         std::fprintf(stderr, "lb_runtime_init: %s\n", err ? err : "");
         return 1;

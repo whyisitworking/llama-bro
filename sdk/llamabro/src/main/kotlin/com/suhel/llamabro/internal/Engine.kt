@@ -13,6 +13,8 @@ public interface Engine {
     public fun setLog(listener: ((level: Int, text: String) -> Unit)?)
     /** `lb_runtime_devices` JSON. */
     public fun devices(): String
+    /** `lb_runtime_backends` JSON. The default is the CPU alone, loaded, for engines with no other backend. */
+    public fun backends(): String = """[{"name":"cpu","loaded":true,"error":null,"devices":["CPU"]}]"""
     /** `lb_model_load`. A real engine throws on failure. */
     public fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel
 }

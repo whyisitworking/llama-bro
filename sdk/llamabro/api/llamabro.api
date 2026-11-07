@@ -1,4 +1,16 @@
+public final class com/suhel/llamabro/Backend {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDevices ()Ljava/util/List;
+	public final fun getError ()Ljava/lang/String;
+	public final fun getLoaded ()Z
+	public final fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public abstract interface class com/suhel/llamabro/ContextSize {
+	public static final field AUTO_CEILING I
+	public static final field Companion Lcom/suhel/llamabro/ContextSize$Companion;
 }
 
 public final class com/suhel/llamabro/ContextSize$Auto : com/suhel/llamabro/ContextSize {
@@ -6,6 +18,10 @@ public final class com/suhel/llamabro/ContextSize$Auto : com/suhel/llamabro/Cont
 	public fun equals (Ljava/lang/Object;)Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/ContextSize$Companion {
+	public static final field AUTO_CEILING I
 }
 
 public final class com/suhel/llamabro/ContextSize$Fixed : com/suhel/llamabro/ContextSize {
@@ -19,13 +35,65 @@ public final class com/suhel/llamabro/ContextSize$Fixed : com/suhel/llamabro/Con
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/suhel/llamabro/ContextSize$UpTo : com/suhel/llamabro/ContextSize {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lcom/suhel/llamabro/ContextSize$UpTo;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/ContextSize$UpTo;IILjava/lang/Object;)Lcom/suhel/llamabro/ContextSize$UpTo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaxTokens ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/suhel/llamabro/DeviceInfo {
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getDescription ()Ljava/lang/String;
+	public final fun getKind ()Lcom/suhel/llamabro/DeviceKind;
 	public final fun getMemoryFree ()J
 	public final fun getMemoryTotal ()J
 	public final fun getName ()Ljava/lang/String;
-	public final fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/DeviceKind : java/lang/Enum {
+	public static final field Cpu Lcom/suhel/llamabro/DeviceKind;
+	public static final field Gpu Lcom/suhel/llamabro/DeviceKind;
+	public static final field Npu Lcom/suhel/llamabro/DeviceKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/suhel/llamabro/DeviceKind;
+	public static fun values ()[Lcom/suhel/llamabro/DeviceKind;
+}
+
+public abstract interface class com/suhel/llamabro/DevicePolicy {
+}
+
+public final class com/suhel/llamabro/DevicePolicy$Auto : com/suhel/llamabro/DevicePolicy {
+	public static final field INSTANCE Lcom/suhel/llamabro/DevicePolicy$Auto;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/DevicePolicy$Only : com/suhel/llamabro/DevicePolicy {
+	public fun <init> (Lcom/suhel/llamabro/DeviceKind;)V
+	public final fun component1 ()Lcom/suhel/llamabro/DeviceKind;
+	public final fun copy (Lcom/suhel/llamabro/DeviceKind;)Lcom/suhel/llamabro/DevicePolicy$Only;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/DevicePolicy$Only;Lcom/suhel/llamabro/DeviceKind;ILjava/lang/Object;)Lcom/suhel/llamabro/DevicePolicy$Only;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKind ()Lcom/suhel/llamabro/DeviceKind;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/DevicePolicy$Prefer : com/suhel/llamabro/DevicePolicy {
+	public fun <init> (Lcom/suhel/llamabro/DeviceKind;)V
+	public final fun component1 ()Lcom/suhel/llamabro/DeviceKind;
+	public final fun copy (Lcom/suhel/llamabro/DeviceKind;)Lcom/suhel/llamabro/DevicePolicy$Prefer;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/DevicePolicy$Prefer;Lcom/suhel/llamabro/DeviceKind;ILjava/lang/Object;)Lcom/suhel/llamabro/DevicePolicy$Prefer;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKind ()Lcom/suhel/llamabro/DeviceKind;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -68,8 +136,24 @@ public final class com/suhel/llamabro/Endpoint$Companion {
 public abstract interface annotation class com/suhel/llamabro/InternalLlamaBroApi : java/lang/annotation/Annotation {
 }
 
+public final class com/suhel/llamabro/KvCacheType : java/lang/Enum {
+	public static final field Bf16 Lcom/suhel/llamabro/KvCacheType;
+	public static final field F16 Lcom/suhel/llamabro/KvCacheType;
+	public static final field F32 Lcom/suhel/llamabro/KvCacheType;
+	public static final field Iq4Nl Lcom/suhel/llamabro/KvCacheType;
+	public static final field Q4_0 Lcom/suhel/llamabro/KvCacheType;
+	public static final field Q4_1 Lcom/suhel/llamabro/KvCacheType;
+	public static final field Q5_0 Lcom/suhel/llamabro/KvCacheType;
+	public static final field Q5_1 Lcom/suhel/llamabro/KvCacheType;
+	public static final field Q8_0 Lcom/suhel/llamabro/KvCacheType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/suhel/llamabro/KvCacheType;
+	public static fun values ()[Lcom/suhel/llamabro/KvCacheType;
+}
+
 public final class com/suhel/llamabro/LlamaBro {
 	public static final field Companion Lcom/suhel/llamabro/LlamaBro$Companion;
+	public final fun backends (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun devices (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static final fun getInstance (Landroid/content/Context;)Lcom/suhel/llamabro/LlamaBro;
 	public final fun loadModel (Lcom/suhel/llamabro/ModelSource;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -127,6 +211,10 @@ public final class com/suhel/llamabro/LlamaBroException$ContextExceeded : com/su
 	public final fun getPromptTokens ()Ljava/lang/Integer;
 }
 
+public final class com/suhel/llamabro/LlamaBroException$DeviceUnavailable : com/suhel/llamabro/LlamaBroException {
+	public final fun getKind ()Lcom/suhel/llamabro/DeviceKind;
+}
+
 public final class com/suhel/llamabro/LlamaBroException$Incomplete : com/suhel/llamabro/LlamaBroException {
 	public final fun getPartial ()Ljava/lang/String;
 	public final fun getReason ()Lcom/suhel/llamabro/chat/FinishReason;
@@ -145,6 +233,7 @@ public final class com/suhel/llamabro/LlamaBroException$ModelLoadFailed : com/su
 
 public final class com/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason : java/lang/Enum {
 	public static final field FileNotFound Lcom/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason;
+	public static final field InsufficientMemory Lcom/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason;
 	public static final field Other Lcom/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason;
@@ -161,6 +250,29 @@ public final class com/suhel/llamabro/LlamaBroException$ServerError : com/suhel/
 public final class com/suhel/llamabro/LlamaBroException$Unavailable : com/suhel/llamabro/LlamaBroException {
 }
 
+public final class com/suhel/llamabro/LoadReport {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttempts ()Ljava/util/List;
+	public final fun getBackend ()Ljava/lang/String;
+	public final fun getContextReason ()Ljava/lang/String;
+	public final fun getContextSize ()I
+	public final fun getDevice ()Lcom/suhel/llamabro/DeviceKind;
+	public final fun getDeviceName ()Ljava/lang/String;
+	public final fun getSpeculative ()Lcom/suhel/llamabro/Speculative;
+	public final fun getSpeculativeReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/LoadReport$Attempt {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeviceName ()Ljava/lang/String;
+	public final fun getKind ()Lcom/suhel/llamabro/DeviceKind;
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/suhel/llamabro/LogLevel : java/lang/Enum {
 	public static final field Debug Lcom/suhel/llamabro/LogLevel;
 	public static final field Error Lcom/suhel/llamabro/LogLevel;
@@ -175,10 +287,21 @@ public abstract interface class com/suhel/llamabro/Logger {
 	public abstract fun log (Lcom/suhel/llamabro/LogLevel;Ljava/lang/String;)V
 }
 
+public final class com/suhel/llamabro/LoraAdapter {
+	public fun <init> (Ljava/lang/String;F)V
+	public synthetic fun <init> (Ljava/lang/String;FILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getScale ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/suhel/llamabro/Model : java/lang/AutoCloseable {
 	public fun close ()V
 	public final fun closeAndJoin (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun getInfo ()Lcom/suhel/llamabro/ModelInfo;
+	public final fun getLoadReport ()Lcom/suhel/llamabro/LoadReport;
 	public final fun rawRequest (Lcom/suhel/llamabro/Endpoint;Ljava/lang/String;Ljava/util/Map;)Lkotlinx/coroutines/flow/Flow;
 	public static synthetic fun rawRequest$default (Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/Endpoint;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
 }
@@ -187,19 +310,27 @@ public final class com/suhel/llamabro/ModelConfig {
 	public final fun getBatchSize ()I
 	public final fun getCheckpointsPerSlot ()I
 	public final fun getContextSize ()Lcom/suhel/llamabro/ContextSize;
+	public final fun getDevicePolicy ()Lcom/suhel/llamabro/DevicePolicy;
+	public final fun getKvCacheType ()Lcom/suhel/llamabro/KvCacheType;
+	public final fun getLoraAdapters ()Ljava/util/List;
 	public final fun getMicroBatchSize ()I
 	public final fun getParallelSlots ()I
 	public final fun getRamCacheMib ()I
 	public final fun getSpeculative ()Lcom/suhel/llamabro/Speculative;
+	public final fun getTask ()Lcom/suhel/llamabro/ModelTask;
 	public final fun getThreads ()Ljava/lang/Integer;
 	public final fun onProgress (Lkotlin/jvm/functions/Function1;)V
 	public final fun setBatchSize (I)V
 	public final fun setCheckpointsPerSlot (I)V
 	public final fun setContextSize (Lcom/suhel/llamabro/ContextSize;)V
+	public final fun setDevicePolicy (Lcom/suhel/llamabro/DevicePolicy;)V
+	public final fun setKvCacheType (Lcom/suhel/llamabro/KvCacheType;)V
+	public final fun setLoraAdapters (Ljava/util/List;)V
 	public final fun setMicroBatchSize (I)V
 	public final fun setParallelSlots (I)V
 	public final fun setRamCacheMib (I)V
 	public final fun setSpeculative (Lcom/suhel/llamabro/Speculative;)V
+	public final fun setTask (Lcom/suhel/llamabro/ModelTask;)V
 	public final fun setThreads (Ljava/lang/Integer;)V
 }
 
@@ -237,18 +368,73 @@ public final class com/suhel/llamabro/ModelSource$Companion {
 	public static synthetic fun file$default (Lcom/suhel/llamabro/ModelSource$Companion;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/ModelSource;
 }
 
+public abstract interface class com/suhel/llamabro/ModelTask {
+}
+
+public final class com/suhel/llamabro/ModelTask$Embedding : com/suhel/llamabro/ModelTask {
+	public fun <init> ()V
+	public fun <init> (Lcom/suhel/llamabro/Pooling;)V
+	public synthetic fun <init> (Lcom/suhel/llamabro/Pooling;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lcom/suhel/llamabro/Pooling;
+	public final fun copy (Lcom/suhel/llamabro/Pooling;)Lcom/suhel/llamabro/ModelTask$Embedding;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/ModelTask$Embedding;Lcom/suhel/llamabro/Pooling;ILjava/lang/Object;)Lcom/suhel/llamabro/ModelTask$Embedding;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPooling ()Lcom/suhel/llamabro/Pooling;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/ModelTask$Generate : com/suhel/llamabro/ModelTask {
+	public static final field INSTANCE Lcom/suhel/llamabro/ModelTask$Generate;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/ModelTask$Rerank : com/suhel/llamabro/ModelTask {
+	public static final field INSTANCE Lcom/suhel/llamabro/ModelTask$Rerank;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/Pooling : java/lang/Enum {
+	public static final field Cls Lcom/suhel/llamabro/Pooling;
+	public static final field Last Lcom/suhel/llamabro/Pooling;
+	public static final field Mean Lcom/suhel/llamabro/Pooling;
+	public static final field ModelDefault Lcom/suhel/llamabro/Pooling;
+	public static final field None Lcom/suhel/llamabro/Pooling;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/suhel/llamabro/Pooling;
+	public static fun values ()[Lcom/suhel/llamabro/Pooling;
+}
+
 public abstract interface class com/suhel/llamabro/Speculative {
+}
+
+public final class com/suhel/llamabro/Speculative$Auto : com/suhel/llamabro/Speculative {
+	public static final field INSTANCE Lcom/suhel/llamabro/Speculative$Auto;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/suhel/llamabro/Speculative$Mtp : com/suhel/llamabro/Speculative {
 	public fun <init> ()V
 	public fun <init> (I)V
 	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1 ()I
-	public final fun copy (I)Lcom/suhel/llamabro/Speculative$Mtp;
-	public static synthetic fun copy$default (Lcom/suhel/llamabro/Speculative$Mtp;IILjava/lang/Object;)Lcom/suhel/llamabro/Speculative$Mtp;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getDraftMax ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/Speculative$Ngram : com/suhel/llamabro/Speculative {
+	public fun <init> ()V
+	public fun <init> (Lcom/suhel/llamabro/Speculative$Mtp;)V
+	public synthetic fun <init> (Lcom/suhel/llamabro/Speculative$Mtp;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getThen ()Lcom/suhel/llamabro/Speculative$Mtp;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -867,11 +1053,27 @@ public final class com/suhel/llamabro/conversation/JsonArgs$Companion {
 	public final fun parse (Ljava/lang/String;)Lcom/suhel/llamabro/conversation/JsonArgs;
 }
 
+public abstract interface class com/suhel/llamabro/internal/BackendInstaller {
+	public abstract fun install (Landroid/content/Context;)Lcom/suhel/llamabro/internal/BackendLibraries;
+}
+
+public final class com/suhel/llamabro/internal/BackendLibraries {
+	public fun <init> (Ljava/util/List;Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getEnv ()Ljava/util/Map;
+	public final fun getFiles ()Ljava/util/List;
+}
+
 public abstract interface class com/suhel/llamabro/internal/Engine {
+	public fun backends ()Ljava/lang/String;
 	public abstract fun devices ()Ljava/lang/String;
 	public abstract fun init (Ljava/lang/String;)Ljava/lang/String;
 	public abstract fun load (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/internal/EngineModel;
 	public abstract fun setLog (Lkotlin/jvm/functions/Function2;)V
+}
+
+public final class com/suhel/llamabro/internal/Engine$DefaultImpls {
+	public static fun backends (Lcom/suhel/llamabro/internal/Engine;)Ljava/lang/String;
 }
 
 public abstract interface class com/suhel/llamabro/internal/EngineModel {

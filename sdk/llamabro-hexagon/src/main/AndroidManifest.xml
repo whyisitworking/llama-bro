@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- FastRPC: a vendor public library on Qualcomm phones; absent elsewhere, then the backend reports why -->
+        <uses-native-library android:name="libcdsprpc.so" android:required="false" />
+        <!-- found by the core in the merged manifest (D24, BackendDiscovery) -->
+        <meta-data
+            android:name="com.suhel.llamabro.backend.hexagon"
+            android:value="com.suhel.llamabro.hexagon.HexagonInstaller" />
+    </application>
+</manifest>

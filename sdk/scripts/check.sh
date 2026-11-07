@@ -9,12 +9,15 @@
 #   jvm            Kotlin unit tests of both libraries and the sample, including the 400-case tools/ui golden replay
 #   e2e            Kotlin + JNI + native on this machine vs upstream llama-server (HostNativeTest)
 #   aar            release AAR: libraries, names, exports, 16 KB alignment (check-aar.sh)
-#   device         (--device) phone tests: native, UI, acceptance per model, and the minified (R8) sample build
+#   device         (--device) phone tests: native, UI, acceptance per model and per sample flavor (cpu, gpu, full,
+#                  noskel), and each flavor's minified (R8) build
+#   device-contract (--device) the C API vs upstream llama-server on the phone's NPU (tests/device-contract/run.sh)
 #
 # usage: sdk/scripts/check.sh [--device] [--only step,step]
 # env:   LB_TEST_MODEL (default ~/Downloads/Qwen3.5-4B-Q4_K_M.gguf), LB_TEST_MMPROJ (default ~/Downloads/mmproj-F16.gguf),
 #        LB_CONTRACT_MODELS extra GGUFs for the contract test, comma-separated (default: Llama 3.2 3B if present),
-#        LB_DEVICE_MODELS file names in the sample app's filesDir (default: the three P1 models)
+#        LB_DEVICE_MODELS file names in the sample app's filesDir (default: the three P1 models),
+#        LB_TEST_MODELS_DIR upstream's small test models for embeddings, rerank and LoRA (fetch-test-models.sh)
 set -uo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -58,6 +61,10 @@ run() {  # run NAME COMMAND...: logs to $logs/NAME.log, records PASS/FAIL
 
 [ -f "$model" ] || { echo "LB_TEST_MODEL not found: $model"; exit 2; }
 export LB_TEST_MODEL="$model"
+export LB_TEST_MODELS_DIR="${LB_TEST_MODELS_DIR:-$HOME/Downloads/llamabro-test}"
+for f in bge-small-f16.gguf jina-reranker-tiny-f16.gguf stories15M_MOE-F16.gguf moe_shakespeare15M.gguf; do
+    [ -f "$LB_TEST_MODELS_DIR/$f" ] || { echo "$LB_TEST_MODELS_DIR/$f not found: run sdk/scripts/fetch-test-models.sh"; exit 2; }
+done
 
 gradle() { (cd "$root" && ./gradlew -p sdk "$@"); }
 
@@ -88,7 +95,7 @@ step_tools_ui() {
 step_e2e() {
     local port=18183 pid status
     "$native/build/host/bin/llama-server" -m "$model" ${mmproj:+--mmproj "$mmproj"} -c 8192 -np 1 --cache-ram 1024 \
-        --ctx-checkpoints 8 -b 512 -ub 512 --host 127.0.0.1 --port $port > "$logs/e2e-llama-server.log" 2>&1 &
+        --ctx-checkpoints 8 --load-mode none --fit off -b 512 -ub 512 --host 127.0.0.1 --port $port > "$logs/e2e-llama-server.log" 2>&1 &
     pid=$!
     for _ in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" > /dev/null && break; sleep 1; done
     gradle :llamabro:testDebugUnitTest --tests 'com.suhel.llamabro.HostNativeTest' --rerun-tasks -i \
@@ -101,46 +108,104 @@ step_e2e() {
 }
 
 step_aar() {
-    gradle :llamabro:assembleRelease && bash "$sdk/scripts/check-aar.sh" "$sdk/llamabro/build/outputs/aar/llamabro-release.aar"
+    local core="$sdk/llamabro/build/outputs/aar/llamabro-release.aar" b
+    gradle :llamabro:assembleRelease :llamabro-hexagon:assembleRelease :llamabro-opencl:assembleRelease &&
+        bash "$sdk/scripts/check-aar.sh" "$core" || return 1
+    for b in hexagon opencl; do
+        echo "--- llamabro-$b"
+        bash "$sdk/scripts/check-aar.sh" "$sdk/llamabro-$b/build/outputs/aar/llamabro-$b-release.aar" "$core" || return 1
+    done
 }
 
 step_device() {
     adb shell dumpsys window | grep -q "isKeyguardShowing=false" || { echo "the phone is locked: unlock it and run again"; return 1; }
     gradle :llamabro:connectedDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true || return 1
-    adb shell run-as com.suhel.llamabro.sample rm -f files/acceptance.log 2>/dev/null
-    gradle :samples:minimal:connectedDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
-        -Pandroid.testInstrumentationRunnerArguments.models="$device_models"
-    local acceptance=$?
-    adb shell run-as com.suhel.llamabro.sample cat files/acceptance.log
-    # the minified release build (R8 keep rules, F28): it must load a model; then the debug build goes back
-    gradle :samples:minimal:assembleRelease || return 1
-    adb install -r "$sdk/samples/minimal/build/outputs/apk/release/minimal-release.apk" || return 1
-    adb logcat -c
-    adb shell am force-stop com.suhel.llamabro.sample
-    adb shell am start -W -n com.suhel.llamabro.sample/.MainActivity
-    local ok=1
-    for _ in $(seq 1 60); do
-        adb logcat -d -s LlamaBroSample | grep -q "loaded" && { ok=0; break; }
-        sleep 1
-    done
-    adb logcat -d | grep -E "LlamaBroSample|JNI_OnLoad|FATAL" | tail -5
-    adb shell am force-stop com.suhel.llamabro.sample
-    gradle :samples:minimal:installDebug || return 1
-    [ $ok -eq 0 ] || { echo "the minified build didn't load a model"; return 1; }
-    # acceptance: Llama 3.2 3B's runsToolLoop fails on upstream too (F27); anything else failing fails the check
-    if [ $acceptance -ne 0 ]; then
-        local failures
-        failures="$(python3 - "$sdk/samples/minimal/build/outputs/androidTest-results/connected" <<'PY'
-import glob, re, sys
-for f in glob.glob(sys.argv[1] + "/**/*.xml", recursive=True):
-    for m in re.finditer(r'<testcase name="([^"]+)"[^>]*?(?:/>|>(.*?)</testcase>)', open(f).read(), re.S):
-        if m.group(2) and "<failure" in m.group(2) and not m.group(1).startswith("runsToolLoop[Llama-3.2-3B"):
-            print(m.group(1))
-PY
-)"
-        [ -z "$failures" ] || { echo "acceptance failures: $failures"; return 1; }
-        echo "acceptance: only the known Llama 3.2 3B tool loop failed (F27)"
+    # the device-choice test reads Qwen3.5 from the hexagon test app's external files directory (P2 T6)
+    local htp_files=/sdcard/Android/data/com.suhel.llamabro.hexagon.test/files qwen=Qwen3.5-4B-Q4_K_M.gguf
+    adb shell "mkdir -p $htp_files" || return 1
+    if [ "$(adb shell "stat -c %s $htp_files/$qwen 2>/dev/null" | tr -d '\r')" != "$(stat -f %z "$model")" ]; then
+        adb push "$model" "$htp_files/$qwen" || return 1
     fi
+    adb shell "chmod 644 $htp_files/$qwen" || return 1
+    # the task test's embedding and reranker models (F69)
+    for f in bge-small-f16.gguf jina-reranker-tiny-f16.gguf; do
+        adb push "$LB_TEST_MODELS_DIR/$f" "$htp_files/$f" >/dev/null && adb shell "chmod 644 $htp_files/$f" || return 1
+    done
+    # each backend AAR alone makes its device available (P2 T3, T4; Vulkan dropped, D31)
+    gradle :llamabro-hexagon:connectedDebugAndroidTest :llamabro-opencl:connectedDebugAndroidTest \
+        -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true || return 1
+    adb shell run-as com.suhel.llamabro.sample rm -f files/acceptance.log 2>/dev/null
+    local results="$sdk/samples/minimal/build/outputs/androidTest-results/connected"
+    rm -rf "$results"   # a stale passing file must not stand in for a flavor that didn't run
+    # one sample flavor per set of backend artifacts (P2 T10, D29): full runs everything on every model; cpu, gpu and
+    # noskel (full with the NPU skeleton broken: Auto must say why and use the GPU) run device choice, a chat and stop
+    gradle :samples:minimal:connectedFullDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
+        -Pandroid.testInstrumentationRunnerArguments.models="$device_models"
+    local acceptance=$? f
+    for f in Cpu Gpu Noskel; do
+        gradle ":samples:minimal:connected${f}DebugAndroidTest" -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
+            -Pandroid.testInstrumentationRunnerArguments.models=Qwen3.5-4B-Q4_K_M.gguf \
+            -Pandroid.testInstrumentationRunnerArguments.class=com.suhel.llamabro.sample.AcceptanceTest || acceptance=1
+    done
+    adb shell run-as com.suhel.llamabro.sample cat files/acceptance.log
+    # each flavor's minified release build (R8 keep rules, F28) must load a model; then the full debug build goes back
+    for f in cpu:Cpu gpu:Gpu full:Full; do   # bash 3.2 (macOS) has no ${f^}
+        gradle ":samples:minimal:assemble${f#*:}Release" || return 1
+        f="${f%%:*}"
+        adb install -r "$sdk/samples/minimal/build/outputs/apk/$f/release/minimal-$f-release.apk" || return 1
+        adb logcat -c
+        adb shell am force-stop com.suhel.llamabro.sample
+        adb shell am start -W -n com.suhel.llamabro.sample/.MainActivity
+        local ok=1
+        for _ in $(seq 1 90); do
+            adb logcat -d -s LlamaBroSample | grep -q "loaded" && { ok=0; break; }
+            sleep 1
+        done
+        adb logcat -d | grep -E "LlamaBroSample|JNI_OnLoad|FATAL" | tail -5
+        adb shell am force-stop com.suhel.llamabro.sample
+        [ $ok -eq 0 ] || { gradle :samples:minimal:installFullDebug; echo "the minified $f build didn't load a model"; return 1; }
+    done
+    gradle :samples:minimal:installFullDebug || return 1
+    # acceptance: every flavor must have run, and Llama 3.2 3B's runsToolLoop, which fails on upstream too (F27), is
+    # the only failure allowed; a gradle failure with no failing test (a build or install error) fails the check
+    local verdict
+    verdict="$(python3 - "$results" $acceptance <<'PY'
+import glob, os, re, sys
+results, gradle_failed = sys.argv[1], sys.argv[2] != "0"
+bad, tolerated = [], 0
+for flavor in ("full", "cpu", "gpu", "noskel"):
+    files = glob.glob(os.path.join(results, "debug", "flavors", flavor, "*.xml"))
+    cases = [m for f in files for m in re.finditer(r'<testcase name="([^"]+)"[^>]*?(?:/>|>(.*?)</testcase>)', open(f).read(), re.S)]
+    if not cases:
+        bad.append(f"{flavor}: no test results")
+    for m in cases:
+        if m.group(2) and "<failure" in m.group(2):
+            if flavor == "full" and m.group(1).startswith("runsToolLoop[Llama-3.2-3B"):
+                tolerated += 1
+            else:
+                bad.append(f"{flavor}: {m.group(1)}")
+if not bad and gradle_failed and not tolerated:
+    bad.append("gradle failed without a failing test (see the log above)")
+print("; ".join(bad) if bad else ("only the known Llama 3.2 3B tool loop failed (F27)" if tolerated else "all passed"))
+sys.exit(1 if bad else 0)
+PY
+)" || { echo "acceptance failures: $verdict"; return 1; }
+    echo "acceptance: $verdict"
+}
+
+step_device_contract() {
+    # both tools built in the Snapdragon image from the same tree; the model and mmproj copied once (P2 T9)
+    bash "$native/scripts/build-device-tools.sh" > "$logs/device-tools-build.log" 2>&1 ||
+        { tail -20 "$logs/device-tools-build.log"; return 1; }
+    local dir=/data/local/tmp/lb-contract-models f
+    adb shell "mkdir -p $dir" || return 1
+    for f in "$model" $mmproj; do
+        if [ "$(adb shell "stat -c %s $dir/$(basename "$f") 2>/dev/null" | tr -d '\r')" != "$(stat -f %z "$f")" ]; then
+            adb push "$f" "$dir/" || return 1
+        fi
+    done
+    LB_DEVICE_MODEL_DIR=$dir LB_DEVICE_MODEL="$(basename "$model")" LB_DEVICE_MMPROJ="$(basename "${mmproj:-none}")" \
+        bash "$native/tests/device-contract/run.sh"
 }
 
 echo "llamabro check: model $(basename "$model")${mmproj:+, mmproj}${contract_models:+, contract also on $(basename "${contract_models//,/ }")}"
@@ -149,11 +214,12 @@ run native   ctest --test-dir "$native/build/host" --output-on-failure
 run contract step_contract
 run tools-ui step_tools_ui
 run api      gradle :llamabro:apiCheck
-run lint     gradle :llamabro:lintRelease :llamabro-testing:lintRelease
-run jvm      gradle :llamabro:testDebugUnitTest :llamabro-testing:testDebugUnitTest :samples:minimal:testDebugUnitTest
+run lint     gradle :llamabro:lintRelease :llamabro-testing:lintRelease :llamabro-hexagon:lintRelease :llamabro-opencl:lintRelease
+run jvm      gradle :llamabro:testDebugUnitTest :llamabro-testing:testDebugUnitTest :llamabro-hexagon:testDebugUnitTest :samples:minimal:testFullDebugUnitTest
 run e2e      step_e2e
 run aar      step_aar
 [ $device -eq 1 ] && run device step_device
+[ $device -eq 1 ] && run device-contract step_device_contract
 
 echo
 printf '%s\n' "${results[@]}"

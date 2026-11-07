@@ -1,0 +1,20 @@
+weight                                        K  max|blocksum|     max|act| blocks>65504     blocks
+blk.##.attn_k.weight (q4_K)                3072           14.2         10.4          0      29376
+blk.##.attn_output.weight (q4_K)           3072            8.3          3.5          0      29376
+blk.##.attn_q.weight (q4_K)                3072           14.2         10.4          0      29376
+blk.##.attn_v.weight (q4_K)                3072           11.3         10.0          0      14688
+blk.##.attn_v.weight (q6_K)                3072           14.2         10.4          0      14688
+blk.##.ffn_down.weight (q4_K)              8192            5.3          4.9          0      34816
+blk.##.ffn_down.weight (q6_K)              8192           12.5         13.3          0      39424
+blk.##.ffn_gate.weight (q4_K)              3072            9.8          9.8          0      27840
+blk.##.ffn_up.weight (q4_K)                3072            9.8          9.8          0      27840
+blk.#.attn_k.weight (q4_K)                 3072            9.3          6.1          0      16320
+blk.#.attn_output.weight (q4_K)            3072            3.3          1.1          0      16320
+blk.#.attn_q.weight (q4_K)                 3072            9.3          6.1          0      16320
+blk.#.attn_v.weight (q4_K)                 3072            9.3          6.1          0       8160
+blk.#.attn_v.weight (q6_K)                 3072            9.0          5.9          0       8160
+blk.#.ffn_down.weight (q4_K)               8192            2.1          2.3          0      26112
+blk.#.ffn_down.weight (q6_K)               8192          629.9        629.9          0      17408
+blk.#.ffn_gate.weight (q4_K)               3072            7.7          7.7          0      16320
+blk.#.ffn_up.weight (q4_K)                 3072            7.7          7.7          0      16320
+token_embd.weight (q6_K)                   3072           24.3         11.1          0         96

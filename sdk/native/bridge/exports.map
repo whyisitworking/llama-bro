@@ -1,8 +1,12 @@
-/* Android: libllamabro.so exports the C API and JNI_OnLoad only (findings F25). */
+/* Android: libllamabro.so exports the C API and JNI_OnLoad (findings F25), plus C++ type information (_ZTI type_info,
+   _ZTS its name): Android's libc++abi matches a catch by type_info address, so a hidden copy here never catches an
+   exception thrown in libllama-common (common_json_error from json_value: named tool_choice failed with 500, F76). */
 {
   global:
     lb_*;
     JNI_OnLoad;
+    _ZTI*;
+    _ZTS*;
   local:
     *;
 };

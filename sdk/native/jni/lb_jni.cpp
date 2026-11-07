@@ -164,6 +164,10 @@ jstring runtimeDevices(JNIEnv * env, jobject) {
     return take_string(env, lb_runtime_devices());
 }
 
+jstring runtimeBackends(JNIEnv * env, jobject) {
+    return take_string(env, lb_runtime_backends());
+}
+
 void runtimeSetLog(JNIEnv * env, jobject, jobject listener) {
     jobject old = g_log_listener;
     if (listener) {
@@ -272,6 +276,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM * vm, void *) {
     const JNINativeMethod methods[] = {
         {"runtimeInit",    "(Ljava/lang/String;)Ljava/lang/String;", (void *) runtimeInit},
         {"runtimeDevices", "()Ljava/lang/String;", (void *) runtimeDevices},
+        {"runtimeBackends", "()Ljava/lang/String;", (void *) runtimeBackends},
         {"runtimeSetLog",  "(Lcom/suhel/llamabro/internal/LogListener;)V", (void *) runtimeSetLog},
         {"modelLoad",      "(Ljava/lang/String;Lcom/suhel/llamabro/internal/ProgressListener;)J", (void *) modelLoad},
         {"modelInfo",      "(J)Ljava/lang/String;", (void *) modelInfo},
