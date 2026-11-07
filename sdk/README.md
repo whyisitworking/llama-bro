@@ -147,7 +147,7 @@ Tool handlers can be tested alone with `JsonArgs.parse("""{"city":"Paris"}""")`.
 
 ```kotlin
 llama.loadModel(ModelSource.file(path)) {
-    contextSize = ContextSize.Fixed(8192)    // default ContextSize.Auto: as much as fits
+    contextSize = ContextSize.Fixed(8192)    // default ContextSize.Auto, see "Context size"
     onProgress { fraction -> … }
 }
 ```
@@ -156,6 +156,100 @@ llama.loadModel(ModelSource.file(path)) {
 `model.close()` returns at once; `closeAndJoin()` waits until the memory is freed. Loading the next model waits for
 a previous close, so two models never share memory. Configure the process-wide runtime (log level, logger) by
 implementing `LlamaBro.ConfigProvider` on your `Application`.
+
+Three more load settings, each a llama-server flag:
+
+```kotlin
+// an embedding model for search or RAG: answers Endpoint.Embeddings (OpenAI shape) and nothing else
+val embedder = llama.loadModel(ModelSource.file(bgePath)) { task = ModelTask.Embedding(Pooling.Mean) }
+embedder.rawRequest(Endpoint.Embeddings, """{"input": ["first passage", "second passage"]}""").collect { … }
+
+// a reranker: Endpoint.Rerank with {"query": …, "documents": [...]}
+llama.loadModel(ModelSource.file(rerankerPath)) { task = ModelTask.Rerank }
+
+// a context cache in 8 bits: about half the memory, so ContextSize.Auto fits about twice the tokens
+llama.loadModel(ModelSource.file(path)) { kvCacheType = KvCacheType.Q8_0 }
+
+// LoRA adapters for this base model; a request's "lora" field ([{"id": 0, "scale": 0.5}]) changes a scale
+llama.loadModel(ModelSource.file(path)) { loraAdapters = listOf(LoraAdapter(adapterPath, scale = 1f)) }
+```
+
+A chat model and an embedding model can be loaded at the same time, each with its own `Model`. Small embedding
+models run on the NPU with the same vectors as the CPU; a reranker there still picks the right top documents, but its
+near-zero scores move, so load it with `DevicePolicy.Only(DeviceKind.Cpu)` if the full order matters.
+
+## Context size
+
+The context is how many tokens the model sees at once: the conversation so far plus the reply. Its cache is reserved
+when the model loads (fully on the GPU and NPU, as it fills on the CPU), so it costs memory up front.
+
+```kotlin
+llama.loadModel(ModelSource.file(path))                                          // ContextSize.Auto
+llama.loadModel(ModelSource.file(path)) { contextSize = ContextSize.UpTo(65536) } // Auto, with your ceiling
+llama.loadModel(ModelSource.file(path)) { contextSize = ContextSize.Fixed(8192) } // exactly this
+```
+
+- **`Auto`** (the default) picks the largest context up to **16 384 tokens** that fits in the memory available when
+  the model loads, and at least 4096. "Fits" is llama.cpp's own projection of what the model, its cache and its
+  compute buffers take on the chosen chip, against the kernel's available memory less Android's low-memory threshold,
+  the prompt cache (`ramCacheMib`), an image encoder and a 512 MiB reserve for what grows during a chat. Phones with
+  less free memory get a smaller context.
+- **Why 16 384:** common local defaults are 4096 tokens (Ollama, LM Studio, Apple's on-device model). Current models
+  spend 1–3K tokens a turn on reasoning and tool results, so four times that leaves room for a real conversation,
+  while a dense 3B model's cache stays near 1.8 GB. `Conversation` compacts a chat that outgrows it.
+- **`UpTo(n)`** does the same with your ceiling, for long documents; **`Fixed(n)`** takes exactly `n` and fails if it
+  can't be allocated.
+- If even 4096 tokens don't fit, `loadModel` throws `ModelLoadFailed` with reason `InsufficientMemory` and a message
+  with the numbers. `model.loadReport.contextSize` and `contextReason` say what was picked and why, e.g.
+  "the ceiling of 16384 tokens fits: 4527 MiB of 5291 MiB available".
+
+## Faster chips
+
+Add a backend artifact and the SDK uses it; nothing else to configure:
+
+```kotlin
+implementation("io.github.whyisitworking:llamabro-hexagon")   // the NPU on Snapdragon phones
+implementation("io.github.whyisitworking:llamabro-opencl")    // the GPU on Adreno
+```
+
+By default (`DevicePolicy.Auto`) a model loads on the NPU, else the GPU, else the CPU, skipping any that fails.
+`model.loadReport` says where it runs and why the others weren't used; `llama.backends()` lists what loaded.
+
+```kotlin
+llama.loadModel(ModelSource.file(path)) {
+    devicePolicy = DevicePolicy.Only(DeviceKind.Gpu)   // or Prefer(…); Only throws DeviceUnavailable instead
+}
+```
+
+On the OnePlus 13 the NPU loads Qwen3.5 4B in about 6 s. The GPU reads prompts about 3× faster than the CPU but
+takes about 15 s to load, and about a minute the first time after install while the driver compiles its programs
+(cached in the app's cache directory).
+
+Multi-token prediction (a model's MTP head guessing the next tokens) is off by default. With Qwen3.5 4B on the NPU
+it makes JSON and tool-call output about 1.5× faster, but prose slower, and it slows prompt reading a little. If
+your app mostly produces structured output (an agent, tool calls, JSON), turn it on:
+
+```kotlin
+llama.loadModel(ModelSource.file(path)) { speculative = Speculative.Mtp(draftMax = 4) }
+```
+
+It is a load setting (llama-server can't switch it per request). Not worth it on the CPU (no gain). Never on the
+GPU: any drafting, MTP or n-gram, aborts llama.cpp's OpenCL backend, so with either set `DevicePolicy.Auto` skips the
+GPU (`loadReport` says why) and `DevicePolicy.Only(DeviceKind.Gpu)` throws `DeviceUnavailable`.
+On the NPU it changes replies slightly: a greedy reply with MTP isn't always word for word the one without it (the
+NPU checks drafted tokens in a batch, with a little different rounding), though it reads just as well. n-gram
+drafting, below, keeps replies identical.
+
+n-gram drafting needs no extra model: it looks the last few tokens up in the prompt and earlier replies and guesses
+that what followed them comes again. When a reply copies its input (code edits, rewrites, quoting), it is much
+faster: a code edit with Qwen3.5 4B decoded about 7× faster on the NPU and 2.3× on the CPU, with the same reply. Prose
+is unaffected, but on the CPU a reply that only partly repeats its input can be 10–15% slower. On the NPU it combines
+with MTP (n-grams first, MTP when they have nothing):
+
+```kotlin
+llama.loadModel(ModelSource.file(path)) { speculative = Speculative.Ngram() }
+llama.loadModel(ModelSource.file(path)) { speculative = Speculative.Ngram(then = Speculative.Mtp(draftMax = 4)) }
+```
 
 ## How it works
 

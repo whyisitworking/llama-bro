@@ -31,18 +31,29 @@ typedef void (*lb_request_cb)(void * user, lb_event event, int http_status, cons
 const char * lb_version(void);                                         // "llamabro <ver> llama.cpp b12052"
 void lb_string_free(char * s);                                         // frees every char* this API returns
 
-// config: {"backend_dir": "<dir>", "log_level": "warn"}, both optional. The CPU backend is loaded by file name
-// (libllamabro-ggml-cpu-*.so, the best variant for this CPU); without backend_dir the dynamic linker finds it,
-// which on Android works straight from the APK. Fails if no CPU backend loads.
+// config: {"backend_dir": "<dir>", "log_level": "warn", "backends": [...]}, all optional. The CPU backend is loaded by
+// file name (libllamabro-ggml-cpu-*.so, the best variant for this CPU); without backend_dir the dynamic linker finds
+// it, which on Android works straight from the APK. Fails if no CPU backend loads.
+// backends: [{"name": "hexagon", "files": ["libllamabro-ggml-hexagon.so"], "env": {"ADSP_LIBRARY_PATH": "..."}}]:
+// optional backends, loaded the same way after the CPU, each after its env is set (setenv, under the init lock).
+// One that fails to load never fails init: lb_runtime_backends reports it with ggml's reason.
 lb_status lb_runtime_init(const char * config_json, char ** error_json);
 // NULL restores llama.cpp's default. The callback runs on llama's threads, outside the bridge's locks, and may
 // call back into the API. On return, no call of the previous callback is running on another thread, so its
 // `user` can be released (when called from inside the callback, after that callback returns).
 void lb_runtime_set_log(lb_log_cb cb, void * user);
 char * lb_runtime_devices(void);                                       // [{"name","description","type","memory_free","memory_total"}]
+char * lb_runtime_backends(void);                                      // [{"name","loaded","error","devices"}], "cpu" first; [] before init
 
 // On LB_ERR_LOAD_FAILED, error_json is {"error": "<why, with llama.cpp's own reason>"}, plus "code": "file_not_found"
 // when the model or mmproj file can't be opened.
+// Model config "n_ctx": "auto" (or absent) picks the context: with "memory_budget_mib", the largest up to "n_ctx_cap" (or
+// the training context) whose projected memory, over every device, fits the budget, at least 4096 tokens or
+// LB_ERR_LOAD_FAILED with "code": "insufficient_memory"; without a budget, min(n_ctx_cap or 8192, training context).
+// lb_model_info's "ctx_fit" has the numbers (null when not fitted).
+// Model config "devices": ["HTP0"] puts the model (and its image encoder) on those devices, with "n_gpu_layers";
+// absent or [] is CPU only. The device is never llama.cpp's default (every GPU-type device, F32). lb_model_info's
+// "devices" names the ones used ("CPU" for CPU only).
 lb_status lb_model_load(const char * config_json, lb_progress_cb cb, void * user, lb_model ** out, char ** error_json);
 char * lb_model_info(lb_model * model);
 // endpoint: every route tools/server/server.cpp registers for one model (server_register_routes), by name:

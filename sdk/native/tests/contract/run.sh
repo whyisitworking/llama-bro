@@ -33,7 +33,7 @@ PY
 echo "$(wc -l < "$requests" | tr -d ' ') requests$( [ -n "$mmproj" ] || echo ", without the image ones (no LB_TEST_MMPROJ)")"
 
 # upstream: the same values the C API config below produces (phone defaults, design §8)
-"$bin/llama-server" -m "$model" ${mmproj:+--mmproj "$mmproj"} -c 8192 -np 1 --cache-ram 1024 --ctx-checkpoints 8 \
+"$bin/llama-server" -m "$model" ${mmproj:+--mmproj "$mmproj"} -c 8192 -np 1 --cache-ram 1024 --ctx-checkpoints 8 --load-mode none --fit off \
     -b 512 -ub 512 --host 127.0.0.1 --port "$port" > "$out/llama-server.log" 2>&1 &
 server_pid=$!
 trap 'kill $server_pid 2>/dev/null || true; wait $server_pid 2>/dev/null || true' EXIT

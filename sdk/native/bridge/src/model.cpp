@@ -3,6 +3,7 @@
 // server_prepare_params, server_context, server_routes, load_model, update_meta, then start_loop on
 // the same thread.
 #include "model.h"
+#include "ggml-backend.h"
 
 #include "config.h"
 #include "upstream.h"
@@ -13,6 +14,7 @@
 
 #include "llama.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cstdio>
@@ -189,10 +191,22 @@ lb_status lb_model_load(const char * config_json, lb_progress_cb cb, void * user
         return LB_ERR_LOAD_FAILED;
     }
     lb_error_capture errors;
-    if (lb_config_wants_auto_ctx(cfg) && !lb_resolve_auto_ctx(m->params, err)) {
-        if (!errors.first_line().empty()) err += ": " + errors.first_line();
-        lb_set_error(error_json, "failed to load model: " + err);
-        return LB_ERR_LOAD_FAILED;
+    if (lb_config_wants_auto_ctx(cfg)) {
+        const int64_t budget_mib = lb_config_memory_budget_mib(cfg);
+        bool insufficient = false;
+        const uint32_t cap = lb_config_ctx_cap(cfg);
+        const bool ok = budget_mib > 0
+            ? lb_fit_auto_ctx(m->params, budget_mib * 1024 * 1024, m->ctx_fit, insufficient, err, cap)
+            : lb_resolve_auto_ctx(m->params, err, cap);
+        if (!ok) {
+            if (insufficient) {
+                lb_set_error(error_json, "failed to load model: " + err, "insufficient_memory");
+            } else {
+                if (!errors.first_line().empty()) err += ": " + errors.first_line();
+                lb_set_error(error_json, "failed to load model: " + err);
+            }
+            return LB_ERR_LOAD_FAILED;
+        }
     }
     m->progress_cb = cb;
     m->progress_user = user;
@@ -240,7 +254,18 @@ char * lb_model_info(lb_model * m) {
         res->on_complete();
     }
 
+    json devices = json::array();  // the devices the model was loaded on (P2 T6)
+    for (ggml_backend_dev_t dev : m->params.devices) {
+        if (dev) devices.push_back(ggml_backend_dev_name(dev));
+    }
+    if (devices.empty()) devices.push_back("CPU");
+
     return lb_strdup(json{
+        {"devices", devices},
+        {"ctx_fit", m->ctx_fit},
+        // what decodes: "mtp" when the model's MTP head drafts tokens (P2 T8)
+        {"speculative", std::find(m->params.speculative.types.begin(), m->params.speculative.types.end(),
+                                  COMMON_SPECULATIVE_TYPE_DRAFT_MTP) != m->params.speculative.types.end() ? "mtp" : "none"},
         {"n_ctx", llama_n_ctx(lctx)},
         {"n_ctx_train", llama_model_n_ctx_train(model)},
         {"n_params", llama_model_n_params(model)},

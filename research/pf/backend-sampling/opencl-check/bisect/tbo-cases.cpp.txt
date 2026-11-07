@@ -1,0 +1,13 @@
+    if (getenv("LB_F72")) {  // F75: Qwen3.5 4B's and Llama 3.2 3B's matmul shapes, quantized weights x F32
+        std::vector<std::unique_ptr<test_case>> c;
+        struct mk { int m, k; };
+        const mk qwen[]  = {{4096, 2560}, {8192, 2560}, {9216, 2560}, {1024, 2560}, {2560, 9216}, {2560, 4096}};
+        const mk llama[] = {{3072, 3072}, {1024, 3072}, {8192, 3072}, {3072, 8192}};
+        for (ggml_type t : {GGML_TYPE_Q4_K, GGML_TYPE_Q6_K, GGML_TYPE_Q5_K}) {
+            for (int n : {1, 2, 3, 4, 8, 19, 64, 512}) {
+                for (auto s : qwen)  c.emplace_back(new test_mul_mat(t, GGML_TYPE_F32, s.m, n, s.k, {1, 1}, {1, 1}));
+                for (auto s : llama) c.emplace_back(new test_mul_mat(t, GGML_TYPE_F32, s.m, n, s.k, {1, 1}, {1, 1}));
+            }
+        }
+        return c;
+    }

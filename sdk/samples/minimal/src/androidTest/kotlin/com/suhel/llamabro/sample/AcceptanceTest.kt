@@ -3,6 +3,7 @@ package com.suhel.llamabro.sample
 import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
 import com.suhel.llamabro.ContextSize
+import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.Model
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.AfterClass
+import org.junit.BeforeClass
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -25,9 +27,11 @@ import org.junit.runners.Parameterized
 import java.io.File
 
 /**
- * P1 done-when (design §13, P1 T12): chat, tools, stop and the context error on the phone, through the public
- * API only, for each model named in the instrumentation argument `models` (file names in the app's filesDir):
- *   ./gradlew -p sdk :samples:minimal:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.models=a.gguf,b.gguf
+ * P1 and P2 done-when (design §13, P1 T12, P2 T10): chat, tools, stop and the context error on the phone, through the
+ * public API only, for each model named in the instrumentation argument `models` (file names in the app's filesDir).
+ * Each flavor ships a different set of backends: `DevicePolicy.Auto` must pick its device ([BuildConfig.AUTO_DEVICE]);
+ * `full` runs every test, `cpu`, `gpu` and `noskel` (the forced NPU failure) device choice, one chat and stop:
+ *   ./gradlew -p sdk :samples:minimal:connectedFullDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.models=a.gguf,b.gguf
  * Results go to logcat under the tag "Acceptance" and to the app's filesDir/acceptance.log:
  *   adb shell run-as com.suhel.llamabro.sample cat files/acceptance.log
  */
@@ -50,7 +54,8 @@ class AcceptanceTest(private val file: String) {
             val t0 = System.nanoTime()
             loaded = runBlocking { llama.loadModel(ModelSource.file(path)) }
             loadedFile = file
-            log("load", "ms=${(System.nanoTime() - t0) / 1_000_000} desc=\"${loaded!!.info.description}\" n_ctx=${loaded!!.info.contextSize} caps=${loaded!!.info.templateCaps}")
+            val r = loaded!!.loadReport
+            log("load", "flavor=${BuildConfig.FLAVOR} device=${r.device} deviceName=${r.deviceName} attempts=${r.attempts} ms=${(System.nanoTime() - t0) / 1_000_000} desc=\"${loaded!!.info.description}\" n_ctx=${loaded!!.info.contextSize} caps=${loaded!!.info.templateCaps}")
         }
         loaded!!
     }
@@ -67,6 +72,22 @@ class AcceptanceTest(private val file: String) {
     } ?: "no timings"
 
     @Test
+    fun autoPicksTheFlavorsDevice() {
+        val r = model().loadReport
+        log("autoPicksTheFlavorsDevice", "device=${r.device} attempts=${r.attempts}")
+        assertEquals(r.toString(), DeviceKind.valueOf(BuildConfig.AUTO_DEVICE), r.device)
+        if (BuildConfig.FLAVOR == "noskel") {
+            // the NPU's backend couldn't install its skeleton: one line with the reason, then the GPU (P2 T10)
+            val a = r.attempts.single()
+            assertEquals(r.toString(), DeviceKind.Npu, a.kind)
+            assertTrue(a.reason, a.reason.startsWith("hexagon didn't load") && a.reason.contains("libggml-htp-v79.so"))
+        } else {
+            // only what the flavor ships is tried, and its best device loads first
+            assertEquals(r.toString(), emptyList<Any>(), r.attempts)
+        }
+    }
+
+    @Test
     fun streamsReply() = runBlocking {
         val events = model().chat().send("Say hello in five words.").toList()
         val content = events.filterIsInstance<ChatEvent.ContentDelta>().joinToString("") { it.delta }
@@ -78,6 +99,7 @@ class AcceptanceTest(private val file: String) {
 
     @Test
     fun runsToolLoop() = runBlocking {
+        assumeTrue("full flavor only", BuildConfig.FULL_SUITE)
         // a template without tool support (e.g. Gemma 3) never sees the tools: llama-server leaves them out
         // (decided with the user 2026-11-04: skip, recorded as a template quirk in the findings)
         val caps = model().info.templateCaps
@@ -120,6 +142,7 @@ class AcceptanceTest(private val file: String) {
 
     @Test
     fun exceedMapsTyped() = runBlocking {
+        assumeTrue("full flavor only", BuildConfig.FULL_SUITE)
         val small = llama.loadModel(ModelSource.file(path)) { contextSize = ContextSize.Fixed(512) }
         try {
             val e = runCatching {
@@ -143,6 +166,18 @@ class AcceptanceTest(private val file: String) {
         fun models(): List<String> =
             InstrumentationRegistry.getArguments().getString("models").orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
                 .ifEmpty { error("pass -Pandroid.testInstrumentationRunnerArguments.models=<file.gguf,…>") }
+
+        /**
+         * noskel starts as a fresh install would: every flavor shares the app's files, and a valid skeleton that full
+         * installed earlier still matches the checksums in this APK, so the broken one in its assets would never be
+         * read. Before the runtime starts, which the first load does.
+         */
+        @BeforeClass
+        @JvmStatic
+        fun freshSkeletonInstall() {
+            if (BuildConfig.FLAVOR != "noskel") return
+            File(InstrumentationRegistry.getInstrumentation().targetContext.noBackupFilesDir, "llamabro/htp").deleteRecursively()
+        }
 
         @AfterClass
         @JvmStatic

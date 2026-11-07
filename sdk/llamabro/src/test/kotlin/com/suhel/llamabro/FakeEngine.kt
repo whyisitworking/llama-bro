@@ -32,8 +32,17 @@ internal class FakeEngine : Engine {
 
     override fun devices(): String = devicesJson
 
+    /** `lb_runtime_backends`; null = the [Engine] default (the CPU alone). */
+    var backendsJson: String? = null
+
+    override fun backends(): String = backendsJson ?: super.backends()
+
+    /** A load error for a config (the C API's error JSON), or null to load. */
+    var loadError: (String) -> String? = { null }
+
     override fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel {
         loadConfigs += configJson
+        loadError(configJson)?.let { throw com.suhel.llamabro.internal.NativeError(5, it) }
         progress.forEach(onProgress)
         return makeModel()
     }

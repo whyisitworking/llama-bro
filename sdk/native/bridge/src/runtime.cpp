@@ -18,6 +18,8 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -30,6 +32,7 @@ struct runtime_state {
     std::mutex mtx;
     bool initialized = false;
     std::string config;  // canonical dump of the first config
+    json backends = json::array();  // lb_runtime_backends: what loaded, from the first successful init
 
     std::mutex log_mtx;
     std::shared_ptr<log_entry> log;                   // guarded by log_mtx; calls hold their own copy
@@ -105,7 +108,7 @@ const char * device_type_name(enum ggml_backend_dev_type t) {
 // instead of listing a directory: Android can dlopen a library by name straight from an uncompressed APK, so apps
 // don't need extracted native libraries (findings F25). Each variant reports how well it fits this CPU through
 // ggml_backend_score; the best one is loaded.
-bool load_cpu_backend(const std::string & backend_dir, std::string & err) {
+bool load_cpu_backend(const std::string & backend_dir, ggml_backend_reg_t & reg, std::string & err) {
     std::string best_path;
     int best_score = 0;
     std::string files = LB_CPU_BACKEND_FILES;
@@ -132,11 +135,113 @@ bool load_cpu_backend(const std::string & backend_dir, std::string & err) {
               (backend_dir.empty() ? std::string() : " from " + backend_dir);
         return false;
     }
-    if (!ggml_backend_load(best_path.c_str())) {
+    reg = ggml_backend_load(best_path.c_str());
+    if (!reg) {
         err = "failed to load CPU backend " + best_path;
         return false;
     }
     return true;
+}
+
+json reg_device_names(ggml_backend_reg_t reg) {
+    json names = json::array();
+    for (size_t i = 0; i < ggml_backend_reg_dev_count(reg); i++) {
+        names.push_back(ggml_backend_dev_name(ggml_backend_reg_dev_get(reg, i)));
+    }
+    return names;
+}
+
+// One optional backend from the config's "backends" (P2 T2, D24).
+struct backend_request {
+    std::string name;
+    std::vector<std::string> files;
+    std::vector<std::pair<std::string, std::string>> env;
+};
+
+bool parse_backends(const json & value, std::vector<backend_request> & out, std::string & err) {
+    if (!value.is_array()) {
+        err = "backends must be an array";
+        return false;
+    }
+    for (const auto & entry : value) {
+        if (!entry.is_object()) {
+            err = "each backend must be an object {name, files, env}";
+            return false;
+        }
+        backend_request b;
+        for (const auto & item : entry.items()) {
+            const std::string & key = item.key();
+            const json & v = item.value();
+            if (key == "name" && v.is_string() && !v.get<std::string>().empty()) {
+                b.name = v.get<std::string>();
+            } else if (key == "files" && v.is_array() && !v.empty()) {
+                for (const auto & f : v) {
+                    if (!f.is_string() || f.get<std::string>().empty()) {
+                        err = "backend files must be non-empty strings";
+                        return false;
+                    }
+                    b.files.push_back(f.get<std::string>());
+                }
+            } else if (key == "env" && v.is_object()) {
+                for (const auto & kv : v.items()) {
+                    if (!kv.value().is_string()) {
+                        err = "backend env values must be strings: " + kv.key();
+                        return false;
+                    }
+                    b.env.emplace_back(kv.key(), kv.value().get<std::string>());
+                }
+            } else {
+                err = "unknown or mistyped backend key: " + key;
+                return false;
+            }
+        }
+        if (b.name.empty() || b.files.empty()) {
+            err = "each backend needs a name and at least one file";
+            return false;
+        }
+        if (b.name == "cpu") {
+            err = "backend name cpu is reserved for the built-in CPU backend";
+            return false;
+        }
+        for (const auto & other : out) {
+            if (other.name == b.name) {
+                err = "backend listed twice: " + b.name;
+                return false;
+            }
+        }
+        out.push_back(std::move(b));
+    }
+    return true;
+}
+
+// Loads one optional backend after its env is set. A failure is returned as the reason, never thrown: an optional
+// backend can't stop the runtime (P2 review focus 1). ggml says why only in its log, so the reason is its error
+// line (as for model loads, F51). Runs under the runtime lock: setenv isn't safe against getenv on other threads,
+// and this is before any of llama.cpp's own threads exist.
+json load_optional_backend(const backend_request & b, const std::string & backend_dir) {
+    const auto failed = [&](const std::string & reason) {
+        return json{{"name", b.name}, {"loaded", false}, {"error", reason}, {"devices", json::array()}};
+    };
+    for (const auto & kv : b.env) setenv(kv.first.c_str(), kv.second.c_str(), 1);
+    json devices = json::array();
+    // a backend's init or device query may throw; past lb_runtime_init's extern "C" that would be std::terminate
+    try {
+        for (const auto & file : b.files) {
+            const std::string path = backend_dir.empty() ? file : backend_dir + "/" + file;
+            lb_error_capture errors;
+            ggml_backend_reg_t reg = ggml_backend_load(path.c_str());
+            if (!reg) {
+                const std::string reason = errors.first_line();
+                return failed(reason.empty() ? "failed to load " + path : reason);
+            }
+            for (const auto & d : reg_device_names(reg)) devices.push_back(d);
+        }
+    } catch (const std::exception & e) {
+        return failed(std::string("threw: ") + e.what());
+    } catch (...) {
+        return failed("threw an unknown exception");
+    }
+    return {{"name", b.name}, {"loaded", true}, {"error", nullptr}, {"devices", devices}};
 }
 
 }  // namespace
@@ -193,12 +298,19 @@ lb_status lb_runtime_init(const char * config_json, char ** error_json) {
     }
 
     std::string backend_dir;
+    std::vector<backend_request> backends;
     int verbosity = LOG_LEVEL_WARN;
     for (const auto & item : cfg.items()) {
         const std::string & key = item.key();
         const json & value = item.value();
         if (key == "backend_dir" && value.is_string()) {
             backend_dir = value.get<std::string>();
+        } else if (key == "backends") {
+            std::string err;
+            if (!parse_backends(value, backends, err)) {
+                lb_set_error(error_json, err);
+                return LB_ERR_INVALID_ARG;
+            }
         } else if (key == "log_level" && value.is_string()) {
             if (!parse_log_level(value.get<std::string>(), verbosity)) {
                 lb_set_error(error_json, "log_level must be debug, info, warn or error");
@@ -229,12 +341,18 @@ lb_status lb_runtime_init(const char * config_json, char ** error_json) {
     // scans the executable's and the current directory and loads GGML_BACKEND_PATH. Backends come only from
     // our list (findings F35). llama-server too loads backends before llama_backend_init when given --device.
     std::string load_error;
-    if (!load_cpu_backend(backend_dir, load_error)) {
+    ggml_backend_reg_t cpu = nullptr;
+    if (!load_cpu_backend(backend_dir, cpu, load_error)) {
         lb_set_error(error_json, load_error);
         return LB_ERR_INTERNAL;
     }
+    json loaded = json::array();
+    loaded.push_back({{"name", "cpu"}, {"loaded", true}, {"error", nullptr}, {"devices", reg_device_names(cpu)}});
+    // the optional backends come only from this list too, so their devices are known before any model loads
+    for (const auto & b : backends) loaded.push_back(load_optional_backend(b, backend_dir));
     llama_backend_init();
 
+    s.backends = std::move(loaded);
     s.config = canonical;
     s.initialized = true;
     return LB_OK;
@@ -255,6 +373,12 @@ void lb_runtime_set_log(lb_log_cb cb, void * user) {
         while (old.use_count() > 1 + own) std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     llama_log_set(log_trampoline, nullptr);  // without a callback it forwards to llama.cpp's default
+}
+
+char * lb_runtime_backends(void) {
+    auto & s = state();
+    std::lock_guard<std::mutex> lk(s.mtx);
+    return lb_strdup(s.initialized ? s.backends.dump() : "[]");
 }
 
 char * lb_runtime_devices(void) {

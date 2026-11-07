@@ -15,6 +15,9 @@ internal object NativeBridge {
     /** `lb_runtime_devices`: `[{"name","description","type","memory_free","memory_total"}]`. */
     external fun runtimeDevices(): String
 
+    /** `lb_runtime_backends`: `[{"name","loaded","error","devices"}]`, `cpu` first. */
+    external fun runtimeBackends(): String
+
     /** `lb_runtime_set_log`; null restores llama.cpp's default logging. */
     external fun runtimeSetLog(listener: LogListener?)
 

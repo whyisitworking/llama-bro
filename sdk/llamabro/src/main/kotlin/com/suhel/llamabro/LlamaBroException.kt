@@ -35,10 +35,19 @@ public sealed class LlamaBroException(message: String, cause: Throwable?) : Exce
         public enum class Reason {
             /** The model or projector file is missing or can't be read. */
             FileNotFound,
+            /** Not enough free memory for the model at the smallest automatic context (4096 tokens), on any device. */
+            InsufficientMemory,
             /** Anything else: a damaged or unsupported file, too little memory, a bad setting. See the message. */
             Other,
         }
     }
+
+    /**
+     * `DevicePolicy.Only([kind])` couldn't be met: no such device in this app or on this phone, or it failed to load
+     * the model. The message has each reason; [cause] is the last load error, if any.
+     */
+    public class DeviceUnavailable internal constructor(public val kind: DeviceKind, message: String, cause: Throwable?) :
+        LlamaBroException(message, cause)
 
     /** The model was closed, before or during the call. */
     public class ModelClosed internal constructor(cause: Throwable? = null) : LlamaBroException("model is closed", cause)

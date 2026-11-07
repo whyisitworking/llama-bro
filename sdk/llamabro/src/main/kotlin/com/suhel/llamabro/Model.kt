@@ -1,5 +1,9 @@
 package com.suhel.llamabro
 
+import com.suhel.llamabro.chat.ChatEvent
+import com.suhel.llamabro.chat.ChatRequest
+import com.suhel.llamabro.internal.ChatJson
+import com.suhel.llamabro.internal.ChatStreamDecoder
 import com.suhel.llamabro.internal.EngineModel
 import com.suhel.llamabro.internal.EngineRequest
 import com.suhel.llamabro.internal.ErrorMapping
@@ -13,6 +17,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -33,6 +38,8 @@ import kotlin.concurrent.write
  */
 public class Model internal constructor(
     private val engineModel: EngineModel,
+    /** Where the model runs and why ([ModelConfig.devicePolicy]). */
+    public val loadReport: LoadReport,
     /** Runs the native shutdown off the caller's thread (LlamaBroRuntime.shutdown). */
     private val shutdown: (() -> Unit) -> Deferred<Unit>,
 ) : AutoCloseable {
@@ -236,21 +243,21 @@ public class Model internal constructor(
 }
 
 /**
- * A typed chat completion (design §6.1, level 2). Always streams; emits [com.suhel.llamabro.chat.ChatEvent]s
+ * A typed chat completion (design §6.1, level 2). Always streams; emits [ChatEvent]s
  * ending with exactly one `Done`. Errors fail the flow with a [LlamaBroException].
  */
-public fun Model.chat(request: com.suhel.llamabro.chat.ChatRequest): Flow<com.suhel.llamabro.chat.ChatEvent> =
+public fun Model.chat(request: ChatRequest): Flow<ChatEvent> =
     chatInternal(request, null)
 
 /** [Model.chat], reporting the stream's completion id as soon as it's known (Conversation.endReasoning). */
 internal fun Model.chatInternal(
-    request: com.suhel.llamabro.chat.ChatRequest,
+    request: ChatRequest,
     onCompletionId: ((String) -> Unit)?,
-): Flow<com.suhel.llamabro.chat.ChatEvent> = kotlinx.coroutines.flow.flow {
+): Flow<ChatEvent> = flow {
     cancelPreEncode()  // tools/ui cancels a pending pre-encode before every chat request
-    val decoder = com.suhel.llamabro.internal.ChatStreamDecoder()
+    val decoder = ChatStreamDecoder()
     var reported = false
-    rawRequest(Endpoint.ChatCompletions, com.suhel.llamabro.internal.ChatJson.body(request)).collect { payload ->
+    rawRequest(Endpoint.ChatCompletions, ChatJson.body(request)).collect { payload ->
         val events = decoder.accept(payload)
         if (!reported && onCompletionId != null) decoder.completionId?.let { reported = true; onCompletionId(it) }
         events.forEach { emit(it) }

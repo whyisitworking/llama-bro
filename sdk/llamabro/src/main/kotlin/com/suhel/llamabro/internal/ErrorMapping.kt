@@ -3,6 +3,7 @@ package com.suhel.llamabro.internal
 import com.suhel.llamabro.LlamaBroException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -40,6 +41,7 @@ internal object ErrorMapping {
         val obj = runCatching { json.parseToJsonElement(e.errorJson) as? JsonObject }.getOrNull()
         val reason = when (obj?.string("code")) {
             "file_not_found" -> LlamaBroException.ModelLoadFailed.Reason.FileNotFound
+            "insufficient_memory" -> LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory
             else -> LlamaBroException.ModelLoadFailed.Reason.Other
         }
         return LlamaBroException.ModelLoadFailed(reason, nativeMessage(e.errorJson), e)
@@ -50,5 +52,5 @@ internal object ErrorMapping {
         runCatching { (json.parseToJsonElement(errorJson) as JsonObject).string("error") }.getOrNull() ?: errorJson
 
     private fun JsonObject.string(key: String): String? =
-        (get(key) as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
+        (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
 }

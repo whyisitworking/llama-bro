@@ -1,6 +1,11 @@
 package com.suhel.llamabro
 
+import android.app.ActivityManager
 import android.content.Context
+import android.content.pm.PackageManager
+import com.suhel.llamabro.internal.BackendDiscovery
+import com.suhel.llamabro.internal.BackendInstaller
+import com.suhel.llamabro.internal.MemoryBudget
 import com.suhel.llamabro.internal.Engine
 import com.suhel.llamabro.internal.JniEngine
 import com.suhel.llamabro.internal.LlamaBroRuntime
@@ -22,14 +27,22 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
      * }
      * ```
      * @throws LlamaBroException.ModelLoadFailed
+     * @throws LlamaBroException.DeviceUnavailable with [DevicePolicy.Only] when no device of that kind could load it
+     *   (or none is in the app), or when every device [DevicePolicy.Auto] or [DevicePolicy.Prefer] tried failed.
      * @throws LlamaBroException.InvalidRequest if the runtime was already initialised in this process with another
      *   [LlamaBroConfig].
      */
     public suspend fun loadModel(source: ModelSource, configure: ModelConfig.() -> Unit = {}): Model =
         runtime.load(source, ModelConfig().apply(configure))
 
-    /** The backend devices ggml loaded (CPU in P1). Initialises the native runtime if needed; runs on `Dispatchers.IO`. */
+    /** The backend devices ggml loaded. Initialises the native runtime if needed; runs on `Dispatchers.IO`. */
     public suspend fun devices(): List<DeviceInfo> = runtime.devices()
+
+    /**
+     * Every backend and whether it loaded: `cpu` first, then each backend artifact on the classpath, with the reason
+     * when one failed. Initialises the native runtime if needed; runs on `Dispatchers.IO`.
+     */
+    public suspend fun backends(): List<Backend> = runtime.backends()
 
     /** Implement on your `Application` to configure the runtime. */
     public interface ConfigProvider {
@@ -52,7 +65,13 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
                 val app = context.applicationContext
                 val config = (app as? ConfigProvider)?.llamaBroConfig ?: LlamaBroConfig.Default
                 // no backend_dir: the backends load by name from the APK, extracted or not (findings F25)
-                LlamaBro(LlamaBroRuntime(JniEngine, app.noBackupFilesDir, null, config))
+                LlamaBro(
+                    LlamaBroRuntime(
+                        JniEngine, app.noBackupFilesDir, null, config,
+                        discoverBackends = { manifestBackends(app) },
+                        memorySnapshot = { memorySnapshot(app) },
+                    ),
+                )
             }.also { instance = it }
         }
 
@@ -71,16 +90,36 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
 public class DeviceInfo internal constructor(
     public val name: String,
     public val description: String,
-    /** ggml's device type: `cpu`, `gpu`, `igpu`, `accel` or `meta`. */
-    public val type: String,
-    /** Bytes, as ggml reports them. */
+    /** The chip kind, from the backend that added it (D29, D32); ggml's own type calls the NPU a GPU (F32). */
+    public val kind: DeviceKind,
+    /** Bytes, as ggml reports them; not a usable budget on a phone (F33, F64). */
     public val memoryFree: Long,
     public val memoryTotal: Long,
 ) {
     override fun equals(other: Any?): Boolean = other is DeviceInfo && parts() == other.parts()
     override fun hashCode(): Int = parts().hashCode()
     override fun toString(): String =
-        "DeviceInfo(name=$name, description=$description, type=$type, memoryFree=$memoryFree, memoryTotal=$memoryTotal)"
+        "DeviceInfo(name=$name, description=$description, kind=$kind, memoryFree=$memoryFree, memoryTotal=$memoryTotal)"
 
-    private fun parts() = listOf(name, description, type, memoryFree, memoryTotal)
+    private fun parts() = listOf(name, description, kind, memoryFree, memoryTotal)
+}
+
+/** The backend artifacts announced in [app]'s merged manifest (D24): one `PackageManager` call, no classpath scan. */
+private fun manifestBackends(app: Context): BackendDiscovery.Result {
+    @Suppress("DEPRECATION") // the flags overload needs API 33
+    val bundle = app.packageManager.getApplicationInfo(app.packageName, PackageManager.GET_META_DATA).metaData
+        ?: return BackendDiscovery.Result.None
+    @Suppress("DEPRECATION") // Bundle.get(String) is the only untyped getter
+    val metaData = bundle.keySet().associateWith { bundle.get(it) }
+    return BackendDiscovery.discover(metaData) { className ->
+        (Class.forName(className).getDeclaredConstructor().newInstance() as BackendInstaller).install(app)
+    }
+}
+
+/** Memory now (P2 T7, D33, D34): the kernel's `MemAvailable`, else Android's `availMem`, and the low-memory threshold. */
+private fun memorySnapshot(app: Context): MemoryBudget.Snapshot? {
+    val am = app.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return null
+    val info = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+    val kernel = runCatching { MemoryBudget.memAvailable(File("/proc/meminfo").readText()) }.getOrNull()
+    return MemoryBudget.Snapshot(kernel ?: info.availMem, info.threshold)
 }

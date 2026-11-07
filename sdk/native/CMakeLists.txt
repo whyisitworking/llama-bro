@@ -43,6 +43,26 @@ set(LLAMA_BUILD_APP        OFF CACHE BOOL "" FORCE)
 set(GGML_BACKEND_DL        ON  CACHE BOOL "" FORCE)
 set(GGML_NATIVE            OFF CACHE BOOL "" FORCE)
 set(GGML_CPU_ALL_VARIANTS  ON  CACHE BOOL "" FORCE)
+# upstream's Snapdragon preset: ggml's own thread pool, no libomp.so; the same median CPU speed, and the only slow
+# runs were with OpenMP (F77, D38)
+set(GGML_OPENMP           OFF CACHE BOOL "" FORCE)
+
+# Optional backends (P2 T3-T5): built only by scripts/build-backends.sh, inside Qualcomm's image for Hexagon. They
+# come from this same file so ggml-base, which each backend links, is built with the AGP build's exact options.
+set(LB_BACKENDS "" CACHE STRING "Optional backends to build: hexagon (needs HEXAGON_SDK_ROOT), opencl, vulkan")
+if("hexagon" IN_LIST LB_BACKENDS)
+    set(GGML_HEXAGON ON CACHE BOOL "" FORCE)
+    set(HEXAGON_SDK_ROOT   "$ENV{HEXAGON_SDK_ROOT}"   CACHE PATH "")
+    set(HEXAGON_TOOLS_ROOT "$ENV{HEXAGON_TOOLS_ROOT}" CACHE PATH "")
+endif()
+if("vulkan" IN_LIST LB_BACKENDS)
+    # headers, glslc and SPIRV-Headers come from build-backends.sh (scripts/fetch-deps.sh, F34)
+    set(GGML_VULKAN ON CACHE BOOL "" FORCE)
+endif()
+if("opencl" IN_LIST LB_BACKENDS)
+    # upstream's defaults: kernels embedded, Adreno kernels on, OpenCL 3.0 (ggml-opencl/CMakeLists.txt)
+    set(GGML_OPENCL ON CACHE BOOL "" FORCE)
+endif()
 
 # llama.cpp's cmake/build-info.cmake asks `git rev-parse --short HEAD` and `git rev-list --count HEAD` in the
 # copy's directory. The copy isn't a repo, so git answers for whatever repo contains it (this one), and
@@ -68,6 +88,13 @@ file(CHMOD "${CMAKE_BINARY_DIR}/lb-git-build-info.sh" PERMISSIONS OWNER_READ OWN
 set(GIT_EXECUTABLE "${CMAKE_BINARY_DIR}/lb-git-build-info.sh" CACHE FILEPATH "" FORCE)
 
 add_subdirectory(${LB_LLAMA_DIR} llama EXCLUDE_FROM_ALL)
+
+# ggml-vulkan finds SPIRV-Headers but never links its target: upstream's builds get the headers from the system's
+# include directory, which an Android cross-build doesn't have (P2 T5)
+set(LB_SPIRV_INCLUDE_DIR "" CACHE PATH "SPIRV-Headers include directory for ggml-vulkan (build-backends.sh)")
+if(TARGET ggml-vulkan AND LB_SPIRV_INCLUDE_DIR)
+    target_include_directories(ggml-vulkan PRIVATE ${LB_SPIRV_INCLUDE_DIR})
+endif()
 
 add_library(llamabro SHARED
     bridge/src/runtime.cpp
@@ -122,7 +149,7 @@ add_dependencies(llamabro ${LB_CPU_BACKENDS})
 
 # Our own library names, so an app that also ships another llama.cpp build can't get a duplicate-file error or
 # load the wrong libllama.so (findings F25). OUTPUT_NAME only renames the files; nothing in llama.cpp changes.
-foreach(t ggml-base ggml llama llama-common mtmd)
+foreach(t ggml-base ggml llama llama-common mtmd ggml-hexagon ggml-opencl ggml-vulkan)
     if(LB_PREFIX_LIBS AND TARGET ${t})
         set_target_properties(${t} PROPERTIES OUTPUT_NAME "llamabro-${t}")
     endif()
@@ -148,6 +175,13 @@ if(LB_BUILD_TESTS)
     target_link_libraries(lb-tests PRIVATE llamabro llama-common)
     add_dependencies(lb-tests llama-server)
 
+    # a device-less ggml backend for the backend-loading tests (P2 T2), next to the CPU variants
+    add_library(lb-test-backend MODULE bridge/tests/lb_test_backend.cpp)
+    target_include_directories(lb-test-backend PRIVATE ${LB_LLAMA_DIR}/ggml/src ${LB_LLAMA_DIR}/ggml/include)
+    set_target_properties(lb-test-backend PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_dependencies(lb-tests lb-test-backend)
+    target_compile_definitions(lb-tests PRIVATE "LB_TEST_BACKEND_FILE=\"$<TARGET_FILE_NAME:lb-test-backend>\"")
+
     add_executable(lb-run bridge/tools/lb-run.cpp)
     target_include_directories(lb-run PRIVATE bridge/src)
     target_link_libraries(lb-run PRIVATE llamabro llama-common)
@@ -161,6 +195,7 @@ if(LB_BUILD_TESTS)
         version_names_build
         log_callback_can_reenter
         model_load_auto_ctx
+        auto_ctx_cap_is_per_slot
         props_build_info_names_llama_build
         config_defaults_applied
         model_load_missing_file_fails
@@ -177,12 +212,34 @@ if(LB_BUILD_TESTS)
         two_requests_one_slot_both_complete
         model_free_with_inflight_request
         request_free_inside_callback
+        backends_empty_before_init
+        optional_backend_failure_is_reported
+        backend_init_failure_is_reported
+        backend_env_set_before_load
+        runtime_init_twice_same_config_with_backends_ok
+        backends_config_invalid
+        model_devices_default_is_cpu
+        model_devices_empty_is_cpu_and_no_scan
+        model_devices_invalid_names_fail
+        auto_ctx_fits_budget
+        auto_ctx_budget_load_and_insufficient_error
+        ngram_config_maps_to_ngram_mod
+        ngram_drafts_and_keeps_the_reply
+        load_features_parsed
+        embeddings_mean_pooling
+        embeddings_off_by_default
+        rerank_orders_documents
+        lora_scale_changes_output
+        kv_cache_q8_0_loads_and_generates
     )
     foreach(name ${LB_TESTS})
         add_test(NAME ${name} COMMAND lb-tests ${name})
         set_tests_properties(${name} PROPERTIES ENVIRONMENT "LB_BACKEND_DIR=${CMAKE_BINARY_DIR}/bin" TIMEOUT 300)
         if(DEFINED ENV{LB_TEST_MODEL})
             set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "LB_TEST_MODEL=$ENV{LB_TEST_MODEL}")
+        endif()
+        if(DEFINED ENV{LB_TEST_MODELS_DIR})
+            set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "LB_TEST_MODELS_DIR=$ENV{LB_TEST_MODELS_DIR}")
         endif()
     endforeach()
 endif()

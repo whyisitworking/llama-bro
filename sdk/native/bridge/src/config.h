@@ -15,6 +15,21 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string & 
 // true when cfg asks for the automatic context size ("n_ctx" absent or "auto")
 bool lb_config_wants_auto_ctx(const json & cfg);
 
-// Auto context = min(8192, <arch>.context_length), read from the GGUF header without loading tensors.
-// P2 replaces this with common/fit.h.
-bool lb_resolve_auto_ctx(common_params & params, std::string & err);
+// Auto context without a memory budget = min(cap or 8192, <arch>.context_length), read from the GGUF header without
+// loading tensors (callers that don't know the device's memory).
+bool lb_resolve_auto_ctx(common_params & params, std::string & err, uint32_t n_ctx_cap = 0);
+
+// "memory_budget_mib": what the model may use in total (weights, context, compute, on every device), from the app's
+// view of available memory. Absent: 0.
+int64_t lb_config_memory_budget_mib(const json & cfg);
+
+// Auto context fitted to `budget_bytes` (P2 T7, D33): upstream's own dry-run measurement (common_fit_measure) at the
+// minimum (4096) and the training context, summed over every device and the host, since a phone has one RAM, then
+// upstream's linear interpolation between them. Sets params.n_ctx; `report` gets the numbers. When even the minimum
+// doesn't fit: false with `insufficient` set.
+// `n_ctx_cap` (>0) bounds the result: ContextSize.Auto's 16384 or an app's UpTo(n) (D34).
+bool lb_fit_auto_ctx(common_params & params, int64_t budget_bytes, json & report, bool & insufficient, std::string & err,
+                     uint32_t n_ctx_cap = 0);
+
+// "n_ctx_cap": the ceiling of the automatic context, 0 = the training context
+uint32_t lb_config_ctx_cap(const json & cfg);

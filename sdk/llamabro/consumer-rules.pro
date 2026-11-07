@@ -10,3 +10,10 @@
 -keep class com.suhel.llamabro.internal.NativeError {
     <init>(int, java.lang.String);
 }
+
+# Backend artifacts name their installer class in the manifest (<meta-data com.suhel.llamabro.backend.*>, D24); the
+# core creates it by that name with reflection (LlamaBro.kt, manifestBackends). Renamed or removed, the backend
+# would be reported as failed instead of loading.
+-keep class * implements com.suhel.llamabro.internal.BackendInstaller {
+    public <init>();
+}

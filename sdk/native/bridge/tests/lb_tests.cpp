@@ -4,9 +4,11 @@
 #include "config.h"
 
 #include "common.h"
+#include "ggml-backend.h"
 
 
 #include <cstdio>
+#include <dlfcn.h>
 #include <cstdlib>
 #include <algorithm>
 #include <atomic>
@@ -18,6 +20,8 @@
 #include <cstring>
 #include <functional>
 #include <map>
+#include <cmath>
+#include <regex>
 #include <string>
 
 
@@ -204,6 +208,15 @@ static void model_load_auto_ctx() {
     lb_model_free(model);
 }
 
+// ContextSize's cap is per slot (as upstream's fit): two slots get twice the context, each slot the cap
+static void auto_ctx_cap_is_per_slot() {
+    lb_model * model = load_test_model(json{{"n_parallel", 2}, {"n_ctx_cap", 2048}});
+    const json info = model_info(model);
+    LB_CHECK(info.at("n_ctx").get<int>() == 2 * std::min(2048, info.at("n_ctx_train").get<int>()));
+    LB_CHECK(info.at("props").at("total_slots").get<int>() == 2);
+    lb_model_free(model);
+}
+
 // build-info.cmake must describe the llama.cpp submodule, not the repo the copy sits in (F24)
 static void props_build_info_names_llama_build() {
     lb_model * model = load_test_model({{"n_ctx", 512}});
@@ -226,6 +239,11 @@ static void config_defaults_applied() {
     LB_CHECK(p.n_ubatch == 512);
     LB_CHECK(p.ctx_shift == false);
     LB_CHECK(p.sleep_idle_seconds == -1);
+    LB_CHECK(p.load_mode == LLAMA_LOAD_MODE_NONE);  // F58, D30
+    // no device given is CPU only, never llama.cpp's "every GPU" default (P2 T6, F32)
+    LB_CHECK(p.devices.size() == 1 && p.devices[0] == nullptr);
+    LB_CHECK(p.mmproj_use_gpu == false);
+    LB_CHECK(p.fit_params == false);  // context and placement are explicit (D33)
 }
 
 static void model_load_missing_file_fails() {
@@ -543,9 +561,493 @@ static void request_free_inside_callback() {
     lb_model_free(m);
 }
 
+// ---------------------------------------------------------------------------------------------
+// P2 Task 2: optional backends, loaded by name, never failing the runtime
+// ---------------------------------------------------------------------------------------------
+
+static lb_status init_with_backends(const json & backends, char ** err) {
+    json cfg = json::parse(runtime_config());
+    cfg["backends"] = backends;
+    return lb_runtime_init(cfg.dump().c_str(), err);
+}
+
+// one entry of the runtime config's "backends"
+static json backend_entry(const std::string & name, const std::string & file, const std::map<std::string, std::string> & env = {}) {
+    json b = json::object();
+    b["name"] = name;
+    b["files"] = json::array({file});
+    if (!env.empty()) {
+        json e = json::object();
+        for (const auto & kv : env) e[kv.first] = kv.second;
+        b["env"] = e;
+    }
+    return b;
+}
+
+static json one(const json & entry) {
+    json list = json::array();
+    list.push_back(entry);
+    return list;
+}
+
+static json runtime_backends() {
+    char * s = lb_runtime_backends();
+    LB_CHECK(s != nullptr);
+    json out = json::parse(s);
+    lb_string_free(s);
+    return out;
+}
+
+static json backend_named(const json & list, const std::string & name) {
+    for (const auto & b : list) {
+        if (b.value("name", "") == name) return b;
+    }
+    std::fprintf(stderr, "no backend %s in %s\n", name.c_str(), list.dump().c_str());
+    std::exit(1);
+}
+
+static void backends_empty_before_init() {
+    LB_CHECK(runtime_backends() == json::array());
+}
+
+static void optional_backend_failure_is_reported() {
+    char * err = nullptr;
+    LB_CHECK(init_with_backends(one(backend_entry("missing", "libllamabro-ggml-nonexistent.so")), &err) == LB_OK);
+    LB_CHECK(err == nullptr);
+    const json list = runtime_backends();
+    LB_CHECK(list.size() == 2);
+    LB_CHECK(list[0].value("name", "") == "cpu");
+    const json cpu = backend_named(list, "cpu");
+    LB_CHECK(cpu.at("loaded") == true);
+    LB_CHECK(cpu.at("error").is_null());
+    LB_CHECK(cpu.at("devices") == json::array({"CPU"}));
+    const json missing = backend_named(list, "missing");
+    LB_CHECK(missing.at("loaded") == false);
+    LB_CHECK(missing.at("error").is_string());
+    const std::string reason = missing.at("error").get<std::string>();
+    LB_CHECK(reason.find("libllamabro-ggml-nonexistent.so") != std::string::npos);
+    LB_CHECK(reason.find("dlopen") != std::string::npos);  // the linker's own reason, from ggml's log line
+    LB_CHECK(missing.at("devices") == json::array());
+    // CPU still loads and serves a model
+    lb_model * model = nullptr;
+    LB_CHECK(lb_model_load(json{{"model_path", test_model()}}.dump().c_str(), nullptr, nullptr, &model, &err) == LB_OK);
+    lb_model_free(model);
+}
+
+static void backend_init_failure_is_reported() {
+    char * err = nullptr;
+    LB_CHECK(init_with_backends(one(backend_entry("test", LB_TEST_BACKEND_FILE, {{"LB_TEST_BACKEND_FAIL", "1"}})), &err) == LB_OK);
+    const json test = backend_named(runtime_backends(), "test");
+    LB_CHECK(test.at("loaded") == false);
+    LB_CHECK(test.at("error").get<std::string>().find("returned NULL") != std::string::npos);
+    LB_CHECK(count_devices_of_type("cpu") == 1);
+}
+
+static void backend_env_set_before_load() {
+    char * err = nullptr;
+    LB_CHECK(init_with_backends(one(backend_entry("test", LB_TEST_BACKEND_FILE, {{"LB_TEST_BACKEND_VALUE", "seen-by-init"}})), &err) == LB_OK);
+    const json test = backend_named(runtime_backends(), "test");
+    LB_CHECK(test.at("loaded") == true);
+    LB_CHECK(test.at("error").is_null());
+    LB_CHECK(test.at("devices") == json::array());
+    // the library stays loaded (ggml's registry holds it): ask it what its ggml_backend_init saw
+    const std::string path = env_or("LB_BACKEND_DIR", "") + "/" + LB_TEST_BACKEND_FILE;
+    void * h = dlopen(path.c_str(), RTLD_NOW | RTLD_NOLOAD);
+    LB_CHECK(h != nullptr);
+    auto seen = reinterpret_cast<const char * (*)(void)>(dlsym(h, "lb_test_backend_seen"));
+    LB_CHECK(seen != nullptr);
+    LB_CHECK(std::string(seen()) == "seen-by-init");
+    dlclose(h);
+}
+
+static void runtime_init_twice_same_config_with_backends_ok() {
+    char * err = nullptr;
+    const json backends = one(backend_entry("test", LB_TEST_BACKEND_FILE));
+    LB_CHECK(init_with_backends(backends, &err) == LB_OK);
+    LB_CHECK(init_with_backends(backends, &err) == LB_OK);
+    LB_CHECK(err == nullptr);
+    LB_CHECK(runtime_backends().size() == 2);  // cpu and test, not loaded twice
+    LB_CHECK(init_with_backends(json::array(), &err) == LB_ERR_ALREADY_INITIALIZED);
+    lb_string_free(err);
+}
+
+static void backends_config_invalid() {
+    std::vector<json> bad;
+    bad.push_back(json("x"));                       // not an array
+    bad.push_back(json::array({"x"}));              // an entry that isn't an object
+    json no_name = backend_entry("a", "a.so");
+    no_name.erase("name");
+    bad.push_back(one(no_name));
+    json files_string = backend_entry("a", "a.so");
+    files_string["files"] = "a.so";
+    bad.push_back(one(files_string));
+    json empty_files = backend_entry("a", "a.so");
+    empty_files["files"] = json::array();
+    bad.push_back(one(empty_files));
+    json env_number = backend_entry("a", "a.so");
+    json e = json::object();
+    e["K"] = 1;
+    env_number["env"] = e;
+    bad.push_back(one(env_number));
+    json extra = backend_entry("a", "a.so");
+    extra["extra"] = 1;
+    bad.push_back(one(extra));
+    bad.push_back(one(backend_entry("cpu", "a.so")));  // "cpu" is the built-in backend
+    json dup = json::array();
+    dup.push_back(backend_entry("a", "a.so"));
+    dup.push_back(backend_entry("a", "b.so"));
+    bad.push_back(dup);
+    for (const json & b : bad) {
+        char * err = nullptr;
+        const lb_status st = init_with_backends(b, &err);
+        if (st != LB_ERR_INVALID_ARG) std::fprintf(stderr, "accepted: %s\n", b.dump().c_str());
+        LB_CHECK(st == LB_ERR_INVALID_ARG);
+        LB_CHECK(err != nullptr);
+        lb_string_free(err);
+    }
+    LB_CHECK(runtime_backends() == json::array());  // nothing initialised
+}
+
+// ---------------------------------------------------------------------------------------------
+// P2 Task 6: explicit devices
+// ---------------------------------------------------------------------------------------------
+
+static void model_devices_default_is_cpu() {
+    lb_model * model = load_test_model();
+    LB_CHECK(model_info(model).at("devices") == json::array({"CPU"}));
+    lb_model_free(model);
+}
+
+static void model_devices_empty_is_cpu_and_no_scan() {
+    // a backend named by GGML_BACKEND_PATH would be loaded by ggml's scan; with devices set, no load may scan (F35)
+    const std::string dir = env_or("LB_BACKEND_DIR", "");
+    setenv("GGML_BACKEND_PATH", (dir + "/" + LB_TEST_BACKEND_FILE).c_str(), 1);
+    json extra = json::object();
+    extra["devices"] = json::array();
+    extra["n_gpu_layers"] = 0;
+    lb_model * model = load_test_model(extra);
+    LB_CHECK(model_info(model).at("devices") == json::array({"CPU"}));
+    lb_model_free(model);
+    LB_CHECK(ggml_backend_reg_count() == 1);  // only our CPU backend: no scan loaded the test backend behind our back
+}
+
+static void model_devices_invalid_names_fail() {
+    init_runtime();
+    for (const char * name : {"NOPE0", "CPU"}) {  // unknown, and the CPU itself (as parse_device_list)
+        json cfg = {{"model_path", test_model()}};
+        cfg["devices"] = json::array({name});
+        lb_model * model = nullptr;
+        char * err = nullptr;
+        const lb_status st = lb_model_load(cfg.dump().c_str(), nullptr, nullptr, &model, &err);
+        LB_CHECK(st == LB_ERR_INVALID_ARG);
+        LB_CHECK(model == nullptr);
+        LB_CHECK(err != nullptr && std::strstr(err, name) != nullptr);
+        lb_string_free(err);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// P2 Task 7: automatic context fitted to a memory budget (D33)
+// ---------------------------------------------------------------------------------------------
+
+static common_params parsed_test_config() {
+    common_params p;
+    std::string err;
+    LB_CHECK(lb_parse_model_config(json{{"model_path", test_model()}}, p, err));
+    return p;
+}
+
+static void auto_ctx_fits_budget() {
+    init_runtime();
+    constexpr int64_t MiB = 1024 * 1024;
+    // huge budget: the training context
+    common_params p = parsed_test_config();
+    json report;
+    bool insufficient = false;
+    std::string err;
+    LB_CHECK(lb_fit_auto_ctx(p, 1024 * 1024 * MiB, report, insufficient, err));
+    const uint32_t n_train = report.at("n_ctx_train").get<uint32_t>();
+    LB_CHECK(p.n_ctx == (int32_t) n_train);
+    const int64_t used_min = report.at("used_min_mib").get<int64_t>(), used_max = report.at("used_max_mib").get<int64_t>();
+    LB_CHECK(used_min > 0 && used_max > used_min);
+    // half way between the two measurements: in between, aligned to 256
+    common_params q = parsed_test_config();
+    LB_CHECK(lb_fit_auto_ctx(q, (used_min + (used_max - used_min) / 2) * MiB, report, insufficient, err));
+    LB_CHECK(q.n_ctx > 4096 && q.n_ctx < (int32_t) n_train && q.n_ctx % 256 == 0);
+    // a ceiling (ContextSize.Auto's 16384, D34) bounds it however much memory there is
+    common_params c = parsed_test_config();
+    LB_CHECK(lb_fit_auto_ctx(c, 1024 * 1024 * MiB, report, insufficient, err, 16384));
+    LB_CHECK(c.n_ctx == 16384);
+    LB_CHECK(report.at("n_ctx_cap").get<uint32_t>() == 16384);
+    // less than the minimum context needs: a typed failure, not a smaller context
+    common_params r = parsed_test_config();
+    LB_CHECK(!lb_fit_auto_ctx(r, (used_min - 1) * MiB, report, insufficient, err));
+    LB_CHECK(insufficient);
+    LB_CHECK(err.find("not enough memory") != std::string::npos);
+}
+
+static void auto_ctx_budget_load_and_insufficient_error() {
+    init_runtime();
+    // a budget just above what the minimum context needs gives about that context, and the model loads with it
+    common_params p = parsed_test_config();
+    json report;
+    bool insufficient = false;
+    std::string err;
+    LB_CHECK(lb_fit_auto_ctx(p, 1024LL * 1024 * 1024 * 1024, report, insufficient, err));
+    const int64_t used_min = report.at("used_min_mib").get<int64_t>();
+    json extra = json::object();
+    extra["memory_budget_mib"] = used_min + 16;
+    lb_model * model = load_test_model(extra);
+    const json info = model_info(model);
+    LB_CHECK(info.at("ctx_fit").at("n_ctx").get<int>() == info.at("n_ctx").get<int>());
+    LB_CHECK(info.at("n_ctx").get<int>() >= 4096 && info.at("n_ctx").get<int>() < 8192);
+    lb_model_free(model);
+    // a budget below it: LB_ERR_LOAD_FAILED with code insufficient_memory, nothing allocated
+    json cfg = {{"model_path", test_model()}};
+    cfg["memory_budget_mib"] = used_min / 2;
+    lb_model * none = nullptr;
+    char * e = nullptr;
+    LB_CHECK(lb_model_load(cfg.dump().c_str(), nullptr, nullptr, &none, &e) == LB_ERR_LOAD_FAILED);
+    LB_CHECK(none == nullptr);
+    LB_CHECK(json::parse(e).value("code", "") == "insufficient_memory");
+    lb_string_free(e);
+}
+
+// ---------------------------------------------------------------------------------------------
+// P2 Task 8: MTP only where the model has a head
+// ---------------------------------------------------------------------------------------------
+
+static bool has_mtp(const common_params & p) {
+    return std::find(p.speculative.types.begin(), p.speculative.types.end(), COMMON_SPECULATIVE_TYPE_DRAFT_MTP) !=
+           p.speculative.types.end();
+}
+
+// ---------------------------------------------------------------------------------------------
+// D35: n-gram speculation (ngram-mod with upstream's --spec-default values), alone or before MTP (F72)
+// ---------------------------------------------------------------------------------------------
+
+static void ngram_config_maps_to_ngram_mod() {
+    std::string err;
+    common_params alone;
+    LB_CHECK(lb_parse_model_config(json{{"model_path", test_model()}, {"speculative", {{"type", "ngram"}}}}, alone, err));
+    // --spec-type appends to upstream's default list ({none}), as llama-server does with the same flag
+    LB_CHECK(std::find(alone.speculative.types.begin(), alone.speculative.types.end(), COMMON_SPECULATIVE_TYPE_NGRAM_MOD) !=
+             alone.speculative.types.end());
+    LB_CHECK(!has_mtp(alone));
+    LB_CHECK(alone.speculative.ngram_mod.n_match == 24);
+    LB_CHECK(alone.speculative.ngram_mod.n_min == 48);
+    LB_CHECK(alone.speculative.ngram_mod.n_max == 64);
+
+    common_params with_mtp;
+    LB_CHECK(lb_parse_model_config(json{{"model_path", test_model()}, {"speculative", {{"type", "ngram"}, {"mtp_n_max", 4}}}}, with_mtp, err));
+    LB_CHECK(std::find(with_mtp.speculative.types.begin(), with_mtp.speculative.types.end(), COMMON_SPECULATIVE_TYPE_NGRAM_MOD) !=
+             with_mtp.speculative.types.end());
+    LB_CHECK(has_mtp(with_mtp));
+    LB_CHECK(with_mtp.speculative.draft.n_max == 4);
+    LB_CHECK(with_mtp.speculative.ngram_mod.n_max == 64);  // MTP's limit doesn't cap the n-gram drafts
+
+    common_params bad;
+    LB_CHECK(!lb_parse_model_config(json{{"model_path", test_model()}, {"speculative", {{"type", "ngram"}, {"n_max", 4}}}}, bad, err));
+    LB_CHECK(err.find("speculative.n_max") != std::string::npos);
+}
+
+// a reply that copies its prompt: the case n-grams are for. Greedy output must not change.
+static std::pair<std::string, int> ngram_copy_reply(lb_model * m) {
+    std::string text;
+    for (int i = 1; i <= 12; i++) text += "Line " + std::to_string(i) + ": the build copies libllama.so into the jniLibs folder for arm64-v8a. ";
+    collector c;
+    lb_request * req = start(m, "chat", chat_body("Repeat the following text exactly, and nothing else:\n\n" + text, 160, false), c);
+    c.wait_terminal();
+    LB_CHECK(c.terminal == LB_EVENT_DONE && c.chunks.size() == 1 && c.statuses[0] == 200);
+    const json body = json::parse(c.chunks[0]);
+    lb_request_free(req);
+    return { body.at("choices").at((size_t) 0).at("message").value("content", ""),
+             body.at("timings").value("draft_n_accepted", 0) };
+}
+
+static void ngram_drafts_and_keeps_the_reply() {
+    lb_model * plain = load_test_model();
+    const auto off = ngram_copy_reply(plain);
+    lb_model_free(plain);
+    lb_model * ngram = load_test_model(json{{"speculative", {{"type", "ngram"}}}});
+    const auto on = ngram_copy_reply(ngram);
+    LB_CHECK(model_info(ngram).at("speculative") == "none");  // "speculative" names MTP only
+    lb_model_free(ngram);
+    LB_CHECK(off.second == 0);
+    LB_CHECK(on.second > 0);
+    LB_CHECK(on.first == off.first);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Load-time features (F69): KV-cache type, embeddings and rerank, LoRA. Same models and checks as upstream's
+// tools/server/tests/unit/test_embedding.py, test_rerank.py and test_lora.py (sdk/scripts/fetch-test-models.sh).
+// ---------------------------------------------------------------------------------------------
+
+static std::string upstream_test_model(const char * file) {
+    const char * home = std::getenv("HOME");
+    const std::string path = env_or("LB_TEST_MODELS_DIR", std::string(home ? home : "") + "/Downloads/llamabro-test") + "/" + file;
+    if (FILE * f = std::fopen(path.c_str(), "rb")) {
+        std::fclose(f);
+    } else {
+        std::fprintf(stderr, "%s not found: run sdk/scripts/fetch-test-models.sh (or set LB_TEST_MODELS_DIR)\n", path.c_str());
+        std::exit(1);
+    }
+    return path;
+}
+
+static lb_model * load_at(const std::string & path, const json & extra) {
+    init_runtime();
+    json cfg = extra;
+    cfg["model_path"] = path;
+    lb_model * model = nullptr;
+    char * err = nullptr;
+    const lb_status st = lb_model_load(cfg.dump().c_str(), nullptr, nullptr, &model, &err);
+    if (st != LB_OK) std::fprintf(stderr, "lb_model_load: %d %s\n", st, err ? err : "");
+    LB_CHECK(st == LB_OK);
+    return model;
+}
+
+// one non-streaming request: the HTTP status and the parsed body
+static std::pair<int, json> call(lb_model * m, const char * endpoint, const json & body) {
+    collector c;
+    lb_request * req = start(m, endpoint, body, c);
+    c.wait_terminal();
+    lb_request_free(req);
+    std::string all;
+    for (const auto & ch : c.chunks) all += ch;
+    return { c.statuses.empty() ? 0 : c.statuses.front(), json::parse(all) };
+}
+
+static void load_features_parsed() {
+    std::string err;
+    common_params p;
+    json cfg = {{"model_path", "x"}, {"kv_cache_type", "q8_0"}, {"embeddings", true}, {"pooling", "mean"}};
+    cfg["lora"] = json::array({ json{{"path", "/a,b:c.gguf"}, {"scale", 0.5}}, json{{"path", "/d.gguf"}} });
+    LB_CHECK(lb_parse_model_config(cfg, p, err));
+    LB_CHECK(p.cache_type_k == GGML_TYPE_Q8_0 && p.cache_type_v == GGML_TYPE_Q8_0);
+    LB_CHECK(p.embedding && p.pooling_type == LLAMA_POOLING_TYPE_MEAN);
+    LB_CHECK(p.lora_adapters.size() == 2);
+    LB_CHECK(p.lora_adapters[0].path == "/a,b:c.gguf" && p.lora_adapters[0].scale == 0.5f);  // no csv or colon parsing
+    LB_CHECK(p.lora_adapters[1].scale == 1.0f);
+
+    common_params r;
+    LB_CHECK(lb_parse_model_config(json{{"model_path", "x"}, {"reranking", true}}, r, err));
+    LB_CHECK(r.embedding && r.pooling_type == LLAMA_POOLING_TYPE_RANK);  // as --reranking
+
+    common_params d;  // defaults: f16 KV, generation, no adapters (upstream's)
+    LB_CHECK(lb_parse_model_config(json{{"model_path", "x"}}, d, err));
+    LB_CHECK(d.cache_type_k == GGML_TYPE_F16 && d.cache_type_v == GGML_TYPE_F16 && !d.embedding && d.lora_adapters.empty());
+
+    const json bad[] = {
+        {{"model_path", "x"}, {"kv_cache_type", "q3_k"}},
+        {{"model_path", "x"}, {"pooling", "max"}},
+        {{"model_path", "x"}, {"embeddings", "yes"}},
+        {{"model_path", "x"}, {"lora", json{{"path", "/a"}}}},
+        {{"model_path", "x"}, {"lora", json::array({json{{"path", "/a"}, {"alpha", 1}}})}},
+        {{"model_path", "x"}, {"lora", json::array({json{{"scale", 1}}})}},
+    };
+    for (const auto & b : bad) {
+        common_params q;
+        LB_CHECK(!lb_parse_model_config(b, q, err));
+    }
+}
+
+static void embeddings_mean_pooling() {  // test_embedding_pooling_mean
+    lb_model * m = load_at(upstream_test_model("bge-small-f16.gguf"), json{{"embeddings", true}, {"pooling", "mean"}, {"n_ctx", 512}});
+    auto [status, body] = call(m, "embeddings", json{{"input", "I believe the meaning of life is"}});
+    LB_CHECK(status == 200);
+    LB_CHECK(body.at("data").size() == 1);
+    const auto & e = body.at("data")[0].at("embedding");
+    LB_CHECK(e.size() > 1);
+    double sq = 0;
+    for (const auto & x : e) sq += x.get<double>() * x.get<double>();
+    LB_CHECK(std::abs(sq - 1) < 1e-3);  // normalized
+    lb_model_free(m);
+}
+
+static void embeddings_off_by_default() {  // the gate F69 found: a chat model loaded as before refuses
+    lb_model * m = load_at(upstream_test_model("stories15M_MOE-F16.gguf"), json{{"n_ctx", 512}});
+    auto [status, body] = call(m, "embeddings", json{{"input", "hello"}});
+    LB_CHECK(status == 501);
+    lb_model_free(m);
+}
+
+static void rerank_orders_documents() {  // test_rerank
+    lb_model * m = load_at(upstream_test_model("jina-reranker-tiny-f16.gguf"), json{{"reranking", true}, {"n_ctx", 512}});
+    const json docs = json::array({
+        "A machine is a physical system that uses power to apply forces and control movement to perform an action. The term is commonly applied to artificial devices, such as those employing engines or motors, but also to natural biological macromolecules, such as molecular machines.",
+        "Learning is the process of acquiring new understanding, knowledge, behaviors, skills, values, attitudes, and preferences. The ability to learn is possessed by humans, non-human animals, and some machines; there is also evidence for some kind of learning in certain plants.",
+        "Machine learning is a field of study in artificial intelligence concerned with the development and study of statistical algorithms that can learn from data and generalize to unseen data, and thus perform tasks without explicit instructions.",
+        "Paris, capitale de la France, est une grande ville européenne et un centre mondial de l'art, de la mode, de la gastronomie et de la culture. Son paysage urbain du XIXe siècle est traversé par de larges boulevards et la Seine.",
+    });
+    auto [status, body] = call(m, "rerank", json{{"query", "Machine learning is"}, {"documents", docs}});
+    LB_CHECK(status == 200);
+    const auto & results = body.at("results");
+    LB_CHECK(results.size() == 4);
+    json most = results[0], least = results[0];
+    for (const auto & d : results) {
+        if (d.at("relevance_score").get<double>() > most.at("relevance_score").get<double>()) most = d;
+        if (d.at("relevance_score").get<double>() < least.at("relevance_score").get<double>()) least = d;
+    }
+    LB_CHECK(most.at("index") == 2);
+    LB_CHECK(least.at("index") == 3);
+    lb_model_free(m);
+}
+
+static bool matches(const std::string & s, const char * re) { return std::regex_search(s, std::regex(re)); }
+
+static void lora_scale_changes_output() {  // test_lora_per_request
+    json lora = json::array({ json{{"path", upstream_test_model("moe_shakespeare15M.gguf")}} });
+    lb_model * m = load_at(upstream_test_model("stories15M_MOE-F16.gguf"), json{{"lora", lora}, {"n_ctx", 512}});
+    const std::pair<double, const char *> cases[] = {
+        {0.0, "(bright|day|many|happy)+"}, {0.3, "(special|thing|gifted)+"}, {0.7, "(far|from|home|away)+"}, {1.0, "(eye|love|glass|sun)+"},
+    };
+    for (const auto & [scale, re] : cases) {
+        json body = {{"prompt", "Look in thy glass"}, {"seed", 42}, {"temperature", 0.0}, {"cache_prompt", false}};
+        body["lora"] = json::array({ json{{"id", 0}, {"scale", scale}} });
+        auto [status, res] = call(m, "completion", body);
+        LB_CHECK(status == 200);
+        const std::string content = res.at("content");
+        if (!matches(content, re)) std::fprintf(stderr, "scale %.1f: %s\n", scale, content.c_str());
+        LB_CHECK(matches(content, re));
+    }
+    auto [st, adapters] = call(m, "lora_adapters", json::object());
+    LB_CHECK(st == 200 && adapters.size() == 1);
+    lb_model_free(m);
+}
+
+static void kv_cache_q8_0_loads_and_generates() {
+    lb_model * m = load_test_model(json{{"kv_cache_type", "q8_0"}, {"n_ctx", 4096}});
+    auto [status, res] = call(m, "chat", chat_body("Say hello.", 8, false));
+    LB_CHECK(status == 200);
+    LB_CHECK(!res.at("choices")[0].at("message").at("content").get<std::string>().empty());
+    lb_model_free(m);
+    // a model whose head size q8_0's 32-value blocks don't divide fails with upstream's reason, not a crash
+    init_runtime();
+    json cfg = {{"model_path", upstream_test_model("stories15M_MOE-F16.gguf")}, {"kv_cache_type", "q8_0"}, {"n_ctx", 512}};
+    lb_model * bad = nullptr;
+    char * err = nullptr;
+    LB_CHECK(lb_model_load(cfg.dump().c_str(), nullptr, nullptr, &bad, &err) != LB_OK);
+    LB_CHECK(err && std::strstr(err, "does not divide n_embd_head_k"));
+    lb_string_free(err);
+}
+
 int main(int argc, char ** argv) {
     const std::map<std::string, std::function<void()>> tests = {
         {"runtime_init_twice_same_config_ok", runtime_init_twice_same_config_ok},
+        {"backends_empty_before_init", backends_empty_before_init},
+        {"optional_backend_failure_is_reported", optional_backend_failure_is_reported},
+        {"backend_init_failure_is_reported", backend_init_failure_is_reported},
+        {"backend_env_set_before_load", backend_env_set_before_load},
+        {"runtime_init_twice_same_config_with_backends_ok", runtime_init_twice_same_config_with_backends_ok},
+        {"backends_config_invalid", backends_config_invalid},
+        {"model_devices_default_is_cpu", model_devices_default_is_cpu},
+        {"model_devices_empty_is_cpu_and_no_scan", model_devices_empty_is_cpu_and_no_scan},
+        {"model_devices_invalid_names_fail", model_devices_invalid_names_fail},
+        {"auto_ctx_fits_budget", auto_ctx_fits_budget},
+        {"auto_ctx_budget_load_and_insufficient_error", auto_ctx_budget_load_and_insufficient_error},
+        {"ngram_config_maps_to_ngram_mod", ngram_config_maps_to_ngram_mod},
+        {"ngram_drafts_and_keeps_the_reply", ngram_drafts_and_keeps_the_reply},
         {"runtime_init_different_config_fails", runtime_init_different_config_fails},
         {"devices_lists_cpu", devices_lists_cpu},
         {"runtime_init_retry_after_failure", runtime_init_retry_after_failure},
@@ -553,6 +1055,7 @@ int main(int argc, char ** argv) {
         {"version_names_build", version_names_build},
         {"log_callback_can_reenter", log_callback_can_reenter},
         {"model_load_auto_ctx", model_load_auto_ctx},
+        {"auto_ctx_cap_is_per_slot", auto_ctx_cap_is_per_slot},
         {"props_build_info_names_llama_build", props_build_info_names_llama_build},
         {"config_defaults_applied", config_defaults_applied},
         {"model_load_missing_file_fails", model_load_missing_file_fails},
@@ -569,6 +1072,12 @@ int main(int argc, char ** argv) {
         {"two_requests_one_slot_both_complete", two_requests_one_slot_both_complete},
         {"model_free_with_inflight_request", model_free_with_inflight_request},
         {"request_free_inside_callback", request_free_inside_callback},
+        {"load_features_parsed", load_features_parsed},
+        {"embeddings_mean_pooling", embeddings_mean_pooling},
+        {"embeddings_off_by_default", embeddings_off_by_default},
+        {"rerank_orders_documents", rerank_orders_documents},
+        {"lora_scale_changes_output", lora_scale_changes_output},
+        {"kv_cache_q8_0_loads_and_generates", kv_cache_q8_0_loads_and_generates},
     };
     if (argc < 2 || !tests.count(argv[1])) {
         std::fprintf(stderr, "usage: lb-tests <test>\n");
