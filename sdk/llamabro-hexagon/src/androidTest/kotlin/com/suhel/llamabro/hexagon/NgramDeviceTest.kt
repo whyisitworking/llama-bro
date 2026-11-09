@@ -37,6 +37,7 @@ class NgramDeviceTest {
     private val model = File(context.getExternalFilesDir(null), "Qwen3.5-4B-Q4_K_M.gguf").path
 
     private fun load(s: Speculative): Model = runBlocking {
+        settleMemory() // the previous test's model may still be returning its memory
         llama.loadModel(ModelSource.file(model)) { devicePolicy = DevicePolicy.Only(DeviceKind.Npu); speculative = s }
     }
 

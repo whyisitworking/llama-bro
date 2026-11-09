@@ -77,6 +77,28 @@ class DevicePolicyTest {
     }
 
     @Test
+    fun dflashSkipsGpu() {
+        val source = ModelSource.file("/m.gguf") { draft = "/draft.gguf" }
+        val e = engine(cpu, opencl, hexagon).apply { loadError = failOn("HTP0") }
+        val model = runBlocking { testLlamaBro(e).loadModel(source) { speculative = Speculative.DFlash() } }
+        assertEquals(listOf(listOf("HTP0"), emptyList<String>()), e.loadConfigs.map(::devicesOf))
+        assertEquals(DeviceKind.Cpu, model.loadReport.device)
+        assertTrue(model.loadReport.attempts.single { it.kind == DeviceKind.Gpu }.reason.contains("DFlash"))
+        try {
+            runBlocking {
+                testLlamaBro(engine(cpu, opencl)).loadModel(source) {
+                    speculative = Speculative.DFlash()
+                    devicePolicy = DevicePolicy.Only(DeviceKind.Gpu)
+                }
+            }
+            fail("DFlash loaded on GPU")
+        } catch (error: LlamaBroException.DeviceUnavailable) {
+            assertEquals(DeviceKind.Gpu, error.kind)
+            assertTrue(error.message!!.contains("DFlash"))
+        }
+    }
+
+    @Test
     fun autoPicksNpuFirst() {
         val model = load(engine(cpu, opencl, hexagon))
         val r = model.loadReport

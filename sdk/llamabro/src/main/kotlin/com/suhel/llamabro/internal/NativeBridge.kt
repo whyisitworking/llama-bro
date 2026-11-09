@@ -24,6 +24,9 @@ internal object NativeBridge {
     /** `lb_model_load`. Blocks until loaded. Throws [NativeError] on failure. */
     external fun modelLoad(configJson: String, progress: ProgressListener?): Long
 
+    /** `lb_fit_estimate`. Projects from headers and throws [NativeError] on failure. */
+    external fun fitEstimate(configJson: String): String
+
     external fun modelInfo(model: Long): String
 
     /** `lb_model_request`. Throws [NativeError] if the request couldn't start. */

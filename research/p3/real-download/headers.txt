@@ -1,0 +1,18 @@
+## tree (body discarded)
+HTTP/2 200 
+content-length: 8232
+## HEAD resolve, following redirects
+HTTP/2 302 
+content-length: 1076
+location: https://us.aws.cdn.hf.co/xet-bridge-us/69a44f6bbd54b442c759e17f/de9bcb3f1b16e6e33ab42b3851e80945d4153631418c8494a77bfa46b3ac70ec
+accept-ranges: bytes
+x-linked-size: 532517120
+HTTP/2 200 
+accept-ranges: bytes
+content-length: 532517120
+## Range bytes=0-0 on the CDN (one byte)
+HTTP/2 302 
+content-length: 1080
+HTTP/2 206 
+content-length: 1
+content-range: bytes 0-0/532517120

@@ -13,6 +13,8 @@ internal object JniEngine : Engine {
 
     override fun backends(): String = NativeBridge.runtimeBackends()
 
+    override fun fitEstimate(configJson: String): String = NativeBridge.fitEstimate(configJson)
+
     override fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel {
         val handle = NativeBridge.modelLoad(configJson) { onProgress(it) }
         return JniModel(handle)

@@ -37,6 +37,14 @@ internal class FakeEngine : Engine {
 
     override fun backends(): String = backendsJson ?: super.backends()
 
+    /** Each `lb_fit_estimate` config; the answer is the [Engine] default (memory unreadable). */
+    val fitConfigs = mutableListOf<String>()
+
+    override fun fitEstimate(configJson: String): String {
+        fitConfigs += configJson
+        return super.fitEstimate(configJson)
+    }
+
     /** A load error for a config (the C API's error JSON), or null to load. */
     var loadError: (String) -> String? = { null }
 

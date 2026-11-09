@@ -70,6 +70,28 @@ class ContextFitTest {
     }
 
     @Test
+    fun memoryReserveIsTheAppsToLowerOrRaise() = runBlocking {
+        val e = FakeEngine()
+        // D45: the reserve defaults to D34's 512 MiB and is the app's to change, for Auto and UpTo and the estimate alike
+        assertEquals(MemoryBudget.RESERVE_MIB, ModelConfig().memoryReserveMib.toLong())
+        LlamaBro(runtime(e, 8 * gib)).loadModel(ModelSource.file("/m.gguf")) { memoryReserveMib = 128 }.close()
+        assertEquals(8L * 1024 - 1024 - 1024 - 128, budgetIn(e.loadConfigs.last()))
+        LlamaBro(runtime(e, 8 * gib)).loadModel(ModelSource.file("/m.gguf")) {
+            contextSize = ContextSize.UpTo(8192); memoryReserveMib = 2048
+        }.close()
+        assertEquals(8L * 1024 - 1024 - 1024 - 2048, budgetIn(e.loadConfigs.last()))
+        val estimate = LlamaBro(runtime(e, 8 * gib)).estimateFit(ModelSource.file("/m.gguf")) { memoryReserveMib = 0 }
+        assertEquals(8L * 1024 - 1024 - 1024, budgetIn(e.fitConfigs.last()))
+        assertTrue(estimate.method == FitEstimate.Method.Projection)
+        try {
+            LlamaBro(runtime(e, 8 * gib)).loadModel(ModelSource.file("/m.gguf")) { memoryReserveMib = -1 }
+            fail("a negative reserve is refused")
+        } catch (ex: LlamaBroException.InvalidRequest) {
+            assertTrue(ex.message!!.contains("memoryReserveMib"))
+        }
+    }
+
+    @Test
     fun insufficientMemoryStopsDeviceFallback() {
         val e = FakeEngine().apply {
             backendsJson = """[{"name":"cpu","loaded":true,"error":null,"devices":["CPU"]},""" +

@@ -1,0 +1,232 @@
+public final class com/suhel/llamabro/hub/CachedModel {
+	public final fun getModel ()Lcom/suhel/llamabro/hub/HfModel;
+	public final fun getSizeBytes ()J
+}
+
+public abstract interface class com/suhel/llamabro/hub/DownloadPhase {
+}
+
+public final class com/suhel/llamabro/hub/DownloadPhase$Complete : com/suhel/llamabro/hub/DownloadPhase {
+	public static final field INSTANCE Lcom/suhel/llamabro/hub/DownloadPhase$Complete;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/hub/DownloadPhase$Downloading : com/suhel/llamabro/hub/DownloadPhase {
+	public static final field INSTANCE Lcom/suhel/llamabro/hub/DownloadPhase$Downloading;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/hub/DownloadPhase$Resolving : com/suhel/llamabro/hub/DownloadPhase {
+	public static final field INSTANCE Lcom/suhel/llamabro/hub/DownloadPhase$Resolving;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/hub/DownloadPhase$Verifying : com/suhel/llamabro/hub/DownloadPhase {
+	public static final field INSTANCE Lcom/suhel/llamabro/hub/DownloadPhase$Verifying;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/hub/DownloadProgress {
+	public final fun getBytesDone ()J
+	public final fun getBytesPerSecond ()Ljava/lang/Long;
+	public final fun getBytesTotal ()J
+	public final fun getCurrentFile ()Ljava/lang/String;
+	public final fun getEtaSeconds ()Ljava/lang/Long;
+	public final fun getFileCount ()I
+	public final fun getFileIndex ()I
+	public final fun getPhase ()Lcom/suhel/llamabro/hub/DownloadPhase;
+}
+
+public abstract interface class com/suhel/llamabro/hub/DownloadState {
+}
+
+public final class com/suhel/llamabro/hub/DownloadState$Absent : com/suhel/llamabro/hub/DownloadState {
+	public static final field INSTANCE Lcom/suhel/llamabro/hub/DownloadState$Absent;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/hub/DownloadState$Complete : com/suhel/llamabro/hub/DownloadState {
+	public static final field INSTANCE Lcom/suhel/llamabro/hub/DownloadState$Complete;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/hub/DownloadState$Downloading : com/suhel/llamabro/hub/DownloadState {
+	public final fun getProgress ()Lcom/suhel/llamabro/hub/DownloadProgress;
+}
+
+public final class com/suhel/llamabro/hub/DownloadState$Failed : com/suhel/llamabro/hub/DownloadState {
+	public final fun getError ()Lcom/suhel/llamabro/hub/HubException;
+}
+
+public final class com/suhel/llamabro/hub/DownloadState$Partial : com/suhel/llamabro/hub/DownloadState {
+	public final fun getBytesDone ()J
+	public final fun getBytesTotal ()J
+}
+
+public final class com/suhel/llamabro/hub/DraftRequest {
+	public static final field Companion Lcom/suhel/llamabro/hub/DraftRequest$Companion;
+	public synthetic fun <init> (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public static final fun dflash ()Lcom/suhel/llamabro/hub/DraftRequest;
+	public static final fun dflash (Lcom/suhel/llamabro/hub/HfModel;)Lcom/suhel/llamabro/hub/DraftRequest;
+	public final fun getFrom ()Lcom/suhel/llamabro/hub/HfModel;
+}
+
+public final class com/suhel/llamabro/hub/DraftRequest$Companion {
+	public final fun dflash ()Lcom/suhel/llamabro/hub/DraftRequest;
+	public final fun dflash (Lcom/suhel/llamabro/hub/HfModel;)Lcom/suhel/llamabro/hub/DraftRequest;
+	public static synthetic fun dflash$default (Lcom/suhel/llamabro/hub/DraftRequest$Companion;Lcom/suhel/llamabro/hub/HfModel;ILjava/lang/Object;)Lcom/suhel/llamabro/hub/DraftRequest;
+}
+
+public final class com/suhel/llamabro/hub/HfModel {
+	public static final field Companion Lcom/suhel/llamabro/hub/HfModel$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFile ()Ljava/lang/String;
+	public final fun getRepo ()Ljava/lang/String;
+	public final fun getTag ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static final fun parse (Ljava/lang/String;)Lcom/suhel/llamabro/hub/HfModel;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/hub/HfModel$Companion {
+	public final fun invoke (Ljava/lang/String;)Lcom/suhel/llamabro/hub/HfModel;
+	public final fun parse (Ljava/lang/String;)Lcom/suhel/llamabro/hub/HfModel;
+}
+
+public final class com/suhel/llamabro/hub/HubConfig {
+	public static final field Companion Lcom/suhel/llamabro/hub/HubConfig$Companion;
+	public static final field Default Lcom/suhel/llamabro/hub/HubConfig;
+	public final fun getCacheDir ()Ljava/io/File;
+	public final fun getEndpoint ()Ljava/lang/String;
+	public final fun getLogger ()Lcom/suhel/llamabro/Logger;
+	public final fun getProgressInterval-UwyO8pc ()J
+}
+
+public final class com/suhel/llamabro/hub/HubConfig$Builder {
+	public final fun getCacheDir ()Ljava/io/File;
+	public final fun getEndpoint ()Ljava/lang/String;
+	public final fun getLogger ()Lcom/suhel/llamabro/Logger;
+	public final fun getProgressInterval-UwyO8pc ()J
+	public final fun setCacheDir (Ljava/io/File;)V
+	public final fun setEndpoint (Ljava/lang/String;)V
+	public final fun setLogger (Lcom/suhel/llamabro/Logger;)V
+	public final fun setProgressInterval-LRDsOJo (J)V
+	public final fun token (Lkotlin/jvm/functions/Function1;)V
+}
+
+public final class com/suhel/llamabro/hub/HubConfig$Companion {
+}
+
+public final class com/suhel/llamabro/hub/HubConfigKt {
+	public static final fun HubConfig (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/hub/HubConfig;
+}
+
+public abstract class com/suhel/llamabro/hub/HubException : java/lang/Exception {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public abstract fun getRetryable ()Z
+}
+
+public final class com/suhel/llamabro/hub/HubException$InsufficientStorage : com/suhel/llamabro/hub/HubException {
+	public final fun getAvailableBytes ()J
+	public final fun getNeededBytes ()J
+	public fun getRetryable ()Z
+}
+
+public final class com/suhel/llamabro/hub/HubException$IntegrityMismatch : com/suhel/llamabro/hub/HubException {
+	public final fun getActual ()Ljava/lang/String;
+	public final fun getExpected ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public fun getRetryable ()Z
+}
+
+public final class com/suhel/llamabro/hub/HubException$Network : com/suhel/llamabro/hub/HubException {
+	public fun getRetryable ()Z
+}
+
+public final class com/suhel/llamabro/hub/HubException$NotFound : com/suhel/llamabro/hub/HubException {
+	public final fun getAvailable ()Ljava/util/List;
+	public fun getRetryable ()Z
+}
+
+public final class com/suhel/llamabro/hub/HubException$RateLimited : com/suhel/llamabro/hub/HubException {
+	public final fun getRetryAfterSeconds ()Ljava/lang/Long;
+	public fun getRetryable ()Z
+}
+
+public final class com/suhel/llamabro/hub/HubException$Unauthorized : com/suhel/llamabro/hub/HubException {
+	public final fun getHttpStatus ()I
+	public fun getRetryable ()Z
+}
+
+public final class com/suhel/llamabro/hub/HubFile {
+	public final fun getCached ()Z
+	public final fun getOid ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getRole ()Lcom/suhel/llamabro/hub/HubFile$Role;
+	public final fun getSizeBytes ()J
+}
+
+public final class com/suhel/llamabro/hub/HubFile$Role : java/lang/Enum {
+	public static final field Draft Lcom/suhel/llamabro/hub/HubFile$Role;
+	public static final field Mmproj Lcom/suhel/llamabro/hub/HubFile$Role;
+	public static final field Model Lcom/suhel/llamabro/hub/HubFile$Role;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/suhel/llamabro/hub/HubFile$Role;
+	public static fun values ()[Lcom/suhel/llamabro/hub/HubFile$Role;
+}
+
+public final class com/suhel/llamabro/hub/HubPlan {
+	public final fun getBytesToDownload ()J
+	public final fun getBytesTotal ()J
+	public final fun getCommit ()Ljava/lang/String;
+	public final fun getFiles ()Ljava/util/List;
+	public final fun getModel ()Lcom/suhel/llamabro/hub/HfModel;
+	public final fun getNotes ()Ljava/util/List;
+	public final fun getOffline ()Z
+}
+
+public final class com/suhel/llamabro/hub/LlamaBroHub {
+	public static final field Companion Lcom/suhel/llamabro/hub/LlamaBroHub$Companion;
+	public final fun cached (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun delete (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun download (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/flow/Flow;
+	public static synthetic fun download$default (Lcom/suhel/llamabro/hub/LlamaBroHub;Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
+	public final fun estimateFit (Lcom/suhel/llamabro/hub/HubPlan;Lcom/suhel/llamabro/LlamaBro;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun estimateFit$default (Lcom/suhel/llamabro/hub/LlamaBroHub;Lcom/suhel/llamabro/hub/HubPlan;Lcom/suhel/llamabro/LlamaBro;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static final fun getInstance (Landroid/content/Context;)Lcom/suhel/llamabro/hub/LlamaBroHub;
+	public final fun plan (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun plan$default (Lcom/suhel/llamabro/hub/LlamaBroHub;Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun progress (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/flow/StateFlow;
+	public static synthetic fun progress$default (Lcom/suhel/llamabro/hub/LlamaBroHub;Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/coroutines/flow/StateFlow;
+	public final fun source (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun source$default (Lcom/suhel/llamabro/hub/LlamaBroHub;Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class com/suhel/llamabro/hub/LlamaBroHub$Companion {
+	public final fun getInstance (Landroid/content/Context;)Lcom/suhel/llamabro/hub/LlamaBroHub;
+}
+
+public abstract interface class com/suhel/llamabro/hub/LlamaBroHub$ConfigProvider {
+	public abstract fun getLlamaBroHubConfig ()Lcom/suhel/llamabro/hub/HubConfig;
+}
+
+public final class com/suhel/llamabro/hub/PlanOptions {
+	public final fun getDraft ()Lcom/suhel/llamabro/hub/DraftRequest;
+	public final fun getMmproj ()Z
+	public final fun setDraft (Lcom/suhel/llamabro/hub/DraftRequest;)V
+	public final fun setMmproj (Z)V
+}
+

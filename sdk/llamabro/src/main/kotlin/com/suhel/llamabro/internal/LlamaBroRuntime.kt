@@ -3,6 +3,7 @@ package com.suhel.llamabro.internal
 import com.suhel.llamabro.Backend
 import com.suhel.llamabro.ContextSize
 import com.suhel.llamabro.FileSource
+import com.suhel.llamabro.FitEstimate
 import com.suhel.llamabro.DeviceInfo
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.DevicePolicy
@@ -36,10 +37,13 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
 import java.io.File
 
@@ -160,6 +164,7 @@ internal class LlamaBroRuntime(
     }
 
     suspend fun load(source: ModelSource, builder: ModelConfig): Model {
+        builder.validateSource(source)
         ensureInit()
         // a model being closed still holds its weights and KV cache until its native close returns
         synchronized(closing) { closing.toList() }.awaitAll()
@@ -178,6 +183,43 @@ internal class LlamaBroRuntime(
         }
     }
 
+    /** Projects the first device a load would attempt, without opening model weights. */
+    suspend fun estimateFit(source: ModelSource, builder: ModelConfig): FitEstimate {
+        builder.validateSource(source)
+        ensureInit()
+        synchronized(closing) { closing.toList() }.awaitAll()
+        return withContext(ioDispatcher) {
+            val plan = DeviceResolver.plan(builder.devicePolicy, nativeBackends() + discoveryFailures)
+            val drafts = builder.speculative is Speculative.Mtp || builder.speculative is Speculative.Ngram ||
+                builder.speculative is Speculative.DFlash
+            val candidate = plan.candidates.firstOrNull { !drafts || it.kind != DeviceKind.Gpu }
+                ?: run {
+                    val kind = (builder.devicePolicy as? DevicePolicy.Only)?.kind ?: DeviceKind.Cpu
+                    val reasons = plan.skipped.map { it.reason } +
+                        plan.candidates.filter { drafts && it.kind == DeviceKind.Gpu }.map { MtpPolicy.GPU_ABORTS }
+                    throw LlamaBroException.DeviceUnavailable(kind,
+                        "no ${kind.name} device could estimate the model: ${reasons.joinToString("; ")}", null)
+                }
+            slotsDir.mkdirs()
+            val configJson = builder.toJson(source, slotsDir.path + "/", candidate.devices, budgetFor(source, builder))
+            val result = try { Json.parseToJsonElement(engine.fitEstimate(configJson)) as JsonObject }
+            catch (error: NativeError) { throw ErrorMapping.loadFailed(error) }
+            val mib = 1024L * 1024L
+            fun nullableLong(key: String): Long? = result[key]?.jsonPrimitive?.longOrNull
+            FitEstimate(
+                fits = result["fits"]?.jsonPrimitive?.booleanOrNull,
+                contextTokens = result["n_ctx"]?.jsonPrimitive?.intOrNull,
+                minContextTokens = result.getValue("n_ctx_min").jsonPrimitive.int,
+                bytesAtMinimum = result.getValue("used_min_mib").jsonPrimitive.long * mib,
+                bytesAtCeiling = nullableLong("used_max_mib")?.times(mib),
+                budgetBytes = nullableLong("budget_mib")?.times(mib),
+                device = candidate.kind,
+                deviceName = candidate.deviceName,
+                method = FitEstimate.Method.Projection,
+            )
+        }
+    }
+
     /**
      * Tries the plan's devices in order, one model load each (P2 T6): a failed load frees itself, its reason goes in
      * the report, and the next device is tried. A missing file stops at once, since no device can fix it.
@@ -191,7 +233,8 @@ internal class LlamaBroRuntime(
         val attempts = plan.skipped.toMutableList()
         var lastError: LlamaBroException.ModelLoadFailed? = null
         // drafting on the GPU aborts the process, which no try can catch: skip it (F67, F80)
-        val drafts = builder.speculative is Speculative.Mtp || builder.speculative is Speculative.Ngram
+        val drafts = builder.speculative is Speculative.Mtp || builder.speculative is Speculative.Ngram ||
+            builder.speculative is Speculative.DFlash
         for (candidate in plan.candidates) {
             currentCoroutineContext().ensureActive()
             if (drafts && candidate.kind == DeviceKind.Gpu) {
@@ -238,16 +281,7 @@ internal class LlamaBroRuntime(
         try {
             withContext(ioDispatcher + NonCancellable) {
                 slotsDir.mkdirs()
-                val budget = if (builder.contextSize == ContextSize.Auto || builder.contextSize is ContextSize.UpTo) {
-                    memorySnapshot()?.let { m ->
-                        // files loaded beside the model that upstream's projection leaves out
-                        val mmproj = (source as? FileSource)?.mmproj?.let { File(it).length() } ?: 0L
-                        val lora = builder.loraAdapters.sumOf { File(it.path).length() }
-                        MemoryBudget.budgetMib(m.available, m.threshold, builder.ramCacheMib, mmproj + lora)
-                    }
-                } else {
-                    null
-                }
+                val budget = budgetFor(source, builder)
                 val configJson = builder.toJson(source, slotsDir.path + "/", candidate.devices, budget)
                 val engineModel = try {
                     engine.load(configJson, onProgress)
@@ -255,7 +289,7 @@ internal class LlamaBroRuntime(
                     throw ErrorMapping.loadFailed(e)
                 }
                 val (contextSize, contextReason) = contextOf(engineModel.infoJson, builder.contextSize)
-                val (speculative, speculativeReason) = speculativeOf(builder.speculative, candidate.kind)
+                val (speculative, speculativeReason) = speculativeOf(builder.speculative, candidate.kind, source)
                 val report = LoadReport(
                     candidate.kind, candidate.deviceName, candidate.backend, attempts,
                     contextSize, contextReason, speculative, speculativeReason,
@@ -271,12 +305,29 @@ internal class LlamaBroRuntime(
         }
     }
 
+    private fun budgetFor(source: ModelSource, builder: ModelConfig): Long? {
+        if (builder.contextSize != ContextSize.Auto && builder.contextSize !is ContextSize.UpTo) return null
+        return memorySnapshot()?.let { memory ->
+            // The draft is included in native projection; only these side files are excluded.
+            val mmproj = (source as? FileSource)?.mmproj?.let { File(it).length() } ?: 0L
+            val lora = builder.loraAdapters.sumOf { File(it.path).length() }
+            MemoryBudget.budgetMib(memory.available, memory.threshold, builder.ramCacheMib, mmproj + lora,
+                builder.memoryReserveMib.toLong())
+        }
+    }
+
     /** What decodes and why (P2 T8): what the app set, or for [Speculative.Auto] why it is off on this chip. */
-    private fun speculativeOf(requested: Speculative, kind: DeviceKind): Pair<Speculative, String> = when (requested) {
-        Speculative.Off -> Speculative.Off to "off: set by the app"
-        Speculative.Auto -> Speculative.Off to "off: ${MtpPolicy.reason(kind)}"
-        is Speculative.Mtp -> requested to "MTP: set by the app"
-        is Speculative.Ngram -> requested to (if (requested.then != null) "n-gram, then MTP: set by the app" else "n-gram: set by the app")
+    private fun speculativeOf(requested: Speculative, kind: DeviceKind, source: ModelSource): Pair<Speculative, String> {
+        val result = when (requested) {
+            Speculative.Off -> Speculative.Off to "off: set by the app"
+            Speculative.Auto -> Speculative.Off to "off: ${MtpPolicy.reason(kind)}"
+            is Speculative.Mtp -> requested to "MTP: set by the app"
+            is Speculative.Ngram -> requested to (if (requested.then != null) "n-gram, then MTP: set by the app" else "n-gram: set by the app")
+            is Speculative.DFlash -> requested to "DFlash draft (D41)"
+        }
+        val unusedDraft = (source as? FileSource)?.draft != null && requested !is Speculative.DFlash
+        return if (unusedDraft) result.first to "${result.second}; draft file unused (Speculative is not DFlash)"
+            else result
     }
 
     /** The loaded context and why (`lb_model_info`'s `n_ctx` and `ctx_fit`, D33). */

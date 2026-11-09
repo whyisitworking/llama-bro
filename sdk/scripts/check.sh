@@ -2,19 +2,24 @@
 # The SDK's whole verification in one command. Every check compares against upstream where one exists:
 #   patched copy   prepare-llama.sh applies every patch and leaves the submodule untouched
 #   native         host C API tests (ctest)
+#   hub-golden     upstream model-resolution self-test and recorded golden cases
 #   contract       the C API vs upstream llama-server, same build, same flags, per model (run.sh)
 #   tools-ui       llama.cpp's own tools/ui compaction code regenerated in node; must equal the committed golden
-#   api            the release build's public API equals the reviewed sdk/llamabro/api/llamabro.api (D26)
-#   lint           Android lint on llamabro and llamabro-testing, warnings as errors
+#   api            core release public API equals its reviewed dump (D26)
+#   hub-api        Hub release public API equals sdk/llamabro-hub/api/llamabro-hub.api
+#   lint           Android lint on all SDK libraries, warnings as errors
 #   jvm            Kotlin unit tests of both libraries and the sample, including the 400-case tools/ui golden replay
 #   e2e            Kotlin + JNI + native on this machine vs upstream llama-server (HostNativeTest)
 #   aar            release AAR: libraries, names, exports, 16 KB alignment (check-aar.sh)
 #   device         (--device) phone tests: native, UI, acceptance per model and per sample flavor (cpu, gpu, full,
 #                  noskel), and each flavor's minified (R8) build
 #   device-contract (--device) the C API vs upstream llama-server on the phone's NPU (tests/device-contract/run.sh)
+#   hub-device    (--device) Hub cache and fake download tests on the phone
+#   hub-resume    (--device) sample kill/force-stop resume and notification checks on the phone
 #
 # usage: sdk/scripts/check.sh [--device] [--only step,step]
 # env:   LB_TEST_MODEL (default ~/Downloads/Qwen3.5-4B-Q4_K_M.gguf), LB_TEST_MMPROJ (default ~/Downloads/mmproj-F16.gguf),
+#        LB_TEST_DFLASH (default ~/llamabro-models/Qwen3.5-4B-DFlash-Q8_0.gguf),
 #        LB_CONTRACT_MODELS extra GGUFs for the contract test, comma-separated (default: Llama 3.2 3B if present),
 #        LB_DEVICE_MODELS file names in the sample app's filesDir (default: the three P1 models),
 #        LB_TEST_MODELS_DIR upstream's small test models for embeddings, rerank and LoRA (fetch-test-models.sh)
@@ -27,6 +32,7 @@ logs="$native/build/check"
 mkdir -p "$logs"
 
 model="${LB_TEST_MODEL:-$HOME/Downloads/Qwen3.5-4B-Q4_K_M.gguf}"
+draft_model="${LB_TEST_DFLASH:-$HOME/llamabro-models/Qwen3.5-4B-DFlash-Q8_0.gguf}"
 mmproj="${LB_TEST_MMPROJ:-$HOME/Downloads/mmproj-F16.gguf}"
 [ -f "$mmproj" ] || mmproj=""
 default_extra="$HOME/Downloads/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
@@ -60,7 +66,9 @@ run() {  # run NAME COMMAND...: logs to $logs/NAME.log, records PASS/FAIL
 }
 
 [ -f "$model" ] || { echo "LB_TEST_MODEL not found: $model"; exit 2; }
+[ -f "$draft_model" ] || { echo "LB_TEST_DFLASH not found: $draft_model"; exit 2; }
 export LB_TEST_MODEL="$model"
+export LB_TEST_DFLASH="$draft_model"
 export LB_TEST_MODELS_DIR="${LB_TEST_MODELS_DIR:-$HOME/Downloads/llamabro-test}"
 for f in bge-small-f16.gguf jina-reranker-tiny-f16.gguf stories15M_MOE-F16.gguf moe_shakespeare15M.gguf; do
     [ -f "$LB_TEST_MODELS_DIR/$f" ] || { echo "$LB_TEST_MODELS_DIR/$f not found: run sdk/scripts/fetch-test-models.sh"; exit 2; }
@@ -71,6 +79,37 @@ gradle() { (cd "$root" && ./gradlew -p sdk "$@"); }
 step_build() {
     bash "$native/scripts/prepare-llama.sh" "$native/build" &&
     cmake --preset host -S "$native" && cmake --build "$native/build/host"
+}
+
+step_hub_golden() {
+    python3 -m unittest discover -s "$sdk/scripts/hub-fake" || return 1
+    "$native/build/host/bin/lb-hub-golden" self-test || return 1
+    "$native/build/host/bin/lb-hub-golden" gguf-offset \
+        "$HOME/Downloads/Qwen3.5-4B-Q4_K_M.gguf" \
+        "$HOME/Downloads/gemma-3-4b-it-qat-UD-Q4_K_XL.gguf" \
+        "$HOME/Downloads/Llama-3.2-3B-Instruct-Q4_K_M.gguf" > "$logs/gguf-offsets.json" || return 1
+    "$native/build/host/bin/lb-hub-golden" cases > "$logs/model-resolution.json" || return 1
+    diff -u "$sdk/llamabro-hub/src/test/resources/upstream/model-resolution.json" "$logs/model-resolution.json" || return 1
+    python3 "$sdk/scripts/hub-fake/run_cache_golden.py" \
+        --golden "$native/build/host/bin/lb-hub-golden" \
+        --fake "$sdk/scripts/hub-fake/fake_hub.py" \
+        --corpus "$sdk/scripts/hub-fake/corpus-golden.json" \
+        --out "$logs/hub-golden" || return 1
+    cp "$logs/gguf-offsets.json" "$logs/hub-golden/gguf-offsets.json" || return 1
+    gradle :llamabro-hub:testDebugUnitTest --tests 'com.suhel.llamabro.hub.CacheGoldenTest' \
+        --rerun-tasks -Pllamabro.hub.golden.dir="$logs/hub-golden" || return 1
+    grep -q 'skipped="0"' "$sdk/llamabro-hub/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.hub.CacheGoldenTest.xml"
+}
+
+step_jvm() {
+    gradle :llamabro:testDebugUnitTest :llamabro-testing:testDebugUnitTest \
+        :llamabro-hexagon:testDebugUnitTest :llamabro-hub:testDebugUnitTest \
+        :samples:minimal:testFullDebugUnitTest \
+        -Pllamabro.hub.model.dir="$HOME/Downloads" -Pllamabro.hub.golden.dir="$logs/hub-golden" || return 1
+    grep -q 'skipped="0"' \
+        "$sdk/llamabro-hub/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.hub.GgufHeaderTest.xml" || {
+        echo "GgufHeaderTest was skipped"; return 1;
+    }
 }
 
 step_contract() {
@@ -111,6 +150,9 @@ step_aar() {
     local core="$sdk/llamabro/build/outputs/aar/llamabro-release.aar" b
     gradle :llamabro:assembleRelease :llamabro-hexagon:assembleRelease :llamabro-opencl:assembleRelease &&
         bash "$sdk/scripts/check-aar.sh" "$core" || return 1
+    gradle :llamabro-hub:assembleRelease || return 1
+    unzip -l "$sdk/llamabro-hub/build/outputs/aar/llamabro-hub-release.aar" > "$logs/hub-aar-contents.txt" || return 1
+    ! grep -q ' jni/' "$logs/hub-aar-contents.txt" || return 1
     for b in hexagon opencl; do
         echo "--- llamabro-$b"
         bash "$sdk/scripts/check-aar.sh" "$sdk/llamabro-$b/build/outputs/aar/llamabro-$b-release.aar" "$core" || return 1
@@ -127,6 +169,11 @@ step_device() {
         adb push "$model" "$htp_files/$qwen" || return 1
     fi
     adb shell "chmod 644 $htp_files/$qwen" || return 1
+    local draft_name=Qwen3.5-4B-DFlash-Q8_0.gguf
+    if [ "$(adb shell "stat -c %s $htp_files/$draft_name 2>/dev/null" | tr -d '\r')" != "$(stat -f %z "$draft_model")" ]; then
+        adb push "$draft_model" "$htp_files/$draft_name" || return 1
+    fi
+    adb shell "chmod 644 $htp_files/$draft_name" || return 1
     # the task test's embedding and reranker models (F69)
     for f in bge-small-f16.gguf jina-reranker-tiny-f16.gguf; do
         adb push "$LB_TEST_MODELS_DIR/$f" "$htp_files/$f" >/dev/null && adb shell "chmod 644 $htp_files/$f" || return 1
@@ -193,6 +240,76 @@ PY
     echo "acceptance: $verdict"
 }
 
+wait_fake_hub() {
+    local server_pid="$1" ready=0
+    for _ in $(seq 1 240); do
+        kill -0 "$server_pid" >/dev/null 2>&1 || return 1
+        if curl -sf http://127.0.0.1:18190/_log >/dev/null 2>&1; then ready=1; break; fi
+        sleep 0.5
+    done
+    [ "$ready" -eq 1 ]
+}
+
+step_hub_device() (
+    bash "$sdk/scripts/hub-fake/make-device-corpus.sh" "$logs/corpus-device.json" "$model" "$mmproj" || return 1
+    local server_pid
+    python3 "$sdk/scripts/hub-fake/fake_hub.py" \
+        --corpus "$sdk/scripts/hub-fake/corpus-golden.json" \
+        --corpus "$logs/corpus-device.json" \
+        --api-port 18190 --cdn-port 18191 > "$logs/hub-device-server.log" 2>&1 &
+    server_pid=$!
+    cleanup_hub_device() {
+        adb reverse --remove tcp:18190 >/dev/null 2>&1 || true
+        adb reverse --remove tcp:18191 >/dev/null 2>&1 || true
+        kill "$server_pid" >/dev/null 2>&1 || true
+        wait "$server_pid" >/dev/null 2>&1 || true
+    }
+    trap cleanup_hub_device EXIT
+    wait_fake_hub "$server_pid" || { cat "$logs/hub-device-server.log"; return 1; }
+    adb reverse tcp:18190 tcp:18190 || return 1
+    adb reverse tcp:18191 tcp:18191 || return 1
+    local hub_files=/sdcard/Android/data/com.suhel.llamabro.hub.test/files file name
+    adb shell "mkdir -p $hub_files" || return 1
+    for file in "$model" "$mmproj"; do
+        [ -n "$file" ] || continue
+        name="$(basename "$file")"
+        if [ "$(adb shell "stat -c %s $hub_files/$name 2>/dev/null" | tr -d '\r')" != "$(stat -f %z "$file")" ]; then
+            adb push "$file" "$hub_files/$name" || return 1
+        fi
+        adb shell "chmod 644 $hub_files/$name" || return 1
+    done
+    gradle :llamabro-hub:connectedDebugAndroidTest \
+        -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
+)
+
+step_hub_resume() (
+    bash "$sdk/scripts/hub-fake/make-device-corpus.sh" "$logs/corpus-device.json" "$model" "$mmproj" || return 1
+    local server_pid
+    python3 "$sdk/scripts/hub-fake/fake_hub.py" \
+        --corpus "$logs/corpus-device.json" --api-port 18190 --cdn-port 18191 \
+        --rate-mib-s 30 > "$logs/hub-resume-server.log" 2>&1 &
+    server_pid=$!
+    cleanup_hub_resume() {
+        adb reverse --remove tcp:18190 >/dev/null 2>&1 || true
+        adb reverse --remove tcp:18191 >/dev/null 2>&1 || true
+        kill "$server_pid" >/dev/null 2>&1 || true
+        wait "$server_pid" >/dev/null 2>&1 || true
+    }
+    trap cleanup_hub_resume EXIT
+    wait_fake_hub "$server_pid" || { cat "$logs/hub-resume-server.log"; return 1; }
+    adb reverse tcp:18190 tcp:18190 || return 1
+    adb reverse tcp:18191 tcp:18191 || return 1
+    gradle :samples:background-download:installDebug || return 1
+    python3 "$sdk/scripts/hub-fake/run_device_resume.py" --out "$logs/hub-resume" \
+        --apk "$sdk/samples/background-download/build/outputs/apk/debug/background-download-debug.apk" || return 1
+    # fresh install with the notification permission granted (-g): the UI test reads the notification,
+    # and Gradle's own reinstall keeps the grant
+    adb uninstall com.suhel.llamabro.download || return 1
+    adb install -g "$sdk/samples/background-download/build/outputs/apk/debug/background-download-debug.apk" || return 1
+    gradle :samples:background-download:connectedDebugAndroidTest \
+        -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
+)
+
 step_device_contract() {
     # both tools built in the Snapdragon image from the same tree; the model and mmproj copied once (P2 T9)
     bash "$native/scripts/build-device-tools.sh" > "$logs/device-tools-build.log" 2>&1 ||
@@ -211,14 +328,18 @@ step_device_contract() {
 echo "llamabro check: model $(basename "$model")${mmproj:+, mmproj}${contract_models:+, contract also on $(basename "${contract_models//,/ }")}"
 run build    step_build
 run native   ctest --test-dir "$native/build/host" --output-on-failure
+run hub-golden step_hub_golden
 run contract step_contract
 run tools-ui step_tools_ui
 run api      gradle :llamabro:apiCheck
-run lint     gradle :llamabro:lintRelease :llamabro-testing:lintRelease :llamabro-hexagon:lintRelease :llamabro-opencl:lintRelease
-run jvm      gradle :llamabro:testDebugUnitTest :llamabro-testing:testDebugUnitTest :llamabro-hexagon:testDebugUnitTest :samples:minimal:testFullDebugUnitTest
+run hub-api  gradle :llamabro-hub:apiCheck
+run lint     gradle :llamabro:lintRelease :llamabro-testing:lintRelease :llamabro-hexagon:lintRelease :llamabro-opencl:lintRelease :llamabro-hub:lintRelease
+run jvm      step_jvm
 run e2e      step_e2e
 run aar      step_aar
 [ $device -eq 1 ] && run device step_device
+[ $device -eq 1 ] && run hub-device step_hub_device
+[ $device -eq 1 ] && run hub-resume step_hub_resume
 [ $device -eq 1 ] && run device-contract step_device_contract
 
 echo

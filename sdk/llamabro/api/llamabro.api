@@ -133,6 +133,33 @@ public final class com/suhel/llamabro/Endpoint {
 public final class com/suhel/llamabro/Endpoint$Companion {
 }
 
+public final class com/suhel/llamabro/FileSourceBuilder {
+	public final fun getDraft ()Ljava/lang/String;
+	public final fun getMmproj ()Ljava/lang/String;
+	public final fun setDraft (Ljava/lang/String;)V
+	public final fun setMmproj (Ljava/lang/String;)V
+}
+
+public final class com/suhel/llamabro/FitEstimate {
+	public final fun getBudgetBytes ()Ljava/lang/Long;
+	public final fun getBytesAtCeiling ()Ljava/lang/Long;
+	public final fun getBytesAtMinimum ()J
+	public final fun getContextTokens ()Ljava/lang/Integer;
+	public final fun getDevice ()Lcom/suhel/llamabro/DeviceKind;
+	public final fun getDeviceName ()Ljava/lang/String;
+	public final fun getFits ()Ljava/lang/Boolean;
+	public final fun getMethod ()Lcom/suhel/llamabro/FitEstimate$Method;
+	public final fun getMinContextTokens ()I
+}
+
+public final class com/suhel/llamabro/FitEstimate$Method : java/lang/Enum {
+	public static final field MetadataEstimate Lcom/suhel/llamabro/FitEstimate$Method;
+	public static final field Projection Lcom/suhel/llamabro/FitEstimate$Method;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/suhel/llamabro/FitEstimate$Method;
+	public static fun values ()[Lcom/suhel/llamabro/FitEstimate$Method;
+}
+
 public abstract interface annotation class com/suhel/llamabro/InternalLlamaBroApi : java/lang/annotation/Annotation {
 }
 
@@ -155,6 +182,8 @@ public final class com/suhel/llamabro/LlamaBro {
 	public static final field Companion Lcom/suhel/llamabro/LlamaBro$Companion;
 	public final fun backends (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun devices (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun estimateFit (Lcom/suhel/llamabro/ModelSource;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun estimateFit$default (Lcom/suhel/llamabro/LlamaBro;Lcom/suhel/llamabro/ModelSource;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static final fun getInstance (Landroid/content/Context;)Lcom/suhel/llamabro/LlamaBro;
 	public final fun loadModel (Lcom/suhel/llamabro/ModelSource;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun loadModel$default (Lcom/suhel/llamabro/LlamaBro;Lcom/suhel/llamabro/ModelSource;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
@@ -313,6 +342,7 @@ public final class com/suhel/llamabro/ModelConfig {
 	public final fun getDevicePolicy ()Lcom/suhel/llamabro/DevicePolicy;
 	public final fun getKvCacheType ()Lcom/suhel/llamabro/KvCacheType;
 	public final fun getLoraAdapters ()Ljava/util/List;
+	public final fun getMemoryReserveMib ()I
 	public final fun getMicroBatchSize ()I
 	public final fun getParallelSlots ()I
 	public final fun getRamCacheMib ()I
@@ -326,6 +356,7 @@ public final class com/suhel/llamabro/ModelConfig {
 	public final fun setDevicePolicy (Lcom/suhel/llamabro/DevicePolicy;)V
 	public final fun setKvCacheType (Lcom/suhel/llamabro/KvCacheType;)V
 	public final fun setLoraAdapters (Ljava/util/List;)V
+	public final fun setMemoryReserveMib (I)V
 	public final fun setMicroBatchSize (I)V
 	public final fun setParallelSlots (I)V
 	public final fun setRamCacheMib (I)V
@@ -364,8 +395,8 @@ public abstract interface class com/suhel/llamabro/ModelSource {
 }
 
 public final class com/suhel/llamabro/ModelSource$Companion {
-	public final fun file (Ljava/lang/String;Ljava/lang/String;)Lcom/suhel/llamabro/ModelSource;
-	public static synthetic fun file$default (Lcom/suhel/llamabro/ModelSource$Companion;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/ModelSource;
+	public final fun file (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/ModelSource;
+	public static synthetic fun file$default (Lcom/suhel/llamabro/ModelSource$Companion;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/suhel/llamabro/ModelSource;
 }
 
 public abstract interface class com/suhel/llamabro/ModelTask {
@@ -415,6 +446,16 @@ public abstract interface class com/suhel/llamabro/Speculative {
 public final class com/suhel/llamabro/Speculative$Auto : com/suhel/llamabro/Speculative {
 	public static final field INSTANCE Lcom/suhel/llamabro/Speculative$Auto;
 	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/Speculative$DFlash : com/suhel/llamabro/Speculative {
+	public fun <init> ()V
+	public fun <init> (I)V
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDraftMax ()I
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -1067,6 +1108,7 @@ public final class com/suhel/llamabro/internal/BackendLibraries {
 public abstract interface class com/suhel/llamabro/internal/Engine {
 	public fun backends ()Ljava/lang/String;
 	public abstract fun devices ()Ljava/lang/String;
+	public fun fitEstimate (Ljava/lang/String;)Ljava/lang/String;
 	public abstract fun init (Ljava/lang/String;)Ljava/lang/String;
 	public abstract fun load (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/internal/EngineModel;
 	public abstract fun setLog (Lkotlin/jvm/functions/Function2;)V
@@ -1074,6 +1116,7 @@ public abstract interface class com/suhel/llamabro/internal/Engine {
 
 public final class com/suhel/llamabro/internal/Engine$DefaultImpls {
 	public static fun backends (Lcom/suhel/llamabro/internal/Engine;)Ljava/lang/String;
+	public static fun fitEstimate (Lcom/suhel/llamabro/internal/Engine;Ljava/lang/String;)Ljava/lang/String;
 }
 
 public abstract interface class com/suhel/llamabro/internal/EngineModel {

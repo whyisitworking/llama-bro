@@ -31,5 +31,9 @@ int64_t lb_config_memory_budget_mib(const json & cfg);
 bool lb_fit_auto_ctx(common_params & params, int64_t budget_bytes, json & report, bool & insufficient, std::string & err,
                      uint32_t n_ctx_cap = 0);
 
+// The same draft-aware dry-run measurement used by auto fit, for one exact total context size.
+int64_t lb_measure_ctx(common_params & params, uint32_t n_ctx, uint32_t * n_ctx_train = nullptr,
+                       int64_t * draft_bytes = nullptr);
+
 // "n_ctx_cap": the ceiling of the automatic context, 0 = the training context
 uint32_t lb_config_ctx_cap(const json & cfg);

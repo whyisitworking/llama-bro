@@ -178,6 +178,58 @@ A chat model and an embedding model can be loaded at the same time, each with it
 models run on the NPU with the same vectors as the CPU; a reranker there still picks the right top documents, but its
 near-zero scores move, so load it with `DevicePolicy.Only(DeviceKind.Cpu)` if the full order matters.
 
+## Downloading from Hugging Face
+
+Add the optional Hub library to resolve and cache a model before loading it:
+
+```kotlin
+implementation("io.github.whyisitworking:llamabro-hub")
+```
+
+```kotlin
+val hub = LlamaBroHub.getInstance(application)
+val ref = HfModel("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")
+val plan = hub.plan(ref)                         // selected GGUF files and their total size
+val fit = hub.estimateFit(plan, llama)           // bounded headers only; no weights downloaded
+hub.download(ref).collect { progress ->         // bytes, file, speed, ETA and phase
+    showProgress(progress.bytesDone, progress.bytesTotal)
+}
+val source = hub.source(ref)                     // local ModelSource, including projector or draft
+val model = llama.loadModel(source)
+```
+
+`download` resumes a partial transfer after the process restarts and verifies each file's published digest before
+putting it in the cache. `hub.progress(ref)` gives a `StateFlow<DownloadState>` for any screen in the process. Cache
+files live in the app's private `noBackupFilesDir/llamabro/hub` by default; they stay across app restarts and cannot
+be read by other apps. Set `cacheDir` in `HubConfig` to another app-private directory if you want a specific location.
+
+An app owns scheduling and the notification. The [background download sample](samples/background-download) uses a
+`CoroutineWorker` with a foreground notification and returns `Result.retry()` for retryable Hub errors:
+
+```kotlin
+override suspend fun doWork(): Result = try {
+    setForeground(foregroundInfo())
+    hub.download(HfModel(inputData.getString("ref")!!)).collect { update ->
+        setForeground(foregroundInfo(update))
+    }
+    Result.success()
+} catch (error: HubException) {
+    if (error.retryable) Result.retry() else Result.failure()
+}
+```
+
+Configure a private token provider on your `Application`; the Hub calls it before each plan or download and sends
+the token only to the Hub endpoint, never to a redirect target:
+
+```kotlin
+override val llamaBroHubConfig = HubConfig {
+    token { tokenStore.read() }
+}
+```
+
+`HubException` distinguishes network failures, unauthorized access, missing files, rate limits, insufficient
+storage and integrity failures. Its `retryable` flag tells a background worker whether another attempt can help.
+
 ## Context size
 
 The context is how many tokens the model sees at once: the conversation so far plus the reply. Its cache is reserved
@@ -192,8 +244,10 @@ llama.loadModel(ModelSource.file(path)) { contextSize = ContextSize.Fixed(8192) 
 - **`Auto`** (the default) picks the largest context up to **16 384 tokens** that fits in the memory available when
   the model loads, and at least 4096. "Fits" is llama.cpp's own projection of what the model, its cache and its
   compute buffers take on the chosen chip, against the kernel's available memory less Android's low-memory threshold,
-  the prompt cache (`ramCacheMib`), an image encoder and a 512 MiB reserve for what grows during a chat. Phones with
-  less free memory get a smaller context.
+  the prompt cache (`ramCacheMib`), an image encoder and a reserve for what grows during a chat (`memoryReserveMib`,
+  512 MiB). Phones with less free memory get a smaller context. If a model is just short, a smaller prompt cache is
+  the safe trade; lowering the reserve is possible, but then a long chat can grow into memory Android needs, and its
+  low-memory killer ends the app without an exception.
 - **Why 16 384:** common local defaults are 4096 tokens (Ollama, LM Studio, Apple's on-device model). Current models
   spend 1–3K tokens a turn on reasoning and tool results, so four times that leaves room for a real conversation,
   while a dense 3B model's cache stays near 1.8 GB. `Conversation` compacts a chat that outgrows it.

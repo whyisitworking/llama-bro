@@ -5,9 +5,11 @@
 
 #include "common.h"
 #include "ggml-backend.h"
+#include "gguf.h"
 
 
 #include <cstdio>
+#include <sys/resource.h>
 #include <dlfcn.h>
 #include <cstdlib>
 #include <algorithm>
@@ -23,6 +25,9 @@
 #include <cmath>
 #include <regex>
 #include <string>
+#include <filesystem>
+#include <fstream>
+#include <unistd.h>
 
 
 #define LB_CHECK(cond)                                                              \
@@ -59,6 +64,19 @@ static std::string test_model() {
         std::fclose(f);
     } else {
         std::fprintf(stderr, "test model not found at %s: set LB_TEST_MODEL to a GGUF file\n", path.c_str());
+        std::exit(1);
+    }
+    return path;
+}
+
+static std::string test_dflash() {
+    const char * home = std::getenv("HOME");
+    const std::string path = env_or("LB_TEST_DFLASH", std::string(home ? home : "") +
+                            "/llamabro-models/Qwen3.5-4B-DFlash-Q8_0.gguf");
+    if (FILE * f = std::fopen(path.c_str(), "rb")) {
+        std::fclose(f);
+    } else {
+        std::fprintf(stderr, "DFlash draft not found at %s: set LB_TEST_DFLASH to its GGUF file\n", path.c_str());
         std::exit(1);
     }
     return path;
@@ -879,6 +897,135 @@ static void ngram_drafts_and_keeps_the_reply() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// P3 Task 6: a separate DFlash draft model and its memory projection (D41)
+// ---------------------------------------------------------------------------------------------
+
+static json dflash_config() {
+    return {{"model_path", test_model()}, {"draft_path", test_dflash()},
+            {"speculative", {{"type", "dflash"}}}};
+}
+
+static void dflash_config_maps_to_draft_dflash() {
+    common_params p;
+    std::string err;
+    LB_CHECK(lb_parse_model_config(dflash_config(), p, err));
+    LB_CHECK(std::find(p.speculative.types.begin(), p.speculative.types.end(),
+                       COMMON_SPECULATIVE_TYPE_DRAFT_DFLASH) != p.speculative.types.end());
+    LB_CHECK(p.speculative.draft.mparams.path == test_dflash());
+    LB_CHECK(p.speculative.draft.n_max == 15);
+    LB_CHECK(p.flash_attn_type == LLAMA_FLASH_ATTN_TYPE_ENABLED);
+}
+
+static void dflash_without_draft_fails() {
+    common_params p;
+    std::string err;
+    LB_CHECK(!lb_parse_model_config(json{{"model_path", test_model()},
+                                          {"speculative", {{"type", "dflash"}}}}, p, err));
+    LB_CHECK(err == "speculative.type dflash needs draft_path");
+}
+
+static void draft_path_without_dflash_fails() {
+    common_params p;
+    std::string err;
+    LB_CHECK(!lb_parse_model_config(json{{"model_path", test_model()}, {"draft_path", test_dflash()}}, p, err));
+    LB_CHECK(err == "draft_path needs speculative.type dflash");
+    LB_CHECK(!lb_parse_model_config(json{{"model_path", test_model()}, {"draft_path", test_dflash()},
+                                          {"speculative", {{"type", "mtp"}}}}, p, err));
+    LB_CHECK(err == "draft_path needs speculative.type dflash");
+}
+
+static void dflash_missing_file_is_file_not_found() {
+    init_runtime();
+    json cfg = dflash_config();
+    cfg["draft_path"] = "/nonexistent-dflash.gguf";
+    lb_model * model = nullptr;
+    char * err = nullptr;
+    LB_CHECK(lb_model_load(cfg.dump().c_str(), nullptr, nullptr, &model, &err) == LB_ERR_LOAD_FAILED);
+    LB_CHECK(model == nullptr);
+    LB_CHECK(json::parse(err).value("code", "") == "file_not_found");
+    lb_string_free(err);
+}
+
+static void dflash_loads_and_drafts() {
+    json config = dflash_config();
+    config["n_ctx"] = 4096;
+    lb_model * model = load_test_model(config);
+    LB_CHECK(model_info(model).at("speculative") == "dflash");
+    collector c;
+    const std::string document = "The document lists backends CUDA for NVIDIA GPUs, Metal for Apple GPUs, and ";
+    const std::string instruction = "List every backend the document above describes as a JSON array of objects "
+        "with the keys \"name\", \"cmake_flag\" and \"platforms\" (an array of strings). Output only the JSON.";
+    json body = chat_body(document + "\n\n" + instruction, 64, false);
+    body["seed"] = 42;
+    lb_request * req = start(model, "chat", body, c);
+    c.wait_terminal();
+    LB_CHECK(c.terminal == LB_EVENT_DONE && c.chunks.size() == 1 && c.statuses[0] == 200);
+    const json response = json::parse(c.chunks[0]);
+    LB_CHECK(!response.at("choices").at((size_t) 0).at("message").value("content", "").empty());
+    LB_CHECK(response.at("timings").value("draft_n", 0) > 0);
+    lb_request_free(req);
+    lb_model_free(model);
+}
+
+static void fit_counts_the_draft() {
+    init_runtime();
+    constexpr int64_t MiB = 1024 * 1024;
+    const int64_t huge_budget = 1024LL * 1024 * 1024 * 1024;
+    std::string err;
+    json plain_report, draft_report;
+    bool insufficient = false;
+    common_params plain = parsed_test_config();
+    LB_CHECK(lb_fit_auto_ctx(plain, huge_budget, plain_report, insufficient, err));
+    common_params draft;
+    LB_CHECK(lb_parse_model_config(dflash_config(), draft, err));
+    LB_CHECK(lb_fit_auto_ctx(draft, huge_budget, draft_report, insufficient, err));
+    FILE * f = std::fopen(test_dflash().c_str(), "rb");
+    LB_CHECK(f != nullptr);
+    LB_CHECK(std::fseek(f, 0, SEEK_END) == 0);
+    const int64_t draft_size_mib = std::ftell(f) / MiB;
+    std::fclose(f);
+    LB_CHECK(draft_report.at("used_min_mib").get<int64_t>() >=
+             plain_report.at("used_min_mib").get<int64_t>() + (draft_size_mib * 9 / 10));
+    LB_CHECK(draft_report.at("draft_mib_min").get<int64_t>() > 0);
+    std::fprintf(stderr, "fit min: plain=%lld MiB, with draft=%lld MiB, draft=%lld MiB\n",
+                 (long long) plain_report.at("used_min_mib").get<int64_t>(),
+                 (long long) draft_report.at("used_min_mib").get<int64_t>(),
+                 (long long) draft_report.at("draft_mib_min").get<int64_t>());
+}
+
+// The projection against a real load (review of P3, F90): the process's peak resident set after loading Qwen3.5 and
+// the DFlash draft at 4096 tokens and answering once. Measured 5,793 projected vs 5,208 MiB peak (1.11; F90's lb-run
+// run peaked at 5,576); the target's recurrent state counted twice would give about 1.26. Runs alone in its process.
+static void dflash_fit_matches_load_rss() {
+    init_runtime();
+    std::string err;
+    json report;
+    bool insufficient = false;
+    common_params draft;
+    LB_CHECK(lb_parse_model_config(dflash_config(), draft, err));
+    LB_CHECK(lb_fit_auto_ctx(draft, 1024LL * 1024 * 1024 * 1024, report, insufficient, err));
+    const double projected = (double) report.at("used_min_mib").get<int64_t>();
+    json config = dflash_config();
+    config["n_ctx"] = 4096;
+    lb_model * model = load_test_model(config);
+    collector c;
+    lb_request * req = start(model, "chat", chat_body("Say hello in five words.", 16, false), c);
+    c.wait_terminal();
+    LB_CHECK(c.terminal == LB_EVENT_DONE);
+    rusage usage{};
+    LB_CHECK(getrusage(RUSAGE_SELF, &usage) == 0);
+#ifdef __APPLE__
+    const double peak = (double) usage.ru_maxrss / (1024.0 * 1024.0);  // bytes on macOS
+#else
+    const double peak = (double) usage.ru_maxrss / 1024.0;             // KiB on Linux
+#endif
+    std::fprintf(stderr, "dflash fit: projected %.0f MiB, peak RSS %.0f MiB, ratio %.3f\n", projected, peak, projected / peak);
+    LB_CHECK(projected >= peak * 0.90 && projected <= peak * 1.18);
+    lb_request_free(req);
+    lb_model_free(model);
+}
+
+// ---------------------------------------------------------------------------------------------
 // Load-time features (F69): KV-cache type, embeddings and rerank, LoRA. Same models and checks as upstream's
 // tools/server/tests/unit/test_embedding.py, test_rerank.py and test_lora.py (sdk/scripts/fetch-test-models.sh).
 // ---------------------------------------------------------------------------------------------
@@ -1032,6 +1179,78 @@ static void kv_cache_q8_0_loads_and_generates() {
     lb_string_free(err);
 }
 
+static json estimate(const json & cfg) {
+    char * err = nullptr;
+    char * raw = lb_fit_estimate(cfg.dump().c_str(), &err);
+    if (!raw) std::fprintf(stderr, "lb_fit_estimate: %s\n", err ? err : "unknown error");
+    LB_CHECK(raw != nullptr);
+    json result = json::parse(raw);
+    lb_string_free(raw);
+    if (err) lb_string_free(err);
+    return result;
+}
+
+static void fit_estimate_matches_load() {
+    init_runtime();
+    const json cfg = {{"model_path", test_model()}, {"n_ctx", "auto"},
+                      {"n_ctx_cap", 8192}, {"memory_budget_mib", 4300}};
+    const json projected = estimate(cfg);
+    LB_CHECK(projected.at("fits") == true);
+    lb_model * model = nullptr;
+    char * err = nullptr;
+    const lb_status status = lb_model_load(cfg.dump().c_str(), nullptr, nullptr, &model, &err);
+    if (status != LB_OK) std::fprintf(stderr, "lb_model_load: %s\n", err ? err : "unknown error");
+    LB_CHECK(status == LB_OK);
+    const json loaded = model_info(model);
+    LB_CHECK(projected.at("n_ctx") == loaded.at("n_ctx"));
+    LB_CHECK(projected.at("used_min_mib") == loaded.at("ctx_fit").at("used_min_mib"));
+    lb_model_free(model);
+    if (err) lb_string_free(err);
+}
+
+static void fit_estimate_on_stub_equals_real() {
+    init_runtime();
+    const char * home = std::getenv("HOME");
+    const std::string downloads = std::string(home ? home : "") + "/Downloads/";
+    const std::vector<std::string> files = {
+        "Qwen3.5-4B-Q4_K_M.gguf",
+        "gemma-3-4b-it-qat-UD-Q4_K_XL.gguf",
+        "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+    };
+    const auto dir = std::filesystem::temp_directory_path() /
+        ("llamabro-fit-estimate-" + std::to_string(getpid()));
+    std::filesystem::create_directories(dir);
+    for (const auto & name : files) {
+        const auto source = downloads + name;
+        LB_CHECK(std::filesystem::is_regular_file(source));
+        gguf_init_params options = {true, nullptr};
+        gguf_context * header = gguf_init_from_file(source.c_str(), options);
+        LB_CHECK(header != nullptr);
+        const size_t offset = gguf_get_data_offset(header);
+        gguf_free(header);
+        const auto stub = dir / name;
+        std::ifstream input(source, std::ios::binary);
+        std::ofstream output(stub, std::ios::binary);
+        LB_CHECK(input.good() && output.good());
+        std::vector<char> bytes(offset);
+        input.read(bytes.data(), (std::streamsize) bytes.size());
+        LB_CHECK(input.gcount() == (std::streamsize) bytes.size());
+        output.write(bytes.data(), (std::streamsize) bytes.size());
+        output.close();
+        std::filesystem::resize_file(stub, std::filesystem::file_size(source));
+        const json base = {{"n_ctx", "auto"}, {"n_ctx_cap", 8192}, {"memory_budget_mib", 100000}};
+        json real_cfg = base;
+        real_cfg["model_path"] = source;
+        json stub_cfg = base;
+        stub_cfg["model_path"] = stub.string();
+        const json real = estimate(real_cfg);
+        const json sparse = estimate(stub_cfg);
+        LB_CHECK(real.at("used_min_mib") == sparse.at("used_min_mib"));
+        LB_CHECK(real.at("used_max_mib") == sparse.at("used_max_mib"));
+    }
+    std::filesystem::remove_all(dir);
+}
+
 int main(int argc, char ** argv) {
     const std::map<std::string, std::function<void()>> tests = {
         {"runtime_init_twice_same_config_ok", runtime_init_twice_same_config_ok},
@@ -1048,6 +1267,15 @@ int main(int argc, char ** argv) {
         {"auto_ctx_budget_load_and_insufficient_error", auto_ctx_budget_load_and_insufficient_error},
         {"ngram_config_maps_to_ngram_mod", ngram_config_maps_to_ngram_mod},
         {"ngram_drafts_and_keeps_the_reply", ngram_drafts_and_keeps_the_reply},
+        {"fit_estimate_matches_load", fit_estimate_matches_load},
+        {"fit_estimate_on_stub_equals_real", fit_estimate_on_stub_equals_real},
+        {"dflash_config_maps_to_draft_dflash", dflash_config_maps_to_draft_dflash},
+        {"dflash_without_draft_fails", dflash_without_draft_fails},
+        {"draft_path_without_dflash_fails", draft_path_without_dflash_fails},
+        {"dflash_missing_file_is_file_not_found", dflash_missing_file_is_file_not_found},
+        {"dflash_loads_and_drafts", dflash_loads_and_drafts},
+        {"fit_counts_the_draft", fit_counts_the_draft},
+        {"dflash_fit_matches_load_rss", dflash_fit_matches_load_rss},
         {"runtime_init_different_config_fails", runtime_init_different_config_fails},
         {"devices_lists_cpu", devices_lists_cpu},
         {"runtime_init_retry_after_failure", runtime_init_retry_after_failure},

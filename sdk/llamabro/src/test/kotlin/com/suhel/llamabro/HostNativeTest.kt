@@ -129,7 +129,7 @@ class HostNativeTest {
 
         val engine = RecordingEngine(JniEngine)
         val llama = LlamaBro(LlamaBroRuntime(engine, tempDir(), lib, LlamaBroConfig.Default))
-        val model = llama.loadModel(ModelSource.file(modelPath, mmproj)) { contextSize = ContextSize.Fixed(8192) }
+        val model = llama.loadModel(ModelSource.file(modelPath) { this.mmproj = mmproj }) { contextSize = ContextSize.Fixed(8192) }
         val greedy = Sampling { temperature = 0f; seed = 1; maxTokens = 48 }
         val noThink = Reasoning { enableThinking = false }
         val weather = Tool.function("get_weather", "Current weather for a city",
