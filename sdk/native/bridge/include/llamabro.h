@@ -44,6 +44,9 @@ lb_status lb_runtime_init(const char * config_json, char ** error_json);
 void lb_runtime_set_log(lb_log_cb cb, void * user);
 char * lb_runtime_devices(void);                                       // [{"name","description","type","memory_free","memory_total"}]
 char * lb_runtime_backends(void);                                      // [{"name","loaded","error","devices"}], "cpu" first; [] before init
+// Dry-run the same model config and device fit as lb_model_load, without loading tensors. Returns a JSON object with
+// fits, n_ctx, n_ctx_min, used_min_mib, used_max_mib and budget_mib; NULL plus error_json on failure.
+char * lb_fit_estimate(const char * config_json, char ** error_json);
 
 // On LB_ERR_LOAD_FAILED, error_json is {"error": "<why, with llama.cpp's own reason>"}, plus "code": "file_not_found"
 // when the model or mmproj file can't be opened.

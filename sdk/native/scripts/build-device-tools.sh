@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds llama-server and lb-run for the phone (P2 T9, the device contract), in the Snapdragon image like
+# Builds llama-server, lb-run and llama-fit-params for the phone, in the Snapdragon image like
 # build-backends.sh, from the same patched tree and CMakeLists.txt. Unlike the AAR build, the libraries keep
 # upstream's names (LB_PREFIX_LIBS=OFF), so llama-server finds its backends exactly as upstream does; both tools run
 # from one directory on the phone with LD_LIBRARY_PATH set to it.
@@ -29,13 +29,13 @@ docker run --rm -u "$(id -u):$(id -g)" --platform linux/amd64 --volume "$native:
         -DCMAKE_BUILD_TYPE=Release -DLB_LLAMA_DIR=/native/build/llama.cpp -DLB_BACKENDS=hexagon \
         -DLB_BUILD_TESTS=ON -DLB_PREFIX_LIBS=OFF -DPREBUILT_LIB_DIR=android_aarch64 '"$extra"' >/dev/null
   cpu=$(cmake --build /native/build/'"$name"'-build --target help | sed -n "s/^\(ggml-cpu[^:]*\):.*/\1/p" | tr "\n" " ")
-  cmake --build /native/build/'"$name"'-build --target llama-server lb-run ggml-hexagon htp-v79 $cpu
+  cmake --build /native/build/'"$name"'-build --target llama-server lb-run llama-fit-params ggml-hexagon htp-v79 $cpu
   # the NDK runtime the AAR ships too (check-aar.sh); no libomp.so, as OpenMP is off (D38)
   cp "$(find "$ANDROID_NDK_ROOT" -path "*aarch64-linux-android/libc++_shared.so" -print -quit)" /native/build/'"$name"'-build/
 '
 
 rm -rf "$out" && mkdir -p "$out"
-for f in llama-server lb-run; do
+for f in llama-server lb-run llama-fit-params; do
     exe="$(find "$build" -type f -name "$f" -perm -u+x -print -quit)"
     [ -n "$exe" ] || { echo "$f not built" >&2; exit 1; }
     cp "$exe" "$out/"

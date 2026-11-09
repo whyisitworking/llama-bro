@@ -35,6 +35,10 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
     public suspend fun loadModel(source: ModelSource, configure: ModelConfig.() -> Unit = {}): Model =
         runtime.load(source, ModelConfig().apply(configure))
 
+    /** Projects the chosen device's memory and context from GGUF headers without loading weights. */
+    public suspend fun estimateFit(source: ModelSource, configure: ModelConfig.() -> Unit = {}): FitEstimate =
+        runtime.estimateFit(source, ModelConfig().apply(configure))
+
     /** The backend devices ggml loaded. Initialises the native runtime if needed; runs on `Dispatchers.IO`. */
     public suspend fun devices(): List<DeviceInfo> = runtime.devices()
 

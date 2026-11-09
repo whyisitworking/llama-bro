@@ -1,0 +1,26 @@
+[
+  {
+    "name": "CPU",
+    "cmake_flag": "None (default)",
+    "platforms": ["Linux", "Windows", "macOS", "Android"]
+  },
+  {
+    "name": "OpenBLAS",
+    "cmake_flag": "-DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS",
+    "platforms": ["Linux", "macOS"]
+  },
+  {
+    "name": "BLIS",
+    "cmake_flag": "See BLIS.md",
+    "platforms": ["Linux", "macOS", "Windows"]
+  },
+  {
+    "name": "AMD AOCL-BLAS",
+    "cmake_flag": "-DGGML_BLAS=ON -DGGML_BLAS_VENDOR=AOCL_mt",
+    "platforms": ["Linux"]
+  },
+  {
+    "name": "Intel oneMKL",
+    "cmake_flag": "-DGGML_BLAS=ON -DGGML_BLAS_VENDOR=Intel10_64lp",
+    "platforms": ["Linux"]
+ 

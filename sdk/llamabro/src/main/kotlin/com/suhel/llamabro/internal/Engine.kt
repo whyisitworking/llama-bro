@@ -15,6 +15,9 @@ public interface Engine {
     public fun devices(): String
     /** `lb_runtime_backends` JSON. The default is the CPU alone, loaded, for engines with no other backend. */
     public fun backends(): String = """[{"name":"cpu","loaded":true,"error":null,"devices":["CPU"]}]"""
+    /** `lb_fit_estimate` JSON. Fakes have no memory measurement by default. */
+    public fun fitEstimate(configJson: String): String =
+        """{"fits":null,"n_ctx":null,"n_ctx_min":4096,"used_min_mib":0,"used_max_mib":null,"budget_mib":null}"""
     /** `lb_model_load`. A real engine throws on failure. */
     public fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel
 }

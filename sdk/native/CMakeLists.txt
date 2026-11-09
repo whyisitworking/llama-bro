@@ -186,6 +186,10 @@ if(LB_BUILD_TESTS)
     target_include_directories(lb-run PRIVATE bridge/src)
     target_link_libraries(lb-run PRIVATE llamabro llama-common)
 
+    add_executable(lb-hub-golden tests/hub-golden/lb_hub_golden.cpp)
+    target_include_directories(lb-hub-golden PRIVATE ${LB_LLAMA_DIR})
+    target_link_libraries(lb-hub-golden PRIVATE llama-common cpp-httplib)
+
     set(LB_TESTS
         runtime_init_twice_same_config_ok
         runtime_init_different_config_fails
@@ -225,6 +229,15 @@ if(LB_BUILD_TESTS)
         auto_ctx_budget_load_and_insufficient_error
         ngram_config_maps_to_ngram_mod
         ngram_drafts_and_keeps_the_reply
+        dflash_config_maps_to_draft_dflash
+        dflash_without_draft_fails
+        draft_path_without_dflash_fails
+        dflash_missing_file_is_file_not_found
+        dflash_loads_and_drafts
+        fit_counts_the_draft
+        dflash_fit_matches_load_rss
+        fit_estimate_matches_load
+        fit_estimate_on_stub_equals_real
         load_features_parsed
         embeddings_mean_pooling
         embeddings_off_by_default
@@ -237,6 +250,9 @@ if(LB_BUILD_TESTS)
         set_tests_properties(${name} PROPERTIES ENVIRONMENT "LB_BACKEND_DIR=${CMAKE_BINARY_DIR}/bin" TIMEOUT 300)
         if(DEFINED ENV{LB_TEST_MODEL})
             set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "LB_TEST_MODEL=$ENV{LB_TEST_MODEL}")
+        endif()
+        if(DEFINED ENV{LB_TEST_DFLASH})
+            set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "LB_TEST_DFLASH=$ENV{LB_TEST_DFLASH}")
         endif()
         if(DEFINED ENV{LB_TEST_MODELS_DIR})
             set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "LB_TEST_MODELS_DIR=$ENV{LB_TEST_MODELS_DIR}")

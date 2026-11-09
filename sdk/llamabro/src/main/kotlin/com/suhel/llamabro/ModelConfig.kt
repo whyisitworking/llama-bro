@@ -10,9 +10,10 @@ import kotlinx.serialization.json.put
  * (design §8, D17).
  */
 public class ModelConfig internal constructor() {
+
     /** Tokens of context (`n_ctx`). */
     public var contextSize: ContextSize = ContextSize.Auto
-    /** Speculative decoding: off by default ([Speculative.Auto]); the app opts in to [Speculative.Mtp] or [Speculative.Ngram]. */
+    /** Speculative decoding: off by default ([Speculative.Auto]); the app opts in to a drafting mode. */
     public var speculative: Speculative = Speculative.Auto
     /** Which chip runs the model; [DevicePolicy.Auto] picks the fastest that loads ([Model.loadReport] says which). */
     public var devicePolicy: DevicePolicy = DevicePolicy.Auto
@@ -30,6 +31,14 @@ public class ModelConfig internal constructor() {
     public var parallelSlots: Int = 1
     /** RAM for llama-server's prompt cache across conversations (`--cache-ram`), in MiB. */
     public var ramCacheMib: Int = 1024
+    /**
+     * Memory [ContextSize.Auto] and [ContextSize.UpTo] leave free for what grows during a chat and isn't projected
+     * (context checkpoints, slack), in MiB, like llama-server's `--fit-target` margin. The default, 512, was measured
+     * on the OnePlus 13 (D34, F66). Lower it only when the app knows its phone: below the default, a long chat can grow
+     * into memory Android needs, and its low-memory killer then ends the whole app, which no exception reports (D45).
+     * [LlamaBro.estimateFit] uses the same value. At least 0.
+     */
+    public var memoryReserveMib: Int = 512 // MemoryBudget.RESERVE_MIB (D34, F66)
     /** Context checkpoints kept per slot (`--ctx-checkpoints`), which let hybrid models reuse a prefix (§7). */
     public var checkpointsPerSlot: Int = 8
     /** What the model is loaded for: chat and completion, embeddings, or reranking ([ModelTask]). */
@@ -48,6 +57,16 @@ public class ModelConfig internal constructor() {
 
     internal var progressListener: ((Float) -> Unit)? = null
 
+    internal fun validateSource(source: ModelSource) {
+        if (memoryReserveMib < 0) {
+            throw LlamaBroException.InvalidRequest("memoryReserveMib must be at least 0, was $memoryReserveMib")
+        }
+        if (speculative is Speculative.DFlash && (source as? FileSource)?.draft == null) {
+            throw LlamaBroException.InvalidRequest(
+                "Speculative.DFlash needs ModelSource.file(path) { draft = … }")
+        }
+    }
+
     /**
      * Called with llama.cpp's load progress, 0 to 1, on the context `loadModel` was called from. Values may be
      * skipped if the listener is slow; the last one always arrives.
@@ -63,6 +82,7 @@ public class ModelConfig internal constructor() {
         devices: List<String> = emptyList(),
         memoryBudgetMib: Long? = null,
     ): String = buildJsonObject {
+        validateSource(source)
         // always explicit (F32): [] is CPU only; one device takes every layer (upstream's `-dev X -ngl 99`)
         put("devices", JsonArray(devices.map { JsonPrimitive(it) }))
         if (devices.isNotEmpty()) put("n_gpu_layers", ALL_LAYERS)
@@ -70,6 +90,7 @@ public class ModelConfig internal constructor() {
             is FileSource -> {
                 put("model_path", source.path)
                 source.mmproj?.let { put("mmproj_path", it) }
+                if (speculative is Speculative.DFlash) source.draft?.let { put("draft_path", it) }
             }
         }
         when (val c = contextSize) {
@@ -106,6 +127,7 @@ public class ModelConfig internal constructor() {
             Speculative.Off, Speculative.Auto -> Unit  // Auto is off on every chip (F67)
             is Speculative.Mtp -> put("speculative", buildJsonObject { put("type", "mtp"); put("n_max", s.draftMax) })
             is Speculative.Ngram -> put("speculative", buildJsonObject { put("type", "ngram"); s.then?.let { put("mtp_n_max", it.draftMax) } })
+            is Speculative.DFlash -> put("speculative", buildJsonObject { put("type", "dflash"); put("n_max", s.draftMax) })
         }
     }.toString()
 }
@@ -125,7 +147,7 @@ public sealed interface ContextSize {
      * "Fits" uses llama.cpp's own projection of what the model, its context cache and its compute buffers take, summed
      * over the chosen device and the host (a phone has one RAM), compared with the kernel's available memory (`MemAvailable`, what Android itself reports as
      * `availMem`) less Android's low-memory threshold, the prompt cache ([ModelConfig.ramCacheMib]), an image
-     * encoder's file and a 512 MiB reserve for what grows during a chat. A phone short on memory gets a smaller
+     * encoder's file and a reserve for what grows during a chat ([ModelConfig.memoryReserveMib], 512 MiB by default). A phone short on memory gets a smaller
      * context; if even 4096 tokens don't fit, the load fails with
      * `LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory` instead of risking the app.
      *
@@ -209,6 +231,21 @@ public sealed interface Speculative {
         override fun equals(other: Any?): Boolean = other is Ngram && then == other.then
         override fun hashCode(): Int = then.hashCode()
         override fun toString(): String = "Ngram(then=$then)"
+    }
+
+    /**
+     * Drafts with a separate local GGUF supplied by `ModelSource.file(path) { draft = … }`.
+     * Structured replies on the NPU benefit from DFlash (D41); drafted batches cannot run on the GPU (F80).
+     * The draft retains upstream's F16 KV cache even when [ModelConfig.kvCacheType] differs.
+     *
+     * @property draftMax tokens drafted per step (`--spec-draft-n-max`), at least 1.
+     */
+    public class DFlash(public val draftMax: Int = 15) : Speculative {
+        init { require(draftMax >= 1) { "draftMax must be at least 1" } }
+
+        override fun equals(other: Any?): Boolean = other is DFlash && draftMax == other.draftMax
+        override fun hashCode(): Int = draftMax
+        override fun toString(): String = "DFlash(draftMax=$draftMax)"
     }
 }
 

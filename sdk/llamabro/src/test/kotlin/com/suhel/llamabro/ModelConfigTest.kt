@@ -32,9 +32,25 @@ class ModelConfigTest {
     }
 
     @Test
+    fun fileSourceBuilderSendsMmproj() = runTest {
+        val source = ModelSource.file("/m.gguf") {
+            mmproj = "/p.gguf"
+            draft = "/draft.gguf"
+        }
+        assertEquals(FileSource("/m.gguf", "/p.gguf", "/draft.gguf"), source)
+
+        val engine = FakeEngine()
+        testLlamaBro(engine).loadModel(source)
+        val cfg = Json.parseToJsonElement(engine.loadConfigs.single()).jsonObject
+        assertEquals("/m.gguf", cfg["model_path"]!!.jsonPrimitive.content)
+        assertEquals("/p.gguf", cfg["mmproj_path"]!!.jsonPrimitive.content)
+        assertFalse(cfg.containsKey("draft_path"))
+    }
+
+    @Test
     fun overridesSent() = runTest {
         val engine = FakeEngine()
-        testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf", mmproj = "/p.gguf")) {
+        testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf") { mmproj = "/p.gguf" }) {
             contextSize = ContextSize.Fixed(4096)
             speculative = Speculative.Mtp(draftMax = 2)
             threads = 4
@@ -88,7 +104,8 @@ class ModelConfigTest {
     @Test
     fun invalidSizesAreRejected() {
         // ContextSize.Fixed(0) would be upstream's "the training context", reserved at load
-        for (bad in listOf<() -> Any>({ ContextSize.Fixed(0) }, { ContextSize.Fixed(-1) }, { ContextSize.UpTo(0) }, { Speculative.Mtp(0) })) {
+        for (bad in listOf<() -> Any>({ ContextSize.Fixed(0) }, { ContextSize.Fixed(-1) }, { ContextSize.UpTo(0) },
+            { Speculative.Mtp(0) }, { Speculative.DFlash(0) })) {
             assertTrue(runCatching(bad).exceptionOrNull() is IllegalArgumentException)
         }
     }
@@ -114,6 +131,44 @@ class ModelConfigTest {
         assertEquals("n-gram: set by the app", alone.loadReport.speculativeReason)
         assertEquals(Speculative.Ngram(Speculative.Mtp(4)), both.loadReport.speculative)
         assertEquals("n-gram, then MTP: set by the app", both.loadReport.speculativeReason)
+    }
+
+    @Test
+    fun dflashSentWithDraft() = runTest {
+        val engine = FakeEngine()
+        val source = ModelSource.file("/m.gguf") { draft = "/draft.gguf" }
+        val model = testLlamaBro(engine).loadModel(source) { speculative = Speculative.DFlash() }
+        val cfg = Json.parseToJsonElement(engine.loadConfigs.single()).jsonObject
+        assertEquals("/draft.gguf", cfg["draft_path"]!!.jsonPrimitive.content)
+        assertEquals("""{"type":"dflash","n_max":15}""", cfg["speculative"].toString())
+        assertEquals(Speculative.DFlash(), model.loadReport.speculative)
+        assertEquals("DFlash draft (D41)", model.loadReport.speculativeReason)
+        assertEquals(Speculative.DFlash(8), Speculative.DFlash(8))
+        assertEquals(Speculative.DFlash(8).hashCode(), Speculative.DFlash(8).hashCode())
+        assertEquals("DFlash(draftMax=8)", Speculative.DFlash(8).toString())
+    }
+
+    @Test
+    fun dflashWithoutDraftThrows() = runTest {
+        val engine = FakeEngine()
+        try {
+            testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf")) { speculative = Speculative.DFlash() }
+            throw AssertionError("DFlash without a draft loaded")
+        } catch (error: LlamaBroException.InvalidRequest) {
+            assertEquals("Speculative.DFlash needs ModelSource.file(path) { draft = … }", error.message)
+        }
+        assertTrue(engine.loadConfigs.isEmpty())
+    }
+
+    @Test
+    fun draftUnusedWithoutDflash() = runTest {
+        val engine = FakeEngine()
+        val model = testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf") { draft = "/draft.gguf" }) {
+            speculative = Speculative.Mtp()
+        }
+        val cfg = Json.parseToJsonElement(engine.loadConfigs.single()).jsonObject
+        assertFalse(cfg.containsKey("draft_path"))
+        assertEquals("MTP: set by the app; draft file unused (Speculative is not DFlash)", model.loadReport.speculativeReason)
     }
 
     @Test

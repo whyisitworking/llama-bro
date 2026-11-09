@@ -186,7 +186,8 @@ lb_status lb_model_load(const char * config_json, lb_progress_cb cb, void * user
         lb_set_error(error_json, err);
         return LB_ERR_INVALID_ARG;
     }
-    if (!can_open(m->params.model.path, err) || !can_open(m->params.mmproj.path, err)) {
+    if (!can_open(m->params.model.path, err) || !can_open(m->params.mmproj.path, err) ||
+        !can_open(m->params.speculative.draft.mparams.path, err)) {
         lb_set_error(error_json, "failed to load model: " + err, "file_not_found");
         return LB_ERR_LOAD_FAILED;
     }
@@ -263,8 +264,10 @@ char * lb_model_info(lb_model * m) {
     return lb_strdup(json{
         {"devices", devices},
         {"ctx_fit", m->ctx_fit},
-        // what decodes: "mtp" when the model's MTP head drafts tokens (P2 T8)
+        // what decodes: a separate DFlash model, MTP head, or neither
         {"speculative", std::find(m->params.speculative.types.begin(), m->params.speculative.types.end(),
+                                  COMMON_SPECULATIVE_TYPE_DRAFT_DFLASH) != m->params.speculative.types.end() ? "dflash" :
+                        std::find(m->params.speculative.types.begin(), m->params.speculative.types.end(),
                                   COMMON_SPECULATIVE_TYPE_DRAFT_MTP) != m->params.speculative.types.end() ? "mtp" : "none"},
         {"n_ctx", llama_n_ctx(lctx)},
         {"n_ctx_train", llama_model_n_ctx_train(model)},

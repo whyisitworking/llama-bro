@@ -202,6 +202,17 @@ jlong modelLoad(JNIEnv * env, jobject, jstring config, jobject progress) {
     return reinterpret_cast<jlong>(model);
 }
 
+jstring fitEstimate(JNIEnv * env, jobject, jstring config) {
+    const std::string c = get_string(env, config);
+    char * err = nullptr;
+    char * result = lb_fit_estimate(c.c_str(), &err);
+    if (!result) {
+        throw_native_error(env, LB_ERR_LOAD_FAILED, err);
+        return nullptr;
+    }
+    return take_string(env, result);
+}
+
 jstring modelInfo(JNIEnv * env, jobject, jlong model) {
     return take_string(env, lb_model_info(reinterpret_cast<lb_model *>(model)));
 }
@@ -279,6 +290,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM * vm, void *) {
         {"runtimeBackends", "()Ljava/lang/String;", (void *) runtimeBackends},
         {"runtimeSetLog",  "(Lcom/suhel/llamabro/internal/LogListener;)V", (void *) runtimeSetLog},
         {"modelLoad",      "(Ljava/lang/String;Lcom/suhel/llamabro/internal/ProgressListener;)J", (void *) modelLoad},
+        {"fitEstimate",    "(Ljava/lang/String;)Ljava/lang/String;", (void *) fitEstimate},
         {"modelInfo",      "(J)Ljava/lang/String;", (void *) modelInfo},
         {"modelRequest",   "(JLjava/lang/String;Ljava/lang/String;[BLcom/suhel/llamabro/internal/RequestSink;)J", (void *) modelRequest},
         {"requestCancel",  "(J)V", (void *) requestCancel},

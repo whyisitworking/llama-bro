@@ -7,7 +7,9 @@
 #include "arg.h"
 #include "gguf.h"
 #include "fit.h"
+#include "speculative.h"
 #include "ggml-backend.h"
+#include "llama-cpp.h"
 
 #include <algorithm>
 #include <cstring>
@@ -76,6 +78,8 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string & 
     };
 
     try {
+        bool has_draft_path = false;
+        bool is_dflash = false;
         // phone defaults (design §8, D17); keys below override them
         apply_flag(ctx, "--parallel", "1");
         apply_flag(ctx, "--cache-ram", "1024");
@@ -104,6 +108,9 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string & 
                 apply_flag(ctx, "--model", str_of(key, v));
             } else if (key == "mmproj_path") {
                 apply_flag(ctx, "--mmproj", str_of(key, v));
+            } else if (key == "draft_path") {
+                apply_flag(ctx, "--model-draft", str_of(key, v));
+                has_draft_path = true;
             } else if (key == "devices") {
                 if (!v.is_array()) throw std::invalid_argument("devices must be an array of device names");
                 std::vector<ggml_backend_dev_t> devs;
@@ -176,7 +183,7 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string & 
                 const std::string type = str_of("speculative.type", v.at("type"));
                 for (const auto & item2 : v.items()) {
                     const std::string & k2 = item2.key();
-                    if (k2 != "type" && !(type == "mtp" && k2 == "n_max") &&
+                    if (k2 != "type" && !((type == "mtp" || type == "dflash") && k2 == "n_max") &&
                         !(type == "ngram" && k2 == "mtp_n_max")) {
                         throw std::invalid_argument("unknown config key: speculative." + k2);
                     }
@@ -185,6 +192,11 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string & 
                 if (type == "mtp") {
                     apply_flag(ctx, "--spec-type", "draft-mtp");
                     apply_flag(ctx, "--spec-draft-n-max", n_max);
+                } else if (type == "dflash") {
+                    is_dflash = true;
+                    apply_flag(ctx, "--spec-type", "draft-dflash");
+                    apply_flag(ctx, "--spec-draft-n-max", v.contains("n_max") ? n_max : "15");
+                    apply_flag(ctx, "--flash-attn", "on");
                 } else if (type == "ngram") {
                     // ngram-mod with upstream's --spec-default values (common/arg.cpp), spelled out so that it can be
                     // listed before draft-mtp: speculative.cpp tries n-grams first, MTP when they have no draft (D35, F72)
@@ -196,12 +208,15 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string & 
                         apply_flag(ctx, "--spec-draft-n-max", int_of("speculative.mtp_n_max", v.at("mtp_n_max")));
                     }
                 } else if (type != "none") {
-                    throw std::invalid_argument("speculative.type must be none, mtp or ngram");
+                    throw std::invalid_argument("speculative.type must be none, mtp, ngram or dflash");
                 }
             } else {
                 throw std::invalid_argument("unknown config key: " + key);
             }
         }
+
+        if (has_draft_path && !is_dflash) throw std::invalid_argument("draft_path needs speculative.type dflash");
+        if (is_dflash && !has_draft_path) throw std::invalid_argument("speculative.type dflash needs draft_path");
 
         // always forced (design §8): no context shift, no idle sleep (reload failure after sleep aborts)
         apply_switch(ctx, "--no-context-shift");
@@ -270,24 +285,48 @@ int64_t lb_config_memory_budget_mib(const json & cfg) {
         ? cfg.at("memory_budget_mib").get<int64_t>() : 0;
 }
 
+int64_t lb_measure_ctx(common_params & params, uint32_t n_ctx, uint32_t * n_ctx_train, int64_t * draft_bytes) {
+    llama_model_params   mparams = common_model_params_to_llama(params);
+    llama_context_params cparams = common_context_params_to_llama(params);
+    cparams.n_ctx = n_ctx;
+    int64_t sum = 0;
+    for (const auto & row : common_fit_measure(params.model.path.c_str(), &mparams, &cparams, n_ctx_train, nullptr,
+                                               GGML_LOG_LEVEL_ERROR)) {
+        sum += (int64_t) (row.model + row.context + row.compute);
+    }
+    if (!params.speculative.draft.mparams.path.empty()) {
+        common_params p_dft = common_base_params_to_speculative(params);
+        llama_model_params dft_mparams = common_model_params_to_llama(p_dft);
+        llama_context_params dft_cparams = common_context_params_to_llama(p_dft);
+        // speculative.cpp gives the draft the target's total context and links it to the target context.
+        // DFlash requires ctx_other even for a fit probe, so make a no-allocation target probe here.
+        llama_model_params target_mparams = mparams;
+        target_mparams.no_alloc = true;
+        target_mparams.load_mode = LLAMA_LOAD_MODE_NONE;
+        llama_model_ptr target_model(llama_model_load_from_file(params.model.path.c_str(), target_mparams));
+        if (!target_model) throw std::runtime_error("failed to load target model for draft fit");
+        llama_context_ptr target_ctx(llama_init_from_model(target_model.get(), cparams));
+        if (!target_ctx) throw std::runtime_error("failed to create target context for draft fit");
+        dft_cparams.n_ctx = n_ctx;
+        dft_cparams.n_rs_seq = 0;
+        dft_cparams.ctx_other = target_ctx.get();
+        int64_t draft = 0;
+        for (const auto & row : common_fit_measure(p_dft.model.path.c_str(), &dft_mparams, &dft_cparams,
+                                                   nullptr, nullptr, GGML_LOG_LEVEL_ERROR)) {
+            draft += (int64_t) (row.model + row.context + row.compute);
+        }
+        sum += draft;
+        if (draft_bytes) *draft_bytes = draft;
+    }
+    return sum;
+}
+
 bool lb_fit_auto_ctx(common_params & params, int64_t budget_bytes, json & report, bool & insufficient, std::string & err,
                      uint32_t n_ctx_cap) {
     constexpr int64_t MiB = 1024 * 1024;
     insufficient = false;
-    llama_model_params   mparams = common_model_params_to_llama(params);
-    llama_context_params cparams = common_context_params_to_llama(params);
+    const llama_context_params cparams = common_context_params_to_llama(params);
     const uint32_t n_streams = cparams.kv_unified ? 1 : std::max<uint32_t>(1, cparams.n_seq_max);
-
-    // total bytes over every row (devices, host, other buffer types): disjoint (common_memory_breakdown_rows)
-    auto measure = [&](uint32_t n_ctx, uint32_t * n_ctx_train) -> int64_t {
-        cparams.n_ctx = n_ctx;
-        int64_t sum = 0;
-        for (const auto & row : common_fit_measure(params.model.path.c_str(), &mparams, &cparams, n_ctx_train, nullptr,
-                                                   GGML_LOG_LEVEL_ERROR)) {
-            sum += (int64_t) (row.model + row.context + row.compute);
-        }
-        return sum;
-    };
     try {
         uint64_t n_train_gguf = 0;
         if (!gguf_ctx_train(params.model.path, n_train_gguf, err)) return false;
@@ -296,9 +335,11 @@ bool lb_fit_auto_ctx(common_params & params, int64_t budget_bytes, json & report
         const uint32_t n_min   = std::min<uint32_t>((uint32_t) params.fit_params_min_ctx, n_top) * n_streams;  // 4096, as --fit
         const uint32_t n_max   = n_top * n_streams;
 
-        const int64_t used_min = measure(n_min, nullptr);
+        int64_t draft_min = 0;
+        const int64_t used_min = lb_measure_ctx(params, n_min, nullptr, &draft_min);
         report = {{"budget_mib", budget_bytes / MiB}, {"n_ctx_train", n_train}, {"n_ctx_cap", n_top}, {"n_ctx_min", n_min},
                   {"used_min_mib", used_min / MiB}, {"n_streams", n_streams}};  // n_ctx_cap is per stream, the rest total
+        if (draft_min > 0) report["draft_mib_min"] = draft_min / MiB;
         if (used_min > budget_bytes) {
             insufficient = true;
             err = "not enough memory: the model needs " + std::to_string(used_min / MiB) + " MiB at the smallest context (" +
@@ -307,7 +348,7 @@ bool lb_fit_auto_ctx(common_params & params, int64_t budget_bytes, json & report
         }
         uint32_t n_ctx = n_min;
         if (n_max > n_min) {
-            const int64_t used_max = measure(n_max, nullptr);
+            const int64_t used_max = lb_measure_ctx(params, n_max);
             report["n_ctx_max"] = n_max;
             report["used_max_mib"] = used_max / MiB;
             if (used_max <= budget_bytes) {
