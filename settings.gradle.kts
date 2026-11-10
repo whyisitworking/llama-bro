@@ -23,5 +23,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Llama Bro"
-// The SDK is its own Gradle build under sdk/ (./gradlew -p sdk). The v1 app/ and engine/ modules were removed
-// on 2026-11-04; the demo app comes back in phase PD (design §13, D19).
+// The repository root is one Gradle build over the SDK's modules and samples (listed once in sdk/modules.gradle.kts), so
+// Android Studio opens the root and finds them. The SDK is also its own build, `./gradlew -p sdk` (the phase checks and
+// the demo's includeBuild use that); both are the same projects over the same folders. The demo app is its own build.
+apply(from = "sdk/modules.gradle.kts")

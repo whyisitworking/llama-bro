@@ -30,7 +30,7 @@ android {
                 arguments += listOf(
                     "-DANDROID_STL=c++_shared",
                     "-DCMAKE_BUILD_TYPE=Release",
-                    "-DLB_LLAMA_DIR=${rootDir.resolve("native/build/llama.cpp").path}",
+                    "-DLB_LLAMA_DIR=${projectDir.resolve("../native/build/llama.cpp").canonicalPath}",
                 )
                 // the CPU backends are loaded at runtime, not linked, so AGP packages them only when named
                 // (variant list: llama.cpp ggml/src/CMakeLists.txt, GGML_CPU_ALL_VARIANTS on Android)
@@ -86,7 +86,7 @@ dependencies {
 }
 
 // The patched llama.cpp copy every native build compiles from (sdk/native/scripts/prepare-llama.sh).
-val nativeDir = rootDir.resolve("native")
+val nativeDir = projectDir.resolve("../native")
 val submoduleHead: File = providers.exec {
     commandLine("git", "-C", nativeDir.resolve("third_party/llama.cpp").path, "rev-parse", "--absolute-git-dir")
 }.standardOutput.asText.get().trim().let { File(it, "HEAD") }

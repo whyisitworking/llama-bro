@@ -1,0 +1,4 @@
+--------- beginning of main
+11-10 13:18:38.077 14299 14317 I DflashDevice: auto withDraft=true context=7936, MemAvailable settled=7626 MiB loaded=1557 MiB
+11-10 13:18:49.355 14299 14317 I DflashDevice: auto withDraft=false context=16384, MemAvailable settled=7945 MiB loaded=4502 MiB
+11-10 13:19:11.101 14299 14317 I DflashDevice: fixed context=8192, decode=32.89097338836488 t/s, draft_n=435, MemAvailable before=8077 MiB after reply=1332 MiB

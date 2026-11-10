@@ -25,10 +25,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "llamabro-sdk"
-include(":llamabro")
-include(":samples:minimal")
-include(":samples:background-download")
-include(":llamabro-testing")
-include(":llamabro-hexagon")
-include(":llamabro-opencl")
-include(":llamabro-hub")
+apply(from = "modules.gradle.kts")

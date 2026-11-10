@@ -41,7 +41,7 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
-    systemProperty("llamabro.hub.fake", rootDir.resolve("scripts/hub-fake/fake_hub.py").path)
+    systemProperty("llamabro.hub.fake", projectDir.resolve("../scripts/hub-fake/fake_hub.py").canonicalPath)
     listOf("golden.dir", "model.dir").forEach { key ->
         providers.gradleProperty("llamabro.hub.$key").orNull?.let {
             systemProperty("llamabro.hub.$key", it)
