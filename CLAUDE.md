@@ -1,6 +1,6 @@
 # Llama-Bro
 
-Start every session at [docs/README.md](docs/README.md). It links each area's index, and the index gives the current
+Folder layout and how to open the project in Android Studio: [README.md](README.md). Start every session at [docs/README.md](docs/README.md). It links each area's index, and the index gives the current
 status, the phase plans and the working rules.
 
 - Current work: the SDK v2, in [docs/sdk-v2/README.md](docs/sdk-v2/README.md). Execute phases with [docs/sdk-v2/playbook.md](docs/sdk-v2/playbook.md).

@@ -53,5 +53,5 @@ dependencies {
 }
 
 // built by the root project's buildBackends (sdk/native/scripts/build-backends.sh, Docker)
-val backendsOut: File get() = rootDir.resolve("native/build/android-backends/hexagon")
+val backendsOut: File get() = projectDir.resolve("../native/build/android-backends/hexagon").canonicalFile
 tasks.named("preBuild") { dependsOn(":buildBackends") }

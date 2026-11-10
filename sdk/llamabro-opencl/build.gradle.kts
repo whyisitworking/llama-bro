@@ -17,7 +17,7 @@ android {
     }
 
     sourceSets.getByName("main") {
-        jniLibs.directories += rootDir.resolve("native/build/android-backends/opencl/jniLibs").path
+        jniLibs.directories += projectDir.resolve("../native/build/android-backends/opencl/jniLibs").canonicalPath
     }
 
     compileOptions {

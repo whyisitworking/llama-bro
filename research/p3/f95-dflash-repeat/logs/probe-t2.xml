@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="1" failures="0" errors="0" skipped="0" time="48.645" timestamp="2026-11-10T07:46:46" hostname="localhost">
+  <testsuite name="com.suhel.llamabro.hexagon.DflashDeviceTest" tests="1" failures="0" errors="0" skipped="0" time="48.326" timestamp="2026-11-10T07:46:46" hostname="localhost">
+    <properties>
+      <property name="device" value="CPH2649 - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":llamabro-hexagon" />
+    </properties>
+    <testcase name="dflashMatchesUpstreamJsonAndDrafts" classname="com.suhel.llamabro.hexagon.DflashDeviceTest" time="48.326" />
+  </testsuite>
+</testsuites>
