@@ -1,11 +1,7 @@
 package com.suhel.llamabro.chat
 
 /** A function the model may call. [parametersSchema] is a JSON Schema object, as a string. */
-public data class Tool(
-    public val name: String,
-    public val description: String,
-    public val parametersSchema: String,
-) {
+public data class Tool(public val name: String, public val description: String, public val parametersSchema: String) {
     public companion object {
         public fun function(name: String, description: String, parametersSchema: String): Tool =
             Tool(name, description, parametersSchema)
@@ -16,10 +12,13 @@ public data class Tool(
 public sealed interface ToolChoice {
     /** The model decides. */
     public data object Auto : ToolChoice
+
     /** No tool calls. */
     public data object None : ToolChoice
+
     /** At least one tool call. */
     public data object Required : ToolChoice
+
     /** Call this tool. */
     public data class Function(public val name: String) : ToolChoice
 }

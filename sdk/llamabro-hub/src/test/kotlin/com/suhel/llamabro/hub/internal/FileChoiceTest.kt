@@ -1,16 +1,17 @@
 package com.suhel.llamabro.hub.internal
 
-import java.io.File
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.io.File
 
 internal class FileChoiceTest {
     @Test fun upstreamFixtureNamesHaveExpectedSplitAndModelClassification() {
-        val expected = """
+        val expected =
+            """
             README.md||0|0|0|false
             model-BF16.gguf|BF16|1|1|16|true
             model-Q4_K_M.gguf|Q4_K_M|1|1|4|true
@@ -35,16 +36,31 @@ internal class FileChoiceTest {
             model-MTP-BF16.gguf|BF16|1|1|16|true
             TheDrummer_Model-24B-v4.1-Q8_0.gguf|Q8_0|1|1|8|true
             BlackSheep-24B.Q8_0.gguf|Q8_0|1|1|8|true
-        """.trimIndent().lines().associate { line ->
-            val fields = line.split('|')
-            fields[0] to fields.drop(1)
-        }
+            """.trimIndent().lines().associate { line ->
+                val fields = line.split('|')
+                fields[0] to fields.drop(1)
+            }
         val resource = requireNotNull(javaClass.getResource("/upstream/model-resolution.json"))
-        val cases = Json.parseToJsonElement(File(resource.toURI()).readText()).jsonObject.getValue("plan_cases").jsonArray
-        val fixtureNames = cases.filter {
-            it.jsonObject.getValue("name").jsonPrimitive.content in
-                setOf("flat exact tag", "subdir shards", "unsloth fallback", "vendor prefix")
-        }.flatMap { it.jsonObject.getValue("files").jsonArray.map { name -> name.jsonPrimitive.content } }.toSet()
+        val cases =
+            Json
+                .parseToJsonElement(
+                    File(resource.toURI()).readText(),
+                ).jsonObject
+                .getValue("plan_cases")
+                .jsonArray
+        val fixtureNames =
+            cases
+                .filter {
+                    it.jsonObject
+                        .getValue("name")
+                        .jsonPrimitive.content in
+                        setOf("flat exact tag", "subdir shards", "unsloth fallback", "vendor prefix")
+                }.flatMap {
+                    it.jsonObject
+                        .getValue("files")
+                        .jsonArray
+                        .map { name -> name.jsonPrimitive.content }
+                }.toSet()
         assertEquals(fixtureNames, expected.keys)
         for ((path, fields) in expected) {
             val info = splitInfo(path)

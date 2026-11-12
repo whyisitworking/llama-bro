@@ -21,7 +21,4 @@ public interface BackendInstaller {
 
 /** What [BackendInstaller.install] returns: libraries loaded by file name, after [env] is set. */
 @InternalLlamaBroApi
-public class BackendLibraries(
-    public val files: List<String>,
-    public val env: Map<String, String> = emptyMap(),
-)
+public class BackendLibraries(public val files: List<String>, public val env: Map<String, String> = emptyMap())

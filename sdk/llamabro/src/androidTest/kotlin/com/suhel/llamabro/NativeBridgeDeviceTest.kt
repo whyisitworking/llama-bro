@@ -1,9 +1,12 @@
 package com.suhel.llamabro
 
+import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.suhel.llamabro.internal.NativeBridge
 import com.suhel.llamabro.internal.RequestSink
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.AfterClass
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -11,9 +14,8 @@ import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
+import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -23,29 +25,43 @@ import java.util.concurrent.TimeUnit
  */
 @RunWith(AndroidJUnit4::class)
 class NativeBridgeDeviceTest {
-
     private class Sink : RequestSink {
         val chunks = mutableListOf<Pair<Int, String>>()
         val terminal = CountDownLatch(1)
+
         @Volatile var done = false
+
         @Volatile var cancelled = false
+
         @Volatile var terminalAtNs = 0L
 
         override fun onChunk(httpStatus: Int, data: ByteArray) {
             synchronized(chunks) { chunks += httpStatus to String(data, Charsets.UTF_8) }
         }
-        override fun onDone() { done = true; terminalAtNs = System.nanoTime(); terminal.countDown() }
-        override fun onCancelled() { cancelled = true; terminalAtNs = System.nanoTime(); terminal.countDown() }
+
+        override fun onDone() {
+            done = true
+            terminalAtNs = System.nanoTime()
+            terminal.countDown()
+        }
+
+        override fun onCancelled() {
+            cancelled = true
+            terminalAtNs = System.nanoTime()
+            terminal.countDown()
+        }
     }
 
-    private fun chatBody(user: String, maxTokens: Int, stream: Boolean): ByteArray = JSONObject()
-        .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", user)))
-        .put("max_tokens", maxTokens)
-        .put("temperature", 0)
-        .put("seed", 1)
-        .put("stream", stream)
-        .put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
-        .toString().toByteArray()
+    private fun chatBody(user: String, maxTokens: Int, stream: Boolean): ByteArray =
+        JSONObject()
+            .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", user)))
+            .put("max_tokens", maxTokens)
+            .put("temperature", 0)
+            .put("seed", 1)
+            .put("stream", stream)
+            .put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
+            .toString()
+            .toByteArray()
 
     @Test
     fun loadChatAndDone() {
@@ -55,8 +71,12 @@ class NativeBridgeDeviceTest {
         assertTrue(sink.done)
         assertEquals(1, sink.chunks.size)
         assertEquals(200, sink.chunks[0].first)
-        val content = JSONObject(sink.chunks[0].second).getJSONArray("choices").getJSONObject(0)
-            .getJSONObject("message").getString("content")
+        val content =
+            JSONObject(sink.chunks[0].second)
+                .getJSONArray("choices")
+                .getJSONObject(0)
+                .getJSONObject("message")
+                .getString("content")
         assertTrue(content.isNotEmpty())
         NativeBridge.requestFree(req)
     }
@@ -71,7 +91,7 @@ class NativeBridgeDeviceTest {
         NativeBridge.requestCancel(req)
         assertTrue(sink.terminal.await(30, TimeUnit.SECONDS))
         val ms = (sink.terminalAtNs - cancelAt) / 1_000_000
-        android.util.Log.i("NativeBridgeDeviceTest", "cancel -> terminal: $ms ms")
+        Log.i("NativeBridgeDeviceTest", "cancel -> terminal: $ms ms")
         assertTrue(sink.cancelled)
         assertTrue("cancel took $ms ms", ms <= 1000)
         NativeBridge.requestFree(req)
@@ -83,7 +103,8 @@ class NativeBridgeDeviceTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val link = File(context.filesDir, "模型😀.gguf")
         link.delete()
-        java.nio.file.Files.createSymbolicLink(link.toPath(), File(context.filesDir, "Qwen3.5-4B-Q4_K_M.gguf").toPath())
+        Files
+            .createSymbolicLink(link.toPath(), File(context.filesDir, "Qwen3.5-4B-Q4_K_M.gguf").toPath())
         try {
             val m = NativeBridge.modelLoad(JSONObject().put("model_path", link.path).put("n_ctx", 512).toString(), null)
             assertTrue(m != 0L)

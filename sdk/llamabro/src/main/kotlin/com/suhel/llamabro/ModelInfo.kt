@@ -35,21 +35,40 @@ public class ModelInfo internal constructor(
     public val metadata: Map<String, String>,
 ) {
     override fun equals(other: Any?): Boolean = other is ModelInfo && parts() == other.parts()
+
     override fun hashCode(): Int = parts().hashCode()
+
     override fun toString(): String =
         "ModelInfo(contextSize=$contextSize, trainedContextSize=$trainedContextSize, parameterCount=$parameterCount, " +
-            "sizeBytes=$sizeBytes, description=$description, supportsVision=$supportsVision, supportsAudio=$supportsAudio, " +
+            "sizeBytes=$sizeBytes, description=$description, supportsVision=$supportsVision, " +
+            "supportsAudio=$supportsAudio, " +
             "hasMtp=$hasMtp, templateCaps=$templateCaps, metadata=${metadata.size} keys)"
 
-    private fun parts() = listOf(contextSize, trainedContextSize, parameterCount, sizeBytes, description, chatTemplate,
-        supportsVision, supportsAudio, hasMtp, templateCaps, metadata)
+    private fun parts() =
+        listOf(
+            contextSize,
+            trainedContextSize,
+            parameterCount,
+            sizeBytes,
+            description,
+            chatTemplate,
+            supportsVision,
+            supportsAudio,
+            hasMtp,
+            templateCaps,
+            metadata,
+        )
 
     internal companion object {
         fun parse(infoJson: String): ModelInfo {
             val o = Json.parseToJsonElement(infoJson) as JsonObject
             val props = o["props"] as? JsonObject ?: JsonObject(emptyMap())
             val modalities = props["modalities"] as? JsonObject ?: JsonObject(emptyMap())
-            val metadata = (o["metadata"] as? JsonObject).orEmpty().mapValues { (_, v) -> (v as? JsonPrimitive)?.content ?: v.toString() }
+            val metadata =
+                (o["metadata"] as? JsonObject).orEmpty().mapValues { (_, v) ->
+                    (v as? JsonPrimitive)?.content
+                        ?: v.toString()
+                }
             val arch = metadata["general.architecture"]
             return ModelInfo(
                 contextSize = o.getValue("n_ctx").jsonPrimitive.int,
@@ -61,8 +80,11 @@ public class ModelInfo internal constructor(
                 supportsVision = (modalities["vision"] as? JsonPrimitive)?.booleanOrNull ?: false,
                 supportsAudio = (modalities["audio"] as? JsonPrimitive)?.booleanOrNull ?: false,
                 hasMtp = arch != null && (metadata["$arch.nextn_predict_layers"]?.toIntOrNull() ?: 0) > 0,
-                templateCaps = (props["chat_template_caps"] as? JsonObject).orEmpty()
-                    .mapNotNull { (k, v) -> (v as? JsonPrimitive)?.booleanOrNull?.let { k to it } }.toMap(),
+                templateCaps =
+                    (props["chat_template_caps"] as? JsonObject)
+                        .orEmpty()
+                        .mapNotNull { (k, v) -> (v as? JsonPrimitive)?.booleanOrNull?.let { k to it } }
+                        .toMap(),
                 metadata = metadata,
             )
         }

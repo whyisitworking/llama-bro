@@ -23,7 +23,8 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Llama Bro"
-// The repository root is one Gradle build over the SDK's modules and samples (listed once in sdk/modules.gradle.kts), so
-// Android Studio opens the root and finds them. The SDK is also its own build, `./gradlew -p sdk` (the phase checks and
-// the demo's includeBuild use that); both are the same projects over the same folders. The demo app is its own build.
+// The repository root is the one Gradle build Android Studio opens: the SDK's modules and acceptance apps (listed once in
+// sdk/modules.gradle.kts) and the demo app (demo/). The SDK is also its own build, `./gradlew -p sdk`, which the SDK's
+// checks use; it is the same projects over the same folders and does not know the demo.
 apply(from = "sdk/modules.gradle.kts")
+include(":demo:app", ":demo:designsystem", ":demo:benchmark")

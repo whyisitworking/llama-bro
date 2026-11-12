@@ -22,10 +22,13 @@ public class HubConfig internal constructor(
     public class Builder internal constructor(from: HubConfig) {
         /** The Hub API root, including its trailing slash. */
         public var endpoint: String = from.endpoint
+
         /** Cache root; null uses the app's private no-backup directory. */
         public var cacheDir: File? = from.cacheDir
+
         /** Minimum time between reported progress updates; at least 100 milliseconds. */
         public var progressInterval: Duration = from.progressInterval
+
         /** Receives diagnostic messages; null uses no custom logger. */
         public var logger: Logger? = from.logger
         private var tokenProvider: (suspend () -> String?)? = from.token

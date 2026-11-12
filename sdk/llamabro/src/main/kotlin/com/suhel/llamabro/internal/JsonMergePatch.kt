@@ -26,11 +26,12 @@ internal object JsonMergePatch {
 
     /** @throws IllegalArgumentException if [patch] isn't a JSON object or sets one of [owned]. */
     fun checkPatch(patch: String, owned: Set<String>): JsonObject {
-        val parsed = try {
-            Json.parseToJsonElement(patch)
-        } catch (e: Exception) {
-            throw IllegalArgumentException("extra is not valid JSON: ${e.message}", e)
-        }
+        val parsed =
+            try {
+                Json.parseToJsonElement(patch)
+            } catch (e: Exception) {
+                throw IllegalArgumentException("extra is not valid JSON: ${e.message}", e)
+            }
         require(parsed is JsonObject) { "extra must be a JSON object" }
         val clash = owned.filter { it in parsed }
         require(clash.isEmpty()) { "extra may not set ${clash.joinToString()}: the typed calls own them" }

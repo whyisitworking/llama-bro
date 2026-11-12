@@ -25,6 +25,7 @@ public class FitEstimate internal constructor(
     public enum class Method {
         /** llama.cpp's memory projection using GGUF headers. */
         Projection,
+
         /** Metadata-only estimate when projection is unavailable. */
         MetadataEstimate,
     }

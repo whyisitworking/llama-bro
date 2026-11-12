@@ -2,48 +2,48 @@ package com.suhel.llamabro.internal
 
 import com.suhel.llamabro.Backend
 import com.suhel.llamabro.ContextSize
-import com.suhel.llamabro.FileSource
-import com.suhel.llamabro.FitEstimate
 import com.suhel.llamabro.DeviceInfo
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.DevicePolicy
-import com.suhel.llamabro.LoadReport
-import com.suhel.llamabro.Speculative
+import com.suhel.llamabro.FileSource
+import com.suhel.llamabro.FitEstimate
 import com.suhel.llamabro.LlamaBroConfig
 import com.suhel.llamabro.LlamaBroException
+import com.suhel.llamabro.LoadReport
 import com.suhel.llamabro.LogLevel
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelConfig
 import com.suhel.llamabro.ModelSource
+import com.suhel.llamabro.Speculative
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.longOrNull
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
 import java.io.File
 
@@ -63,6 +63,7 @@ internal class LlamaBroRuntime(
     private val memorySnapshot: () -> MemoryBudget.Snapshot? = { null },
 ) {
     private val initLock = Mutex()
+
     @Volatile private var initialized = false
 
     /** Native shutdowns still running ([Model.close] returns before they finish). */
@@ -83,20 +84,26 @@ internal class LlamaBroRuntime(
 
     private fun init() {
         val discovered = discoverBackends()
-        val error = engine.init(
-            buildJsonObject {
-                backendDir?.let { put("backend_dir", it) }
-                put("log_level", config.logLevel.name.lowercase())
-                if (discovered.found.isNotEmpty()) put("backends", discovered.toJson())
-            }.toString(),
-        )
+        val error =
+            engine.init(
+                buildJsonObject {
+                    backendDir?.let { put("backend_dir", it) }
+                    put("log_level", config.logLevel.name.lowercase())
+                    if (discovered.found.isNotEmpty()) put("backends", discovered.toJson())
+                }.toString(),
+            )
         discoveryFailures = discovered.failed
         if (error != null) {
-            val status = runCatching { (Json.parseToJsonElement(error) as JsonObject)["status"]?.jsonPrimitive?.content?.toInt() }.getOrNull()
+            val status =
+                runCatching {
+                    (Json.parseToJsonElement(error) as JsonObject)["status"]?.jsonPrimitive?.content?.toInt()
+                }.getOrNull()
             // LB_ERR_ALREADY_INITIALIZED (2): another LlamaBroConfig was used first in this process (design §5)
             throw LlamaBroException.InvalidRequest(
                 if (status == 2) {
-                    "LlamaBro is already initialized with a different LlamaBroConfig: ${ErrorMapping.nativeMessage(error)}"
+                    "LlamaBro is already initialized with a different LlamaBroConfig: ${ErrorMapping.nativeMessage(
+                        error,
+                    )}"
                 } else {
                     "LlamaBro runtime init failed: ${ErrorMapping.nativeMessage(error)}"
                 },
@@ -125,7 +132,9 @@ internal class LlamaBroRuntime(
             DeviceInfo(
                 name = name,
                 description = o.getValue("description").jsonPrimitive.content,
-                kind = kindOfDevice[name] ?: if (o.getValue("type").jsonPrimitive.content == "cpu") DeviceKind.Cpu else DeviceKind.Gpu,
+                kind =
+                    kindOfDevice[name]
+                        ?: if (o.getValue("type").jsonPrimitive.content == "cpu") DeviceKind.Cpu else DeviceKind.Gpu,
                 memoryFree = o.getValue("memory_free").jsonPrimitive.long,
                 memoryTotal = o.getValue("memory_total").jsonPrimitive.long,
             )
@@ -171,12 +180,17 @@ internal class LlamaBroRuntime(
         val listener = builder.progressListener
         return coroutineScope {
             // progress arrives on the loading thread; it's handed to the caller's context, keeping the latest value
-            val progress = listener?.let { l ->
-                Channel<Float>(Channel.CONFLATED).also { ch -> launch { for (p in ch) l(p) } }
-            }
+            val progress =
+                listener?.let { l ->
+                    Channel<Float>(Channel.CONFLATED).also { ch -> launch { for (p in ch) l(p) } }
+                }
             try {
                 val backends = withContext(ioDispatcher) { nativeBackends() } + discoveryFailures
-                loadOnFirstDevice(source, builder, DeviceResolver.plan(builder.devicePolicy, backends)) { p -> progress?.trySend(p) }
+                loadOnFirstDevice(
+                    source,
+                    builder,
+                    DeviceResolver.plan(builder.devicePolicy, backends),
+                ) { p -> progress?.trySend(p) }
             } finally {
                 progress?.close()
             }
@@ -190,21 +204,37 @@ internal class LlamaBroRuntime(
         synchronized(closing) { closing.toList() }.awaitAll()
         return withContext(ioDispatcher) {
             val plan = DeviceResolver.plan(builder.devicePolicy, nativeBackends() + discoveryFailures)
-            val drafts = builder.speculative is Speculative.Mtp || builder.speculative is Speculative.Ngram ||
-                builder.speculative is Speculative.DFlash
-            val candidate = plan.candidates.firstOrNull { !drafts || it.kind != DeviceKind.Gpu }
-                ?: run {
-                    val kind = (builder.devicePolicy as? DevicePolicy.Only)?.kind ?: DeviceKind.Cpu
-                    val reasons = plan.skipped.map { it.reason } +
-                        plan.candidates.filter { drafts && it.kind == DeviceKind.Gpu }.map { MtpPolicy.GPU_ABORTS }
-                    throw LlamaBroException.DeviceUnavailable(kind,
-                        "no ${kind.name} device could estimate the model: ${reasons.joinToString("; ")}", null)
-                }
+            val drafts =
+                builder.speculative is Speculative.Mtp || builder.speculative is Speculative.Ngram ||
+                    builder.speculative is Speculative.DFlash
+            val candidate =
+                plan.candidates.firstOrNull { !drafts || it.kind != DeviceKind.Gpu }
+                    ?: run {
+                        val kind = (builder.devicePolicy as? DevicePolicy.Only)?.kind ?: DeviceKind.Cpu
+                        val reasons =
+                            plan.skipped.map { it.reason } +
+                                plan.candidates
+                                    .filter {
+                                        drafts && it.kind == DeviceKind.Gpu
+                                    }.map { MtpPolicy.GPU_ABORTS }
+                        throw LlamaBroException.DeviceUnavailable(
+                            kind,
+                            "no ${kind.name} device could estimate the model: ${reasons.joinToString("; ")}",
+                            null,
+                        )
+                    }
             slotsDir.mkdirs()
             val configJson = builder.toJson(source, slotsDir.path + "/", candidate.devices, budgetFor(source, builder))
-            val result = try { Json.parseToJsonElement(engine.fitEstimate(configJson)) as JsonObject }
-            catch (error: NativeError) { throw ErrorMapping.loadFailed(error) }
-            val mib = 1024L * 1024L
+            val result =
+                try {
+                    Json.parseToJsonElement(engine.fitEstimate(configJson)) as JsonObject
+                } catch (
+                    error: NativeError,
+                ) {
+                    throw ErrorMapping.loadFailed(error)
+                }
+            val mib = BYTES_PER_MIB
+
             fun nullableLong(key: String): Long? = result[key]?.jsonPrimitive?.longOrNull
             FitEstimate(
                 fits = result["fits"]?.jsonPrimitive?.booleanOrNull,
@@ -232,39 +262,48 @@ internal class LlamaBroRuntime(
     ): Model {
         val attempts = plan.skipped.toMutableList()
         var lastError: LlamaBroException.ModelLoadFailed? = null
-        // drafting on the GPU aborts the process, which no try can catch: skip it (F67, F80)
-        val drafts = builder.speculative is Speculative.Mtp || builder.speculative is Speculative.Ngram ||
-            builder.speculative is Speculative.DFlash
         for (candidate in plan.candidates) {
             currentCoroutineContext().ensureActive()
-            if (drafts && candidate.kind == DeviceKind.Gpu) {
+            // drafting on the GPU aborts the process, which no try can catch: skip it (F67, F80)
+            if (builder.drafts() && candidate.kind == DeviceKind.Gpu) {
                 attempts += LoadReport.Attempt(candidate.kind, candidate.deviceName, MtpPolicy.GPU_ABORTS)
                 continue
             }
             try {
                 return loadModel(source, builder, candidate, attempts.toList(), onProgress)
             } catch (e: LlamaBroException.ModelLoadFailed) {
-                // no device fixes a missing file, and every device shares the phone's memory
-                if (e.reason == LlamaBroException.ModelLoadFailed.Reason.FileNotFound ||
-                    e.reason == LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory
-                ) {
-                    throw e
-                }
+                if (e.isFinal()) throw e
                 attempts += LoadReport.Attempt(candidate.kind, candidate.deviceName, e.message ?: "load failed")
                 lastError = e
             }
         }
-        val policy = builder.devicePolicy
+        throw noDeviceLoaded(builder.devicePolicy, attempts, lastError)
+    }
+
+    private fun ModelConfig.drafts() =
+        speculative is Speculative.Mtp || speculative is Speculative.Ngram || speculative is Speculative.DFlash
+
+    /** No device fixes a missing file, and every device shares the phone's memory. */
+    private fun LlamaBroException.ModelLoadFailed.isFinal() =
+        reason == LlamaBroException.ModelLoadFailed.Reason.FileNotFound ||
+            reason == LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory
+
+    /** What to throw when no candidate loaded the model. */
+    private fun noDeviceLoaded(
+        policy: DevicePolicy,
+        attempts: List<LoadReport.Attempt>,
+        lastError: LlamaBroException.ModelLoadFailed?,
+    ): Exception {
         if (policy is DevicePolicy.Only || lastError == null) {
             val kind = (policy as? DevicePolicy.Only)?.kind ?: DeviceKind.Cpu
-            throw LlamaBroException.DeviceUnavailable(
+            return LlamaBroException.DeviceUnavailable(
                 kind,
                 "no ${kind.name} device could load the model: " +
                     attempts.joinToString("; ") { "${it.deviceName ?: it.kind.name}: ${it.reason}" },
                 lastError,
             )
         }
-        throw lastError  // the last device tried's own reason (the CPU's, unless Prefer(Cpu) put it first)
+        return lastError // the last device tried's own reason (the CPU's, unless Prefer(Cpu) put it first)
     }
 
     private suspend fun loadModel(
@@ -283,17 +322,25 @@ internal class LlamaBroRuntime(
                 slotsDir.mkdirs()
                 val budget = budgetFor(source, builder)
                 val configJson = builder.toJson(source, slotsDir.path + "/", candidate.devices, budget)
-                val engineModel = try {
-                    engine.load(configJson, onProgress)
-                } catch (e: NativeError) {
-                    throw ErrorMapping.loadFailed(e)
-                }
+                val engineModel =
+                    try {
+                        engine.load(configJson, onProgress)
+                    } catch (e: NativeError) {
+                        throw ErrorMapping.loadFailed(e)
+                    }
                 val (contextSize, contextReason) = contextOf(engineModel.infoJson, builder.contextSize)
                 val (speculative, speculativeReason) = speculativeOf(builder.speculative, candidate.kind, source)
-                val report = LoadReport(
-                    candidate.kind, candidate.deviceName, candidate.backend, attempts,
-                    contextSize, contextReason, speculative, speculativeReason,
-                )
+                val report =
+                    LoadReport(
+                        candidate.kind,
+                        candidate.deviceName,
+                        candidate.backend,
+                        attempts,
+                        contextSize,
+                        contextReason,
+                        speculative,
+                        speculativeReason,
+                    )
                 loaded = Model(engineModel, report, this@LlamaBroRuntime::shutdown)
             }
             currentCoroutineContext().ensureActive()
@@ -305,29 +352,71 @@ internal class LlamaBroRuntime(
         }
     }
 
+    /** [MemoryBudget.budgetMib] with no side files, in bytes (F97); reads memory on [ioDispatcher]. */
+    suspend fun memoryBudgetBytes(builder: ModelConfig): Long? {
+        builder.validateReserve()
+        return withContext(ioDispatcher) { memorySnapshot() }?.let { memory ->
+            MemoryBudget.budgetMib(
+                memory.available,
+                memory.threshold,
+                builder.ramCacheMib,
+                0L,
+                builder.memoryReserveMib.toLong(),
+            ) * BYTES_PER_MIB
+        }
+    }
+
     private fun budgetFor(source: ModelSource, builder: ModelConfig): Long? {
         if (builder.contextSize != ContextSize.Auto && builder.contextSize !is ContextSize.UpTo) return null
         return memorySnapshot()?.let { memory ->
             // The draft is included in native projection; only these side files are excluded.
             val mmproj = (source as? FileSource)?.mmproj?.let { File(it).length() } ?: 0L
             val lora = builder.loraAdapters.sumOf { File(it.path).length() }
-            MemoryBudget.budgetMib(memory.available, memory.threshold, builder.ramCacheMib, mmproj + lora,
-                builder.memoryReserveMib.toLong())
+            MemoryBudget.budgetMib(
+                memory.available,
+                memory.threshold,
+                builder.ramCacheMib,
+                mmproj + lora,
+                builder.memoryReserveMib.toLong(),
+            )
         }
     }
 
     /** What decodes and why (P2 T8): what the app set, or for [Speculative.Auto] why it is off on this chip. */
-    private fun speculativeOf(requested: Speculative, kind: DeviceKind, source: ModelSource): Pair<Speculative, String> {
-        val result = when (requested) {
-            Speculative.Off -> Speculative.Off to "off: set by the app"
-            Speculative.Auto -> Speculative.Off to "off: ${MtpPolicy.reason(kind)}"
-            is Speculative.Mtp -> requested to "MTP: set by the app"
-            is Speculative.Ngram -> requested to (if (requested.then != null) "n-gram, then MTP: set by the app" else "n-gram: set by the app")
-            is Speculative.DFlash -> requested to "DFlash draft (D41)"
-        }
+    private fun speculativeOf(
+        requested: Speculative,
+        kind: DeviceKind,
+        source: ModelSource,
+    ): Pair<Speculative, String> {
+        val result =
+            when (requested) {
+                Speculative.Off -> {
+                    Speculative.Off to "off: set by the app"
+                }
+
+                Speculative.Auto -> {
+                    Speculative.Off to "off: ${MtpPolicy.reason(kind)}"
+                }
+
+                is Speculative.Mtp -> {
+                    requested to "MTP: set by the app"
+                }
+
+                is Speculative.Ngram -> {
+                    requested to
+                        (if (requested.then != null) "n-gram, then MTP: set by the app" else "n-gram: set by the app")
+                }
+
+                is Speculative.DFlash -> {
+                    requested to "DFlash draft (D41)"
+                }
+            }
         val unusedDraft = (source as? FileSource)?.draft != null && requested !is Speculative.DFlash
-        return if (unusedDraft) result.first to "${result.second}; draft file unused (Speculative is not DFlash)"
-            else result
+        return if (unusedDraft) {
+            result.first to "${result.second}; draft file unused (Speculative is not DFlash)"
+        } else {
+            result
+        }
     }
 
     /** The loaded context and why (`lb_model_info`'s `n_ctx` and `ctx_fit`, D33). */
@@ -335,28 +424,37 @@ internal class LlamaBroRuntime(
         val info = Json.parseToJsonElement(infoJson) as JsonObject
         val nCtx = info.getValue("n_ctx").jsonPrimitive.int
         val fit = info["ctx_fit"] as? JsonObject
-        val reason = when {
-            requested is ContextSize.Fixed -> "set by the app"
-            fit == null -> "min(${(requested as? ContextSize.UpTo)?.maxTokens ?: ContextSize.AUTO_CEILING}, the training context): no memory figure to fit to"
-            else -> {
-                fun num(key: String) = fit[key]?.jsonPrimitive?.long
-                val budget = num("budget_mib")
-                val used = num("used_max_mib") ?: num("used_min_mib")
-                // n_ctx_cap is per slot (several slots each get it); the other figures are totals
-                if (nCtx.toLong() == (num("n_ctx_cap") ?: 0) * (num("n_streams") ?: 1)) {
-                    if (num("n_ctx_cap") == num("n_ctx_train")) {
-                        "the training context fits: $used MiB of $budget MiB available"
+        val reason =
+            when {
+                requested is ContextSize.Fixed -> {
+                    "set by the app"
+                }
+
+                fit == null -> {
+                    "min(${(requested as? ContextSize.UpTo)?.maxTokens ?: ContextSize.AUTO_CEILING}, the training context): no memory figure to fit to"
+                }
+
+                else -> {
+                    fun num(key: String) = fit[key]?.jsonPrimitive?.long
+                    val budget = num("budget_mib")
+                    val used = num("used_max_mib") ?: num("used_min_mib")
+                    // n_ctx_cap is per slot (several slots each get it); the other figures are totals
+                    if (nCtx.toLong() == (num("n_ctx_cap") ?: 0) * (num("n_streams") ?: 1)) {
+                        if (num("n_ctx_cap") == num("n_ctx_train")) {
+                            "the training context fits: $used MiB of $budget MiB available"
+                        } else {
+                            "the ceiling of ${num("n_ctx_cap")} tokens fits: $used MiB of $budget MiB available"
+                        }
                     } else {
-                        "the ceiling of ${num("n_ctx_cap")} tokens fits: $used MiB of $budget MiB available"
+                        "fitted to $budget MiB available: ${num("used_min_mib")} MiB at ${num("n_ctx_min")} tokens, " +
+                            "${num("used_max_mib")} MiB at ${num("n_ctx_max")}"
                     }
-                } else {
-                    "fitted to $budget MiB available: ${num("used_min_mib")} MiB at ${num("n_ctx_min")} tokens, " +
-                        "${num("used_max_mib")} MiB at ${num("n_ctx_max")}"
                 }
             }
-        }
         return nCtx to reason
     }
 
     private val shutdownScope = CoroutineScope(SupervisorJob() + ioDispatcher)
 }
+
+private const val BYTES_PER_MIB = 1024L * 1024L

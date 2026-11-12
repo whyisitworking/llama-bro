@@ -24,10 +24,13 @@ public class DownloadProgress internal constructor(
 public sealed interface DownloadPhase {
     /** Resolving the model and its files. */
     public data object Resolving : DownloadPhase
+
     /** Hashing a partial file before resuming. */
     public data object Verifying : DownloadPhase
+
     /** Fetching file content. */
     public data object Downloading : DownloadPhase
+
     /** Every selected file is present and verified. */
     public data object Complete : DownloadPhase
 }

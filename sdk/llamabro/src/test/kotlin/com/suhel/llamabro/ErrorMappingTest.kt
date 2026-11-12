@@ -10,13 +10,16 @@ import org.junit.Test
 
 /** PA T5 (F41): each llama-server error type and each bridge error to its [LlamaBroException]. */
 class ErrorMappingTest {
-
     private fun body(type: String, message: String = "m", extra: String = "") =
         """{"error":{"code":400,"message":"$message","type":"$type"$extra}}"""
 
     @Test
     fun exceedContextKeepsCountsAndMessage() {
-        val e = ErrorMapping.fromBody(400, body("exceed_context_size_error", "too long", ""","n_prompt_tokens":9000,"n_ctx":8192"""))
+        val e =
+            ErrorMapping.fromBody(
+                400,
+                body("exceed_context_size_error", "too long", ""","n_prompt_tokens":9000,"n_ctx":8192"""),
+            )
         e as LlamaBroException.ContextExceeded
         assertEquals(9000, e.promptTokens)
         assertEquals(8192, e.contextSize)
@@ -65,7 +68,8 @@ class ErrorMappingTest {
 
     @Test
     fun loadFileNotFoundCode() {
-        val native = NativeError(4, """{"error":"cannot open /m.gguf: No such file or directory","code":"file_not_found"}""")
+        val native =
+            NativeError(4, """{"error":"cannot open /m.gguf: No such file or directory","code":"file_not_found"}""")
         val e = ErrorMapping.loadFailed(native)
         assertEquals(LlamaBroException.ModelLoadFailed.Reason.FileNotFound, e.reason)
         assertEquals("cannot open /m.gguf: No such file or directory", e.message)

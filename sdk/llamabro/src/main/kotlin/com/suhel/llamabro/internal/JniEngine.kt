@@ -38,5 +38,6 @@ private class JniModel(private val handle: Long) : EngineModel {
 
 private class JniRequest(private val handle: Long) : EngineRequest {
     override fun cancel() = NativeBridge.requestCancel(handle)
+
     override fun free() = NativeBridge.requestFree(handle)
 }

@@ -8,38 +8,39 @@ internal object GgufHeader {
     fun dataOffset(bytes: ByteArray): Long? = dataOffset(ByteBuffer.wrap(bytes))
 
     /** [bytes] from its position to its limit; a mapped file keeps a large header off the Java heap. */
-    fun dataOffset(bytes: ByteBuffer): Long? = try {
-        val reader = Reader(bytes.slice())
-        require(reader.ascii(4) == "GGUF") { "invalid GGUF magic" }
-        val version = reader.u32()
-        require(version == 2L || version == 3L) { "unsupported GGUF version $version" }
-        val tensors = reader.u64()
-        val metadata = reader.u64()
-        require(tensors <= 10_000_000 && metadata <= 10_000_000) { "invalid GGUF counts" }
-        var alignment = 32L
-        repeat(metadata.toInt()) {
-            val key = reader.string()
-            val type = reader.u32()
-            if (key == "general.alignment" && type == 4L) {
-                alignment = reader.u32()
-            } else {
-                reader.value(type)
+    fun dataOffset(bytes: ByteBuffer): Long? =
+        try {
+            val reader = Reader(bytes.slice())
+            require(reader.ascii(4) == "GGUF") { "invalid GGUF magic" }
+            val version = reader.u32()
+            require(version == 2L || version == 3L) { "unsupported GGUF version $version" }
+            val tensors = reader.u64()
+            val metadata = reader.u64()
+            require(tensors <= 10_000_000 && metadata <= 10_000_000) { "invalid GGUF counts" }
+            var alignment = 32L
+            repeat(metadata.toInt()) {
+                val key = reader.string()
+                val type = reader.u32()
+                if (key == "general.alignment" && type == 4L) {
+                    alignment = reader.u32()
+                } else {
+                    reader.value(type)
+                }
             }
+            require(alignment in 1..4096 && alignment and (alignment - 1) == 0L) { "invalid GGUF alignment" }
+            repeat(tensors.toInt()) {
+                reader.string()
+                val dims = reader.u32()
+                require(dims <= 16) { "invalid GGUF tensor dimensions" }
+                reader.skip(dims * 8L)
+                reader.u32()
+                reader.u64()
+            }
+            val offset = ((reader.position + alignment - 1) / alignment) * alignment
+            if (offset > reader.size) null else offset
+        } catch (_: NeedMore) {
+            null
         }
-        require(alignment in 1..4096 && alignment and (alignment - 1) == 0L) { "invalid GGUF alignment" }
-        repeat(tensors.toInt()) {
-            reader.string()
-            val dims = reader.u32()
-            require(dims <= 16) { "invalid GGUF tensor dimensions" }
-            reader.skip(dims * 8L)
-            reader.u32()
-            reader.u64()
-        }
-        val offset = ((reader.position + alignment - 1) / alignment) * alignment
-        if (offset > reader.size) null else offset
-    } catch (_: NeedMore) {
-        null
-    }
 
     private class NeedMore : RuntimeException()
 
@@ -79,18 +80,36 @@ internal object GgufHeader {
 
         fun value(type: Long) {
             when (type) {
-                0L, 1L, 7L -> skip(1)
-                2L, 3L -> skip(2)
-                4L, 5L, 6L -> skip(4)
-                8L -> skip(u64())
+                0L, 1L, 7L -> {
+                    skip(1)
+                }
+
+                2L, 3L -> {
+                    skip(2)
+                }
+
+                4L, 5L, 6L -> {
+                    skip(4)
+                }
+
+                8L -> {
+                    skip(u64())
+                }
+
                 9L -> {
                     val element = u32()
                     val count = u64()
                     require(element != 9L && count <= 10_000_000) { "invalid GGUF array" }
                     repeat(count.toInt()) { value(element) }
                 }
-                10L, 11L, 12L -> skip(8)
-                else -> throw IllegalArgumentException("invalid GGUF value type $type")
+
+                10L, 11L, 12L -> {
+                    skip(8)
+                }
+
+                else -> {
+                    throw IllegalArgumentException("invalid GGUF value type $type")
+                }
             }
         }
     }

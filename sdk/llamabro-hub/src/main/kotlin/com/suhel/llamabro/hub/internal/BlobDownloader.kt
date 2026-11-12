@@ -4,19 +4,20 @@ import com.suhel.llamabro.LogLevel
 import com.suhel.llamabro.Logger
 import com.suhel.llamabro.hub.HubException
 import com.suhel.llamabro.hub.HubFile
-import java.io.File
-import java.io.FileOutputStream
-import java.nio.file.Path
-import java.io.IOException
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
-import java.security.MessageDigest
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.io.InputStream
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
 
 /** Downloads one immutable blob, then links it into upstream's snapshot layout. */
@@ -30,121 +31,169 @@ internal class BlobDownloader(
     private val openOutput: (File, Boolean) -> FileOutputStream,
     private val createSymlink: (Path, Path) -> Unit,
 ) {
-    suspend fun download(file: HubFile, progress: suspend (Long, Boolean) -> Unit) = withContext(Dispatchers.IO) {
-        val repo = repoFolder(file.sourceRepo)
-        val root = File(cacheDir, repo)
-        val snapshot = File(root, "snapshots/${file.sourceCommit}/${file.path}")
-        if (snapshot.isFile) return@withContext
-        val oid = file.oid ?: throw HubException.NotFound("offline file missing: ${file.path}", emptyList())
-        val blob = File(root, "blobs/$oid")
-        val lockFile = File(cacheDir, ".locks/$repo/$oid.lock")
-        Locks.withBlobLock(lockFile) {
-            if (snapshot.isFile) return@withBlobLock
-            if (!blob.isFile) fetch(file, blob, progress)
-            finish(blob, snapshot)
+    suspend fun download(file: HubFile, progress: suspend (Long, Boolean) -> Unit) =
+        withContext(Dispatchers.IO) {
+            val repo = repoFolder(file.sourceRepo)
+            val root = File(cacheDir, repo)
+            val snapshot = File(root, "snapshots/${file.sourceCommit}/${file.path}")
+            if (snapshot.isFile) return@withContext
+            val oid = file.oid ?: throw HubException.NotFound("offline file missing: ${file.path}", emptyList())
+            val blob = File(root, "blobs/$oid")
+            val lockFile = File(cacheDir, ".locks/$repo/$oid.lock")
+            Locks.withBlobLock(lockFile) {
+                if (snapshot.isFile) return@withBlobLock
+                if (!blob.isFile) fetch(file, blob, progress)
+                finish(blob, snapshot)
+            }
         }
-    }
 
-    private suspend fun fetch(file: HubFile, blob: File, progress: suspend (Long, Boolean) -> Unit) {
-        blob.parentFile!!.mkdirs()
-        val url = resolveUrl(endpoint, file)
-        val partial = File(blob.path + ".downloadInProgress")
-        suspend fun discardPartial() {
+    private suspend fun fetch(file: HubFile, blob: File, progress: suspend (Long, Boolean) -> Unit) =
+        BlobFetch(file, blob, progress).run()
+
+    /** One blob's download: up to [MAX_ATTEMPTS] tries, each resuming a partial file that the digest vouches for. */
+    private inner class BlobFetch(
+        private val file: HubFile,
+        private val blob: File,
+        private val progress: suspend (Long, Boolean) -> Unit,
+    ) {
+        private val url = resolveUrl(endpoint, file)
+        private val partial = File(blob.path + ".downloadInProgress")
+
+        suspend fun run() {
+            blob.parentFile!!.mkdirs()
+            var lastError: Exception? = null
+            for (attempt in 0 until MAX_ATTEMPTS) {
+                if (attempt > 0) delay(attempt * RETRY_BACKOFF_MS)
+                try {
+                    attemptOnce()
+                    return
+                } catch (e: Exception) {
+                    if (e.endsTheDownload()) throw e
+                    lastError = if (e is IOException) failureOf(e) else e
+                }
+            }
+            throw lastError ?: HubException.Network("download failed: ${file.path}", null, true)
+        }
+
+        /** Cancelled, wrong bytes, or a refusal that another try can't change. */
+        private fun Exception.endsTheDownload() =
+            this is CancellationException ||
+                this is HubException.IntegrityMismatch ||
+                this is HubException.Unauthorized ||
+                this is HubException.RateLimited ||
+                this is HubException.NotFound
+
+        private fun failureOf(e: IOException): HubException {
+            val message = e.message.orEmpty()
+            if ("ENOSPC" in message || "No space left" in message) {
+                throw HubException.InsufficientStorage(
+                    (file.sizeBytes - partial.length()).coerceAtLeast(0),
+                    storage.allocatableBytes(cacheDir),
+                )
+            }
+            return HubException.Network("download ${file.path}: ${e.message}", e, true)
+        }
+
+        private suspend fun attemptOnce() {
+            if (commitCompletePartial()) return
+            val (total, supportsRanges) = headInfo()
+            if (partial.isFile && (!supportsRanges || partial.length() > total)) discardPartial()
+            var offset = partial.takeIf { it.isFile }?.length() ?: 0L
+            var digest = digestFor(file, total)
+            if (offset > 0) {
+                progress(0, true)
+                hashInto(digest, partial)
+            }
+            if (offset == total) {
+                // Killed after the last byte but before the rename: the digest decides, no request needed.
+                if (matchesOid(digest)) return commit(partial, blob)
+                discardPartial()
+                offset = 0
+                digest = digestFor(file, total)
+            }
+            receive(offset, digest)
+            if (partial.length() != total) {
+                throw HubException.Network("incomplete ${file.path}: ${partial.length()} of $total bytes", null, true)
+            }
+            val actual = hex(digest.digest())
+            if (!actual.equals(file.oid, ignoreCase = true)) {
+                discardPartial()
+                throw HubException.IntegrityMismatch(file.path, file.oid!!, actual)
+            }
+            commit(partial, blob)
+        }
+
+        /**
+         * D44: a partial as long as the listed file, killed before the rename, is checked against its digest before any
+         * request; a match needs none. True when it matched and was committed.
+         */
+        private suspend fun commitCompletePartial(): Boolean {
+            if (!partial.isFile || partial.length() != file.sizeBytes) return false
+            progress(0, true)
+            val digest = digestFor(file, file.sizeBytes)
+            hashInto(digest, partial)
+            if (!matchesOid(digest)) {
+                discardPartial()
+                return false
+            }
+            commit(partial, blob)
+            return true
+        }
+
+        private fun matchesOid(digest: MessageDigest) = hex(digest.digest()).equals(file.oid, ignoreCase = true)
+
+        /** The file's length and whether the server resumes; download.cpp resumes unless Accept-Ranges says "none". */
+        private suspend fun headInfo(): Pair<Long, Boolean> =
+            transport.open("HEAD", url).use { response ->
+                checkStatus(response, file.path)
+                val length = response.headers["content-length"]?.firstOrNull()?.toLongOrNull() ?: file.sizeBytes
+                length to (response.headers["accept-ranges"]?.firstOrNull()?.let { it != "none" } ?: false)
+            }
+
+        /** Appends the rest of the file (from [start]) to the partial, hashing as it goes. */
+        private suspend fun receive(start: Long, digest: MessageDigest) {
+            transport.open("GET", url, range = start.takeIf { it > 0 }).use { response ->
+                rejection(response, start)?.let { throw it }
+                val body = response.body ?: throw HubException.Network("empty body for ${file.path}", null, true)
+                copy(body, start, digest)
+            }
+        }
+
+        /** Why this answer to a (resumed) request can't be used, or null when it can. */
+        private suspend fun rejection(response: Response, start: Long): HubException? {
+            if (start > 0 && response.status != 206) {
+                if (response.status == 416 || response.status == 200) discardPartial()
+                return statusError(response, file.path)
+            }
+            return if (response.status == 200 || response.status == 206) null else statusError(response, file.path)
+        }
+
+        private suspend fun copy(body: InputStream, start: Long, digest: MessageDigest) {
+            var offset = start
+            var signalledMidBody = offset >= MID_BODY_BYTES
+            openOutput(partial, start > 0).use { output ->
+                val buffer = ByteArray(1 shl 20)
+                while (true) {
+                    coroutineContext.ensureActive()
+                    val count = body.read(buffer)
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                    digest.update(buffer, 0, count)
+                    offset += count
+                    progress(count.toLong(), false)
+                    if (!signalledMidBody && offset >= MID_BODY_BYTES) {
+                        signalledMidBody = true
+                        HubTestHooks.onPhase?.invoke("midBody")
+                    }
+                }
+                output.fd.sync()
+            }
+        }
+
+        private suspend fun discardPartial() {
             val length = partial.length()
             if (partial.delete() && length > 0) progress(-length, false) // its bytes were counted as done
         }
-        var lastError: Exception? = null
-        for (attempt in 0 until 3) {
-            if (attempt > 0) delay(attempt * 2_000L)
-            try {
-                // D44: a partial as long as the listed file, killed before the rename, is checked against its digest
-                // before any request; a match needs none.
-                if (partial.isFile && partial.length() == file.sizeBytes) {
-                    progress(0, true)
-                    val digest = digestFor(file, file.sizeBytes)
-                    hashInto(digest, partial)
-                    if (hex(digest.digest()).equals(file.oid, ignoreCase = true)) {
-                        commit(partial, blob)
-                        return
-                    }
-                    discardPartial()
-                }
-                val (total, supportsRanges) = transport.open("HEAD", url).use { response ->
-                    checkStatus(response, file.path)
-                    val length = response.headers["content-length"]?.firstOrNull()?.toLongOrNull() ?: file.sizeBytes
-                    // download.cpp resumes only when the server sends Accept-Ranges other than "none".
-                    length to (response.headers["accept-ranges"]?.firstOrNull()?.let { it != "none" } ?: false)
-                }
-                if (partial.isFile && (!supportsRanges || partial.length() > total)) discardPartial()
-                var offset = partial.takeIf { it.isFile }?.length() ?: 0L
-                var digest = digestFor(file, total)
-                if (offset > 0) {
-                    progress(0, true)
-                    hashInto(digest, partial)
-                }
-                if (offset == total) {
-                    // Killed after the last byte but before the rename: the digest decides, no request needed.
-                    val actual = hex(digest.digest())
-                    if (actual.equals(file.oid, ignoreCase = true)) {
-                        commit(partial, blob)
-                        return
-                    }
-                    discardPartial()
-                    offset = 0
-                    digest = digestFor(file, total)
-                }
-                transport.open("GET", url, range = offset.takeIf { it > 0 }).use { response ->
-                    if (offset > 0 && response.status != 206) {
-                        if (response.status == 416 || response.status == 200) discardPartial()
-                        throw statusError(response, file.path)
-                    }
-                    checkStatus(response, file.path)
-                    if (response.status != 200 && response.status != 206) throw statusError(response, file.path)
-                    val body = response.body ?: throw HubException.Network("empty body for ${file.path}", null, true)
-                    var signalledMidBody = offset >= 2L * 1024 * 1024
-                    openOutput(partial, offset > 0).use { output ->
-                        val buffer = ByteArray(1 shl 20)
-                        while (true) {
-                            coroutineContext.ensureActive()
-                            val count = body.read(buffer)
-                            if (count < 0) break
-                            output.write(buffer, 0, count)
-                            digest.update(buffer, 0, count)
-                            offset += count
-                            progress(count.toLong(), false)
-                            if (!signalledMidBody && offset >= 2L * 1024 * 1024) {
-                                signalledMidBody = true
-                                HubTestHooks.onPhase?.invoke("midBody")
-                            }
-                        }
-                        output.fd.sync()
-                    }
-                }
-                if (partial.length() != total) throw HubException.Network(
-                    "incomplete ${file.path}: ${partial.length()} of $total bytes", null, true)
-                val actual = hex(digest.digest())
-                if (!actual.equals(file.oid, ignoreCase = true)) {
-                    discardPartial()
-                    throw HubException.IntegrityMismatch(file.path, file.oid!!, actual)
-                }
-                commit(partial, blob)
-                return
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: HubException.IntegrityMismatch) {
-                throw e
-            } catch (e: IOException) {
-                lastError = if (e.message?.contains("ENOSPC") == true ||
-                    e.message?.contains("No space left") == true) {
-                    throw HubException.InsufficientStorage(
-                        (file.sizeBytes - partial.length()).coerceAtLeast(0), storage.allocatableBytes(cacheDir))
-                } else HubException.Network("download ${file.path}: ${e.message}", e, true)
-            } catch (e: Exception) {
-                if (e is HubException.Unauthorized || e is HubException.RateLimited || e is HubException.NotFound) throw e
-                lastError = e
-            }
-        }
-        throw lastError ?: HubException.Network("download failed: ${file.path}", null, true)
     }
 
     private suspend fun hashInto(digest: MessageDigest, file: File) {
@@ -186,8 +235,12 @@ internal class BlobDownloader(
                 storage.fsyncDir(snapshot.parentFile!!)
                 return
             } catch (e: Exception) {
-                if (degradedSymlinks.compareAndSet(false, true)) logger?.log(LogLevel.Warn,
-                    "failed to create symlink: ${e.message}; switching to degraded mode")
+                if (degradedSymlinks.compareAndSet(false, true)) {
+                    logger?.log(
+                        LogLevel.Warn,
+                        "failed to create symlink: ${e.message}; switching to degraded mode",
+                    )
+                }
             }
         }
         try {
@@ -205,10 +258,32 @@ internal class BlobDownloader(
         if (response.status !in 200..299) throw statusError(response, path)
     }
 
-    private fun statusError(response: Response, path: String): HubException = when (response.status) {
-        401, 403 -> HubException.Unauthorized(response.status, "access denied: $path")
-        404 -> HubException.NotFound("file not found: $path", emptyList())
-        429 -> HubException.RateLimited(response.headers["retry-after"]?.firstOrNull()?.toLongOrNull())
-        else -> HubException.Network("HTTP ${response.status} for $path", null, response.status >= 500 || response.status == 416)
+    private fun statusError(response: Response, path: String): HubException =
+        when (response.status) {
+            401, 403 -> {
+                HubException.Unauthorized(response.status, "access denied: $path")
+            }
+
+            404 -> {
+                HubException.NotFound("file not found: $path", emptyList())
+            }
+
+            429 -> {
+                HubException.RateLimited(response.headers["retry-after"]?.firstOrNull()?.toLongOrNull())
+            }
+
+            else -> {
+                HubException.Network(
+                    "HTTP ${response.status} for $path",
+                    null,
+                    response.status >= 500 || response.status == 416,
+                )
+            }
+        }
+
+    private companion object {
+        const val MAX_ATTEMPTS = 3
+        const val RETRY_BACKOFF_MS = 2_000L
+        const val MID_BODY_BYTES = 2L * 1024 * 1024
     }
 }

@@ -1,9 +1,9 @@
 package com.suhel.llamabro
 
 import com.suhel.llamabro.internal.LlamaBroRuntime
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import kotlinx.coroutines.runBlocking
 import org.junit.Test
 
 class RuntimeTest {
@@ -11,7 +11,17 @@ class RuntimeTest {
     fun loggerReceivesNativeLogsAtOrAboveLevel() {
         val engine = FakeEngine()
         val lines = mutableListOf<Pair<LogLevel, String>>()
-        val runtime = LlamaBroRuntime(engine, tempDir(), "/b", LlamaBroConfig { logLevel = LogLevel.Warn; logger = Logger { level, msg -> lines += level to msg } })
+        val runtime =
+            LlamaBroRuntime(
+                engine,
+                tempDir(),
+                "/b",
+                LlamaBroConfig {
+                    logLevel = LogLevel.Warn
+                    logger =
+                        Logger { level, msg -> lines += level to msg }
+                },
+            )
         runBlocking { runtime.devices() }
         val log = engine.logListener!!
         log(1, "info line\n")
@@ -21,14 +31,15 @@ class RuntimeTest {
 
     /** Native init costs about 13 ms on the phone (F48): getInstance must not run it on the caller's thread. */
     @Test
-    fun initRunsOnFirstUseNotOnCreation() = runBlocking {
-        val engine = FakeEngine()
-        val llama = testLlamaBro(engine)
-        assertEquals(0, engine.initConfigs.size)
-        llama.devices()
-        llama.loadModel(ModelSource.file("/m.gguf"))
-        assertEquals(1, engine.initConfigs.size)
-    }
+    fun initRunsOnFirstUseNotOnCreation() =
+        runBlocking {
+            val engine = FakeEngine()
+            val llama = testLlamaBro(engine)
+            assertEquals(0, engine.initConfigs.size)
+            llama.devices()
+            llama.loadModel(ModelSource.file("/m.gguf"))
+            assertEquals(1, engine.initConfigs.size)
+        }
 
     @Test
     fun configMismatchThrowsInvalidRequestOnFirstUse() {
@@ -42,7 +53,14 @@ class RuntimeTest {
         }
         runBlocking { LlamaBroRuntime(engine, tempDir(), "/b", LlamaBroConfig { logLevel = LogLevel.Warn }).devices() }
         val second = LlamaBroRuntime(engine, tempDir(), "/b", LlamaBroConfig { logLevel = LogLevel.Error })
-        val err = runCatching { runBlocking { LlamaBro(second).loadModel(ModelSource.file("/m.gguf")) } }.exceptionOrNull()
+        val err =
+            runCatching {
+                runBlocking {
+                    LlamaBro(
+                        second,
+                    ).loadModel(ModelSource.file("/m.gguf"))
+                }
+            }.exceptionOrNull()
         assertTrue("$err", err is LlamaBroException.InvalidRequest && "different LlamaBroConfig" in err.message!!)
     }
 

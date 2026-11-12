@@ -6,11 +6,8 @@ public sealed class HubException(message: String, cause: Throwable?) : Exception
     public abstract val retryable: Boolean
 
     /** A connection, timeout, or server failure. */
-    public class Network internal constructor(
-        message: String,
-        cause: Throwable?,
-        override val retryable: Boolean,
-    ) : HubException(message, cause)
+    public class Network internal constructor(message: String, cause: Throwable?, override val retryable: Boolean) :
+        HubException(message, cause)
 
     /** The repository needs access the current token does not provide. */
     public class Unauthorized internal constructor(
@@ -35,9 +32,9 @@ public sealed class HubException(message: String, cause: Throwable?) : Exception
         /** Retry delay supplied by the Hub, if any. */
         public val retryAfterSeconds: Long?,
     ) : HubException(
-        "rate limited by the Hub" + (retryAfterSeconds?.let { ", retry after $it s" } ?: ""),
-        null,
-    ) {
+            "rate limited by the Hub" + (retryAfterSeconds?.let { ", retry after $it s" } ?: ""),
+            null,
+        ) {
         override val retryable: Boolean get() = true
     }
 
@@ -48,9 +45,9 @@ public sealed class HubException(message: String, cause: Throwable?) : Exception
         /** Space available on the cache volume. */
         public val availableBytes: Long,
     ) : HubException(
-        "needs ${neededBytes / 1_048_576} MiB, ${availableBytes / 1_048_576} MiB available",
-        null,
-    ) {
+            "needs ${neededBytes / 1_048_576} MiB, ${availableBytes / 1_048_576} MiB available",
+            null,
+        ) {
         override val retryable: Boolean get() = false
     }
 

@@ -2,9 +2,11 @@ package com.suhel.llamabro.testing
 
 import com.suhel.llamabro.InternalLlamaBroApi
 import com.suhel.llamabro.LlamaBro
+import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.internal.Engine
 import com.suhel.llamabro.internal.EngineModel
 import com.suhel.llamabro.internal.EngineRequest
+import com.suhel.llamabro.internal.NativeError
 import com.suhel.llamabro.internal.RequestSink
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -45,13 +47,48 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
     public val chatRequests: List<String> get() = synchronized(lock) { chat.toList() }
 
     /** The [LlamaBro] to hand to the code under test. */
-    public val llamaBro: LlamaBro = LlamaBro.withEngine(
-        FakeEngine(),
-        Files.createTempDirectory("llamabro-fake").toFile().apply { deleteOnExit() },
-    )
+    public val llamaBro: LlamaBro =
+        LlamaBro.withEngine(
+            FakeEngine(),
+            Files.createTempDirectory("llamabro-fake").toFile().apply { deleteOnExit() },
+        )
 
     init {
         script()
+    }
+
+    private var loadFailures = 0
+    private var loadFailure: NativeError? = null
+
+    /**
+     * Makes the next [times] model loads fail as the native side does: [reason] is what `ModelLoadFailed.reason` will
+     * say (`InsufficientMemory` for a phone with no room, `FileNotFound`, or `Other`), [message] the native text.
+     * Later loads succeed again.
+     */
+    public fun failLoad(
+        reason: LlamaBroException.ModelLoadFailed.Reason,
+        message: String = "the model could not be loaded",
+        times: Int = 1,
+    ) {
+        val code =
+            when (reason) {
+                LlamaBroException.ModelLoadFailed.Reason.FileNotFound -> "file_not_found"
+                LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory -> "insufficient_memory"
+                else -> "other"
+            }
+        synchronized(lock) {
+            loadFailures = times
+            loadFailure =
+                NativeError(
+                    LOAD_FAILED_STATUS,
+                    JsonObject(
+                        mapOf(
+                            "error" to JsonPrimitive(message),
+                            "code" to JsonPrimitive(code),
+                        ),
+                    ).toString(),
+                )
+        }
     }
 
     /** Queues a reply for the next chat request. */
@@ -89,12 +126,19 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
         internal var timings = intArrayOf(10, 0, -1)
         internal var finishLength = false
 
-        public fun reasoning(text: String) { reasoning.append(text) }
+        public fun reasoning(text: String) {
+            reasoning.append(text)
+        }
 
-        public fun content(text: String) { content.append(text) }
+        public fun content(text: String) {
+            content.append(text)
+        }
 
         /** A tool call; [arguments] is the JSON the model wrote. [id] defaults to `call_<n>`. */
-        public fun toolCall(name: String, arguments: String, id: String? = null) { toolCalls += Triple(id, name, arguments) }
+        public fun toolCall(name: String, arguments: String, id: String? = null) {
+            toolCalls +=
+                Triple(id, name, arguments)
+        }
 
         /** The reply's `timings` (they feed `Conversation.contextUsage`); [predictedTokens] defaults to a guess. */
         public fun timings(promptTokens: Int, cachedTokens: Int = 0, predictedTokens: Int = -1) {
@@ -102,20 +146,32 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
         }
 
         /** Ends the reply at the output limit (`FinishReason.Length`) instead of a stop. */
-        public fun finishLength() { finishLength = true }
+        public fun finishLength() {
+            finishLength = true
+        }
     }
 
     private sealed interface Scripted {
         class Stream(val reply: Reply) : Scripted
+
         class Error(val status: Int, val body: String) : Scripted
     }
 
     private inner class FakeEngine : Engine {
         override fun init(configJson: String): String? = null
+
         override fun setLog(listener: ((level: Int, text: String) -> Unit)?) {}
+
         override fun devices(): String =
             """[{"name":"CPU","description":"FakeLlamaBro","type":"cpu","memory_free":0,"memory_total":0}]"""
+
         override fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel {
+            synchronized(lock) {
+                if (loadFailures > 0) {
+                    loadFailures--
+                    throw checkNotNull(loadFailure)
+                }
+            }
             onProgress(1f)
             return FakeModel(contextSize)
         }
@@ -128,6 +184,7 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
 
         override fun request(endpoint: String, paramsJson: String?, body: ByteArray, sink: RequestSink): EngineRequest {
             val text = String(body, Charsets.UTF_8)
+
             fun send(status: Int, data: String) = sink.onChunk(status, data.toByteArray(Charsets.UTF_8))
             when (endpoint) {
                 "chat" -> chat(text, ::send)
@@ -149,10 +206,15 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
                 send(501, notSupported("FakeLlamaBro scripts streamed chat completions only"))
                 return
             }
-            val next = synchronized(lock) {
-                chat += body
-                queue.removeFirstOrNull() ?: return send(500, serverError("FakeLlamaBro: no reply scripted for chat request ${chat.size}"))
-            }
+            val next =
+                synchronized(lock) {
+                    chat += body
+                    queue.removeFirstOrNull()
+                        ?: return send(
+                            500,
+                            serverError("FakeLlamaBro: no reply scripted for chat request ${chat.size}"),
+                        )
+                }
             when (next) {
                 is Scripted.Error -> send(next.status, next.body)
                 is Scripted.Stream -> stream(next.reply).forEach { send(200, it) }
@@ -164,44 +226,69 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
 
     private object Finished : EngineRequest {
         override fun cancel() {}
+
         override fun free() {}
     }
 
     private companion object {
         private var callIds = 0
 
+        /** `lb_status` for a failed load (the C API's generic error). */
+        const val LOAD_FAILED_STATUS = 1
+
         fun q(s: String): String = JsonPrimitive(s).toString()
 
-        fun notSupported(message: String) = """{"error":{"code":501,"message":${q(message)},"type":"not_supported_error"}}"""
+        fun notSupported(message: String) =
+            """{"error":{"code":501,"message":${q(message)},"type":"not_supported_error"}}"""
 
         fun serverError(message: String) = """{"error":{"code":500,"message":${q(message)},"type":"server_error"}}"""
 
         /** llama-server's chat stream (server-task.cpp `to_json_oaicompat_chat_stream`), in its order. */
         fun stream(r: Reply): List<String> {
             val id = "chatcmpl-fake"
+
             fun chunk(delta: String, finish: String? = null, extra: String = "") =
-                "data: {\"choices\":[{\"finish_reason\":${finish?.let { "\"$it\"" } ?: "null"},\"index\":0,\"delta\":$delta}]," +
+                "data: {\"choices\":[{\"finish_reason\":${finish?.let {
+                    "\"$it\""
+                } ?: "null"},\"index\":0,\"delta\":$delta}]," +
                     "\"id\":\"$id\",\"object\":\"chat.completion.chunk\"$extra}\n\n"
             val out = mutableListOf(chunk("{\"role\":\"assistant\",\"content\":null}"))
-            r.reasoning.toString().chunked(4).forEach { out += chunk("{\"reasoning_content\":${q(it)}}") }
-            r.content.toString().chunked(4).forEach { out += chunk("{\"content\":${q(it)}}") }
+            r.reasoning
+                .toString()
+                .chunked(4)
+                .forEach { out += chunk("{\"reasoning_content\":${q(it)}}") }
+            r.content
+                .toString()
+                .chunked(4)
+                .forEach { out += chunk("{\"content\":${q(it)}}") }
             r.toolCalls.forEachIndexed { i, (callId, name, args) ->
                 val cid = callId ?: synchronized(this) { "call_${++callIds}" }
-                out += chunk("{\"tool_calls\":[{\"index\":$i,\"id\":${q(cid)},\"type\":\"function\",\"function\":{\"name\":${q(name)},\"arguments\":\"\"}}]}")
-                args.chunked(8).forEach { out += chunk("{\"tool_calls\":[{\"index\":$i,\"function\":{\"arguments\":${q(it)}}}]}") }
+                out +=
+                    chunk(
+                        "{\"tool_calls\":[{\"index\":$i,\"id\":${q(
+                            cid,
+                        )},\"type\":\"function\",\"function\":{\"name\":${q(name)},\"arguments\":\"\"}}]}",
+                    )
+                args.chunked(8).forEach {
+                    out +=
+                        chunk("{\"tool_calls\":[{\"index\":$i,\"function\":{\"arguments\":${q(it)}}}]}")
+                }
             }
             val (promptN, cacheN, predicted) = r.timings.let { Triple(it[0], it[1], it[2]) }
             val predictedN = if (predicted >= 0) predicted else maxOf(1, (r.reasoning.length + r.content.length) / 4)
-            val finish = when {
-                r.finishLength -> "length"
-                r.toolCalls.isNotEmpty() -> "tool_calls"
-                else -> "stop"
-            }
-            out += chunk(
-                "{}", finish,
-                ",\"timings\":{\"cache_n\":$cacheN,\"prompt_n\":$promptN,\"prompt_per_second\":100.0," +
-                    "\"predicted_n\":$predictedN,\"predicted_per_second\":10.0}",
-            )
+            val finish =
+                when {
+                    r.finishLength -> "length"
+                    r.toolCalls.isNotEmpty() -> "tool_calls"
+                    else -> "stop"
+                }
+            out +=
+                chunk(
+                    "{}",
+                    finish,
+                    ",\"timings\":{\"cache_n\":$cacheN,\"prompt_n\":$promptN,\"prompt_per_second\":100.0," +
+                        "\"predicted_n\":$predictedN,\"predicted_per_second\":10.0}",
+                )
             out += "data: [DONE]\n\n"
             return out
         }

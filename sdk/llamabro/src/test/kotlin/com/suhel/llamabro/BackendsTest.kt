@@ -18,23 +18,32 @@ class BackendsTest {
         LlamaBroRuntime(engine, tempDir(), null, LlamaBroConfig.Default, discoverBackends = discover)
 
     @Test
-    fun noBackendArtifactsMeansNoBackendsKeyAndCpuOnly() = runBlocking {
-        val engine = FakeEngine()
-        val backends = testLlamaBro(engine).backends()
-        assertFalse(engine.initConfigs.single(), "\"backends\":" in engine.initConfigs.single())
-        assertEquals(listOf(cpuOnly), backends)
-    }
+    fun noBackendArtifactsMeansNoBackendsKeyAndCpuOnly() =
+        runBlocking {
+            val engine = FakeEngine()
+            val backends = testLlamaBro(engine).backends()
+            assertFalse(engine.initConfigs.single(), "\"backends\":" in engine.initConfigs.single())
+            assertEquals(listOf(cpuOnly), backends)
+        }
 
     @Test
     fun discoveryReadsOnlyBackendEntriesInNameOrder() {
         val calls = mutableListOf<String>()
-        val result = BackendDiscovery.discover(
-            mapOf(
-                "com.suhel.llamabro.backend.opencl" to "x.OpenCl",
-                "unrelated.key" to 5,
-                "com.suhel.llamabro.backend.hexagon" to "x.Hexagon",
-            ),
-        ) { cls -> calls += cls; if (cls == "x.Hexagon") hexagon else BackendLibraries(listOf("libllamabro-ggml-opencl.so")) }
+        val result =
+            BackendDiscovery.discover(
+                mapOf(
+                    "com.suhel.llamabro.backend.opencl" to "x.OpenCl",
+                    "unrelated.key" to 5,
+                    "com.suhel.llamabro.backend.hexagon" to "x.Hexagon",
+                ),
+            ) { cls ->
+                calls += cls
+                if (cls == "x.Hexagon") {
+                    hexagon
+                } else {
+                    BackendLibraries(listOf("libllamabro-ggml-opencl.so"))
+                }
+            }
         assertEquals(listOf("x.Hexagon", "x.OpenCl"), calls)
         assertEquals(emptyList<Backend>(), result.failed)
         assertEquals(
@@ -45,49 +54,55 @@ class BackendsTest {
     }
 
     @Test
-    fun brokenInstallerIsReportedNotFatal() = runBlocking {
-        val engine = FakeEngine()
-        engine.backendsJson = """[{"name":"cpu","loaded":true,"error":null,"devices":["CPU"]},""" +
-            """{"name":"hexagon","loaded":true,"error":null,"devices":["HTP0"]}]"""
-        val rt = runtime(engine) {
-            BackendDiscovery.discover(
-                mapOf("com.suhel.llamabro.backend.hexagon" to "x.Hexagon", "com.suhel.llamabro.backend.vulkan" to "x.Vulkan"),
-            ) { cls -> if (cls == "x.Vulkan") throw IllegalStateException("no driver") else hexagon }
+    fun brokenInstallerIsReportedNotFatal() =
+        runBlocking {
+            val engine = FakeEngine()
+            engine.backendsJson = """[{"name":"cpu","loaded":true,"error":null,"devices":["CPU"]},""" +
+                """{"name":"hexagon","loaded":true,"error":null,"devices":["HTP0"]}]"""
+            val rt =
+                runtime(engine) {
+                    BackendDiscovery.discover(
+                        mapOf(
+                            "com.suhel.llamabro.backend.hexagon" to "x.Hexagon",
+                            "com.suhel.llamabro.backend.vulkan" to "x.Vulkan",
+                        ),
+                    ) { cls -> if (cls == "x.Vulkan") throw IllegalStateException("no driver") else hexagon }
+                }
+            val backends = rt.backends()
+            // only the working backend reaches native init
+            val config = engine.initConfigs.single()
+            assertTrue(config, """"name":"hexagon"""" in config && "vulkan" !in config)
+            assertEquals(listOf("cpu", "hexagon", "vulkan"), backends.map { it.name })
+            assertEquals(listOf("HTP0"), backends[1].devices)
+            val vulkan = backends[2]
+            assertFalse(vulkan.loaded)
+            assertEquals("installer x.Vulkan failed: java.lang.IllegalStateException: no driver", vulkan.error)
+            // and a model still loads
+            LlamaBro(rt).loadModel(ModelSource.file("/m.gguf"))
+            Unit
         }
-        val backends = rt.backends()
-        // only the working backend reaches native init
-        val config = engine.initConfigs.single()
-        assertTrue(config, """"name":"hexagon"""" in config && "vulkan" !in config)
-        assertEquals(listOf("cpu", "hexagon", "vulkan"), backends.map { it.name })
-        assertEquals(listOf("HTP0"), backends[1].devices)
-        val vulkan = backends[2]
-        assertFalse(vulkan.loaded)
-        assertEquals("installer x.Vulkan failed: java.lang.IllegalStateException: no driver", vulkan.error)
-        // and a model still loads
-        LlamaBro(rt).loadModel(ModelSource.file("/m.gguf"))
-        Unit
-    }
 
     @Test
     fun badEntriesAreReportedWithReasons() {
-        val result = BackendDiscovery.discover(
-            mapOf(
-                "com.suhel.llamabro.backend." to "x.Empty",
-                "com.suhel.llamabro.backend.cpu" to "x.Cpu",
-                "com.suhel.llamabro.backend.notastring" to 42,
-                "com.suhel.llamabro.backend.nofiles" to "x.NoFiles",
-                "com.suhel.llamabro.backend.blankfile" to "x.BlankFile",
-                "com.suhel.llamabro.backend.badenv" to "x.BadEnv",
-                "com.suhel.llamabro.backend.good" to "x.Good",
-            ),
-        ) { cls ->
-            when (cls) {
-                "x.BlankFile" -> BackendLibraries(listOf(" "))
-                "x.BadEnv" -> BackendLibraries(listOf("libx.so"), mapOf("A=B" to "1"))
-                "x.Good" -> BackendLibraries(listOf("libgood.so"))
-                else -> BackendLibraries(emptyList())
+        val result =
+            BackendDiscovery.discover(
+                mapOf(
+                    "com.suhel.llamabro.backend." to "x.Empty",
+                    "com.suhel.llamabro.backend.cpu" to "x.Cpu",
+                    "com.suhel.llamabro.backend.notastring" to 42,
+                    "com.suhel.llamabro.backend.nofiles" to "x.NoFiles",
+                    "com.suhel.llamabro.backend.blankfile" to "x.BlankFile",
+                    "com.suhel.llamabro.backend.badenv" to "x.BadEnv",
+                    "com.suhel.llamabro.backend.good" to "x.Good",
+                ),
+            ) { cls ->
+                when (cls) {
+                    "x.BlankFile" -> BackendLibraries(listOf(" "))
+                    "x.BadEnv" -> BackendLibraries(listOf("libx.so"), mapOf("A=B" to "1"))
+                    "x.Good" -> BackendLibraries(listOf("libgood.so"))
+                    else -> BackendLibraries(emptyList())
+                }
             }
-        }
         // one bad installer never takes the others (or the runtime) down: native would reject the whole config
         assertEquals(listOf("good"), result.found.map { it.name })
         assertEquals(
@@ -97,31 +112,46 @@ class BackendsTest {
                 "blankfile" to "installer x.BlankFile named a blank library file",
                 "cpu" to "invalid backend name in <meta-data> com.suhel.llamabro.backend.cpu",
                 "nofiles" to "installer x.NoFiles named no libraries",
-                "notastring" to "<meta-data> com.suhel.llamabro.backend.notastring must name the backend's installer class",
+                "notastring" to
+                    "<meta-data> com.suhel.llamabro.backend.notastring must name the backend's installer class",
             ),
             result.failed.associate { it.name to it.error },
         )
     }
 
     @Test
-    fun nativeFailureCarriesItsReason() = runBlocking {
-        val engine = FakeEngine()
-        engine.backendsJson = """[{"name":"cpu","loaded":true,"error":null,"devices":["CPU"]},""" +
-            """{"name":"hexagon","loaded":false,"error":"load_backend: failed to load libllamabro-ggml-hexagon.so: dlopen failed","devices":[]}]"""
-        val backends = runtime(engine) { BackendDiscovery.discover(mapOf("com.suhel.llamabro.backend.hexagon" to "x.H")) { hexagon } }.backends()
-        assertEquals(
-            Backend("hexagon", loaded = false, error = "load_backend: failed to load libllamabro-ggml-hexagon.so: dlopen failed", devices = emptyList()),
-            backends[1],
-        )
-    }
+    fun nativeFailureCarriesItsReason() =
+        runBlocking {
+            val engine = FakeEngine()
+            engine.backendsJson = """[{"name":"cpu","loaded":true,"error":null,"devices":["CPU"]},""" +
+                """{"name":"hexagon","loaded":false,"error":"load_backend: failed to load libllamabro-ggml-hexagon.so: dlopen failed","devices":[]}]"""
+            val backends =
+                runtime(engine) {
+                    BackendDiscovery.discover(mapOf("com.suhel.llamabro.backend.hexagon" to "x.H")) { hexagon }
+                }.backends()
+            assertEquals(
+                Backend(
+                    "hexagon",
+                    loaded = false,
+                    error = "load_backend: failed to load libllamabro-ggml-hexagon.so: dlopen failed",
+                    devices = emptyList(),
+                ),
+                backends[1],
+            )
+        }
 
     @Test
-    fun discoveryRunsOncePerInit() = runBlocking {
-        var runs = 0
-        val rt = runtime(FakeEngine()) { runs++; BackendDiscovery.Result.None }
-        rt.backends()
-        rt.devices()
-        LlamaBro(rt).loadModel(ModelSource.file("/m.gguf"))
-        assertEquals(1, runs)
-    }
+    fun discoveryRunsOncePerInit() =
+        runBlocking {
+            var runs = 0
+            val rt =
+                runtime(FakeEngine()) {
+                    runs++
+                    BackendDiscovery.Result.None
+                }
+            rt.backends()
+            rt.devices()
+            LlamaBro(rt).loadModel(ModelSource.file("/m.gguf"))
+            assertEquals(1, runs)
+        }
 }

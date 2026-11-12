@@ -9,11 +9,21 @@ import com.suhel.llamabro.DeviceKind
  * so Auto sends no speculative setting at all.
  */
 internal object MtpPolicy {
-    fun reason(kind: DeviceKind): String = when (kind) {
-        DeviceKind.Npu -> "MTP measured slower for prose on the NPU; for JSON or tool calls set Speculative.Mtp(4), about 1.5x decode (F67, F68)"
-        DeviceKind.Gpu -> "speculative decoding (MTP, n-gram, DFlash) aborts ggml-opencl at b12052 (F67, F80)"
-        DeviceKind.Cpu -> "MTP measured slower or no faster on the CPU (F67, F68)"
-    }
+    fun reason(kind: DeviceKind): String =
+        when (kind) {
+            DeviceKind.Npu -> {
+                "MTP measured slower for prose on the NPU; for JSON or tool calls set " +
+                    "Speculative.Mtp(4), about 1.5x decode (F67, F68)"
+            }
+
+            DeviceKind.Gpu -> {
+                "speculative decoding (MTP, n-gram, DFlash) aborts ggml-opencl at b12052 (F67, F80)"
+            }
+
+            DeviceKind.Cpu -> {
+                "MTP measured slower or no faster on the CPU (F67, F68)"
+            }
+        }
 
     /** Drafted batches abort ggml-opencl on the first drafted batch (F67, F80). */
     const val GPU_ABORTS: String = "speculative decoding (MTP, n-gram, DFlash) aborts ggml-opencl at b12052 (F67, F80)"

@@ -6,12 +6,12 @@ import com.suhel.llamabro.hub.internal.Resolver
 import com.suhel.llamabro.hub.internal.Response
 import com.suhel.llamabro.hub.internal.Transport
 import com.suhel.llamabro.hub.internal.repoFolder
-import java.io.File
-import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import java.nio.file.Files
 
 internal class CacheTest {
     @Test fun cachedListsRepoAndTagWithModelPartsOnly() {
@@ -125,8 +125,10 @@ internal class CacheTest {
         val ownPartial = File(blobs, "$own.downloadInProgress").apply { writeText("half") }
         val sharedPartial = File(blobs, "$shared.downloadInProgress").apply { writeText("half") }
         val plans = File(root, ".llamabro/plans").apply { mkdirs() }
-        File(plans, "four.json").writeText(
-            """{"model":"test/partials:Q4_K_M","files":[{"oid":"$own"},{"oid":"$shared"}]}""")
+        File(
+            plans,
+            "four.json",
+        ).writeText("""{"model":"test/partials:Q4_K_M","files":[{"oid":"$own"},{"oid":"$shared"}]}""")
         File(plans, "eight.json").writeText("""{"model":"test/partials:Q8_0","files":[{"oid":"$shared"}]}""")
         assertTrue(cache(root).delete(HfModel("test/partials:Q4_K_M")))
         assertFalse("the deleted tag's own partial goes", ownPartial.exists())
@@ -134,10 +136,16 @@ internal class CacheTest {
     }
 
     private fun cache(root: File): Cache {
-        val transport = object : Transport {
-            override suspend fun open(method: String, url: String, headers: Map<String, String>, range: Long?, rangeEnd: Long?): Response =
-                error("cache operations must not use the network")
-        }
+        val transport =
+            object : Transport {
+                override suspend fun open(
+                    method: String,
+                    url: String,
+                    headers: Map<String, String>,
+                    range: Long?,
+                    rangeEnd: Long?,
+                ): Response = error("cache operations must not use the network")
+            }
         return Cache(root, Resolver("https://example.invalid", root, transport, JvmStorage()))
     }
 
@@ -147,13 +155,22 @@ internal class CacheTest {
         private val snapshotDir = File(repoDir, "snapshots/$commit")
 
         init {
-            File(repoDir, "refs/main").apply { parentFile!!.mkdirs(); writeText(commit) }
+            File(repoDir, "refs/main").apply {
+                parentFile!!.mkdirs()
+                writeText(commit)
+            }
         }
 
         fun snapshot(name: String): File = File(snapshotDir, name)
+
         fun blob(name: String): File = File(repoDir, "blobs/${name.replace('/', '_')}")
+
         fun add(name: String, content: String) {
-            val blob = blob(name).apply { parentFile!!.mkdirs(); writeText(content) }
+            val blob =
+                blob(name).apply {
+                    parentFile!!.mkdirs()
+                    writeText(content)
+                }
             val link = snapshot(name).apply { parentFile!!.mkdirs() }
             Files.createSymbolicLink(link.toPath(), requireNotNull(link.parentFile).toPath().relativize(blob.toPath()))
         }

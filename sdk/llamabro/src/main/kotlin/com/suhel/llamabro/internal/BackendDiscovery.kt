@@ -21,17 +21,24 @@ internal object BackendDiscovery {
 
     class Result(val found: List<Found>, val failed: List<Backend>) {
         /** The runtime config's `backends` (llamabro.h). */
-        fun toJson(): JsonArray = buildJsonArray {
-            for (f in found) {
-                add(
-                    buildJsonObject {
-                        put("name", f.name)
-                        putJsonArray("files") { f.libraries.files.forEach { add(JsonPrimitive(it)) } }
-                        if (f.libraries.env.isNotEmpty()) putJsonObject("env") { f.libraries.env.forEach { (k, v) -> put(k, v) } }
-                    },
-                )
+        fun toJson(): JsonArray =
+            buildJsonArray {
+                for (f in found) {
+                    add(
+                        buildJsonObject {
+                            put("name", f.name)
+                            putJsonArray("files") { f.libraries.files.forEach { add(JsonPrimitive(it)) } }
+                            if (f.libraries.env.isNotEmpty()) {
+                                putJsonObject("env") {
+                                    f.libraries.env.forEach { (k, v) ->
+                                        put(k, v)
+                                    }
+                                }
+                            }
+                        },
+                    )
+                }
             }
-        }
 
         companion object {
             val None = Result(emptyList(), emptyList())
@@ -47,22 +54,39 @@ internal object BackendDiscovery {
         val failed = mutableListOf<Backend>()
         for ((key, value) in metaData.filterKeys { it.startsWith(META_PREFIX) }.toSortedMap()) {
             val name = key.removePrefix(META_PREFIX)
-            fun fail(reason: String) { failed += Backend(name, loaded = false, error = reason, devices = emptyList()) }
+
+            fun fail(reason: String) {
+                failed += Backend(name, loaded = false, error = reason, devices = emptyList())
+            }
             when {
-                name.isEmpty() || name == "cpu" -> fail("invalid backend name in <meta-data> $key")
-                value !is String || value.isBlank() -> fail("<meta-data> $key must name the backend's installer class")
-                else -> try {
-                    val libraries = install(value)
-                    // what the native parser would reject fails this backend only, not the runtime and the CPU with it
-                    when {
-                        libraries.files.isEmpty() -> fail("installer $value named no libraries")
-                        libraries.files.any { it.isBlank() } -> fail("installer $value named a blank library file")
-                        libraries.env.keys.any { it.isEmpty() || '=' in it } -> fail("installer $value set an invalid environment variable name")
-                        else -> found += Found(name, libraries)
+                name.isEmpty() || name == "cpu" -> {
+                    fail("invalid backend name in <meta-data> $key")
+                }
+
+                value !is String || value.isBlank() -> {
+                    fail("<meta-data> $key must name the backend's installer class")
+                }
+
+                else -> {
+                    try {
+                        val libraries = install(value)
+                        // what the native parser would reject fails this backend only, not the runtime and the CPU with
+                        // it
+                        when {
+                            libraries.files.isEmpty() -> fail("installer $value named no libraries")
+
+                            libraries.files.any { it.isBlank() } -> fail("installer $value named a blank library file")
+
+                            libraries.env.keys.any {
+                                it.isEmpty() || '=' in it
+                            } -> fail("installer $value set an invalid environment variable name")
+
+                            else -> found += Found(name, libraries)
+                        }
+                    } catch (e: Throwable) {
+                        if (e is VirtualMachineError) throw e
+                        fail("installer $value failed: $e")
                     }
-                } catch (e: Throwable) {
-                    if (e is VirtualMachineError) throw e
-                    fail("installer $value failed: $e")
                 }
             }
         }

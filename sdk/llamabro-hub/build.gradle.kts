@@ -74,14 +74,16 @@ abstract class ReleaseApiBuild : KotlinApiBuildTask() {
 }
 
 val apiFile = layout.projectDirectory.file("api/llamabro-hub.api")
-val apiBuild = tasks.register<ReleaseApiBuild>("apiBuild") {
-    description = "Writes the release build's public API to build/api/llamabro-hub.api"
-    outputApiFile.set(layout.buildDirectory.file("api/llamabro-hub.api"))
-    runtimeClasspath.from(bcvRuntime)
-}
+val apiBuild =
+    tasks.register<ReleaseApiBuild>("apiBuild") {
+        description = "Writes the release build's public API to build/api/llamabro-hub.api"
+        outputApiFile.set(layout.buildDirectory.file("api/llamabro-hub.api"))
+        runtimeClasspath.from(bcvRuntime)
+    }
 androidComponents {
     onVariants(selector().withBuildType("release")) { variant ->
-        variant.artifacts.forScope(ScopedArtifacts.Scope.PROJECT)
+        variant.artifacts
+            .forScope(ScopedArtifacts.Scope.PROJECT)
             .use(apiBuild)
             .toGet(ScopedArtifact.CLASSES, ReleaseApiBuild::classJars, ReleaseApiBuild::classDirs)
     }

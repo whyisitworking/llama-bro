@@ -8,8 +8,9 @@ internal fun resolveUrl(endpoint: String, file: HubFile): String =
         file.path.split('/').joinToString("/") { segment ->
             segment.toByteArray(Charsets.UTF_8).joinToString("") { byte ->
                 val value = byte.toInt() and 0xff
-                if (value in 65..90 || value in 97..122 || value in 48..57 ||
-                    value == 45 || value == 46 || value == 95 || value == 126) value.toChar().toString()
-                else "%%%02X".format(value)
+                if (isUnreserved(value.toChar())) value.toChar().toString() else "%%%02X".format(value)
             }
         }
+
+/** RFC 3986's unreserved characters: letters, digits and `-`, `.`, `_`, `~`. */
+private fun isUnreserved(c: Char): Boolean = c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c in "-._~"

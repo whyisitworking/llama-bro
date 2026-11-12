@@ -1,5 +1,7 @@
 package com.suhel.llamabro.internal
 
+import com.suhel.llamabro.InternalLlamaBroApi
+
 /**
  * JNI over the C API in `sdk/native/bridge/include/llamabro.h` (P1 T6). One function per `lb_*` call;
  * handles are the native pointers as `Long`. Callbacks arrive on native threads.
@@ -30,7 +32,13 @@ internal object NativeBridge {
     external fun modelInfo(model: Long): String
 
     /** `lb_model_request`. Throws [NativeError] if the request couldn't start. */
-    external fun modelRequest(model: Long, endpoint: String, paramsJson: String?, body: ByteArray, sink: RequestSink): Long
+    external fun modelRequest(
+        model: Long,
+        endpoint: String,
+        paramsJson: String?,
+        body: ByteArray,
+        sink: RequestSink,
+    ): Long
 
     external fun requestCancel(request: Long)
 
@@ -48,7 +56,10 @@ internal fun interface LogListener {
     fun onLog(level: Int, text: String)
 }
 
-/** Receives one request's events, on the request's native thread. Exactly one of [onDone] / [onCancelled], last. */
-
-/** A failed native call: [status] is `lb_status`, [errorJson] is `{"error": "..."}`. */
-internal class NativeError(val status: Int, val errorJson: String) : RuntimeException(errorJson)
+/**
+ * A failed native call: [status] is `lb_status`, [errorJson] is `{"error": "..."}`, with `"code"` set for a
+ * missing file (`file_not_found`) or too little memory (`insufficient_memory`). Public under the opt-in marker so
+ * that an [Engine] in `llamabro-testing` can fail a load as the native side does.
+ */
+@InternalLlamaBroApi
+public class NativeError(public val status: Int, public val errorJson: String) : RuntimeException(errorJson)

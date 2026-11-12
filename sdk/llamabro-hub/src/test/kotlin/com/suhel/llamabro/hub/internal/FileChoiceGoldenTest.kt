@@ -1,6 +1,5 @@
 package com.suhel.llamabro.hub.internal
 
-import java.io.File
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
@@ -9,6 +8,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.io.File
 
 /** The upstream tables, including every recorded real repository, checked without a network layer. */
 internal class FileChoiceGoldenTest {
@@ -32,8 +32,15 @@ internal class FileChoiceGoldenTest {
                 val actual = resolvePlan(ordered.map { RepoFile(it) }, tag, explicitFile, sidecars, sidecars)
                 val context = "$name rotation $rot"
                 assertEquals(context, c.getValue("primary").jsonPrimitive.content, actual.primary?.path ?: "")
-                assertEquals(context, c.getValue("model_files").jsonArray.map { it.jsonPrimitive.content }.toSet(),
-                    actual.modelFiles.map { it.path }.toSet())
+                assertEquals(
+                    context,
+                    c
+                        .getValue("model_files")
+                        .jsonArray
+                        .map { it.jsonPrimitive.content }
+                        .toSet(),
+                    actual.modelFiles.map { it.path }.toSet(),
+                )
                 assertEquals(context, c.getValue("mmproj").jsonPrimitive.content, actual.mmproj?.path ?: "")
                 assertEquals(context, c.getValue("dflash").jsonPrimitive.content, actual.dflash?.path ?: "")
             }

@@ -26,29 +26,42 @@ class CompactionGoldenTest {
 
     private fun str(o: JsonObject, k: String) = (o[k] as JsonPrimitive).content
 
-    private fun toMessage(o: JsonObject): Message = when (str(o, "type")) {
-        "system" -> Message.System(str(o, "content"))
-        "compaction" -> Message.Compaction(str(o, "content"), (o["kept"] as? JsonPrimitive)?.int ?: 0)
-        else -> when (str(o, "role")) {
-            "user" -> Message.user(str(o, "content"))
-            "assistant" -> Message.Assistant(str(o, "content"))
-            "tool" -> Message.ToolResult(str(o, "id"), str(o, "content"))
-            else -> error("unexpected role in golden: $o")
+    private fun toMessage(o: JsonObject): Message =
+        when (str(o, "type")) {
+            "system" -> {
+                Message.System(str(o, "content"))
+            }
+
+            "compaction" -> {
+                Message.Compaction(str(o, "content"), (o["kept"] as? JsonPrimitive)?.int ?: 0)
+            }
+
+            else -> {
+                when (str(o, "role")) {
+                    "user" -> Message.user(str(o, "content"))
+                    "assistant" -> Message.Assistant(str(o, "content"))
+                    "tool" -> Message.ToolResult(str(o, "id"), str(o, "content"))
+                    else -> error("unexpected role in golden: $o")
+                }
+            }
         }
-    }
 
     /** A Kotlin message in the golden's terms (tools/ui keeps the framed node's compaction type and user role). */
-    private fun row(m: Message): Row = when (m) {
-        is Message.System -> Row("system", "system", m.text, 0)
-        is Message.User -> Row("text", "user", (m.content.single() as Content.Text).text, 0)
-        is Message.Assistant -> Row("text", "assistant", m.content!!, 0)
-        is Message.ToolResult -> Row("text", "tool", m.content, 0)
-        is Message.Compaction -> Row("compaction", "user", m.summary, m.keptSteps)
-    }
+    private fun row(m: Message): Row =
+        when (m) {
+            is Message.System -> Row("system", "system", m.text, 0)
+            is Message.User -> Row("text", "user", (m.content.single() as Content.Text).text, 0)
+            is Message.Assistant -> Row("text", "assistant", m.content!!, 0)
+            is Message.ToolResult -> Row("text", "tool", m.content, 0)
+            is Message.Compaction -> Row("compaction", "user", m.summary, m.keptSteps)
+        }
 
     @Test
     fun everyGoldenCaseMatchesUpstream() {
-        val golden = Json.parseToJsonElement(javaClass.classLoader!!.getResource("tools-ui/compaction-golden.json")!!.readText()) as JsonObject
+        val golden =
+            Json.parseToJsonElement(
+                javaClass.classLoader!!.getResource("tools-ui/compaction-golden.json")!!.readText(),
+            ) as JsonObject
         assertEquals(Compaction.CONTEXT_TEMPLATE, str(golden, "contextTemplate"))
         val cases = golden["cases"] as JsonArray
         assertEquals(400, cases.size)
@@ -58,14 +71,19 @@ class CompactionGoldenTest {
             val preserve = c["preserve"]!!.jsonPrimitive.int
             val view = CompactionPlanner.modelView(messages)
             if (c["viewIsInput"]!!.jsonPrimitive.boolean) assertSame("case $i: view", messages, view)
-            val expected = (c["view"] as JsonArray).map {
-                it as JsonObject
-                Row(str(it, "type"), str(it, "role"), str(it, "content"), (it["kept"] as? JsonPrimitive)?.int ?: 0)
-            }
+            val expected =
+                (c["view"] as JsonArray).map {
+                    it as JsonObject
+                    Row(str(it, "type"), str(it, "role"), str(it, "content"), (it["kept"] as? JsonPrimitive)?.int ?: 0)
+                }
             assertEquals("case $i: view", expected, view.map { row(it) })
             val cut = c["cut"].let { if (it == null || it is JsonNull) null else it.jsonPrimitive.int }
             assertEquals("case $i: cut", cut, CompactionPlanner.cutIndex(view, preserve))
-            assertEquals("case $i: canCompact", c["canCompact"]!!.jsonPrimitive.boolean, CompactionPlanner.canCompact(messages, preserve))
+            assertEquals(
+                "case $i: canCompact",
+                c["canCompact"]!!.jsonPrimitive.boolean,
+                CompactionPlanner.canCompact(messages, preserve),
+            )
         }
     }
 }

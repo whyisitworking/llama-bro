@@ -3,9 +3,9 @@ package com.suhel.llamabro.hub
 import com.suhel.llamabro.hub.internal.HttpTransport
 import com.suhel.llamabro.hub.internal.HubTestHooks
 import com.suhel.llamabro.hub.internal.JvmStorage
-import java.io.File
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import java.io.File
 
 /** Child process used to kill a transfer at a precise cache mutation phase. */
 internal object HubChildMain {
@@ -19,7 +19,11 @@ internal object HubChildMain {
             }
         }
         val cache = File(cachePath)
-        val config = HubConfig { this.endpoint = endpoint; cacheDir = cache }
+        val config =
+            HubConfig {
+                this.endpoint = endpoint
+                cacheDir = cache
+            }
         val hub = LlamaBroHub(config, cache, HttpTransport(endpoint, null, null), JvmStorage())
         runBlocking { hub.download(HfModel(ref)).toList() }
     }

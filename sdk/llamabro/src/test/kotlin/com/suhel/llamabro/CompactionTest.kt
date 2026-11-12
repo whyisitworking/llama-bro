@@ -20,12 +20,19 @@ import org.junit.Test
 class CompactionTest {
     // makeMessage / makeCompactionNode equivalents
     private fun user(text: String) = Message.user(text)
+
     private fun assistant(text: String) = Message.Assistant(text)
+
     private fun system(text: String) = Message.System(text)
+
     private fun tool(text: String) = Message.ToolResult("call-$text", text)
+
     private fun node(summary: String, kept: Int = 0) = Message.Compaction(summary, kept)
+
     // the framed copy sliceAtLastCompaction returns: a compaction node holding the framed text, sent as a user message
-    private fun framed(summary: String, kept: Int = 0) = Message.Compaction(Compaction.CONTEXT_TEMPLATE.replace(Compaction.SUMMARY_PLACEHOLDER, summary), kept)
+    private fun framed(summary: String, kept: Int = 0) =
+        Message.Compaction(Compaction.CONTEXT_TEMPLATE.replace(Compaction.SUMMARY_PLACEHOLDER, summary), kept)
+
     private fun text(m: Message) = ((m as Message.User).content.single() as Content.Text).text
 
     // --- sliceAtLastCompaction ---
@@ -51,7 +58,7 @@ class CompactionTest {
         val sliced = CompactionPlanner.modelView(listOf(user("question"), n))
         val sent = CompactionPlanner.forRequest(sliced)[0]
         assertEquals(Compaction.CONTEXT_TEMPLATE.replace(Compaction.SUMMARY_PLACEHOLDER, "summary text"), text(sent))
-        assertTrue(sent is Message.User)  // role user, as the node's in tools/ui
+        assertTrue(sent is Message.User) // role user, as the node's in tools/ui
         assertEquals("summary text", n.summary)
     }
 
@@ -65,7 +72,14 @@ class CompactionTest {
 
     @Test
     fun `slices at the last boundary when the branch was compacted twice`() {
-        val messages = listOf(node("first summary"), user("question"), assistant("answer"), node("second summary"), user("follow-up"))
+        val messages =
+            listOf(
+                node("first summary"),
+                user("question"),
+                assistant("answer"),
+                node("second summary"),
+                user("follow-up"),
+            )
         assertEquals(listOf(framed("second summary"), user("follow-up")), CompactionPlanner.modelView(messages))
     }
 
@@ -79,22 +93,43 @@ class CompactionTest {
 
     @Test
     fun `keeps the last steps before the node, a tool result with its call`() {
-        val messages = listOf(
-            system("be brief"), user("first"), assistant("calling"), tool("result"), user("second"), assistant("answer"),
-            node("summary", 3), user("next"),
-        )
+        val messages =
+            listOf(
+                system("be brief"),
+                user("first"),
+                assistant("calling"),
+                tool("result"),
+                user("second"),
+                assistant("answer"),
+                node("summary", 3),
+                user("next"),
+            )
         assertEquals(
-            listOf(system("be brief"), framed("summary", 3), assistant("calling"), tool("result"), user("second"), assistant("answer"), user("next")),
+            listOf(
+                system("be brief"),
+                framed("summary", 3),
+                assistant("calling"),
+                tool("result"),
+                user("second"),
+                assistant("answer"),
+                user("next"),
+            ),
             CompactionPlanner.modelView(messages),
         )
     }
 
     @Test
     fun `counts the kept steps across an older node, which it drops`() {
-        val messages = listOf(
-            user("first"), assistant("one"), node("first summary", 1), user("second"), assistant("two"),
-            node("second summary", 3), user("next"),
-        )
+        val messages =
+            listOf(
+                user("first"),
+                assistant("one"),
+                node("first summary", 1),
+                user("second"),
+                assistant("two"),
+                node("second summary", 3),
+                user("next"),
+            )
         assertEquals(
             listOf(framed("second summary", 3), assistant("one"), user("second"), assistant("two"), user("next")),
             CompactionPlanner.modelView(messages),
@@ -104,13 +139,24 @@ class CompactionTest {
     @Test
     fun `keeps every step when it keeps more than there are, and none without kept`() {
         val messages = listOf(user("first"), assistant("one"), node("summary", 9))
-        assertEquals(listOf(framed("summary", 9), user("first"), assistant("one")), CompactionPlanner.modelView(messages))
+        assertEquals(
+            listOf(framed("summary", 9), user("first"), assistant("one")),
+            CompactionPlanner.modelView(messages),
+        )
         assertEquals(listOf(framed("s")), CompactionPlanner.modelView(messages.take(2) + node("s")))
     }
 
     // --- compactionCut ---
 
-    private val view = listOf(system("be brief"), user("first"), assistant("calling"), tool("result"), user("second"), assistant("answer"))
+    private val view =
+        listOf(
+            system("be brief"),
+            user("first"),
+            assistant("calling"),
+            tool("result"),
+            user("second"),
+            assistant("answer"),
+        )
 
     @Test
     fun `cuts before the preserved steps, never between a call and its result`() {

@@ -11,13 +11,19 @@ internal fun isValidRepoId(repo: String): Boolean {
     var special = true
     for (char in repo) {
         when {
-            char.isAsciiAlphanumeric() || char == '_' -> special = false
+            char.isAsciiAlphanumeric() || char == '_' -> {
+                special = false
+            }
+
             char == '/' || char == '.' || char == '-' -> {
                 if (special) return false
                 if (char == '/') slashCount++
                 special = true
             }
-            else -> return false
+
+            else -> {
+                return false
+            }
         }
     }
     return !special && slashCount == 1
@@ -63,8 +69,6 @@ internal fun splitRepoTag(ref: String): Pair<String, String> {
     return repo to if (parts.size > 1) parts.last() else ""
 }
 
-private fun Char.isAsciiAlphanumeric(): Boolean =
-    this in 'A'..'Z' || this in 'a'..'z' || this in '0'..'9'
+private fun Char.isAsciiAlphanumeric(): Boolean = this in 'A'..'Z' || this in 'a'..'z' || this in '0'..'9'
 
-private fun Char.isAsciiHex(): Boolean =
-    this in 'A'..'F' || this in 'a'..'f' || this in '0'..'9'
+private fun Char.isAsciiHex(): Boolean = this in 'A'..'F' || this in 'a'..'f' || this in '0'..'9'

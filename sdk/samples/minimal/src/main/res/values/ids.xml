@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Resource IDs for the code-built views, so UI tests find them by ID (SampleUiTest), not by coordinates. -->
-<resources>
-    <item name="output" type="id" />
-    <item name="input" type="id" />
-    <item name="send" type="id" />
-    <item name="stop" type="id" />
-</resources>

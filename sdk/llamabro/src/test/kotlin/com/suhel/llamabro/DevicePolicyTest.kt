@@ -17,14 +17,16 @@ class DevicePolicyTest {
     private val hexagon = """{"name":"hexagon","loaded":true,"error":null,"devices":["HTP0"]}"""
     private val opencl = """{"name":"opencl","loaded":true,"error":null,"devices":["GPUOpenCL"]}"""
 
-    private fun engine(vararg backends: String) = FakeEngine().apply { backendsJson = "[${backends.joinToString(",")}]" }
+    private fun engine(vararg backends: String) =
+        FakeEngine().apply { backendsJson = "[${backends.joinToString(",")}]" }
 
     private fun devicesOf(config: String): List<String> =
         (Json.parseToJsonElement(config) as JsonObject).getValue("devices").jsonArray.map { it.jsonPrimitive.content }
 
-    private fun failOn(device: String, error: String = "boom on $device") = { config: String ->
-        if (devicesOf(config) == listOf(device)) """{"error":"$error"}""" else null
-    }
+    private fun failOn(device: String, error: String = "boom on $device") =
+        { config: String ->
+            if (devicesOf(config) == listOf(device)) """{"error":"$error"}""" else null
+        }
 
     private fun load(engine: FakeEngine, configure: ModelConfig.() -> Unit = {}): Model =
         runBlocking { testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf"), configure) }
@@ -33,7 +35,8 @@ class DevicePolicyTest {
     fun explicitDeviceAlways() {
         val cpuOnly = engine(cpu)
         load(cpuOnly)
-        assertEquals(emptyList<String>(), devicesOf(cpuOnly.loadConfigs.single()))  // CPU only, never llama.cpp's default
+        // CPU only, never llama.cpp's default
+        assertEquals(emptyList<String>(), devicesOf(cpuOnly.loadConfigs.single()))
         assertFalse("n_gpu_layers" in cpuOnly.loadConfigs.single())
         val withNpu = engine(cpu, hexagon)
         load(withNpu)
@@ -45,7 +48,7 @@ class DevicePolicyTest {
     @Test
     fun autoOrderIsNpuGpuCpu() {
         val e = engine(cpu, opencl, hexagon)
-        e.loadError = { config -> if (devicesOf(config).isNotEmpty()) """{"error":"no"}""" else null }  // only CPU loads
+        e.loadError = { config -> if (devicesOf(config).isNotEmpty()) """{"error":"no"}""" else null } // only CPU loads
         val model = load(e)
         assertEquals(listOf(listOf("HTP0"), listOf("GPUOpenCL"), emptyList()), e.loadConfigs.map(::devicesOf))
         assertEquals(DeviceKind.Cpu, model.loadReport.device)
@@ -53,18 +56,22 @@ class DevicePolicyTest {
     }
 
     @Test
-    fun draftingNeverLoadsOnTheGpu() {  // drafted batches abort ggml-opencl, which no try can catch (F67, F80)
+    fun draftingNeverLoadsOnTheGpu() { // drafted batches abort ggml-opencl, which no try can catch (F67, F80)
         for (spec in listOf(Speculative.Mtp(4), Speculative.Ngram(), Speculative.Ngram(then = Speculative.Mtp(4)))) {
             val e = engine(cpu, opencl, hexagon)
             e.loadError = failOn("HTP0")
             val model = load(e) { speculative = spec }
-            assertEquals(spec.toString(), listOf(listOf("HTP0"), emptyList()), e.loadConfigs.map(::devicesOf))  // GPU never tried
+            // GPU never tried
+            assertEquals(spec.toString(), listOf(listOf("HTP0"), emptyList()), e.loadConfigs.map(::devicesOf))
             assertEquals(DeviceKind.Cpu, model.loadReport.device)
             val gpu = model.loadReport.attempts.single { it.kind == DeviceKind.Gpu }
             assertEquals("GPUOpenCL", gpu.deviceName)
             assertTrue(gpu.reason, gpu.reason.contains("F80"))
             try {
-                load(engine(cpu, opencl)) { speculative = spec; devicePolicy = DevicePolicy.Only(DeviceKind.Gpu) }
+                load(engine(cpu, opencl)) {
+                    speculative = spec
+                    devicePolicy = DevicePolicy.Only(DeviceKind.Gpu)
+                }
                 fail("Only(Gpu) with $spec loaded")
             } catch (x: LlamaBroException.DeviceUnavailable) {
                 assertEquals(DeviceKind.Gpu, x.kind)
@@ -83,7 +90,12 @@ class DevicePolicyTest {
         val model = runBlocking { testLlamaBro(e).loadModel(source) { speculative = Speculative.DFlash() } }
         assertEquals(listOf(listOf("HTP0"), emptyList<String>()), e.loadConfigs.map(::devicesOf))
         assertEquals(DeviceKind.Cpu, model.loadReport.device)
-        assertTrue(model.loadReport.attempts.single { it.kind == DeviceKind.Gpu }.reason.contains("DFlash"))
+        assertTrue(
+            model.loadReport.attempts
+                .single { it.kind == DeviceKind.Gpu }
+                .reason
+                .contains("DFlash"),
+        )
         try {
             runBlocking {
                 testLlamaBro(engine(cpu, opencl)).loadModel(source) {
@@ -102,7 +114,10 @@ class DevicePolicyTest {
     fun autoPicksNpuFirst() {
         val model = load(engine(cpu, opencl, hexagon))
         val r = model.loadReport
-        assertEquals(listOf(DeviceKind.Npu, "HTP0", "hexagon", emptyList<LoadReport.Attempt>()), listOf(r.device, r.deviceName, r.backend, r.attempts))
+        assertEquals(
+            listOf(DeviceKind.Npu, "HTP0", "hexagon", emptyList<LoadReport.Attempt>()),
+            listOf(r.device, r.deviceName, r.backend, r.attempts),
+        )
     }
 
     @Test
@@ -111,7 +126,10 @@ class DevicePolicyTest {
         val report = load(e).loadReport
         assertEquals(DeviceKind.Gpu, report.device)
         assertEquals("GPUOpenCL", report.deviceName)
-        assertEquals(listOf(LoadReport.Attempt(DeviceKind.Npu, "HTP0", "ggml-hex: failed to open session")), report.attempts)
+        assertEquals(
+            listOf(LoadReport.Attempt(DeviceKind.Npu, "HTP0", "ggml-hex: failed to open session")),
+            report.attempts,
+        )
     }
 
     @Test
@@ -146,11 +164,15 @@ class DevicePolicyTest {
 
     @Test
     fun failedBackendIsSkippedWithItsReason() {
-        val broken = """{"name":"hexagon","loaded":false,"error":"dlopen failed: libcdsprpc.so not found","devices":[]}"""
+        val broken =
+            """{"name":"hexagon","loaded":false,"error":"dlopen failed: libcdsprpc.so not found",""" +
+                """"devices":[]}"""
         val report = load(engine(cpu, broken, opencl)).loadReport
         assertEquals(DeviceKind.Gpu, report.device)
         assertEquals(
-            listOf(LoadReport.Attempt(DeviceKind.Npu, null, "hexagon didn't load: dlopen failed: libcdsprpc.so not found")),
+            listOf(
+                LoadReport.Attempt(DeviceKind.Npu, null, "hexagon didn't load: dlopen failed: libcdsprpc.so not found"),
+            ),
             report.attempts,
         )
     }

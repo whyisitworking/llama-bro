@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Labels the components themselves show or announce; the screens pass every other line. -->
+    <string name="ds_send">Send</string>
+    <string name="ds_stop">Stop</string>
+    <string name="ds_attach">Add a photo</string>
+    <string name="ds_jump_to_latest">Back to the latest message</string>
+    <string name="ds_think">Think</string>
+    <string name="ds_think_with_level">Think · %1$s</string>
+    <string name="ds_think_quick">Quick</string>
+    <string name="ds_think_balanced">Balanced</string>
+    <string name="ds_think_deep">Deep</string>
+    <string name="ds_thinking">Thinking</string>
+    <string name="ds_thought_for">Thought for %1$d s</string>
+    <string name="ds_copy">Copy</string>
+    <string name="ds_code">Code</string>
+    <string name="ds_drag_handle">Drag handle</string>
+</resources>

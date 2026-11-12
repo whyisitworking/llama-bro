@@ -2,6 +2,9 @@ package com.suhel.llamabro
 
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.ChatRequest
+import com.suhel.llamabro.chat.Message
+import com.suhel.llamabro.conversation.Conversation
+import com.suhel.llamabro.conversation.ConversationJson
 import com.suhel.llamabro.internal.ChatJson
 import com.suhel.llamabro.internal.ChatStreamDecoder
 import com.suhel.llamabro.internal.EngineModel
@@ -10,7 +13,14 @@ import com.suhel.llamabro.internal.ErrorMapping
 import com.suhel.llamabro.internal.NativeError
 import com.suhel.llamabro.internal.RequestSink
 import com.suhel.llamabro.internal.SseParser
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.channels.awaitClose
@@ -18,6 +28,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -27,9 +38,6 @@ import kotlinx.serialization.json.put
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.read
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.launch
 import kotlin.concurrent.write
 
 /**
@@ -43,16 +51,18 @@ public class Model internal constructor(
     /** Runs the native shutdown off the caller's thread (LlamaBroRuntime.shutdown). */
     private val shutdown: (() -> Unit) -> Deferred<Unit>,
 ) : AutoCloseable {
-
     /** What the loaded model is and what it supports, read once at load. */
     public val info: ModelInfo = ModelInfo.parse(engineModel.infoJson)
 
     private val closed = AtomicBoolean(false)
-    private val gate = java.util.concurrent.locks.ReentrantReadWriteLock()
-    private val closedSignal = kotlinx.coroutines.CompletableDeferred<Unit>()
+    private val gate =
+        java.util.concurrent.locks
+            .ReentrantReadWriteLock()
+    private val closedSignal = CompletableDeferred<Unit>()
     private val active = mutableSetOf<ActiveCall>()
+
     /** Completes when the native shutdown has finished; exists before [close] so a racing [closeAndJoin] waits too. */
-    private val shutdownDone = kotlinx.coroutines.CompletableDeferred<Unit>()
+    private val shutdownDone = CompletableDeferred<Unit>()
 
     /**
      * Any llama-server endpoint with a raw JSON body, exactly as llama-server's docs describe it.
@@ -62,24 +72,49 @@ public class Model internal constructor(
      *
      * @param params path and query parameters, e.g. `id_slot` and `action` for [Endpoint.SlotsAction].
      */
-    public fun rawRequest(endpoint: Endpoint, jsonBody: String, params: Map<String, String> = emptyMap()): Flow<String> =
+    public fun rawRequest(
+        endpoint: Endpoint,
+        jsonBody: String,
+        params: Map<String, String> = emptyMap(),
+    ): Flow<String> =
         callbackFlow {
             val call = ActiveCall(this)
             val stream = isStreamBody(jsonBody)
-            val paramsJson = if (params.isEmpty()) null else buildJsonObject { params.forEach { (k, v) -> put(k, v) } }.toString()
-            val handle = try {
-                // the read side of [gate]: close() can't free the native model while this call is entering it
-                gate.read {
-                    if (!register(call)) throw LlamaBroException.ModelClosed()
-                    engineModel.request(endpoint.nativeName, paramsJson, jsonBody.toByteArray(Charsets.UTF_8), call.sink(stream))
+            val paramsJson =
+                if (params.isEmpty()) {
+                    null
+                } else {
+                    buildJsonObject {
+                        params.forEach { (k, v) ->
+                            put(k, v)
+                        }
+                    }.toString()
                 }
-            } catch (e: NativeError) {
-                unregister(call)
-                throw if (closed.get()) LlamaBroException.ModelClosed(e) else LlamaBroException.InvalidRequest(ErrorMapping.nativeMessage(e.errorJson), e)
-            } catch (e: IllegalStateException) {
-                unregister(call)
-                throw LlamaBroException.ModelClosed(e)
-            }
+            val handle =
+                try {
+                    // the read side of [gate]: close() can't free the native model while this call is entering it
+                    gate.read {
+                        if (!register(call)) throw LlamaBroException.ModelClosed()
+                        engineModel.request(
+                            endpoint.nativeName,
+                            paramsJson,
+                            jsonBody.toByteArray(Charsets.UTF_8),
+                            call.sink(stream),
+                        )
+                    }
+                } catch (e: NativeError) {
+                    unregister(call)
+                    throw if (closed.get()) {
+                        LlamaBroException.ModelClosed(
+                            e,
+                        )
+                    } else {
+                        LlamaBroException.InvalidRequest(ErrorMapping.nativeMessage(e.errorJson), e)
+                    }
+                } catch (e: IllegalStateException) {
+                    unregister(call)
+                    throw LlamaBroException.ModelClosed(e)
+                }
             call.setHandle(handle)
             awaitClose {
                 call.cancelIfRunning()
@@ -100,9 +135,10 @@ public class Model internal constructor(
         background.cancel()
         shutdown {
             try {
-                // waits for any request still entering native code (a closed check alone leaves a use-after-free window)
+                // waits for any request still entering native code (a closed check alone leaves a use-after-free
+                // window)
                 gate.write { }
-                failActive()  // one that registered just before the closed flag was set
+                failActive() // one that registered just before the closed flag was set
                 engineModel.close()
             } finally {
                 shutdownDone.complete(Unit)
@@ -129,17 +165,17 @@ public class Model internal constructor(
     // --- background pre-encode (Conversation) ---------------------------------------------------------
 
     /** Runs Conversation's background pre-encodes; cancelled when the model closes. */
-    internal val background: kotlinx.coroutines.CoroutineScope =
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+    internal val background: CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val preEncodeLock = Any()
-    private var preEncodeJob: kotlinx.coroutines.Job? = null
+    private var preEncodeJob: Job? = null
 
     /**
      * One pre-encode per model, like tools/ui's store-wide preEncodeAbortController: a new one replaces the old,
      * and any chat request cancels it ([cancelPreEncode]), whichever conversation started it.
      */
-    internal fun startPreEncode(block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) {
+    internal fun startPreEncode(block: suspend CoroutineScope.() -> Unit) {
         synchronized(preEncodeLock) {
             preEncodeJob?.cancel()
             preEncodeJob = background.launch(block = block)
@@ -154,9 +190,10 @@ public class Model internal constructor(
     /** Returns when [close] is called (Conversation cancels a running tool handler on it). */
     internal suspend fun awaitClosed() = closedSignal.await()
 
-    private fun register(call: ActiveCall): Boolean = synchronized(active) {
-        if (closed.get()) false else active.add(call)
-    }
+    private fun register(call: ActiveCall): Boolean =
+        synchronized(active) {
+            if (closed.get()) false else active.add(call)
+        }
 
     private fun unregister(call: ActiveCall) {
         synchronized(active) { active.remove(call) }
@@ -175,7 +212,11 @@ public class Model internal constructor(
         fun setHandle(h: EngineRequest) {
             synchronized(lock) {
                 handle = h
-                if (terminal) h.free() else if (cancelRequested) h.cancel()
+                if (terminal) {
+                    h.free()
+                } else if (cancelRequested) {
+                    h.cancel()
+                }
             }
         }
 
@@ -195,50 +236,62 @@ public class Model internal constructor(
             }
         }
 
-        fun sink(stream: Boolean): RequestSink = object : RequestSink {
-            private val parser = SseParser()
-            private val whole = ByteArrayOutputStream()
-            private var failed = false
+        fun sink(stream: Boolean): RequestSink =
+            object : RequestSink {
+                private val parser = SseParser()
+                private val whole = ByteArrayOutputStream()
+                private var failed = false
 
-            override fun onChunk(httpStatus: Int, data: ByteArray) {
-                if (failed) return
-                if (httpStatus >= 400) {
-                    fail(ErrorMapping.fromBody(httpStatus, String(data, Charsets.UTF_8)))
-                } else if (!stream) {
-                    whole.write(data)
-                } else {
-                    for (payload in parser.feed(data)) {
-                        when {
-                            payload == "[DONE]" -> Unit  // the flow completes at the terminal event
-                            payload.startsWith("{\"error\"") -> { fail(ErrorMapping.fromBody(httpStatus, payload)); return }
-                            else -> scope.trySend(payload)
+                override fun onChunk(httpStatus: Int, data: ByteArray) {
+                    if (failed) return
+                    if (httpStatus >= HTTP_ERROR_FROM) {
+                        fail(ErrorMapping.fromBody(httpStatus, String(data, Charsets.UTF_8)))
+                    } else if (!stream) {
+                        whole.write(data)
+                    } else {
+                        for (payload in parser.feed(data)) {
+                            when {
+                                payload == "[DONE]" -> {
+                                    Unit
+                                }
+
+                                // the flow completes at the terminal event
+                                payload.startsWith("{\"error\"") -> {
+                                    fail(ErrorMapping.fromBody(httpStatus, payload))
+                                    return
+                                }
+
+                                else -> {
+                                    scope.trySend(payload)
+                                }
+                            }
                         }
                     }
                 }
-            }
 
-            override fun onDone() {
-                if (!stream && !failed && whole.size() > 0) scope.trySend(whole.toString(Charsets.UTF_8.name()))
-                onTerminal()
-                scope.close()
-            }
+                override fun onDone() {
+                    if (!stream && !failed && whole.size() > 0) scope.trySend(whole.toString(Charsets.UTF_8.name()))
+                    onTerminal()
+                    scope.close()
+                }
 
-            override fun onCancelled() {
-                onTerminal()
-                scope.close()
-            }
+                override fun onCancelled() {
+                    onTerminal()
+                    scope.close()
+                }
 
-            private fun fail(e: LlamaBroException) {
-                failed = true
-                scope.close(e)
+                private fun fail(e: LlamaBroException) {
+                    failed = true
+                    scope.close(e)
+                }
             }
-        }
     }
 
     private companion object {
-        fun isStreamBody(body: String): Boolean = runCatching {
-            ((Json.parseToJsonElement(body) as JsonObject)["stream"] as? JsonPrimitive)?.booleanOrNull == true
-        }.getOrDefault(false)
+        fun isStreamBody(body: String): Boolean =
+            runCatching {
+                ((Json.parseToJsonElement(body) as JsonObject)["stream"] as? JsonPrimitive)?.booleanOrNull == true
+            }.getOrDefault(false)
     }
 }
 
@@ -246,31 +299,53 @@ public class Model internal constructor(
  * A typed chat completion (design §6.1, level 2). Always streams; emits [ChatEvent]s
  * ending with exactly one `Done`. Errors fail the flow with a [LlamaBroException].
  */
-public fun Model.chat(request: ChatRequest): Flow<ChatEvent> =
-    chatInternal(request, null)
+public fun Model.chat(request: ChatRequest): Flow<ChatEvent> = chatInternal(request, null)
 
 /** [Model.chat], reporting the stream's completion id as soon as it's known (Conversation.endReasoning). */
-internal fun Model.chatInternal(
-    request: ChatRequest,
-    onCompletionId: ((String) -> Unit)?,
-): Flow<ChatEvent> = flow {
-    cancelPreEncode()  // tools/ui cancels a pending pre-encode before every chat request
-    val decoder = ChatStreamDecoder()
-    var reported = false
-    rawRequest(Endpoint.ChatCompletions, ChatJson.body(request)).collect { payload ->
-        val events = decoder.accept(payload)
-        if (!reported && onCompletionId != null) decoder.completionId?.let { reported = true; onCompletionId(it) }
-        events.forEach { emit(it) }
+internal fun Model.chatInternal(request: ChatRequest, onCompletionId: ((String) -> Unit)?): Flow<ChatEvent> =
+    flow {
+        cancelPreEncode() // tools/ui cancels a pending pre-encode before every chat request
+        val decoder = ChatStreamDecoder()
+        var reported = false
+        rawRequest(Endpoint.ChatCompletions, ChatJson.body(request)).collect { payload ->
+            val events = decoder.accept(payload)
+            if (!reported && onCompletionId != null) {
+                decoder.completionId?.let {
+                    reported = true
+                    onCompletionId(it)
+                }
+            }
+            events.forEach { emit(it) }
+        }
+        decoder.finish().forEach { emit(it) }
     }
-    decoder.finish().forEach { emit(it) }
-}
 
-/** A new [com.suhel.llamabro.conversation.Conversation] (design §6.1, level 1), with an optional system prompt. */
+/**
+ * A new [com.suhel.llamabro.conversation.Conversation] (design §6.1, level 1), with an optional system prompt.
+ *
+ * [history] starts it from messages the app stored itself (F96): user, assistant, tool-result and compaction
+ * messages, in order, without the system prompt, which has its own parameter. The next request sends them before the
+ * new message. To continue a conversation saved with `toJson`, use [restoreConversation].
+ *
+ * @throws IllegalArgumentException if [history] contains a system message.
+ */
 public fun Model.conversation(
     system: String? = null,
-    configure: com.suhel.llamabro.conversation.Conversation.Builder.() -> Unit = {},
-): com.suhel.llamabro.conversation.Conversation =
-    com.suhel.llamabro.conversation.Conversation(this, system, emptyList(), com.suhel.llamabro.conversation.Conversation.Builder().apply(configure))
+    history: List<Message> = emptyList(),
+    configure: Conversation.Builder.() -> Unit = {},
+): Conversation {
+    require(history.none { it is Message.System }) {
+        "history must not contain a system message; pass the system prompt as `system`"
+    }
+    return Conversation(
+        this,
+        system,
+        history.toList(),
+        Conversation
+            .Builder()
+            .apply(configure),
+    )
+}
 
 /**
  * Restores a conversation saved with [com.suhel.llamabro.conversation.Conversation.toJson], with its saved
@@ -280,11 +355,18 @@ public fun Model.conversation(
  *
  * @throws IllegalArgumentException if [json] isn't a saved conversation.
  */
-public fun Model.restoreConversation(
-    json: String,
-    configure: com.suhel.llamabro.conversation.Conversation.Builder.() -> Unit = {},
-): com.suhel.llamabro.conversation.Conversation {
-    val saved = com.suhel.llamabro.conversation.ConversationJson.decode(json)
-    val builder = com.suhel.llamabro.conversation.Conversation.Builder().apply(saved.settings).apply(configure)
-    return com.suhel.llamabro.conversation.Conversation(this, saved.system, saved.messages, builder)
+public fun Model.restoreConversation(json: String, configure: Conversation.Builder.() -> Unit = {}): Conversation {
+    val saved =
+        ConversationJson
+            .decode(json)
+    val builder =
+        Conversation
+            .Builder()
+            .apply(saved.settings)
+            .apply(configure)
+    return com.suhel.llamabro.conversation
+        .Conversation(this, saved.system, saved.messages, builder)
 }
+
+/** From this HTTP status up, a response is an error. */
+private const val HTTP_ERROR_FROM = 400

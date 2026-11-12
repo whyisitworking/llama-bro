@@ -31,31 +31,40 @@ internal class ProgressMeter(
         force: Boolean = false,
     ) = mutex.withLock {
         val now = clockNanos()
-        // Cached bytes establish the baseline; only bytes received during transfer affect speed.
-        if (phase == DownloadPhase.Downloading && windowNanos == null) {
-            windowNanos = now
-            windowBytes = bytesDone
-        }
-        if (phase == DownloadPhase.Downloading && windowNanos != null) {
-            val elapsed = now - windowNanos!!
-            if (elapsed >= 1_000_000_000L) {
-                val sample = ((bytesDone - windowBytes).coerceAtLeast(0).toDouble() * 1_000_000_000.0) / elapsed
-                averageBytesPerSecond = averageBytesPerSecond?.let { 0.3 * sample + 0.7 * it } ?: sample
-                windowCount++
-                windowNanos = now
-                windowBytes = bytesDone
-            }
-        }
+        if (phase == DownloadPhase.Downloading) sampleSpeed(now, bytesDone)
         val changed = phase != lastPhase
-        val due = lastEmitNanos == null || now - lastEmitNanos!! >= interval.inWholeNanoseconds
-        if (changed || due || force || phase == DownloadPhase.Complete) {
+        val due = lastEmitNanos?.let { now - it >= interval.inWholeNanoseconds } ?: true
+        val mustEmit = changed || due || force
+        if (mustEmit || phase == DownloadPhase.Complete) {
             val speed = averageBytesPerSecond?.takeIf { windowCount >= 2 && it > 0.0 }?.roundToLong()
-            val eta = speed?.takeIf { it > 0L }?.let {
-                ((bytesTotal - bytesDone).coerceAtLeast(0) + it - 1) / it
-            }
+            val eta = speed?.takeIf { it > 0L }?.let { ((bytesTotal - bytesDone).coerceAtLeast(0) + it - 1) / it }
             emit(DownloadProgress(phase, bytesDone, bytesTotal, currentFile, fileIndex, fileCount, speed, eta))
             lastPhase = phase
             lastEmitNanos = now
         }
+    }
+
+    /** Once a second, folds the bytes received since the last sample into the smoothed speed. */
+    private fun sampleSpeed(now: Long, bytesDone: Long) {
+        val started = windowNanos
+        // Cached bytes establish the baseline; only bytes received during transfer affect speed.
+        if (started == null) {
+            windowNanos = now
+            windowBytes = bytesDone
+            return
+        }
+        val elapsed = now - started
+        if (elapsed < NANOS_PER_SECOND) return
+        val sample = ((bytesDone - windowBytes).coerceAtLeast(0).toDouble() * NANOS_PER_SECOND) / elapsed
+        averageBytesPerSecond = averageBytesPerSecond?.let { NEW_WEIGHT * sample + OLD_WEIGHT * it } ?: sample
+        windowCount++
+        windowNanos = now
+        windowBytes = bytesDone
+    }
+
+    private companion object {
+        const val NANOS_PER_SECOND = 1_000_000_000L
+        const val NEW_WEIGHT = 0.3
+        const val OLD_WEIGHT = 0.7
     }
 }

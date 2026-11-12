@@ -1,8 +1,11 @@
 package com.suhel.llamabro.hexagon
 
+import android.app.ActivityManager
+import android.content.Context
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.suhel.llamabro.ContextSize
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.DevicePolicy
 import com.suhel.llamabro.Endpoint
@@ -10,6 +13,7 @@ import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.LoadReport
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
+import com.suhel.llamabro.Speculative
 import kotlinx.coroutines.flow.single
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -34,31 +38,50 @@ class DeviceChoiceDeviceTest {
 
     private fun log(msg: String) = Log.i("DeviceChoice", msg)
 
-    private fun load(policy: DevicePolicy): Model = runBlocking {
-        val mi = android.app.ActivityManager.MemoryInfo()
-        (context.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager).getMemoryInfo(mi)
-        log("memory before $policy: availMem=${mi.availMem shr 20} MiB threshold=${mi.threshold shr 20} MiB totalMem=${mi.totalMem shr 20} MiB lowMemory=${mi.lowMemory}")
-        val t0 = System.nanoTime()
-        llama.loadModel(ModelSource.file(model)) { devicePolicy = policy }.also {
-            log("$policy -> ${it.loadReport} in ${(System.nanoTime() - t0) / 1_000_000} ms")
+    private fun load(policy: DevicePolicy): Model =
+        runBlocking {
+            val mi = ActivityManager.MemoryInfo()
+            (
+                context.getSystemService(
+                    Context.ACTIVITY_SERVICE,
+                ) as ActivityManager
+            ).getMemoryInfo(mi)
+            log(
+                "memory before $policy: availMem=${mi.availMem shr 20} MiB threshold=${mi.threshold shr 20} MiB totalMem=${mi.totalMem shr 20} MiB lowMemory=${mi.lowMemory}",
+            )
+            val t0 = System.nanoTime()
+            llama.loadModel(ModelSource.file(model)) { devicePolicy = policy }.also {
+                log("$policy -> ${it.loadReport} in ${(System.nanoTime() - t0) / 1_000_000} ms")
+            }
         }
-    }
 
     /** The T1 probe's request: 16 greedy tokens of llama-server's native completion. */
-    private fun Model.greedy16(): String = runBlocking {
-        val body = """{"prompt":"Write a short story about a lighthouse keeper.","n_predict":16,"temperature":0,"cache_prompt":false}"""
-        (Json.parseToJsonElement(rawRequest(Endpoint.Completion, body).single()) as JsonObject).getValue("content").jsonPrimitive.content
-    }
+    private fun Model.greedy16(): String =
+        runBlocking {
+            val body =
+                """{"prompt":"Write a short story about a lighthouse keeper.","n_predict":16,""" +
+                    """"temperature":0,"cache_prompt":false}"""
+            (
+                Json.parseToJsonElement(
+                    rawRequest(Endpoint.Completion, body).single(),
+                ) as JsonObject
+            ).getValue("content").jsonPrimitive.content
+        }
 
     /**
      * A prompt with one right answer, so a backend that answers garbage fails (F71: identical garbage passed a
      * same-twice check). Short on purpose: llama-server sends its last 4 tokens as a batch of their own (for
      * Qwen3.5's checkpoints), the 2–4-row matmuls that ggml-opencl's coopk kernel got wrong (F75).
      */
-    private fun Model.capital(): String = runBlocking {
-        val body = """{"prompt":"The capital of France is","n_predict":8,"temperature":0,"cache_prompt":false}"""
-        (Json.parseToJsonElement(rawRequest(Endpoint.Completion, body).single()) as JsonObject).getValue("content").jsonPrimitive.content
-    }
+    private fun Model.capital(): String =
+        runBlocking {
+            val body = """{"prompt":"The capital of France is","n_predict":8,"temperature":0,"cache_prompt":false}"""
+            (
+                Json.parseToJsonElement(
+                    rawRequest(Endpoint.Completion, body).single(),
+                ) as JsonObject
+            ).getValue("content").jsonPrimitive.content
+        }
 
     private fun assertReport(r: LoadReport, kind: DeviceKind, device: String, backend: String) {
         assertEquals(r.toString(), kind, r.device)
@@ -67,10 +90,15 @@ class DeviceChoiceDeviceTest {
         assertEquals(r.toString(), emptyList<LoadReport.Attempt>(), r.attempts)
         // ContextSize.Auto is fitted to Android's available memory (P2 T7, D33)
         assertTrue(r.toString(), r.contextSize >= 4096)
-        assertTrue(r.toString(), listOf("fitted to", "the ceiling of", "the training context fits").any { r.contextReason.startsWith(it) })
-        assertTrue(r.toString(), r.contextSize <= com.suhel.llamabro.ContextSize.AUTO_CEILING)
+        assertTrue(
+            r.toString(),
+            listOf("fitted to", "the ceiling of", "the training context fits").any {
+                r.contextReason.startsWith(it)
+            },
+        )
+        assertTrue(r.toString(), r.contextSize <= ContextSize.AUTO_CEILING)
         // Speculative.Auto leaves Qwen3.5's MTP head off on every chip (P2 T8, F67)
-        assertEquals(r.toString(), com.suhel.llamabro.Speculative.Off, r.speculative)
+        assertEquals(r.toString(), Speculative.Off, r.speculative)
         assertTrue(r.toString(), r.speculativeReason.startsWith("off: MTP"))
     }
 
@@ -109,10 +137,11 @@ class DeviceChoiceDeviceTest {
     }
 
     @Test
-    fun devicesHaveTheirKinds() = runBlocking {
-        val kinds = llama.devices().associate { it.name to it.kind }
-        assertEquals(DeviceKind.Npu, kinds["HTP0"])
-        assertEquals(DeviceKind.Gpu, kinds["GPUOpenCL"])
-        assertEquals(DeviceKind.Cpu, kinds["CPU"])
-    }
+    fun devicesHaveTheirKinds() =
+        runBlocking {
+            val kinds = llama.devices().associate { it.name to it.kind }
+            assertEquals(DeviceKind.Npu, kinds["HTP0"])
+            assertEquals(DeviceKind.Gpu, kinds["GPUOpenCL"])
+            assertEquals(DeviceKind.Cpu, kinds["CPU"])
+        }
 }

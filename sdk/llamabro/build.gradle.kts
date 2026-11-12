@@ -27,17 +27,24 @@ android {
         externalNativeBuild {
             cmake {
                 // llama.cpp is always built optimised, also in the debug variant
-                arguments += listOf(
-                    "-DANDROID_STL=c++_shared",
-                    "-DCMAKE_BUILD_TYPE=Release",
-                    "-DLB_LLAMA_DIR=${projectDir.resolve("../native/build/llama.cpp").canonicalPath}",
-                )
+                arguments +=
+                    listOf(
+                        "-DANDROID_STL=c++_shared",
+                        "-DCMAKE_BUILD_TYPE=Release",
+                        "-DLB_LLAMA_DIR=${projectDir.resolve("../native/build/llama.cpp").canonicalPath}",
+                    )
                 // the CPU backends are loaded at runtime, not linked, so AGP packages them only when named
                 // (variant list: llama.cpp ggml/src/CMakeLists.txt, GGML_CPU_ALL_VARIANTS on Android)
-                targets += listOf("llamabro") + listOf(
-                    "android_armv8.0_1", "android_armv8.2_1", "android_armv8.2_2", "android_armv8.6_1",
-                    "android_armv9.0_1", "android_armv9.2_1", "android_armv9.2_2",
-                ).map { "ggml-cpu-$it" }
+                targets += listOf("llamabro") +
+                    listOf(
+                        "android_armv8.0_1",
+                        "android_armv8.2_1",
+                        "android_armv8.2_2",
+                        "android_armv8.6_1",
+                        "android_armv9.0_1",
+                        "android_armv9.2_1",
+                        "android_armv9.2_2",
+                    ).map { "ggml-cpu-$it" }
             }
         }
     }
@@ -48,7 +55,6 @@ android {
             version = "4.1.2"
         }
     }
-
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -87,18 +93,24 @@ dependencies {
 
 // The patched llama.cpp copy every native build compiles from (sdk/native/scripts/prepare-llama.sh).
 val nativeDir = projectDir.resolve("../native")
-val submoduleHead: File = providers.exec {
-    commandLine("git", "-C", nativeDir.resolve("third_party/llama.cpp").path, "rev-parse", "--absolute-git-dir")
-}.standardOutput.asText.get().trim().let { File(it, "HEAD") }
+val submoduleHead: File =
+    providers
+        .exec {
+            commandLine("git", "-C", nativeDir.resolve("third_party/llama.cpp").path, "rev-parse", "--absolute-git-dir")
+        }.standardOutput.asText
+        .get()
+        .trim()
+        .let { File(it, "HEAD") }
 
-val prepareLlama = tasks.register<Exec>("prepareLlama") {
-    description = "Exports the llama.cpp submodule and applies sdk/native/patches into sdk/native/build/llama.cpp"
-    inputs.dir(nativeDir.resolve("patches"))
-    inputs.file(submoduleHead)
-    inputs.file(nativeDir.resolve("scripts/prepare-llama.sh"))
-    outputs.dir(nativeDir.resolve("build/llama.cpp"))
-    commandLine("bash", nativeDir.resolve("scripts/prepare-llama.sh").path, nativeDir.resolve("build").path)
-}
+val prepareLlama =
+    tasks.register<Exec>("prepareLlama") {
+        description = "Exports the llama.cpp submodule and applies sdk/native/patches into sdk/native/build/llama.cpp"
+        inputs.dir(nativeDir.resolve("patches"))
+        inputs.file(submoduleHead)
+        inputs.file(nativeDir.resolve("scripts/prepare-llama.sh"))
+        outputs.dir(nativeDir.resolve("build/llama.cpp"))
+        commandLine("bash", nativeDir.resolve("scripts/prepare-llama.sh").path, nativeDir.resolve("build").path)
+    }
 
 tasks.configureEach {
     if (name.startsWith("configureCMake") || name.startsWith("buildCMake")) dependsOn(prepareLlama)
@@ -143,14 +155,16 @@ abstract class ReleaseApiBuild : KotlinApiBuildTask() {
 }
 
 val apiFile = layout.projectDirectory.file("api/llamabro.api")
-val apiBuild = tasks.register<ReleaseApiBuild>("apiBuild") {
-    description = "Writes the release build's public API to build/api/llamabro.api"
-    outputApiFile.set(layout.buildDirectory.file("api/llamabro.api"))
-    runtimeClasspath.from(bcvRuntime)
-}
+val apiBuild =
+    tasks.register<ReleaseApiBuild>("apiBuild") {
+        description = "Writes the release build's public API to build/api/llamabro.api"
+        outputApiFile.set(layout.buildDirectory.file("api/llamabro.api"))
+        runtimeClasspath.from(bcvRuntime)
+    }
 androidComponents {
     onVariants(selector().withBuildType("release")) { variant ->
-        variant.artifacts.forScope(ScopedArtifacts.Scope.PROJECT)
+        variant.artifacts
+            .forScope(ScopedArtifacts.Scope.PROJECT)
             .use(apiBuild)
             .toGet(ScopedArtifact.CLASSES, ReleaseApiBuild::classJars, ReleaseApiBuild::classDirs)
     }

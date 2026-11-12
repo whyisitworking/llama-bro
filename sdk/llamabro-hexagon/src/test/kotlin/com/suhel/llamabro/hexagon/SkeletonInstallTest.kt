@@ -10,6 +10,7 @@ import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
 import java.security.MessageDigest
+import java.util.Collections
 import java.util.concurrent.CyclicBarrier
 import kotlin.concurrent.thread
 
@@ -18,29 +19,37 @@ class SkeletonInstallTest {
     private val root = Files.createTempDirectory("htp").toFile()
 
     /** Fake APK assets: skeleton bytes plus the .sha256 files the build writes, optionally wrong. */
-    private class Assets(val files: Map<String, ByteArray>, val hashOverride: Map<String, String> = emptyMap()) : SkeletonInstall.Source {
+    private class Assets(val files: Map<String, ByteArray>, val hashOverride: Map<String, String> = emptyMap()) :
+        SkeletonInstall.Source {
         var opens = 0
+
         override fun list() = files.keys.flatMap { listOf(it, "$it.sha256") }
+
         override fun open(name: String): InputStream {
             opens++
-            val bytes = if (name.endsWith(".sha256")) {
-                val so = name.removeSuffix(".sha256")
-                (hashOverride[so] ?: sha(files.getValue(so))).plus("\n").encodeToByteArray()
-            } else {
-                files.getValue(name)
-            }
+            val bytes =
+                if (name.endsWith(".sha256")) {
+                    val so = name.removeSuffix(".sha256")
+                    (hashOverride[so] ?: sha(files.getValue(so))).plus("\n").encodeToByteArray()
+                } else {
+                    files.getValue(name)
+                }
             return bytes.inputStream()
         }
     }
 
-    private val v1 = mapOf("libggml-htp-v79.so" to ByteArray(300_000) { it.toByte() }, "libggml-htp-v81.so" to ByteArray(1000) { 7 })
+    private val v1 =
+        mapOf(
+            "libggml-htp-v79.so" to ByteArray(300_000) { it.toByte() },
+            "libggml-htp-v81.so" to ByteArray(1000) { 7 },
+        )
 
     @Test
     fun installsEverySkeletonVerified() {
         val dir = SkeletonInstall(root, Assets(v1)).install()
         assertEquals(root, dir.parentFile)
         for ((name, bytes) in v1) assertArrayEquals(name, bytes, File(dir, name).readBytes())
-        assertEquals(setOf(dir.name, ".lock"), root.list()!!.toSet())  // no staging left behind
+        assertEquals(setOf(dir.name, ".lock"), root.list()!!.toSet()) // no staging left behind
     }
 
     @Test
@@ -51,13 +60,13 @@ class SkeletonInstallTest {
         val second = SkeletonInstall(root, assets).install()
         assertEquals(first, second)
         assertEquals(stamp, File(second, "libggml-htp-v79.so").lastModified())
-        assertEquals(v1.size, assets.opens)  // only the .sha256 files were read
+        assertEquals(v1.size, assets.opens) // only the .sha256 files were read
     }
 
     @Test
     fun corruptOrTruncatedFileIsReplaced() {
         val dir = SkeletonInstall(root, Assets(v1)).install()
-        File(dir, "libggml-htp-v79.so").writeBytes(ByteArray(10))  // a crash mid-copy, or tampering
+        File(dir, "libggml-htp-v79.so").writeBytes(ByteArray(10)) // a crash mid-copy, or tampering
         File(dir, "libggml-htp-v81.so").delete()
         val again = SkeletonInstall(root, Assets(v1)).install()
         assertEquals(dir, again)
@@ -73,7 +82,7 @@ class SkeletonInstallTest {
         } catch (e: SkeletonInstall.MismatchException) {
             assertTrue(e.message!!, "libggml-htp-v81.so" in e.message!!)
         }
-        assertEquals(setOf(".lock"), root.list()!!.toSet())  // nothing half-installed
+        assertEquals(setOf(".lock"), root.list()!!.toSet()) // nothing half-installed
     }
 
     @Test
@@ -91,18 +100,19 @@ class SkeletonInstallTest {
         repeat(20) {
             root.deleteRecursively()
             val barrier = CyclicBarrier(4)
-            val results = java.util.Collections.synchronizedList(mutableListOf<File>())
-            val errors = java.util.Collections.synchronizedList(mutableListOf<Throwable>())
-            (1..4).map {
-                thread {
-                    try {
-                        barrier.await()
-                        results += SkeletonInstall(root, Assets(v1)).install()
-                    } catch (t: Throwable) {
-                        errors += t
+            val results = Collections.synchronizedList(mutableListOf<File>())
+            val errors = Collections.synchronizedList(mutableListOf<Throwable>())
+            (1..4)
+                .map {
+                    thread {
+                        try {
+                            barrier.await()
+                            results += SkeletonInstall(root, Assets(v1)).install()
+                        } catch (t: Throwable) {
+                            errors += t
+                        }
                     }
-                }
-            }.forEach { it.join() }
+                }.forEach { it.join() }
             assertEquals(emptyList<Throwable>(), errors)
             assertEquals(1, results.toSet().size)
             for ((name, bytes) in v1) assertArrayEquals(name, bytes, File(results[0], name).readBytes())

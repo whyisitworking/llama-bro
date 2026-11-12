@@ -16,7 +16,9 @@ public object Compaction {
     internal const val SUMMARY_PLACEHOLDER: String = "{{SUMMARY}}"
 
     /** How the model sees a compaction node. */
-    internal const val CONTEXT_TEMPLATE: String = "This conversation was compacted. Summary of the earlier exchange:\n\n$SUMMARY_PLACEHOLDER"
+    internal const val CONTEXT_TEMPLATE: String =
+        "This conversation was compacted. Summary of the earlier " +
+            "exchange:\n\n$SUMMARY_PLACEHOLDER"
 }
 
 /**
@@ -50,10 +52,11 @@ internal object CompactionPlanner {
     private fun isBoundary(m: Message) = m is Message.Compaction && m.summary.isNotBlank()
 
     /** tools/ui `stepStarts`: a step is a user message, or an assistant message with the tool results after it. */
-    private fun stepStarts(messages: List<Message>): List<Int> = messages.indices.filter { i ->
-        val m = messages[i]
-        !(isPrefix(m) || m is Message.Compaction || m is Message.ToolResult)
-    }
+    private fun stepStarts(messages: List<Message>): List<Int> =
+        messages.indices.filter { i ->
+            val m = messages[i]
+            !(isPrefix(m) || m is Message.Compaction || m is Message.ToolResult)
+        }
 
     /** Each step as an index range (a step runs until the next step starts, or the end). */
     fun steps(messages: List<Message>): List<IntRange> {
@@ -65,7 +68,10 @@ internal object CompactionPlanner {
         }
     }
 
-    /** tools/ui `compactionCut`: where the summary request cuts the model view; null = nothing before the preserved steps. */
+    /**
+     * tools/ui `compactionCut`: where the summary request cuts the model view; null = nothing before the preserved
+     * steps.
+     */
     fun cutIndex(messages: List<Message>, preservedSteps: Int): Int? {
         val starts = stepStarts(messages)
         val folded = starts.size - preservedSteps
@@ -82,17 +88,24 @@ internal object CompactionPlanner {
         // String.replace is literal, like tools/ui's replacement function: `$&` in a summary stays as written.
         // The framed copy stays a compaction node (as in tools/ui, where it keeps its type), so it is no step;
         // [forRequest] turns it into the user message the model reads.
-        val framed = Message.Compaction(Compaction.CONTEXT_TEMPLATE.replace(Compaction.SUMMARY_PLACEHOLDER, node.summary), node.keptSteps)
+        val framed =
+            Message.Compaction(
+                Compaction.CONTEXT_TEMPLATE.replace(Compaction.SUMMARY_PLACEHOLDER, node.summary),
+                node.keptSteps,
+            )
         val steps = before.filter { !isPrefix(it) && it !is Message.Compaction }
         val starts = stepStarts(steps)
         val kept = minOf(node.keptSteps, starts.size)
         val from = if (kept > 0) starts[starts.size - kept] else steps.size
-        return before.filter { isPrefix(it) } + framed + steps.subList(from, steps.size) + messages.subList(boundary + 1, messages.size)
+        return before.filter { isPrefix(it) } + framed + steps.subList(from, steps.size) +
+            messages.subList(boundary + 1, messages.size)
     }
 
     /** A model view as request messages: the framed compaction node is sent as a user message (its tools/ui role). */
-    fun forRequest(view: List<Message>): List<Message> = view.map { if (it is Message.Compaction) Message.user(it.summary) else it }
+    fun forRequest(view: List<Message>): List<Message> =
+        view.map { if (it is Message.Compaction) Message.user(it.summary) else it }
 
     /** tools/ui `canCompactMessages`. */
-    fun canCompact(messages: List<Message>, preservedSteps: Int): Boolean = cutIndex(modelView(messages), preservedSteps) != null
+    fun canCompact(messages: List<Message>, preservedSteps: Int): Boolean =
+        cutIndex(modelView(messages), preservedSteps) != null
 }

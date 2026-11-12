@@ -1,0 +1,88 @@
+{
+ "repos": {
+  "test/worker": {
+   "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "branches": [
+    "main"
+   ],
+   "files": [
+    {
+     "path": "model-Q4_K_M.gguf",
+     "size": 25165824,
+     "seed": 21
+    }
+   ]
+  },
+  "test/worker-b": {
+   "commit": "cccccccccccccccccccccccccccccccccccccccc",
+   "branches": [
+    "main"
+   ],
+   "files": [
+    {
+     "path": "model-Q4_K_M.gguf",
+     "size": 12582912,
+     "seed": 22
+    }
+   ]
+  },
+  "test/worker-c": {
+   "commit": "dddddddddddddddddddddddddddddddddddddddd",
+   "branches": [
+    "main"
+   ],
+   "files": [
+    {
+     "path": "model-Q4_K_M.gguf",
+     "size": 12582912,
+     "seed": 23
+    }
+   ]
+  },
+  "unsloth/Qwen3.5-0.8B-GGUF": {
+   "commit": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+   "branches": [
+    "main"
+   ],
+   "files": [
+    {
+     "path": "Qwen3.5-0.8B-Q4_K_M.gguf",
+     "size": 25165824,
+     "seed": 31
+    },
+    {
+     "path": "mmproj-F16.gguf",
+     "size": 8388608,
+     "seed": 32
+    }
+   ]
+  },
+  "test/gated": {
+   "commit": "ffffffffffffffffffffffffffffffffffffffff",
+   "branches": [
+    "main"
+   ],
+   "gated_token": "hf_expected",
+   "files": [
+    {
+     "path": "model-Q4_K_M.gguf",
+     "size": 2097152,
+     "seed": 41
+    }
+   ]
+  },
+  "test/small": {
+   "commit": "9999999999999999999999999999999999999999",
+   "branches": [
+    "main"
+   ],
+   "files": [
+    {
+     "path": "model-Q4_K_M.gguf",
+     "size": 2097152,
+     "seed": 42
+    }
+   ]
+  }
+ }
+}

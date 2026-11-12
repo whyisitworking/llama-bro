@@ -23,9 +23,12 @@ public class RequestOptions internal constructor(
     public fun copy(configure: Builder.() -> Unit): RequestOptions = Builder(this).apply(configure).buildOptions()
 
     override fun equals(other: Any?): Boolean = other is RequestOptions && parts() == other.parts()
+
     override fun hashCode(): Int = parts().hashCode()
+
     override fun toString(): String =
-        "RequestOptions(toolChoice=$toolChoice, parallelToolCalls=$parallelToolCalls, responseFormat=$responseFormat, " +
+        "RequestOptions(toolChoice=$toolChoice, parallelToolCalls=$parallelToolCalls, " +
+            "responseFormat=$responseFormat, " +
             "sampling=$sampling, reasoning=$reasoning, stop=$stop, extra=$extra)"
 
     private fun parts() = listOf(toolChoice, parallelToolCalls, responseFormat, sampling, reasoning, stop, extra)
@@ -53,13 +56,19 @@ public class RequestOptions internal constructor(
                 field = value
             }
 
-        public fun stop(vararg stop: String) { this.stop = stop.toList() }
+        public fun stop(vararg stop: String) {
+            this.stop = stop.toList()
+        }
 
         /** Changes [sampling] in place: a second block adds to the first. */
-        public fun sampling(configure: Sampling.Builder.() -> Unit) { sampling = sampling.copy(configure) }
+        public fun sampling(configure: Sampling.Builder.() -> Unit) {
+            sampling = sampling.copy(configure)
+        }
 
         /** Changes [reasoning] in place. */
-        public fun reasoning(configure: Reasoning.Builder.() -> Unit) { reasoning = reasoning.copy(configure) }
+        public fun reasoning(configure: Reasoning.Builder.() -> Unit) {
+            reasoning = reasoning.copy(configure)
+        }
 
         internal fun buildOptions(): RequestOptions =
             RequestOptions(toolChoice, parallelToolCalls, responseFormat, sampling, reasoning, stop.toList(), extra)
@@ -77,4 +86,5 @@ public class RequestOptions internal constructor(
 }
 
 /** `RequestOptions { sampling { temperature = 0.2f }; stop("END") }`. */
-public fun RequestOptions(configure: RequestOptions.Builder.() -> Unit): RequestOptions = RequestOptions.Default.copy(configure)
+public fun RequestOptions(configure: RequestOptions.Builder.() -> Unit): RequestOptions =
+    RequestOptions.Default.copy(configure)
