@@ -45,7 +45,7 @@ sealed interface GetModelsState {
 }
 
 /**
- * Search over Hugging Face and the five suggestions (pd-design 4.3). A query is searched 350 ms after the last
+ * Search over Hugging Face and the five suggestions (demo design §4.3). A query is searched 350 ms after the last
  * keystroke; under two characters shows the suggestions. A row's fit arrives on its own flow ([fit]) so a late
  * estimate recomposes that row alone; so does a download's progress ([progress]).
  */

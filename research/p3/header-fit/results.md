@@ -4,7 +4,7 @@
 
 ## Header sizes
 
-`python spike/p3/header-fit/make_stub.py SRC DST` copies through `GGUFReader.data_offset` and truncates to the original size. Exact output is in `sizes.out`.
+`python research/p3/header-fit/make_stub.py SRC DST` copies through `GGUFReader.data_offset` and truncates to the original size. Exact output is in `sizes.out`.
 
 | GGUF | Full bytes | Header bytes |
 |---|---:|---:|
@@ -44,4 +44,4 @@ Conclusion: T7 can use the header-only `Projection` method for ordinary main mod
 
 ## Validation gate
 
-`PATH=$HOME/.nvm/versions/node/v24.14.0/bin:$PATH ANDROID_SERIAL=<serial> sdk/scripts/check.sh --device` passed build, native, contract, tools-ui, API, lint, JVM, host end-to-end, and AAR. The device stage reported the pre-existing Llama 3.2 tool-loop failure allowed by the gate, plus a sample UI timeout. The device contract then waited at thermal status 3 and ADB lost the phone. The phone is not currently listed by `adb devices`; the full device gate remains to rerun after reconnection. The separate T1 phone fit comparisons and symlink check above completed before this interruption.
+`ANDROID_SERIAL=<serial> sdk/scripts/check.sh --device` passed build, native, contract, tools-ui, API, lint, JVM, host end-to-end, and AAR. The device stage reported the pre-existing Llama 3.2 tool-loop failure allowed by the gate, plus a sample UI timeout. The device contract then waited at thermal status 3 and ADB lost the phone. The phone is not currently listed by `adb devices`; the full device gate remains to rerun after reconnection. The separate T1 phone fit comparisons and symlink check above completed before this interruption.

@@ -1,7 +1,6 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.compose.screenshot)
 }
 
 android {
@@ -16,13 +15,19 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    experimentalProperties["android.experimental.enableScreenshotTest"] = true
     lint {
         abortOnError = true
         warningsAsErrors = true
         checkDependencies = false
         // the Gradle wrapper (the repository root's, found above this module) is pinned on purpose, and so are the versions in the shared catalog (updated deliberately, not by lint)
-        disable += setOf("AndroidGradlePluginVersion", "GradleDependency", "NewerVersionAvailable")
+        // the Lifecycle library ships a lint check built for a newer lint API than this AGP version loads
+        disable +=
+            setOf(
+                "AndroidGradlePluginVersion",
+                "GradleDependency",
+                "NewerVersionAvailable",
+                "ObsoleteLintCustomCheck",
+            )
     }
 }
 
@@ -42,9 +47,6 @@ dependencies {
     debugImplementation(libs.androidx.activity.compose)
 
     testImplementation(libs.junit)
-
-    screenshotTestImplementation(libs.screenshot.validation.api)
-    screenshotTestImplementation(libs.androidx.compose.ui.tooling)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.junit)

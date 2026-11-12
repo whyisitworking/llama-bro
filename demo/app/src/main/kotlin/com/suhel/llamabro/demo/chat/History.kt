@@ -86,7 +86,7 @@ object History {
     }
 }
 
-/** The system prompt from Settings > Instructions (pd-design 4.6). */
+/** The system prompt from Settings > Instructions (demo design §4.5). */
 object Instructions {
     fun system(about: String, style: String): String? {
         val parts =

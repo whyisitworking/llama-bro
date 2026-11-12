@@ -14,7 +14,7 @@ import java.time.format.FormatStyle
 import java.util.Locale
 import kotlin.math.roundToInt
 
-/** Sidebar layout writes replies on the page; Chat list layout puts them in bubbles (pd-design 4.2). */
+/** Sidebar layout writes replies on the page; Chat list layout puts them in bubbles (demo design §4.2). */
 enum class MessageStyle { Open, Bubbles }
 
 /** One row of the message list. [key] is stable for a message, [type] is its Compose content type. */
@@ -149,7 +149,7 @@ class ChatItems(
     }
 }
 
-/** The share card's text: the first 600 characters of a reply, with "…" after when it was cut (pd-design 4.4). */
+/** The share card's text: the first 600 characters of a reply, with "…" after when it was cut (demo design §4.4). */
 object ShareText {
     const val LIMIT = 600
 

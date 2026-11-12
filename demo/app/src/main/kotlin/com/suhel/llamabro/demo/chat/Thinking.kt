@@ -5,9 +5,9 @@ import com.suhel.llamabro.chat.Reasoning
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.models.CatalogEntry
 
-/** How a Think level reaches the model (pd-design 4.4). */
+/** How a Think level reaches the model (demo design §4.4). */
 object Thinking {
-    /** Quick and Balanced cap the thinking; Deep doesn't (builder's call, settled here). */
+    /** Quick and Balanced cap the thinking; Deep doesn't (a design choice). */
     private const val QUICK_TOKENS = 512
     private const val BALANCED_TOKENS = 2_048
 

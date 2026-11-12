@@ -10,7 +10,8 @@ import java.io.File
 
 /**
  * The data every benchmark starts from: 300 chats for the Chat list, one chat of 300 messages with code blocks, the
- * Chat list layout, a model on the phone. Written once; a marker file tells the benchmarks it is there. Every start restores the big chat to 300 messages.
+ * Chat list layout, a model on the phone. Written once; a marker file tells the benchmarks it is there. Every start
+ * restores the big chat to 300 messages.
  */
 object BenchmarkSeed {
     const val READY_MARKER = "benchmark-seed-ready"

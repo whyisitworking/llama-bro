@@ -3,7 +3,7 @@ package com.suhel.llamabro.demo.models
 /**
  * Finding models (open so the phone tests can stand a fake in for the network): Hugging Face's search and a repo's
  * files, and the quick fit of a model the list can't afford a
- * real estimate for (pd-design 5.3). The view models take its functions, not the class, so tests pass plain lambdas.
+ * real estimate for (demo design §7.1). The view models take its functions, not the class, so tests pass plain lambdas.
  */
 open class ModelDiscovery(private val hf: HfSearch, private val facts: suspend () -> DeviceFacts) {
     open suspend fun search(query: String): List<SearchModel> = hf.search(query)

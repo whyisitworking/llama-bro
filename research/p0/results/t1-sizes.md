@@ -1,6 +1,6 @@
 # T1: build sizes (arm64-android-snapdragon-release, b12052, stripped with NDK 29 llvm-strip)
 
-> **Parent:** [P0 spike plan](../../../docs/sdk-v2/plans/p0-spike.md) · **Summarised in:** [findings](../../../docs/sdk-v2/findings.md) (T1; finding F2)
+> **Parent:** [P0](../README.md) · **Summarised in:** [findings](../../../docs/research/findings.md) (T1; finding F2)
 
 | File | Stripped | Used by |
 |---|---|---|

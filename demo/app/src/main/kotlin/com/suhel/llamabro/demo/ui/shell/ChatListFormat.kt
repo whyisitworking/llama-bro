@@ -9,7 +9,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
 
-/** The drawer's groups (pd-design 4.2). */
+/** The drawer's groups (demo design §4.2). */
 enum class DayGroup(val label: String) { Today("Today"), ThisWeek("This week"), Earlier("Earlier") }
 
 /** A group of chats, newest first inside. */

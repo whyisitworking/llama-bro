@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 
-/** The greeting by the hour of the day (the builder's call, settled in T10). */
+/** The greeting by the hour of the day. */
 object Greetings {
     private val MORNING = 5 until 12
     private val AFTERNOON = 12 until 17
@@ -58,8 +58,9 @@ data class PickCard(val entry: CatalogEntry, val fit: FitView, val sizeText: Str
 data class PickSheetState(val entry: CatalogEntry, val fit: FitView, val memoryText: String, val downloadText: String)
 
 /**
- * The first screen (pd-design 4.1): the greeting, three picks tinted without any network, and a pick's sheet. The two
- * states are derived: the picks from the phone's facts, the sheet from which pick is open. [get] is the one command.
+ * The first screen (demo design §4.1): the greeting, three picks tinted without any network, and a pick's sheet. The
+ * two states are derived: the picks from the phone's facts, the sheet from which pick is open. [get] is the one
+ * command.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class FirstRunViewModel(

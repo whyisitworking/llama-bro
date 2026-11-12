@@ -26,7 +26,7 @@ internal fun SampleFrame(content: @Composable ColumnScope.() -> Unit) {
     )
 }
 
-/** Light and dark at the 360 dp width of Reference L's screenshots. */
+/** Light and dark at the 360 dp width used for screenshots. */
 @Preview(name = "Light", widthDp = 360)
 @Preview(name = "Dark", widthDp = 360, uiMode = Configuration.UI_MODE_NIGHT_YES)
 internal annotation class LightDarkPreviews

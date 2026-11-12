@@ -310,4 +310,4 @@ llama.loadModel(ModelSource.file(path)) { speculative = Speculative.Ngram(then =
 The SDK runs llama-server's `server_context` and calls its route handlers directly (no sockets): same output,
 speed and memory as the `llama-server` binary. `sdk/scripts/check.sh` proves it on every change by sending the
 same requests to both and requiring identical answers. Design, decisions and measurements:
-[docs/sdk-v2](../docs/sdk-v2/README.md).
+[docs/architecture.md](../docs/architecture.md), [docs/decisions.md](../docs/decisions.md) and [docs/research/findings.md](../docs/research/findings.md).

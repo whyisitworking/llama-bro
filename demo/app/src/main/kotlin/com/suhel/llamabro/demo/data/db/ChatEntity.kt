@@ -4,7 +4,7 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-/** Reference B: one chat. [modelKey] is the model of the last turn (`HfModel.toString()`). */
+/** One chat. [modelKey] is the model of the last turn (`HfModel.toString()`). */
 @Entity(tableName = "chats", indices = [Index("updatedAt")])
 data class ChatEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

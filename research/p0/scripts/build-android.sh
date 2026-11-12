@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds one spike variant (U, P or S) for Android with upstream's Snapdragon toolchain and preset
-# (docs/backend/snapdragon/README.md in llama.cpp b12052). Output: spike/p0/build/out-android-<variant>/{bin,lib}
+# (docs/backend/snapdragon/README.md in llama.cpp b12052). Output: research/p0/build/out-android-<variant>/{bin,lib}
 set -euo pipefail
 
 variant="${1:?usage: build-android.sh U|P|S}"

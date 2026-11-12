@@ -4,7 +4,7 @@
 # then one ~600-token prompt with a 128-token greedy reply (llama-server's own timings) and an MD5 of the reply.
 # usage: [MODEL=file.gguf] [ROUNDS=n] [ARMS="cpu opencl vulkan"] speed.sh     (findings F63, F64)
 set -uo pipefail
-export ANDROID_SERIAL="${ANDROID_SERIAL:-<serial>}"
+export ANDROID_SERIAL="${ANDROID_SERIAL:?set ANDROID_SERIAL to the adb serial of the device}"
 root=/data/local/tmp/lb-spike
 model=${MODEL:-Qwen3.5-4B-Q4_K_M.gguf}
 rounds=${ROUNDS:-3}

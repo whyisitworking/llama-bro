@@ -1,6 +1,6 @@
 # PF T3: draft models, EAGLE-3, DFlash and DSpark for Qwen3.5 4B (F73)
 
-Sidecars for Qwen3.5 4B (the SDK's model, so no Qwen3 4B stand-in was needed), downloads approved by the user
+Sidecars for Qwen3.5 4B (the SDK's model, so no Qwen3 4B stand-in was needed), downloads approved by the maintainer
 2026-11-06, converted on the Mac with upstream's `convert_hf_to_gguf.py --target-model-dir` to Q8_0 (`convert.sh`,
 checksums `gguf.sha256`):
 

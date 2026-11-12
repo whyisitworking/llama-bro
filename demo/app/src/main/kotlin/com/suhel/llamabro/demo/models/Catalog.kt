@@ -3,7 +3,7 @@ package com.suhel.llamabro.demo.models
 import com.suhel.llamabro.hub.HfModel
 
 /**
- * A model the app knows by name. Friendly names belong to exactly these files (pd-design 4.5). Sizes are pinned from
+ * A model the app knows by name. Friendly names belong to exactly these files (demo design §3). Sizes are pinned from
  * the repo trees read on 2026-11-10 (commits and file names in `spike/pd/catalog/pin.md`); a mismatch at runtime
  * (the hub's plan disagrees) only refreshes the size, never the name.
  */
@@ -94,7 +94,7 @@ object Catalog {
     /** First run's three picks. */
     val picks: List<CatalogEntry> = listOf(swift, writer, deep)
 
-    /** "Suggested for this phone", in order (pd-design 4.3). */
+    /** "Suggested for this phone", in order (demo design §4.3). */
     val suggested: List<CatalogEntry> = listOf(swift, writer, deep, llama, nine)
 
     fun byKey(key: HfModel): CatalogEntry? = suggested.firstOrNull { it.key == key }

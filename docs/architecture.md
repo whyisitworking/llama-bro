@@ -1,0 +1,731 @@
+# Architecture
+
+Llama-Bro is an Android SDK that runs llama.cpp's `llama-server` core inside the application process and exposes it through a Kotlin API. This guide describes what the SDK is, how its modules fit together, how a request travels from Kotlin to native code and back, and which rules govern threading, memory and lifecycle. Choices are justified by decision records (`D<n>`, see [decisions.md](./decisions.md)) and measurements (`F<n>`, see the [findings register](./research/findings.md)).
+
+Contents:
+
+1. [Scope](#1-scope)
+2. [Module map](#2-module-map)
+3. [The engine: llama-server in-process](#3-the-engine-llama-server-in-process)
+4. [Request path](#4-request-path)
+5. [The Kotlin API](#5-the-kotlin-api)
+6. [Conversation, tools and compaction](#6-conversation-tools-and-compaction)
+7. [Errors](#7-errors)
+8. [Devices and backends](#8-devices-and-backends)
+9. [Memory fit and ContextSize.Auto](#9-memory-fit-and-contextsizeauto)
+10. [Phone defaults](#10-phone-defaults)
+11. [Speculative decoding](#11-speculative-decoding)
+12. [The Hub](#12-the-hub)
+13. [Threading and lifecycle](#13-threading-and-lifecycle)
+14. [Testing seams](#14-testing-seams)
+15. [Verification](#15-verification)
+16. [Out of scope](#16-out-of-scope)
+
+---
+
+## 1. Scope
+
+### 1.1 What the SDK is
+
+The SDK lets an Android application use llama.cpp through an ergonomic Kotlin API, without any native setup on the application side. It adds a dependency on a prebuilt AAR (D4) and loads a model from a file or from the Hugging Face cache.
+
+**Scope rule.** The SDK represents llama-server's feature set faithfully and not much beyond it. Anything llama-server does not do is the application's responsibility. Tool gating, for example, is application policy and stays out (D11).
+
+The SDK adds two kinds of things on top of llama-server:
+
+- **Android- and Kotlin-specific concerns.** Backend packaging (NPU, GPU, CPU), device selection, Hugging Face downloads into an application-private cache, memory fitting for phones, and Kotlin types.
+- **What llama.cpp's own web client (`tools/ui`) does on top of the server**, reproduced so that it behaves the same: the `Conversation` helper, the automatic tool loop and compaction (D8, D13, D14).
+
+### 1.2 The baseline is upstream
+
+The baseline for every behaviour and default is upstream llama.cpp at the pinned build `b12052`: llama-server (`tools/server`) and its web client (`tools/ui`). A behaviour or default that differs from upstream must win an A/B test on a device against the upstream behaviour. Ideas are judged by measured results, not by where they came from (D10, D18). Examples of where upstream won: the sampler order and penalty behaviour (D18, F12-F15), and the sleep mode, which the SDK keeps off because a failed reload aborts the process.
+
+The SDK deviates from upstream in a small number of places, each justified by a measurement:
+
+| Deviation | Reason |
+|---|---|
+| Phone defaults for slots, checkpoints, RAM cache and batch sizes | A phone cannot afford a server's defaults (D17, F9-F11) |
+| Weights loaded without mmap (`--load-mode none`) | One resident copy of the weights instead of two (D30, F58-F60) |
+| A memory-based `ContextSize.Auto` | Upstream's fit misjudges a phone (D33, F66) |
+| No OpenMP on the CPU path | Same speed, smaller AAR (D38, F77) |
+| One patch: `delta-net-head-tail-split` | Faster prompt processing for hybrid models, identical output (D10, F7, F8) |
+| SHA-256 on every download | Upstream never verifies (D40, F83) |
+
+### 1.3 In-process, one runtime
+
+The engine runs in the application's process (D5). There is no local HTTP server: a localhost port would be reachable by any other app on the phone, and an out-of-process service would add IPC and a second memory footprint. The runtime is a process singleton (D6, section 13).
+
+---
+
+## 2. Module map
+
+```
+ application
+     |
+     |  implementation        runtimeOnly (optional)          implementation (optional)
+     v                        v            v                         v
+ +-----------+       +-----------------+ +---------------+     +---------------+
+ | llamabro  |<------| llamabro-hexagon| | llamabro-opencl|    | llamabro-hub  |
+ |  (core)   |  meta-| NPU backend     | | GPU backend    |    | HF downloads  |
+ |           |  data | + HTP skeletons | |                |    | (pure Kotlin) |
+ +-----------+       +-----------------+ +---------------+     +---------------+
+     |  JNI                                                         |
+     v                                                              | ModelSource
+ +--------------------------+                                       v
+ | native/                  |                              llamabro.loadModel(...)
+ |  C API (llamabro.h)      |
+ |  C++ bridge              |        test-only:  llamabro-testing (FakeLlamaBro)
+ |  llama.cpp b12052        |
+ +--------------------------+
+```
+
+| Module | Path | Purpose |
+|---|---|---|
+| `llamabro` | [`sdk/llamabro`](../sdk/llamabro) | The core: `LlamaBro`, `Model`, chat types, `Conversation`, errors, device policy, memory fit. Ships the native library for the CPU backend and the JNI layer. Always required. |
+| `llamabro-hexagon` | [`sdk/llamabro-hexagon`](../sdk/llamabro-hexagon) | Qualcomm NPU backend: `libggml-hexagon.so`, the HTP skeleton libraries (as assets) and an installer. |
+| `llamabro-opencl` | [`sdk/llamabro-opencl`](../sdk/llamabro-opencl) | Adreno GPU backend through OpenCL, with kernels embedded. |
+| `llamabro-hub` | [`sdk/llamabro-hub`](../sdk/llamabro-hub) | Hugging Face resolve, download, resume, verify and cache. Pure Kotlin, no native code. |
+| `llamabro-testing` | [`sdk/llamabro-testing`](../sdk/llamabro-testing) | `FakeLlamaBro`, a scripted engine for JVM tests. |
+| `native/` | [`sdk/native`](../sdk/native) | The stable C API (`llamabro.h`), the C++ bridge, the JNI layer, build presets, patches and host tests. |
+| Acceptance apps | [`sdk/acceptance`](../sdk/acceptance) | Small apps used by device tests: `backends` (device choice, lifecycle, the full suite) and `download` (background download with a worker and a user-initiated job). |
+| Demo app | [`demo`](../demo) | A complete chat application built against the SDK through a composite build (D46). It uses only public API. |
+
+Vulkan is not part of 1.0: ggml-vulkan fails on the test phone's Adreno 830, either by aborting the process while creating a compute pipeline or by producing wrong output (D31, F64). The build recipe is retained for a retry after a llama.cpp or driver upgrade.
+
+### 2.1 Dependency shape
+
+An application depends on the core, plus optional backend and hub artifacts:
+
+```kotlin
+dependencies {
+    implementation(platform("io.github.whyisitworking:llamabro-bom:1.0.0"))
+    implementation("io.github.whyisitworking:llamabro")             // CPU, always works
+    runtimeOnly("io.github.whyisitworking:llamabro-hexagon")        // optional: Snapdragon NPU
+    runtimeOnly("io.github.whyisitworking:llamabro-opencl")         // optional: Adreno GPU
+    implementation("io.github.whyisitworking:llamabro-hub")         // optional: Hugging Face downloads
+}
+```
+
+Backend artifacts are `runtimeOnly`: the application never calls them. Each backend announces itself through a manifest `<meta-data>` entry that names its installer class; the core reads the merged manifest at runtime and loads the libraries by name (D24, F61). Adding a backend AAR is therefore enough to enable it.
+
+### 2.2 Coordinates and packaging
+
+The Maven group is `io.github.whyisitworking`; Kotlin packages and Android namespaces stay under `com.suhel.llamabro` (D2). The minimum SDK level is 29, with newer platform APIs behind runtime checks (D3). The only supported ABI is `arm64-v8a`, with 16 KB page alignment. The SDK lives in its own included Gradle build (D1).
+
+Packaging rules (D20, F25, F28, F29):
+
+- Backends load by file name straight from the APK, so no extraction and no legacy native-library packaging are needed.
+- SDK libraries carry a `llamabro-` prefix, and `libllamabro.so` exports only the C API and `JNI_OnLoad`, which avoids symbol collisions with other native code in an app.
+- The AAR ships R8 keep rules for every class the JNI layer looks up.
+- The Hexagon skeleton libraries are the one exception: the DSP loader needs real files, so they ship as assets and are copied to `noBackupFilesDir` (section 8.4).
+
+---
+
+## 3. The engine: llama-server in-process
+
+### 3.1 What upstream provides
+
+llama.cpp's `tools/server` builds three targets. One of them, `server-context`, is a static library that contains the slot scheduler, the task queue, the prompt cache, speculative decoding, multimodal input, chat parsing, the request schema and the route handlers. Its only dependencies are `llama-common` and `mtmd`. Another target adds the HTTP server, router mode and web UI; the SDK does not use it.
+
+Every route handler takes a plain struct (`server_http_req`: a body, parameters and a `should_stop` callback) and returns a `server_http_res`, which holds either complete data or a streaming `next()` function. The structures need nothing but the standard library, so the SDK calls the handlers directly with no socket (D12).
+
+### 3.2 How the bridge uses it
+
+For each loaded model, the C++ bridge:
+
+1. Creates a `server_context` and loads the model with `common_params`.
+2. Runs `start_loop()` on a dedicated native thread, so that every llama.cpp call for that model happens on one thread.
+3. Builds the routes once.
+4. Turns each request from Kotlin into a `server_http_req` (an OpenAI-shaped JSON body plus the cancellation callback) and passes it to the matching handler, wrapped the way `server.cpp` wraps handlers so that exceptions become error responses.
+5. Forwards streaming chunks back to Kotlin as UTF-8 bytes.
+
+### 3.3 What this provides
+
+Reading the source of the pinned build, the embedded core provides:
+
+- **Chat:** Jinja templates, reasoning parsing and a reasoning budget, a control to end thinking early, tool calls with lazy grammar and parallel calls, and structured output through `response_format`, `json_schema` and `grammar`.
+- **Sampling:** every llama.cpp sampler, `samplers` ordering, `logit_bias`, log probabilities, seeds and time limits. Defaults come from the GGUF's `general.sampling.*` metadata unless a request overrides them.
+- **Speculative decoding** with checkpoint rollback (section 11).
+- **Multimodal input:** images, audio and video through `mtmd`.
+- **Prompt caching** with checkpoints, a RAM cache across conversations, and saving or restoring slots.
+- **Other routes:** embeddings, rerank, tokenize and detokenize, token counting, template application, infill, per-request LoRA and server properties.
+- **Prefill progress events** and per-request timings.
+
+### 3.4 What this does not provide
+
+- Low-level control: raw logits, direct KV-cache edits, Kotlin samplers and per-token callbacks.
+- Router mode, which needs subprocesses. Several `Model` instances can be loaded instead.
+- llama-server's built-in tools and MCP client. Application-side Kotlin tools cover the same need (section 6.2).
+- Training and fine-tuning.
+
+### 3.5 Trade-offs
+
+Benefits: upstream maintains the difficult parts (prompt caching for hybrid models, speculative decoding, multimodal input, template quirks), behaviour matches llama-server so its documentation applies, and the contract is OpenAI-compatible JSON that llama.cpp keeps stable for its HTTP users. The JSON overhead per token is negligible: measured speed was within about 2% of the llama-server binary on the same phone with the same flags (F1).
+
+Costs and risks:
+
+- **`server-context` is not an official public API.** It changes frequently between llama.cpp builds. The SDK's coupling is small, but every upgrade needs a compile check and the contract tests.
+- **Server defaults do not suit a phone** (section 10).
+- **Some paths abort the process.** Waking from sleep mode aborts if the model fails to reload, so sleep mode is kept off and models are unloaded explicitly.
+- **Tuning goes through `common_params`.** Anything `server-context` cannot do needs an upstream change or a patch file; patches are applied to a build copy and never committed into the submodule.
+
+The alternative, a custom pipeline over `libllama`, would give full control but would mean maintaining prompt caching, speculative decoding, multimodal input and parsing indefinitely, with behaviour drifting away from llama-server. It remains the fallback if the in-process approach ever fails.
+
+---
+
+## 4. Request path
+
+```
+ Kotlin                               native                                 llama.cpp b12052
+ ------                               ------                                 ----------------
+ model.chat(request)
+   |  ChatRequest -> JSON body
+   v
+ Model.rawRequest(endpoint, json)
+   |  Flow<String>; cancel -> should_stop
+   v
+ JniEngine / NativeBridge  --JNI-->  lb_model_request(model, endpoint,
+   (byte[] JSON in,                        params_json, chunk_cb, user)
+    chunk callbacks out)                   |
+                                           |  server_http_req{body, should_stop}
+                                           v
+                                    C++ bridge (request.cpp)
+                                           |  handler lookup by endpoint
+                                           v
+                                    server_routes handler  ---->  server_context
+                                           |                       (worker thread:
+                                           |  res->next(chunk)      start_loop())
+                                           v
+                                    chunk_cb(LB_EVENT_CHUNK, bytes)
+   ^                                       |
+   |  SseParser -> ChatStreamDecoder       |
+   |  -> ChatEvent                         v
+ Flow<ChatEvent>  <------------------ LB_EVENT_DONE | LB_EVENT_CANCELLED
+```
+
+### 4.1 The C API
+
+The C API in [`llamabro.h`](../sdk/native/bridge/include/llamabro.h) is a stable C ABI. It is the surface the JNI layer binds to and the intended surface for future Flutter (FFI) and Kotlin Multiplatform (cinterop) bindings. It is small:
+
+| Function | Purpose |
+|---|---|
+| `lb_runtime_init(config_json, ...)` | Initialise the process runtime once |
+| `lb_runtime_devices()` / `lb_runtime_backends()` | List devices and backend load results as JSON |
+| `lb_fit_estimate(config_json, ...)` | Project whether a model fits, as JSON |
+| `lb_model_load(config_json, progress_cb, ...)` | Load a model; the configuration maps onto `common_params` |
+| `lb_model_info(model)` | Metadata and server properties as JSON |
+| `lb_model_request(model, endpoint, body_json, chunk_cb, ...)` | Start a request against any route |
+| `lb_request_cancel(req)` / `lb_request_free(req)` | Cancel a request and release its handle |
+| `lb_model_free(model)` | Cancel in-flight requests, stop the loop, join the thread |
+
+A single generic request function means any llama-server feature that has no Kotlin type yet is still reachable with raw JSON (section 5.5). Images travel as llama-server takes them: base64 data URLs inside the message JSON.
+
+### 4.2 Streaming and cancellation
+
+A request produces `LB_EVENT_CHUNK` callbacks with server-sent-event payloads, then one terminal event, `LB_EVENT_DONE` or `LB_EVENT_CANCELLED`. On the Kotlin side `SseParser` splits the stream, and `ChatStreamDecoder` turns the OpenAI-shaped deltas into `ChatEvent` values.
+
+Cancelling the collecting coroutine sets the request's `should_stop`. llama-server applies it between `n_batch` passes, which is why the default batch size is 512: stopping during a long prompt frees the slot in about 0.4 s instead of 2.0-2.6 s on the NPU, with equal prefill speed (D17, F9). A request notices a cancel at its next result or within about one second at the latest (F23).
+
+---
+
+## 5. The Kotlin API
+
+The public API dump is checked into the repository ([`llamabro.api`](../sdk/llamabro/api/llamabro.api)) and verified on every change. Kotlin's explicit API mode is on. The API uses coroutines and `Flow`; it exposes no serialization, dependency-injection or Compose types. The quickstart is in [`sdk/README.md`](../sdk/README.md).
+
+### 5.1 Three levels
+
+```kotlin
+val llama = LlamaBro.getInstance(context)           // runs no native code
+
+val model: Model = llama.loadModel(ModelSource.file(path)) {   // suspend, on Dispatchers.IO
+    contextSize = ContextSize.Auto
+    devicePolicy = DevicePolicy.Auto
+    onProgress { fraction -> /* load progress, 0..1 */ }
+}
+
+// 1) Conversation: history, tools and compaction managed for the caller.
+val chat = model.conversation(system = "You are a helpful assistant.")
+chat.send("Hi!").collect { event -> /* ChatEvent */ }
+
+// 2) One stateless request with every field typed.
+model.chat(ChatRequest { /* messages, tools, sampling, ... */ }).collect { /* ChatEvent */ }
+
+// 3) Raw JSON against any route llama-server serves.
+model.rawRequest(Endpoint.ChatCompletions, jsonBody).collect { chunk: String -> /* ... */ }
+```
+
+The three levels share one engine. A beginner uses `Conversation` and still reaches every request option through per-send and per-conversation configuration. An advanced caller sends full requests. Anything not yet typed is reachable as raw JSON.
+
+### 5.2 `LlamaBro`
+
+`LlamaBro` is the process runtime. Its members (D6, D24, D42):
+
+- `LlamaBro.getInstance(context)`: returns the singleton. An `Application` that implements `LlamaBro.ConfigProvider` supplies a `LlamaBroConfig` (log level and logger); otherwise defaults apply. This works the same in a fresh process started by a job or worker.
+- `loadModel(source, configure)`: a `suspend` function that returns a `Model`.
+- `estimateFit(source, configure)`: a `FitEstimate` for a model and configuration without loading it (section 9.4).
+- `memoryBudgetBytes(configure)`: the budget `ContextSize.Auto` would use now, before side files, for labelling models in a list without planning each one.
+- `devices()` and `backends()`: `suspend` functions listing `DeviceInfo` (name, description, `DeviceKind`, free and total memory) and `Backend` (name, whether it loaded, an error, its devices).
+
+### 5.3 `ModelSource`
+
+`ModelSource` describes where a model's files are. `ModelSource.file(path) { mmproj = ...; draft = ... }` names a GGUF and optionally a multimodal projector and a speculative draft file. The hub produces the same type from the cache (`hub.source(ref)`), so a downloaded model and a file the app placed itself load through the same call.
+
+### 5.4 `Model` and `ModelConfig`
+
+`Model` exposes:
+
+- `info` (`ModelInfo`): context size, trained context size, parameter count, size, description, chat template, vision and audio support, whether the model has an MTP head, template capabilities and GGUF metadata.
+- `loadReport` (`LoadReport`): which device and backend were chosen, every attempt, the context size and why, and the speculative mode and why (section 8.3).
+- `chat(request)`, `conversation(...)`, `restoreConversation(json)` and `rawRequest(endpoint, json)`.
+- `close()`, which returns at once and frees the model in the background, and `closeAndJoin()`, which waits for the memory to be released. Freed memory returns to the system on Android (F49).
+
+`ModelConfig` is configured in the `loadModel` block:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `contextSize` | `Auto` | `Auto`, `UpTo(maxTokens)` or `Fixed(tokens)` (section 9) |
+| `speculative` | `Auto` | `Auto`, `Off`, `Mtp`, `Ngram` or `DFlash` (section 11) |
+| `devicePolicy` | `Auto` | `Auto`, `Prefer(kind)` or `Only(kind)` (section 8) |
+| `threads` | unset | CPU threads |
+| `batchSize`, `microBatchSize` | 512, 512 | Logical and physical batch sizes (D17) |
+| `parallelSlots` | 1 | Concurrent sequences (D17) |
+| `ramCacheMib` | 1024 | Prompt cache across conversations (D17) |
+| `memoryReserveMib` | 512 | Memory `Auto` leaves free (D45) |
+| `checkpointsPerSlot` | 8 | Prompt checkpoints per slot (D17) |
+| `task` | `Generate` | `Generate`, `Embedding(pooling)` or `Rerank` |
+| `kvCacheType` | `F16` | KV cache element type |
+| `loraAdapters` | none | LoRA adapters applied at load |
+
+### 5.5 Chat types
+
+A `ChatRequest` is built with a DSL and carries messages, tools, a `ResponseFormat`, sampling and reasoning options, and an `extra` JSON string applied as a JSON Merge Patch over the final body (F43). Because of that, any field llama-server accepts is reachable without waiting for a typed property. Unset sampling fields fall back to the GGUF's defaults and then to the server's.
+
+Messages are `Message.system`, `Message.user` (with `Content.Text` and `Content.Image` parts), assistant messages and tool results. Request-level overrides use `RequestOptions`.
+
+A request streams `ChatEvent` values:
+
+| Event | Meaning |
+|---|---|
+| `PromptProgress(processed, total, cached, timeMs)` | Prefill progress and how much came from the cache |
+| `ReasoningDelta(delta)` | A fragment of the model's reasoning |
+| `ContentDelta(delta)` | A fragment of the reply |
+| `ToolCallReceived(call)` | The model requested a tool |
+| `ToolResult(callId, name, result)` | A tool handler returned (from `Conversation`) |
+| `Done(reason, timings, usage)` | The request ended |
+
+`FinishReason` is `Stop`, `Length`, `ToolCalls`, `TurnLimit` or `ToolCallsPending`.
+
+### 5.6 Evolution rules
+
+Public types that will grow are immutable classes built through a builder or DSL, with internal constructors, no `copy`, no `componentN` and no public constructor defaults. Small value types that will not grow may be data classes. Sealed and enum sets (`ChatEvent`, `FinishReason`, `LlamaBroException`, `DeviceKind`, the `Endpoint` constants) are settled at 1.0 and grow only in a major version (D26, F37, F42, F44). The API is Kotlin only.
+
+### 5.7 Typed and raw coverage
+
+Chat is fully typed. The other routes are reachable through `rawRequest` today, with the request and response exactly as llama-server documents them (F53): completion, embeddings, rerank, tokenize, token counting, slots and the Responses and Anthropic message formats. Transcription and realtime audio are not reachable through `rawRequest`, since upstream takes a multipart upload and a WebSocket for them. Typed calls for the other routes are planned; the raw level remains the escape hatch.
+
+---
+
+## 6. Conversation, tools and compaction
+
+### 6.1 Conversation
+
+`Conversation` follows the message handling of llama.cpp's web client (D8). It keeps the history and exposes it as state:
+
+- `messages: StateFlow<List<Message>>`, the full history including the system message and compaction nodes
+- `reply: StateFlow<Message.Assistant?>`, the reply being streamed
+- `isBusy: StateFlow<Boolean>`
+- `contextUsage: StateFlow<ContextUsage>`, derived from timings (prompt, cached and predicted tokens)
+
+Operations: `send(text) { options }`, `ask(text)` (returns the reply text, or throws `Incomplete` for `Length`, `TurnLimit` and `ToolCallsPending`, F41), `resume()`, `regenerate()`, `endReasoning()`, `toJson()` and `Model.restoreConversation(json)`. A conversation can also start from the application's own stored messages (F96). Per-conversation `defaults { ... }` apply to every request, and per-send options apply to one (F38).
+
+Only one operation runs at a time. A second operation fails with `Busy` when its flow is collected, not when it is created.
+
+### 6.2 Tools run automatically
+
+`Conversation` runs registered Kotlin tool handlers the way the web client's tool loop does (D14):
+
+1. Send the request with the tool definitions.
+2. If the reply contains tool calls, append the assistant message (content, reasoning and calls) to the history.
+3. Run the calls one after another, in order. A tool that throws returns `Error: <message>` to the model.
+4. Append each result as a `tool` message and go back to step 1.
+5. Stop when a reply has no tool calls, or after `maxTurns` (default 100) with `Done(reason = TurnLimit)`; `resume()` continues.
+
+```kotlin
+val chat = model.conversation(system = "...") {
+    tool("get_weather", "Current weather for a city", schema = jsonSchema) { args: JsonArgs ->
+        weatherApi.fetch(args.string("city"))        // suspend; returns the tool result string
+    }
+    maxTurns = 100
+}
+```
+
+- **Approval stays in the application.** A handler is a `suspend` function, so it can wait for the person's answer itself and return a "denied" result. The SDK has no permission system (D11).
+- **A tool without a handler** stops the loop with `Done(reason = ToolCallsPending)`. The application supplies results with `addToolResult(id, text)` and calls `resume()`.
+- **Cancelling** the flow cancels the running handler through structured concurrency, and the generation with it.
+- **Cache behaviour:** each turn only appends to the end of the history, so the server reuses the whole prefix (section 6.3).
+
+### 6.3 Prompt cache behaviour
+
+llama-server's cache works at several levels, all of which the SDK inherits:
+
+1. **Within a slot:** the new prompt is compared with what the slot holds and only the part after the common prefix is processed.
+2. **Images:** matched by the SHA-256 of the image bytes and the token count.
+3. **Hybrid, recurrent and sliding-window models** cannot be cut back to an arbitrary position, so the server restores the newest checkpoint before the point of difference, or reprocesses everything. Checkpoints are taken at user-message starts and near the end of the prompt, at most `checkpointsPerSlot` per slot.
+4. **RAM cache across conversations** (`ramCacheMib`): when a slot switches prompts, its state is saved in RAM, and a later request restores the best match if it keeps at least a quarter of its tokens. With one slot (D17), switching between chats always takes this path.
+5. **Disk:** slot save and restore under an application-private path.
+
+### 6.4 When the context fills up
+
+llama-server never compacts or edits a conversation. With context shift off (the upstream default, and unavailable for multimodal and hybrid models anyway), a prompt larger than the context is rejected with a typed error before any work, and generation that reaches the end of the context stops with finish reason `length`. The SDK does not expose context shift (D13).
+
+Compaction is a client feature, and `Conversation` copies the web client's algorithm exactly (D13, F26):
+
+1. It is started by the caller; there is no automatic threshold (`canCompact()`, `compact()`).
+2. A step is a user message, or an assistant message together with its tool results, so a cut never separates a tool call from its result. The last `preservedSteps` (default 10) stay word for word.
+3. The summary request reuses the prefix the server already has cached and adds a summarisation instruction, so only the instruction is new work.
+4. The summary is stored as a compaction node at the end of the history, with a kept-step count. The full history stays visible, but the model sees only the system prompt, a note that the conversation was compacted with the summary, the preserved steps and anything newer.
+5. A summary cut off by the output limit fails with `CompactionTruncated` and is rolled back.
+6. Optionally (`preEncodeAfterReply`, off by default, as upstream) the shortened prompt is pre-encoded in a cancellable background request, so the next message does not wait for a full prefill.
+
+If `send()` fails with `ContextExceeded`, an application calls `compact()` and then `resume()`. An application using `Model.chat` directly implements its own compaction.
+
+---
+
+## 7. Errors
+
+Errors are a sealed `LlamaBroException`. Applications catch them; only the SDK creates them (D26). Where there is an underlying cause it is attached.
+
+| Exception | Meaning |
+|---|---|
+| `InvalidRequest` | The request or configuration is invalid, including a runtime configuration conflict |
+| `ContextExceeded(promptTokens, contextSize)` | The prompt does not fit; both numbers come from llama-server and are null if it omits one |
+| `NotSupported` | The model or build cannot do it, for example embeddings without an embedding model |
+| `Unavailable` | The server cannot take the request now |
+| `ServerError(httpStatus, message)` | Any other llama-server error |
+| `ModelLoadFailed(reason)` | The load failed. `Reason` is `FileNotFound`, `InsufficientMemory` or `Other`; the message carries llama.cpp's own reason, which it only logs (F51) |
+| `DeviceUnavailable(kind)` | `DevicePolicy.Only(kind)` could not be met |
+| `ModelClosed` | The model was closed before or during the call |
+| `CompactionTruncated` | A compaction summary hit the output limit |
+| `Busy` | A `Conversation` operation was started while another was running |
+| `Incomplete(reason, partial)` | `ask()` ended with `Length`, `TurnLimit` or `ToolCallsPending` |
+
+`InsufficientMemory` is raised when the model does not fit at the smallest automatic context (4096 tokens) on any device (D33). The hub has its own sealed `HubException` (section 12.5).
+
+---
+
+## 8. Devices and backends
+
+### 8.1 DeviceKind and DevicePolicy
+
+Applications choose a chip by kind, not by backend library (D32):
+
+```kotlin
+public enum class DeviceKind { Npu, Gpu, Cpu }
+
+DevicePolicy.Auto                 // NPU, then GPU, then CPU
+DevicePolicy.Prefer(DeviceKind.Gpu)   // try the GPU first, then the rest in Auto's order
+DevicePolicy.Only(DeviceKind.Npu)     // that kind or DeviceUnavailable
+```
+
+The SDK maps a kind to the backend and device the phone has (`hexagon` and its HTP device for `Npu`, `opencl` for `Gpu`, the built-in CPU backend for `Cpu`) and names both in `loadReport`. An enum is settled at 1.0, so adding another route to a kind, such as Vulkan on the GPU if it returns, changes nothing public.
+
+### 8.2 Selection and fallback
+
+```
+ DevicePolicy
+      |
+      v
+ DeviceResolver.plan(policy, backends)  -->  ordered candidates + skipped (with reasons)
+      |
+      v
+ for each candidate:  load with an explicit device list
+      |      success -> done, record attempt
+      |      load failure -> record attempt, try the next candidate
+      |      InsufficientMemory -> stop (all devices share the phone's RAM)
+      v
+ LoadReport(device, backend, attempts, context, speculative)
+```
+
+Key rules (D24, D33):
+
+- The SDK always sets an explicit device list directly in `common_params.devices`, not through the `--device` option, whose handler re-runs ggml's backend scan (F32, F35).
+- A backend that is absent, failed to load, or has no device is recorded as skipped with its reason.
+- A load that fails for lack of memory ends the fallback instead of trying the next device. Every device shares the phone's RAM, so another device cannot fix it, although projections differ by device by up to about 260 MiB (F80).
+- Failures a policy cannot catch, such as a process abort inside a vendor driver, are avoided by keeping the affected backend out of the release (Vulkan, D31).
+
+### 8.3 LoadReport
+
+`Model.loadReport` records, for the loaded model: the chosen `DeviceKind`, device name and backend; every `Attempt` (kind, device name and the reason it was skipped or failed); the resolved context size and the reason for it; and the resolved speculative mode and its reason. The report is the supported way to explain a choice to a person or to a log.
+
+### 8.4 Backend specifics
+
+**Hexagon (NPU).** `llamabro-hexagon` ships `libggml-hexagon.so` and the HTP skeleton libraries for several Hexagon versions as assets. When the runtime starts, every skeleton is copied to `noBackupFilesDir/llamabro/htp/` and checked against its SHA-256; the backend picks the one for its chip, and the library search paths (`ADSP_LIBRARY_PATH` and related variables) point at the directory. A copy that does not match fails the backend with the reason, and the next device is used (F78). FastRPC loads the skeleton from `noBackupFilesDir` for an ordinary app, debuggable or not (F36). `libcdsprpc.so` is declared as an optional native library through the merged manifest, since it exists only on Qualcomm phones.
+
+**OpenCL (GPU).** `llamabro-opencl` declares `libOpenCL.so` and embeds the Adreno kernels. Its installer sets `GGML_OPENCL_COOPK_DP4A=0` before the backend loads, because the cooperative-K Q4_K kernel returns wrong results on the Adreno 830 for two- to four-row matmuls, which every model with checkpoints sends (F75). OpenCL also answered incorrectly for one model family in testing (F71), which is why device choice is recorded and overridable.
+
+**CPU.** The CPU backend ships in the core. ggml's CPU variants are selected at runtime. OpenMP is off, so ggml uses its own thread pool (D38).
+
+All backends build with `GGML_BACKEND_DL=ON` and a shared C++ runtime. Hexagon and OpenCL are built with Qualcomm's toolchain image, whose NDK matches the SDK's (F62, F63).
+
+---
+
+## 9. Memory fit and ContextSize.Auto
+
+### 9.1 Why upstream's fit is not enough
+
+Upstream can size a context to fit memory (`--fit`), but on a phone it fails in three ways (D33, F33, F66): it checks device memory only and treats host memory as unlimited; the NPU reports 0/0 memory; and when anything goes wrong, llama-server loads the full training context (262K tokens for one common model). On the CPU its check even omits the repacked weights.
+
+### 9.2 The SDK's fit
+
+The SDK turns upstream's `--fit` off, so context and placement are always explicit, and fits the context itself:
+
+1. The bridge runs upstream's own dry-run measurement (`common_fit_measure`) at 4096 tokens and at the ceiling.
+2. It sums every row of the result (devices and host together, since a phone has one RAM) and interpolates to the budget, as upstream's second step does.
+3. Below 4096 tokens the load fails with `ModelLoadFailed(InsufficientMemory)` instead of loading anyway.
+
+### 9.3 Budget and ceiling
+
+The budget (D34, F66) is the kernel's `MemAvailable` from `/proc/meminfo`, which is what AOSP itself returns as available memory, less:
+
+- Android's low-memory threshold
+- the prompt cache (`ramCacheMib`)
+- the size of an image encoder's file
+- a reserve (`memoryReserveMib`, default 512 MiB)
+
+If `/proc/meminfo` cannot be read, `ActivityManager.MemoryInfo.availMem` is used. Some OEM builds report less than the kernel does, because the GPU and NPU driver pools the kernel could reclaim are counted as used. A draft file for speculative decoding counts too (D41).
+
+`Auto` stops at 16 384 tokens. Common local defaults are 4096, current models spend 1-3K tokens per turn on reasoning and tool results, and a dense 3B model's cache at 16K is about 1.8 GB, which is workable on low-end phones. `ContextSize.UpTo(maxTokens)` applies the same fit with an application-chosen ceiling, and `Fixed(tokens)` disables fitting.
+
+The reserve is the application's to change (D45). It covers what grows during a chat, like llama-server's `--fit-target` margin. Lowering it is a deliberate risk, since Android's low-memory killer ends the whole app without an exception.
+
+### 9.4 estimateFit
+
+`LlamaBro.estimateFit(source, configure)` returns a `FitEstimate`: whether the model fits (`fits`), the context it would get, the minimum context and the bytes needed at the minimum and at the ceiling, the budget, and the device. It uses the same projection as loading, so an application can warn before loading. The hub's `estimateFit` runs the projection on a GGUF header fetched with an HTTP `Range` request, so a person can learn whether a model fits before downloading it (D42, F84, F88).
+
+### 9.5 Weights are loaded without mmap
+
+The SDK loads with upstream's `--load-mode none` (D30). With mmap, the CPU repack copies the weights while the mapped pages stay resident, so one common 4B model used 5.5 GB proportional set size instead of 3.4 GB (F58, F60). Loading without mmap is about 1.2 s slower but never exceeds its final footprint and needs no patch.
+
+---
+
+## 10. Phone defaults
+
+The starting point is llama-server's defaults. A default changes only when a phone needs it and only with a number measured on a device (D17).
+
+| Setting | llama-server | SDK | Reason |
+|---|---|---|---|
+| `n_parallel` | 4 slots (unified KV) | 1 | A phone app generates one reply at a time |
+| `cache_ram_mib` | 8192 | 1024 | A saved chat is its KV plus its checkpoints; 1 GiB holds about two chats on a 4B model (F11) |
+| `n_ctx_checkpoints` | 32 | 8 | About 50 MiB each on a 4B model and two per turn, so eight cover about the last four turns (F11) |
+| `n_batch`, `n_ubatch` | 2048, 512 | 512, 512 | Cancel applies between batch passes; larger micro-batches were not faster (F9, F10) |
+| `sleep_idle_seconds` | off | off, not exposed | A failed reload after sleep aborts the process |
+| `slot_save_path` | none | `noBackupFilesDir/llamabro/slots/` | Needs an application-private path |
+| `load_mode` | mmap | none, not exposed | D30 |
+| `n_ctx` | from flags, fit on | `ContextSize.Auto`, fit off | D33 |
+| `checkpoint_min_step`, `image_max_tokens` | upstream | upstream | No phone-specific reason |
+
+Every value except those marked as not exposed can be overridden in `ModelConfig`. The worst case for one slot with a 1 GiB RAM cache and eight checkpoints is about 1.4 GB plus the model, against about 14 GB upstream.
+
+---
+
+## 11. Speculative decoding
+
+`ModelConfig.speculative` selects a mode:
+
+| Mode | Behaviour | Source |
+|---|---|---|
+| `Off` | No speculation | |
+| `Auto` | Chosen per device; off on every chip today | D35, F67, F68 |
+| `Mtp(draftMax = 3)` | Multi-token prediction from a head inside the GGUF | F67 |
+| `Ngram(then = null)` | n-gram lookup with upstream's `--spec-default` (ngram-mod, n_match 24, n_min 48, n_max 64); can be combined with `Mtp` as `Ngram(then = Mtp(n))` | D35, F72 |
+| `DFlash(draftMax = 15)` | A separate draft head loaded from `ModelSource.draft` | D36, D41, F73 |
+
+Measured behaviour that shaped the defaults:
+
+- **n-gram** decodes code edits about 7 times faster on the NPU and 2.3 times faster on the CPU with byte-identical replies, but partly repeating output is 10-15% slower on the CPU, so `Auto` stays off (F72).
+- **DFlash** decodes structured output about 1.5 times faster than MTP and 2.3 times faster than no speculation on the NPU, but loses on prose and on the CPU, needs about 2.9 GB more memory, and is never used on the GPU (F73, F80). It is never chosen by `Auto`.
+- **MTP** is the opt-in for structured output on the NPU (F67, F68).
+- EAGLE-3 and DSpark are not supported: they lost everywhere with the checkpoints that exist (D36).
+
+Every mode is checked for identical greedy output against the same model without speculation. The `delta-net-head-tail-split` patch makes MTP's prompt processing faster for hybrid models by sending the prompt's head through the fast single-snapshot kernel and only the last K tokens through the snapshot path (D10, F7, F8). `loadReport.speculative` and `speculativeReason` explain what was chosen.
+
+---
+
+## 12. The Hub
+
+`llamabro-hub` downloads models from Hugging Face into a cache and produces a `ModelSource`. It is pure Kotlin, a port of upstream's `-hf` behaviour over `HttpURLConnection` with no native code and no dependency (D39, D15). Upstream's own download code cannot run in the SDK, which builds llama.cpp without OpenSSL (F81).
+
+### 12.1 What the hub owns, and what it does not
+
+Downloading involves two separate jobs:
+
+- **What to fetch and how to store it:** resolve a reference to files, fetch, resume, verify, store and report progress. This needs knowledge of Hugging Face and llama.cpp. It is the SDK's job.
+- **When and where it runs:** foreground or background, a foreground service, WorkManager, a user-initiated job, network constraints, retry policy and notifications. Every app already decides this its own way. It is the application's job (D9).
+
+The hub therefore schedules nothing and touches no notifications. It makes downloads easy to run anywhere, through five properties:
+
+1. **A cold `Flow` with cooperative cancellation.** `hub.download(ref)` runs unchanged inside a `CoroutineWorker`, a `JobService` scope, a `Service` scope or a `ViewModel`.
+2. **Idempotent, with all state on disk.** The cache directory is the state: partial files and their validators. Calling `download` again resumes, and finished verified blobs are skipped. There is no database.
+3. **One transfer per selection, one writer per blob.** In one process, collectors of the same selection share one transfer, and the last to leave cancels it. Across processes, a kernel lock per blob stops two writers, and a dead process's lock is released by the kernel.
+4. **Progress anyone can watch.** `hub.progress(ref)` is a `StateFlow<DownloadState>` shared by the whole process, so the UI and a notification see the same numbers. When nothing is running, the state is read from disk (`Absent`, `Partial`, `Complete`) on `Dispatchers.IO`, so calling it on the main thread does no I/O (F91).
+5. **Errors that say whether a retry helps** (section 12.5).
+
+### 12.2 API
+
+```kotlin
+val hub = LlamaBroHub.getInstance(context)           // Application may implement LlamaBroHub.ConfigProvider
+val ref = HfModel("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")  // or "org/repo", or "org/repo#dir/file.gguf"
+
+val plan = hub.plan(ref) { mmproj = true }           // files, roles, sizes, digests, offline flag
+val fit  = hub.estimateFit(plan, llama)              // does it fit this phone now? (header only)
+hub.download(ref).collect { p: DownloadProgress -> /* ... */ }
+hub.progress(ref)                                    // StateFlow<DownloadState>
+hub.cached(); hub.delete(ref)
+
+val model = llama.loadModel(hub.source(ref)) { speculative = Speculative.Auto }
+```
+
+`HfModel` is a class and converts to a plain string, so it fits in a WorkManager `Data` or an Intent extra. `HubConfig` (through `LlamaBroHub.ConfigProvider`) sets the endpoint, a token provider, the cache directory, the progress interval and a logger.
+
+`DownloadProgress` is shaped for notifications: a `phase` (`Resolving`, `Verifying`, `Downloading`, `Complete`), `bytesDone` and `bytesTotal` (known from the plan), the current file and its index of the file count, a smoothed `bytesPerSecond` and an ETA. Emissions are throttled to the progress interval (one second by default); phase changes and the last emission always arrive. `DownloadState` is `Absent`, `Partial`, `Downloading`, `Complete` or `Failed`.
+
+### 12.3 Resolve and cache layout
+
+Resolution follows llama.cpp's `-hf` (read from `common/hf-cache.cpp` and `common/download.cpp`, F82):
+
+- A reference has no revision, like `-hf`, which always takes the default branch's commit.
+- `GET /api/models/{repo}/refs` gives the commit, and `GET /api/models/{repo}/tree/{commit}?recursive=true` gives the files with each LFS digest and size.
+- The GGUF is chosen by tag, and split parts (`-00001-of-00003`) are collected. The multimodal projector is fetched by default and a DFlash draft only on request, from the model's repository or a second one, as `-hfd` does (D41).
+
+The cache layout is compatible with llama.cpp and `huggingface_hub`:
+
+```
+<cacheDir>/
+  models--{org}--{repo}/
+    blobs/{oid}                        content-addressed files
+    blobs/{oid}.downloadInProgress     partials
+    snapshots/{commit}/{path}          relative symlinks into blobs/
+    refs/{name}                        ref -> commit
+  .locks/models--{org}--{repo}/{oid}.lock
+```
+
+The default `cacheDir` is `noBackupFilesDir/llamabro/hub` (D16). Auto Backup would otherwise silently stop cloud backup above 25 MB and device-to-device transfer would copy gigabytes of models to a new phone; the no-backup directory is always excluded and, unlike the cache directory, is not purged under storage pressure. Removable external storage is avoided because a model could disappear while it is mapped. Snapshot entries are relative symlinks, falling back to a move or copy as llama.cpp does, and survive moving the tree (F86).
+
+### 12.4 Reliability
+
+- **Resume** uses `Range` when the server sends `Accept-Ranges`. A 416 or 200 answer drops the partial, as upstream does.
+- **Verification (D40, D47).** Each LFS file is hashed with SHA-256 while it is written, and non-LFS files use the git SHA-1. A file enters the cache only when the digest matches the repository's value; otherwise the partial is deleted and the download fails with `IntegrityMismatch`. A resumed partial's existing bytes are hashed again first (phase `Verifying`, about 0.75 s per GB on the test phone, F89); a complete partial whose digest already matches is renamed with no request.
+- **Durability.** Writes go to `{oid}.downloadInProgress`, are synced, and are renamed atomically. Each call makes up to three attempts, with 2 s and then 4 s waits.
+- **Storage.** Free space is checked up front with `StorageManager.getAllocatableBytes` and reserved with `allocateBytes`. Running out of space keeps the partial.
+- **Concurrency.** Files download one at a time by default (D44, F89, F91).
+
+Deviations from `-hf`, beyond hashing (D44): `delete(tag)` removes the tag's files from every snapshot of the repository, with blobs removed only when no snapshot links them; and a tree entry without a digest is skipped.
+
+### 12.5 Errors
+
+`HubException` is sealed: `Network(retryable)`, `Unauthorized` (a gated repository: a token or an accepted licence is needed), `NotFound`, `RateLimited(retryAfterSeconds)`, `InsufficientStorage(neededBytes, availableBytes)` and `IntegrityMismatch`. An application's worker maps `retryable` to a retry. Being offline with the model not cached is a retryable `Network` error (F94).
+
+### 12.6 HTTP and redirects
+
+The SDK disables automatic redirects and follows them itself. Hugging Face redirects file downloads to a CDN host, and the SDK sends the access token only to the Hugging Face host, never to the CDN. On the real service the resolve URL redirects to a CDN that answers HEAD and `Range` (F93). A small internal `Transport` interface keeps the client testable; it is not public in 1.0 and could become public if apps need proxies or certificate pinning.
+
+### 12.7 Background downloads
+
+A background download belongs to the application. The [`download` acceptance app](../sdk/acceptance/download) shows a reference recipe: a `CoroutineWorker` that calls `setForeground` with a progress notification and maps `retryable` to a retry, plus an Android 14 user-initiated job variant. Killing the process and force-stopping the app both resume and verify on the test phone (F92). The application should hold its notification permission, or a force-stopped relaunch may stay in the background, where some manufacturers freeze it.
+
+---
+
+## 13. Threading and lifecycle
+
+### 13.1 One runtime per process
+
+What is global in a process: ggml's backend registry and the backend libraries it loaded, the environment variables the backends read, and llama.cpp's log callback (D6). So:
+
+- **Kotlin:** `LlamaBro.getInstance(context)` is a singleton, like WorkManager's. It runs no native code, so it is cheap on the main thread (F48).
+- **Native:** the runtime is a function-local `static`, which C++ initialises exactly once and thread-safely. A second initialisation with a different configuration returns an error that Kotlin reports as `InvalidRequest`.
+- **When:** native initialisation (about 13 ms on the test phone, F48) runs once on `Dispatchers.IO`, in the first `loadModel`, `devices()` or `backends()` call. A configuration conflict is reported there.
+
+### 13.2 Models
+
+Models are independent handles. Several can be loaded at once, for example a chat model and an embedding model, each with its own worker thread. Every llama.cpp call for a model happens on that model's worker thread.
+
+### 13.3 Rules
+
+- **Nothing blocks the caller's thread.** `getInstance` runs no native code; `loadModel`, `estimateFit`, `devices` and `backends` are `suspend` and run on `Dispatchers.IO`; `close()` returns at once.
+- **Closing.** `close()` returns immediately and frees the model in the background; `closeAndJoin()` waits for the memory. `loadModel` first waits for pending closes, so switching models never holds both in memory at once. `lb_model_free` cancels in-flight requests, waits for their terminal events and joins the worker thread.
+- **Cancellation.** Cancelling the collecting coroutine sets the request's `should_stop`. In `Conversation`, it also cancels a running tool handler.
+- **Conversation concurrency.** One operation at a time, enforced with `Busy` at collection.
+- **Sleep mode is off.** Idle models are not put to sleep, because a failed reload aborts the process; the SDK unloads models explicitly.
+- **Memory pressure.** A model that does not fit fails to load with `InsufficientMemory`. Once loaded, the memory reserve (section 9.3) is the margin for growth; running out ends the app through Android's low-memory killer rather than through an exception.
+
+### 13.4 Logging and observability
+
+llama.cpp's log output is routed to a `Logger` that the application supplies through `LlamaBroConfig`, with a `LogLevel`. Per-request `Timings` come from llama-server and are available on `ChatEvent.Done`. Trace sections are emitted with `android.os.Trace`.
+
+---
+
+## 14. Testing seams
+
+### 14.1 `llamabro-testing`
+
+Applications test with `llamabro-testing`, whose `FakeLlamaBro` runs the real `Model` and `Conversation` over a scripted fake engine that speaks llama-server's event stream (D27, F39). The test exercises the same request building, stream decoding, tool loop and compaction as production, with no device or native library:
+
+```kotlin
+val fake = FakeLlamaBro {
+    reply {
+        reasoning("Thinking...")
+        content("Hello!")
+        timings(promptTokens = 12)
+    }
+}
+val model = fake.llamaBro.loadModel(/* a fake source */)
+// drive a ViewModel with model, assert on fake.chatRequests
+```
+
+The script can queue replies, tool calls, a reply cut off by the length limit (`finishLength`), a context-exceeded error, an arbitrary server error, and a failing load. `chatRequests` exposes the JSON bodies the SDK built, so tests can assert on them. Only streamed chat completions are scripted; the slots listing and the reasoning control answer as an idle server would, and any other route fails with `NotSupported`.
+
+### 14.2 The engine seam
+
+The seam is the internal `Engine` interface. It is public only under the `@InternalLlamaBroApi` opt-in, so ordinary applications do not see it. The public classes stay final, so adding members never breaks an app. Interface members that the fake does not need get defaults, so adding a native capability does not break the fake (F54).
+
+### 14.3 Test layers inside the SDK
+
+| Layer | Runs on | Covers |
+|---|---|---|
+| Host tests | JVM and native host | The C API and bridge with tiny GGUFs; per-endpoint JSON contracts on each llama.cpp upgrade; cache on versus off gives identical greedy output; speculation on versus off at temperature 0 |
+| Golden tests | JVM | Request bodies and compaction views match `tools/ui` on the same message lists; its own compaction tests are ported |
+| Hub tests | JVM, a fake Hugging Face server | Refs, tree, a 302 to a second host, `Range`, ETag change, authentication only on the Hugging Face host, kill-and-resume (D43) |
+| Device tests | The test phone | Load, chat, cancel, close during generation, each backend, device choice for each AAR combination, background download |
+
+---
+
+## 15. Verification
+
+Every change under `sdk/` passes `sdk/scripts/check.sh`, which compares each layer with upstream where upstream exists (D21, F31). Native, JNI and packaging changes also pass it with `--device`. The checks include host tests, the public API dump, the AAR contents (for example, that `libomp.so` has not returned, D38), 16 KB alignment and size per artifact. Upgrading llama.cpp means re-running the contract tests and the compile check, and `git apply --check` for each patch.
+
+Hub parity with upstream is checked with golden files produced by upstream's own code: its file choice on its test cases and on real repository listings, and the cache tree it writes from the same fake server (D39, F83). Downloads are tested against the fake server for repeatability and once against the real service (F93).
+
+---
+
+## 16. Out of scope
+
+Deliberately not part of the SDK, with the reason:
+
+| Not included | Reason |
+|---|---|
+| Tool approval or gating | Application policy (D11) |
+| Scheduling, background execution and notifications for downloads | The application's choice of executor (D9) |
+| Model search and recommendations | One Hugging Face API call any app can make; llama.cpp has no search (D42). The SDK provides the fit estimate instead |
+| An out-of-process or HTTP server mode | In-process only (D5) |
+| Router mode | Needs subprocesses; load several `Model`s instead |
+| llama-server's built-in tools and MCP | Kotlin tools cover the need |
+| Context shift | Not supported for multimodal or hybrid models; compaction is a client feature (D13) |
+| Automatic compaction | `Conversation` compacts when asked, as the web client does; `contextUsage` lets an app set its own threshold |
+| Low-level control (logits, KV edits, Kotlin samplers, per-token callbacks) | Outside llama-server's surface |
+| Vulkan | Fails on the test phone's GPU driver (D31, F64) |
+| Text to speech | Below real time on every chip, and `rawRequest` cannot return audio bytes (D37, F74) |
+| Training and fine-tuning | Outside llama-server's surface |
+| Build-from-source consumption | Prebuilt AARs only (D4) |
+| Platforms other than Android `arm64-v8a` | Flutter and Kotlin Multiplatform bindings over the C API are planned for later; the C API is kept stable for them |
+
+Related reading: [decisions.md](./decisions.md) for every decision record, [`sdk/README.md`](../sdk/README.md) for the quickstart, and the [findings register](./research/findings.md) for the measurements cited here.

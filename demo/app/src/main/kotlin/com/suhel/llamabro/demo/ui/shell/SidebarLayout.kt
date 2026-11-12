@@ -59,7 +59,7 @@ fun SidebarDrawer(
 }
 
 /**
- * The drawer, stateless (pd-design 4.2): New chat, Models with its count, the chats in Today / This week / Earlier
+ * The drawer, stateless (demo design §4.2): New chat, Models with its count, the chats in Today / This week / Earlier
  * groups, Settings at the bottom. [currentChatId] marks the open chat.
  */
 @Composable

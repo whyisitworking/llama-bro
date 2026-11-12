@@ -1,6 +1,6 @@
 # P0 session 2: delta-net patch (test A) and phone defaults (test C)
 
-> **Parent:** [P0 spike plan](../../../docs/sdk-v2/plans/p0-spike.md) · **Summarised in:** [findings](../../../docs/sdk-v2/findings.md) (tests A and C; findings F7–F11, decisions D10 and D17)
+> **Parent:** [P0](../README.md) · **Summarised in:** [findings](../../../docs/research/findings.md) (tests A and C; findings F7–F11, decisions D10 and D17)
 
 Date: 2026-11-03. Same phone, model and flags as session 1 (`-dev HTP0 -ngl 99 -c 16384 -t 6 -tb 6`).
 MTP: `--spec-type draft-mtp --spec-draft-n-max 3`. P = U + `sdk/native/patches/0001-delta-net-head-tail-split.patch`
@@ -88,4 +88,4 @@ by prompt overlap put B into A's slot (similarity 0.957). A kept under 50%, so A
 way back, A matched that slot at 79% (over 50%), so the RAM cache wasn't consulted and only the shared prefix was
 reused. Design input for `Conversation`: llama-server's `id_slot`, `--slot-prompt-similarity` or `--cache-idle-slots`.
 
-Raw data: `spike/p0/results/raw/` (npu-a-*, cpu-a-*, npu-c-*).
+Raw data: `research/p0/results/raw/` (npu-a-*, cpu-a-*, npu-c-*).

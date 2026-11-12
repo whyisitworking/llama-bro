@@ -3,7 +3,7 @@ package com.suhel.llamabro.demo.ui.models
 import com.suhel.llamabro.demo.designsystem.components.CardTint
 import com.suhel.llamabro.demo.models.FitLabel
 
-/** The word a fit label shows and the tint its card and text share (pd-design 5.2). */
+/** The word a fit label shows and the tint its card and text share (demo design §8.6). */
 fun FitLabel.text(): String =
     when (this) {
         FitLabel.RunsGreat -> "Runs great"

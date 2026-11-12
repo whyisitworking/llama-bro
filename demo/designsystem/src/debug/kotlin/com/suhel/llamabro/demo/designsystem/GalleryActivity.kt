@@ -38,7 +38,7 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 
-/** Every component of Reference H, light then dark, with the samples the screenshot tests record. Debug builds only. */
+/** Every component, light then dark, with the samples the screenshot tests record. Debug builds only. */
 class GalleryActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

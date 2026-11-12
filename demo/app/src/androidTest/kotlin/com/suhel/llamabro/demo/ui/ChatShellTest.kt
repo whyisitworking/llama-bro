@@ -17,7 +17,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
 
-/** The chat screen inside the real shell and activity: what only a real activity can show (Reference L). */
+/** The chat screen inside the real shell and activity: what only a real activity can show. */
 @OptIn(ExperimentalTestApi::class)
 class ChatShellTest {
     private val app = TestAppRule()

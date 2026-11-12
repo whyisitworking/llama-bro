@@ -59,7 +59,7 @@ import org.junit.Test
 import org.junit.rules.RuleChain
 
 /**
- * Finding models and the library on the phone (T10): Get models, a model's sheet, downloads on their rows, and the
+ * Finding models and the library on the phone: Get models, a model's sheet, downloads on their rows, and the
  * library. The screens run bare in an activity, over a fake hub and a fake Hugging Face, so a test can supply the
  * recomposition counter and stays fast and exact.
  */

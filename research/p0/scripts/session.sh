@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs one request file on the phone through llama-server (U, over adb forward) or lb-spike (H, in-process),
-# with identical llama.cpp flags. Results land in spike/p0/results/raw/<name>/.
+# with identical llama.cpp flags. Results land in research/p0/results/raw/<name>/.
 #   session.sh u NAME REQFILE FLAGS...
 #   session.sh h NAME REQFILE FLAGS...
 #   session.sh cool            # waits (at most 60 s) for thermal status 0 or 1 (no throttling), then 5 s

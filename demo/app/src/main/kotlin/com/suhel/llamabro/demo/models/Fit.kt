@@ -10,7 +10,7 @@ enum class FitLabel { RunsGreat, RunsWell, SlowHere, TooBig }
 /** How much conversation fits: at least 16,384 tokens, at least 4,096, fewer than 4,096, or the model doesn't fit. */
 enum class ContextRoom { Large, Normal, Small, None }
 
-/** pd-design 5.3, Reference D. Pure functions; the app reads the budget and the chip from the SDK once per screen. */
+/** demo design §7.1. Pure functions; the app reads the budget and the chip from the SDK once per screen. */
 object Fit {
     private const val GIB = 1L shl 30
     private const val LARGE_CONTEXT_TOKENS = 16_384

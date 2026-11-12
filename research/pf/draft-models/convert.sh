@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PF T3: how the sidecars were made (on the Mac, outside the submodule). Downloads approved by the user 2026-11-06.
+# PF T3: how the sidecars were made (on the Mac, outside the submodule). Downloads approved by the maintainer 2026-11-06.
 #   Qwen/Qwen3.5-4B              config.json, tokenizer*, vocab.json, merges.txt, chat_template.jinja (no weights)
 #   z-lab/Qwen3.5-4B-DFlash      model.safetensors 1.27 GB, Apache-2.0
 #   yuyijiong/Qwen3.5-4B-Eagle3  model.safetensors 466 MB, Apache-2.0 (SpecForge LlamaForCausalLMEagle3)

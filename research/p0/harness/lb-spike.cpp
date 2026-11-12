@@ -1,6 +1,6 @@
 // lb-spike: llama-server's core (server-context) driven in-process, with no HTTP.
 //
-// P0 spike for the Llama-Bro SDK v2 (docs/sdk-v2/plans/p0-spike.md §3.1). Startup mirrors
+// P0 spike for the Llama-Bro SDK v2 (research/p0/README.md). Startup mirrors
 // tools/server/server.cpp main() of llama.cpp b12052, so that the only difference from
 // llama-server is the transport. Takes llama-server's flags plus:
 //   --spike-requests FILE   JSONL, one request per line:

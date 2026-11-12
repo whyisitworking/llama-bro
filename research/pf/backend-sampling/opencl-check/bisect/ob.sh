@@ -3,7 +3,7 @@
 # (GGML_OPENCL_OPFILTER = regex of op names OpenCL refuses, so the scheduler runs them on the CPU). Short prompt, greedy,
 # 32 tokens (LONG=1: the ~2K-token prompt), same load settings as ../oc.sh. Usage: ob.sh [model] 'ENV=...' 'ENV=...' ...   ("-" = no env)
 set -uo pipefail
-export ANDROID_SERIAL="${ANDROID_SERIAL:-<serial>}"
+export ANDROID_SERIAL="${ANDROID_SERIAL:?set ANDROID_SERIAL to the adb serial of the device}"
 here="$(cd "$(dirname "$0")" && pwd)"
 root=/data/local/tmp/lb-spike; bin="${BIN:-P}"; L=$root/$bin/lib; port=8097
 m="${1:-Qwen3.5-4B-Q4_K_M}"; shift

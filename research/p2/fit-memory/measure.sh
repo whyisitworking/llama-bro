@@ -4,7 +4,7 @@
 # the NPU's shared DMA buffers that a process's PSS doesn't. Upstream llama-server from the P0 spike's P build.
 # usage: [CTX=8192] [ONLY="model:arm ..."] measure.sh     (findings: P2 T7)
 set -uo pipefail
-export ANDROID_SERIAL="${ANDROID_SERIAL:-<serial>}"
+export ANDROID_SERIAL="${ANDROID_SERIAL:?set ANDROID_SERIAL to the adb serial of the device}"
 root=/data/local/tmp/lb-spike; L=$root/P/lib; port=8099; ctx=${CTX:-8192}
 wait_adb() { for i in $(seq 1 120); do adb get-state >/dev/null 2>&1 && return 0; sleep 1; done; echo "adb gone"; exit 1; }
 sh() { wait_adb; adb shell "$@"; }

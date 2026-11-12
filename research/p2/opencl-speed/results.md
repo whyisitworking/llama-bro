@@ -1,6 +1,6 @@
 # P2 T4: CPU vs OpenCL (Adreno 830), OnePlus 13 (CPH2649, SM8750)
 
-> **Parent:** [findings F63](../../../docs/sdk-v2/findings.md) · Script: [speed.sh](speed.sh) · raw: [speed.out](speed.out) · 2026-11-05
+> **Parent:** [findings F63](../../../docs/research/findings.md) · Script: [speed.sh](speed.sh) · raw: `speed.out` · 2026-11-05
 
 Upstream llama-server from the P0 spike's `P` build (b12052 + delta-net patch, the SDK's source; its
 `libggml-opencl.so` uses the same defaults as `libllamabro-ggml-opencl.so`: embedded kernels, Adreno kernels,
@@ -37,7 +37,7 @@ Italic: a CPU run during throttling. The first OpenCL load of the session took 5
 
 A Vulkan llama-server (`V` on the phone: the SDK's source, `LB_BACKENDS=vulkan`, upstream library names, Vulkan-Headers
 and SPIRV-Headers 1.3.275) reports `Vulkan0: Adreno (TM) 830 (19203 MiB, 19203 MiB free)` on a phone with
-15.1 GB of RAM. Raw: [speed-vulkan.out](speed-vulkan.out).
+15.1 GB of RAM. Raw: `speed-vulkan.out`.
 
 - **Q4_K_M (Qwen3.5 4B, Llama 3.2 3B): every load aborts**, 6 of 6: `ggml_vulkan: compute pipeline creation failed for
   mul_mat_vec_q4_k_f32_f32: vk::Device::createComputePipeline: ErrorUnknown`, then `terminating due to uncaught

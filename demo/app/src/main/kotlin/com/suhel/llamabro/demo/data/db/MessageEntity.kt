@@ -6,7 +6,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
- * Reference B: one row of a chat. [kind] is `user`, `assistant` or `switch`; [state] is `done`, `held`, `streaming`,
+ * One row of a chat. [kind] is `user`, `assistant` or `switch`; [state] is `done`, `held`, `streaming`,
  * `stopped` or `failed`; [images] holds newline-separated file names under `filesDir/images/`, empty for none.
  */
 @Entity(

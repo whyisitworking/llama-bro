@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""The coverage gate: the unit and the device JaCoCo reports of :app merged line by line, against the floors of
-Reference L.
+"""The coverage gate: the unit and the device JaCoCo reports of :app merged line by line, against these floors:
 
   90% lines and 80% branches in com.suhel.llamabro.demo.{data,models,chat}
   85% lines in every *ViewModel

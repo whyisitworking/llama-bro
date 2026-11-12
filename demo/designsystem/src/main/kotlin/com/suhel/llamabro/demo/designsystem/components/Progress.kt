@@ -39,7 +39,7 @@ import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 
 /**
- * The model waking up (pd-design 4.1.4): a fine accent hairline across the top of the reply area. While [active] a
+ * The model waking up (demo design §4.1): a fine accent hairline across the top of the reply area. While [active] a
  * 30%-wide gradient sweeps across it every 1,400 ms; with animations off it is a static hairline. Not a progress
  * indicator: no spinner, no percentage, no progress semantics. Inactive, it keeps its 2 dp and draws nothing.
  * The sweep is read in the draw phase only, so it never recomposes.

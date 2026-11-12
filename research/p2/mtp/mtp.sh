@@ -5,7 +5,7 @@
 # load setting, so every arm is a fresh load; arms alternate within each round (F6).
 # usage: [ROUNDS=5] [CHIPS="cpu npu gpu"] mtp.sh     (findings: P2 T8)
 set -uo pipefail
-export ANDROID_SERIAL="${ANDROID_SERIAL:-<serial>}"
+export ANDROID_SERIAL="${ANDROID_SERIAL:?set ANDROID_SERIAL to the adb serial of the device}"
 root=/data/local/tmp/lb-spike; L=$root/P/lib; port=8099
 here="$(cd "$(dirname "$0")" && pwd)"
 wait_adb() { for i in $(seq 1 120); do adb get-state >/dev/null 2>&1 && return 0; sleep 1; done; echo "adb gone"; exit 1; }

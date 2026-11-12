@@ -6,7 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The spacing steps and the corner scale of the verified spec (docs/sdk-v2/pd-design-v2-spec.md, sections 2 and 4). */
+/** The spacing steps and the corner scale of the verified spec (docs/design/demo-app.md, sections 8.3 and 8.5). */
 class SpacingAndShapesTest {
     @Test
     fun theStepsAreTheSpecsAndGrowInOrder() {

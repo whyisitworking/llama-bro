@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PF T2: n-gram speculation (a load setting). Method from spike/p2/mtp/mtp2.sh: SDK settings, a fresh load per arm,
+# PF T2: n-gram speculation (a load setting). Method from research/p2/mtp/mtp2.sh: SDK settings, a fresh load per arm,
 # arms rotated within a round (F6), thermal <= 2 before each round (at most ~3 min wait), 256-token replies via /v1/chat/completions,
 # thinking off. Output kinds: the four of F68 plus code edit (code.cpp back with one function renamed) and quoting
 # (three verbatim sentences from the document). Arms:
@@ -10,13 +10,13 @@
 #   modmtp  ngram-mod (as mod) then draft-mtp n-max 4    [npu only; n-gram drafts first, MTP when none]
 # usage: [ROUNDS=3] [CHIPS="npu cpu"] [ARMS="..."] ng.sh
 set -uo pipefail
-export ANDROID_SERIAL="${ANDROID_SERIAL:-<serial>}"
+export ANDROID_SERIAL="${ANDROID_SERIAL:?set ANDROID_SERIAL to the adb serial of the device}"
 root=/data/local/tmp/lb-spike; L=$root/P/lib; port=8099
 here="$(cd "$(dirname "$0")" && pwd)"; src="$here/../../p2/mtp/source.txt"; mkdir -p "$here/replies" "$here/logs"
 wait_adb() { for i in $(seq 1 120); do adb get-state >/dev/null 2>&1 && return 0; sleep 1; done; echo "adb gone"; exit 1; }
 stop() { wait_adb; adb shell "pkill -x llama-server; sleep 2; pkill -9 -x llama-server" >/dev/null 2>&1; sleep 2; }
 thermal() { adb shell dumpsys thermalservice | grep -m1 -oE 'Thermal Status: [0-9]+' | grep -oE '[0-9]+$'; }
-# wait for thermal <= COOL (default 2, the user's call 2026-11-06: was 1), at most ~3 min
+# wait for thermal <= COOL (default 2; it was 1 before 2026-11-06), at most ~3 min
 cool() { for i in $(seq 1 9); do [ "$(thermal)" -le "${COOL:-2}" ] && return; sleep 20; done; }
 # before each arm: never start one at thermal >= 3 (the NPU reached 105 C, skin 70 C, at status 4 in T2); wait for <= 2, at most ~10 min
 guard() { [ "$(thermal)" -lt 3 ] && return; for i in $(seq 1 30); do [ "$(thermal)" -le 2 ] && return; sleep 20; done; }

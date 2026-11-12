@@ -1,6 +1,6 @@
 # F50 A/B: `--load-mode auto` (mmap) vs `none`, CPU, OnePlus 13 (CPH2649, SM8750)
 
-> **Parent:** [findings F58](../../../docs/sdk-v2/findings.md) · Script: [ab.sh](ab.sh) · 2026-11-05
+> **Parent:** [findings F58](../../../docs/research/findings.md) · Script: [ab.sh](ab.sh) · 2026-11-05
 
 llama-server from the P0 spike's `P` build (b12052 + delta-net patch, the same tree as the SDK), `-c 4096 -np 1 -dev none`,
 default threads. Per run: wall time from launch to `/health` 200 (`ready_s`), `/proc/<pid>/smaps_rollup` after load, then
@@ -42,7 +42,7 @@ These are the reruns with one server per arm checked.
 
 ## Three arms: `auto` vs `none` vs `dio` (F59), 2026-11-05
 
-Same setup, `ARMS="auto none dio"`, the arm order rotated each round. Raw output: [dio-ab.out](dio-ab.out).
+Same setup, `ARMS="auto none dio"`, the arm order rotated each round. Raw output: `dio-ab.out`.
 
 **Qwen3.5-4B** (4 rounds, thermal 0, one server per arm):
 
@@ -71,12 +71,12 @@ of each greedy reply.
 **First draft (5 lines, unmap each tensor right after its copy): crashed.** Every `M:auto` load segfaulted at the
 first decode, both models. Both tie `output` to `token_embd`: the same file range is loaded twice
 (`TENSOR_DUPLICATED`), once copied into `CPU_REPACK` (output) and once used in place from the mapping
-(`token_embd`). Unmapping the copy's range pulled the embedding's pages out from under it. Raw: [patch-ab.out](patch-ab.out).
+(`token_embd`). Unmapping the copy's range pulled the embedding's pages out from under it. Raw: `patch-ab.out`.
 
 **v2 (14 lines): record the ranges copied out of the mapping and the ranges still read from it; after the last
 load, unmap copied minus read.**
 
-Qwen3.5-4B, 5 rounds, thermal 0–1, one server per arm ([patch-v2-qwen.out](patch-v2-qwen.out)):
+Qwen3.5-4B, 5 rounds, thermal 0–1, one server per arm (`patch-v2-qwen.out`):
 
 | arm | ready_s per round | mean | PSS MiB | Pss_File | peak RSS | reply MD5 |
 |---|---|---|---|---|---|---|
@@ -84,7 +84,7 @@ Qwen3.5-4B, 5 rounds, thermal 0–1, one server per arm ([patch-v2-qwen.out](pat
 | P:none | 7.39, 7.00, 6.79, 6.87, 6.95 | 7.00 | 3396–3397 | 19 | 3403 | 3ec14de6 |
 | M:auto | 6.46, 5.86, 5.62, 5.64, 5.61 | 5.84 | 3383–3395 | 522–534 | 5370–5398 | 3ec14de6 |
 
-Llama-3.2-3B, 4 rounds, thermal 2, one server per arm ([patch-v2-llama.out](patch-v2-llama.out)):
+Llama-3.2-3B, 4 rounds, thermal 2, one server per arm (`patch-v2-llama.out`):
 
 | arm | ready_s per round | mean | PSS MiB | Pss_File | peak RSS | reply MD5 |
 |---|---|---|---|---|---|---|
@@ -92,7 +92,7 @@ Llama-3.2-3B, 4 rounds, thermal 2, one server per arm ([patch-v2-llama.out](patc
 | P:none | 5.42, 5.48, 5.42, 5.46 | 5.45 | 2746 | 17 | 2753 | a4e51c12 |
 | M:auto | 4.74, 4.71, 4.79, 4.71 | 4.74 | 2747 | 327 | 3926 | a4e51c12 |
 
-Decode speed is equal across arms within each round. The first full run's Llama rounds ([patch-v2-ab.out](patch-v2-ab.out),
+Decode speed is equal across arms within each round. The first full run's Llama rounds (`patch-v2-ab.out`,
 second half) are discarded: a leftover server stayed resident and, after the PIDs wrapped, the script read its
 memory. Cause of every leftover in this folder: `pkill -f llama-server` matched the `sh -c` running it and killed
 that shell before its `pkill -9`. The script now matches the exact name and skips an arm if two servers run.

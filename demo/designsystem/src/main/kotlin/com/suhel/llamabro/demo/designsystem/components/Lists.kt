@@ -90,7 +90,7 @@ fun InitialAvatar(letter: String, modifier: Modifier = Modifier, size: Dp = 40.d
 /**
  * A chat in the chat list: the model's [avatar] letter, the [title] and [time], and the last message [preview]
  * ("Writer: Here's a tighter…", "You: what about…"). A reply's sender name is in ink, a user's line all muted.
- * No unread counts, ticks or status (pd-design 4.2).
+ * No unread counts, ticks or status (demo design §4.2).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -168,7 +168,7 @@ private val QuantPadding = PaddingValues(horizontal = DemoSpacing.item)
 /**
  * The quant table's grid: the size and fit columns are sized in sp so they grow with the font. Past 1.3x font
  * scale the three columns no longer fit a phone's width, so each row stacks the quant over size and fit (still
- * one height for every row). Builder's call, settled here (PD T3).
+ * one height for every row).
  */
 @Immutable
 private class QuantGrid(val stacked: Boolean, val sizeWidth: Dp, val fitWidth: Dp, val rowHeight: Dp)

@@ -1,6 +1,6 @@
 # F75: why OpenCL answers Qwen3.5 4B with `8888…` (F71)
 
-> **Parent:** [F75 in the findings register](../../../../../docs/sdk-v2/findings.md) · **Related:** F71, [`../oc.sh`](../oc.sh)
+> **Parent:** [F75 in the findings register](../../../../../docs/research/findings.md) · **Related:** F71, [`../oc.sh`](../oc.sh)
 > **Status:** done 2026-11-06. OnePlus 13 (CPH2649, Adreno 830, driver `0800.77`, compiler `E031.47.18.56`), b12052.
 
 ## Answer
@@ -34,17 +34,17 @@ that two replies match.
 
 | Round | Arm | Reply | Reading |
 |---|---|---|---|
-| [1](round1.out) | `U` (unpatched b12052) / `P` (patched) | `8888…` / `8888…` | not the patch |
+| 1 | `U` (unpatched b12052) / `P` (patched) | `8888…` / `8888…` | not the patch |
 | 1 | OPFILTER `GATED_DELTA_NET`, `SSM_CONV`, all Qwen3.5-only ops; fusion off | `8888…` each | not the recurrent ops |
-| [2](round2.out) | OPFILTER `MUL_MAT` | "The sea is a vast, ever-changing expanse…" | **a matmul** |
+| 2 | OPFILTER `MUL_MAT` | "The sea is a vast, ever-changing expanse…" | **a matmul** |
 | 2 | tiled Q6_K / Q4_K GEMV off; `-ot ssm_out` (Q5_K); `-ot ssm_alpha,ssm_beta` (F32) | `8888…`, `8888…`, half-coherent, `8888…` (the two `-ot` arms show as `(none)` in the raw file) | no single weight group |
-| [3](round3.out) | `ssm_out` on CPU plus one more group each | garbage of different kinds | several groups are wrong |
-| [4](round4.out) | every layer weight on CPU (only lm_head on GPU) | correct | lm_head fine |
+| 3 | `ssm_out` on CPU plus one more group each | garbage of different kinds | several groups are wrong |
+| 4 | every layer weight on CPU (only lm_head on GPU) | correct | lm_head fine |
 | 4 | only `ffn_down` / `attn_qkv,attn_gate` / attention on GPU | `3` / `nih` / `back` | each breaks it |
 | 4 | only `ssm_out` (Q5_K) on GPU | correct, the CPU's words | Q5_K fine |
-| [5](round5.out) | only the Q6_K `ffn_down` / Q6_K `attn_qkv` layers on GPU | correct | Q6_K fine |
+| 5 | only the Q6_K `ffn_down` / Q6_K `attn_qkv` layers on GPU | correct | Q6_K fine |
 | 5 | only Q4_K `ffn_down` / Q4_K `attn_qkv` / `attn_gate` (all Q4_K) on GPU | slightly off / slightly off / `pare` | **Q4_K** |
-| [6](round6.out) | `GGML_OPENCL_Q4_K_BIN_DP4A=0` (prefill GEMM), whole model and `attn_gate` alone | `8888…` / `pare` | not the prefill GEMM |
+| 6 | `GGML_OPENCL_Q4_K_BIN_DP4A=0` (prefill GEMM), whole model and `attn_gate` alone | `8888…` / `pare` | not the prefill GEMM |
 
 ### 3. Activations are normal ([`actstat/`](actstat/), CPU on the Mac)
 
@@ -60,19 +60,19 @@ Built with the Snapdragon toolchain image and preset like the phone's server, ru
 
 | Run | Result |
 |---|---|
-| [default](tbo-mulmat.out) | **210/240**: the 30 failures are every Q4_K case with **n = 2, 3, 4**, Llama's shapes too (NMSE 0.63–0.98). n = 1, 8, 19, 64, 512 pass; every Q5_K and Q6_K case passes |
-| [`GGML_OPENCL_COOPK_Q4_K_BIN=0`](tbo-mulmat-coopk-bin-off.out), [`GGML_OPENCL_Q4_K_BIN_DP4A=0`](tbo-q4k-switches.out), both | the same n = 2–4 failures (the next kernel in line fails too) |
-| [`GGML_OPENCL_COOPK_DP4A=0`](tbo-mulmat-coopk-dp4a-off.out) | **240/240** |
+| default | **210/240**: the 30 failures are every Q4_K case with **n = 2, 3, 4**, Llama's shapes too (NMSE 0.63–0.98). n = 1, 8, 19, 64, 512 pass; every Q5_K and Q6_K case passes |
+| `GGML_OPENCL_COOPK_Q4_K_BIN=0`, `GGML_OPENCL_Q4_K_BIN_DP4A=0`, both | the same n = 2–4 failures (the next kernel in line fails too) |
+| `GGML_OPENCL_COOPK_DP4A=0` | **240/240** |
 
 ### 5. The fix on the full model
 
 | Run | Reply |
 |---|---|
-| [Qwen3.5, OpenCL, `GGML_OPENCL_COOPK_DP4A=0`, short](coopk-dp4a-off.out) | "The sea is a vast, ever-shifting expanse of blue that breathes rhythmically against the shore…" |
-| [Qwen3.5, OpenCL, same, ~2K-token prompt](coopk-dp4a-off-more.out) | "The provided document outlines the process for building the `llama.cpp` project locally, which serves as the core librar…", **word for word the CPU's** |
+| Qwen3.5, OpenCL, `GGML_OPENCL_COOPK_DP4A=0`, short | "The sea is a vast, ever-shifting expanse of blue that breathes rhythmically against the shore…" |
+| Qwen3.5, OpenCL, same, ~2K-token prompt | "The provided document outlines the process for building the `llama.cpp` project locally, which serves as the core librar…", **word for word the CPU's** |
 | Llama 3.2 3B, OpenCL, same, short and long | as before the switch (F71) |
-| [Qwen3.5, OpenCL, `GGML_OPENCL_COOPK_Q4_K_BIN=0`](coopk-bin-off.out) | `8888…` |
-| [Gemma 3 4B (UD-Q4_K_XL), OpenCL, default](gemma.out) | `''` (empty: broken too; SWA models also get the 4-token checkpoint batch) |
+| Qwen3.5, OpenCL, `GGML_OPENCL_COOPK_Q4_K_BIN=0` | `8888…` |
+| Gemma 3 4B (UD-Q4_K_XL), OpenCL, default | `''` (empty: broken too; SWA models also get the 4-token checkpoint batch) |
 | Gemma 3 4B, OpenCL, `GGML_OPENCL_COOPK_DP4A=0` | "The vast, restless sea stretches out to the horizon, a mesmerizing blend of blue and green." |
 | Gemma 3 4B, CPU | "The sea stretches endlessly, a vast and restless expanse of blue mystery." |
 

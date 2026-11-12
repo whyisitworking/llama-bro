@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds one spike variant (U or S) for macOS with Metal (llama.cpp's default on Apple silicon).
-# Output: spike/p0/build/out-macos-<variant>/bin
+# Output: research/p0/build/out-macos-<variant>/bin
 set -euo pipefail
 
 variant="${1:?usage: build-macos.sh U|S}"

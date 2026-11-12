@@ -11,7 +11,7 @@ import org.junit.runner.Description
 import java.io.File
 
 /**
- * Captures the screen to `<app external files>/screens/<test>/<theme>.png`, kept as evidence for T13's review
+ * Captures the screen to `<app external files>/screens/<test>/<theme>.png`, kept as evidence for design review
  * (pull with `adb pull /sdcard/Android/data/com.suhel.llamabro.demo/files/screens`).
  */
 class ScreenshotRule(private val compose: ComposeTestRule) : TestWatcher() {

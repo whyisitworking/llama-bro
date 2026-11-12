@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.pow
 
-/** pd-design 5.2's table, value by value, and WCAG AA for body text (Reference C). */
+/** demo design §8.6's table, value by value, and WCAG AA for body text. */
 class TokensTest {
     @Test
     fun lightMatchesTheSpecTable() {

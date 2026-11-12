@@ -49,7 +49,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Sidebar writes replies on the page; Chat list puts them in bubbles (pd-design 4.2). */
+/** Sidebar writes replies on the page; Chat list puts them in bubbles (demo design §4.2). */
 fun AppLayout.messageStyle(): MessageStyle = if (this == AppLayout.Sidebar) MessageStyle.Open else MessageStyle.Bubbles
 
 private enum class Sheet { Switcher, Think, Smaller }

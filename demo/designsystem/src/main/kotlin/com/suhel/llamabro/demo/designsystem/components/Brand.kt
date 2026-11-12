@@ -60,7 +60,7 @@ fun Orb(size: Dp, modifier: Modifier = Modifier) {
     // The mockups' accent-tinted shadow (rgba(37,48,77,.16) light, rgba(185,196,222,.18) dark), raised to 0.22/0.35
     // because Android's shadow is fainter than CSS's at the same alpha; elevation = a fifth of the size. Builder's
     // call,
-    // settled here (PD T3).
+    // settled here.
     val tint = colors.accent.copy(alpha = if (colors.isDark) 0.35f else 0.22f)
     Canvas(
         modifier

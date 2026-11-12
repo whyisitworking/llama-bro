@@ -1,0 +1,39 @@
+# Demo app requirement map
+
+Every requirement of the [demo design](../docs/design/demo-app.md) and the tests that prove it. `demo/scripts/map_check.py`
+reads the table below, looks each named test up in the JUnit results of the last run, and fails when a named test did not
+run or failed (the `map` step of `demo/scripts/check.sh`). A requirement without a passing test is an open item, not a pass.
+
+Test kinds: U = unit, C = component, S = screen, J = journey (fake engine, on a device), R = real model
+(`demo/scripts/e2e/real_model_e2e.py`).
+
+| Design | Requirement | Tests |
+|---|---|---|
+| §4.1 | Greeting by time of day; the fixed line; search bar; "Picked for your phone" with "What's a model?"; three picks with friendly over real name, line, size, fit; tinted; no icons | U `greetingFollowsTheClock`, `picksAreTintedWithoutNetwork`; S `firstRunShowsThreePicksWithoutIcons`, `whatsAModelOpensTwoLines`, `firstRunSearchOpensGetModels`; J `firstRunToFirstAnswer` |
+| §4.1 | Pick sheet: names, maker, about, fit line, four facts, Get, "From Hugging Face" | S `pickSheetShowsFourFacts`, `pickSheetFitIsRealWhenOnline`, `pickSheetFitIsQuickWhenOffline` |
+| §4.1 | Get opens the chat at once; ring with % and time; type before ready; held line; leaving keeps downloading with a notification | U `heldMessagesAreAnsweredInOrderOnce`; S `getOpensTheChatAndHoldsAMessage`; J `downloadContinuesInBackgroundWithNotification`, `notificationPermissionDeniedStillDownloads` |
+| §4.1 | Wake hairline, no spinner or percentage; then the held message is answered | S `wakingShowsTheHairlineNotASpinner`; C `wakeHairlineIsStaticWhenAnimationsAreOff`; J `firstRunToFirstAnswer` |
+| §4.2 | Two layouts in Appearance with previews; Sidebar default; switching crossfades and keeps the open chat | U `SettingsRepositoryTest` defaults; S `sidebarIsTheDefault`, `switchingToChatListShowsChatsHome`, `switchingLayoutKeepsTheOpenChat`, `layoutChoiceSurvivesRestart` |
+| §4.2 Sidebar | Drawer: New chat, Models with count, chats by date, Settings; rename/delete; open-page messages with speed line | U `chatsAreGroupedByDay`; S `drawerShowsModelsCountAndGroups`, `drawerRenameAndDelete`, `openStyleHasNoModelBubble`, `speedLineUnderEachReply` |
+| §4.2 Chat list | Home list with avatar, title, time, sender-prefixed preview; search titles and text; long-press rename/delete; FAB; bottom tabs; conversation screen with back; bubbles with times and day labels; no unread/ticks/status | U `searchMatchesTitlesAndMessageText`, `chatRowPreviewPrefixesTheSender`, `rowTimeIsTimeTodayWeekdayThisWeekElseDate`; S `chatListOpensAChatAndBackReturns`, `newChatFabOpensAnEmptyChat`, `bubbleStyleShowsTimes`, `dayLabelsSeparateDays`, `chatListHasNoUnreadOrTicks` |
+| §4.2 | New chat uses the default model (pinned, else last used); empty chat orb, line, chips | U `newChatUsesPinnedOverLast`, `newChatUsesTheDefaultModel`; S `emptyChatShowsGreetingAndChips`, `starterChipFillsAndSends` |
+| §4.2 | Switcher: tinted, Default chip on the edge, Get more models; mid-chat switch keeps the chat with a divider; long-press "Use for new chats" | U `switchAddsADividerAndUsesTheNewModel`; S `switcherListsLibraryWithDefaultChip`, `longPressPinsDefault`, `switcherGetMoreOpensGetModels`; J `switchModelMidChat` |
+| §4.3 | Get models: search and the five suggestions; no other lists | U `shortQueryShowsSuggestions`, `queryIsDebounced`; S `getModelsShowsFiveSuggestions` |
+| §4.3 | Results grouped by model, tint and label, line, Thinks/Sees images, downloads | U `uploadsOfOneModelCollapseIntoOneRow`, `seesImagesFromPipelineTag`, `plainLineFromParameterCount`, `downloadCountFormats` (1.2M, 880k, 412); S `resultsCollapseByModel`; J `searchAndGetAnyModel` |
+| §4.3 | Model sheet: name, repo and maker, description, Basic three sizes no quant names, Advanced every quant equal rows aligned, Recommended chip, mmproj Included, button text | U `SizesTest` (all), `recommendedIsPreselected`, `eachTierGetsARealEstimate`, `advancedListsEveryQuantAndTheProjector`, `buttonNamesModelOrQuant`; S `basicHasNoQuantNames`, `advancedRowsHaveEqualHeight`, `advancedColumnsAlign`; C `quantRowsHaveEqualHeight` |
+| §4.3 | Progress on the row, in the library (MB, speed, time, Pause, ✕), notification | U `pauseKeepsThePartialAndGetResumes`, `cancelDeletesThePartial`, `progressTextFormats`; S `downloadProgressShowsOnTheRow`, `libraryShowsDownloadingSection`; J `pauseResumeAndCancelADownload`, `downloadSurvivesProcessDeath` |
+| §4.3 | Library: storage used and free, last use, Default chip, swipe to remove, Get more models | U `libraryMarksTheDefault`, `removingTheDefaultUnpinsIt`; S `swipeToRemoveAsksFirst`, `storageBarShowsUsedAndFree`; J `removeAModelInUse` |
+| §4.4 | Markdown and code, copy, stop | U `MarkdownTest` (all); S `codeBlockCopyPutsCodeOnClipboard`, `copyReplyPutsTextOnClipboard`, `linkOpensTheBrowser`, `stopButtonStops`; U `stopKeepsWhatArrived` |
+| §4.4 | Images with +, for vision models; honest line otherwise | U `imagesBecomeImageContent`, `imageToANonVisionModelIsALimitNotASend`; S `photoPickerAttachesAndShowsThumbnail`, `removeAttachedImageBeforeSending`; J `sendAnImage` |
+| §4.4 | Think bulb (D50): Off/Quick/Balanced/Deep; absent when it can't think; "Thought for n s" folded; live thoughts | U `ThinkingTest` (all), `thinkLevelIsSentAsReasoning`; S `thinkMenuOffersFourLevels`, `thinkBulbHiddenWhenTheModelCantThink`, `foldedThoughtExpands`, `liveThoughtsOpenWhileThinking` |
+| §4.4 | Edit and regenerate | U `regenerateReplacesTheReplyAndRebuildsFromHistory`, `editTruncatesAndResends`; S `editPutsTextInComposer`, `regenerateShowsNewReply`; J `editAndRegenerate` |
+| §4.4 | Share a reply as a card with name and speed | S `shareProducesAPngIntent`; U `shareCardTextIsCutAt600`; J `shareAReply` (UI Automator sees the share sheet) |
+| §4.4 | Custom instructions as the system prompt | U `customInstructionsAreTheSystemPrompt`, `noInstructionsNoSystemPrompt`, `instructionsChangeAppliesToNewChatsAndRebuilds`; S `instructionsScreenSaves` |
+| §4.4 | Speed "n words/s" | U `wordsPerSecond`, `replyStreamsIntoOneStoredRow`; S `speedLineUnderEachReply` |
+| §4.4 | Honest limits, one line with the fix | U `insufficientMemoryBecomesAPlainLimit`, `contextExceededOffersANewChat`, `chatWithMissingModelIsReadOnly`, `downloadFailureLines`; S `limitLineShowsItsAction` (one per line in §9) |
+| §3 | Speculative off; each model by its own name (D50); Room is the truth; Conversation rebuilt from messages | U `modelHostLoadsWithSdkDefaults`, `libraryShowsTheModelsOwnNameForEveryFileOfACatalogRepo`, `reopenedChatRebuildsTheConversation`, the SDK tests |
+| §4.5 | Settings: Appearance, instructions, default model, token stored privately, storage, about | U `TokenStoreTest` (all), `tokenIsSentOnlyToHuggingFace`; S `settingsEveryRowOpensItsScreen`, `tokenSavedAndRemoved`, `defaultModelChoiceIncludesLastUsed`, `aboutShowsVersionsAndLicences`; J `gatedModelNeedsAToken` |
+| §8.6 | Tokens verbatim, both themes, AA contrast, serif only for greeting, model names and empty lines, orb sizes | U `TokensTest`; C every screenshot test; S `themeChoiceApplies`, `serifOnlyWhereTheSpecSays` (semantic font family check on each screen) |
+| §7.1 | Fit labels: real in the sheet, quick in lists, speed by chip | U `FitTest` (all), `aLateEstimateRecomposesOnlyItsRow` |
+| §3 | Never crash on memory refusal; background downloads per the sample and F92 | U as the §9 limits; J `downloadSurvivesProcessDeath`, `memoryRefusalJourney` |
+| D46 | Screens from the component library only; performance budgets | `ds` step grep and stability; the benchmarks and every recomposition test |

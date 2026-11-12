@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# PF T1: backend sampling (per-request `backend_sampling`), off vs on. Method from spike/p2/mtp/mtp2.sh: SDK settings,
-# ~2K-token prompt from spike/p2/mtp/source.txt, 256-token replies via /v1/chat/completions, thinking off.
+# PF T1: backend sampling (per-request `backend_sampling`), off vs on. Method from research/p2/mtp/mtp2.sh: SDK settings,
+# ~2K-token prompt from research/p2/mtp/source.txt, 256-token replies via /v1/chat/completions, thinking off.
 # One load per chip and round serves both arms (it's a request field); the arm order alternates per round (F6).
 # Each reply is saved to replies/ so greedy on/off can be compared byte for byte.
 # usage: [ROUNDS=3] [CHIPS="npu gpu cpu"] bs.sh
 set -uo pipefail
-export ANDROID_SERIAL="${ANDROID_SERIAL:-<serial>}"
+export ANDROID_SERIAL="${ANDROID_SERIAL:?set ANDROID_SERIAL to the adb serial of the device}"
 root=/data/local/tmp/lb-spike; L=$root/P/lib; port=8099
 here="$(cd "$(dirname "$0")" && pwd)"; src="$here/../../p2/mtp/source.txt"; mkdir -p "$here/replies" "$here/logs"
 wait_adb() { for i in $(seq 1 120); do adb get-state >/dev/null 2>&1 && return 0; sleep 1; done; echo "adb gone"; exit 1; }
 stop() { wait_adb; adb shell "pkill -x llama-server; sleep 2; pkill -9 -x llama-server" >/dev/null 2>&1; sleep 2; }
 thermal() { adb shell dumpsys thermalservice | grep -m1 -oE 'Thermal Status: [0-9]+' | grep -oE '[0-9]+$'; }
-# wait for thermal <= COOL (default 2, the user's call 2026-11-06: was 1), at most ~3 min
+# wait for thermal <= COOL (default 2; it was 1 before 2026-11-06), at most ~3 min
 cool() { for i in $(seq 1 9); do [ "$(thermal)" -le "${COOL:-2}" ] && return; sleep 20; done; }
 start() {  # dev-args
   stop; wait_adb; adb forward tcp:$port tcp:$port >/dev/null

@@ -3,7 +3,7 @@
 # Per model: OpenCL and CPU, a short prompt (one ubatch) and the ~2K-token T1 prompt (four 512-token ubatches),
 # greedy, 64 tokens, backend sampling off. Same build and SDK settings as bs.sh.
 set -uo pipefail
-export ANDROID_SERIAL="${ANDROID_SERIAL:-<serial>}"
+export ANDROID_SERIAL="${ANDROID_SERIAL:?set ANDROID_SERIAL to the adb serial of the device}"
 root=/data/local/tmp/lb-spike; L=$root/P/lib; port=8099
 here="$(cd "$(dirname "$0")" && pwd)"; src="$here/../../../p2/mtp/source.txt"
 stop() { adb shell "pkill -x llama-server; sleep 2; pkill -9 -x llama-server" >/dev/null 2>&1; sleep 2; }

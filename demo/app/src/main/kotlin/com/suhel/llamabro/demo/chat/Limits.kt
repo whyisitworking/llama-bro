@@ -4,7 +4,7 @@ import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.demo.models.DownloadFailure
 import com.suhel.llamabro.demo.models.DownloadStatus
 
-/** What the user can do about a [Limit]: the buttons Reference G lists, as values the screen maps to components. */
+/** What the user can do about a [Limit]: the buttons the design lists, as values the screen maps to components. */
 enum class LimitAction {
     TrySmallerSize,
     CloseOtherAppsAndRetry,
@@ -16,7 +16,7 @@ enum class LimitAction {
     SwitchModel,
 }
 
-/** One plain line and its action (Reference G). */
+/** One plain line and its action. */
 data class Limit(
     val line: String,
     val action: LimitAction,
@@ -25,7 +25,7 @@ data class Limit(
     val secondLabel: String? = null,
 )
 
-/** Reference G's plain limit lines, one place, so the copy is the spec's word for word. */
+/** The plain limit lines, in one place, so the copy is the design's word for word. */
 object Limits {
     fun insufficientMemory(name: String) =
         Limit(

@@ -2,7 +2,7 @@ package com.suhel.llamabro.demo.ui.shell
 
 import java.net.URLEncoder
 
-/** String routes (Reference G): the app avoids the serialization plugin, so no type-safe route objects. */
+/** String routes: the app avoids the serialization plugin, so no type-safe route objects. */
 object Routes {
     const val FIRST_RUN = "first_run"
     const val CHATS = "chats"

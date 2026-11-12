@@ -1,6 +1,6 @@
 # P2 T7: memory for `ContextSize.Auto`, OnePlus 13 (CPH2649, SM8750, 15.1 GB RAM)
 
-> **Parent:** [findings F66](../../../docs/sdk-v2/findings.md) · Script: [measure.sh](measure.sh) · 2026-11-05/06
+> **Parent:** [findings F66](../../../docs/research/findings.md) · Script: [measure.sh](measure.sh) · 2026-11-05/06
 
 ## Upstream's fit on the phone (`-c 0`, Qwen3.5 4B, `--load-mode none`)
 
@@ -12,9 +12,9 @@
 
 ## Projected (the load's memory breakdown, all rows) against what the system loses (`MemAvailable` drop)
 
-Context 8192, the SDK's settings, upstream llama-server (P build). Raw: [measure.out](measure.out),
-[projection.out](projection.out) (`-lv 4`, fit's breakdown at an explicit context), first attempt cut short by an adb
-drop: [measure-first-try.out](measure-first-try.out).
+Context 8192, the SDK's settings, upstream llama-server (P build). Raw: `measure.out`,
+`projection.out` (`-lv 4`, fit's breakdown at an explicit context), first attempt cut short by an adb
+drop: `measure-first-try.out`.
 
 | model, device | projected rows | projected total | lost after load | lost after a 7.8K-token prefill | PSS after prefill |
 |---|---|---|---|---|---|

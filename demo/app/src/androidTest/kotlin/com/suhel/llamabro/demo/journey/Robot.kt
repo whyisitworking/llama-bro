@@ -134,9 +134,9 @@ class Robot {
             .isNotEmpty()
 
     /**
-     * In the system's photo picker: taps the first picture it shows, and Done where the picker asks for it. The picker is two things: AOSP's (a grid of views
-     * with the id `icon_thumbnail`) and the Google Photos one of newer phones (no ids; each picture is described
-     * "Photo taken on ..."), so the first match of either is taken.
+     * In the system's photo picker: taps the first picture it shows, and Done where the picker asks for it. The picker
+     * is two things: AOSP's (a grid of views with the id `icon_thumbnail`) and the Google Photos one of newer phones
+     * (no ids; each picture is described "Photo taken on ..."), so the first match of either is taken.
      */
     fun pickFirstPhoto() {
         val aosp = By.res(Pattern.compile(".*:id/icon_thumbnail"))
