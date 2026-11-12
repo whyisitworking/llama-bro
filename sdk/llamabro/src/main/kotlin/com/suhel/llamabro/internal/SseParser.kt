@@ -31,10 +31,12 @@ internal class SseParser {
     }
 
     private fun event(text: String): String? {
-        val data = text.split('\n')
-            .map { it.removeSuffix("\r") }
-            .filter { it.startsWith("data:") }
-            .map { it.removePrefix("data:").removePrefix(" ") }
+        val data =
+            text
+                .split('\n')
+                .map { it.removeSuffix("\r") }
+                .filter { it.startsWith("data:") }
+                .map { it.removePrefix("data:").removePrefix(" ") }
         return if (data.isEmpty()) null else data.joinToString("\n")
     }
 }

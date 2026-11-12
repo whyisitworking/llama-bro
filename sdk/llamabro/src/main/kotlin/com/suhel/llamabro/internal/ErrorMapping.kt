@@ -17,33 +17,48 @@ internal object ErrorMapping {
 
     /** [body] is `{"error": {...}}` (or anything else for a non-JSON failure). */
     fun fromBody(httpStatus: Int, body: String): LlamaBroException {
-        val error = runCatching { json.parseToJsonElement(body) as? JsonObject }.getOrNull()?.get("error") as? JsonObject
-            ?: return LlamaBroException.ServerError(httpStatus, body.ifBlank { "HTTP $httpStatus" })
+        val error =
+            runCatching { json.parseToJsonElement(body) as? JsonObject }.getOrNull()?.get("error") as? JsonObject
+                ?: return LlamaBroException.ServerError(httpStatus, body.ifBlank { "HTTP $httpStatus" })
         val type = error.string("type")
         val message = error.string("message") ?: body
         val status = error["code"]?.jsonPrimitive?.intOrNull ?: httpStatus
         return when (type) {
-            "exceed_context_size_error" -> LlamaBroException.ContextExceeded(
-                promptTokens = error["n_prompt_tokens"]?.jsonPrimitive?.intOrNull,
-                contextSize = error["n_ctx"]?.jsonPrimitive?.intOrNull,
-                message = message,
-            )
-            "invalid_request_error", "not_found_error", "authentication_error", "permission_error" ->
+            "exceed_context_size_error" -> {
+                LlamaBroException.ContextExceeded(
+                    promptTokens = error["n_prompt_tokens"]?.jsonPrimitive?.intOrNull,
+                    contextSize = error["n_ctx"]?.jsonPrimitive?.intOrNull,
+                    message = message,
+                )
+            }
+
+            "invalid_request_error", "not_found_error", "authentication_error", "permission_error" -> {
                 LlamaBroException.InvalidRequest(message)
-            "not_supported_error" -> LlamaBroException.NotSupported(message)
-            "unavailable_error" -> LlamaBroException.Unavailable(message)
-            else -> LlamaBroException.ServerError(status, message)
+            }
+
+            "not_supported_error" -> {
+                LlamaBroException.NotSupported(message)
+            }
+
+            "unavailable_error" -> {
+                LlamaBroException.Unavailable(message)
+            }
+
+            else -> {
+                LlamaBroException.ServerError(status, message)
+            }
         }
     }
 
     /** A failed `lb_model_load`: its error JSON carries `"code": "file_not_found"` when a file can't be opened. */
     fun loadFailed(e: NativeError): LlamaBroException.ModelLoadFailed {
         val obj = runCatching { json.parseToJsonElement(e.errorJson) as? JsonObject }.getOrNull()
-        val reason = when (obj?.string("code")) {
-            "file_not_found" -> LlamaBroException.ModelLoadFailed.Reason.FileNotFound
-            "insufficient_memory" -> LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory
-            else -> LlamaBroException.ModelLoadFailed.Reason.Other
-        }
+        val reason =
+            when (obj?.string("code")) {
+                "file_not_found" -> LlamaBroException.ModelLoadFailed.Reason.FileNotFound
+                "insufficient_memory" -> LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory
+                else -> LlamaBroException.ModelLoadFailed.Reason.Other
+            }
         return LlamaBroException.ModelLoadFailed(reason, nativeMessage(e.errorJson), e)
     }
 
@@ -51,6 +66,5 @@ internal object ErrorMapping {
     fun nativeMessage(errorJson: String): String =
         runCatching { (json.parseToJsonElement(errorJson) as JsonObject).string("error") }.getOrNull() ?: errorJson
 
-    private fun JsonObject.string(key: String): String? =
-        (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
+    private fun JsonObject.string(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
 }

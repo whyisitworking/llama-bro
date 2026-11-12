@@ -10,14 +10,19 @@ import com.suhel.llamabro.InternalLlamaBroApi
 public interface Engine {
     /** null = ok, else the error JSON. */
     public fun init(configJson: String): String?
+
     public fun setLog(listener: ((level: Int, text: String) -> Unit)?)
+
     /** `lb_runtime_devices` JSON. */
     public fun devices(): String
+
     /** `lb_runtime_backends` JSON. The default is the CPU alone, loaded, for engines with no other backend. */
     public fun backends(): String = """[{"name":"cpu","loaded":true,"error":null,"devices":["CPU"]}]"""
+
     /** `lb_fit_estimate` JSON. Fakes have no memory measurement by default. */
     public fun fitEstimate(configJson: String): String =
         """{"fits":null,"n_ctx":null,"n_ctx_min":4096,"used_min_mib":0,"used_max_mib":null,"budget_mib":null}"""
+
     /** `lb_model_load`. A real engine throws on failure. */
     public fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel
 }
@@ -26,11 +31,13 @@ public interface Engine {
 public interface EngineModel {
     /** `lb_model_info` JSON. */
     public val infoJson: String
+
     /**
      * `lb_model_request`: [endpoint] is the C API's name for the route (`llamabro.h`). Callbacks may arrive
      * before this returns. A real engine throws if the request couldn't start.
      */
     public fun request(endpoint: String, paramsJson: String?, body: ByteArray, sink: RequestSink): EngineRequest
+
     /** Cancels every request, waits for their terminal events, frees the model. */
     public fun close()
 }
@@ -38,6 +45,7 @@ public interface EngineModel {
 @InternalLlamaBroApi
 public interface EngineRequest {
     public fun cancel()
+
     /** Only after the terminal event. */
     public fun free()
 }
@@ -46,6 +54,8 @@ public interface EngineRequest {
 @InternalLlamaBroApi
 public interface RequestSink {
     public fun onChunk(httpStatus: Int, data: ByteArray)
+
     public fun onDone()
+
     public fun onCancelled()
 }

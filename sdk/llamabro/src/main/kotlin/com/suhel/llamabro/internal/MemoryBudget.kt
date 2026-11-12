@@ -11,11 +11,17 @@ package com.suhel.llamabro.internal
  */
 internal object MemoryBudget {
     const val RESERVE_MIB: Long = 512
-    private const val MIB = 1024L * 1024
+    private const val KIB = 1024L
+    private const val MIB = KIB * KIB
 
     /** [available] and [threshold] in bytes. At least 1 MiB (native then says why it doesn't fit). */
-    fun budgetMib(available: Long, threshold: Long, ramCacheMib: Int, sideFileBytes: Long, reserveMib: Long = RESERVE_MIB): Long =
-        maxOf(1L, (available - threshold - sideFileBytes) / MIB - ramCacheMib - reserveMib)
+    fun budgetMib(
+        available: Long,
+        threshold: Long,
+        ramCacheMib: Int,
+        sideFileBytes: Long,
+        reserveMib: Long = RESERVE_MIB,
+    ): Long = maxOf(1L, (available - threshold - sideFileBytes) / MIB - ramCacheMib - reserveMib)
 
     /**
      * Memory at load time: [available] is the kernel's `MemAvailable`, which is what AOSP returns as
@@ -27,5 +33,8 @@ internal object MemoryBudget {
 
     /** `MemAvailable` from `/proc/meminfo` text, in bytes; null if absent. */
     fun memAvailable(meminfo: String): Long? =
-        Regex("""^MemAvailable:\s+(\d+)\s+kB""", RegexOption.MULTILINE).find(meminfo)?.groupValues?.get(1)?.toLongOrNull()?.times(1024)
+        Regex(
+            """^MemAvailable:\s+(\d+)\s+kB""",
+            RegexOption.MULTILINE,
+        ).find(meminfo)?.groupValues?.get(1)?.toLongOrNull()?.times(KIB)
 }

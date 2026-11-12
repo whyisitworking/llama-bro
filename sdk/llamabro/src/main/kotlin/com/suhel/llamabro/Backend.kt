@@ -15,7 +15,9 @@ public class Backend internal constructor(
     public val devices: List<String>,
 ) {
     override fun equals(other: Any?): Boolean = other is Backend && parts() == other.parts()
+
     override fun hashCode(): Int = parts().hashCode()
+
     override fun toString(): String = "Backend(name=$name, loaded=$loaded, error=$error, devices=$devices)"
 
     private fun parts() = listOf(name, loaded, error, devices)

@@ -12,6 +12,7 @@ import com.suhel.llamabro.chat.RequestOptions
 import com.suhel.llamabro.chat.Tool
 import com.suhel.llamabro.chat.ToolCall
 import com.suhel.llamabro.chatInternal
+import com.suhel.llamabro.internal.ChatJson
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -30,7 +31,6 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
-import com.suhel.llamabro.internal.ChatJson
 
 /**
  * A chat history that behaves like llama.cpp's own web client (`tools/ui`, design §6–§7, D8): it builds each
@@ -52,6 +52,7 @@ public class Conversation internal constructor(
     public val messages: StateFlow<List<Message>> = _messages.asStateFlow()
 
     private val _contextUsage = MutableStateFlow(ContextUsage(0, model.info.contextSize))
+
     /** Tokens in use of the context, from the last reply's timings. */
     public val contextUsage: StateFlow<ContextUsage> = _contextUsage.asStateFlow()
 
@@ -72,12 +73,15 @@ public class Conversation internal constructor(
     @Volatile
     private var completionId: String? = null
 
-
     /**
      * Appends a user message and streams the reply.
      * @param options changes the [Builder.defaults] for this send's requests only (every turn of its tool loop).
      */
-    public fun send(text: String, vararg attachments: Content, options: RequestOptions.Builder.() -> Unit = {}): Flow<ChatEvent> {
+    public fun send(
+        text: String,
+        vararg attachments: Content,
+        options: RequestOptions.Builder.() -> Unit = {},
+    ): Flow<ChatEvent> {
         val parts = listOf<Content>(Content.Text(text)) + attachments
         val opts = config.defaults.copy(options)
         return exclusive {
@@ -96,17 +100,24 @@ public class Conversation internal constructor(
         send(text, options = options).collect { if (it is ChatEvent.Done) done = it }
         val history = _messages.value
         // this send's last reply: after its user message, so an older reply never counts
-        val reply = history.subList(history.indexOfLast { it is Message.User } + 1, history.size)
-            .lastOrNull { it is Message.Assistant } as Message.Assistant?
+        val reply =
+            history
+                .subList(history.indexOfLast { it is Message.User } + 1, history.size)
+                .lastOrNull { it is Message.Assistant } as Message.Assistant?
         val content = reply?.content.orEmpty()
         val reason = done?.reason ?: FinishReason.Stop
-        if (reason == FinishReason.Length || reason == FinishReason.TurnLimit || reason == FinishReason.ToolCallsPending) {
+        if (reason == FinishReason.Length || reason == FinishReason.TurnLimit ||
+            reason == FinishReason.ToolCallsPending
+        ) {
             throw LlamaBroException.Incomplete(reason, content)
         }
         return content
     }
 
-    /** Sends the current history again: after `ContextExceeded` (and a compaction), a turn limit, or pending tool results. */
+    /**
+     * Sends the current history again: after `ContextExceeded` (and a compaction), a turn limit, or pending tool
+     * results.
+     */
     public fun resume(options: RequestOptions.Builder.() -> Unit = {}): Flow<ChatEvent> {
         val opts = config.defaults.copy(options)
         return exclusive { runTurns(this, opts) }
@@ -134,7 +145,11 @@ public class Conversation internal constructor(
     /** Asks the server to stop thinking now (llama-server's `reasoning_end` control) for the reply streaming now. */
     public suspend fun endReasoning() {
         val id = completionId ?: return
-        val body = buildJsonObject { put("id", id); put("action", "reasoning_end") }.toString()
+        val body =
+            buildJsonObject {
+                put("id", id)
+                put("action", "reasoning_end")
+            }.toString()
         model.rawRequest(Endpoint.Control, body).collect()
     }
 
@@ -143,7 +158,18 @@ public class Conversation internal constructor(
      * every message, [Builder.defaults], `maxTurns`, `preEncodeAfterReply`. Not saved: tools, whose handlers are
      * code; register them again when restoring.
      */
-    public fun toJson(): String = ConversationJson.encode(system, _messages.value.drop(if (system != null) 1 else 0), config)
+    public fun toJson(): String =
+        ConversationJson.encode(
+            system,
+            _messages.value.drop(
+                if (system != null) {
+                    1
+                } else {
+                    0
+                },
+            ),
+            config,
+        )
 
     /** The scope of `model.conversation { … }`: defaults, limits and tools. */
     public class Builder internal constructor() {
@@ -151,10 +177,13 @@ public class Conversation internal constructor(
         public var defaults: RequestOptions = RequestOptions.Default
 
         /** Changes [defaults] in place: `defaults { sampling { temperature = 0.7f }; stop("END") }`. */
-        public fun defaults(configure: RequestOptions.Builder.() -> Unit) { defaults = defaults.copy(configure) }
+        public fun defaults(configure: RequestOptions.Builder.() -> Unit) {
+            defaults = defaults.copy(configure)
+        }
 
         /** Model requests per send before `Done(TurnLimit)` (tools/ui `agenticMaxTurns`, default 100). */
         public var maxTurns: Int = 100
+
         /** Pre-encode the history after each reply (tools/ui "Pre-fill KV cache after response", default off). */
         public var preEncodeAfterReply: Boolean = false
 
@@ -167,7 +196,12 @@ public class Conversation internal constructor(
          *
          * @param schema the parameters' JSON Schema object, as a string.
          */
-        public fun tool(name: String, description: String, schema: String, handler: (suspend (JsonArgs) -> String)? = null) {
+        public fun tool(
+            name: String,
+            description: String,
+            schema: String,
+            handler: (suspend (JsonArgs) -> String)? = null,
+        ) {
             registry.add(Tool.function(name, description, schema), handler)
         }
     }
@@ -177,8 +211,11 @@ public class Conversation internal constructor(
         require(preservedSteps >= 0) { "preservedSteps must be >= 0" }
         return exclusive {
             val source = CompactionPlanner.modelView(_messages.value)
-            val cut = CompactionPlanner.cutIndex(source, preservedSteps)
-                ?: throw IllegalStateException("nothing to compact: no step before the $preservedSteps preserved ones")
+            val cut =
+                CompactionPlanner.cutIndex(source, preservedSteps)
+                    ?: throw IllegalStateException(
+                        "nothing to compact: no step before the $preservedSteps preserved ones",
+                    )
             // the request the chat sends, cut before the preserved steps, plus the instruction as a user message
             val req = request(requestMessages(source.subList(0, cut)) + Message.user(instruction), compactionOptions())
             val summary = StringBuilder()
@@ -186,9 +223,18 @@ public class Conversation internal constructor(
             try {
                 model.chatInternal(req) { completionId = it }.collect { ev ->
                     when (ev) {
-                        is ChatEvent.ContentDelta -> { summary.append(ev.delta); emit(ev) }
-                        is ChatEvent.Done -> done = ev
-                        else -> emit(ev)
+                        is ChatEvent.ContentDelta -> {
+                            summary.append(ev.delta)
+                            emit(ev)
+                        }
+
+                        is ChatEvent.Done -> {
+                            done = ev
+                        }
+
+                        else -> {
+                            emit(ev)
+                        }
                     }
                 }
             } finally {
@@ -211,20 +257,29 @@ public class Conversation internal constructor(
      * prompt ahead of the next turn. The timings update [contextUsage].
      */
     private fun startPreEncode() {
-        val body = buildJsonObject {
-            put("messages", ChatJson.messages(requestMessages()))
-            put("n_predict", 0)
-            put("stream", false)
-            if (config.registry.tools.isNotEmpty()) put("tools", ChatJson.tools(config.registry.tools))
-        }.toString()
+        val body =
+            buildJsonObject {
+                put("messages", ChatJson.messages(requestMessages()))
+                put("n_predict", 0)
+                put("stream", false)
+                if (config.registry.tools.isNotEmpty()) put("tools", ChatJson.tools(config.registry.tools))
+            }.toString()
         model.startPreEncode {
             try {
                 if (!allSlotsIdle()) return@startPreEncode
                 model.rawRequest(Endpoint.ChatCompletions, body).collect { response ->
-                    val t = runCatching { (Json.parseToJsonElement(response) as JsonObject)["timings"] as? JsonObject }.getOrNull()
+                    val t =
+                        runCatching {
+                            (
+                                Json.parseToJsonElement(
+                                    response,
+                                ) as JsonObject
+                            )["timings"] as? JsonObject
+                        }.getOrNull()
                     if (t != null) {
                         fun n(k: String) = (t[k] as? JsonPrimitive)?.intOrNull ?: 0
-                        _contextUsage.value = ContextUsage(n("prompt_n") + n("cache_n") + n("predicted_n"), model.info.contextSize)
+                        _contextUsage.value =
+                            ContextUsage(n("prompt_n") + n("cache_n") + n("predicted_n"), model.info.contextSize)
                     }
                 }
             } catch (e: CancellationException) {
@@ -262,17 +317,18 @@ public class Conversation internal constructor(
         if (busy.value) throw LlamaBroException.Busy()
     }
 
-    private fun exclusive(block: suspend FlowCollector<ChatEvent>.() -> Unit): Flow<ChatEvent> = flow {
-        if (!busy.compareAndSet(false, true)) throw LlamaBroException.Busy()
-        try {
-            model.cancelPreEncode()
-            block()
-        } finally {
-            completionId = null
-            _reply.value = null
-            busy.value = false
+    private fun exclusive(block: suspend FlowCollector<ChatEvent>.() -> Unit): Flow<ChatEvent> =
+        flow {
+            if (!busy.compareAndSet(false, true)) throw LlamaBroException.Busy()
+            try {
+                model.cancelPreEncode()
+                block()
+            } finally {
+                completionId = null
+                _reply.value = null
+                busy.value = false
+            }
         }
-    }
 
     private fun append(m: Message) {
         _messages.value = _messages.value + m
@@ -293,9 +349,14 @@ public class Conversation internal constructor(
      * `extra`, which shape the prompt or the sampler; not its format, stop words or tool choice, which would
      * constrain a free-text summary.
      */
-    private fun compactionOptions(): RequestOptions = config.defaults.let { d ->
-        RequestOptions { sampling = d.sampling; reasoning = d.reasoning; extra = d.extra }
-    }
+    private fun compactionOptions(): RequestOptions =
+        config.defaults.let { d ->
+            RequestOptions {
+                sampling = d.sampling
+                reasoning = d.reasoning
+                extra = d.extra
+            }
+        }
 
     /**
      * The agent loop, ported from tools/ui stores/agentic/index.svelte.ts (design §6.2): send; if the reply calls
@@ -323,7 +384,7 @@ public class Conversation internal constructor(
                 out.emit(ChatEvent.ToolCallReceived(call))
                 val handler = config.registry.handler(call.name)
                 if (handler == null) {
-                    pending = true  // manual mode: the app adds the result
+                    pending = true // manual mode: the app adds the result
                     continue
                 }
                 val result = runTool(handler, call)
@@ -343,28 +404,59 @@ public class Conversation internal constructor(
      * (the arguments are parsed inside its try block). Cancelling the flow cancels the handler; closing the
      * model cancels it too and fails the flow with ModelClosed.
      */
-    private suspend fun runTool(handler: suspend (JsonArgs) -> String, call: ToolCall): String = try {
-        val args = JsonArgs(call.argumentsJson)
-        coroutineScope {
-            val watcher = launch {
-                model.awaitClosed()
-                throw LlamaBroException.ModelClosed()
+    private suspend fun runTool(handler: suspend (JsonArgs) -> String, call: ToolCall): String =
+        try {
+            val args = JsonArgs(call.argumentsJson)
+            coroutineScope {
+                val watcher =
+                    launch {
+                        model.awaitClosed()
+                        throw LlamaBroException.ModelClosed()
+                    }
+                try {
+                    handler(args)
+                } finally {
+                    watcher.cancel()
+                }
             }
-            try {
-                handler(args)
-            } finally {
-                watcher.cancel()
-            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: LlamaBroException.ModelClosed) {
+            throw e
+        } catch (e: Throwable) {
+            "Error: ${e.message ?: e.toString()}"
         }
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: LlamaBroException.ModelClosed) {
-        throw e
-    } catch (e: Throwable) {
-        "Error: ${e.message ?: e.toString()}"
-    }
 
     private class Reply(val done: ChatEvent.Done, val toolCalls: List<ToolCall>)
+
+    /** The assistant message as it arrives: text, reasoning and tool calls so far, and the closing event. */
+    private class ReplyDraft {
+        val content = StringBuilder()
+        val reasoning = StringBuilder()
+        val calls = mutableListOf<ToolCall>()
+        var done: ChatEvent.Done? = null
+
+        fun shown() = Message.Assistant(content.toString(), reasoning.toString().ifEmpty { null })
+
+        fun hasAnything() = content.isNotBlank() || reasoning.isNotBlank() || calls.isNotEmpty()
+
+        /** What a stop or an error keeps: the text and reasoning so far, no partial tool calls. */
+        fun partial() =
+            Message.Assistant(content = content.toString(), reasoning = reasoning.toString().ifBlank { null })
+
+        // tools/ui stores/agentic/index.svelte.ts: `content: turnContent || undefined`,
+        // `reasoning_content: … || undefined`
+        fun finished() =
+            if (calls.isEmpty()) {
+                Message.Assistant(content = content.toString(), reasoning = reasoning.toString().ifEmpty { null })
+            } else {
+                Message.Assistant(
+                    content = content.toString().ifEmpty { null },
+                    reasoning = reasoning.toString().ifEmpty { null },
+                    toolCalls = calls.toList(),
+                )
+            }
+    }
 
     /**
      * One model request. Appends the reply to the history and returns its Done (not emitted). A reply that
@@ -372,59 +464,61 @@ public class Conversation internal constructor(
      * does: content and reasoning stay, partial tool calls are dropped.
      */
     private suspend fun streamReply(out: FlowCollector<ChatEvent>, req: ChatRequest): Reply {
-        val content = StringBuilder()
-        val reasoning = StringBuilder()
-        val calls = mutableListOf<ToolCall>()
-        var done: ChatEvent.Done? = null
+        val draft = ReplyDraft()
         try {
             model.chatInternal(req) { completionId = it }.collect { ev ->
-                when (ev) {
-                    is ChatEvent.ContentDelta -> {
-                        content.append(ev.delta)
-                        _reply.value = Message.Assistant(content.toString(), reasoning.toString().ifEmpty { null })
-                    }
-                    is ChatEvent.ReasoningDelta -> {
-                        reasoning.append(ev.delta)
-                        _reply.value = Message.Assistant(content.toString(), reasoning.toString().ifEmpty { null })
-                    }
-                    is ChatEvent.ToolCallReceived -> calls += ev.call
-                    is ChatEvent.Done -> {
-                        done = ev
-                        ev.timings?.let { t ->
-                            _contextUsage.value = ContextUsage(t.promptTokens + t.cachedTokens + t.predictedTokens, model.info.contextSize)
-                        }
-                    }
-                    else -> Unit
-                }
+                take(draft, ev)
                 if (ev !is ChatEvent.Done && ev !is ChatEvent.ToolCallReceived) out.emit(ev)
             }
         } catch (e: CancellationException) {
             // A stop: tools/ui created the assistant message before streaming and never removes it, so the reply
             // stays, empty if nothing came (roles keep alternating); partial tool calls are dropped.
-            append(Message.Assistant(content = content.toString(), reasoning = reasoning.toString().ifBlank { null }))
-            _reply.value = null  // after the append, so a UI never loses the text in between
+            append(draft.partial())
+            _reply.value = null // after the append, so a UI never loses the text in between
             throw e
         } catch (e: Throwable) {
             // An error (e.g. ContextExceeded): keep what was streamed, nothing when it's empty, so resume()
             // sends the same request again (P1 plan T9).
-            if (content.isNotBlank() || reasoning.isNotBlank() || calls.isNotEmpty()) {
-                append(Message.Assistant(content = content.toString(), reasoning = reasoning.toString().ifBlank { null }))
-            }
+            if (draft.hasAnything()) append(draft.partial())
             _reply.value = null
             throw e
         } finally {
             completionId = null
         }
-        // tools/ui stores/agentic/index.svelte.ts: `content: turnContent || undefined`, `reasoning_content: … || undefined`
-        append(
-            if (calls.isEmpty()) {
-                Message.Assistant(content = content.toString(), reasoning = reasoning.toString().ifEmpty { null })
-            } else {
-                Message.Assistant(content = content.toString().ifEmpty { null }, reasoning = reasoning.toString().ifEmpty { null }, toolCalls = calls.toList())
-            },
-        )
+        append(draft.finished())
         _reply.value = null
-        return Reply(done!!, calls)
+        return Reply(draft.done!!, draft.calls)
+    }
+
+    /** Folds one event into the draft and the live state the UI reads. */
+    private fun take(draft: ReplyDraft, ev: ChatEvent) {
+        when (ev) {
+            is ChatEvent.ContentDelta -> {
+                draft.content.append(ev.delta)
+                _reply.value = draft.shown()
+            }
+
+            is ChatEvent.ReasoningDelta -> {
+                draft.reasoning.append(ev.delta)
+                _reply.value = draft.shown()
+            }
+
+            is ChatEvent.ToolCallReceived -> {
+                draft.calls += ev.call
+            }
+
+            is ChatEvent.Done -> {
+                draft.done = ev
+                ev.timings?.let { t ->
+                    _contextUsage.value =
+                        ContextUsage(t.promptTokens + t.cachedTokens + t.predictedTokens, model.info.contextSize)
+                }
+            }
+
+            else -> {
+                Unit
+            }
+        }
     }
 }
 
@@ -432,4 +526,5 @@ public class Conversation internal constructor(
  * Adds the result of a pending tool call (after `Done(ToolCallsPending)`); then call [Conversation.resume].
  * @throws LlamaBroException.Busy while a send, resume, regenerate or compaction runs.
  */
-public fun Conversation.addToolResult(toolCallId: String, result: String): Unit = addToolResultInternal(toolCallId, result)
+public fun Conversation.addToolResult(toolCallId: String, result: String): Unit =
+    addToolResultInternal(toolCallId, result)

@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.single
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
@@ -36,25 +37,46 @@ class NgramDeviceTest {
     private val llama = LlamaBro.getInstance(context)
     private val model = File(context.getExternalFilesDir(null), "Qwen3.5-4B-Q4_K_M.gguf").path
 
-    private fun load(s: Speculative): Model = runBlocking {
-        settleMemory() // the previous test's model may still be returning its memory
-        llama.loadModel(ModelSource.file(model)) { devicePolicy = DevicePolicy.Only(DeviceKind.Npu); speculative = s }
-    }
+    private fun load(s: Speculative): Model =
+        runBlocking {
+            settleMemory() // the previous test's model may still be returning its memory
+            llama.loadModel(ModelSource.file(model)) {
+                devicePolicy = DevicePolicy.Only(DeviceKind.Npu)
+                speculative = s
+            }
+        }
 
     private data class Reply(val text: String, val accepted: Int, val decodeTps: Double)
 
-    private fun Model.copy(): Reply = runBlocking {
-        val text = (1..12).joinToString(" ") { "Line $it: the build copies libllama.so into the jniLibs folder for arm64-v8a." }
-        val body = """{"messages":[{"role":"user","content":${Json.encodeToString(kotlinx.serialization.json.JsonPrimitive("Repeat the following text exactly, and nothing else:\n\n$text"))}}],""" +
-            """"max_tokens":160,"temperature":0,"cache_prompt":false,"chat_template_kwargs":{"enable_thinking":false}}"""
-        val r = Json.parseToJsonElement(rawRequest(Endpoint.ChatCompletions, body).single()) as JsonObject
-        val t = r.getValue("timings").jsonObject
-        Reply(
-            r.getValue("choices").jsonArray[0].jsonObject.getValue("message").jsonObject.getValue("content").jsonPrimitive.content,
-            t["draft_n_accepted"]?.jsonPrimitive?.int ?: 0,
-            t.getValue("predicted_per_second").jsonPrimitive.double,
-        )
-    }
+    private fun Model.copy(): Reply =
+        runBlocking {
+            val text =
+                (1..12).joinToString(
+                    " ",
+                ) { "Line $it: the build copies libllama.so into the jniLibs folder for arm64-v8a." }
+            val body =
+                """{"messages":[{"role":"user","content":${Json.encodeToString(
+                    JsonPrimitive(
+                        "Repeat the following text exactly, and nothing else:\n\n$text",
+                    ),
+                )}}],""" +
+                    """"max_tokens":160,"temperature":0,"cache_prompt":false,"chat_template_kwargs":{"enable_thinking":false}}"""
+            val r = Json.parseToJsonElement(rawRequest(Endpoint.ChatCompletions, body).single()) as JsonObject
+            val t = r.getValue("timings").jsonObject
+            Reply(
+                r
+                    .getValue(
+                        "choices",
+                    ).jsonArray[0]
+                    .jsonObject
+                    .getValue("message")
+                    .jsonObject
+                    .getValue("content")
+                    .jsonPrimitive.content,
+                t["draft_n_accepted"]?.jsonPrimitive?.int ?: 0,
+                t.getValue("predicted_per_second").jsonPrimitive.double,
+            )
+        }
 
     private fun run(s: Speculative): Reply {
         val m = load(s)
@@ -62,7 +84,7 @@ class NgramDeviceTest {
             assertEquals(m.loadReport.toString(), s, m.loadReport.speculative)
             return m.copy().also { Log.i("Ngram", "$s -> accepted ${it.accepted}, ${"%.1f".format(it.decodeTps)} t/s") }
         } finally {
-            runBlocking { m.closeAndJoin() }  // free the NPU before the next load
+            runBlocking { m.closeAndJoin() } // free the NPU before the next load
         }
     }
 
@@ -80,6 +102,10 @@ class NgramDeviceTest {
         val both = run(Speculative.Ngram(then = Speculative.Mtp(4)))
         assertTrue("accepted ${both.accepted}", both.accepted > 0)
         // 160 tokens reach about line 7 of 12
-        assertTrue(both.text, both.text.startsWith("Line 1: the build copies libllama.so") && both.text.contains("Line 6: the build copies"))
+        assertTrue(
+            both.text,
+            both.text.startsWith("Line 1: the build copies libllama.so") &&
+                both.text.contains("Line 6: the build copies"),
+        )
     }
 }

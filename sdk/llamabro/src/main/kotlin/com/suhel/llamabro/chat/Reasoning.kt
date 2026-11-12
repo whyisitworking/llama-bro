@@ -16,7 +16,9 @@ public class Reasoning internal constructor(
     public fun copy(configure: Builder.() -> Unit): Reasoning = Builder(this).apply(configure).build()
 
     override fun equals(other: Any?): Boolean = other is Reasoning && parts() == other.parts()
+
     override fun hashCode(): Int = parts().hashCode()
+
     override fun toString(): String =
         "Reasoning(format=$format, budgetTokens=$budgetTokens, budgetMessage=$budgetMessage, enableThinking=$enableThinking)"
 

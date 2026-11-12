@@ -7,7 +7,10 @@ import org.junit.Test
 class SseParserTest {
     @Test
     fun sseParserHandlesSplitUtf8AndEvents() {
-        val stream = "data: {\"t\":\"😀漢字\"}\n\n: ping\n\ndata: {\"t\":\"é\"}\n\ndata: [DONE]\n\n".toByteArray(Charsets.UTF_8)
+        val stream =
+            "data: {\"t\":\"😀漢字\"}\n\n: ping\n\ndata: {\"t\":\"é\"}\n\ndata: [DONE]\n\n".toByteArray(
+                Charsets.UTF_8,
+            )
         val whole = SseParser().feed(stream)
         assertEquals(listOf("{\"t\":\"😀漢字\"}", "{\"t\":\"é\"}", "[DONE]"), whole)
         for (cut in 0..stream.size) {

@@ -3,8 +3,13 @@ package com.suhel.llamabro.hexagon
 import java.io.File
 
 /** The kernel's MemAvailable in MiB, the figure ContextSize.Auto budgets from; null if unreadable. */
-internal fun memAvailableMiB(): Long? = Regex("""^MemAvailable:\s+(\d+)\s+kB""", RegexOption.MULTILINE)
-    .find(File("/proc/meminfo").readText())?.groupValues?.get(1)?.toLongOrNull()?.div(1024)
+internal fun memAvailableMiB(): Long? =
+    Regex("""^MemAvailable:\s+(\d+)\s+kB""", RegexOption.MULTILINE)
+        .find(File("/proc/meminfo").readText())
+        ?.groupValues
+        ?.get(1)
+        ?.toLongOrNull()
+        ?.div(1024)
 
 /**
  * Waits until MemAvailable stops rising (three 1 s reads within 50 MiB), at most 60 s. The kernel hands a closed

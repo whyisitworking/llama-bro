@@ -14,11 +14,17 @@ internal fun splitInfo(path: String): SplitInfo {
     var index = 1
     var count = 1
     splitPattern.matchEntire(prefix)?.let {
-        prefix = it.groupValues[1]
-        index = it.groupValues[2].toInt()
-        count = it.groupValues[3].toInt()
+        val (shardPrefix, shardIndex, shardCount) = it.destructured
+        prefix = shardPrefix
+        index = shardIndex.toInt()
+        count = shardCount.toInt()
     }
-    val tag = tagPattern.find(prefix)?.groupValues?.get(1)?.uppercase() ?: ""
+    val tag =
+        tagPattern
+            .find(prefix)
+            ?.groupValues
+            ?.get(1)
+            ?.uppercase() ?: ""
     return SplitInfo(prefix, tag, index, count)
 }
 
@@ -66,51 +72,46 @@ internal fun findBestModel(files: List<RepoFile>, tag: String): RepoFile? {
     val tags = if (tag.isNotEmpty()) listOf(tag) else listOf("Q4_K_M", "Q8_0")
     for (wanted in tags) {
         val pattern = Regex(wanted + "[.-]", RegexOption.IGNORE_CASE)
-        for (file in files) {
-            if (!isModelGguf(file.path) || !pattern.containsMatchIn(file.path)) continue
-            val split = splitInfo(file.path)
-            if (split.count > 1 && split.index != 1) continue
-            return file
-        }
+        files
+            .firstOrNull { isModelGguf(it.path) && pattern.containsMatchIn(it.path) && startsSplit(it.path) }
+            ?.let { return it }
     }
-    if (tag.isEmpty()) {
-        return files.firstOrNull {
-            val split = splitInfo(it.path)
-            isModelGguf(it.path) && (split.count <= 1 || split.index == 1)
-        }
+    return if (tag.isEmpty()) files.firstOrNull { isModelGguf(it.path) && startsSplit(it.path) } else null
+}
+
+/** A whole file, or the first shard of a split one. */
+private fun startsSplit(path: String): Boolean = splitInfo(path).let { it.count <= 1 || it.index == 1 }
+
+/** A candidate for [findBestSibling]: how close it sits to the model in the tree and in quantization. */
+private class Sibling(val file: RepoFile, val depth: Int, val diff: Int, val exact: Boolean) {
+    /** download.cpp's order: the deeper directory first, then an exact tag match, then the closer quantization. */
+    fun beats(other: Sibling?): Boolean {
+        if (other == null || depth > other.depth) return true
+        if (depth < other.depth) return false
+        return if (exact != other.exact) exact else diff < other.diff
     }
-    return null
 }
 
 /** Port of download.cpp's find_best_sibling. */
-internal fun findBestSibling(
-    files: List<RepoFile>, modelPath: String, keyword: String, tag: String = "",
-): RepoFile? {
+internal fun findBestSibling(files: List<RepoFile>, modelPath: String, keyword: String, tag: String = ""): RepoFile? {
     val tagUpper = tag.uppercase()
     val modelBits = if (tagUpper.isNotEmpty()) leadingQuantBits(tagUpper) else quantBits(modelPath)
     val modelDirs = modelPath.split('/').dropLast(1)
-    var best: RepoFile? = null
-    var bestDepth = 0
-    var bestDiff = 0
-    var bestExact = false
-    for (file in files) {
-        if (!file.path.endsWith(".gguf") || !file.path.contains(keyword)) continue
-        val siblingDirs = file.path.split('/').dropLast(1)
-        if (siblingDirs.size > modelDirs.size || siblingDirs != modelDirs.take(siblingDirs.size)) continue
-        val depth = siblingDirs.size
-        val diff = kotlin.math.abs(quantBits(file.path) - modelBits)
-        val exact = tagUpper.isNotEmpty() && file.path.uppercase().contains("-$tagUpper.")
-        if (best == null || depth > bestDepth ||
-            (depth == bestDepth && exact && !bestExact) ||
-            (depth == bestDepth && exact == bestExact && diff < bestDiff)
-        ) {
-            best = file
-            bestDepth = depth
-            bestDiff = diff
-            bestExact = exact
-        }
-    }
-    return best
+    return files
+        .asSequence()
+        .filter { it.path.endsWith(".gguf") && it.path.contains(keyword) }
+        .mapNotNull { file ->
+            val siblingDirs = file.path.split('/').dropLast(1)
+            if (siblingDirs.size > modelDirs.size ||
+                siblingDirs != modelDirs.take(siblingDirs.size)
+            ) {
+                return@mapNotNull null
+            }
+            val diff = kotlin.math.abs(quantBits(file.path) - modelBits)
+            val exact = tagUpper.isNotEmpty() && file.path.uppercase().contains("-$tagUpper.")
+            Sibling(file, siblingDirs.size, diff, exact)
+        }.fold(null as Sibling?) { best, candidate -> if (candidate.beats(best)) candidate else best }
+        ?.file
 }
 
 private fun leadingQuantBits(tag: String): Int {
@@ -121,7 +122,11 @@ private fun leadingQuantBits(tag: String): Int {
 
 /** Port of download.cpp's common_download_get_hf_plan for the two sidecars this SDK supports. */
 internal fun resolvePlan(
-    all: List<RepoFile>, tag: String, hfFile: String, wantMmproj: Boolean, wantDflash: Boolean,
+    all: List<RepoFile>,
+    tag: String,
+    hfFile: String,
+    wantMmproj: Boolean,
+    wantDflash: Boolean,
 ): Resolved {
     val primary = if (hfFile.isNotEmpty()) all.firstOrNull { it.path == hfFile } else findBestModel(all, tag)
     // download.cpp returns an empty plan, sidecars included, when a named file isn't in the repo.

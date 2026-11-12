@@ -16,8 +16,10 @@ internal class FakeEngine : Engine {
     val loadConfigs = mutableListOf<String>()
     var devicesJson = """[{"name":"CPU","description":"cpu","type":"cpu","memory_free":1,"memory_total":2}]"""
     val model = FakeModel()
+
     /** The model each load returns; [model] unless a test loads several. */
     var makeModel: () -> FakeModel = { model }
+
     /** Reported through onProgress during each load, like llama.cpp's load progress. */
     var progress: List<Float> = emptyList()
 
@@ -50,7 +52,10 @@ internal class FakeEngine : Engine {
 
     override fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel {
         loadConfigs += configJson
-        loadError(configJson)?.let { throw com.suhel.llamabro.internal.NativeError(5, it) }
+        loadError(configJson)?.let {
+            throw com.suhel.llamabro.internal
+                .NativeError(5, it)
+        }
         progress.forEach(onProgress)
         return makeModel()
     }
@@ -59,9 +64,12 @@ internal class FakeEngine : Engine {
 internal class FakeModel : EngineModel {
     override var infoJson: String = DEFAULT_INFO
     val requests = mutableListOf<FakeRequest>()
+
     /** Runs on the calling thread when a request starts: script the reply here. */
     var onRequest: (FakeRequest) -> Unit = {}
+
     @Volatile var closed = false
+
     /** Runs at the start of close(), on the closing thread: block here to model a slow native shutdown. */
     var onClose: () -> Unit = {}
 
@@ -87,15 +95,14 @@ internal class FakeModel : EngineModel {
     }
 }
 
-internal class FakeRequest(
-    val endpoint: String,
-    val paramsJson: String?,
-    val body: String,
-    val sink: RequestSink,
-) : EngineRequest {
+internal class FakeRequest(val endpoint: String, val paramsJson: String?, val body: String, val sink: RequestSink) :
+    EngineRequest {
     @Volatile var cancelCount = 0
+
     @Volatile var freed = false
+
     @Volatile var terminal = false
+
     /** Like the native request: a cancel is followed by the CANCELLED terminal event. */
     var terminateOnCancel = true
 
@@ -109,9 +116,15 @@ internal class FakeRequest(
         if (markTerminal()) sink.onCancelled()
     }
 
-    private fun markTerminal(): Boolean = synchronized(this) {
-        if (terminal) false else { terminal = true; true }
-    }
+    private fun markTerminal(): Boolean =
+        synchronized(this) {
+            if (terminal) {
+                false
+            } else {
+                terminal = true
+                true
+            }
+        }
 
     override fun cancel() {
         cancelCount++

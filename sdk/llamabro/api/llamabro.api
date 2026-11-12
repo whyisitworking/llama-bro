@@ -187,6 +187,8 @@ public final class com/suhel/llamabro/LlamaBro {
 	public static final fun getInstance (Landroid/content/Context;)Lcom/suhel/llamabro/LlamaBro;
 	public final fun loadModel (Lcom/suhel/llamabro/ModelSource;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun loadModel$default (Lcom/suhel/llamabro/LlamaBro;Lcom/suhel/llamabro/ModelSource;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun memoryBudgetBytes (Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun memoryBudgetBytes$default (Lcom/suhel/llamabro/LlamaBro;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static final fun withEngine (Lcom/suhel/llamabro/internal/Engine;Ljava/io/File;Lcom/suhel/llamabro/LlamaBroConfig;)Lcom/suhel/llamabro/LlamaBro;
 }
 
@@ -384,8 +386,8 @@ public final class com/suhel/llamabro/ModelInfo {
 
 public final class com/suhel/llamabro/ModelKt {
 	public static final fun chat (Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/chat/ChatRequest;)Lkotlinx/coroutines/flow/Flow;
-	public static final fun conversation (Lcom/suhel/llamabro/Model;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/conversation/Conversation;
-	public static synthetic fun conversation$default (Lcom/suhel/llamabro/Model;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/suhel/llamabro/conversation/Conversation;
+	public static final fun conversation (Lcom/suhel/llamabro/Model;Ljava/lang/String;Ljava/util/List;Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/conversation/Conversation;
+	public static synthetic fun conversation$default (Lcom/suhel/llamabro/Model;Ljava/lang/String;Ljava/util/List;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/suhel/llamabro/conversation/Conversation;
 	public static final fun restoreConversation (Lcom/suhel/llamabro/Model;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/conversation/Conversation;
 	public static synthetic fun restoreConversation$default (Lcom/suhel/llamabro/Model;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/suhel/llamabro/conversation/Conversation;
 }
@@ -1128,6 +1130,12 @@ public abstract interface class com/suhel/llamabro/internal/EngineModel {
 public abstract interface class com/suhel/llamabro/internal/EngineRequest {
 	public abstract fun cancel ()V
 	public abstract fun free ()V
+}
+
+public final class com/suhel/llamabro/internal/NativeError : java/lang/RuntimeException {
+	public fun <init> (ILjava/lang/String;)V
+	public final fun getErrorJson ()Ljava/lang/String;
+	public final fun getStatus ()I
 }
 
 public abstract interface class com/suhel/llamabro/internal/RequestSink {

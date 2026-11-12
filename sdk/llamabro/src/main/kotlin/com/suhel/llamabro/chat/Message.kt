@@ -4,14 +4,17 @@ package com.suhel.llamabro.chat
 public sealed interface Message {
     /** Write it as `Message.System`: imported bare, `System` hides `java.lang.System`. */
     public data class System(public val text: String) : Message
+
     /** Text and images from the user. */
     public data class User(public val content: List<Content>) : Message
+
     /** A reply: its text, its reasoning and the tools it called. */
     public data class Assistant(
         public val content: String?,
         public val reasoning: String? = null,
         public val toolCalls: List<ToolCall> = emptyList(),
     ) : Message
+
     /** A tool's result for the call [toolCallId]. */
     public data class ToolResult(public val toolCallId: String, public val content: String) : Message
 
@@ -25,7 +28,9 @@ public sealed interface Message {
 
     public companion object {
         public fun system(text: String): Message = System(text)
+
         public fun user(text: String): Message = User(listOf(Content.Text(text)))
+
         public fun user(vararg content: Content): Message = User(content.toList())
     }
 }

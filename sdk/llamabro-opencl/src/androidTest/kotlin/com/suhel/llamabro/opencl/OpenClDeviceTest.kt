@@ -12,13 +12,14 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class OpenClDeviceTest {
     @Test
-    fun openclBackendLoads() = runBlocking {
-        val llama = LlamaBro.getInstance(InstrumentationRegistry.getInstrumentation().targetContext)
-        val backends = llama.backends()
-        val opencl = backends.single { it.name == "opencl" }
-        assertTrue("$backends", opencl.loaded)
-        assertTrue("$opencl", "GPUOpenCL" in opencl.devices)
-        val gpu = llama.devices().single { it.name == "GPUOpenCL" }
-        assertTrue("$gpu", "Adreno" in gpu.description && gpu.memoryTotal > 0)
-    }
+    fun openclBackendLoads() =
+        runBlocking {
+            val llama = LlamaBro.getInstance(InstrumentationRegistry.getInstrumentation().targetContext)
+            val backends = llama.backends()
+            val opencl = backends.single { it.name == "opencl" }
+            assertTrue("$backends", opencl.loaded)
+            assertTrue("$opencl", "GPUOpenCL" in opencl.devices)
+            val gpu = llama.devices().single { it.name == "GPUOpenCL" }
+            assertTrue("$gpu", "Adreno" in gpu.description && gpu.memoryTotal > 0)
+        }
 }

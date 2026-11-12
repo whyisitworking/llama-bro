@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The share card is written to cache/share/ and handed to the other app through the FileProvider. -->
+<paths>
+    <cache-path name="share" path="share/" />
+</paths>

@@ -32,7 +32,9 @@ public class ChatRequest internal constructor(
 
     override fun equals(other: Any?): Boolean =
         other is ChatRequest && other.messages == messages && other.tools == tools && other.options == options
+
     override fun hashCode(): Int = listOf(messages, tools, options).hashCode()
+
     override fun toString(): String = "ChatRequest(messages=$messages, tools=$tools, options=$options)"
 
     /** Mutable scope of `ChatRequest { }` and [copy]: the [RequestOptions] scope plus messages and tools. */
@@ -40,8 +42,13 @@ public class ChatRequest internal constructor(
         public var messages: List<Message> = from.messages
         public var tools: List<Tool> = from.tools
 
-        public fun messages(vararg messages: Message) { this.messages = messages.toList() }
-        public fun tools(vararg tools: Tool) { this.tools = tools.toList() }
+        public fun messages(vararg messages: Message) {
+            this.messages = messages.toList()
+        }
+
+        public fun tools(vararg tools: Tool) {
+            this.tools = tools.toList()
+        }
 
         internal fun build(): ChatRequest = ChatRequest(messages.toList(), tools.toList(), buildOptions())
     }

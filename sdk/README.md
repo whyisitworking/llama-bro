@@ -50,7 +50,7 @@ class ChatViewModel(private val llama: LlamaBro, private val path: String) : Vie
 - `ask(text)` returns the answer as a `String`, or throws `LlamaBroException.Incomplete` if it was cut off.
 - `regenerate()`, `endReasoning()` (stop thinking now), `toJson()` and `model.restoreConversation(json)`.
 
-The sample app ([samples/minimal](samples/minimal)) is this, with a few views and a JVM test.
+The demo chat app ([demo](../demo)) is this, with a full UI; its `ChatEngine` is the part that talks to `Conversation`.
 
 ## Tools
 
@@ -203,7 +203,7 @@ putting it in the cache. `hub.progress(ref)` gives a `StateFlow<DownloadState>` 
 files live in the app's private `noBackupFilesDir/llamabro/hub` by default; they stay across app restarts and cannot
 be read by other apps. Set `cacheDir` in `HubConfig` to another app-private directory if you want a specific location.
 
-An app owns scheduling and the notification. The [background download sample](samples/background-download) uses a
+An app owns scheduling and the notification. The demo's [`DownloadWorker`](../demo/app/src/main/kotlin/com/suhel/llamabro/demo/models/DownloadWorker.kt) uses a
 `CoroutineWorker` with a foreground notification and returns `Result.retry()` for retryable Hub errors:
 
 ```kotlin

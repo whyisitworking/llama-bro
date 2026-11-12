@@ -1,0 +1,143 @@
+package com.suhel.llamabro.demo.ui.models
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.suhel.llamabro.demo.chat.Limits
+import com.suhel.llamabro.demo.designsystem.components.CardTint
+import com.suhel.llamabro.demo.designsystem.components.DemoCard
+import com.suhel.llamabro.demo.designsystem.components.FitText
+import com.suhel.llamabro.demo.designsystem.components.Gap
+import com.suhel.llamabro.demo.designsystem.components.Stack
+import com.suhel.llamabro.demo.designsystem.components.ThinBar
+import com.suhel.llamabro.demo.designsystem.testing.CountRecompositions
+import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
+import com.suhel.llamabro.demo.designsystem.theme.DemoType
+import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import com.suhel.llamabro.demo.models.DownloadStatus
+import com.suhel.llamabro.demo.models.FitView
+import com.suhel.llamabro.demo.models.Format
+import com.suhel.llamabro.demo.ui.preview.DemoPreviews
+import com.suhel.llamabro.demo.ui.preview.PreviewFrame
+
+/**
+ * A model as a row of suggestions or results: the name and how it runs here, one plain line, what it can do, and, when
+ * a
+ * download started from this row, its progress. [fit] is null until the estimate arrives (the card stays plain).
+ */
+@Composable
+fun ModelRowItem(
+    row: ModelRow,
+    fit: FitView?,
+    download: DownloadStatus?,
+    onPhone: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    CountRecompositions("model-${row.groupKey}")
+    val tint = fit?.label?.tint() ?: CardTint.Plain
+    DemoCard(modifier = modifier.testTag("model_row"), onClick = onClick) {
+        Stack(Gap.Block) {
+            Stack(Gap.Inline) {
+                ModelRowHeader(row.name, fit, tint)
+                Text(row.line, color = LocalDemoColors.current.muted, style = DemoType.bodyMedium)
+                ModelRowFacts(row, onPhone)
+            }
+            DownloadLine(download)
+        }
+    }
+}
+
+@Composable
+private fun ModelRowHeader(name: String, fit: FitView?, tint: CardTint) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            name,
+            Modifier.weight(1f),
+            color = LocalDemoColors.current.ink,
+            style = DemoType.title,
+            maxLines = 1,
+        )
+        if (fit != null) FitText(fit.label.text(), tint)
+    }
+}
+
+/** "Thinks", "Sees images", "On this phone" and the download count, quietly, on one line. */
+@Composable
+private fun ModelRowFacts(row: ModelRow, onPhone: Boolean) {
+    val facts =
+        listOfNotNull(
+            "Thinks".takeIf { row.thinks },
+            "Sees images".takeIf { row.sees },
+            "On this phone".takeIf { onPhone },
+            row.downloads?.let { "↓ ${Format.downloads(it)}" },
+        )
+    if (facts.isEmpty()) return
+    Text(
+        facts.joinToString("  ·  "),
+        color = LocalDemoColors.current.muted,
+        style = DemoType.bodySmall,
+        maxLines = 1,
+    )
+}
+
+/** What a download started from this row is doing: a thin bar and "Downloading · 42%", or why it stopped. */
+@Composable
+private fun DownloadLine(status: DownloadStatus?, modifier: Modifier = Modifier) {
+    when (status) {
+        is DownloadStatus.Downloading -> {
+            DownloadProgressLine(
+                status.fraction(),
+                "Downloading · ${status.percent()}%",
+                status.etaSeconds?.let(Format::timeLeft),
+                modifier,
+            )
+        }
+
+        is DownloadStatus.Partial -> {
+            DownloadProgressLine(
+                status.bytesDone.toFloat() / status.bytesTotal.coerceAtLeast(1),
+                "Paused",
+                null,
+                modifier,
+            )
+        }
+
+        is DownloadStatus.Failed -> {
+            Text(
+                Limits.forDownload(status).line,
+                modifier,
+                color = LocalDemoColors.current.slowInk,
+                style = DemoType.bodySmall,
+            )
+        }
+
+        DownloadStatus.Complete, DownloadStatus.Absent, null -> {
+            Unit
+        }
+    }
+}
+
+@Composable
+private fun DownloadProgressLine(fraction: Float, label: String, timeLeft: String?, modifier: Modifier = Modifier) {
+    val colors = LocalDemoColors.current
+    Stack(Gap.Block, modifier) {
+        ThinBar(fraction)
+        Row {
+            Text(label, Modifier.weight(1f), color = colors.muted, style = DemoType.bodySmall)
+            if (timeLeft != null) Text(timeLeft, color = colors.muted, style = DemoType.bodySmall)
+        }
+    }
+}
+
+internal fun DownloadStatus.Downloading.fraction(): Float = bytesDone.toFloat() / bytesTotal.coerceAtLeast(1)
+
+internal fun DownloadStatus.Downloading.percent(): Int = (fraction() * 100).toInt().coerceIn(0, 100)

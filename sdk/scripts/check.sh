@@ -7,21 +7,22 @@
 #   tools-ui       llama.cpp's own tools/ui compaction code regenerated in node; must equal the committed golden
 #   api            core release public API equals its reviewed dump (D26)
 #   hub-api        Hub release public API equals sdk/llamabro-hub/api/llamabro-hub.api
+#   quality        ktlint and detekt on every Kotlin module (the root build's qualityCheck; detekt's baselines list what predates it)
 #   lint           Android lint on all SDK libraries, warnings as errors
-#   jvm            Kotlin unit tests of both libraries and the sample, including the 400-case tools/ui golden replay
+#   jvm            Kotlin unit tests of the libraries, including the 400-case tools/ui golden replay
 #   e2e            Kotlin + JNI + native on this machine vs upstream llama-server (HostNativeTest)
 #   aar            release AAR: libraries, names, exports, 16 KB alignment (check-aar.sh)
-#   device         (--device) phone tests: native, UI, acceptance per model and per sample flavor (cpu, gpu, full,
+#   device         (--device) phone tests: native, UI, acceptance per model and per acceptance-app flavor (cpu, gpu, full,
 #                  noskel), and each flavor's minified (R8) build
 #   device-contract (--device) the C API vs upstream llama-server on the phone's NPU (tests/device-contract/run.sh)
 #   hub-device    (--device) Hub cache and fake download tests on the phone
-#   hub-resume    (--device) sample kill/force-stop resume and notification checks on the phone
+#   hub-resume    (--device) acceptance-app kill/force-stop resume and notification checks on the phone
 #
 # usage: sdk/scripts/check.sh [--device] [--only step,step]
 # env:   LB_TEST_MODEL (default ~/Downloads/Qwen3.5-4B-Q4_K_M.gguf), LB_TEST_MMPROJ (default ~/Downloads/mmproj-F16.gguf),
 #        LB_TEST_DFLASH (default ~/llamabro-models/Qwen3.5-4B-DFlash-Q8_0.gguf),
 #        LB_CONTRACT_MODELS extra GGUFs for the contract test, comma-separated (default: Llama 3.2 3B if present),
-#        LB_DEVICE_MODELS file names in the sample app's filesDir (default: the three P1 models),
+#        LB_DEVICE_MODELS file names in the acceptance app's filesDir (default: the three P1 models),
 #        LB_TEST_MODELS_DIR upstream's small test models for embeddings, rerank and LoRA (fetch-test-models.sh)
 set -uo pipefail
 
@@ -76,6 +77,9 @@ done
 
 gradle() { (cd "$root" && ./gradlew -p sdk "$@"); }
 
+# ktlint and detekt are configured in the root build (which includes these modules), so they run from there
+step_quality() { (cd "$root" && ./gradlew qualityCheck); }
+
 step_build() {
     bash "$native/scripts/prepare-llama.sh" "$native/build" &&
     cmake --preset host -S "$native" && cmake --build "$native/build/host"
@@ -104,7 +108,6 @@ step_hub_golden() {
 step_jvm() {
     gradle :llamabro:testDebugUnitTest :llamabro-testing:testDebugUnitTest \
         :llamabro-hexagon:testDebugUnitTest :llamabro-hub:testDebugUnitTest \
-        :samples:minimal:testFullDebugUnitTest \
         -Pllamabro.hub.model.dir="$HOME/Downloads" -Pllamabro.hub.golden.dir="$logs/hub-golden" || return 1
     grep -q 'skipped="0"' \
         "$sdk/llamabro-hub/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.hub.GgufHeaderTest.xml" || {
@@ -182,37 +185,37 @@ step_device() {
     gradle :llamabro-hexagon:connectedDebugAndroidTest :llamabro-opencl:connectedDebugAndroidTest \
         -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true || return 1
     adb shell run-as com.suhel.llamabro.sample rm -f files/acceptance.log 2>/dev/null
-    local results="$sdk/samples/minimal/build/outputs/androidTest-results/connected"
+    local results="$sdk/acceptance/backends/build/outputs/androidTest-results/connected"
     rm -rf "$results"   # a stale passing file must not stand in for a flavor that didn't run
-    # one sample flavor per set of backend artifacts (P2 T10, D29): full runs everything on every model; cpu, gpu and
+    # one acceptance flavor per set of backend artifacts (P2 T10, D29): full runs everything on every model; cpu, gpu and
     # noskel (full with the NPU skeleton broken: Auto must say why and use the GPU) run device choice, a chat and stop
-    gradle :samples:minimal:connectedFullDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
+    gradle :acceptance:backends:connectedFullDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
         -Pandroid.testInstrumentationRunnerArguments.models="$device_models"
     local acceptance=$? f
     for f in Cpu Gpu Noskel; do
-        gradle ":samples:minimal:connected${f}DebugAndroidTest" -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
+        gradle ":acceptance:backends:connected${f}DebugAndroidTest" -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
             -Pandroid.testInstrumentationRunnerArguments.models=Qwen3.5-4B-Q4_K_M.gguf \
             -Pandroid.testInstrumentationRunnerArguments.class=com.suhel.llamabro.sample.AcceptanceTest || acceptance=1
     done
     adb shell run-as com.suhel.llamabro.sample cat files/acceptance.log
     # each flavor's minified release build (R8 keep rules, F28) must load a model; then the full debug build goes back
     for f in cpu:Cpu gpu:Gpu full:Full; do   # bash 3.2 (macOS) has no ${f^}
-        gradle ":samples:minimal:assemble${f#*:}Release" || return 1
+        gradle ":acceptance:backends:assemble${f#*:}Release" || return 1
         f="${f%%:*}"
-        adb install -r "$sdk/samples/minimal/build/outputs/apk/$f/release/minimal-$f-release.apk" || return 1
+        adb install -r "$sdk/acceptance/backends/build/outputs/apk/$f/release/backends-$f-release.apk" || return 1
         adb logcat -c
         adb shell am force-stop com.suhel.llamabro.sample
         adb shell am start -W -n com.suhel.llamabro.sample/.MainActivity
         local ok=1
         for _ in $(seq 1 90); do
-            adb logcat -d -s LlamaBroSample | grep -q "loaded" && { ok=0; break; }
+            adb logcat -d -s LlamaBroAcceptance | grep -q "loaded" && { ok=0; break; }
             sleep 1
         done
-        adb logcat -d | grep -E "LlamaBroSample|JNI_OnLoad|FATAL" | tail -5
+        adb logcat -d | grep -E "LlamaBroAcceptance|JNI_OnLoad|FATAL" | tail -5
         adb shell am force-stop com.suhel.llamabro.sample
-        [ $ok -eq 0 ] || { gradle :samples:minimal:installFullDebug; echo "the minified $f build didn't load a model"; return 1; }
+        [ $ok -eq 0 ] || { gradle :acceptance:backends:installFullDebug; echo "the minified $f build didn't load a model"; return 1; }
     done
-    gradle :samples:minimal:installFullDebug || return 1
+    gradle :acceptance:backends:installFullDebug || return 1
     # acceptance: every flavor must have run, and Llama 3.2 3B's runsToolLoop, which fails on upstream too (F27), is
     # the only failure allowed; a gradle failure with no failing test (a build or install error) fails the check
     local verdict
@@ -299,14 +302,14 @@ step_hub_resume() (
     wait_fake_hub "$server_pid" || { cat "$logs/hub-resume-server.log"; return 1; }
     adb reverse tcp:18190 tcp:18190 || return 1
     adb reverse tcp:18191 tcp:18191 || return 1
-    gradle :samples:background-download:installDebug || return 1
+    gradle :acceptance:download:installDebug || return 1
     python3 "$sdk/scripts/hub-fake/run_device_resume.py" --out "$logs/hub-resume" \
-        --apk "$sdk/samples/background-download/build/outputs/apk/debug/background-download-debug.apk" || return 1
+        --apk "$sdk/acceptance/download/build/outputs/apk/debug/download-debug.apk" || return 1
     # fresh install with the notification permission granted (-g): the UI test reads the notification,
     # and Gradle's own reinstall keeps the grant
     adb uninstall com.suhel.llamabro.download || return 1
-    adb install -g "$sdk/samples/background-download/build/outputs/apk/debug/background-download-debug.apk" || return 1
-    gradle :samples:background-download:connectedDebugAndroidTest \
+    adb install -g "$sdk/acceptance/download/build/outputs/apk/debug/download-debug.apk" || return 1
+    gradle :acceptance:download:connectedDebugAndroidTest \
         -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
 )
 
@@ -333,6 +336,7 @@ run contract step_contract
 run tools-ui step_tools_ui
 run api      gradle :llamabro:apiCheck
 run hub-api  gradle :llamabro-hub:apiCheck
+run quality  step_quality
 run lint     gradle :llamabro:lintRelease :llamabro-testing:lintRelease :llamabro-hexagon:lintRelease :llamabro-opencl:lintRelease :llamabro-hub:lintRelease
 run jvm      step_jvm
 run e2e      step_e2e

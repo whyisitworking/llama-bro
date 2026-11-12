@@ -14,15 +14,26 @@ import java.io.InputStream
  */
 internal class HexagonInstaller : BackendInstaller {
     override fun install(context: Context): BackendLibraries {
-        val dir = SkeletonInstall(File(context.noBackupFilesDir, "llamabro/htp"), Assets(context.assets, ASSET_DIR)).install()
+        val dir =
+            SkeletonInstall(
+                File(context.noBackupFilesDir, "llamabro/htp"),
+                Assets(context.assets, ASSET_DIR),
+            ).install()
         // as upstream's scripts/snapdragon/run.py: every DSP domain's search path (F19); verified from an app in F36
-        val env = listOf("ADSP_LIBRARY_PATH", "CDSP_LIBRARY_PATH", "CDSP1_LIBRARY_PATH", "CDSP2_LIBRARY_PATH", "CDSP3_LIBRARY_PATH")
-            .associateWith { dir.absolutePath }
+        val env =
+            listOf(
+                "ADSP_LIBRARY_PATH",
+                "CDSP_LIBRARY_PATH",
+                "CDSP1_LIBRARY_PATH",
+                "CDSP2_LIBRARY_PATH",
+                "CDSP3_LIBRARY_PATH",
+            ).associateWith { dir.absolutePath }
         return BackendLibraries(listOf("libllamabro-ggml-hexagon.so"), env)
     }
 
     private class Assets(private val assets: AssetManager, private val dir: String) : SkeletonInstall.Source {
         override fun list(): List<String> = assets.list(dir)?.toList() ?: emptyList()
+
         override fun open(name: String): InputStream = assets.open("$dir/$name")
     }
 

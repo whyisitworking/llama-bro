@@ -1,0 +1,121 @@
+# Tuned on top of detekt's defaults (buildUponDefaultConfig). What is changed, and why:
+#  - Composables are named like types (Compose's own guidelines) and are long because they describe a tree.
+#  - Numbers in tests, previews and design tokens are the data, not magic.
+#  - Boundaries catch `Exception` on purpose (the user's phone, the network, a native call) and say so in the code.
+#  - Structure (length, complexity, return count, function count) stays strict.
+
+naming:
+  # ktlint's `filename` rule already checks file names; a Compose file named for its screen, holding a state class or
+  # two, is deliberate
+  MatchingDeclarationName:
+    active: false
+  FunctionNaming:
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    constantPattern: '[A-Z][A-Za-z0-9_]*'
+
+style:
+  DestructuringDeclarationWithTooManyEntries:
+    excludes:
+      - '**/test/**'
+  MagicNumber:
+    excludes:
+      - '**/test/**'
+      - '**/androidTest/**'
+      - '**/screenshotTest/**'
+      - '**/sharedTest/**'
+      - '**/samples/**'
+      - '**/*Preview*.kt'
+      # protocol and format constants, where the literal IS the specification (HTTP statuses, ASCII, GGUF, Hub limits)
+      - '**/hub/internal/GgufHeader.kt'
+      - '**/hub/internal/BlobDownloader.kt'
+      - '**/hub/internal/Resolver.kt'
+      - '**/hub/internal/HeaderFetch.kt'
+      - '**/hub/internal/ResolveUrl.kt'
+      - '**/hub/internal/RepoId.kt'
+      - '**/hub/HubException.kt'
+      - '**/testing/FakeLlamaBro.kt'
+      # design values: sizes, alphas and fractions of the component library
+      - '**/designsystem/**'
+    # 10 and 100 are percent and decimals, 0 and 1 and 2 are counting
+    ignoreNumbers: ['-1', '0', '1', '2', '10', '100']
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreNamedArgument: true
+    ignoreExtensionFunctions: true
+    ignoreAnnotation: true
+    ignoreEnums: true
+  MaxLineLength:
+    maxLineLength: 120
+    excludes:
+      - '**/DemoIcons.kt'
+      # JSON fixtures are one line of data each
+      - '**/test/**'
+      - '**/androidTest/**'
+  ReturnCount:
+    max: 4
+    excludeGuardClauses: true
+    excludeReturnFromLambda: true
+  UnusedPrivateProperty:
+    active: true
+
+exceptions:
+  TooGenericExceptionCaught:
+    exceptionNames:
+      - 'Error'
+      - 'Throwable'
+      - 'RuntimeException'
+      - 'NullPointerException'
+      - 'IllegalMonitorStateException'
+      - 'IndexOutOfBoundsException'
+    # Throwable is caught where a failure must be reported, not crash a collector, an installer or a tool call
+    excludes:
+      - '**/conversation/Conversation.kt'
+      - '**/internal/BackendDiscovery.kt'
+      - '**/hub/internal/Transfers.kt'
+      - '**/test/**'
+      - '**/androidTest/**'
+  SwallowedException:
+    ignoredExceptionTypes:
+      - 'InterruptedException'
+      - 'MalformedURLException'
+      - 'NumberFormatException'
+      - 'ParseException'
+      - 'CancellationException'
+      - 'IllegalArgumentException'
+    allowedExceptionNameRegex: '_|(ignore|expected).*'
+
+empty-blocks:
+  EmptyFunctionBlock:
+    ignoreOverridden: true
+
+complexity:
+  LongMethod:
+    allowedLines: 60
+    # golden-replay and contract tests are long tables of cases, read top to bottom
+    excludes:
+      - '**/test/**'
+      - '**/androidTest/**'
+    ignoreAnnotated: ['Composable']
+  LongParameterList:
+    allowedFunctionParameters: 7
+    allowedConstructorParameters: 9
+    ignoreDefaultParameters: true
+    ignoreAnnotatedParameter: ['Composable']
+  CyclomaticComplexMethod:
+    allowedComplexity: 14
+    excludes:
+      - '**/test/**'
+      - '**/androidTest/**'
+    ignoreSimpleWhenEntries: true
+  TooManyFunctions:
+    allowedFunctionsPerFile: 15
+    # a DAO, a chat handle and a conversation are API surfaces, not grab-bags
+    allowedFunctionsPerClass: 25
+    allowedFunctionsPerObject: 15
+    ignoreAnnotatedFunctions: ['Composable']
+    excludes:
+      - '**/test/**'
+      - '**/androidTest/**'
+  NestedBlockDepth:
+    allowedDepth: 4

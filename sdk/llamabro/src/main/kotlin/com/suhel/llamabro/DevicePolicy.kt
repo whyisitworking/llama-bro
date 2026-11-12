@@ -7,8 +7,10 @@ package com.suhel.llamabro
 public enum class DeviceKind {
     /** The neural processor (`llamabro-hexagon` on Snapdragon). */
     Npu,
+
     /** The GPU (`llamabro-opencl` on Adreno). */
     Gpu,
+
     /** The CPU, always available. */
     Cpu,
 }
@@ -42,7 +44,10 @@ public class LoadReport internal constructor(
     public val contextSize: Int,
     /** Why that size: set by the app, the training context fits, or fitted to the memory available (D33). */
     public val contextReason: String,
-    /** What decodes: [Speculative.Mtp] when the MTP head drafts tokens, [Speculative.Ngram] when the app set it, else [Speculative.Off] (P2 T8). */
+    /**
+     * What decodes: [Speculative.Mtp] when the MTP head drafts tokens, [Speculative.Ngram] when the app set it, else
+     * [Speculative.Off] (P2 T8).
+     */
     public val speculative: Speculative,
     /** Why: set by the app, measured faster or not on this chip, or the model has no MTP head. */
     public val speculativeReason: String,
@@ -55,7 +60,9 @@ public class LoadReport internal constructor(
     ) {
         override fun equals(other: Any?): Boolean =
             other is Attempt && kind == other.kind && deviceName == other.deviceName && reason == other.reason
+
         override fun hashCode(): Int = listOf(kind, deviceName, reason).hashCode()
+
         override fun toString(): String = "Attempt(kind=$kind, deviceName=$deviceName, reason=$reason)"
     }
 
@@ -63,8 +70,19 @@ public class LoadReport internal constructor(
         other is LoadReport && device == other.device && deviceName == other.deviceName && backend == other.backend &&
             attempts == other.attempts && contextSize == other.contextSize && contextReason == other.contextReason &&
             speculative == other.speculative && speculativeReason == other.speculativeReason
+
     override fun hashCode(): Int =
-        listOf(device, deviceName, backend, attempts, contextSize, contextReason, speculative, speculativeReason).hashCode()
+        listOf(
+            device,
+            deviceName,
+            backend,
+            attempts,
+            contextSize,
+            contextReason,
+            speculative,
+            speculativeReason,
+        ).hashCode()
+
     override fun toString(): String =
         "LoadReport(device=$device, deviceName=$deviceName, backend=$backend, attempts=$attempts, " +
             "contextSize=$contextSize, contextReason=$contextReason, speculative=$speculative, " +

@@ -25,9 +25,27 @@ class ChatJsonTest {
     @Test
     fun nullSamplingFieldsOmitted() {
         val b = body(ChatRequest { messages(Message.user("hi")) })
-        for (k in listOf("temperature", "top_k", "top_p", "min_p", "presence_penalty", "frequency_penalty",
-            "repeat_penalty", "repeat_last_n", "seed", "samplers", "max_tokens", "tools", "tool_choice",
-            "parallel_tool_calls", "response_format", "stop", "reasoning_format", "reasoning_budget_tokens", "chat_template_kwargs")) {
+        for (k in listOf(
+            "temperature",
+            "top_k",
+            "top_p",
+            "min_p",
+            "presence_penalty",
+            "frequency_penalty",
+            "repeat_penalty",
+            "repeat_last_n",
+            "seed",
+            "samplers",
+            "max_tokens",
+            "tools",
+            "tool_choice",
+            "parallel_tool_calls",
+            "response_format",
+            "stop",
+            "reasoning_format",
+            "reasoning_budget_tokens",
+            "chat_template_kwargs",
+        )) {
             assertFalse(k, b.containsKey(k))
         }
         assertEquals("true", b["stream"].toString())
@@ -41,7 +59,11 @@ class ChatJsonTest {
         val b = body(ChatRequest { messages(Message.user(Content.Text("what?"), Content.Image(byteArrayOf(1, 2, 3)))) })
         val parts = b["messages"]!!.jsonArray[0].jsonObject["content"]!!.jsonArray
         assertEquals("""{"type":"text","text":"what?"}""", parts[0].toString())
-        val url = parts[1].jsonObject["image_url"]!!.jsonObject["url"]!!.jsonPrimitive.content
+        val url =
+            parts[1]
+                .jsonObject["image_url"]!!
+                .jsonObject["url"]!!
+                .jsonPrimitive.content
         assertEquals("image_url", parts[1].jsonObject["type"]!!.jsonPrimitive.content)
         assertTrue(url, url.startsWith("data:image/jpeg;base64,"))
         assertEquals("data:image/jpeg;base64,AQID", url)
@@ -49,7 +71,19 @@ class ChatJsonTest {
 
     @Test
     fun samplersFieldSentWhenSet() {
-        val b = body(ChatRequest { messages(Message.user("hi")); sampling { samplers = listOf("top_k", "temperature"); temperature = 0.7f; maxTokens = 32; seed = 5 } })
+        val b =
+            body(
+                ChatRequest {
+                    messages(Message.user("hi"))
+                    sampling {
+                        samplers = listOf("top_k", "temperature")
+                        temperature =
+                            0.7f
+                        maxTokens = 32
+                        seed = 5
+                    }
+                },
+            )
         assertEquals("""["top_k","temperature"]""", b["samplers"].toString())
         assertEquals("0.7", b["temperature"].toString())
         assertEquals("32", b["max_tokens"].toString())
@@ -58,35 +92,69 @@ class ChatJsonTest {
 
     @Test
     fun extraMergedLast() {
-        val b = body(ChatRequest { messages(Message.user("hi")); sampling { temperature = 0.5f }; extra = """{"temperature":0.1,"n_probs":3}""" })
+        val b =
+            body(
+                ChatRequest {
+                    messages(Message.user("hi"))
+                    sampling { temperature = 0.5f }
+                    extra =
+                        """{"temperature":0.1,"n_probs":3}"""
+                },
+            )
         assertEquals("0.1", b["temperature"].toString())
         assertEquals("3", b["n_probs"].toString())
     }
 
     @Test
     fun toolsReasoningAndFormatFields() {
-        val b = body(ChatRequest {
-            messages(
-                Message.system("sys"),
-                Message.user("weather?"),
-                Message.Assistant(content = null, reasoning = "think", toolCalls = listOf(ToolCall("c1", "get_weather", """{"city":"Paris"}"""))),
-                Message.ToolResult("c1", "sunny"),
+        val b =
+            body(
+                ChatRequest {
+                    messages(
+                        Message.system("sys"),
+                        Message.user("weather?"),
+                        Message.Assistant(
+                            content = null,
+                            reasoning = "think",
+                            toolCalls = listOf(ToolCall("c1", "get_weather", """{"city":"Paris"}""")),
+                        ),
+                        Message.ToolResult("c1", "sunny"),
+                    )
+                    tools(
+                        Tool.function(
+                            "get_weather",
+                            "Weather",
+                            """{"type":"object","properties":{"city":{"type":"string"}}}""",
+                        ),
+                    )
+                    toolChoice = ToolChoice.Function("get_weather")
+                    parallelToolCalls = false
+                    responseFormat = ResponseFormat.JsonSchema("""{"type":"object"}""", name = "x")
+                    reasoning {
+                        format = ReasoningFormat.DeepSeek
+                        budgetTokens = 64
+                        enableThinking = false
+                    }
+                    stop("END")
+                },
             )
-            tools(Tool.function("get_weather", "Weather", """{"type":"object","properties":{"city":{"type":"string"}}}"""))
-            toolChoice = ToolChoice.Function("get_weather")
-            parallelToolCalls = false
-            responseFormat = ResponseFormat.JsonSchema("""{"type":"object"}""", name = "x")
-            reasoning { format = ReasoningFormat.DeepSeek; budgetTokens = 64; enableThinking = false }
-            stop("END")
-        })
         val m = b["messages"]!!.jsonArray
         assertEquals("""{"role":"system","content":"sys"}""", m[0].toString())
-        assertEquals("""{"role":"assistant","reasoning_content":"think","tool_calls":[{"id":"c1","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Paris\"}"}}]}""", m[2].toString())
+        assertEquals(
+            """{"role":"assistant","reasoning_content":"think","tool_calls":[{"id":"c1","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Paris\"}"}}]}""",
+            m[2].toString(),
+        )
         assertEquals("""{"role":"tool","tool_call_id":"c1","content":"sunny"}""", m[3].toString())
-        assertEquals("""[{"type":"function","function":{"name":"get_weather","description":"Weather","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}]""", b["tools"].toString())
+        assertEquals(
+            """[{"type":"function","function":{"name":"get_weather","description":"Weather","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}]""",
+            b["tools"].toString(),
+        )
         assertEquals("""{"type":"function","function":{"name":"get_weather"}}""", b["tool_choice"].toString())
         assertEquals("false", b["parallel_tool_calls"].toString())
-        assertEquals("""{"type":"json_schema","json_schema":{"name":"x","schema":{"type":"object"}}}""", b["response_format"].toString())
+        assertEquals(
+            """{"type":"json_schema","json_schema":{"name":"x","schema":{"type":"object"}}}""",
+            b["response_format"].toString(),
+        )
         assertEquals("\"deepseek\"", b["reasoning_format"].toString())
         assertEquals("64", b["reasoning_budget_tokens"].toString())
         assertEquals("""{"enable_thinking":false}""", b["chat_template_kwargs"].toString())

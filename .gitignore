@@ -11,3 +11,5 @@ local.properties
 .kotlin
 local_release.jks
 local_release.properties
+# the demo app
+/demo/**/build/

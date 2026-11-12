@@ -15,8 +15,11 @@ public class LlamaBroConfig internal constructor(
 ) {
     public fun copy(configure: Builder.() -> Unit): LlamaBroConfig = Builder(this).apply(configure).build()
 
-    override fun equals(other: Any?): Boolean = other is LlamaBroConfig && other.logLevel == logLevel && other.logger == logger
+    override fun equals(other: Any?): Boolean =
+        other is LlamaBroConfig && other.logLevel == logLevel && other.logger == logger
+
     override fun hashCode(): Int = 31 * logLevel.hashCode() + (logger?.hashCode() ?: 0)
+
     override fun toString(): String = "LlamaBroConfig(logLevel=$logLevel, logger=$logger)"
 
     /** Mutable scope of `LlamaBroConfig { }` and [copy]. */
@@ -35,7 +38,8 @@ public class LlamaBroConfig internal constructor(
 }
 
 /** `LlamaBroConfig { logLevel = LogLevel.Info; logger = Logger { level, message -> … } }`. */
-public fun LlamaBroConfig(configure: LlamaBroConfig.Builder.() -> Unit): LlamaBroConfig = LlamaBroConfig.Default.copy(configure)
+public fun LlamaBroConfig(configure: LlamaBroConfig.Builder.() -> Unit): LlamaBroConfig =
+    LlamaBroConfig.Default.copy(configure)
 
 /** Ordinals match the C API's `lb_log_level`. */
 public enum class LogLevel { Debug, Info, Warn, Error }

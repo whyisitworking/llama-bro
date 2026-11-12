@@ -5,17 +5,16 @@ import android.content.Context
 import android.content.pm.PackageManager
 import com.suhel.llamabro.internal.BackendDiscovery
 import com.suhel.llamabro.internal.BackendInstaller
-import com.suhel.llamabro.internal.MemoryBudget
 import com.suhel.llamabro.internal.Engine
 import com.suhel.llamabro.internal.JniEngine
 import com.suhel.llamabro.internal.LlamaBroRuntime
+import com.suhel.llamabro.internal.MemoryBudget
 import java.io.File
 
 /**
  * The SDK's entry point: one per process (design §5, D6). Models are loaded from it as independent handles.
  */
 public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime) {
-
     /**
      * Loads a model and starts its worker. Runs on `Dispatchers.IO`; first waits for any model still closing, so
      * two never share memory. The first call in the process also initialises the native runtime.
@@ -38,6 +37,20 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
     /** Projects the chosen device's memory and context from GGUF headers without loading weights. */
     public suspend fun estimateFit(source: ModelSource, configure: ModelConfig.() -> Unit = {}): FitEstimate =
         runtime.estimateFit(source, ModelConfig().apply(configure))
+
+    /**
+     * The memory, in bytes, that [ContextSize.Auto] would let a model use if it loaded now with [configure]'s
+     * settings (the prompt cache and [ModelConfig.memoryReserveMib] come out of it), before side files such as an
+     * image encoder or LoRA adapters. Compare it with a model file's size for a quick fit label without reading the
+     * file (F97); [estimateFit] gives the full projection.
+     *
+     * It moves with free memory, so it's a hint, not a promise. Null where the SDK can't read the phone's memory
+     * (a test engine).
+     *
+     * @throws LlamaBroException.InvalidRequest if [ModelConfig.memoryReserveMib] is negative.
+     */
+    public suspend fun memoryBudgetBytes(configure: ModelConfig.() -> Unit = {}): Long? =
+        runtime.memoryBudgetBytes(ModelConfig().apply(configure))
 
     /** The backend devices ggml loaded. Initialises the native runtime if needed; runs on `Dispatchers.IO`. */
     public suspend fun devices(): List<DeviceInfo> = runtime.devices()
@@ -64,20 +77,24 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
          * or [devices], which also reports a config conflict.
          */
         @JvmStatic
-        public fun getInstance(context: Context): LlamaBro = instance ?: synchronized(this) {
-            instance ?: run {
-                val app = context.applicationContext
-                val config = (app as? ConfigProvider)?.llamaBroConfig ?: LlamaBroConfig.Default
-                // no backend_dir: the backends load by name from the APK, extracted or not (findings F25)
-                LlamaBro(
-                    LlamaBroRuntime(
-                        JniEngine, app.noBackupFilesDir, null, config,
-                        discoverBackends = { manifestBackends(app) },
-                        memorySnapshot = { memorySnapshot(app) },
-                    ),
-                )
-            }.also { instance = it }
-        }
+        public fun getInstance(context: Context): LlamaBro =
+            instance ?: synchronized(this) {
+                instance ?: run {
+                    val app = context.applicationContext
+                    val config = (app as? ConfigProvider)?.llamaBroConfig ?: LlamaBroConfig.Default
+                    // no backend_dir: the backends load by name from the APK, extracted or not (findings F25)
+                    LlamaBro(
+                        LlamaBroRuntime(
+                            JniEngine,
+                            app.noBackupFilesDir,
+                            null,
+                            config,
+                            discoverBackends = { manifestBackends(app) },
+                            memorySnapshot = { memorySnapshot(app) },
+                        ),
+                    )
+                }.also { instance = it }
+            }
 
         /**
          * A [LlamaBro] over another engine, for `llamabro-testing`'s `FakeLlamaBro` (D27). [filesDir] stands in for
@@ -85,8 +102,11 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
          */
         @InternalLlamaBroApi
         @JvmStatic
-        public fun withEngine(engine: Engine, filesDir: File, config: LlamaBroConfig = LlamaBroConfig.Default): LlamaBro =
-            LlamaBro(LlamaBroRuntime(engine, filesDir, null, config))
+        public fun withEngine(
+            engine: Engine,
+            filesDir: File,
+            config: LlamaBroConfig = LlamaBroConfig.Default,
+        ): LlamaBro = LlamaBro(LlamaBroRuntime(engine, filesDir, null, config))
     }
 }
 
@@ -101,7 +121,9 @@ public class DeviceInfo internal constructor(
     public val memoryTotal: Long,
 ) {
     override fun equals(other: Any?): Boolean = other is DeviceInfo && parts() == other.parts()
+
     override fun hashCode(): Int = parts().hashCode()
+
     override fun toString(): String =
         "DeviceInfo(name=$name, description=$description, kind=$kind, memoryFree=$memoryFree, memoryTotal=$memoryTotal)"
 
@@ -111,8 +133,10 @@ public class DeviceInfo internal constructor(
 /** The backend artifacts announced in [app]'s merged manifest (D24): one `PackageManager` call, no classpath scan. */
 private fun manifestBackends(app: Context): BackendDiscovery.Result {
     @Suppress("DEPRECATION") // the flags overload needs API 33
-    val bundle = app.packageManager.getApplicationInfo(app.packageName, PackageManager.GET_META_DATA).metaData
-        ?: return BackendDiscovery.Result.None
+    val bundle =
+        app.packageManager.getApplicationInfo(app.packageName, PackageManager.GET_META_DATA).metaData
+            ?: return BackendDiscovery.Result.None
+
     @Suppress("DEPRECATION") // Bundle.get(String) is the only untyped getter
     val metaData = bundle.keySet().associateWith { bundle.get(it) }
     return BackendDiscovery.discover(metaData) { className ->
@@ -120,7 +144,9 @@ private fun manifestBackends(app: Context): BackendDiscovery.Result {
     }
 }
 
-/** Memory now (P2 T7, D33, D34): the kernel's `MemAvailable`, else Android's `availMem`, and the low-memory threshold. */
+/**
+ * Memory now (P2 T7, D33, D34): the kernel's `MemAvailable`, else Android's `availMem`, and the low-memory threshold.
+ */
 private fun memorySnapshot(app: Context): MemoryBudget.Snapshot? {
     val am = app.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return null
     val info = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
