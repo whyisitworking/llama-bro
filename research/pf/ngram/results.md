@@ -1,7 +1,7 @@
 # PF T2: n-gram speculation (F72)
 
 Upstream `llama-server` (`/data/local/tmp/lb-spike/P`), Qwen3.5 4B Q4_K_M, the SDK's load settings, a fresh load per
-arm, 256-token replies via `/v1/chat/completions`, thinking off, seed 42. One round per chip (the user's proof-first
+arm, 256-token replies via `/v1/chat/completions`, thinking off, seed 42. One round per chip (the proof-first
 call); each arm starts at thermal ≤ 2 (`guard()`, added after the NPU reached status 4, 105 °C NPU / 70 °C skin, in the
 first try). GPU skipped: OpenCL answers garbage for Qwen3.5 (F71). Script `ng.sh`; raw `ng-npu-part1.out` (NPU off,
 mod, k4v; then stopped for heat), `ng.out` (NPU mtp, modmtp; CPU off, mod, k4v); replies in `replies/`, per-arm draft

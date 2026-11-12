@@ -268,7 +268,7 @@ class ChatViewModel(
 
     fun stop() = handle.stop()
 
-    /** Opens the user message at [position] in the bar; sending replaces it and what followed (T7's `edit`). */
+    /** Opens the user message at [position] in the bar; sending replaces it and what followed (`edit`). */
     fun startEdit(position: Int) {
         val m = handle.messages.value.firstOrNull { it.position == position && it.kind == MessageKind.User } ?: return
         draft.value = ComposerDraft(text = m.text, editing = position)

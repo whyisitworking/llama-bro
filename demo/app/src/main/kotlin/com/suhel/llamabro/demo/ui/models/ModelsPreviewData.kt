@@ -7,7 +7,7 @@ import com.suhel.llamabro.demo.models.FitLabel
 import com.suhel.llamabro.demo.models.FitView
 import com.suhel.llamabro.demo.models.RepoFile
 
-/** Fixed values the previews of T10's screens share, so each preview shows the same believable phone. */
+/** Fixed values the previews of the model screens share, so each preview shows the same believable phone. */
 internal object ModelsPreviewData {
     val swift = ModelRow.of(Catalog.suggested[0])
     val writer = ModelRow.of(Catalog.suggested[1])

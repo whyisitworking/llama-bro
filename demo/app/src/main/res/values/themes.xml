@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Only the window behind Compose: the canvas colour of pd-design 5.2, so there is no flash before the first frame. -->
+    <!-- Only the window behind Compose: the canvas colour of demo design §8.6, so there is no flash before the first frame. -->
     <style name="Theme.Demo" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">#FFF7F6F3</item>
     </style>

@@ -131,7 +131,7 @@ fun TextArea(
     )
 }
 
-/** How hard the model thinks before it answers (pd-design 4.4). */
+/** How hard the model thinks before it answers (demo design §4.4). */
 enum class ThinkLevel { Off, Quick, Balanced, Deep }
 
 /**

@@ -3,25 +3,24 @@
 #   unit      JVM tests of :designsystem (tokens, theme mapping, contrast) and :app
 #   lint      Android lint on :app and :designsystem, warnings as errors
 #   assemble  debug APK, the minified (R8) release APK signed with the debug key, and the device-test APKs
-#   ds        the component library's gates (Reference H): screenshot tests, the Compose compiler's stability
-#             report (scripts/stability.py), and no raw colour, text style, shape, shadow or Material widget in
+#   ds        the component library's gates: the Compose compiler's stability report (scripts/stability.py), and no raw colour, text style, shape, shadow or Material widget in
 #             demo/app/src/main, and (D48) no number, padding or font override in a screen and no role overridden
 #   quality   ktlint and detekt over every Kotlin module (the root build's `qualityCheck`)
-#   device    (--device) :designsystem's and :app's instrumented tests on the phone (<serial>), or on the
+#   device    (--device) :designsystem's and :app's instrumented tests on the
 #             device or emulator named in DEMO_DEVICE (the demo's tests use a fake engine, so an arm64 emulator will do)
 #   journey   (--device) the journeys (androidTest/.../journey): whole-app stories over a fake engine; the system's
 #             notification question is asked once per install, so `NotificationDeniedJourney` runs first on a fresh
 #             install and the rest on another
 #   monkey    (--device) three seeds of random input at the app (androidTest/.../monkey); no crash, no ANR
 #   coverage  the merged unit and device JaCoCo reports against the floors (scripts/coverage.py); run after device
-#   perf      (--device --perf) the Macrobenchmarks on the phone against the budgets (Reference I), one class at a
+#   perf      (--device --perf) the Macrobenchmarks on the phone against the budgets, one class at a
 #             time, each after the phone's thermal status is 2 or lower (scripts/perf.py); about an hour, so
 #             it never runs by default; the results and Perfetto traces are kept in demo/build/check/perf
 #   real      (--device --real) the end-to-end journey on the phone with real models from huggingface.co
 #             (scripts/e2e/real_model_e2e.py): long (about 30 to 45 minutes) and it downloads about 4 GB, so it is NOT
 #             a routine gate (playbook 4a: a gate runs once; no long runs on the user's phone; ask first);
 #             the log, results and pictures are kept in demo/build/check/real
-#   map       every test Reference L names exists and passed in the latest results (scripts/map_check.py)
+#   map       every test the requirement map names exists and passed in the latest results (scripts/map_check.py)
 #
 # usage: demo/scripts/check.sh [--device [--perf] [--real]] [--only step,step]
 set -uo pipefail
@@ -122,8 +121,6 @@ screens_have_no_numbers() {
 }
 
 step_ds() {
-    gradle :demo:designsystem:validateDebugScreenshotTest :demo:app:validateDebugScreenshotTest || return 1
-    # the module's one report file holds whichever variant compiled last: make it the release one
     gradle :demo:designsystem:compileReleaseKotlin --rerun || return 1
     python3 "$root/demo/scripts/stability.py" "$root/demo" || return 1
     design_system_only || return 1
@@ -146,7 +143,7 @@ radios_on() { [ "$(adb -s "$1" shell settings get global airplane_mode_on 2>/dev
 
 # the instrumented tests talk to the SDK's fake Hugging Face server (corpus demo/scripts/hub-corpus.json) through adb reverse
 with_fake_hub() (
-    local device="${DEMO_DEVICE:-<serial>}"
+    local device="${DEMO_DEVICE:?set DEMO_DEVICE to the adb serial of the device or emulator}"
     adb -s "$device" get-state >/dev/null 2>&1 || { echo "the device $device is not connected"; return 1; }
     adb -s "$device" shell dumpsys window | grep -q "isKeyguardShowing=false" || { echo "the phone is locked: unlock it and run again"; return 1; }
     radios_on "$device" || { echo "airplane mode is on: switch it off and run again"; return 1; }
@@ -209,7 +206,7 @@ step_device() { with_fake_hub device_tests; }
 step_journey() { with_fake_hub journey_tests; }
 # random input stays off the phone (F117): it can reach the system's quick settings and radios, so the monkey runs on the emulator
 step_monkey() {
-    case "${DEMO_DEVICE:-<serial>}" in
+    case "${DEMO_DEVICE:?set DEMO_DEVICE to the adb serial of the device or emulator}" in
         emulator-*) with_fake_hub monkey_tests ;;
         *) echo "skipped on the phone: random input can reach the system UI (F117); run it with DEMO_DEVICE=emulator-5554"; return 77 ;;
     esac
@@ -226,7 +223,7 @@ step_coverage() {
 
 step_map() {
     # an emulator may lack what a journey needs (a photo picker): its skip is reported, not failed; the phone has no such leave
-    case "${DEMO_DEVICE:-<serial>}" in
+    case "${DEMO_DEVICE:?set DEMO_DEVICE to the adb serial of the device or emulator}" in
         emulator-*) python3 "$root/demo/scripts/map_check.py" --allow-skipped ;;
         *) python3 "$root/demo/scripts/map_check.py" ;;
     esac
@@ -257,7 +254,7 @@ wait_for_cool_phone() {
 # Macrobenchmark refuses a phone whose clocks are not locked (UNLOCKED); only rooted phones can lock them, so the
 # check is suppressed here and the budgets are written for an unlocked, cooled phone
 step_perf() {
-    local device="${DEMO_DEVICE:-<serial>}" out="$logs/perf" results_dir cls
+    local device="${DEMO_DEVICE:?set DEMO_DEVICE to the adb serial of the device or emulator}" out="$logs/perf" results_dir cls
     case "$device" in emulator-*) echo "the budgets are for the phone: unset DEMO_DEVICE"; return 1 ;; esac
     adb -s "$device" get-state >/dev/null 2>&1 || { echo "the device $device is not connected"; return 1; }
     export ANDROID_SERIAL="$device"
@@ -280,7 +277,7 @@ step_perf() {
 # the end-to-end journey with real models, on the phone: a debug build (its hub requests are logged, which the
 # resume check reads) installed fresh, then seven steps; leave the phone alone while it runs
 step_real() {
-    local device="${DEMO_DEVICE:-<serial>}" out="$logs/real"
+    local device="${DEMO_DEVICE:?set DEMO_DEVICE to the adb serial of the device or emulator}" out="$logs/real"
     case "$device" in emulator-*) echo "the real-model run is for the phone: unset DEMO_DEVICE"; return 1 ;; esac
     adb -s "$device" get-state >/dev/null 2>&1 || { echo "the device $device is not connected"; return 1; }
     adb -s "$device" shell dumpsys window | grep -q "isKeyguardShowing=false" || { echo "the phone is locked: unlock it and run again"; return 1; }

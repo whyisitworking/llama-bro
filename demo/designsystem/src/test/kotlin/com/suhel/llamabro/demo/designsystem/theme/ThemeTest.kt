@@ -10,7 +10,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Material's roles never fall back to Material's own values (T2 review findings 1-3). */
+/** Material's roles never fall back to Material's own values. */
 class ThemeTest {
     @Test
     fun everyMaterialColourRoleIsAToken() {

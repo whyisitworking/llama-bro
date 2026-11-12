@@ -43,7 +43,7 @@ class CatalogTest {
     }
 
     @Test fun sizesEqualPinMd() {
-        val rows = File(repoRoot(), "spike/pd/catalog/pin.md").readLines().filter { it.startsWith("| `") }
+        val rows = File(repoRoot(), "demo/catalog/pin.md").readLines().filter { it.startsWith("| `") }
         assertEquals(5, rows.size)
         for (row in rows) {
             val cells = row.split('|').map { it.trim() }
@@ -56,7 +56,7 @@ class CatalogTest {
 
     private fun repoRoot(): File {
         var dir: File? = File("").absoluteFile
-        while (dir != null && !File(dir, "spike/pd/catalog/pin.md").exists()) dir = dir.parentFile
-        return checkNotNull(dir) { "spike/pd/catalog/pin.md not found above ${File("").absolutePath}" }
+        while (dir != null && !File(dir, "demo/catalog/pin.md").exists()) dir = dir.parentFile
+        return checkNotNull(dir) { "demo/catalog/pin.md not found above ${File("").absolutePath}" }
     }
 }

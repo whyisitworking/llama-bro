@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # P2 T8 follow-up (F68): why an earlier prototype saw MTP win. Same server, model and settings as mtp.sh, but per output kind:
-# prose and JSON extraction, each greedy (temperature 0) and sampled (an earlier prototype's agent preset 0.2/0.95/20, and the
+# prose and JSON extraction, each greedy (temperature 0) and sampled (the prototype's agent preset 0.2/0.95/20, and the
 # model's defaults for prose), via /v1/chat/completions with thinking off. Arms: MTP off, draft 3, draft 4.
 # usage: [ROUNDS=3] [CHIPS="npu cpu"] mtp2.sh
 set -uo pipefail
-export ANDROID_SERIAL="${ANDROID_SERIAL:-<serial>}"
+export ANDROID_SERIAL="${ANDROID_SERIAL:?set ANDROID_SERIAL to the adb serial of the device}"
 root=/data/local/tmp/lb-spike; L=$root/P/lib; port=8099
 here="$(cd "$(dirname "$0")" && pwd)"
 wait_adb() { for i in $(seq 1 120); do adb get-state >/dev/null 2>&1 && return 0; sleep 1; done; echo "adb gone"; exit 1; }

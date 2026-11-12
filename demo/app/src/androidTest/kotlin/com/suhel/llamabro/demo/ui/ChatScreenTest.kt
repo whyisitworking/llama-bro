@@ -87,7 +87,7 @@ import org.junit.rules.RuleChain
 import java.io.File
 
 /**
- * The chat screen on the phone (T9), over a fake engine and hub: fast and exact, no model needed. Replies come from
+ * The chat screen on the phone, over a fake engine and hub: fast and exact, no model needed. Replies come from
  * `FakeLlamaBro`, or from [script] when a test needs to control timing. The screen is hosted bare in an activity so a
  * test can supply the share sink, the link handler and the recomposition counter.
  */

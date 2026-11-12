@@ -78,7 +78,7 @@ internal fun modelToRestate(rows: List<StoredMessage>, position: Int, current: H
     return current?.takeIf { answering != null && answering != it.toString() }
 }
 
-/** The reply being written right now. It is not in [ChatHandle.messages] until the row changes state (Reference I). */
+/** The reply being written right now. It is not in [ChatHandle.messages] until the row changes state. */
 data class StreamingReply(
     val messageId: Long,
     val text: String,

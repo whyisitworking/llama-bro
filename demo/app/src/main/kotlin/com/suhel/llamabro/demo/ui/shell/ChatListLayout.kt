@@ -68,7 +68,7 @@ fun ChatListHome(viewModel: ShellViewModel, onOpenChat: (Long) -> Unit, onNewCha
 }
 
 /**
- * The Chat list layout's home, stateless (pd-design 4.2): the "Chats" title, "Search chats", rows with the model's
+ * The Chat list layout's home, stateless (demo design §4.2): the "Chats" title, "Search chats", rows with the model's
  * initial, the title, the time and "<Model>: <last text>" or "You: <last text>", and a "New chat" button. No unread
  * counts, ticks or status.
  */

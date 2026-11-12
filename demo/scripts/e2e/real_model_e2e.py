@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PD T13: the demo app end to end on the phone, with real models from huggingface.co, driven from outside.
+"""The demo app end to end on the phone, with real models from huggingface.co, driven from outside.
 
 usage: real_model_e2e.py [--serial S] [--only 1,2,3] [--out DIR] [--fresh APK]
 
@@ -583,7 +583,7 @@ STEPS = {1: step1, 2: step2, 4: step4, 5: step5, 6: step6, 7: step7, 8: step8}
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--serial", default=os.environ.get("DEMO_DEVICE", "<serial>"))
+    ap.add_argument("--serial", default=os.environ.get("DEMO_DEVICE"), required="DEMO_DEVICE" not in os.environ)
     ap.add_argument("--only", default="1,2,3,4,5,6,7,8")
     ap.add_argument("--out", default="/tmp/e2e")
     ap.add_argument("--fresh", help="uninstall and install this APK first")

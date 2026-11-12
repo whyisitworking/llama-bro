@@ -60,7 +60,7 @@ fun SettingsPage(
     )
 }
 
-/** Settings home: the areas in groups, each row opening its page (pd-design 4.6). */
+/** Settings home: the areas in groups, each row opening its page (demo design §4.5). */
 @Composable
 fun SettingsHome(onBack: () -> Unit, onOpen: (String) -> Unit, routes: SettingsRoutes) {
     SettingsPage("Settings", onBack, Modifier.testTag("settings_home")) {

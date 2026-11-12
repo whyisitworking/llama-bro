@@ -2,7 +2,7 @@
 # Does OpenMP change CPU speed? The SDK's CMakeLists.txt leaves GGML_OPENMP on (llama.cpp's default); upstream's
 # Snapdragon preset, which built every llama-server the phone spikes measured, turns it off. Two builds from the
 # same tree that differ only in -DGGML_OPENMP (build-device-tools.sh), Qwen3.5 4B on the CPU, a fresh load per arm,
-# arms alternating, thermal status <= 2 before each. Prompt ~2K tokens from spike/p2/mtp/source.txt, 128 tokens greedy.
+# arms alternating, thermal status <= 2 before each. Prompt ~2K tokens from research/p2/mtp/source.txt, 128 tokens greedy.
 # Usage: ANDROID_SERIAL=... bench.sh ROUNDS   -> one line per arm: round arm prefill_tps decode_tps
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"

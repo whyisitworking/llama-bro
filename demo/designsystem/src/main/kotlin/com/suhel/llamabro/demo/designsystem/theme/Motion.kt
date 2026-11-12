@@ -17,7 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 
-/** Reference C, settled here: standard 250 ms ease; layout switch crossfade 300 ms; the wake sweep 1,400 ms linear. */
+/** The motion spec: standard 250 ms ease; layout switch crossfade 300 ms; the wake sweep 1,400 ms linear. */
 object DemoMotion {
     const val STANDARD_MILLIS = 250
     const val CROSSFADE_MILLIS = 300

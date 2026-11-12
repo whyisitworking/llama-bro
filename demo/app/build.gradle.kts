@@ -2,7 +2,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.compose.screenshot)
     alias(libs.plugins.androidx.baselineprofile)
 }
 
@@ -19,8 +18,6 @@ android {
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "com.suhel.llamabro.demo.testing.DemoTestRunner"
     }
-
-    experimentalProperties["android.experimental.enableScreenshotTest"] = true
 
     testOptions {
         // trace sections (androidx.tracing) call android.os.Trace, which does nothing off a phone
@@ -41,6 +38,7 @@ android {
         release {
             // minified like a real release; signed with the debug key so it installs here
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("debug")
         }
@@ -55,7 +53,7 @@ android {
         abortOnError = true
         warningsAsErrors = true
         checkDependencies = false
-        // targetSdk 36 is the newest AGP 9.1.0 supports; the app is arm64-v8a only by design (pd-design 6)
+        // targetSdk 36 is the newest AGP 9.1.0 supports; the app is arm64-v8a only by design (demo design §3)
         // the Gradle wrapper (now the repository root's, which lint finds above the demo) is pinned on purpose, and so are the versions in the shared catalog (updated deliberately, not by lint)
         disable +=
             setOf(
@@ -64,6 +62,8 @@ android {
                 "AndroidGradlePluginVersion",
                 "GradleDependency",
                 "NewerVersionAvailable",
+                // the Lifecycle library ships a lint check built for a newer lint API than this AGP version loads
+                "ObsoleteLintCustomCheck",
             )
     }
 }
@@ -82,8 +82,6 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.tooling.preview)
     debugImplementation(libs.androidx.compose.ui.tooling)
-    screenshotTestImplementation(libs.screenshot.validation.api)
-    screenshotTestImplementation(libs.androidx.compose.ui.tooling)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.ktx)

@@ -64,7 +64,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import kotlin.math.abs
 
-/** Behaviour the screenshots can't show (Reference H, PD T3 step 1). */
+/** Behaviour the screenshots can't show. */
 @RunWith(AndroidJUnit4::class)
 class ComponentBehaviourTest {
     @get:Rule

@@ -19,7 +19,7 @@ import com.suhel.llamabro.demo.designsystem.components.Stack
 import com.suhel.llamabro.demo.designsystem.components.StarterChips
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 
-/** The starter prompts of an empty chat (builder's wording: plain and everyday). */
+/** The starter prompts of an empty chat (plain, everyday wording). */
 val StarterPrompts = listOf("Plan my week", "Explain something simply", "Help me write a message")
 
 /** A chat with no messages: the 40 dp orb, the serif line and three starter chips. */

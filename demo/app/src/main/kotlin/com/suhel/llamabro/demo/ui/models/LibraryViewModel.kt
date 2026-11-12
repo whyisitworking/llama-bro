@@ -23,7 +23,7 @@ import kotlin.coroutines.CoroutineContext
 data class StorageInfo(val usedBytes: Long, val freeBytes: Long)
 
 /**
- * The library (pd-design 4.3): the models on the phone with their last use, the downloads under way, and the storage
+ * The library (demo design §4.3): the models on the phone with their last use, the downloads under way, and the storage
  * line. A swipe asks first ([askRemove]); only [confirmRemove] deletes.
  */
 class LibraryViewModel(

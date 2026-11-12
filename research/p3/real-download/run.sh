@@ -3,7 +3,7 @@
 # 50% of the plan's bytes, resumed, both files verified. Writes hub.log, timeline.txt and headers.txt here.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; sdk="$here/../../../sdk"
-export ANDROID_SERIAL="${ANDROID_SERIAL:-<serial>}"
+export ANDROID_SERIAL="${ANDROID_SERIAL:?set ANDROID_SERIAL to the adb serial of the device}"
 pkg=com.suhel.llamabro.download
 ref='unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M'
 model_oid=bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517

@@ -12,9 +12,9 @@ import androidx.compose.ui.graphics.lerp
 enum class ThemeMode { System, Light, Dark }
 
 /**
- * Material 3's scheme derived from the tokens (Reference C). Every role is mapped, so no stock Material colour can
- * reach a screen through a Material widget; the tonal elevation tint is switched off. The roles Reference C doesn't
- * name are the builder's call, settled here (PD T3): secondary and tertiary follow the accent, surface containers
+ * Material 3's scheme derived from the tokens. Every role is mapped, so no stock Material colour can
+ * reach a screen through a Material widget; the tonal elevation tint is switched off. The roles the design doesn't
+ * name follow one rule: secondary and tertiary track the accent, surface containers
  * are the surface, errors use the "slow here" sand (a limit is stated plainly, not alarmed), the inverse roles swap
  * ink and canvas, and the scrim is the darkest token.
  */
@@ -78,7 +78,7 @@ internal val DemoColors.scrim: Color get() = scrimBase.copy(alpha = if (isDark) 
 
 /**
  * A fill one step off the canvas for code blocks and open thoughts (the design's `--code` and `--think`):
- * the canvas moved 3.5% (light) or 2% (dark) towards the ink. Builder's call, settled here (PD T3).
+ * the canvas moved 3.5% (light) or 2% (dark) towards the ink.
  */
 internal val DemoColors.subtleFill: Color get() = lerp(canvas, ink, if (isDark) 0.02f else 0.035f)
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generates the request files for session 1 (spike plan §4) into spike/p0/requests/.
+"""Generates the request files for session 1 (spike plan §4) into research/p0/requests/.
 
 t2.jsonl  output parity: 20 fixed requests, greedy, cache_prompt false
 t3-<n>.jsonl  speed: one chat request with a prompt of about n tokens, 128 generated tokens

@@ -66,7 +66,7 @@ data class MessageChange(
     val failure: String? = null,
 )
 
-/** Room is the source of truth for chats (pd-design §4.5). Every call runs on Room's own threads. */
+/** Room is the source of truth for chats (demo design §3). Every call runs on Room's own threads. */
 class ChatRepository(private val dao: ChatDao, private val imageStore: ImageStore, private val clock: () -> Long) {
     /** Newest first; a non-blank [query] keeps chats whose title or any message text contains it. */
     fun chats(query: String = ""): Flow<List<ChatSummary>> {

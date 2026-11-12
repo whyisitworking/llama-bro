@@ -57,9 +57,9 @@ sealed interface SheetState {
 data class FileFit(val fit: FitView, val totalBytes: Long, val readerBytes: Long, val memoryBytes: Long?)
 
 /**
- * A model's sheet (pd-design 4.3). The inputs are the user's: the mode, the file picked, "Retry". Everything shown is
- * derived from them: the file list ([state]), the file that counts as selected ([selected], Recommended unless the user
- * chose another, and always one of the three sizes in Basic), the button's words ([button]) and the image reader
+ * A model's sheet (demo design §4.3). The inputs are the user's: the mode, the file picked, "Retry". Everything shown
+ * is derived from them: the file list ([state]), the file that counts as selected ([selected], Recommended unless the
+ * user chose another, and always one of the three sizes in Basic), the button's words ([button]) and the image reader
  * ([imageReaderBytes]). Each file's fit ([fit]) is its own flow: quick at once, real when the SDK has projected it,
  * asked only when a row is first shown, a few at a time, and cancelled with the sheet.
  */

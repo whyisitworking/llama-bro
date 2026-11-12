@@ -30,7 +30,7 @@ val ktlintSources =
         "**/*.gradle.kts",
         "!**/build/**",
         "!sdk/native/**",
-        "!spike/**",
+        "!research/**",
         "!**/generated/**",
     )
 

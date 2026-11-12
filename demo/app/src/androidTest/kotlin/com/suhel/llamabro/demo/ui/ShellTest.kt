@@ -36,8 +36,8 @@ import org.junit.Test
 import org.junit.rules.RuleChain
 
 /**
- * The shell on the phone (Reference L): both layouts, the drawer, the chat list, settings. Needs the phone; written in
- * T8 and run with `demo/scripts/check.sh --device`.
+ * The shell on the phone: both layouts, the drawer, the chat list, settings. Needs the phone; written in
+ * and run with `demo/scripts/check.sh --device`.
  */
 @OptIn(ExperimentalTestApi::class)
 class ShellTest {

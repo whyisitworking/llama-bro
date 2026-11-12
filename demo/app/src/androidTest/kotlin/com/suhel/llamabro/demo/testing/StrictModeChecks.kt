@@ -40,8 +40,8 @@ fun <T> assertNoMainThreadIo(block: () -> T): T {
  * The StrictMode violations of the current test that are the app's to fix. A violation is left out only when its stack
  * has no frame of ours and has a frame of one of [FOREIGN], the three sources found by reading every stack of
  * the first device run (2026-11-10): the system server (a Binder call into OnePlus's code), OnePlus's UI-first manager
- * (inside `ViewRootImpl` and the keyboard bridge, in our process), and Google's accessibility test framework loading its
- * strings. A stack from anywhere else, or with one of our frames, fails the test.
+ * (inside `ViewRootImpl` and the keyboard bridge, in our process), and Google's accessibility test framework loading
+ * its strings. A stack from anywhere else, or with one of our frames, fails the test.
  */
 object StrictViolations {
     private val FOREIGN =

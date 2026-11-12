@@ -10,7 +10,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 
-/** Light and dark at the phone width Reference L's screenshots use: every preview of a screen or a part carries it. */
+/** Light and dark at the phone width the screenshots use: every preview of a screen or a part carries it. */
 @Preview(name = "Light", widthDp = 360, showBackground = false)
 @Preview(name = "Dark", widthDp = 360, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = false)
 annotation class DemoPreviews

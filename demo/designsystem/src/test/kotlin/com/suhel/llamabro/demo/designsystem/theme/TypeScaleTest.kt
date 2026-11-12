@@ -8,7 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The type roles, role by role, against the verified spec (docs/sdk-v2/pd-design-v2-spec.md section 1; the sizes, line
+ * The type roles, role by role, against the verified spec (docs/design/demo-app.md section 8.2; the sizes, line
  * heights and tracking are Material 3's `TypeScaleTokens`), and the rules that keep the scale a scale.
  */
 class TypeScaleTest {

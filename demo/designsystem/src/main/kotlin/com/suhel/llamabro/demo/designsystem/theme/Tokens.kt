@@ -4,7 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-/** pd-design 5.2's table, verbatim. "Runs well" has no tint of its own: it is the plain surface. */
+/** demo design §8.6's table, verbatim. "Runs well" has no tint of its own: it is the plain surface. */
 @Immutable
 class DemoColors(
     val canvas: Color,

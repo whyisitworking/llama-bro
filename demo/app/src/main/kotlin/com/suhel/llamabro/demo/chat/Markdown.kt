@@ -7,7 +7,7 @@ import com.suhel.llamabro.demo.designsystem.components.MarkdownSpan
 import com.suhel.llamabro.demo.designsystem.components.MarkdownBlock.ListItem as ListEntry
 
 /**
- * The small markdown the app shows (Reference G): paragraphs, `#`-`###` headings, `**bold**`, `*italic*`, `` `code` ``,
+ * The small markdown the app shows: paragraphs, `#`-`###` headings, `**bold**`, `*italic*`, `` `code` ``,
  * fenced code blocks, `-`/`*`/`1.` lists, `>` quotes and links. Anything else is shown as typed. An open fence renders
  * as code, so a streaming reply never flashes raw backticks.
  */

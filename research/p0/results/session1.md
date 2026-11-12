@@ -1,6 +1,6 @@
 # P0 session 1: in-process server-context (H) vs llama-server (U)
 
-> **Parent:** [P0 spike plan](../../../docs/sdk-v2/plans/p0-spike.md) · **Summarised in:** [findings](../../../docs/sdk-v2/findings.md) (D12 tests T1–T7; findings F1–F7)
+> **Parent:** [P0](../README.md) · **Summarised in:** [findings](../../../docs/research/findings.md) (D12 tests T1–T7; findings F1–F7)
 
 Date: 2026-11-03. Phone: OnePlus 13 (SM8750, Hexagon v79, Android 16), charging, room AC.
 Build: llama.cpp b12052, `arm64-android-snapdragon-release` preset, same build tree for U and H.
@@ -41,4 +41,4 @@ MTP draft acceptance: 0.5-0.6, identical for U and H. T3 was stopped after round
 3. **Switching back to an earlier conversation reprocessed it** (t7-a-back: 409 tokens processed, 334 cached, out of 743). The RAM cache / slot selection didn't restore conversation A after one turn of conversation B. To investigate before §8's cache defaults are set.
 4. **A one-off CPU comparison was misleading** (H looked 25% slower because it ran second on a warmer phone). Alternating repeated runs removed it.
 
-Raw data: `spike/p0/results/raw/` (cpu-t2-*, npu-t2-*, npu-t3-*, npu-t5-*, npu-t7-*).
+Raw data: `research/p0/results/raw/` (cpu-t2-*, npu-t2-*, npu-t3-*, npu-t5-*, npu-t7-*).

@@ -49,9 +49,9 @@ import org.junit.runners.Parameterized
 import java.io.File
 
 /**
- * A picture of every chat state in both styles and both themes, kept as evidence for the review against the mockups:
- * `adb pull /sdcard/Android/data/com.suhel.llamabro.demo/files/screens/T9 spike/pd/screens/T9`. They are looked at, not
- * compared: a pass means each state rendered and a picture was written.
+ * A picture of every chat state in both styles and both themes, kept as evidence for the visual review against the
+ * design (docs/design/demo-app.md): `adb pull /sdcard/Android/data/com.suhel.llamabro.demo/files/screens/chat
+ * screens/chat`. They are looked at, not compared: a pass means each state rendered and a picture was written.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(Parameterized::class)
@@ -122,7 +122,7 @@ class ChatScreenshotsTest(private val style: MessageStyle, private val theme: Th
         val dir =
             File(
                 InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir("screens"),
-                "T9",
+                "chat",
             ).apply {
                 mkdirs()
             }

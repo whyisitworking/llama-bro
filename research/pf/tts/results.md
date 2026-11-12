@@ -1,7 +1,7 @@
 # PF T4: text to speech, Qwen3-TTS 1.7B (F74)
 
 `ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF`: Q4_K_M model (1.04 GB) + mmproj Q8_0 (446 MB, the codec), download
-approved by the user 2026-11-06 (`gguf.sha256`). Upstream `llama-server` (`/data/local/tmp/lb-spike/P`), `-m … -mm …`,
+approved by the maintainer 2026-11-06 (`gguf.sha256`). Upstream `llama-server` (`/data/local/tmp/lb-spike/P`), `-m … -mm …`,
 the SDK's load settings, `POST /tts` with `lang: en`, `seed: 42`, `response_format: wav` and a reference voice
 (`speaker.wav`, 7.3 s, macOS `say -v Samantha`, sent as `speaker_ref_b64`). Inputs: two sentences, and a five-sentence
 paragraph. One load per chip, one round. Script `tts.sh`; raw `tts-cpu.out`, `tts-npu-gpu.out`,
@@ -19,7 +19,7 @@ paragraph. One load per chip, one round. Script `tts.sh`; raw `tts-cpu.out`, `tt
 RTF = audio seconds per wall second; above 1 is faster than real time. The CPU's first request (39.7 s) includes
 warm-up. Streaming returns raw WAV bytes in chunks (no SSE wrapper; `server-context.cpp` `post_tts`).
 
-The maintainer listened to the CPU WAVs: "perfectly clear, although not very human like" (the reference voice is a
+A listener found the CPU output clear: "perfectly clear, although not very human like" (the reference voice is a
 synthetic macOS voice; Qwen3-TTS clones the reference).
 
 ## What the SDK would need (Step 1, reading)

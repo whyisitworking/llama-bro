@@ -1,0 +1,174 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PD mockup: models</title><style>body{background:#1c1c20;color:#ececf1;font-family:-apple-system,system-ui,sans-serif;padding:16px} h2{font-weight:600} .subtitle{color:#b9b6c0}</style>
+<style>
+  .row{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;margin:14px 0 4px}
+  .rowlbl{font-size:13px;color:#cfcad6;text-align:center;margin:18px 0 0;letter-spacing:.4px;text-transform:uppercase}
+  .phone{--bg:#F7F6F3;--surface:#FFFFFF;--ink:#17181C;--muted:#55565C;--line:#E6E4DF;--accent:#25304D;--accentSoft:#E4E7EF;
+    --great:#EDF0EC;--greatInk:#3E5641;--slow:#F3EEE5;--slowInk:#73572F;--no:#EFEFEF;--noInk:#6E6E73;--shadow:0 1px 2px rgba(20,20,30,.04),0 4px 14px rgba(20,20,30,.05);
+    width:240px;height:510px;border-radius:36px;background:var(--bg);color:var(--ink);box-shadow:0 0 0 9px #1c1c1f,0 18px 40px rgba(0,0,0,.3);
+    overflow:hidden;position:relative;font-family:-apple-system,"SF Pro Text","Inter",system-ui,sans-serif}
+  .phone.dark{--bg:#121316;--surface:#1B1C20;--ink:#ECEBE8;--muted:#A5A6AC;--line:#26272C;--accent:#B9C4DE;--accentSoft:#252A38;
+    --great:#1A1F1B;--greatInk:#A9C3AA;--slow:#221E18;--slowInk:#D3B588;--no:#1E1E21;--noInk:#8C8C92;--shadow:0 1px 2px rgba(0,0,0,.4),0 4px 16px rgba(0,0,0,.3)}
+  .status{height:26px;display:flex;justify-content:space-between;padding:8px 22px 0;font-size:11px;font-weight:600}
+  .serif{font-family:"New York","Iowan Old Style","Georgia",serif}
+  .head{display:flex;align-items:center;gap:8px;padding:6px 14px 8px;font-size:13.5px;font-weight:600}
+  .search{margin:0 14px 10px;display:flex;align-items:center;gap:8px;background:var(--surface);border-radius:13px;padding:9px 11px;font-size:13px;color:var(--muted);box-shadow:var(--shadow)}
+  .search.typed{color:var(--ink)}
+  .sec{font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);font-weight:600;margin:10px 16px 6px;display:flex;justify-content:space-between}
+  .rail{display:flex;gap:8px;padding:0 14px;overflow:hidden}
+  .feat{flex:none;width:150px;border-radius:15px;padding:10px 11px;background:var(--surface);box-shadow:var(--shadow)}
+  .feat b{font-size:13.5px;font-weight:600;display:block} .feat span{font-size:11.5px;color:var(--muted);display:block;line-height:1.4;margin-top:2px}
+  .tag{display:inline-block;font-size:10.5px;font-weight:600;border-radius:7px;padding:2px 6px;margin:6px 4px 0 0;background:var(--accentSoft);color:var(--accent)}
+  .cats{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px}
+  .cat{font-size:12px;background:var(--surface);border-radius:11px;padding:7px 10px;box-shadow:var(--shadow)}
+  .res{margin:0 14px 7px;border-radius:14px;padding:9px 11px}
+  .res.great{background:var(--great)} .res.plain{background:var(--surface);box-shadow:var(--shadow)} .res.slow{background:var(--slow)} .res.no{background:var(--no)}
+  .res .l{display:flex;justify-content:space-between;align-items:baseline}
+  .res b{font-size:13.5px;font-weight:600} .res .fit{font-size:11px;font-weight:600}
+  .great .fit{color:var(--greatInk)} .slow .fit{color:var(--slowInk)} .no .fit{color:var(--noInk)} .plain .fit{color:var(--muted)}
+  .no b{color:var(--noInk)}
+  .res span.d{font-size:11.5px;color:var(--muted);display:block;margin-top:2px;line-height:1.4}
+  .res .m{font-size:11px;color:var(--muted);margin-top:4px}
+  .dim{position:absolute;inset:0;background:rgba(18,18,22,.3)} .dark .dim{background:rgba(0,0,0,.5)}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:24px 24px 0 0;padding:12px 14px 16px}
+  .grab{width:36px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 10px}
+  .h{font-size:20px;margin:0} .by{font-size:11.5px;color:var(--muted)}
+  .p{font-size:12.5px;color:var(--muted);line-height:1.5;margin:8px 0}
+  .q{border-radius:12px;padding:8px 10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;font-size:12.5px;border:1.5px solid transparent}
+  .q.sel{border-color:var(--accent)}
+  .q b{font-weight:600} .q small{display:block;font-size:11px;color:var(--muted)}
+  .q.great{background:var(--great)} .q.slow{background:var(--slow)} .q.no{background:var(--no)}
+  .q .fit{font-size:11px;font-weight:600}
+  .seg{display:flex;background:var(--bg);border-radius:10px;padding:3px;margin:8px 0 8px;font-size:12px;font-weight:600}
+  .seg div{flex:1;text-align:center;padding:5px;border-radius:8px;color:var(--muted)} .seg .on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+  .qt{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11px;font-weight:600;background:var(--accentSoft);color:var(--accent);border-radius:6px;padding:1px 5px;margin-left:5px}
+  .advhead,.adv{display:grid;grid-template-columns:1fr 64px 74px;align-items:center;column-gap:6px}
+  .advhead{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:600;padding:0 10px 5px}
+  .adv{height:30px;border-radius:10px;padding:0 10px;margin-bottom:4px;font-size:12px;box-sizing:border-box;border:1.5px solid transparent}
+  .adv.great{background:var(--great)} .adv.slow{background:var(--slow)} .adv.no{background:var(--no)} .adv.plain{background:var(--bg)}
+  .adv.sel{border-color:var(--accent)}
+  .adv .sz{font-variant-numeric:tabular-nums;color:var(--ink);font-weight:550}
+  .adv .note{color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .adv .f{font-size:11px;font-weight:600;text-align:right}
+  .adv.great .f{color:var(--greatInk)} .adv.slow .f{color:var(--slowInk)} .adv.no .f{color:var(--noInk)} .adv.plain .f{color:var(--muted)}
+  .adv.rec{position:relative;margin-top:12px}
+  .adv.rec::before{content:"Recommended";position:absolute;top:-8px;right:10px;font-size:10px;font-weight:650;background:var(--accent);color:var(--bg);border-radius:7px;padding:0 6px;line-height:15px}
+  .sub2{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:600;margin:10px 2px 5px}
+  .side{font-size:11.5px;color:var(--muted);margin:6px 2px 0;display:flex;justify-content:space-between}
+  .prog{height:4px;border-radius:2px;background:var(--line);margin-top:7px;overflow:hidden}
+  .prog i{display:block;height:100%;background:var(--accent)}
+  .dl{font-size:11px;color:var(--muted);margin-top:4px;display:flex;justify-content:space-between}
+  .ctl{display:flex;gap:6px}
+  .ctl span{font-size:11px;font-weight:600;color:var(--accent);border:1.5px solid var(--line);border-radius:9px;padding:2px 7px}
+  .btn{background:var(--ink);color:var(--bg);border-radius:13px;padding:11px;text-align:center;font-size:13.5px;font-weight:600;margin-top:8px}
+  .fine{font-size:11px;color:var(--muted);text-align:center;margin-top:7px}
+  .lib{margin:0 14px 7px;background:var(--surface);border-radius:14px;padding:10px 11px;box-shadow:var(--shadow);display:flex;justify-content:space-between;align-items:center}
+  .lib b{font-size:13.5px;font-weight:600} .lib span{display:block;font-size:11px;color:var(--muted)}
+  .lib .r{font-size:11px;color:var(--muted);text-align:right}
+  .def{outline:1.5px solid var(--accent);outline-offset:-1.5px;position:relative;margin-top:14px !important}
+  .def::before{content:"Default";position:absolute;top:-8px;right:12px;font-size:10.5px;font-weight:650;letter-spacing:.2px;
+    background:var(--accent);color:var(--bg);border-radius:7px;padding:1px 7px}
+  .bar{margin:4px 16px 2px;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+  .bar i{display:block;height:100%;width:31%;background:var(--accent)}
+  .storage{font-size:11px;color:var(--muted);margin:0 16px 10px}
+  .getmore{margin:6px 14px;border:1.5px dashed var(--line);border-radius:14px;padding:10px;text-align:center;font-size:12.5px;color:var(--accent);font-weight:600}
+</style>
+
+<h2>Finding models, and your library (v6)</h2>
+<p class="subtitle">Hugging Face, without its jargon. Results are models, not repositories; sizes are three plain choices, not file names; every result is tinted by how it runs on this phone. The default model is an outline with a chip on its edge.</p>
+
+<div class="rowlbl">Light</div>
+<div class="row" id="light"></div>
+<div class="rowlbl">Dark</div>
+<div class="row" id="dark"></div>
+
+<template id="screens">
+  <div class="phone">
+    <div class="status"><span>9:41</span><span>●●●</span></div>
+    <div class="head">‹ <span>Get models</span></div>
+    <div class="search">⌕ <span>Search Hugging Face</span></div>
+    <div class="sec"><span>Suggested for this phone</span></div>
+    <div class="res great"><div class="l"><b>Qwen3.5 0.8B</b><span class="fit">Runs great</span></div><span class="d">Tiny and quick, everyday questions</span><div class="prog"><i style="width:42%"></i></div><div class="dl"><span>Downloading · 42%</span><span>about 40 s</span></div></div>
+    <div class="res great"><div class="l"><b>Llama 3.2 3B</b><span class="fit">Runs great</span></div><span class="d">Friendly all-rounder</span></div>
+    <div class="res plain"><div class="l"><b>Gemma 3 4B</b><span class="fit">Runs well</span></div><span class="d">Writes beautifully, reads images</span></div>
+    <div class="res plain"><div class="l"><b>Qwen3.5 4B</b><span class="fit">Runs well</span></div><span class="d">Reasons well, thinks first</span></div>
+    <div class="res slow"><div class="l"><b>Qwen3.5 9B</b><span class="fit">Slow here</span></div><span class="d">Smarter, but heavy for a phone</span></div>
+  </div>
+
+  <div class="phone">
+    <div class="status"><span>9:41</span><span>●●●</span></div>
+    <div class="head">‹ <span>Get models</span></div>
+    <div class="search typed">⌕ <span>qwen</span></div>
+    <div class="res great"><div class="l"><b>Qwen3.5 0.8B</b><span class="fit">Runs great</span></div><span class="d">Tiny and quick, everyday questions</span><div class="m">Thinks · Sees images · ↓ 412k</div></div>
+    <div class="res plain"><div class="l"><b>Qwen3.5 4B</b><span class="fit">Runs well</span></div><span class="d">Balanced, good at reasoning</span><div class="m">Thinks · Sees images · ↓ 1.2M</div></div>
+    <div class="res slow"><div class="l"><b>Qwen3.5 9B</b><span class="fit">Slow here</span></div><span class="d">Smarter, but heavy for this phone</span><div class="m">Thinks · Sees images · ↓ 880k</div></div>
+    <div class="res no"><div class="l"><b>Qwen3.5 35B</b><span class="fit">Too big</span></div><span class="d">Needs a computer, not a phone</span></div>
+  </div>
+
+  <div class="phone">
+    <div class="status"><span>9:41</span><span>●●●</span></div>
+    <div class="head">‹ <span>Get models</span></div>
+    <div class="dim"></div>
+    <div class="sheet">
+      <div class="grab"></div>
+      <div class="h serif">Qwen3.5 4B</div><div class="by">unsloth/Qwen3.5-4B-GGUF · by Alibaba Qwen</div>
+      <p class="p">Balanced and capable: good at reasoning, explaining and following detailed instructions. Can think first and look at images.</p>
+      <div class="seg"><div class="on">Basic</div><div>Advanced</div></div>
+      <div class="q no"><div><b>Smaller</b><small>1.9 GB · a little less sharp</small></div><span class="fit" style="color:var(--noInk)">Fits easily</span></div>
+      <div class="q great sel"><div><b>Recommended</b><small>2.8 GB · the best balance</small></div><span class="fit" style="color:var(--greatInk)">Runs well</span></div>
+      <div class="q slow"><div><b>Best quality</b><small>4.5 GB · near-original, slower</small></div><span class="fit" style="color:var(--slowInk)">Slow here</span></div>
+      <div class="btn">Get Qwen3.5 4B · about 3 min</div>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="status"><span>9:41</span><span>●●●</span></div>
+    <div class="head">‹ <span>Get models</span></div>
+    <div class="dim"></div>
+    <div class="sheet">
+      <div class="grab"></div>
+      <div class="h serif">Qwen3.5 4B</div><div class="by">unsloth/Qwen3.5-4B-GGUF · by Alibaba Qwen</div>
+      <div class="seg"><div>Basic</div><div class="on">Advanced</div></div>
+      <div class="advhead"><span>Quant</span><span>Size</span><span style="text-align:right">On this phone</span></div>
+      <div class="adv no"><span class="qt" style="margin:0;justify-self:start">Q2_K</span><span class="sz">1.6 GB</span><span class="f">Fits</span></div>
+      <div class="adv no"><span class="qt" style="margin:0;justify-self:start">Q3_K_M</span><span class="sz">1.9 GB</span><span class="f">Fits</span></div>
+      <div class="adv great"><span class="qt" style="margin:0;justify-self:start">IQ4_XS</span><span class="sz">2.4 GB</span><span class="f">Runs well</span></div>
+      <div class="adv great sel rec"><span class="qt" style="margin:0;justify-self:start">Q4_K_M</span><span class="sz">2.8 GB</span><span class="f">Runs well</span></div>
+      <div class="adv plain"><span class="qt" style="margin:0;justify-self:start">Q5_K_M</span><span class="sz">3.1 GB</span><span class="f">Runs well</span></div>
+      <div class="adv slow"><span class="qt" style="margin:0;justify-self:start">Q6_K</span><span class="sz">3.6 GB</span><span class="f">Slower</span></div>
+      <div class="adv slow"><span class="qt" style="margin:0;justify-self:start">Q8_0</span><span class="sz">4.5 GB</span><span class="f">Slow</span></div>
+      <div class="adv no"><span class="qt" style="margin:0;justify-self:start">BF16</span><span class="sz">8.4 GB</span><span class="f">Too big</span></div>
+      <div class="sub2">Image reader</div>
+      <div class="adv great sel"><span class="qt" style="margin:0;justify-self:start">BF16</span><span class="sz">0.7 GB</span><span class="f">Included</span></div>
+      <div class="btn">Get Q4_K_M · 3.5 GB in all</div>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="status"><span>9:41</span><span>●●●</span></div>
+    <div class="head">‹ <span>Models</span></div>
+    <div class="storage">6.1 GB used · 120 GB free</div>
+    <div class="bar"><i></i></div>
+    <div class="sec"><span>On this phone</span></div>
+    <div class="lib"><div><b>Swift</b><span>Qwen3.5 0.8B · 0.7 GB</span></div><div class="r">used today</div></div>
+    <div class="lib def"><div><b>Writer</b><span>Gemma 3 4B · 2.5 GB</span></div><div class="r">used today</div></div>
+    <div class="lib"><div><b>Deep</b><span>Qwen3.5 4B · 2.8 GB</span></div><div class="r">2 weeks ago</div></div>
+    <div class="sec"><span>Downloading</span></div>
+    <div class="lib" style="display:block"><div style="display:flex;justify-content:space-between"><b>Qwen3.5 0.8B</b><div class="ctl"><span>Pause</span><span>✕</span></div></div><div class="prog"><i style="width:42%"></i></div><div class="dl"><span>310 of 740 MB · 9.8 MB/s</span><span>about 40 s</span></div></div>
+    <div class="getmore">+ Get more models</div>
+  </div>
+</template>
+
+<script>
+  (function () {
+    const t = document.getElementById('screens');
+    for (const id of ['light', 'dark']) {
+      const row = document.getElementById(id);
+      row.appendChild(t.content.cloneNode(true));
+      if (id === 'dark') row.querySelectorAll('.phone').forEach(p => p.classList.add('dark'));
+    }
+  })();
+</script>
+
+<div class="section" style="max-width:900px;margin:18px auto 0">
+  <p class="subtitle">1 a fixed list of suggestions for this phone (hardcoded in the app), tinted by fit, and search for everything else · 2 results grouped by model (one row for all its repos and files), tinted by fit, with plain strengths · 3 Basic: three sizes in plain words, no quant names, the recommended one preselected, the repo under the name · 4 Advanced: every quant with size and fit, and the image reader · 5 your library: storage, the default as an outline, last used, swipe to remove, and downloads in progress with pause and cancel. A download also shows on the row it was started from, and as a notification outside the app.</p>
+</div>

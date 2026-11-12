@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Checks the Macrobenchmark results against the performance budgets (docs/sdk-v2/plans/pd-demo-app.md, Reference I).
+"""Checks the Macrobenchmark results against the performance budgets (docs/testing.md, performance budgets).
 
 usage: perf.py RESULTS.json... [--report FILE]
 

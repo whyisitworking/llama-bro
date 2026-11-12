@@ -41,7 +41,7 @@ internal object DsTags {
 internal val LocalOnSheet = staticCompositionLocalOf { false }
 
 /**
- * Reference C's soft shadow: 2 dp, black at 5% in light and 35% in dark, never a tonal tint. [elevation] and
+ * The soft shadow: 2 dp, black at 5% in light and 35% in dark, never a tonal tint. [elevation] and
  * [lightAlpha] raise it for the floating pieces (composer, FAB), as the design does.
  */
 internal fun Modifier.softShadow(

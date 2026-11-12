@@ -5,14 +5,14 @@
 # real-time factor = audio s / wall s) and streamed (time to first audio byte). Reference voice: speaker.wav (macOS say).
 # usage: [ROUNDS=3] [CHIPS="npu gpu cpu"] tts.sh
 set -uo pipefail
-export ANDROID_SERIAL="${ANDROID_SERIAL:-<serial>}"
+export ANDROID_SERIAL="${ANDROID_SERIAL:?set ANDROID_SERIAL to the adb serial of the device}"
 root=/data/local/tmp/lb-spike; L=$root/P/lib; port=8099
 here="$(cd "$(dirname "$0")" && pwd)"; mkdir -p "$here/wav" "$here/logs"
 M=models/Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf; MM=models/mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf
 wait_adb() { for i in $(seq 1 120); do adb get-state >/dev/null 2>&1 && return 0; sleep 1; done; echo "adb gone"; exit 1; }
 stop() { wait_adb; adb shell "pkill -x llama-server; sleep 2; pkill -9 -x llama-server" >/dev/null 2>&1; sleep 2; }
 thermal() { adb shell dumpsys thermalservice | grep -m1 -oE 'Thermal Status: [0-9]+' | grep -oE '[0-9]+$'; }
-# wait for thermal <= COOL (default 2, the user's call 2026-11-06: was 1), at most ~3 min
+# wait for thermal <= COOL (default 2; it was 1 before 2026-11-06), at most ~3 min
 cool() { for i in $(seq 1 9); do [ "$(thermal)" -le "${COOL:-2}" ] && return; sleep 20; done; }
 memavail() { adb shell grep MemAvailable /proc/meminfo | awk '{print int($2/1024)}'; }
 start() {  # dev-args

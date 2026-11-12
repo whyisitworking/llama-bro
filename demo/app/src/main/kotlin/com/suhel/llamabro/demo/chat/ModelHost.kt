@@ -29,7 +29,7 @@ sealed interface HostState {
 /**
  * Owns the one loaded model. `use` of another key closes the current model before the next one loads, so two are never
  * in memory together; concurrent `use` of one key share one load. The load takes the SDK's defaults: `Speculative`
- * and `ContextSize` are not set (pd-design 4.5).
+ * and `ContextSize` are not set (demo design §3).
  */
 class ModelHost(private val llamaBro: LlamaBro, private val hub: HubGateway, private val scope: CoroutineScope) {
     private val _state = MutableStateFlow<HostState>(HostState.Idle)

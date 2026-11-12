@@ -15,7 +15,7 @@ import com.suhel.llamabro.demo.designsystem.components.SectionLabel
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 
-/** The four ways to think (pd-design 4.4): a sheet of rows, the current one ticked. */
+/** The four ways to think (demo design §4.4): a sheet of rows, the current one ticked. */
 @Composable
 fun ThinkMenu(current: ThinkLevel, onPick: (ThinkLevel) -> Unit, onDismiss: () -> Unit) {
     DemoSheet(onDismissRequest = onDismiss) { ThinkMenuContent(current, onPick, onDismiss) }

@@ -49,7 +49,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/** What a share card holds (pd-design 4.4): the reply's text, already cut at 600 characters, and who said it. */
+/** What a share card holds (demo design §4.4): the reply's text, already cut at 600 characters, and who said it. */
 data class ShareCardContent(val text: String, val modelName: String, val speed: String?)
 
 /** The card: canvas background, 16 dp padding; the model's name in serif; "<n> words/s · on this phone". */

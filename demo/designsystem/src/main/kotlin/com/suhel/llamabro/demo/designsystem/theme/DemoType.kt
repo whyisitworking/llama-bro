@@ -30,7 +30,7 @@ private val SourceSerif =
     )
 
 /**
- * The type roles of the design system v2 spec (docs/sdk-v2/pd-design-v2-spec.md, section 1): Material 3's scale (size,
+ * The type roles of the design system v2 spec (docs/design/demo-app.md, section 8.2): Material 3's scale (size,
  * line height, tracking from `TypeScaleTokens`), the serif only where D48 says. A screen names a role and never a size,
  * a weight or a tracking: a role carries all of them, so the same kind of text is the same everywhere.
  *

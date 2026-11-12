@@ -85,9 +85,9 @@ private val settingsRoutes =
     )
 
 /**
- * The whole app: the theme, then one of the two layouts (pd-design 4.2) around one navigation graph. Switching layout
- * crossfades and keeps the open chat open. [chatScreen] is T9's screen; first run, Get models and the library are
- * T10's.
+ * The whole app: the theme, then one of the two layouts (demo design §4.2) around one navigation graph. Switching
+ * layout crossfades and keeps the open chat open. [chatScreen] is the chat screen; first run, Get models and the
+ * library are supplied the same way.
  */
 @Composable
 fun AppShell(
@@ -299,7 +299,7 @@ private fun Graph(
     }
 }
 
-/** A chat with no messages yet: the greeting the spec gives. T9 replaces this with the conversation. */
+/** A chat with no messages yet: the greeting the design gives. */
 @Composable
 private fun EmptyChatScreen(chrome: ChatChrome) {
     Column(Modifier.fillMaxSize()) {

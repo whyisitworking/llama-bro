@@ -197,7 +197,7 @@ fun BottomTabs(tabs: List<BottomTab>, selected: Int, onSelect: (Int) -> Unit, mo
     }
 }
 
-/** The two app layouts of pd-design 4.2. */
+/** The two app layouts of demo design §4.2. */
 enum class LayoutKind { Sidebar, ChatList }
 
 /** A layout choice in Settings › Appearance: a small drawing of the layout over its [title] and [subtitle]. */

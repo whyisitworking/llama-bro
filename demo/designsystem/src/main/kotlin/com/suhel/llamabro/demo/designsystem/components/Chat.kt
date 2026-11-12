@@ -240,7 +240,7 @@ fun HeldNote(text: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * An honest limit, said once in one plain line with its fix (pd-design 4.4): the [text] and, when there is one,
+ * An honest limit, said once in one plain line with its fix (demo design §4.4): the [text] and, when there is one,
  * an [action] button.
  */
 @Composable

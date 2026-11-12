@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # P3 F95: DflashDeviceTest right after a fresh install of the hexagon test app, TRIALS times (F95 happened on the first
-# run after a reinstall). Each trial: uninstall the test app (my own test app, deletes only its data), push Qwen3.5 and
+# run after a reinstall). Each trial: uninstall the test app (the sample app; deletes only its data), push Qwen3.5 and
 # the draft where the test reads them, then Gradle installs the APK and runs the test once.
 # usage: [TRIALS=4] sdk_probe.sh   (run from anywhere; WT = the worktree holding the built SDK)
 set -uo pipefail
-export ANDROID_SERIAL=<serial>
-WT=${WT:-$HOME/Llama-Bro}; here="$(cd "$(dirname "$0")" && pwd)"
+export ANDROID_SERIAL="${ANDROID_SERIAL:?set ANDROID_SERIAL to the adb serial of the device}"
+WT=${WT:-$(git rev-parse --show-toplevel)}; here="$(cd "$(dirname "$0")" && pwd)"
 pkg=com.suhel.llamabro.hexagon.test; files=/sdcard/Android/data/$pkg/files
 for t in $(seq 1 ${TRIALS:-4}); do
   adb shell dumpsys window | grep -q isKeyguardShowing=false || { echo "phone locked"; exit 1; }

@@ -8,7 +8,7 @@ data class FitView(val label: FitLabel, val wordsPerSecond: Int, val real: Boole
 
 object Fits {
     /**
-     * The quick estimate (pd-design 5.3): [fileBytes] (the model and its image reader, what is downloaded and later
+     * The quick estimate (demo design §7.1): [fileBytes] (the model and its image reader, what is downloaded and later
      * held
      * in memory) against the memory budget, and the speed from [modelBytes] alone, since decoding reads the weights.
      */

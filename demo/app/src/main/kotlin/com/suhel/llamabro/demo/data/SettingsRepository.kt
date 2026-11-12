@@ -24,10 +24,10 @@ data class AppSettings(
     val pendingDownloads: Set<String> = emptySet(),
 )
 
-/** The model a new chat starts with: the pinned one, else the one used last (pd-design §4.2). */
+/** The model a new chat starts with: the pinned one, else the one used last (demo design §4.2). */
 fun AppSettings.modelForNewChat(): String? = defaultModel ?: lastModel
 
-/** DataStore Preferences `settings.preferences_pb` (Reference B). */
+/** DataStore Preferences `settings.preferences_pb`. */
 class SettingsRepository(private val store: DataStore<Preferences>) {
     val settings: Flow<AppSettings> =
         store.data.map { p ->

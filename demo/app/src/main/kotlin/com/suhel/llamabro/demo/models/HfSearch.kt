@@ -37,7 +37,7 @@ class SearchFailed(message: String, val retryable: Boolean, cause: Throwable? = 
 }
 
 /**
- * Hugging Face search (Reference E) over `HttpURLConnection`, always on `Dispatchers.IO`. The token goes only to the
+ * Hugging Face search over `HttpURLConnection`, always on `Dispatchers.IO`. The token goes only to the
  * host it was meant for: redirects are followed here, by hand, and `Authorization` is dropped when one leaves the
  * origin's scheme, host or port.
  */

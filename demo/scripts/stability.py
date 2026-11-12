@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The component library's stability gate (PD Reference H and K).
+"""The component library's stability gate (component library).
 
 Reads the Compose compiler's reports for :designsystem and fails when
   - a public composable of src/main is restartable but not skippable (or missing from the report; one marked

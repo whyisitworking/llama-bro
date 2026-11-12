@@ -6,7 +6,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.staticCompositionLocalOf
 
-/** Reference K's recomposition counter, the one algorithm the recomposition tests of both modules share. */
+/** The recomposition counter, the one algorithm the recomposition tests of both modules share. */
 @Stable
 class RecompositionCounter {
     val counts = mutableMapOf<String, Int>()

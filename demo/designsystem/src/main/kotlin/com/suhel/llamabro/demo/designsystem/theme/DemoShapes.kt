@@ -5,7 +5,7 @@ import androidx.compose.material3.Shapes
 import androidx.compose.ui.unit.dp
 
 /**
- * The shapes of the design system v2 spec (docs/sdk-v2/pd-design-v2-spec.md, section 4): Material's corner scale. A
+ * The shapes of the design system v2 spec (docs/design/demo-app.md, section 8.5): Material's corner scale. A
  * sheet is rounded 28 dp on top, a card 12 dp, a chip 8 dp; buttons and the search field are full pills. The
  * message bubble and the composer have no Material counterpart and are chosen: 20 dp and 28 dp.
  */

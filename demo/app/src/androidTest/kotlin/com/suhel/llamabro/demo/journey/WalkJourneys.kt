@@ -37,9 +37,9 @@ class WalkJourneys : Journey() {
     private val robot = Robot()
 
     /**
-     * Every area a layout primitive keeps inside the gutter (D48) starts 16 dp inside the left edge and ends 16 dp inside
-     * the right edge of its own screen or sheet (on a tablet the sheet is narrower than the window, so the edge is the
-     * container's, not the window's). [required] says the screen has such an area at all.
+     * Every area a layout primitive keeps inside the gutter (D48) starts 16 dp inside the left edge and ends 16 dp
+     * inside the right edge of its own screen or sheet (on a tablet the sheet is narrower than the window, so the edge
+     * is the container's, not the window's). [required] says the screen has such an area at all.
      */
     private fun assertOnTheGutter(name: String, required: Boolean) {
         val nodes =

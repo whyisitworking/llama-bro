@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""The requirement map's gate (PD Reference L, T11).
+"""The requirement map's gate
 
-Reads the map's table in docs/sdk-v2/plans/pd-demo-app.md, takes every test it names (a backticked name after U, S, C,
+Reads the map's table in demo/requirements.md, takes every test it names (a backticked name after U, S, C,
 J or R), and looks each one up in the JUnit XML results of the last run: the JVM tests of :app and :designsystem and the
 instrumented tests of both. A named test that did not run, or failed, is an open item. Names ending in `Test` stand for
 the whole class ("MarkdownTest (all)"): at least one of its tests must have run and none may have failed.
@@ -15,7 +15,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-plan = os.path.join(root, "docs", "sdk-v2", "plans", "pd-demo-app.md")
+plan = os.path.join(root, "demo", "requirements.md")
 result_globs = [
     "demo/app/build/test-results/testDebugUnitTest/*.xml",
     "demo/designsystem/build/test-results/testDebugUnitTest/*.xml",
@@ -49,11 +49,11 @@ def results():
 def mapped_tests():
     """[(requirement, kind, name)] from the map's table rows."""
     text = open(plan, encoding="utf-8").read()
-    start = text.index("**The map.**")
-    end = text.index("## Tasks", start)
+    start = text.index("| Design |")
+    end = len(text)
     rows = []
     for line in text[start:end].splitlines():
-        if not line.startswith("|") or line.startswith("|---") or line.startswith("| pd-design"):
+        if not line.startswith("|") or line.startswith("|---") or line.startswith("| Design"):
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
         if len(cells) < 3:

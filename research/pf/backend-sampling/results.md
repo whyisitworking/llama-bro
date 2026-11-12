@@ -1,10 +1,9 @@
 # PF T1: backend sampling, off vs on (F70), and the OpenCL side check (F71)
 
 Upstream `llama-server` from `/data/local/tmp/lb-spike/P` (b12052 + delta-net patch), Qwen3.5 4B Q4_K_M, the SDK's
-load settings, ~2K-token prompt from `spike/p2/mtp/source.txt`, 256-token replies via `/v1/chat/completions`, thinking
+load settings, ~2K-token prompt from `research/p2/mtp/source.txt`, 256-token replies via `/v1/chat/completions`, thinking
 off, seed 42. `backend_sampling` is a request field, so one load serves both arms; the arm order alternates per round
-and the arms alternate per request. NPU 3 rounds (thermal ≤ 1), GPU and CPU 1 round (thermal ≤ 2, the user's
-proof-first call, plan ground rules). Script `bs.sh`; raw `bs-npu.out` (NPU), `bs.out` (GPU, CPU); replies in
+and the arms alternate per request. NPU 3 rounds (thermal ≤ 1), GPU and CPU 1 round (thermal ≤ 2). Script `bs.sh`; raw `bs-npu.out` (NPU), `bs.out` (GPU, CPU); replies in
 `replies/`, server logs in `logs/` (`npu-debug-lv4.log`: the sampler chain at `-lv 4`). `smoke.out`: the first
 1-round NPU try.
 

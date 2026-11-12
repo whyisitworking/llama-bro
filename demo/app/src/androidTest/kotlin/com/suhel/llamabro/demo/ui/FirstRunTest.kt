@@ -43,7 +43,7 @@ import org.junit.Test
 import org.junit.rules.RuleChain
 
 /**
- * First run on the phone (T10), over a fake hub, engine and Hugging Face: the greeting, three picks, a pick's sheet,
+ * First run on the phone, over a fake hub, engine and Hugging Face: the greeting, three picks, a pick's sheet,
  * and Get opening a chat that holds the first message. Runs in the real activity, as a user would meet it.
  */
 @OptIn(ExperimentalTestApi::class)

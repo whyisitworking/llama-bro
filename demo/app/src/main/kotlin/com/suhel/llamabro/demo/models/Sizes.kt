@@ -7,7 +7,7 @@ enum class SizeTier { Smaller, Recommended, Best }
  */
 data class RepoFile(val path: String, val quant: String, val bytes: Long)
 
-/** The three sizes the sheet's Basic view offers (Reference E). */
+/** The three sizes the sheet's Basic view offers. */
 object Sizes {
     fun tiers(files: List<RepoFile>): Map<SizeTier, RepoFile> {
         val models = files.filterNot { it.path.substringAfterLast('/').contains("mmproj", ignoreCase = true) }

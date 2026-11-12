@@ -3,7 +3,7 @@ package com.suhel.llamabro.demo.designsystem.theme
 import androidx.compose.ui.unit.dp
 
 /**
- * The spacing scale of the design system v2 spec (docs/sdk-v2/pd-design-v2-spec.md, section 2): Material's 4 dp and
+ * The spacing scale of the design system v2 spec (docs/design/demo-app.md, section 8.3): Material's 4 dp and
  * 8 dp grid, one name per use. The gap *around* a group is larger than the gap *inside* it, so a reader sees what
  * belongs together: [inline] inside one unit, [block] between the blocks of a unit, [item] between units, [section]
  * between sections and between turns, [hero] around a hero. [gutter] is the edge of every screen and sheet; the layout

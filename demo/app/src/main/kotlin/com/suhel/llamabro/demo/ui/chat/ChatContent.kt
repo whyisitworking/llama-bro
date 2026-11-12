@@ -63,8 +63,8 @@ import kotlinx.coroutines.launch
 
 /**
  * The conversation, stateless: the top bar with the model's name, the messages, the limit line and the message bar
- * (pd-design 4.1 steps 3-4, 4.4). What it draws is [state]; what changes faster is read from [live] where it is drawn;
- * what the user does goes to [actions].
+ * (demo design §4.1 and §4.4). What it draws is [state]; what changes faster is read from [live] where it
+ * is drawn; what the user does goes to [actions].
  */
 @Composable
 fun ChatContent(
