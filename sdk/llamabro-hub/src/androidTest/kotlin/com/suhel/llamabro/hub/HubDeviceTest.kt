@@ -123,7 +123,7 @@ class HubDeviceTest {
                     ramCacheMib = 0
                 }
                 val start = SystemClock.elapsedRealtime()
-                val hubEstimate = hub.estimateFit(plan, llama, fitConfig)
+                val hubEstimate = llama.estimateFit(hub.model(plan.model), fitConfig)
                 val headerMillis = SystemClock.elapsedRealtime() - start
                 val realSource = ModelSource.file(modelFile.absolutePath) { mmproj = mmprojFile.absolutePath }
                 val realEstimate = llama.estimateFit(realSource, fitConfig)

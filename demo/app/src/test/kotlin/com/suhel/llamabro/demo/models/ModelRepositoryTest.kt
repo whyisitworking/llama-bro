@@ -2,6 +2,7 @@ package com.suhel.llamabro.demo.models
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.suhel.llamabro.demo.chat.HostState
+import com.suhel.llamabro.demo.chat.LoadConfig
 import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.hub.HfModel
@@ -150,7 +151,7 @@ class ModelRepositoryTest {
             hub.cachedEntries += CachedEntry(swift, 1)
             val hostScope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also(scopes::add)
             val host = ModelHost(FakeLlamaBro().llamaBro, hub, hostScope)
-            host.use(swift)
+            host.use(swift, LoadConfig())
             // at the moment of deletion the host must already be idle
             var hostWasIdleAtDelete = false
             val deletingHub =
@@ -164,6 +165,86 @@ class ModelRepositoryTest {
             ModelRepository(deletingHub, settings, scheduler, scope, host).remove(swift)
             assertTrue(hostWasIdleAtDelete)
             assertEquals(listOf(swift), hub.deleted)
+        }
+
+    @Test fun removingAModelAReplyStreamsFromWaitsForTheReply() =
+        runBlocking {
+            hub.cachedEntries += CachedEntry(swift, 1)
+            val hostScope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also(scopes::add)
+            val host = ModelHost(FakeLlamaBro().llamaBro, hub, hostScope)
+            val lease = host.hold(swift, LoadConfig())
+            val removal = async { repository(host).remove(swift) }
+            delay(200)
+            assertFalse(removal.isCompleted)
+            assertTrue(hub.deleted.isEmpty())
+            lease.release()
+            withTimeout(10_000) { removal.await() }
+            assertEquals(listOf(swift), hub.deleted)
+        }
+
+    @Test fun removingTheModelALoadWaitsToReplaceWaitsForItsReply() =
+        runBlocking {
+            hub.cachedEntries += CachedEntry(swift, 1)
+            hub.cachedEntries += CachedEntry(other, 1)
+            val hostScope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also(scopes::add)
+            val host = ModelHost(FakeLlamaBro().llamaBro, hub, hostScope)
+            val lease = host.hold(swift, LoadConfig())
+            val next = async { host.hold(other, LoadConfig()) }
+            withTimeout(10_000) { while ((host.state.value as? HostState.Waking)?.outgoing?.key != swift) delay(10) }
+            val removal = async { repository(host).remove(swift) }
+            delay(200)
+            assertTrue(hub.deleted.isEmpty())
+            // the 0.8B's reply ends: it closes and is deleted, and the load waiting to replace it goes on
+            lease.release()
+            withTimeout(10_000) { removal.await() }
+            assertEquals(listOf(swift), hub.deleted)
+            val held = withTimeout(10_000) { next.await() }
+            assertEquals(other, (host.state.value as HostState.Ready).key)
+            held.release()
+        }
+
+    @Test fun removingAModelTwiceDuringItsReplyDeletesItOnlyAfterTheReply() =
+        runBlocking {
+            hub.cachedEntries += CachedEntry(swift, 1)
+            val hostScope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also(scopes::add)
+            val host = ModelHost(FakeLlamaBro().llamaBro, hub, hostScope)
+            val lease = host.hold(swift, LoadConfig())
+            val first = async { repository(host).remove(swift) }
+            val second = async { repository(host).remove(swift) }
+            delay(200)
+            assertFalse(first.isCompleted)
+            assertFalse(second.isCompleted)
+            assertTrue(hub.deleted.isEmpty())
+            lease.release()
+            withTimeout(10_000) {
+                first.await()
+                second.await()
+            }
+            assertEquals(listOf(swift, swift), hub.deleted)
+        }
+
+    @Test fun removingTheNextModelAndThenTheOutgoingOneDeletesNeitherUnderAReply() =
+        runBlocking {
+            hub.cachedEntries += CachedEntry(swift, 1)
+            hub.cachedEntries += CachedEntry(other, 1)
+            val hostScope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also(scopes::add)
+            val host = ModelHost(FakeLlamaBro().llamaBro, hub, hostScope)
+            val lease = host.hold(swift, LoadConfig())
+            val next = async { host.hold(other, LoadConfig()) }
+            withTimeout(10_000) { while ((host.state.value as? HostState.Waking)?.outgoing?.key != swift) delay(10) }
+            val removeNext = async { repository(host).remove(other) }
+            withTimeout(10_000) { while (host.state.value != HostState.Idle) delay(10) }
+            val removeOutgoing = async { repository(host).remove(swift) }
+            delay(200)
+            assertFalse(removeOutgoing.isCompleted)
+            assertTrue(hub.deleted.isEmpty())
+            lease.release()
+            withTimeout(10_000) { removeOutgoing.await() }
+            assertEquals(listOf(swift), hub.deleted)
+            // the turn that waited for the other model gets it, and it is deleted once that turn ends
+            withTimeout(10_000) { next.await() }.release()
+            withTimeout(10_000) { removeNext.await() }
+            assertEquals(listOf(swift, other), hub.deleted)
         }
 
     @Test fun libraryUpdatesAfterAModelIsRemoved() =

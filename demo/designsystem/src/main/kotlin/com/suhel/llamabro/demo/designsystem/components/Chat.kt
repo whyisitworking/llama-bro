@@ -84,7 +84,8 @@ private fun Modifier.longPress(onLongClick: (() -> Unit)?): Modifier =
 
 /**
  * The user's message: an ink bubble on the right with canvas text, its tail corner bottom end, at most 80% of the
- * row; attached [images] above it; the [time] in its corner (the chat list layout only).
+ * row; attached [images] above it, each opening with [onImageClick] (its index) when given; the [time] in its corner
+ * (the chat list layout only).
  */
 @Composable
 fun UserBubble(
@@ -93,6 +94,7 @@ fun UserBubble(
     images: List<ImageBitmap> = emptyList(),
     time: String? = null,
     onLongClick: (() -> Unit)? = null,
+    onImageClick: ((index: Int) -> Unit)? = null,
 ) {
     val colors = LocalDemoColors.current
     Column(
@@ -100,16 +102,24 @@ fun UserBubble(
         horizontalAlignment = Alignment.End,
         verticalArrangement = Arrangement.spacedBy(DemoSpacing.inline),
     ) {
-        for (image in images) {
+        val openLabel = stringResource(R.string.ds_open_photo)
+        images.forEachIndexed { index, image ->
             Image(
                 image,
-                contentDescription = null,
+                contentDescription = stringResource(R.string.ds_photo_position, index + 1, images.size),
                 modifier =
                     Modifier
                         .size(
                             width = DemoSize.messageImageWidth,
                             height = DemoSize.messageImageHeight,
-                        ).clip(DemoShapes.card),
+                        ).clip(DemoShapes.card)
+                        .then(
+                            if (onImageClick == null) {
+                                Modifier
+                            } else {
+                                Modifier.clickable(onClickLabel = openLabel, role = Role.Image) { onImageClick(index) }
+                            },
+                        ),
                 contentScale = ContentScale.Crop,
             )
         }

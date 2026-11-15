@@ -13,6 +13,8 @@ listOf(
     ":llamabro-hexagon",
     ":llamabro-opencl",
     ":llamabro-hub",
+    ":llamabro-hub-work",
+    ":llamabro-hub-testing",
     ":acceptance",
     ":acceptance:backends",
     ":acceptance:download",

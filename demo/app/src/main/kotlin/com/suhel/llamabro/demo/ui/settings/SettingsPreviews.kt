@@ -3,12 +3,17 @@ package com.suhel.llamabro.demo.ui.settings
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
+import com.suhel.llamabro.DeviceKind
+import com.suhel.llamabro.demo.chat.ChipFallback
 import com.suhel.llamabro.demo.chat.InMemory
 import com.suhel.llamabro.demo.chat.Knob
 import com.suhel.llamabro.demo.chat.Knobs
 import com.suhel.llamabro.demo.chat.SamplingLayers
 import com.suhel.llamabro.demo.data.AppLayout
+import com.suhel.llamabro.demo.data.ChipChoice
+import com.suhel.llamabro.demo.data.ContextChoice
 import com.suhel.llamabro.demo.data.KeepLoaded
+import com.suhel.llamabro.demo.data.ReplyLength
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.LibraryModel
@@ -113,22 +118,55 @@ internal fun AboutPreview() {
     PreviewFrame { AboutContent("1.0", onBack = {}) }
 }
 
-internal data class MemoryPreview(
-    val name: String,
-    val inMemory: InMemory?,
-    val replying: Boolean,
-    val keep: KeepLoaded,
-) {
+internal data class MemoryPreview(val name: String, val state: MemoryState) {
     override fun toString() = name
 }
 
 internal class MemoryStates : PreviewParameterProvider<MemoryPreview> {
-    private val qwen = InMemory("Qwen3.5 4B", "2.8 GB · NPU")
+    private val qwen = InMemory("Qwen3.5 4B", "2.8 GB · NPU · 16k context")
+    private val allChips = DeviceKind.entries.toSet()
+    private val idle = MemoryState(qwen, false, KeepLoaded.OneMinute, ChipChoice.Automatic, allChips, runsOn = null)
     override val values =
         sequenceOf(
-            MemoryPreview("Loaded, the default", qwen, replying = false, KeepLoaded.OneMinute),
-            MemoryPreview("Writing a reply", qwen, replying = true, KeepLoaded.FiveMinutes),
-            MemoryPreview("Nothing loaded", null, replying = false, KeepLoaded.UntilNeeded),
+            MemoryPreview("Loaded, the default", idle),
+            MemoryPreview("Writing a reply", idle.copy(replying = true, keep = KeepLoaded.FiveMinutes)),
+            MemoryPreview("Nothing loaded", idle.copy(inMemory = null, keep = KeepLoaded.UntilNeeded)),
+            MemoryPreview(
+                "GPU chosen, fell back to the CPU",
+                idle.copy(
+                    inMemory = InMemory("Qwen3.5 4B", "2.8 GB · CPU · 16k context"),
+                    chip = ChipChoice.Gpu,
+                    runsOn = ChipFallback(DeviceKind.Cpu, DeviceKind.Gpu, "the GPU couldn't load it").line,
+                ),
+            ),
+            MemoryPreview(
+                "A phone with no NPU",
+                idle.copy(
+                    inMemory = InMemory("Qwen3.5 4B", "2.8 GB · GPU · 16k context"),
+                    chip = ChipChoice.Npu,
+                    chips = setOf(DeviceKind.Gpu, DeviceKind.Cpu),
+                    runsOn = ChipFallback(DeviceKind.Gpu, DeviceKind.Npu, "this phone has no NPU").line,
+                ),
+            ),
+            MemoryPreview(
+                "CPU chosen while a reply is written",
+                idle.copy(replying = true, chip = ChipChoice.Cpu, runsOn = "Moves to the CPU after this reply."),
+            ),
+            MemoryPreview(
+                "32k chosen, memory fitted less",
+                idle.copy(
+                    inMemory = InMemory("Qwen3.5 4B", "2.8 GB · NPU · 12k context"),
+                    context = ContextChoice.UpTo32k,
+                ),
+            ),
+            MemoryPreview(
+                "8k chosen while a reply is written",
+                idle.copy(
+                    replying = true,
+                    context = ContextChoice.UpTo8k,
+                    contextLine = "Reloads at 8k after this reply.",
+                ),
+            ),
         )
 }
 
@@ -137,18 +175,39 @@ internal class MemoryStates : PreviewParameterProvider<MemoryPreview> {
 internal fun MemoryContentPreview(
     @PreviewParameter(MemoryStates::class) p: MemoryPreview,
 ) {
-    PreviewFrame { MemoryContent(p.inMemory, p.replying, p.keep, onUnload = {}, onKeep = {}, onBack = {}) }
+    PreviewFrame { MemoryContent(p.state, onUnload = {}, onKeep = {}, onChip = {}, onContext = {}, onBack = {}) }
 }
+
+private val samplingRows =
+    listOf(
+        SamplingModelRow(HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M"), "Qwen3.5 0.8B", 0),
+        SamplingModelRow(HfModel.parse("unsloth/gemma-3-4b-it-qat-GGUF:Q4_K_M"), "Gemma 3 4B", 2),
+    )
 
 @DemoScreenPreviews
 @Composable
 internal fun SamplingModelsPreview() {
-    val rows =
-        listOf(
-            SamplingModelRow(HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M"), "Qwen3.5 0.8B", 0),
-            SamplingModelRow(HfModel.parse("unsloth/gemma-3-4b-it-qat-GGUF:Q4_K_M"), "Gemma 3 4B", 2),
+    PreviewFrame { SamplingModelsContent(ReplyLength.Automatic, samplingRows, onLength = {}, onOpen = {}, onBack = {}) }
+}
+
+internal data class ReplyLengthPreview(val name: String, val length: ReplyLength, val rows: List<SamplingModelRow>) {
+    override fun toString() = name
+}
+
+internal class ReplyLengthStates : PreviewParameterProvider<ReplyLengthPreview> {
+    override val values =
+        sequenceOf(
+            ReplyLengthPreview("Short replies", ReplyLength.Short, samplingRows),
+            ReplyLengthPreview("No limit, no models yet", ReplyLength.NoLimit, emptyList()),
         )
-    PreviewFrame { SamplingModelsContent(rows, onOpen = {}, onBack = {}) }
+}
+
+@DemoScreenPreviews
+@Composable
+internal fun SamplingReplyLengthPreview(
+    @PreviewParameter(ReplyLengthStates::class) p: ReplyLengthPreview,
+) {
+    PreviewFrame { SamplingModelsContent(p.length, p.rows, onLength = {}, onOpen = {}, onBack = {}) }
 }
 
 internal data class SamplingPreview(val name: String, val model: String, val repo: String, val own: Knobs) {

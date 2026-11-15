@@ -1,5 +1,6 @@
 package com.suhel.llamabro.hub
 
+import com.suhel.llamabro.DownloadPhase
 import com.suhel.llamabro.hub.internal.HttpTransport
 import com.suhel.llamabro.hub.internal.HubTestHooks
 import com.suhel.llamabro.hub.internal.JvmStorage

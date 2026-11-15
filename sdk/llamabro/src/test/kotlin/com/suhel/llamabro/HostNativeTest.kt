@@ -55,7 +55,7 @@ class HostNativeTest {
     private class RecordingEngine(private val inner: Engine) : Engine by inner {
         val records = mutableListOf<Record>()
 
-        override fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel {
+        override fun load(configJson: String, onProgress: (Float) -> Boolean): EngineModel {
             val model = inner.load(configJson, onProgress)
             return object : EngineModel by model {
                 override fun request(

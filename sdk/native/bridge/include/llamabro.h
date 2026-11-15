@@ -1,4 +1,5 @@
 #pragma once
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #ifdef __cplusplus
@@ -12,6 +13,7 @@ typedef enum {
     LB_ERR_NOT_INITIALIZED = 3,
     LB_ERR_LOAD_FAILED = 4,
     LB_ERR_INTERNAL = 5,
+    LB_ERR_CANCELLED = 6,            // lb_model_load stopped because its progress callback returned false
 } lb_status;
 
 typedef enum { LB_EVENT_CHUNK = 0, LB_EVENT_DONE = 1, LB_EVENT_CANCELLED = 2 } lb_event;
@@ -21,7 +23,9 @@ typedef struct lb_model lb_model;
 typedef struct lb_request lb_request;
 
 typedef void (*lb_log_cb)(void * user, lb_log_level level, const char * text);
-typedef void (*lb_progress_cb)(void * user, float progress);            // 0..1 while loading
+// 0..1 while loading, on the loading thread; return false to stop the load (lb_model_load then returns
+// LB_ERR_CANCELLED), true to go on. Once it has returned false it is not called again.
+typedef bool (*lb_progress_cb)(void * user, float progress);
 // CHUNK: http_status is the response status (200, or 4xx/5xx with an error body); data is the bytes as
 // llama-server would send them (SSE events for streams, the whole body otherwise).
 // Exactly one terminal event (DONE or CANCELLED) per request, always last, with data NULL.
@@ -58,6 +62,16 @@ char * lb_fit_estimate(const char * config_json, char ** error_json);
 // absent or [] is CPU only. The device is never llama.cpp's default (every GPU-type device, F32). lb_model_info's
 // "devices" names the ones used ("CPU" for CPU only). "mmproj_device" (upstream's -mmdev) moves the image encoder:
 // "none" for the CPU or a device name such as "GPUOpenCL"; absent, it follows "devices".
+// A progress callback that returns false stops the load (D67). A stop takes effect only from a progress call: while
+// weights are read (the model, its draft and its image encoder), the read stops within one tensor. If the callback
+// said stop on a call whose answer the load can't act on (MTP's own 0 and 1, the last tick), the load finishes and is
+// then freed. Either way the result is LB_ERR_CANCELLED with nothing allocated: *out and *error_json stay NULL.
+// Nothing calls cb after the last weight tick, so the stages without progress (creating the context, the warm-up
+// decode, compiling GPU kernels, the NPU session) can't be stopped: a caller that cancels during them gets LB_OK and
+// frees the returned model itself. With an image encoder or a draft, the text model's context and warm-up come before
+// their stages, so a cancel during them is caught at the next stage's first tick. Bindings over this API (a future
+// Flutter or KMP one) must free a model returned with LB_OK after their caller cancelled, as the Kotlin runtime does.
+// cb and user are not used once lb_model_load returns.
 lb_status lb_model_load(const char * config_json, lb_progress_cb cb, void * user, lb_model ** out, char ** error_json);
 char * lb_model_info(lb_model * model);
 // endpoint: every route tools/server/server.cpp registers for one model (server_register_routes), by name:

@@ -1,10 +1,10 @@
 package com.suhel.llamabro.demo.models
 
 import com.suhel.llamabro.DeviceKind
+import com.suhel.llamabro.DownloadProgress
 import com.suhel.llamabro.FitEstimate
 import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.ModelSource
-import com.suhel.llamabro.hub.DownloadProgress
 import com.suhel.llamabro.hub.DownloadState
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubException
@@ -151,11 +151,12 @@ class RealHubGateway(private val hub: LlamaBroHub, private val llamaBro: LlamaBr
         hub.delete(model)
     }
 
-    override suspend fun estimateFit(plan: HubPlan): FitEstimate = hub.estimateFit(plan, llamaBro)
+    // A HubPlan doesn't carry its PlanOptions: this fits hub.model's defaults, which every plan here is made with.
+    override suspend fun estimateFit(plan: HubPlan): FitEstimate = llamaBro.estimateFit(hub.model(plan.model))
 
     override suspend fun estimate(model: HfModel): HubEstimate {
         val plan = hub.plan(model)
-        val fit = hub.estimateFit(plan, llamaBro)
+        val fit = llamaBro.estimateFit(hub.model(model))
 
         fun bytes(role: HubFile.Role) = plan.files.filter { it.role == role }.sumOf { it.sizeBytes }
         return HubEstimate(

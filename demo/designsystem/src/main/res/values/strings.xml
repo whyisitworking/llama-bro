@@ -17,4 +17,8 @@
     <string name="ds_code">Code</string>
     <string name="ds_drag_handle">Drag handle</string>
     <string name="ds_dismiss">Dismiss</string>
+    <string name="ds_photo_position">Photo %1$d of %2$d</string>
+    <string name="ds_open_photo">Open photo</string>
+    <string name="ds_close_photo">Close photo</string>
+    <string name="ds_photo_unavailable">This photo can\'t be shown.</string>
 </resources>

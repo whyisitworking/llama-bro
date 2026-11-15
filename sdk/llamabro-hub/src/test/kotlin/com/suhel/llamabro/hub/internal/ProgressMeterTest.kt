@@ -1,7 +1,7 @@
 package com.suhel.llamabro.hub.internal
 
-import com.suhel.llamabro.hub.DownloadPhase
-import com.suhel.llamabro.hub.DownloadProgress
+import com.suhel.llamabro.DownloadPhase
+import com.suhel.llamabro.DownloadProgress
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

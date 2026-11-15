@@ -25,6 +25,7 @@ import com.suhel.llamabro.demo.designsystem.samples.InputSamples
 import com.suhel.llamabro.demo.designsystem.samples.LayoutSamples
 import com.suhel.llamabro.demo.designsystem.samples.ListsSamples
 import com.suhel.llamabro.demo.designsystem.samples.ListsSheetSamples
+import com.suhel.llamabro.demo.designsystem.samples.PhotoViewerSamples
 import com.suhel.llamabro.demo.designsystem.samples.ProgressSamples
 import com.suhel.llamabro.demo.designsystem.samples.RemovalSamples
 import com.suhel.llamabro.demo.designsystem.samples.RowsSamples
@@ -61,6 +62,7 @@ private val Groups: List<Pair<String, @Composable () -> Unit>> =
         "Removal" to { RemovalSamples() },
         "Chat, open page" to { ChatOpenSamples() },
         "Chat, bubbles" to { ChatBubbleSamples() },
+        "Photo viewer" to { PhotoViewerSamples() },
         "Progress" to { ProgressSamples() },
         "Layout" to { LayoutSamples() },
         "Gaps" to { GapSamples() },

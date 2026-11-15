@@ -86,6 +86,7 @@ void worker_main(lb_model * m) {
     // through the state callback ({"stages", "current", "value"}, server-context.cpp load_progress_callback)
     m->ctx_server.set_state_callback([m](server_state state, json payload) {
         if (state != SERVER_STATE_LOADING || !m->loading.load() || !m->progress_cb) return;
+        if (m->stop_requested.load()) return;  // the app said stop: no more calls
         if (!payload.contains("value") || !payload.contains("stages")) return;
         const auto stages = payload.at("stages").get<std::vector<std::string>>();
         const std::string current = payload.value("current", "");
@@ -93,8 +94,13 @@ void worker_main(lb_model * m) {
         while (idx < stages.size() && stages[idx] != current) idx++;
         const float n = stages.empty() ? 1.0f : (float) stages.size();
         const float overall = ((idx < stages.size() ? (float) idx : 0.0f) + payload.at("value").get<float>()) / n;
-        m->progress_cb(m->progress_user, std::min(1.0f, overall));
+        if (!m->progress_cb(m->progress_user, std::min(1.0f, overall))) m->stop_requested.store(true);
     });
+    // upstream's own progress callback always says go on, so a stop could not end the read of the weights (F145).
+    // Patch 0003's hook is polled on every progress call, before the 200 ms throttle, for the text model, the draft
+    // and the image encoder; the app's answer arrives through the throttled state callback above, so a stop lands at
+    // the next tick plus one tensor (D67)
+    m->ctx_server.set_load_abort_callback([m] { return m->stop_requested.load(); });
 
     m->routes = std::make_unique<server_routes>(m->params, m->ctx_server);
 
@@ -106,6 +112,14 @@ void worker_main(lb_model * m) {
         error += std::string(": ") + e.what();
     }
     if (!loaded && !errors.first_line().empty()) error += ": " + errors.first_line();
+    // a stop said while weights were read failed the load; one said on a tick whose answer upstream ignores (MTP's own
+    // 0 and 1) let it finish: either way the model is freed here (D67). Nothing asks after the last tick, so a cancel
+    // during the context, warm-up, GPU kernels or NPU session is the caller's: it gets LB_OK and frees the model
+    if (m->stop_requested.load()) {
+        m->ctx_server.terminate();
+        finish_load(m, LB_ERR_CANCELLED, "");
+        return;
+    }
     if (!loaded) {
         m->ctx_server.terminate();
         finish_load(m, LB_ERR_LOAD_FAILED, error);
@@ -222,8 +236,8 @@ lb_status lb_model_load(const char * config_json, lb_progress_cb cb, void * user
     m->loading.store(false);  // no progress callbacks once this returns: `user` may be gone
     if (m->state == lb_model::FAILED) {
         m->worker.join();
-        lb_set_error(error_json, m->load_error);
-        return m->load_status;
+        if (m->load_status != LB_ERR_CANCELLED) lb_set_error(error_json, m->load_error);
+        return m->load_status;  // m, and the model the worker loaded, are freed here
     }
     *out = m.release();
     return LB_OK;

@@ -112,6 +112,16 @@ class SettingsRepositoryTest {
             assertNull(KeepLoaded.UntilNeeded.millis)
         }
 
+    @Test fun theChipIsAutomaticUntilChosenAndSurvivesARestart() =
+        runBlocking {
+            val first = repository()
+            assertEquals(ChipChoice.Automatic, first.settings.first().chip)
+            first.setChip(ChipChoice.Gpu)
+            assertEquals(ChipChoice.Gpu, first.settings.first().chip)
+            scopes.forEach { it.cancel() }
+            assertEquals(ChipChoice.Gpu, repository().settings.first().chip)
+        }
+
     @Test fun aModelsOwnSamplingValuesAreKeptPerModelAndResetToNone() =
         runBlocking {
             val settings = repository()

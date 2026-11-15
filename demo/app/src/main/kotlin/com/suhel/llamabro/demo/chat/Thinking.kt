@@ -2,6 +2,7 @@ package com.suhel.llamabro.demo.chat
 
 import com.suhel.llamabro.ModelInfo
 import com.suhel.llamabro.chat.Reasoning
+import com.suhel.llamabro.demo.data.ReplyLength
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.models.CatalogEntry
 
@@ -17,6 +18,10 @@ object Thinking {
     /** Deep has no thinking budget, so its limit is a fixed, generous one. */
     private const val DEEP_REPLY_TOKENS = 8_192
 
+    /** Settings › Sampling's Short and Long reply lengths: about 750 and 6,000 words, thinking included. */
+    private const val SHORT_REPLY_TOKENS = 1_024
+    private const val LONG_REPLY_TOKENS = 8_192
+
     /** Whether a turn at [level] thinks; null is a model that can't. */
     fun thinks(level: ThinkLevel?): Boolean = level != null && level != ThinkLevel.Off
 
@@ -31,6 +36,20 @@ object Thinking {
             ThinkLevel.Quick -> ANSWER_TOKENS + QUICK_TOKENS
             ThinkLevel.Balanced -> ANSWER_TOKENS + BALANCED_TOKENS
             ThinkLevel.Deep -> DEEP_REPLY_TOKENS
+        }
+
+    /**
+     * The reply's length limit under the [length] chosen in Settings › Sampling: [ReplyLength.Automatic] is the level's
+     * own ([replyTokens]); Short and Long replace that total and leave the level's thinking budget as it is, so a short
+     * reply can stop while it still thinks, and Continue goes on; null, for No limit, sends none: the reply runs until
+     * the model stops or the context is full.
+     */
+    fun replyTokens(level: ThinkLevel?, length: ReplyLength): Int? =
+        when (length) {
+            ReplyLength.Automatic -> replyTokens(level)
+            ReplyLength.Short -> SHORT_REPLY_TOKENS
+            ReplyLength.Long -> LONG_REPLY_TOKENS
+            ReplyLength.NoLimit -> null
         }
 
     /**

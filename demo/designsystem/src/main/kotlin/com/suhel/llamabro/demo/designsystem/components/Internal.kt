@@ -36,6 +36,7 @@ internal fun Modifier.gutterContainer(): Modifier = semantics { this[DsGutterCon
 internal object DsTags {
     const val CARD_SURFACE = "ds_card_surface"
     const val WAKE_HAIRLINE = "ds_wake_hairline"
+    const val PHOTO_VIEWER = "ds_photo_viewer"
 }
 
 /** True inside a [DemoSheet]: a plain card there sits on the canvas colour, as the mockups' rows on a sheet do. */

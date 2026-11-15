@@ -85,7 +85,7 @@ class RealDownloadJourneys : Journey(seenFirstRun = false, asksForNotifications 
 
         FakeHubServer.slow(mibPerSecond = FAST_MIB_PER_SECOND)
         tapDescription("Chats")
-        tap("Models")
+        tapDrawerModels()
         see("DOWNLOADING")
         tap("Resume")
         gone("DOWNLOADING", timeoutMillis = DOWNLOAD_WAIT) // the model is on the phone

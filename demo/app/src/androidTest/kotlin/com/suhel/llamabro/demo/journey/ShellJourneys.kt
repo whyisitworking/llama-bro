@@ -24,7 +24,7 @@ class ShellJourneys : Journey() {
         tapDescription("Chats")
         see("Plan my trip")
         shot("1-sidebar")
-        tap("Settings")
+        tapDescription("Settings")
         tap("Appearance")
         compose.onNodeWithTag("layout_chat_list").performClick()
         tapDescription("Back") // Appearance → Settings

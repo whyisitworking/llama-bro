@@ -29,7 +29,11 @@ android {
     }
 }
 
-kotlin { explicitApi() }
+kotlin {
+    explicitApi()
+    // the transport and storage seam is public only for llamabro-hub-testing (InternalLlamaBroApi, D27, D75)
+    compilerOptions { optIn.add("com.suhel.llamabro.InternalLlamaBroApi") }
+}
 
 dependencies {
     api(project(":llamabro"))

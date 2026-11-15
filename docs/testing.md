@@ -37,12 +37,12 @@ Durations below are approximate and depend on the machine, the cached builds and
 | `contract` | The C API answers exactly like upstream `llama-server` built from the same tree with the same flags: about 75 requests (chat, multi-turn, thinking on and off, tool calls, JSON schema, one image, sampling fields, completions, `/props`, `/metrics` names, cache counters across turns, a cancel and the request after it, error bodies), compared on reply text and counters. Runs once per model (Qwen3.5 4B, then each extra model) | the model, the mmproj, a free port | minutes per model |
 | `tools-ui` | llama.cpp's own `tools/ui` compaction code, regenerated in node, equals the committed golden of 400 seeded message lists; the Kotlin replay of the golden is part of `jvm` | node | seconds |
 | `api` | The core's public API equals its reviewed dump (`sdk/llamabro/api/llamabro.api`). An intended change is reviewed with `./gradlew -p sdk :llamabro:apiDump` and committed with the code | Gradle | seconds |
-| `hub-api` | The same for `llamabro-hub` | Gradle | seconds |
+| `hub-api` | The same for `llamabro-hub`, `llamabro-hub-work` and `llamabro-hub-testing` | Gradle | seconds |
 | `quality` | ktlint and detekt over every Kotlin module (the root build's `qualityCheck`); detekt baselines list what predates the rule | Gradle | about a minute |
 | `lint` | Android lint on every SDK library, warnings as errors | Gradle | minutes |
-| `jvm` | The Kotlin unit tests of the core, `llamabro-testing`, `llamabro-hexagon` and `llamabro-hub`, including the 400-case `tools/ui` replay and `GgufHeaderTest` (which must not be skipped) | the golden output of `hub-golden` | a few minutes |
+| `jvm` | The Kotlin unit tests of the core, `llamabro-testing`, `llamabro-hexagon`, `llamabro-hub`, `llamabro-hub-work` and `llamabro-hub-testing`, including the 400-case `tools/ui` replay and `GgufHeaderTest` (which must not be skipped); `llamabro-hub-work`'s androidTest compiles | the golden output of `hub-golden` | a few minutes |
 | `e2e` | Kotlin, JNI and native together on the host (`HostNativeTest`): every request replayed to a running upstream `llama-server` in the same order (typed chat, image, raw endpoints, an error, an agent conversation with tools, compaction, a send after it), cache counters included. Fails if the test was skipped | the model, the mmproj, a free port | a few minutes |
-| `aar` | The release AARs: the native libraries under their own `llamabro-` names, the exported symbols (only `lb_*`, `JNI_OnLoad` and the type information that C++ catches need), 16 KB `LOAD` alignment, the five Hexagon skeletons and their checksums, no `libomp.so`, no `jni/` folder in the Hub AAR, no copy of the core's libraries in a backend AAR (`check-aar.sh`) | Gradle, the NDK | minutes |
+| `aar` | The release AARs: the native libraries under their own `llamabro-` names, the exported symbols (only `lb_*`, `JNI_OnLoad` and the type information that C++ catches need), 16 KB `LOAD` alignment, the five Hexagon skeletons and their checksums, no `libomp.so`, no `jni/` folder in the Hub and hub-work AARs, the `dataSync` foreground service and its permissions in hub-work's manifest, no copy of the core's libraries in a backend AAR (`check-aar.sh`) | Gradle, the NDK | minutes |
 
 ### Device steps (`--device`)
 
@@ -163,7 +163,7 @@ SDK-side speed, memory and device measurements (prefill and decode rates per chi
 | Hub goldens from upstream's code | `sdk/native/tests/hub-golden/`, `sdk/scripts/hub-fake/` |
 | `tools/ui` golden | `sdk/scripts/tools-ui/`, `sdk/llamabro/src/test/resources/tools-ui/` |
 | Kotlin unit tests | `src/test` of each module under `sdk/` |
-| Phone tests and acceptance apps | `sdk/llamabro/src/androidTest`, `sdk/llamabro-hexagon/src/androidTest`, `sdk/llamabro-opencl/src/androidTest`, `sdk/llamabro-hub/src/androidTest`, `sdk/acceptance/backends/`, `sdk/acceptance/download/` |
+| Phone tests and acceptance apps | `sdk/llamabro/src/androidTest`, `sdk/llamabro-hexagon/src/androidTest`, `sdk/llamabro-opencl/src/androidTest`, `sdk/llamabro-hub/src/androidTest`, `sdk/llamabro-hub-work/src/androidTest` (compiled by `jvm`; no `--device` step runs it yet), `sdk/acceptance/backends/`, `sdk/acceptance/download/` |
 | Demo unit, screen, journey and monkey tests | `demo/app/src/test`, `demo/app/src/androidTest` (`journey/`, `monkey/`, `testing/`), `demo/app/src/sharedTest` |
 | Demo component tests | `demo/designsystem/src/test`, `demo/designsystem/src/androidTest` |
 | Demo benchmarks | `demo/benchmark/` |

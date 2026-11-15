@@ -84,7 +84,7 @@ public class ModelConfig internal constructor() {
      */
     public var loraAdapters: List<LoraAdapter> = emptyList()
 
-    internal var progressListener: ((Float) -> Unit)? = null
+    internal var progressListener: ((LoadProgress) -> Unit)? = null
 
     internal fun validateReserve() {
         if (memoryReserveMib < 0) {
@@ -92,18 +92,39 @@ public class ModelConfig internal constructor() {
         }
     }
 
+    /**
+     * Checks the settings against [source]. A [RemoteModelSource] is checked again on the files its fetch returns
+     * (D75), since only those say whether there is a draft.
+     */
     internal fun validateSource(source: ModelSource) {
         validateReserve()
-        if (speculative is Speculative.DFlash && (source as? FileSource)?.draft == null) {
-            throw LlamaBroException.InvalidRequest("Speculative.DFlash needs ModelSource.file(path) { draft = … }")
+        when (source) {
+            is FileSource -> {
+                if (speculative is Speculative.DFlash && source.draft == null) {
+                    throw LlamaBroException.InvalidRequest(
+                        "Speculative.DFlash needs ModelSource.file(path) { draft = … }",
+                    )
+                }
+            }
+
+            is RemoteModelSource -> {
+                // nothing to check before the fetch: the load checks the files it returns
+            }
+
+            else -> {
+                throw LlamaBroException.InvalidRequest(
+                    "unsupported ModelSource ${source::class.java.name}: use ModelSource.file or a RemoteModelSource",
+                )
+            }
         }
     }
 
     /**
-     * Called with llama.cpp's load progress, 0 to 1, on the context `loadModel` was called from. Values may be
-     * skipped if the listener is slow; the last one always arrives.
+     * Called on the context `loadModel` was called from: with [LoadProgress.Fetching] while a [RemoteModelSource]
+     * downloads, then [LoadProgress.Loading] with llama.cpp's load progress, 0 to 1 (D75). Values may be skipped if
+     * the listener is slow; the last one always arrives.
      */
-    public fun onProgress(listener: (fraction: Float) -> Unit) {
+    public fun onProgress(listener: (LoadProgress) -> Unit) {
         progressListener = listener
     }
 
@@ -137,13 +158,11 @@ public class ModelConfig internal constructor() {
     }
 
     private fun JsonObjectBuilder.putSource(source: ModelSource) {
-        when (source) {
-            is FileSource -> {
-                put("model_path", source.path)
-                source.mmproj?.let { put("mmproj_path", it) }
-                if (speculative is Speculative.DFlash) source.draft?.let { put("draft_path", it) }
-            }
-        }
+        // validateSource let only local files and remote sources through, and a remote one is fetched first (D75)
+        check(source is FileSource) { "a ModelSource must be resolved to local files before it loads" }
+        put("model_path", source.path)
+        source.mmproj?.let { put("mmproj_path", it) }
+        if (speculative is Speculative.DFlash) source.draft?.let { put("draft_path", it) }
     }
 
     private fun JsonObjectBuilder.putContext(memoryBudgetMib: Long?, smallestContext: Boolean) {

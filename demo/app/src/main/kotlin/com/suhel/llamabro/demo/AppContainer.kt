@@ -40,6 +40,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import java.io.File
 
@@ -118,16 +119,24 @@ class AppContainer(
 
     @Volatile private var facts: DeviceFacts? = null
 
-    /** The memory budget and chip, read from the SDK the first time a screen asks. */
-    suspend fun deviceFacts(): DeviceFacts = facts ?: DeviceFacts.read(llamaBro).also { facts = it }
+    /**
+     * The memory budget and chips, read from the SDK the first time a screen asks; the chip estimates use is the one
+     * chosen in Settings › Memory when this phone has it (D72).
+     */
+    suspend fun deviceFacts(): DeviceFacts =
+        (facts ?: DeviceFacts.read(llamaBro).also { facts = it }).preferring(
+            settings.settings
+                .first()
+                .chip.kind,
+        )
 
     /** For tests that build a container per test: stops DataStore's scope and closes the database. */
     fun close() {
-        runBlocking { host.release() }
         scope.cancel()
         // a write already under way (a stopped reply is saved even when cancelled) must finish before the database
-        // closes
+        // closes; the turns end first, so the model's leases are released and closing it doesn't wait for a reply
         runBlocking { scope.coroutineContext[Job]?.join() }
+        runBlocking { host.release() }
         database.close()
     }
 }

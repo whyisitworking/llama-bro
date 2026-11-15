@@ -12,7 +12,13 @@ import com.suhel.llamabro.demo.models.Fit
  * arrived since the last frame. [ChatEngine] feeds it the model's events and reads the stored and the shown form back.
  * [device] is the kind of chip the model runs on ("NPU"), kept with the reply's measurements.
  */
-internal class ReplyDraft(private val clock: () -> Long, private val device: String? = null, from: Continued? = null) {
+internal class ReplyDraft(
+    private val clock: () -> Long,
+    private val device: String? = null,
+    from: Continued? = null,
+    /** The loaded model's context, in tokens: a reply cut where the chat fills it [filledContext]. */
+    private val contextSize: Int? = null,
+) {
     /**
      * A cut reply that is being continued (D60): what it had written, and how long it had thought. The new tokens are
      * added to it, and a reply cut while still thinking keeps its thinking clock running.
@@ -27,6 +33,13 @@ internal class ReplyDraft(private val clock: () -> Long, private val device: Str
 
     /** The reply reached its length limit: it ends [MessageState.Cut], not done (D60). */
     private var cut = false
+
+    /**
+     * The reply was cut because the chat, prompt and reply, filled the context, not at the reply's own limit (No limit,
+     * or a long limit on a small context). Continue would have no room, so it ends as a failure instead of a cut.
+     */
+    var filledContext: Boolean = false
+        private set
     private var wordsPerSecond = 0.0
     private var stats: ReplyStats? = null
 
@@ -54,6 +67,11 @@ internal class ReplyDraft(private val clock: () -> Long, private val device: Str
             is ChatEvent.Done -> {
                 cut = event.reason == FinishReason.Length
                 val t = event.timings
+                // llama-server's usage counts the whole prompt; its timings split it into new and cached tokens
+                val used =
+                    event.usage?.let { it.promptTokens + it.completionTokens }
+                        ?: t?.let { it.promptTokens + it.cachedTokens + it.predictedTokens }
+                filledContext = cut && contextSize != null && used != null && used >= contextSize
                 wordsPerSecond = (t?.predictedPerSecond ?: 0.0) * Fit.WORDS_PER_TOKEN
                 stats =
                     ReplyStats(

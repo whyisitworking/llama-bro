@@ -97,7 +97,7 @@ class ChatJourneys : Journey() {
         see("Hello")
 
         tapDescription("Chats")
-        tap("Models")
+        tapDrawerModels()
         see("Get more models")
         compose.onNode(hasTestTag("library_model") and hasAnyDescendant(hasText("Qwen3.5 0.8B"))).performTouchInput {
             swipeLeft()

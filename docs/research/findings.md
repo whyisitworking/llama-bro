@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the SDK v2 design document (decisions D*), the phase plans, and the experiment results in [`research/p0/results/`](../../research/p0/results/session1.md).
-> **Status:** living document, updated 2026-11-15 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F147)
+> **Status:** living document, updated 2026-11-15 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F148)
 
 A finding is something learned from a measurement or from reading upstream source. Every finding has a stable ID
 (`F<n>`, numbered in the order found, never reused). Other documents cite findings by ID, for example "per F10".
@@ -17,7 +17,14 @@ topic, and within a topic newest first. The index lists every ID.
 
 ---
 
-## PH: the headline API (F139–F147)
+## PH: the headline API (F139–F148)
+
+### F148. On the phone, a cancelled 4B load returns in 0.4-1.8 s on the CPU and about 1 s on the NPU, against 6-11 s for a full load
+
+- **Finding:** With D67 built, cancelling `loadModel` (Qwen3.5 4B Q4_K_M) about a second after it starts made it return in 418 ms and 1,816 ms on the CPU and 970 ms and 971 ms on the NPU; each was followed by a full load of the same model on the same device, which succeeded (11.3 s and 9.8 s on the CPU, 5.9 s and 6.8 s on the NPU), so a cancelled load leaves nothing behind. A cancel saves 5-10 s against waiting the load out, but D67's "well under a second while weights are read" holds only for the first CPU run. Not measured, inferred: in the second CPU run the file was already in the page cache, so a second in the weights were read and the load was in context creation, which can't be stopped (F145); the steady ~1 s on the NPU is likely its session teardown.
+- **Evidence:** a throwaway instrumented test in the acceptance app's `full` flavor (`DevicePolicy.Only(Cpu)` and `Only(Npu)`, two rounds each, `job.cancel()` after `delay(1_000)`, time from cancel to `join`), run once on the phone with the APKs left installed (F57) and deleted afterwards, not committed; the device gates passed just before (`sdk/scripts/check.sh --device` ALL PASS). 2026-11-15.
+- **Means:** cancelling a load is worth it and safe; the sub-second figure in D67 is optimistic. Where the time goes after a stop (freeing, NPU teardown, the unstoppable stages) is not yet measured.
+- **Feeds:** D67.
 
 ### F147. On the phone, with no logger, init's native lines reach logcat under `llamabro`
 
@@ -1387,6 +1394,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F148 | A cancelled 4B load returns in 0.4-1.8 s (CPU) and ~1 s (NPU) on the phone, vs 6-11 s for a full load; nothing left behind | D67 |
 | F147 | With no logger, init's native lines (backends loading) reach logcat as `llamabro` on the phone; all Info | D66 |
 | F146 | Recommended sampling is on the Hub only sometimes (4 of 6 open models, none for Qwen3.5, gated needs a token); fine-tunes share the base tag | D68 |
 | F145 | A cancelled load runs to its end, then is freed; llama-server's progress callback never lets llama.cpp abort | D67 |

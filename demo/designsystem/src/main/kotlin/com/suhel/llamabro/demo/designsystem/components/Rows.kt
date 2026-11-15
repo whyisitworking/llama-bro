@@ -43,9 +43,9 @@ import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 /**
  * A list row (Material's list item): an optional [leading] icon, the [title] over an optional [subtitle], then at the
  * end [trailing] text, an [end] slot, a check when [selected], and a [chevron] when it opens a page. One line is 56 dp
- * tall, two lines 72 dp. 16 dp sits between its parts and 16 dp inside its own edges, so a row belongs in something
- * that has no padding of its own: a [GroupedList], a card, the drawer. The title is the same weight on every row;
- * emphasis is for a card's title, not a row's.
+ * tall ([dense], 48 dp: still a whole touch target), two lines 72 dp. 16 dp sits between its parts and 16 dp inside
+ * its own edges, so a row belongs in something that has no padding of its own: a [GroupedList], a card, the drawer.
+ * The title is the same weight on every row; emphasis is for a card's title, not a row's.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -57,6 +57,7 @@ fun ListRow(
     trailing: String? = null,
     selected: Boolean = false,
     chevron: Boolean = false,
+    dense: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     end: (@Composable () -> Unit)? = null,
@@ -72,8 +73,14 @@ fun ListRow(
                 } else {
                     Modifier
                 },
-            ).heightIn(min = if (subtitle != null) DemoSize.rowTwoLine else DemoSize.field)
-            .padding(horizontal = DemoSpacing.item, vertical = DemoSpacing.block),
+            ).heightIn(
+                min =
+                    when {
+                        subtitle != null -> DemoSize.rowTwoLine
+                        dense -> DemoSize.rowDense
+                        else -> DemoSize.field
+                    },
+            ).padding(horizontal = DemoSpacing.item, vertical = DemoSpacing.block),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(DemoSpacing.item),
     ) {

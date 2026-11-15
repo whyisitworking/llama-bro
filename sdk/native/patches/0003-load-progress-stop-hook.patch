@@ -1,0 +1,61 @@
+From: ours (F145, D67); upstream PR drafted in research/ph/load-cancel/upstream-pr.md, unposted
+Subject: server : let the embedder stop a model load through the load progress callback
+
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index a6059ab..76ca6d2 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -1051,6 +1051,7 @@ public:
+     server_chat_params chat_params;
+ 
+     server_state_callback_t callback_state = [](server_state, json) -> void {};
++    server_load_abort_callback_t callback_load_abort;
+ 
+     server_context_impl() {
+         mtmd_helper_log_set(common_log_default_callback, nullptr);
+@@ -1179,6 +1180,10 @@ private:
+     static bool load_progress_callback(float progress, void * user_data) {
+         auto * d = static_cast<load_progress_data *>(user_data);
+         GGML_ASSERT(d);
++        // checked on every call, before the throttle, so a stop lands within one tensor
++        if (d->ctx->callback_load_abort && d->ctx->callback_load_abort()) {
++            return false;
++        }
+         // always emit the first and final sample; throttle the rest to one per 200ms
+         {
+             auto & t_last = d->t_last_load_progress_ms;
+@@ -5332,6 +5337,10 @@ void server_context::set_state_callback(server_state_callback_t callback) {
+     impl->callback_state = std::move(callback);
+ }
+ 
++void server_context::set_load_abort_callback(server_load_abort_callback_t callback) {
++    impl->callback_load_abort = std::move(callback);
++}
++
+ //
+ // server_routes
+ //
+diff --git a/tools/server/server-context.h b/tools/server/server-context.h
+index 4b145cb..5964ab6 100644
+--- a/tools/server/server-context.h
++++ b/tools/server/server-context.h
+@@ -60,6 +60,7 @@ struct server_context_meta {
+ };
+ 
+ using server_state_callback_t = std::function<void(server_state, json /* payload */)>;
++using server_load_abort_callback_t = std::function<bool()>;
+ 
+ struct server_context {
+     std::unique_ptr<server_context_impl> impl;
+@@ -90,6 +91,11 @@ struct server_context {
+ 
+     // note: must be set before load_model() is called
+     void set_state_callback(server_state_callback_t callback);
++
++    // optional: polled while the text, draft and multimodal models load; returning true stops the load,
++    // and load_model() then returns false
++    // note: must be set before load_model() is called
++    void set_load_abort_callback(server_load_abort_callback_t callback);
+ };
+ 
+ 

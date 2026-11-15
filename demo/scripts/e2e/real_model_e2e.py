@@ -289,13 +289,6 @@ def step3(p: Phone, out: Path):
         p.shell("rm -f /sdcard/Pictures/e2e-blue.png", check=False)
 
 
-def open_models(p: Phone):
-    """Chat (Sidebar layout) -> the drawer -> Models."""
-    p.tap_desc("Chats")
-    p.tap(p.wait(10, text="Models"))
-    p.wait(20, what="the library", tag="library")
-
-
 def step4(p: Phone):
     say("step 4: get Gemma 3 4B, force-stop during the download, relaunch, resume")
     p.tap(p.wait(20, tag="model_title"))
@@ -320,8 +313,8 @@ def step4(p: Phone):
     # the app is back; find the download in the library and wait for it to finish
     nodes = p.dump()
     if not p.match(nodes, tag="library"):
-        p.tap_desc("Chats")
-        p.tap(p.wait(10, text="Models"))
+        open_drawer(p)
+        tap_main(p, "Models")
     p.wait(30, what="the library", tag="library")
     # logcat's ring buffer is 256 KiB: read the hub's log early and as we go, or the resume's lines roll off
     hub_lines: set = set()
@@ -443,22 +436,32 @@ def go_top(p: Phone):
 
 
 def open_drawer(p: Phone):
-    """Gets to where "Models" and "Settings" are: the bottom bar of the Chat list layout, else the drawer."""
+    """Gets to where Models and Settings are: the bottom bar of the Chat list layout (text tabs), else the Sidebar
+    layout's drawer, whose actions are icons at its foot, known by their descriptions ("Models, 2 on this phone")."""
     go_top(p)
     if p.find(tag="chat_screen") and p.find(desc="Back"):  # the Chat list layout's chat has a back arrow
         p.tap_desc("Back")
         p.wait(10, what="the Chat list", tag="chat_list")
     if p.find(text="Settings", exact=True) and not p.find(desc="Chats") and not p.find(tag="chat_screen"):
         return  # the bottom bar is showing
-    if not p.find(desc="Close navigation menu"):
+    if not p.find(desc=DRAWER_MODELS):
         p.tap_desc("Chats")
-        p.wait(10, what="the drawer", desc="Close navigation menu")
+        p.wait(10, what="the drawer", desc=DRAWER_MODELS)
+
+
+DRAWER_MODELS = "Models, "  # the drawer's Models icon: "Models, <count> on this phone" (desc matches a substring)
+
+
+def tap_main(p: Phone, name: str):
+    """Taps Models or Settings where open_drawer left them: a bottom bar tab by its text, else the drawer's icon."""
+    tab = p.find(text=name, exact=True)
+    p.tap(tab) if tab else p.tap_desc(DRAWER_MODELS if name == "Models" else name)
 
 
 def step6(p: Phone):
     say("step 6: Chat list layout, find the chat by search, share a reply")
     open_drawer(p)
-    p.tap_text("Settings", exact=True)
+    tap_main(p, "Settings")
     p.tap_text("Appearance")
     p.tap(p.wait(20, tag="layout_chat_list"))
     time.sleep(2)
@@ -508,7 +511,7 @@ def step6(p: Phone):
 def step7(p: Phone, model: str = "Gemma 3 4B", chat: str = "Say hi in three words"):
     say(f"step 7: remove {model}; its chat shows the missing-model line")
     open_drawer(p)
-    p.tap_text("Models", exact=True)
+    tap_main(p, "Models")
     p.wait(20, what="the library", tag="library")
     writer = p.wait(20, text=model, exact=True)
     x, y = writer.center
@@ -544,7 +547,7 @@ def tour(p: Phone, suffix: str):
     p.shot(f"8-chat-{suffix}")
     p.tap_desc("Back")
     open_drawer(p)
-    p.tap_text("Models", exact=True)
+    tap_main(p, "Models")
     p.wait(15, what="the library", tag="library")
     p.shot(f"8-models-{suffix}")
     p.tap_text("Get more models")
@@ -556,14 +559,14 @@ def tour(p: Phone, suffix: str):
     p.shot(f"8-writer-sheet-{suffix}")
     go_top(p)
     open_drawer(p)
-    p.tap_text("Settings", exact=True)
+    tap_main(p, "Settings")
     p.wait(15, what="Settings", text="Appearance")
     p.shot(f"8-settings-{suffix}")
 
 
 def set_theme(p: Phone, name: str):
     open_drawer(p)
-    p.tap_text("Settings", exact=True)
+    tap_main(p, "Settings")
     p.tap_text("Appearance")
     p.tap(p.wait(15, what="the theme switch", tag="theme_switch"))  # focus the control
     seg = [n for n in p.match(p.dump(), text=name, exact=True)]

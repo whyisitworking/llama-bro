@@ -206,7 +206,7 @@ class ModelRawRequestTest {
         runTest {
             val engine =
                 object : Engine by FakeEngine() {
-                    override fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel =
+                    override fun load(configJson: String, onProgress: (Float) -> Boolean): EngineModel =
                         throw com.suhel.llamabro.internal
                             .NativeError(4, """{"error":"failed to load model: /m.gguf"}""")
                 }

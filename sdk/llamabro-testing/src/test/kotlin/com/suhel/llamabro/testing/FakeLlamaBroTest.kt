@@ -15,8 +15,12 @@ import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.conversation.JsonArgs
 import com.suhel.llamabro.conversation.canCompact
 import com.suhel.llamabro.conversation.compact
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -224,6 +228,33 @@ class FakeLlamaBroTest {
         assertEquals("Lyon", args.objList("stops").single().string("at"))
         assertNull(args.objOrNull("missing"))
     }
+
+    /** A cancelled load stops at the fake's next progress step and leaves nothing open, as on the phone (D67). */
+    @Test
+    fun cancellingALoadStopsIt() =
+        runBlocking {
+            val fake = FakeLlamaBro()
+            fake.loadMillis = 2_000
+            var outcome: Throwable? = null
+            val job =
+                launch(Dispatchers.Default) {
+                    outcome = runCatching { fake.llamaBro.loadModel(ModelSource.file("/fake.gguf")) }.exceptionOrNull()
+                }
+            delay(100)
+            val cancelledAt = System.nanoTime()
+            job.cancel()
+            job.join()
+            val ms = (System.nanoTime() - cancelledAt) / 1_000_000
+            assertTrue("$outcome", outcome is CancellationException)
+            assertTrue("loadModel returned $ms ms after the cancel", ms < 1_000)
+            assertEquals(0, fake.openModels)
+
+            fake.loadMillis = 0
+            val model = fake.llamaBro.loadModel(ModelSource.file("/fake.gguf"))
+            assertEquals(1, fake.openModels)
+            model.closeAndJoin()
+            assertEquals(0, fake.openModels)
+        }
 
     private companion object {
         const val WEATHER_SCHEMA = """{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}"""

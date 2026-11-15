@@ -76,14 +76,17 @@ abstract class Journey(
         compose.onNodeWithText(text, substring = substring).performClick()
     }
 
-    fun tapDescription(description: String) {
+    fun tapDescription(description: String, substring: Boolean = false) {
         compose.waitUntilAtLeastOneExists(
             androidx.compose.ui.test
-                .hasContentDescription(description),
+                .hasContentDescription(description, substring = substring),
             WAIT,
         )
-        compose.onNodeWithContentDescription(description).performClick()
+        compose.onNodeWithContentDescription(description, substring = substring).performClick()
     }
+
+    /** The Sidebar drawer's Models, whose label carries the count ("Models, 2 on this phone"). */
+    fun tapDrawerModels() = tapDescription("Models, ", substring = true)
 
     /** Types into the chat's composer and sends. */
     fun send(text: String) {

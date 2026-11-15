@@ -75,6 +75,8 @@ class ChatChrome(
     val onNewChat: () -> Unit,
     val onGetModels: () -> Unit = {},
     val onToken: () -> Unit = {},
+    /** Settings › Memory, where the chip is chosen (D72). */
+    val onMemory: () -> Unit = {},
     /** The id of the chat on screen once it has one: a new chat is made with its first message. */
     val onChatResolved: (Long) -> Unit = {},
 )
@@ -115,6 +117,7 @@ fun AppShell(
                 container.models,
                 container.memory,
                 container.sampling,
+                container::deviceFacts,
             )
         }
     val theme by shell.theme.collectAsStateWithLifecycle()
@@ -307,6 +310,7 @@ private fun Graph(
                     { openChat(Routes.NEW_CHAT_ID) },
                     { getModels("") },
                     { nav.navigate(Routes.TOKEN) { launchSingleTop = true } },
+                    onMemory = { nav.navigate(Routes.MEMORY) { launchSingleTop = true } },
                     onChatResolved = { onChatResolved(entry.id, it) },
                 ),
             )

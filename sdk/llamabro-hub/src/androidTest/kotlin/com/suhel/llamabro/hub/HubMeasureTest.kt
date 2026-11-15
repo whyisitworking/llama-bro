@@ -3,6 +3,7 @@ package com.suhel.llamabro.hub
 import android.os.SystemClock
 import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
+import com.suhel.llamabro.DownloadPhase
 import com.suhel.llamabro.hub.internal.AndroidStorage
 import com.suhel.llamabro.hub.internal.HttpTransport
 import com.suhel.llamabro.hub.internal.repoFolder

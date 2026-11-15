@@ -165,11 +165,13 @@ data class ComposerState(
  * The message bar: the text on top, a row of buttons under it (the layout of the leading chat apps, whose composers
  * grow into a text area over a tool row). One outlined surface with a 28 dp corner (Material's extra large). The text
  * starts 16 dp from the edge, 16 dp below the top, and grows to six lines; it starts each sentence with a capital, as a
- * messaging app's field does. 12 dp under the text (the compact gap) is the row of buttons: **+** at the start
- * and, at the end, a **Think** icon (when the model can think) just left of send (stop while a reply is coming). All
- * three are 40 dp circles in 48 dp targets, 8 dp from the bar's edge and 8 dp from each other, so they sit
- * concentric with the corner (20 + 8 = 28). Think is a lightbulb: a quiet circle when off, the soft accent when
- * on (its level is in its description and in the menu it opens); send is quiet while there is nothing to send.
+ * messaging app's field does. 14 dp under the text (8 dp of padding and the 6 dp the 36 dp circle leaves in its
+ * target) is the row of buttons: **+** at the start and,
+ * at the end, a **Think** icon (when the model can think) just left of send (stop while a reply is coming). All
+ * three are 36 dp circles with 20 dp glyphs in 48 dp targets, 10 dp from the bar's edge and 12 dp from each other, so
+ * they sit concentric with the corner (18 + 10 = 28). Think is a lightbulb: a quiet circle when off, filled with the
+ * send accent when on (its level is in its description and in the menu it opens); send is quiet while there is nothing
+ * to send and filled with the send accent when it can act (D73).
  * The bar is as wide as its parent: a screen puts it on the gutter.
  *
  * [attachments], when there are any, sit inside the bar above the text: the bar grows to hold them, so a picture reads
@@ -217,8 +219,8 @@ fun Composer(
                         start = DemoSpacing.item,
                         end = DemoSpacing.item,
                         top = if (attachments != null) DemoSpacing.block else DemoSpacing.item,
-                        // 8 dp here and the 4 dp a 40 dp circle leaves in its 48 dp target: the buttons sit 12 dp
-                        // under the text (DemoSpacing.compact)
+                        // 8 dp here and the 6 dp a 36 dp circle leaves in its 48 dp target: the buttons sit 14 dp
+                        // under the text, and the bar keeps the height it had with 40 dp circles
                         bottom = DemoSpacing.block,
                     ),
             textStyle = DemoType.body.copy(color = colors.ink),
@@ -234,7 +236,7 @@ fun Composer(
                 }
             },
         )
-        // 4 dp round the 48 dp targets: a 40 dp circle is 8 dp from the bar's bottom, start and end
+        // 4 dp round the 48 dp targets: a 36 dp circle is 10 dp from the bar's bottom, start and end
         Row(
             Modifier.fillMaxWidth().padding(start = IconButtonInset, end = IconButtonInset, bottom = IconButtonInset),
             verticalAlignment = Alignment.CenterVertically,
@@ -246,7 +248,7 @@ fun Composer(
                             DemoIcons.Plus,
                             contentDescription = stringResource(R.string.ds_attach),
                             tint = colors.ink,
-                            modifier = Modifier.size(DemoSize.icon),
+                            modifier = Modifier.size(DemoSize.barGlyph),
                         )
                     }
                 }
@@ -255,27 +257,28 @@ fun Composer(
             if (state.think != null) {
                 val on = state.think != ThinkLevel.Off
                 BarIconButton(onClick = onThink) {
-                    BarCircle(if (on) colors.accent else colors.hairline) {
+                    BarCircle(if (on) colors.sendAccent else colors.hairline) {
                         Icon(
                             DemoIcons.Think,
                             contentDescription = thinkLabel(state.think),
-                            tint = if (on) colors.onAccent else colors.ink,
-                            modifier = Modifier.size(DemoSize.icon),
+                            tint = if (on) colors.onSendAccent else colors.ink,
+                            modifier = Modifier.size(DemoSize.barGlyph),
                         )
                     }
                 }
             }
             val busy = state.busy
             BarIconButton(onClick = if (busy) onStop else onSend, enabled = state.canAct) {
-                // filled ink when it can act; the hairline's tonal circle with muted ink when there is nothing to
-                // send. The fill eases between the two, and send cross-fades into stop, so it changes in place
+                // filled with the send accent when it can act; the hairline's tonal circle with muted ink when there
+                // is nothing to send. The fill eases between the two, and send cross-fades into stop, so it changes
+                // in place
                 val fill by animateColorAsState(
-                    if (state.canAct) colors.accent else colors.hairline,
+                    if (state.canAct) colors.sendAccent else colors.hairline,
                     tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard),
                     label = "send fill",
                 )
                 val tint by animateColorAsState(
-                    if (state.canAct) colors.onAccent else colors.muted,
+                    if (state.canAct) colors.onSendAccent else colors.muted,
                     tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard),
                     label = "send tint",
                 )
@@ -285,7 +288,7 @@ fun Composer(
                             if (stop) DemoIcons.Stop else DemoIcons.Send,
                             contentDescription = stringResource(if (stop) R.string.ds_stop else R.string.ds_send),
                             tint = tint,
-                            modifier = Modifier.size(DemoSize.icon),
+                            modifier = Modifier.size(DemoSize.barGlyph),
                         )
                     }
                 }
@@ -294,29 +297,28 @@ fun Composer(
     }
 }
 
-/** A 40 dp circle of the bar's button row, filled with [fill]. */
+/** A 36 dp circle of the bar's button row, filled with [fill]. */
 @Composable
 private fun BarCircle(fill: androidx.compose.ui.graphics.Color, content: @Composable () -> Unit) {
     Box(
-        Modifier.size(DemoSize.control).background(fill, CircleShape),
+        Modifier.size(DemoSize.barCircle).background(fill, CircleShape),
         contentAlignment = Alignment.Center,
     ) { content() }
 }
 
-/** The bar's edge beside a button: 4 dp, so the 40 dp circle in its 48 dp target is 8 dp from the edge. */
+/** The bar's edge beside a button: 4 dp, so the 36 dp circle in its 48 dp target is 10 dp from the edge. */
 private val IconButtonInset = DemoSpacing.inline
 
 /**
- * An icon button of the bar: its content (a 24 dp glyph, or a 40 dp circle) centered in a 48 dp touch target, the
- * way Material's `IconButton` is, with the press clipped to a 40 dp circle so no larger ring shows. In a tall bar it
- * sits in the button row under the text.
+ * An icon button of the bar: its 36 dp circle centered in a 48 dp touch target, the way Material's `IconButton` is,
+ * with the press clipped to the circle so no larger ring shows. It sits in the button row under the text.
  */
 @Composable
 private fun BarIconButton(onClick: () -> Unit, enabled: Boolean = true, content: @Composable () -> Unit) {
     Box(
         Modifier
             .minimumInteractiveComponentSize()
-            .size(DemoSize.control)
+            .size(DemoSize.barCircle)
             .clip(CircleShape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,

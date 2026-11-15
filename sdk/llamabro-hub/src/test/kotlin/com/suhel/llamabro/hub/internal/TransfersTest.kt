@@ -1,7 +1,7 @@
 package com.suhel.llamabro.hub.internal
 
-import com.suhel.llamabro.hub.DownloadPhase
-import com.suhel.llamabro.hub.DownloadProgress
+import com.suhel.llamabro.DownloadPhase
+import com.suhel.llamabro.DownloadProgress
 import com.suhel.llamabro.hub.HubException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred

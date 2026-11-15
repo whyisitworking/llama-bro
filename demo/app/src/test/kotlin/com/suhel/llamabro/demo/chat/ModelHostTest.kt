@@ -58,52 +58,52 @@ class ModelHostTest {
                 gate.await()
                 ModelSource.file("/fake/a.gguf")
             }
-            val first = async { host.use(a) }
-            val second = async { host.use(a) }
+            val first = async { host.use(a, LoadConfig()) }
+            val second = async { host.use(a, LoadConfig()) }
             gate.complete(Unit)
             val (m1, m2) = awaitAll(first, second)
             assertSame(m1, m2)
             assertEquals(1, sources.get())
-            assertEquals(HostState.Ready(a, m1), host.state.value)
-            assertSame(m1, host.use(a))
+            assertEquals(HostState.Ready(a, m1, LoadConfig()), host.state.value)
+            assertSame(m1, host.use(a, LoadConfig()))
             assertEquals(1, sources.get())
         }
 
     @Test fun switchingClosesThePreviousModelFirst() =
         runBlocking {
-            val first = host.use(a)
+            val first = host.use(a, LoadConfig())
             var firstWasClosedWhenBLoaded: Boolean? = null
             hub.onSource = {
                 if (it == b) firstWasClosedWhenBLoaded = isClosed(first)
                 ModelSource.file("/fake/b.gguf")
             }
-            val second = host.use(b)
+            val second = host.use(b, LoadConfig())
             assertEquals(
                 "the first model closes before the second one's files are even looked up",
                 true,
                 firstWasClosedWhenBLoaded,
             )
             assertNotEquals(first, second)
-            assertEquals(HostState.Ready(b, second), host.state.value)
+            assertEquals(HostState.Ready(b, second, LoadConfig()), host.state.value)
             assertFalse(isClosed(second))
         }
 
     @Test fun loadFailureIsFailedStateNotACrash() =
         runBlocking {
             hub.onSource = { throw IOException("the file is gone") }
-            assertThrows(IOException::class.java) { runBlocking { host.use(a) } }
+            assertThrows(IOException::class.java) { runBlocking { host.use(a, LoadConfig()) } }
             val state = host.state.value as HostState.Failed
             assertEquals(a, state.key)
             assertEquals("the file is gone", state.error.message)
             // the host still works afterwards: a later use loads
             hub.onSource = { ModelSource.file("/fake/a.gguf") }
-            val model = withTimeout(10_000) { host.use(a) }
-            assertEquals(HostState.Ready(a, model), host.state.value)
+            val model = withTimeout(10_000) { host.use(a, LoadConfig()) }
+            assertEquals(HostState.Ready(a, model, LoadConfig()), host.state.value)
         }
 
     @Test fun releaseReturnsToIdle() =
         runBlocking {
-            val model = host.use(a)
+            val model = host.use(a, LoadConfig())
             host.release()
             assertEquals(HostState.Idle, host.state.value)
             assertTrue(isClosed(model))
@@ -113,8 +113,9 @@ class ModelHostTest {
 
     @Test fun modelHostLoadsWithSdkDefaults() =
         runBlocking {
-            val model = host.use(a)
-            // neither ContextSize nor Speculative was set by the app: the report says each is the SDK's own choice
+            val model = host.use(a, LoadConfig())
+            // the default config asks for ContextSize.Auto and sets no Speculative: the report says each is the SDK's
+            // own choice
             assertNotEquals("set by the app", model.loadReport.contextReason)
             assertFalse(
                 model.loadReport.speculativeReason,
@@ -129,7 +130,7 @@ class ModelHostTest {
                 gate.await()
                 ModelSource.file("/fake/a.gguf")
             }
-            val pending = async { host.use(a) }
+            val pending = async { host.use(a, LoadConfig()) }
             withTimeout(10_000) { while ((host.state.value as? HostState.Waking)?.key != a) kotlinx.coroutines.yield() }
             gate.complete(Unit)
             pending.await()

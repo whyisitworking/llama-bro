@@ -14,6 +14,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
 import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A [LlamaBro] for an app's JVM tests: no phone, no model, no native code (D27). Pass [llamaBro] to the code under
@@ -42,6 +44,17 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
     private val lock = Any()
     private val queue = ArrayDeque<Scripted>()
     private val chat = mutableListOf<String>()
+
+    /**
+     * How long each model load takes, reported as progress in four steps. A `loadModel` cancelled meanwhile
+     * stops at the next step and throws `CancellationException`, as the phone's load does (D67).
+     */
+    @Volatile public var loadMillis: Long = 0
+
+    private val open = AtomicInteger()
+
+    /** Models loaded and not yet closed: zero after a cancelled load, as on the phone. */
+    public val openModels: Int get() = open.get()
 
     /** The body of every chat request that took a reply, in order (pre-encodes left out). */
     public val chatRequests: List<String> get() = synchronized(lock) { chat.toList() }
@@ -165,14 +178,20 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
         override fun devices(): String =
             """[{"name":"CPU","description":"FakeLlamaBro","type":"cpu","memory_free":0,"memory_total":0}]"""
 
-        override fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel {
+        override fun load(configJson: String, onProgress: (Float) -> Boolean): EngineModel {
             synchronized(lock) {
                 if (loadFailures > 0) {
                     loadFailures--
                     throw checkNotNull(loadFailure)
                 }
             }
-            onProgress(1f)
+            for (step in 1..LOAD_STEPS) {
+                if (loadMillis > 0) Thread.sleep(loadMillis / LOAD_STEPS)
+                if (!onProgress(step.toFloat() / LOAD_STEPS)) {
+                    throw NativeError(NativeError.CANCELLED, """{"error":"model load cancelled"}""")
+                }
+            }
+            open.incrementAndGet()
             return FakeModel(contextSize)
         }
     }
@@ -221,7 +240,11 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
             }
         }
 
-        override fun close() {}
+        private val closed = AtomicBoolean(false)
+
+        override fun close() {
+            if (closed.compareAndSet(false, true)) open.decrementAndGet()
+        }
     }
 
     private object Finished : EngineRequest {
@@ -231,6 +254,9 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
     }
 
     private companion object {
+        /** The progress steps of a fake load. */
+        const val LOAD_STEPS = 4
+
         private var callIds = 0
 
         /** `lb_status` for a failed load (the C API's generic error). */

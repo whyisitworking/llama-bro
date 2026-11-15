@@ -15,7 +15,9 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.testTag
@@ -25,6 +27,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -33,6 +36,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -48,6 +54,7 @@ import com.suhel.llamabro.demo.designsystem.components.Gap
 import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.JumpToLatest
 import com.suhel.llamabro.demo.designsystem.components.ListRow
+import com.suhel.llamabro.demo.designsystem.components.PhotoViewer
 import com.suhel.llamabro.demo.designsystem.components.PrimaryButton
 import com.suhel.llamabro.demo.designsystem.components.QuantRow
 import com.suhel.llamabro.demo.designsystem.components.Reveal
@@ -57,6 +64,7 @@ import com.suhel.llamabro.demo.designsystem.components.SliderRow
 import com.suhel.llamabro.demo.designsystem.components.Stack
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.designsystem.components.TypingDots
+import com.suhel.llamabro.demo.designsystem.components.ViewerPhoto
 import com.suhel.llamabro.demo.designsystem.components.WakeHairline
 import com.suhel.llamabro.demo.designsystem.components.ink
 import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
@@ -298,15 +306,16 @@ class ComponentBehaviourTest {
         val attach = rule.onNodeWithContentDescription(string(R.string.ds_attach)).getBoundsInRoot()
         val think = rule.onNodeWithContentDescription("Think", substring = true).getBoundsInRoot()
         val send = rule.onNodeWithContentDescription(string(R.string.ds_send)).getBoundsInRoot()
-        // each button's press is a 40 dp circle, 8 dp from the bar's bottom; + is 8 dp from the start, send 8 dp from the end
+        // each button's press is a 36 dp circle (D73), 10 dp from the bar's bottom; + is 10 dp from the start, send 10 dp
+        // from the end, so each circle's centre stays 28 dp in, concentric with the corner (18 + 10 = 28)
         for ((name, button) in listOf("+" to attach, "think" to think, "send" to send)) {
-            assertEquals("$name is 40 dp", 40f, (button.right - button.left).value, 1f)
-            assertEquals("$name from the bottom", 8f, bar.bottom.value - button.bottom.value, 1f)
+            assertEquals("$name is 36 dp", 36f, (button.right - button.left).value, 1f)
+            assertEquals("$name from the bottom", 10f, bar.bottom.value - button.bottom.value, 1f)
         }
-        assertEquals(8f, attach.left.value - bar.left.value, 1f)
-        assertEquals(8f, bar.right.value - send.right.value, 1f)
-        // Think sits just left of send, 8 dp from it
-        assertEquals(8f, send.left.value - think.right.value, 1f)
+        assertEquals(10f, attach.left.value - bar.left.value, 1f)
+        assertEquals(10f, bar.right.value - send.right.value, 1f)
+        // Think sits just left of send, 12 dp from it (their 48 dp targets touch)
+        assertEquals(12f, send.left.value - think.right.value, 1f)
     }
 
     @Test
@@ -570,5 +579,109 @@ class ComponentBehaviourTest {
         }
         rule.waitForIdle()
         assertEquals(listOf(0.5f), changes)
+    }
+
+    private fun showViewer(
+        photos: List<ViewerPhoto> = List(3) { ViewerPhoto.Ready(ImageBitmap(400, 300)) },
+        onPageChange: (Int) -> Unit = {},
+        onClose: () -> Unit = {},
+    ) {
+        rule.setContent {
+            DemoTheme(ThemeMode.Light) {
+                Box(Modifier.width(360.dp).height(640.dp)) {
+                    PhotoViewer(photos, startAt = 1, onClose = onClose, onPageChange = onPageChange)
+                }
+            }
+        }
+    }
+
+    private fun page(n: Int) = rule.onNodeWithContentDescription("Photo $n of 3")
+
+    @Test
+    fun thePhotoViewerOpensAtTheTappedPhotoAndSwipesBetweenThem() {
+        showViewer()
+        page(2).assertIsDisplayed()
+        rule.onNodeWithTag(DsTags.PHOTO_VIEWER).performTouchInput { swipeLeft() }
+        page(3).assertIsDisplayed()
+    }
+
+    @Test
+    fun aZoomedPhotoPansInsteadOfSwipingAndADoubleTapZoomsBackOut() {
+        showViewer()
+        page(2).performTouchInput { doubleClick() }
+        rule.waitForIdle()
+        rule.onNodeWithTag(DsTags.PHOTO_VIEWER).performTouchInput { swipeLeft() }
+        page(2).assertIsDisplayed() // panned within the photo, still on it
+        page(2).performTouchInput { doubleClick() }
+        rule.waitForIdle()
+        rule.onNodeWithTag(DsTags.PHOTO_VIEWER).performTouchInput { swipeLeft() }
+        page(3).assertIsDisplayed()
+    }
+
+    @Test
+    fun aSwipeDownOrTheCrossClosesThePhotoViewer() {
+        var closed = 0
+        showViewer(onClose = { closed++ })
+        rule.onNodeWithTag(DsTags.PHOTO_VIEWER).performTouchInput { swipeDown() }
+        rule.waitForIdle()
+        assertEquals(1, closed)
+        rule.onNodeWithContentDescription(string(R.string.ds_close_photo)).performClick()
+        assertEquals(2, closed)
+    }
+
+    @Test
+    fun aShortPullSpringsBackWithoutClosing() {
+        var closed = 0
+        showViewer(onClose = { closed++ })
+        rule.onNodeWithTag(DsTags.PHOTO_VIEWER).performTouchInput {
+            swipeDown(startY = centerY, endY = centerY + height * 0.05f)
+        }
+        rule.waitForIdle()
+        assertEquals(0, closed)
+        page(2).assertIsDisplayed()
+    }
+
+    @Test
+    fun theViewerTellsWhichPhotoIsInView() {
+        val pages = mutableListOf<Int>()
+        showViewer(onPageChange = { pages += it })
+        rule.onNodeWithTag(DsTags.PHOTO_VIEWER).performTouchInput { swipeLeft() }
+        rule.waitForIdle()
+        assertEquals(listOf(1, 2), pages)
+    }
+
+    @Test
+    fun aDoubleTapWithASmallWobbleStillZoomsOut() {
+        showViewer()
+        page(2).performTouchInput { doubleClick() }
+        rule.waitForIdle()
+        // a real finger moves a pixel or two between down and up: under the touch slop it is still a tap
+        page(2).performTouchInput {
+            down(center)
+            moveBy(Offset(2f, 1f))
+            up()
+            advanceEventTime(100)
+            down(center)
+            moveBy(Offset(-1f, 2f))
+            up()
+        }
+        rule.waitForIdle()
+        rule.onNodeWithTag(DsTags.PHOTO_VIEWER).performTouchInput { swipeLeft() }
+        page(3).assertIsDisplayed()
+    }
+
+    @Test
+    fun aPhotoNotYetDecodedNeitherZoomsNorHoldsTheSwipe() {
+        showViewer(listOf(ViewerPhoto.Loading, ViewerPhoto.Loading, ViewerPhoto.Loading))
+        page(2).performTouchInput { doubleClick() }
+        rule.waitForIdle()
+        rule.onNodeWithTag(DsTags.PHOTO_VIEWER).performTouchInput { swipeLeft() }
+        page(3).assertIsDisplayed()
+    }
+
+    @Test
+    fun aPhotoThatCantBeDecodedSaysSo() {
+        showViewer(listOf(ViewerPhoto.Loading, ViewerPhoto.Unavailable, ViewerPhoto.Loading))
+        rule.onNodeWithText(string(R.string.ds_photo_unavailable)).assertIsDisplayed()
     }
 }

@@ -4,6 +4,7 @@ import com.suhel.llamabro.internal.Engine
 import com.suhel.llamabro.internal.EngineModel
 import com.suhel.llamabro.internal.EngineRequest
 import com.suhel.llamabro.internal.LlamaBroRuntime
+import com.suhel.llamabro.internal.NativeError
 import com.suhel.llamabro.internal.RequestSink
 import java.io.File
 import java.nio.file.Files
@@ -28,6 +29,12 @@ internal class FakeEngine : Engine {
 
     /** Reported through onProgress during each load, like llama.cpp's load progress. */
     var progress: List<Float> = emptyList()
+
+    /** Runs after each [progress] step the load went on from, on the loading thread: block here to model a slow read. */
+    var onStep: (Float) -> Unit = {}
+
+    /** The step whose onProgress said stop, as the native load stops at that tick (D67); null if none did. */
+    @Volatile var stoppedAt: Float? = null
 
     override fun init(configJson: String): String? {
         calls += "init"
@@ -59,13 +66,16 @@ internal class FakeEngine : Engine {
     /** A load error for a config (the C API's error JSON), or null to load. */
     var loadError: (String) -> String? = { null }
 
-    override fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel {
+    override fun load(configJson: String, onProgress: (Float) -> Boolean): EngineModel {
         loadConfigs += configJson
-        loadError(configJson)?.let {
-            throw com.suhel.llamabro.internal
-                .NativeError(5, it)
+        loadError(configJson)?.let { throw NativeError(5, it) }
+        for (p in progress) {
+            if (!onProgress(p)) {
+                stoppedAt = p
+                throw NativeError(NativeError.CANCELLED, """{"error":"model load cancelled"}""")
+            }
+            onStep(p)
         }
-        progress.forEach(onProgress)
         return makeModel()
     }
 }

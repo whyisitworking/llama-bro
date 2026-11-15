@@ -44,9 +44,11 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.conversation.Conversation
@@ -76,6 +78,7 @@ import com.suhel.llamabro.demo.ui.chat.MessageStyle
 import com.suhel.llamabro.demo.ui.shell.ChatChrome
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -277,11 +280,13 @@ class ChatScreenTest {
     // ---- sending and streaming -------------------------------------------------------------------
 
     @Test fun sentMessageAppearsAndReplyStreams() {
+        // the reply waits for the test to have seen it streaming: a fixed pause can pass before a slow device looks
+        val seen = CompletableDeferred<Unit>()
         script =
             {
                 flow {
                     emit(ChatEvent.ContentDelta("Hello "))
-                    delay(400)
+                    seen.await()
                     emit(ChatEvent.ContentDelta("from the phone."))
                 }
             }
@@ -291,6 +296,7 @@ class ChatScreenTest {
         waitFor("Say hi")
         waitFor("Hello", substring = true)
         compose.onNodeWithTag("streaming_reply").assertIsDisplayed()
+        seen.complete(Unit)
         waitFor("Hello from the phone.")
         compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("streaming_reply")).fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithTag("reply_message").assertIsDisplayed()
@@ -312,6 +318,64 @@ class ChatScreenTest {
         compose.onNodeWithContentDescription("Send").assertIsDisplayed()
         // what was written is kept
         compose.onAllNodesWithText("Starting to write", substring = true).assertCountEquals(1)
+    }
+
+    /** A reply of [lines] short paragraphs, taller than the screen, arriving one every 40 ms. */
+    private fun longReply(lines: Int) {
+        script = {
+            flow {
+                repeat(lines) {
+                    emit(ChatEvent.ContentDelta("line $it\n\n"))
+                    delay(40)
+                }
+            }
+        }
+    }
+
+    /**
+     * Where the reply's row starts, above the screen once the reader is inside it (unclipped, so it moves with the
+     * list): the streaming row, or the finished reply that took its place.
+     */
+    private fun replyTop(): Float {
+        val streaming = compose.onAllNodes(hasTestTag("streaming_reply")).fetchSemanticsNodes()
+        val node = streaming.firstOrNull() ?: compose.onAllNodesWithTag("reply_message").fetchSemanticsNodes().last()
+        return node.positionInRoot.y
+    }
+
+    @Test fun scrollingUpDuringAReplyStopsFollowingIt() {
+        longReply(400)
+        onPhone(swift)
+        show()
+        ask("Write a lot")
+        waitFor("line 40", substring = true)
+        compose.onNodeWithTag("message_list").performTouchInput { swipeDown() }
+        compose.waitForIdle()
+        val top = replyTop()
+        // tokens keep arriving, and the list stays where the reader left it
+        waitFor("line 80", substring = true)
+        assertEquals(top, replyTop())
+        compose.onNodeWithTag("jump_to_latest").assertIsDisplayed()
+        // back to the latest, and the reply is followed again: the button stays away while it grows
+        compose.onNodeWithTag("jump_to_latest").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("jump_to_latest")).fetchSemanticsNodes().isEmpty() }
+        waitFor("line 140", substring = true)
+        compose.onAllNodes(hasTestTag("jump_to_latest")).assertCountEquals(0)
+        compose.onNodeWithContentDescription("Stop").performClick()
+    }
+
+    @Test fun aReplyFinishingLeavesAReaderWhoScrolledUpWhereTheyAre() {
+        longReply(120)
+        onPhone(swift)
+        show()
+        ask("Write a lot")
+        waitFor("line 40", substring = true)
+        compose.onNodeWithTag("message_list").performTouchInput { swipeDown() }
+        compose.waitForIdle()
+        val top = replyTop()
+        compose.waitUntil(20_000) { compose.onAllNodes(hasTestTag("streaming_reply")).fetchSemanticsNodes().isEmpty() }
+        compose.waitForIdle()
+        assertEquals(top, replyTop())
+        compose.onNodeWithTag("jump_to_latest").assertIsDisplayed()
     }
 
     @Test fun heldMessageShowsTheWaitLine() {
@@ -749,6 +813,49 @@ class ChatScreenTest {
         compose.waitUntilAtLeastOneExists(hasTestTag("attachments"), 10_000)
         compose.onNodeWithContentDescription("Remove photo").performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("attachments")).fetchSemanticsNodes().isEmpty() }
+    }
+
+    /** A chat whose one message carries two photos. */
+    private fun seedPhotoChat(): Long =
+        runBlocking {
+            val names =
+                listOf(0xFF3366CC, 0xFFCC6633).mapIndexed { i, colour ->
+                    val name = "viewer-$i.jpg"
+                    app.container.images.file(name).apply { parentFile?.mkdirs() }.outputStream().use {
+                        Bitmap
+                            .createBitmap(400, 300, Bitmap.Config.ARGB_8888)
+                            .apply { eraseColor(colour.toInt()) }
+                            .compress(Bitmap.CompressFormat.JPEG, 90, it)
+                    }
+                    name
+                }
+            val chat = app.container.chats.createChat(swift.toString())
+            app.container.chats.append(chat, NewMessage(MessageKind.User, "which one?", images = names))
+            chat
+        }
+
+    private fun closeButtons() = compose.onAllNodesWithContentDescription("Close photo").fetchSemanticsNodes()
+
+    @Test fun tappingAPhotoOpensItFullScreenAndTheCrossOrBackClosesIt() {
+        onPhone(swift)
+        show(chatId = seedPhotoChat())
+        compose.waitUntilAtLeastOneExists(hasContentDescription("Photo 2 of 2"), 10_000)
+        compose.onNodeWithContentDescription("Photo 2 of 2").performClick()
+        compose.waitUntil(5_000) { closeButtons().isNotEmpty() }
+        settleWindow()
+        // the bubble's photo and the viewer's page, opened at the photo tapped
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithContentDescription("Photo 2 of 2").fetchSemanticsNodes().size == 2
+        }
+        compose.onNodeWithContentDescription("Close photo").performClick()
+        compose.waitUntil(5_000) { closeButtons().isEmpty() }
+
+        compose.onNodeWithContentDescription("Photo 1 of 2").performClick()
+        compose.waitUntil(5_000) { closeButtons().isNotEmpty() }
+        settleWindow()
+        UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+        compose.waitUntil(5_000) { closeButtons().isEmpty() }
+        compose.onNodeWithText("which one?").assertIsDisplayed() // back closed the viewer, not the chat
     }
 
     // ---- performance ----------------------------------------------------------------------------

@@ -115,14 +115,14 @@ class WalkJourneys : Journey() {
             }
             closeSheet()
             arrive("drawer", theme, gutter = false) { tapDescription("Chats") }
-            arrive("library", theme) { tap("Models") }
+            arrive("library", theme) { tapDrawerModels() }
             arrive("get-models", theme) { tap("Get more models") }
             arrive("model-sheet", theme) { tap(Catalog.suggested[3].realName) }
             closeSheet()
             back() // Get models → library
             back() // library → chat
             arrive("drawer-again", theme, gutter = false) { tapDescription("Chats") }
-            arrive("settings", theme) { tap("Settings") }
+            arrive("settings", theme) { tapDescription("Settings") }
             for ((row, title) in SETTINGS_PAGES) {
                 arrive("settings-$title", theme) { tap(row) }
                 back()

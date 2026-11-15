@@ -26,6 +26,8 @@ struct lb_model {
     lb_progress_cb progress_cb = nullptr;
     void * progress_user = nullptr;
     std::atomic<bool> loading{true};
+    // set when progress_cb returns false; read by server_context's load abort hook (patch 0003) on the loader's thread
+    std::atomic<bool> stop_requested{false};
 
     server_context ctx_server;
     std::unique_ptr<server_routes> routes;               // keeps a reference to params

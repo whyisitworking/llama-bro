@@ -6,12 +6,14 @@
 #   contract       the C API vs upstream llama-server, same build, same flags, per model (run.sh)
 #   tools-ui       llama.cpp's own tools/ui compaction code regenerated in node; must equal the committed golden
 #   api            core release public API equals its reviewed dump (D26)
-#   hub-api        Hub release public API equals sdk/llamabro-hub/api/llamabro-hub.api
+#   hub-api        Hub, hub-work and hub-testing release public APIs equal their dumps (sdk/llamabro-hub*/api/*.api)
 #   quality        ktlint and detekt on every Kotlin module (the root build's qualityCheck; detekt's baselines list what predates it)
 #   lint           Android lint on all SDK libraries, warnings as errors
-#   jvm            Kotlin unit tests of the libraries, including the 400-case tools/ui golden replay
-#   e2e            Kotlin + JNI + native on this machine vs upstream llama-server (HostNativeTest)
-#   aar            release AAR: libraries, names, exports, 16 KB alignment (check-aar.sh)
+#   jvm            Kotlin unit tests of the libraries (FakeLlamaBroHub's included), including the 400-case tools/ui
+#                  golden replay; hub-work's androidTest compiles
+#   e2e            Kotlin + JNI + native on this machine vs upstream llama-server (HostNativeTest), load cancel
+#   aar            release AAR: libraries, names, exports, 16 KB alignment (check-aar.sh); hub and hub-work carry no
+#                  native code, and hub-work's manifest declares the dataSync foreground service
 #   device         (--device) phone tests: native, UI, acceptance per model and per acceptance-app flavor (cpu, gpu, full,
 #                  noskel), and each flavor's minified (R8) build
 #   device-contract (--device) the C API vs upstream llama-server on the phone's NPU (tests/device-contract/run.sh)
@@ -113,6 +115,8 @@ step_hub_golden() {
 step_jvm() {
     gradle :llamabro:testDebugUnitTest :llamabro-testing:testDebugUnitTest \
         :llamabro-hexagon:testDebugUnitTest :llamabro-hub:testDebugUnitTest \
+        :llamabro-hub-work:testDebugUnitTest :llamabro-hub-work:compileDebugAndroidTestKotlin \
+        :llamabro-hub-testing:testDebugUnitTest \
         -Pllamabro.hub.model.dir="$HOME/Downloads" -Pllamabro.hub.golden.dir="$logs/hub-golden" || return 1
     grep -q 'skipped="0"' \
         "$sdk/llamabro-hub/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.hub.GgufHeaderTest.xml" || {
@@ -151,7 +155,7 @@ step_e2e() {
     status=$?
     kill $pid; wait $pid 2>/dev/null
     local t
-    for t in HostNativeTest HostNativeLogTest HostNativeFailedInitTest; do
+    for t in HostNativeTest HostNativeLogTest HostNativeFailedInitTest HostNativeLoadCancelTest; do
         grep -q 'skipped="0"' "$sdk/llamabro/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.$t.xml" || { echo "$t was skipped or has no result"; return 1; }
     done
     return $status
@@ -164,6 +168,15 @@ step_aar() {
     gradle :llamabro-hub:assembleRelease || return 1
     unzip -l "$sdk/llamabro-hub/build/outputs/aar/llamabro-hub-release.aar" > "$logs/hub-aar-contents.txt" || return 1
     ! grep -q ' jni/' "$logs/hub-aar-contents.txt" || return 1
+    # the worker runs as a dataSync foreground service: its manifest must carry the type and the permissions (D75)
+    gradle :llamabro-hub-work:assembleRelease || return 1
+    local work_aar="$sdk/llamabro-hub-work/build/outputs/aar/llamabro-hub-work-release.aar" work_manifest
+    unzip -l "$work_aar" > "$logs/hub-work-aar-contents.txt" || return 1
+    ! grep -q ' jni/' "$logs/hub-work-aar-contents.txt" || return 1
+    work_manifest="$(unzip -p "$work_aar" AndroidManifest.xml)" || return 1
+    for b in 'foregroundServiceType="dataSync"' FOREGROUND_SERVICE_DATA_SYNC POST_NOTIFICATIONS; do
+        grep -q "$b" <<< "$work_manifest" || { echo "llamabro-hub-work's manifest lacks $b"; return 1; }
+    done
     for b in hexagon opencl; do
         echo "--- llamabro-$b"
         bash "$sdk/scripts/check-aar.sh" "$sdk/llamabro-$b/build/outputs/aar/llamabro-$b-release.aar" "$core" || return 1
@@ -345,9 +358,10 @@ run hub-golden step_hub_golden
 run contract step_contract
 run tools-ui step_tools_ui
 run api      gradle :llamabro:apiCheck
-run hub-api  gradle :llamabro-hub:apiCheck
+run hub-api  gradle :llamabro-hub:apiCheck :llamabro-hub-work:apiCheck :llamabro-hub-testing:apiCheck
 run quality  step_quality
-run lint     gradle :llamabro:lintRelease :llamabro-testing:lintRelease :llamabro-hexagon:lintRelease :llamabro-opencl:lintRelease :llamabro-hub:lintRelease
+run lint     gradle :llamabro:lintRelease :llamabro-testing:lintRelease :llamabro-hexagon:lintRelease :llamabro-opencl:lintRelease :llamabro-hub:lintRelease \
+    :llamabro-hub-work:lintRelease :llamabro-hub-testing:lintRelease
 run jvm      step_jvm
 run e2e      step_e2e
 run aar      step_aar

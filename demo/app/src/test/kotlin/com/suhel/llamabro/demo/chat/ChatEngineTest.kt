@@ -376,6 +376,15 @@ class ChatEngineTest {
                 rows(chat).count { it.kind == MessageKind.Assistant && it.state == MessageState.Done } == 2
             }
             assertEquals(null, chat.limit.value)
+            // freed (the app left the screen) and loaded again by the next message, doubted again: noted again
+            assertTrue(engine.releaseModelIfIdle())
+            fake.failLoad(LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory, "not enough memory", times = 1)
+            fake.reply { content("Back.") }
+            chat.send("and again", emptyList())
+            until("answered three times") {
+                rows(chat).count { it.kind == MessageKind.Assistant && it.state == MessageState.Done } == 3
+            }
+            assertEquals(Limits.memoryWarning("Qwen3.5 0.8B"), chat.limit.value)
         }
 
     @Test fun aLoadThatFailsForMemoryAllTheSameOffersASmallerSize() =

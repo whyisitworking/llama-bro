@@ -33,7 +33,7 @@ jmethodID g_native_error_ctor;   // NativeError(int, String)
 jmethodID g_sink_on_chunk;       // RequestSink.onChunk(int, byte[])
 jmethodID g_sink_on_done;
 jmethodID g_sink_on_cancelled;
-jmethodID g_progress_on_progress;  // ProgressListener.onProgress(float)
+jmethodID g_progress_on_progress;  // ProgressListener.onProgress(float): boolean
 jmethodID g_log_on_log;            // LogListener.onLog(int, String)
 
 // Attaches the calling native thread on first use; detaches it when the thread exits.
@@ -93,8 +93,9 @@ std::string get_string(JNIEnv * env, jstring s) {
     return out;
 }
 
-void throw_native_error(JNIEnv * env, int status, char * error_json) {
-    jstring msg = error_json ? take_string(env, error_json) : new_string(env, "{\"error\":\"unknown\"}", 19);
+void throw_native_error(JNIEnv * env, int status, char * error_json,
+                        const char * fallback = "{\"error\":\"unknown\"}") {
+    jstring msg = error_json ? take_string(env, error_json) : new_string(env, fallback, std::strlen(fallback));
     auto * ex = static_cast<jthrowable>(env->NewObject(g_native_error_class, g_native_error_ctor, (jint) status, msg));
     env->Throw(ex);
 }
@@ -181,11 +182,17 @@ void runtimeSetLog(JNIEnv * env, jobject, jobject listener) {
     if (old) env->DeleteGlobalRef(old);
 }
 
-void progress_cb(void * user, float p) {
+// Kotlin answers whether its caller still wants the model: false stops the load (D67). A listener that threw says
+// nothing about the caller, so the load goes on
+bool progress_cb(void * user, float p) {
     JNIEnv * env = env_for_thread();
-    if (!env) return;
-    env->CallVoidMethod(static_cast<jobject>(user), g_progress_on_progress, (jfloat) p);
-    clear_pending(env);
+    if (!env) return true;
+    const jboolean go_on = env->CallBooleanMethod(static_cast<jobject>(user), g_progress_on_progress, (jfloat) p);
+    if (env->ExceptionCheck()) {
+        clear_pending(env);
+        return true;
+    }
+    return go_on == JNI_TRUE;
 }
 
 jlong modelLoad(JNIEnv * env, jobject, jstring config, jobject progress) {
@@ -195,6 +202,12 @@ jlong modelLoad(JNIEnv * env, jobject, jstring config, jobject progress) {
     char * err = nullptr;
     const lb_status st = lb_model_load(c.c_str(), listener ? progress_cb : nullptr, listener, &model, &err);
     if (listener) env->DeleteGlobalRef(listener);  // no callbacks after lb_model_load returns
+    if (st == LB_ERR_CANCELLED) {
+        // a stop carries no error JSON (llamabro.h); Kotlin turns this status into the caller's cancellation
+        if (err) lb_string_free(err);
+        throw_native_error(env, st, nullptr, "{\"error\":\"model load cancelled\"}");
+        return 0;
+    }
     if (st != LB_OK) {
         throw_native_error(env, st, err);
         return 0;
@@ -280,7 +293,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM * vm, void *) {
     g_sink_on_cancelled = env->GetMethodID(sink, "onCancelled", "()V");
     if (!g_sink_on_chunk || !g_sink_on_done || !g_sink_on_cancelled) return fail("RequestSink methods");
     if (!(progress = env->FindClass("com/suhel/llamabro/internal/ProgressListener"))) return fail("ProgressListener");
-    if (!(g_progress_on_progress = env->GetMethodID(progress, "onProgress", "(F)V"))) return fail("ProgressListener.onProgress");
+    if (!(g_progress_on_progress = env->GetMethodID(progress, "onProgress", "(F)Z"))) return fail("ProgressListener.onProgress");
     if (!(log = env->FindClass("com/suhel/llamabro/internal/LogListener"))) return fail("LogListener");
     if (!(g_log_on_log = env->GetMethodID(log, "onLog", "(ILjava/lang/String;)V"))) return fail("LogListener.onLog");
 

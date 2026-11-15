@@ -42,7 +42,34 @@ internal object GgufHeader {
             null
         }
 
+    /**
+     * The scalar metadata values whose keys [wanted] accepts, read from a complete header: numbers as [Long] or
+     * [Double], booleans and strings as themselves; arrays are skipped. Throws [IllegalArgumentException] on a header
+     * that is not GGUF or ends early.
+     */
+    fun metadata(bytes: ByteBuffer, wanted: (String) -> Boolean): Map<String, Any> =
+        try {
+            val reader = Reader(bytes.slice())
+            require(reader.ascii(4) == "GGUF") { "invalid GGUF magic" }
+            val version = reader.u32()
+            require(version == 2L || version == 3L) { "unsupported GGUF version $version" }
+            reader.u64()
+            val metadata = reader.u64()
+            require(metadata <= 10_000_000) { "invalid GGUF counts" }
+            val found = LinkedHashMap<String, Any>()
+            repeat(metadata.toInt()) {
+                val key = reader.string()
+                val type = reader.u32()
+                if (type != ARRAY && wanted(key)) found[key] = reader.scalar(type) else reader.value(type)
+            }
+            found
+        } catch (_: NeedMore) {
+            throw IllegalArgumentException("GGUF metadata ends early")
+        }
+
     private class NeedMore : RuntimeException()
+
+    private const val ARRAY = 9L
 
     private class Reader(source: ByteBuffer) {
         private val buffer = source.order(ByteOrder.LITTLE_ENDIAN)
@@ -76,6 +103,27 @@ internal object GgufHeader {
             val size = u64()
             require(size <= Int.MAX_VALUE) { "invalid GGUF string length" }
             return ascii(size.toInt())
+        }
+
+        /** A scalar's value; never called for an array. */
+        fun scalar(type: Long): Any {
+            fun need(count: Int) {
+                if (buffer.remaining() < count) throw NeedMore()
+            }
+            return when (type) {
+                0L -> need(1).let { buffer.get().toLong() and 0xff }
+                1L -> need(1).let { buffer.get().toLong() }
+                2L -> need(2).let { buffer.short.toLong() and 0xffff }
+                3L -> need(2).let { buffer.short.toLong() }
+                4L -> u32()
+                5L -> need(4).let { buffer.int.toLong() }
+                6L -> need(4).let { buffer.float.toDouble() }
+                7L -> need(1).let { buffer.get() != 0.toByte() }
+                8L -> string()
+                10L, 11L -> need(8).let { buffer.long }
+                12L -> need(8).let { buffer.double }
+                else -> throw IllegalArgumentException("invalid GGUF value type $type")
+            }
         }
 
         fun value(type: Long) {

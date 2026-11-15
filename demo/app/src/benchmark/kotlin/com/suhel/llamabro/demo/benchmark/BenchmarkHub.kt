@@ -1,6 +1,7 @@
 package com.suhel.llamabro.demo.benchmark
 
 import com.suhel.llamabro.DeviceKind
+import com.suhel.llamabro.DownloadProgress
 import com.suhel.llamabro.FitEstimate
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.demo.models.CachedEntry
@@ -8,7 +9,6 @@ import com.suhel.llamabro.demo.models.DownloadScheduler
 import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.models.HubEstimate
 import com.suhel.llamabro.demo.models.HubGateway
-import com.suhel.llamabro.hub.DownloadProgress
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubPlan
 import kotlinx.coroutines.flow.Flow

@@ -59,7 +59,7 @@ class ModelLifecycleTest {
                 object : Engine by FakeEngine() {
                     val model = FakeModel()
 
-                    override fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel {
+                    override fun load(configJson: String, onProgress: (Float) -> Boolean): EngineModel {
                         loading.countDown()
                         release.await(5, TimeUnit.SECONDS)
                         return model
@@ -183,7 +183,7 @@ class ModelLifecycleTest {
             val threads = mutableSetOf<Thread>()
             testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf")) {
                 onProgress {
-                    seen += it
+                    seen += (it as LoadProgress.Loading).fraction
                     threads += Thread.currentThread()
                 }
             }

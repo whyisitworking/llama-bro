@@ -5,8 +5,9 @@ import androidx.compose.ui.unit.dp
 /**
  * The size scale: every height, width and icon size a component uses, so related elements rank the same way on every
  * screen (docs/design/demo-app.md, section 8.6). Heights follow Material 3: a 48 dp touch target, 40 dp controls,
- * 56 dp fields and buttons, 56 and 72 dp list rows, a 64 dp top bar and an 80 dp navigation bar. Icons come in two
- * sizes: [icon] for actions and leading icons, [iconSmall] for marks inside text (a chevron, a check, a remove cross).
+ * 56 dp fields and buttons, 48 (dense), 56 and 72 dp list rows, a 64 dp top bar and an 80 dp navigation bar. Icons
+ * come in two sizes: [icon] for actions and leading icons, [iconSmall] for marks inside text (a chevron, a check, a
+ * remove cross).
  */
 object DemoSize {
     /** An action or a leading icon. */
@@ -21,8 +22,18 @@ object DemoSize {
     /** A compact control: an icon button's circle, a bordered button, an avatar. */
     val control = 40.dp
 
+    /**
+     * A circle of the message bar's button row (+, Think, send) and its glyph (D73): smaller than [control] so the
+     * filled send reads lighter, still centred in a [target].
+     */
+    val barCircle = 36.dp
+    val barGlyph = 20.dp
+
     /** A text field, a primary button, a one-line list row. */
     val field = 56.dp
+
+    /** A dense one-line list row: the drawer's chats, a long list scanned by title. Still a whole [target]. */
+    val rowDense = 48.dp
 
     /** A two-line list row. */
     val rowTwoLine = 72.dp
@@ -66,6 +77,9 @@ object DemoSize {
 
     /** A typing dot: three of them stand in for a reply until its first word. */
     val dot = 6.dp
+
+    /** A markdown list's bullet: a disc, a ring or a square by depth, drawn rather than a glyph (D74). */
+    val bullet = 6.dp
 
     /** A divider and an outline. */
     val hairline = 1.dp

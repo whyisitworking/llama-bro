@@ -1,0 +1,412 @@
+package com.suhel.llamabro.hub.testing
+
+import com.suhel.llamabro.chat.Sampling
+import com.suhel.llamabro.hub.internal.Response
+import com.suhel.llamabro.hub.internal.Storage
+import com.suhel.llamabro.hub.internal.Transport
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.IOException
+import java.io.InputStream
+import java.net.URI
+import java.net.URLDecoder
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.security.MessageDigest
+
+/** A file of a scripted repo, its digests computed once. */
+internal class ScriptedFile(val path: String, val bytes: ByteArray) {
+    val sha256: String = hex(MessageDigest.getInstance("SHA-256").digest(bytes))
+
+    /** Git's blob id, which the Hub lists for a file outside LFS. */
+    val gitOid: String =
+        hex(
+            MessageDigest
+                .getInstance("SHA-1")
+                .apply { update("blob ${bytes.size}\u0000".toByteArray(Charsets.UTF_8)) }
+                .digest(bytes),
+        )
+
+    val isGguf: Boolean get() = path.endsWith(".gguf")
+}
+
+/** One commit of a scripted repo. */
+private class Commit(val id: String, val order: Int, val repo: FakeLlamaBroHub.Repo, val files: List<ScriptedFile>)
+
+/**
+ * The Hugging Face Hub's routes the hub uses (search, model info, refs, tree, resolve with ranges), answered from the
+ * repos a test declared, the way huggingface.co answers them (D75). Nothing leaves the process.
+ */
+internal class ScriptedHub(endpoint: String) : Transport {
+    private val endpoint = endpoint.trimEnd('/') + "/"
+    private val lock = Any()
+    private val repos = LinkedHashMap<String, MutableList<Commit>>()
+    private val log = mutableListOf<String>()
+    private var commits = 0
+    private var rateLimited = 0
+    private var retryAfter: Long? = null
+
+    @Volatile var downloadMillis: Long = 0
+
+    @Volatile var offline: Boolean = false
+
+    fun requests(): List<String> = synchronized(lock) { log.toList() }
+
+    fun publish(id: String, repo: FakeLlamaBroHub.Repo) {
+        synchronized(lock) {
+            val order = ++commits
+            val commit = Commit("%040x".format(order), order, repo, repo.files.toList())
+            repos.getOrPut(id) { mutableListOf() } += commit
+        }
+    }
+
+    fun rateLimit(retryAfterSeconds: Long?, times: Int) {
+        synchronized(lock) {
+            rateLimited = times
+            retryAfter = retryAfterSeconds
+        }
+    }
+
+    override suspend fun open(
+        method: String,
+        url: String,
+        headers: Map<String, String>,
+        range: Long?,
+        rangeEnd: Long?,
+    ): Response {
+        val job = currentCoroutineContext()[Job]
+        return synchronized(lock) {
+            log += "$method $url" + (range?.let { " bytes=$it-${rangeEnd ?: ""}" } ?: "")
+            if (offline) throw IOException("FakeLlamaBroHub is offline")
+            if (rateLimited > 0) {
+                rateLimited--
+                return@synchronized answer(url, HTTP_TOO_MANY, "{}", retryAfter?.let { mapOf("retry-after" to "$it") })
+            }
+            route(method, url, range, rangeEnd, job)
+        }
+    }
+
+    private fun route(
+        method: String,
+        url: String,
+        range: Long?,
+        rangeEnd: Long?,
+        job: Job?,
+    ): Response {
+        if (!url.startsWith(endpoint)) return notFound(url)
+        val uri = URI(url)
+        val path = uri.path.removePrefix("/").split('/')
+        if (path == listOf("api", "models")) return search(url, query(uri))
+        val api = path.size >= API_REPO_PARTS && path[0] == "api" && path[1] == "models"
+        val resolve = !api && path.size >= RESOLVE_PARTS && path[2] == "resolve"
+        val id = (if (api) path.subList(2, API_REPO_PARTS) else path.take(2)).joinToString("/")
+        val history = repos[id]
+        return when {
+            (!api && !resolve) || history == null -> notFound(url)
+            history.last().repo.gated -> answer(url, HTTP_UNAUTHORIZED, """{"error":"gated"}""")
+            api -> api(url, id, history, path.drop(API_REPO_PARTS))
+            else -> resolve(method, url, history, path, Range(range, rangeEnd), job)
+        }
+    }
+
+    /** `api/models/{owner}/{name}` and its [tail]: nothing, `refs`, or `tree/{commit}`. */
+    private fun api(url: String, id: String, history: List<Commit>, tail: List<String>): Response {
+        val latest = history.last()
+        return when {
+            tail.isEmpty() -> {
+                answer(url, HTTP_OK, info(id, latest).toString())
+            }
+
+            tail == listOf("refs") -> {
+                val refs =
+                    buildJsonObject {
+                        putJsonArray("branches") {
+                            addJsonObject {
+                                put("name", "main")
+                                put("targetCommit", latest.id)
+                            }
+                        }
+                    }
+                answer(url, HTTP_OK, refs.toString())
+            }
+
+            tail.size == 2 && tail[0] == "tree" -> {
+                history
+                    .firstOrNull { it.id == tail[1] }
+                    ?.let { answer(url, HTTP_OK, tree(it).toString()) }
+                    ?: notFound(url)
+            }
+
+            else -> {
+                notFound(url)
+            }
+        }
+    }
+
+    /** `{owner}/{name}/resolve/{revision}/{path}`: HEAD, a whole GET, or a byte range. */
+    private fun resolve(
+        method: String,
+        url: String,
+        history: List<Commit>,
+        path: List<String>,
+        range: Range,
+        job: Job?,
+    ): Response {
+        val revision = path[REVISION]
+        val name = path.drop(RESOLVE_PARTS - 1).joinToString("/")
+        val commit = if (revision == "main") history.last() else history.firstOrNull { it.id == revision }
+        val file = commit?.files?.firstOrNull { it.path == name } ?: return notFound(url)
+        val size = file.bytes.size.toLong()
+        val head = mapOf("accept-ranges" to listOf("bytes"))
+        if (method == "HEAD") return Response(HTTP_OK, head + length(size), url, null) {}
+        val start = range.first ?: 0L
+        if (start >= size && size > 0) return answer(url, HTTP_RANGE_NOT_SATISFIABLE, "")
+        val end = minOf(range.last ?: (size - 1), size - 1)
+        val slice = file.bytes.copyOfRange(start.toInt(), (end + 1).toInt())
+        // a header read (bounded) answers at once; a download is paced so its progress can be seen
+        val body = if (range.last == null) Paced(slice, downloadMillis, job) else slice.inputStream()
+        val headers = head + length(slice.size.toLong())
+        return if (range.first == null) {
+            Response(HTTP_OK, headers, url, body) {}
+        } else {
+            Response(HTTP_PARTIAL, headers + ("content-range" to listOf("bytes $start-$end/$size")), url, body) {}
+        }
+    }
+
+    /** `api/models?search=…&author=…&pipeline_tag=…&sort=…&limit=…`, paged through a `Link` header. */
+    private fun search(url: String, params: Map<String, String>): Response {
+        val query = params["search"].orEmpty().lowercase()
+        val author = params["author"]?.lowercase()
+        val images = params["pipeline_tag"] == IMAGE_TASK
+        val found =
+            repos.entries
+                .map { (id, history) -> id to history.last() }
+                .filter { (id, commit) ->
+                    commit.files.any { it.isGguf } &&
+                        query in id.lowercase() &&
+                        (author == null || id.substringBefore('/').lowercase() == author) &&
+                        (!images || commit.repo.takesImages)
+                }.sortedWith(order(params["sort"]))
+        val offset = params["cursor"]?.toIntOrNull() ?: 0
+        val limit = params["limit"]?.toIntOrNull() ?: found.size
+        val page = found.drop(offset).take(limit)
+        val items = JsonArray(page.map { (id, commit) -> info(id, commit) })
+        val next = offset + limit
+        val link =
+            if (next < found.size) {
+                val base = url.replace(Regex("&cursor=[^&]*"), "")
+                mapOf("link" to "<$base&cursor=$next>; rel=\"next\"")
+            } else {
+                null
+            }
+        return answer(url, HTTP_OK, items.toString(), link)
+    }
+
+    /** The Hub's orders, most first; trending reads as downloads and a later commit as more recently updated. */
+    private fun order(sort: String?): Comparator<Pair<String, Commit>> =
+        when (sort) {
+            "likes" -> compareByDescending { it.second.repo.likes }
+            "lastModified" -> compareByDescending { it.second.order }
+            else -> compareByDescending { it.second.repo.downloads }
+        }
+
+    private fun info(id: String, commit: Commit) =
+        buildJsonObject {
+            put("id", id)
+            put("downloads", commit.repo.downloads)
+            put("likes", commit.repo.likes)
+            put("pipeline_tag", if (commit.repo.takesImages) IMAGE_TASK else "text-generation")
+            putJsonArray("tags") {
+                if (commit.files.any { it.isGguf }) add(JsonPrimitive("gguf"))
+                commit.repo.baseModel?.let { base ->
+                    add(JsonPrimitive("base_model:$base"))
+                    add(JsonPrimitive("base_model:quantized:$base"))
+                }
+            }
+        }
+
+    /** As the Hub lists a tree: GGUFs in LFS with their SHA-256, other files by their git blob id. */
+    private fun tree(commit: Commit) =
+        buildJsonArray {
+            for (file in commit.files) {
+                addJsonObject {
+                    put("type", "file")
+                    put("path", file.path)
+                    put("size", file.bytes.size)
+                    put("oid", file.gitOid)
+                    if (file.isGguf) {
+                        putJsonObject("lfs") {
+                            put("oid", file.sha256)
+                            put("size", file.bytes.size)
+                        }
+                    }
+                }
+            }
+        }
+
+    private fun length(size: Long) = mapOf("content-length" to listOf("$size"))
+
+    private fun notFound(url: String) = answer(url, HTTP_NOT_FOUND, """{"error":"not found"}""")
+
+    private fun answer(url: String, status: Int, body: String, headers: Map<String, String>? = null): Response {
+        val bytes = body.toByteArray(Charsets.UTF_8)
+        val all = length(bytes.size.toLong()) + headers.orEmpty().mapValues { listOf(it.value) }
+        return Response(status, all, url, bytes.inputStream()) {}
+    }
+
+    private fun query(uri: URI): Map<String, String> =
+        uri.rawQuery
+            .orEmpty()
+            .split('&')
+            .filter { '=' in it }
+            .associate { pair ->
+                val (key, value) = pair.split('=', limit = 2)
+                decode(key) to decode(value)
+            }
+
+    private companion object {
+        const val HTTP_OK = 200
+        const val HTTP_PARTIAL = 206
+        const val HTTP_UNAUTHORIZED = 401
+        const val HTTP_NOT_FOUND = 404
+        const val HTTP_RANGE_NOT_SATISFIABLE = 416
+        const val HTTP_TOO_MANY = 429
+        const val API_REPO_PARTS = 4
+        const val RESOLVE_PARTS = 5
+        const val REVISION = 3 // owner, name, "resolve", revision
+        const val IMAGE_TASK = "image-text-to-text"
+
+        fun decode(value: String): String = URLDecoder.decode(value, Charsets.UTF_8.name())
+    }
+}
+
+/** A request's `Range`: the first byte and the optional last, both null for the whole file. */
+private class Range(val first: Long?, val last: Long?)
+
+/**
+ * A download body in [STEPS] pieces over [millis], so the hub's progress reports the bytes as they move. The pause
+ * between pieces ends as soon as [job] (the request's caller) is cancelled, so a cancel isn't held up by it.
+ */
+private class Paced(private val bytes: ByteArray, private val millis: Long, private val job: Job?) : InputStream() {
+    private var position = 0
+    private val step = maxOf(1, (bytes.size + STEPS - 1) / STEPS)
+
+    override fun read(): Int {
+        val one = ByteArray(1)
+        return if (read(one, 0, 1) < 0) -1 else one[0].toInt() and BYTE_MASK
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (position >= bytes.size) return -1
+        pause(millis / STEPS)
+        val count = minOf(length, step, bytes.size - position)
+        System.arraycopy(bytes, position, buffer, offset, count)
+        position += count
+        return count
+    }
+
+    private fun pause(total: Long) {
+        val until = System.nanoTime() + total * NANOS_PER_MILLI
+        while (job?.isCancelled != true) {
+            val left = (until - System.nanoTime()) / NANOS_PER_MILLI
+            if (left <= 0) return
+            Thread.sleep(minOf(left, SLICE_MILLIS))
+        }
+    }
+
+    private companion object {
+        const val STEPS = 4
+        const val BYTE_MASK = 0xff
+        const val SLICE_MILLIS = 5L
+        const val NANOS_PER_MILLI = 1_000_000L
+    }
+}
+
+/** The phone's disk as a test sets it: [freeBytes] free, and nothing to sync. */
+internal class ScriptedStorage : Storage {
+    @Volatile var freeBytes: Long = Long.MAX_VALUE
+
+    override fun allocatableBytes(dir: File): Long = freeBytes
+
+    override fun allocate(dir: File, bytes: Long) {
+        if (bytes > freeBytes) throw IOException("FakeLlamaBroHub: $bytes bytes asked, $freeBytes free")
+    }
+
+    override fun fsyncDir(dir: File) = Unit
+}
+
+/** GGUF files of metadata only, valid for the hub's header reads and for `FakeLlamaBro`'s loads. */
+internal object Gguf {
+    private const val VERSION = 3
+    private const val ALIGNMENT = 32
+    private const val TYPE_I32 = 5
+    private const val TYPE_F32 = 6
+    private const val TYPE_STRING = 8
+
+    /**
+     * A GGUF of [size] bytes: a header with [name] as `general.name` and [sampling] as `general.sampling.*`, then
+     * zeros. The name makes each file's bytes, and so its digest, its own: the cache stores equal bytes once.
+     */
+    fun bytes(name: String, sampling: Sampling?, size: Int): ByteArray {
+        val out = ByteArrayOutputStream()
+        val metadata = mapOf<String, Any>("general.name" to name) + sampling?.let(::keys).orEmpty()
+
+        fun put(count: Int, fill: ByteBuffer.() -> Unit) =
+            out.write(
+                ByteBuffer
+                    .allocate(count)
+                    .order(ByteOrder.LITTLE_ENDIAN)
+                    .apply(fill)
+                    .array(),
+            )
+        out.write("GGUF".toByteArray(Charsets.US_ASCII))
+        put(Int.SIZE_BYTES) { putInt(VERSION) }
+        put(Long.SIZE_BYTES) { putLong(0) } // no tensors
+        put(Long.SIZE_BYTES) { putLong(metadata.size.toLong()) }
+
+        fun string(value: String) {
+            val raw = value.toByteArray(Charsets.UTF_8)
+            put(Long.SIZE_BYTES) { putLong(raw.size.toLong()) }
+            out.write(raw)
+        }
+        for ((key, value) in metadata) {
+            string(key)
+            when (value) {
+                is String -> put(Int.SIZE_BYTES) { putInt(TYPE_STRING) }.also { string(value) }
+                is Float -> put(Int.SIZE_BYTES + Float.SIZE_BYTES) { putInt(TYPE_F32).putFloat(value) }
+                else -> put(Int.SIZE_BYTES * 2) { putInt(TYPE_I32).putInt((value as Number).toInt()) }
+            }
+        }
+        val header = (out.size() + ALIGNMENT - 1) / ALIGNMENT * ALIGNMENT
+        require(size >= header) { "a GGUF with this header needs at least $header bytes, was $size" }
+        return out.toByteArray().copyOf(size)
+    }
+
+    /** The `general.sampling.*` keys upstream reads (common/sampling.cpp), under its names. */
+    private fun keys(sampling: Sampling): Map<String, Number> =
+        listOfNotNull(
+            sampling.temperature?.let { "temp" to it },
+            sampling.topK?.let { "top_k" to it },
+            sampling.topP?.let { "top_p" to it },
+            sampling.minP?.let { "min_p" to it },
+            sampling.xtcProbability?.let { "xtc_probability" to it },
+            sampling.xtcThreshold?.let { "xtc_threshold" to it },
+            sampling.repeatLastN?.let { "penalty_last_n" to it },
+            sampling.repeatPenalty?.let { "penalty_repeat" to it },
+            sampling.mirostat?.let { "mirostat" to it },
+            sampling.mirostatTau?.let { "mirostat_tau" to it },
+            sampling.mirostatEta?.let { "mirostat_eta" to it },
+        ).associate { (key, value) -> "general.sampling.$key" to value }
+}
+
+private fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
