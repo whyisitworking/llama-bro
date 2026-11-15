@@ -20,6 +20,15 @@ public class ModelConfig internal constructor() {
     /** Which chip runs the model; [DevicePolicy.Auto] picks the fastest that loads ([Model.loadReport] says which). */
     public var devicePolicy: DevicePolicy = DevicePolicy.Auto
 
+    /**
+     * Which chip runs the image and audio encoder (the source's `mmproj`), as llama-server's `--mmproj-device`. null,
+     * the default, follows the model's device. [DevicePolicy.Only] fails the load with
+     * [LlamaBroException.DeviceUnavailable] if that kind isn't available; [DevicePolicy.Prefer] and
+     * [DevicePolicy.Auto] (the fastest available) fall back to the model's device when theirs is missing or fails to
+     * load. [Model.loadReport] says where the SDK placed it.
+     */
+    public var encoderDevice: DevicePolicy? = null
+
     /** null = llama.cpp's default. */
     public var threads: Int? = null
 
@@ -47,6 +56,14 @@ public class ModelConfig internal constructor() {
      * [LlamaBro.estimateFit] uses the same value. At least 0.
      */
     public var memoryReserveMib: Int = 512 // MemoryBudget.RESERVE_MIB (D34, F66)
+
+    /**
+     * What happens when [ContextSize.Auto] or [ContextSize.UpTo] finds that even the smallest context doesn't fit:
+     * [MemoryCheck.Warn] (the default) loads at the smallest context and says so in [LoadReport.memoryWarning];
+     * [MemoryCheck.Refuse] fails the load. The check can't see what Android frees by closing background apps, so it
+     * refuses models that run (F128). [ContextSize.Fixed] has no check.
+     */
+    public var memoryCheck: MemoryCheck = MemoryCheck.Warn
 
     /** Context checkpoints kept per slot (`--ctx-checkpoints`), which let hybrid models reuse a prefix (§7). */
     public var checkpointsPerSlot: Int = 8
@@ -96,12 +113,17 @@ public class ModelConfig internal constructor() {
         slotSavePath: String,
         devices: List<String> = emptyList(),
         memoryBudgetMib: Long? = null,
+        mmprojDevice: String? = null,
+        /** Load at the smallest context with no budget: the memory check said no, and the app chose to be warned. */
+        smallestContext: Boolean = false,
     ): String =
         buildJsonObject {
             validateSource(source)
             putDevices(devices)
+            // upstream's -mmdev: "none" is the CPU, else a device name; absent follows the model's device
+            mmprojDevice?.let { put("mmproj_device", it) }
             putSource(source)
-            putContext(memoryBudgetMib)
+            putContext(memoryBudgetMib, smallestContext)
             putBatching(slotSavePath)
             putTask()
             putLoraAdapters()
@@ -124,9 +146,13 @@ public class ModelConfig internal constructor() {
         }
     }
 
-    private fun JsonObjectBuilder.putContext(memoryBudgetMib: Long?) {
+    private fun JsonObjectBuilder.putContext(memoryBudgetMib: Long?, smallestContext: Boolean) {
         when (val c = contextSize) {
             ContextSize.Auto, is ContextSize.UpTo -> {
+                if (smallestContext) {
+                    put("n_ctx", ContextSize.smallest(c))
+                    return
+                }
                 put("n_ctx", "auto")
                 put("n_ctx_cap", if (c is ContextSize.UpTo) c.maxTokens else ContextSize.AUTO_CEILING)
                 // without a budget (no memory figures, e.g. FakeLlamaBro) the native side uses min(ceiling, trained)
@@ -231,8 +257,9 @@ public sealed interface ContextSize {
      * `availMem`) less Android's low-memory threshold, the prompt cache ([ModelConfig.ramCacheMib]), an image
      * encoder's file and a reserve for what grows during a chat ([ModelConfig.memoryReserveMib], 512 MiB by default). A
      * phone short on memory gets a smaller
-     * context; if even 4096 tokens don't fit, the load fails with
-     * `LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory` instead of risking the app.
+     * context. If even 4096 tokens don't fit, [ModelConfig.memoryCheck] decides: by default the model loads at 4096
+     * tokens and [LoadReport.memoryWarning] says by how much it was short ([MemoryCheck.Warn]); with
+     * [MemoryCheck.Refuse] the load fails with `LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory`.
      *
      * Why 16 384: common local defaults are 4096 (Ollama, LM Studio, Apple's on-device model); reasoning and tool
      * results take 1–3K tokens a turn on current models, so four times that leaves room for a real conversation,
@@ -262,6 +289,12 @@ public sealed interface ContextSize {
     public companion object {
         /** [Auto]'s ceiling. */
         public const val AUTO_CEILING: Int = 16384
+
+        /** The smallest context [Auto] fits (D33). */
+        internal const val AUTO_FLOOR: Int = 4096
+
+        /** The context a fitted size falls back to when nothing fits: 4096, or an [UpTo] ceiling below it. */
+        internal fun smallest(size: ContextSize): Int = minOf(AUTO_FLOOR, (size as? UpTo)?.maxTokens ?: AUTO_FLOOR)
     }
 }
 
@@ -284,7 +317,7 @@ public sealed interface Speculative {
      * The GGUF's multi-token-prediction head (`--spec-type draft-mtp`), for the whole load (llama-server can't switch
      * it per request). Worth it on [DeviceKind.Npu] when replies are mostly structured output (F68). On the NPU a
      * greedy
-     * reply can differ slightly from one without it (F72). Never on [DeviceKind.Gpu]: at b12052 ggml-opencl aborts the
+     * reply can differ slightly from one without it (F72). Never on [DeviceKind.Gpu]: ggml-opencl aborts the
      * process on the first drafted batch (F67, F80), so [DevicePolicy.Auto] and [DevicePolicy.Prefer] skip the GPU,
      * with
      * that reason in [Model.loadReport], and `DevicePolicy.Only(DeviceKind.Gpu)` throws
@@ -374,7 +407,10 @@ public enum class Pooling(internal val nativeName: String?) {
     Last("last"),
 }
 
-/** The context cache's number formats llama.cpp accepts (`-ctk`/`-ctv`, `common/arg.cpp`). */
+/**
+ * The context cache's number formats (`-ctk`/`-ctv`, `common/arg.cpp`). b12352's `f8_e4m3` is left out: only the CPU
+ * backend has it, and Q8_0 already halves the cache (F121).
+ */
 public enum class KvCacheType(internal val nativeName: String) {
     F32("f32"),
     F16("f16"),

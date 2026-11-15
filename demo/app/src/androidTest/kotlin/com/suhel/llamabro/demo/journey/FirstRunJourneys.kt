@@ -37,7 +37,7 @@ class FirstRunJourneys : Journey(seenFirstRun = false, asksForNotifications = tr
 
         see("Hello from Qwen3.5 0.8B")
         goneTag("download_ring")
-        see("words/s", substring = true)
+        seeDescription("Reply details") // the reply's actions, with its details behind the info icon
         shot("4-answered")
     }
 }

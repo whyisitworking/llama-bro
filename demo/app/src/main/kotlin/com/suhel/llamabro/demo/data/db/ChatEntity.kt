@@ -12,4 +12,6 @@ data class ChatEntity(
     val createdAt: Long,
     val updatedAt: Long,
     val modelKey: String,
+    /** The chat's own sampling values over its model's (D60), in `Knobs.encode`'s form; null when it has none. */
+    val sampling: String? = null,
 )

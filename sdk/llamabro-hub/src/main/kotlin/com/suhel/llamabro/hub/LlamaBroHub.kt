@@ -2,8 +2,10 @@ package com.suhel.llamabro.hub
 
 import android.content.Context
 import com.suhel.llamabro.FitEstimate
+import com.suhel.llamabro.InternalLlamaBroApi
 import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.LogLevel
+import com.suhel.llamabro.Logger
 import com.suhel.llamabro.ModelConfig
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.hub.internal.AndroidStorage
@@ -24,6 +26,7 @@ import com.suhel.llamabro.hub.internal.Transport
 import com.suhel.llamabro.hub.internal.repoFolder
 import com.suhel.llamabro.hub.internal.resolvePlan
 import com.suhel.llamabro.hub.internal.splitInfo
+import com.suhel.llamabro.internal.LogcatLogger
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -68,7 +71,10 @@ public class LlamaBroHub internal constructor(
         Unit
     },
     internal val parallelDownloads: Int = 1,
+    defaultLogger: Logger? = null,
 ) {
+    // D66/F144: the app's logger wins; with none, lines go to the default (logcat `llamabro-hub` from create).
+    private val logger: Logger? = config.effectiveLogger(defaultLogger)
     private val degradedSymlinks = AtomicBoolean(false)
     private val transfers = Transfers()
     private val states = ConcurrentHashMap<String, MutableStateFlow<DownloadState>>()
@@ -82,7 +88,7 @@ public class LlamaBroHub internal constructor(
                     _,
                     error,
                     ->
-                    config.logger?.log(LogLevel.Warn, "hub state read failed: $error")
+                    logger?.log(LogLevel.Warn, "hub state read failed: $error")
                 },
         )
     private val selections = ConcurrentHashMap<String, Pair<HfModel, PlanOptions>>()
@@ -91,7 +97,7 @@ public class LlamaBroHub internal constructor(
 
     private suspend fun operationTransport(): Transport =
         config.token?.invoke()?.let {
-            HttpTransport(config.endpoint, it, config.logger)
+            HttpTransport(config.endpoint, it, logger)
         } ?: transport
 
     /** Resolves [model] online, falling back to the cache when the Hub is unavailable. */
@@ -334,7 +340,7 @@ public class LlamaBroHub internal constructor(
                 cacheDir,
                 requestTransport,
                 storage,
-                config.logger,
+                logger,
                 degradedSymlinks,
                 openOutput,
                 createSymlink,
@@ -511,31 +517,80 @@ public class LlamaBroHub internal constructor(
             }
         }
 
-    /** Implement on your Application to configure the process's Hub instance. */
-    public interface ConfigProvider {
-        /** Read once, by the first [getInstance]. */
-        public val llamaBroHubConfig: HubConfig
-    }
-
     public companion object {
-        @Volatile
-        private var instance: LlamaBroHub? = null
+        private val created = mutableMapOf<String, Pair<HubConfig, LlamaBroHub>>()
 
-        /** Uses the application's [ConfigProvider] or [HubConfig.Default] and its no-backup cache directory. */
+        /**
+         * The hub for [config]'s cache folder (D70): one per folder. The first call for a folder creates it; a later
+         * call with an equal [config] returns the same object, so a DI container can hold it as a singleton. Hubs on
+         * different folders coexist, so an app can move its models without a restart. [HubConfig] compares its logger
+         * and token provider by reference: create the config once, not on each call.
+         *
+         * Does no network, no native code and no disk I/O beyond resolving the folder: cheap on the main thread.
+         *
+         * @throws IllegalStateException if a hub already exists for the folder with another [config]: its endpoint,
+         * progress interval, logger or token provider differ.
+         */
         @JvmStatic
-        public fun getInstance(context: Context): LlamaBroHub =
-            instance ?: synchronized(this) {
-                instance ?: run {
-                    val app = context.applicationContext
-                    val config = (app as? ConfigProvider)?.llamaBroHubConfig ?: HubConfig.Default
-                    val cacheDir = config.cacheDir ?: File(app.noBackupFilesDir, "llamabro/hub")
-                    LlamaBroHub(
-                        config,
-                        cacheDir,
-                        HttpTransport(config.endpoint, token = null, logger = config.logger),
-                        AndroidStorage(app),
-                    )
-                }.also { instance = it }
+        @JvmOverloads
+        @OptIn(InternalLlamaBroApi::class)
+        public fun create(context: Context, config: HubConfig = HubConfig.Default): LlamaBroHub {
+            // A repeat call with an equal config skips the disk work below (D70).
+            registered(config)?.let { return it }
+            val app = context.applicationContext
+            val cacheDir = cacheDirFor(config, app.noBackupFilesDir)
+            return create(cacheDir, config) {
+                // The hub has no level setting of its own, so the default sink filters at Warn (D66).
+                val defaultLogger = LogcatLogger("llamabro-hub", minLevel = LogLevel.Warn)
+                LlamaBroHub(
+                    config,
+                    cacheDir,
+                    HttpTransport(config.endpoint, token = null, logger = config.effectiveLogger(defaultLogger)),
+                    AndroidStorage(app),
+                    defaultLogger = defaultLogger,
+                )
             }
+        }
+
+        /** A hub already created for an equal [config]: equal configs name one folder, so no path is resolved. */
+        @Synchronized
+        private fun registered(config: HubConfig): LlamaBroHub? =
+            created.values.firstOrNull { it.first === config || it.first == config }?.second
+
+        /** The folder a config names, or the app's default under [noBackupDir]. */
+        internal fun cacheDirFor(config: HubConfig, noBackupDir: File): File =
+            config.cacheDir ?: File(noBackupDir, "llamabro/hub")
+
+        /**
+         * The registry behind [create], free of `Context`, keyed by the canonical folder so two spellings of one folder
+         * are one hub. A refused config never reaches [build].
+         */
+        @Synchronized
+        internal fun create(cacheDir: File, config: HubConfig, build: () -> LlamaBroHub): LlamaBroHub {
+            val key = cacheDir.canonicalPath
+            val existing = created[key]
+            if (existing == null) return build().also { created[key] = config to it }
+            check(sameSettings(existing.first, config)) {
+                "LlamaBroHub.create: a hub for $key already exists with ${existing.first}; it can't be created again " +
+                    "with $config. Two hubs on one folder would download the same files twice: create the config " +
+                    "once and share the object."
+            }
+            return existing.second
+        }
+
+        // The key already says the folder is the same, so its spelling (null, `..`, a symlink) is not a conflict.
+        private fun sameSettings(a: HubConfig, b: HubConfig): Boolean =
+            a.endpoint == b.endpoint &&
+                a.progressInterval == b.progressInterval &&
+                a.logger === b.logger &&
+                a.token === b.token
+
+        /** Forgets the created hubs so a test can start clean. */
+        @Synchronized
+        internal fun resetCreatedForTest() {
+            created.clear()
+        }
     }
 }
+
+private fun HubConfig.effectiveLogger(default: Logger?): Logger? = logger ?: default

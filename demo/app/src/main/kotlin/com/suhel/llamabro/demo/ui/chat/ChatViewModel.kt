@@ -2,10 +2,15 @@ package com.suhel.llamabro.demo.ui.chat
 
 import android.net.Uri
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.demo.chat.ChatEngine
 import com.suhel.llamabro.demo.chat.ChatModelState
+import com.suhel.llamabro.demo.chat.ClosedNotes
 import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.Limits
 import com.suhel.llamabro.demo.chat.Markdown
@@ -18,7 +23,6 @@ import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.ui.shell.ChatListFormat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,11 +31,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import java.time.ZoneId
@@ -59,7 +61,7 @@ data class ComposerDraft(val text: String = "", val attachments: List<String> = 
 
 /**
  * The chat screen's state over a [ChatEngine.ChatHandle]. The message list, the streaming reply and the composer are
- * three flows, so a token redraws one row and a keystroke redraws only the bar.
+ * three separate states (the composer is snapshot state), so a token redraws one row and a keystroke only the bar.
  */
 class ChatViewModel(
     val handle: ChatEngine.ChatHandle,
@@ -71,6 +73,13 @@ class ChatViewModel(
     private val clock: () -> Long = System::currentTimeMillis,
     /** The stored title of a chat (the chat list layout's header); empty until the chat exists. */
     titles: (Long) -> Flow<String?> = { emptyFlow() },
+    /**
+     * What outlives the process: the draft, and the id a new chat gets with its first message, so the screen restored
+     * after process death reopens that chat with the draft in the bar ([chatIdToOpen]).
+     */
+    private val savedState: SavedStateHandle,
+    /** The app's scope: work that must finish after this view model is gone (deleting a draft's pictures). */
+    private val background: CoroutineScope,
 ) : ViewModel() {
     private val parsed = HashMap<Long, Pair<String, MarkdownBlocks>>()
 
@@ -153,12 +162,18 @@ class ChatViewModel(
             }.map { it.orEmpty() }
             .stateIn(viewModelScope, eager, "")
 
-    /** True while the model is loading from the phone's storage: the hairline sweeps, nothing else. */
+    /** True while the model is loading from the phone's storage: the hairline under the top bar shows it. */
     val waking: StateFlow<Boolean> =
         combine(handle.model, handle.name) { model, name ->
             model is ChatModelState.Waking &&
                 name.isNotEmpty()
         }.stateIn(viewModelScope, eager, false)
+
+    /** How far the load has come, 0 to 1, while waking; null before the SDK's first report. */
+    val wakeProgress: StateFlow<Float?> =
+        handle.model
+            .map { (it as? ChatModelState.Waking)?.progress }
+            .stateIn(viewModelScope, eager, null)
 
     /** A chat whose model is gone from the phone can be read but not continued. */
     val readOnly: StateFlow<Boolean> =
@@ -174,13 +189,16 @@ class ChatViewModel(
                 (it as? ChatModelState.Ready)?.sees ?: false
             }.stateIn(viewModelScope, eager, false)
 
+    /** The note the person closed; the line leaves it out (the engine's own limit is left as it is). */
+    val notes = ClosedNotes()
+
     /**
      * The one limit line shown above the bar: the engine's, else the model's own: gone from the phone, or its
-     * download stopped (a token, the network, the disk).
+     * download stopped (a token, the network, the disk). A closed note is left out.
      */
     val limit: StateFlow<Limit?> =
-        combine(handle.limit, handle.model, handle.name) { limit, model, name ->
-            limit
+        combine(handle.limit, handle.model, handle.name, notes.closed) { limit, model, name, closed ->
+            limit?.takeUnless { it == closed }
                 ?: when (model) {
                     is ChatModelState.Missing -> Limits.modelGone(name.ifEmpty { model.name })
                     is ChatModelState.DownloadFailed -> Limits.forDownload(model.failure)
@@ -196,7 +214,7 @@ class ChatViewModel(
     /** Everything the screen draws apart from the reply being written and the message bar, derived in one place. */
     val uiState: StateFlow<ChatScreenState> =
         combine(
-            combine(header, title, waking, ::ChatBar),
+            combine(header, title, waking, wakeProgress, ::ChatBar),
             rows,
             handle.busy,
             combine(readOnly, problem, limit, ::ChatBottom),
@@ -213,12 +231,23 @@ class ChatViewModel(
             ),
         )
 
-    private val draft = MutableStateFlow(ComposerDraft())
-    val composer: StateFlow<ComposerDraft> = draft
+    /**
+     * The draft is snapshot state, written in the keystroke's own call: the text field's value never waits on a
+     * coroutine (a derived flow would hand the field an old value and lose or reorder typing). Each change is also
+     * written to [savedState].
+     */
+    private val draft = mutableStateOf(restoredDraft())
+    private val draftLock = Any()
+    val composer: State<ComposerDraft> = draft
 
-    /** What the design system's message bar draws. The Think bulb is absent when the model can't think. */
-    val composerState: StateFlow<ComposerState> =
-        combine(draft, handle.think, handle.busy) { d, think, busy ->
+    /** The model's Think level and whether a reply is coming, copied from the engine for the bar. */
+    private val barFlags = mutableStateOf<Pair<ThinkLevel?, Boolean>>(null to false)
+
+    /** What the design system's message bar draws, derived synchronously from the draft (no Think bulb: null). */
+    val composerState: State<ComposerState> =
+        derivedStateOf {
+            val d = draft.value
+            val (think, busy) = barFlags.value
             ComposerState(
                 text = d.text,
                 canAttach = d.editing == null,
@@ -226,11 +255,38 @@ class ChatViewModel(
                 busy = busy,
                 hasAttachment = d.attachments.isNotEmpty(),
             )
-        }.stateIn(viewModelScope, eager, ComposerState("", canAttach = true, think = null, busy = false))
+        }
+
+    init {
+        viewModelScope.launch { combine(handle.think, handle.busy, ::Pair).collect { barFlags.value = it } }
+        // a new chat's id, once its first message made it: the restored screen reopens it instead of a blank chat
+        viewModelScope.launch { handle.chatId.collect { if (it != 0L) savedState[CHAT_ID_KEY] = it } }
+    }
 
     val busy: StateFlow<Boolean> get() = handle.busy
 
-    fun onText(text: String) = draft.update { it.copy(text = text) }
+    fun onText(text: String) = updateDraft { it.copy(text = text) }
+
+    private fun restoredDraft() =
+        ComposerDraft(
+            text = savedState.get<String>(DRAFT_TEXT_KEY).orEmpty(),
+            attachments = savedState.get<ArrayList<String>>(DRAFT_IMAGES_KEY).orEmpty(),
+            editing = savedState.get<Int>(DRAFT_EDITING_KEY),
+        )
+
+    /** Applies [change] to the draft atomically (two photo picks can finish together) and saves the result. */
+    private fun updateDraft(change: (ComposerDraft) -> ComposerDraft): ComposerDraft =
+        synchronized(draftLock) {
+            val before = draft.value
+            val after = change(before)
+            if (after != before) {
+                draft.value = after
+                savedState[DRAFT_TEXT_KEY] = after.text
+                savedState[DRAFT_IMAGES_KEY] = ArrayList(after.attachments)
+                savedState[DRAFT_EDITING_KEY] = after.editing
+            }
+            before
+        }
 
     private val sending = Mutex()
 
@@ -243,7 +299,7 @@ class ChatViewModel(
         if (d.text.isBlank() && d.attachments.isEmpty()) return
         if (d.editing != null) {
             handle.edit(d.editing, d.text)
-            draft.value = ComposerDraft()
+            updateDraft { ComposerDraft() }
             return
         }
         if (!sending.tryLock()) return
@@ -251,7 +307,7 @@ class ChatViewModel(
             try {
                 if (handle.send(d.text, d.attachments)) {
                     // what was typed or picked meanwhile stays; what was sent goes
-                    draft.update { if (it.text == d.text && it.attachments == d.attachments) ComposerDraft() else it }
+                    updateDraft { if (it.text == d.text && it.attachments == d.attachments) ComposerDraft() else it }
                     _problem.value = null
                 }
             } finally {
@@ -262,7 +318,7 @@ class ChatViewModel(
 
     /** A starter chip fills the bar and sends. */
     fun sendStarter(text: String) {
-        draft.value = ComposerDraft(text = text)
+        updateDraft { ComposerDraft(text = text) }
         send()
     }
 
@@ -271,10 +327,12 @@ class ChatViewModel(
     /** Opens the user message at [position] in the bar; sending replaces it and what followed (`edit`). */
     fun startEdit(position: Int) {
         val m = handle.messages.value.firstOrNull { it.position == position && it.kind == MessageKind.User } ?: return
-        draft.value = ComposerDraft(text = m.text, editing = position)
+        updateDraft { ComposerDraft(text = m.text, editing = position) }
     }
 
-    fun cancelEdit() = draft.update { it.copy(text = "", editing = null) }
+    fun cancelEdit() {
+        updateDraft { it.copy(text = "", editing = null) }
+    }
 
     fun regenerate(position: Int) = handle.regenerate(position)
 
@@ -310,7 +368,7 @@ class ChatViewModel(
                 }
             // two picks can race past the limit: the draft decides, atomically, whether this one fits
             val before =
-                draft.getAndUpdate {
+                updateDraft {
                     if (it.canTakePhoto()) {
                         it.copy(
                             attachments = it.attachments + name,
@@ -326,7 +384,7 @@ class ChatViewModel(
     private fun ComposerDraft.canTakePhoto() = attachments.size < MAX_IMAGES && editing == null
 
     fun removeAttachment(name: String) {
-        draft.update { it.copy(attachments = it.attachments - name) }
+        updateDraft { it.copy(attachments = it.attachments - name) }
         viewModelScope.launch { discardImages(listOf(name)) }
     }
 
@@ -367,11 +425,20 @@ class ChatViewModel(
         // the chat is gone: its engine handle ends, and pictures attached to a draft nobody sent are deleted
         val left = draft.value.attachments
         handle.close()
-        if (left.isNotEmpty()) CoroutineScope(Dispatchers.IO).launch { discardImages(left) }
+        if (left.isNotEmpty()) background.launch { discardImages(left) }
     }
 
-    private companion object {
-        const val MAX_IMAGES = 4
-        const val MILLIS_PER_SECOND = 1000.0
+    companion object {
+        /** The chat route's own argument name, so in a back-stack entry the saved id overrides the route's 0. */
+        const val CHAT_ID_KEY = "chatId"
+        private const val DRAFT_TEXT_KEY = "draft.text"
+        private const val DRAFT_IMAGES_KEY = "draft.images"
+        private const val DRAFT_EDITING_KEY = "draft.editing"
+        private const val MAX_IMAGES = 4
+        private const val MILLIS_PER_SECOND = 1000.0
+
+        /** The chat to open: the one a new chat became before the process died, else the route's [routeId]. */
+        fun chatIdToOpen(savedState: SavedStateHandle, routeId: Long): Long =
+            savedState.get<Long>(CHAT_ID_KEY)?.takeIf { it != 0L } ?: routeId
     }
 }

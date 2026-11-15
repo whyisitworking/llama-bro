@@ -9,9 +9,13 @@ import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -23,6 +27,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 class ModelRepositoryTest {
     @get:Rule val folder = TemporaryFolder()
@@ -44,9 +49,13 @@ class ModelRepositoryTest {
     @After fun stop() = scopes.forEach { it.cancel() }
 
     /** A repository whose launches run on the caller's thread, so a `get` has finished when it returns. */
-    private fun repository(host: ModelHost? = null): ModelRepository {
+    private fun repository(
+        host: ModelHost? = null,
+        gateway: HubGateway = hub,
+        lastUsed: Flow<Map<String, Long>> = flowOf(emptyMap()),
+    ): ModelRepository {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined).also(scopes::add)
-        return ModelRepository(hub, settings, scheduler, scope, host)
+        return ModelRepository(gateway, settings, scheduler, scope, host, lastUsed)
     }
 
     @Test fun getEnqueuesOnce() {
@@ -229,5 +238,51 @@ class ModelRepositoryTest {
             repo.downloadingIs(listOf(swift))
             repo.pause(swift)
             assertEquals(listOf(swift), repo.downloading.first())
+        }
+
+    @Test fun libraryNamesWhenEachModelWasLastUsedAndPutsTheLatestFirst() =
+        runBlocking {
+            hub.cachedEntries += CachedEntry(swift, 1)
+            hub.cachedEntries += CachedEntry(swiftQ8, 1)
+            hub.cachedEntries += CachedEntry(other, 1)
+            val used = MutableStateFlow(mapOf(other.toString() to 5L, swift.toString() to 9L))
+            val repo = repository(lastUsed = used)
+            val rows = repo.library.first()
+            assertEquals(listOf(swift, other, swiftQ8), rows.map { it.key })
+            assertEquals(listOf(9L, 5L, null), rows.map { it.lastUsed })
+            used.value = used.value + (swiftQ8.toString() to 12L) // a reply from the Q8 file
+            assertEquals(
+                swiftQ8,
+                repo.library
+                    .first { it.first().lastUsed == 12L }
+                    .first()
+                    .key,
+            )
+        }
+
+    @Test fun theCacheIsScannedOncePerChangeWhoeverCollects() =
+        runBlocking {
+            hub.cachedEntries += CachedEntry(swift, 1)
+            val scans = AtomicInteger()
+            val counting =
+                object : HubGateway by hub {
+                    override suspend fun cached(): List<CachedEntry> = hub.cached().also { scans.incrementAndGet() }
+                }
+            val repo = repository(gateway = counting)
+            val readers = List(3) { async { repo.library.first() } }
+            readers.forEach { assertEquals(listOf(swift), it.await().map { row -> row.key }) }
+            assertEquals(1, scans.get())
+            hub.cachedEntries += CachedEntry(other, 1)
+            repo.changed()
+            // a reader after a change waits for the new scan, never the old one
+            assertEquals(
+                setOf(swift, other),
+                repo.library
+                    .first()
+                    .map { it.key }
+                    .toSet(),
+            )
+            // one new scan for the library, plus `changed`'s own look at which downloads finished
+            assertEquals(3, scans.get())
         }
 }

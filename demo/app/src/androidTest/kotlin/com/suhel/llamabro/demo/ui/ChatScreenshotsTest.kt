@@ -257,7 +257,7 @@ class ChatScreenshotsTest(private val style: MessageStyle, private val theme: Th
         onPhone(swift)
         show()
         ask("This will fail")
-        waitFor("That didn't work. Try again.")
+        waitFor("That didn't work.")
         shot("failed")
     }
 

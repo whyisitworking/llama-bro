@@ -32,7 +32,22 @@ internal object ChatPreviewData {
         speed: String? = "38 words/s",
         stopped: Boolean = false,
         failure: String? = null,
-    ) = ReplyItem(id, position, text, Markdown.parse(text), reasoning, thoughtSeconds, speed, time, stopped, failure)
+        cut: Boolean = false,
+        canContinue: Boolean = false,
+    ) = ReplyItem(
+        id,
+        position,
+        text,
+        Markdown.parse(text),
+        reasoning,
+        thoughtSeconds,
+        speed,
+        time,
+        stopped,
+        failure,
+        cut = cut,
+        canContinue = canContinue,
+    )
 
     val conversation: List<ChatItem> =
         listOf(
@@ -61,13 +76,22 @@ internal object ChatPreviewData {
     val failed: List<ChatItem> =
         listOf(
             user(1, 0, "Summarise this for me"),
-            reply(2, 1, "", failure = "That didn't work. Try again.", speed = null),
+            reply(2, 1, "", failure = "That didn't work.", speed = null),
         )
 
     val stopped: List<ChatItem> =
         listOf(
             user(1, 0, "Tell me a long story"),
             reply(2, 1, "Once upon a time, in a harbour town", stopped = true, speed = null),
+        )
+
+    /** A reply cut at its length limit (D60): the last one offers Continue, an earlier one is only marked. */
+    val cut: List<ChatItem> =
+        listOf(
+            user(1, 0, "Write the whole harbour story"),
+            reply(2, 1, "Once upon a time, in a harbour town, the boats came in at dusk", cut = true),
+            user(3, 2, "Keep going"),
+            reply(4, 3, "The lamps were lit one by one along the quay", cut = true, canContinue = true),
         )
 
     val streamingAnswer =
@@ -92,7 +116,7 @@ internal object ChatPreviewData {
     val composerTyping = ComposerState("What about the soil?", canAttach = true, think = ThinkLevel.Off, busy = false)
     val composerBusy = ComposerState("", canAttach = true, think = ThinkLevel.Balanced, busy = true)
 
-    val memoryLimit = Limits.insufficientMemory("Qwen3.5 4B")
+    val memoryLimit = Limits.memoryWarning("Qwen3.5 4B")
     val goneLimit = Limits.modelGone("Qwen3.5 0.8B")
     val contextLimit = Limits.contextExceeded("Gemma 3 4B")
     val visionLimit = Limits.noVision("Qwen3.5 0.8B", "Qwen3.5 4B")

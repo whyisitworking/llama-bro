@@ -4,4 +4,9 @@
     <style name="Theme.Demo" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">#FFF7F6F3</item>
     </style>
+    <!-- The AndroidX splash: held until the settings and the cache scan are read, so the first frame is the app's own. -->
+    <style name="Theme.Demo.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#FFF7F6F3</item>
+        <item name="postSplashScreenTheme">@style/Theme.Demo</item>
+    </style>
 </resources>

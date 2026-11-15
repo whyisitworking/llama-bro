@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
+import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
@@ -43,7 +44,7 @@ fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
     val colors = LocalDemoColors.current
     Box(
         modifier
-            .heightIn(min = 56.dp)
+            .heightIn(min = DemoSize.field)
             .clip(CircleShape)
             .background(if (enabled) colors.accent else colors.hairline)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
@@ -84,7 +85,7 @@ fun QuietButton(
             .then(
                 if (bordered) {
                     Modifier.border(
-                        1.dp,
+                        DemoSize.hairline,
                         if (destructive) colors.danger else colors.muted,
                         shape,
                     )
@@ -92,7 +93,7 @@ fun QuietButton(
                     Modifier
                 },
             ).clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .then(if (bordered) Modifier.heightIn(min = 40.dp) else Modifier)
+            .then(if (bordered) Modifier.heightIn(min = DemoSize.control) else Modifier)
             .padding(horizontal = if (bordered) DemoSpacing.item else DemoSpacing.block, vertical = DemoSpacing.block),
         contentAlignment = Alignment.Center,
     ) {
@@ -100,7 +101,10 @@ fun QuietButton(
     }
 }
 
-/** An icon with a 48 dp touch target; [label] is what a screen reader says. */
+/**
+ * An icon with a 48 dp touch target; [label] is what a screen reader says. [small] draws the glyph at
+ * [DemoSize.iconSmall], for the quiet actions under a reply; the target stays 48 dp.
+ */
 @Composable
 fun IconAction(
     icon: ImageVector,
@@ -108,11 +112,12 @@ fun IconAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     muted: Boolean = false,
+    small: Boolean = false,
 ) {
     val colors = LocalDemoColors.current
     Box(
         modifier
-            .size(48.dp)
+            .size(DemoSize.target)
             .clip(CircleShape)
             .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -121,7 +126,7 @@ fun IconAction(
             icon,
             contentDescription = label,
             tint = if (muted) colors.muted else colors.ink,
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(if (small) DemoSize.iconSmall else DemoSize.icon),
         )
     }
 }
@@ -133,16 +138,16 @@ fun DemoFab(text: String, icon: ImageVector, onClick: () -> Unit, modifier: Modi
     val shape = DemoShapes.fab
     Row(
         modifier
-            .softShadow(shape, colors, elevation = 6.dp, lightAlpha = 0.18f)
+            .softShadow(shape, colors, elevation = DemoSize.elevationRaised, lightAlpha = 0.18f)
             .clip(shape)
             .background(colors.accent)
             .clickable(role = Role.Button, onClick = onClick)
-            .heightIn(min = 56.dp)
+            .heightIn(min = DemoSize.field)
             .padding(horizontal = DemoSpacing.item, vertical = DemoSpacing.block),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(DemoSpacing.block),
     ) {
-        Icon(icon, contentDescription = null, tint = colors.canvas, modifier = Modifier.size(24.dp))
+        Icon(icon, contentDescription = null, tint = colors.canvas, modifier = Modifier.size(DemoSize.icon))
         Text(text, color = colors.canvas, style = DemoType.title)
     }
 }
@@ -153,14 +158,21 @@ fun SegmentedSwitch(options: List<String>, selected: Int, onSelect: (Int) -> Uni
     val colors = LocalDemoColors.current
     val onSheet = LocalOnSheet.current
     // the chosen segment is raised: lighter than the track in either theme (white on the hairline in light; the
-    // hairline on the canvas in dark, where the surface is darker and the chosen one would look sunken)
-    val track = if (colors.isDark || onSheet) colors.canvas else colors.hairline
+    // hairline on the surface in dark). In dark the track is the surface, like the cards around it: the canvas would
+    // vanish into the page. On a sheet, whose background is the surface, the track is the canvas.
+    val track =
+        when {
+            onSheet -> colors.canvas
+            colors.isDark -> colors.surface
+            else -> colors.hairline
+        }
     val raised = if (colors.isDark) colors.hairline else colors.surface
     Row(
         modifier
-            .clip(DemoShapes.chip)
+            // segments are 40 dp in a 4 dp inset: a 48 dp control; the track's corner is the segment's plus the inset
+            .clip(DemoShapes.card)
             .background(track)
-            .padding(3.dp)
+            .padding(DemoSpacing.inline)
             .selectableGroup(),
     ) {
         options.forEachIndexed { index, option ->
@@ -169,7 +181,7 @@ fun SegmentedSwitch(options: List<String>, selected: Int, onSelect: (Int) -> Uni
             Box(
                 Modifier
                     .weight(1f)
-                    .heightIn(min = 42.dp)
+                    .heightIn(min = DemoSize.control)
                     .then(
                         if (on) {
                             Modifier

@@ -1,5 +1,7 @@
 package com.suhel.llamabro.chat
 
+import com.suhel.llamabro.conversation.LbToolAbort
+
 /**
  * What a chat stream emits, in order. Exactly one [Done], last. Sealed so `when` over it is exhaustive; the set is
  * final at 1.0 (D26).
@@ -19,30 +21,50 @@ public sealed interface ChatEvent {
     /** The next piece of the reply's text (`content`). */
     public data class ContentDelta(public val delta: String) : ChatEvent
 
-    /** A complete tool call. All calls of a reply arrive together, just before [Done]. */
+    /**
+     * A complete tool call. All calls of a reply arrive together, just before [Done]. In `Conversation`'s loop each
+     * call is announced when the loop reaches it (D62), so calls after an approval stop are announced only when the
+     * loop continues.
+     */
     public data class ToolCallReceived(public val call: ToolCall) : ChatEvent
 
-    /** A tool's result. Emitted only by `Conversation`, after it runs a handler. */
-    public data class ToolResult(public val callId: String, public val name: String, public val result: String) :
-        ChatEvent
+    /**
+     * A tool call's result, as sent to the model. Emitted only by `Conversation`'s agent loop.
+     * @param result the text the model sees: the handler's return, or an `Error: …` text (D62).
+     * @param error the exception a handler threw when the model got the generic `Error: the tool failed` instead of
+     *   its message, so the app can log or show it; null otherwise, including for an `LbToolError`, whose message the
+     *   model already has.
+     */
+    public data class ToolResult(
+        public val callId: String,
+        public val name: String,
+        public val result: String,
+        public val error: Throwable? = null,
+    ) : ChatEvent
 
-    /** The end of a reply. A class, not a data class: it gains fields (D26). */
+    /**
+     * The end of a reply. A class, not a data class: it gains fields (D26).
+     * @param abort the `LbToolAbort` a tool threw when [reason] is [FinishReason.ToolAborted]; null otherwise.
+     */
     public class Done internal constructor(
         public val reason: FinishReason,
         public val timings: Timings?,
         public val usage: Usage?,
+        public val abort: LbToolAbort? = null,
     ) : ChatEvent {
         override fun equals(other: Any?): Boolean =
-            other is Done && other.reason == reason && other.timings == timings && other.usage == usage
+            other is Done && other.reason == reason && other.timings == timings && other.usage == usage &&
+                other.abort == abort
 
-        override fun hashCode(): Int = listOf(reason, timings, usage).hashCode()
+        override fun hashCode(): Int = listOf(reason, timings, usage, abort).hashCode()
 
-        override fun toString(): String = "Done(reason=$reason, timings=$timings, usage=$usage)"
+        override fun toString(): String = "Done(reason=$reason, timings=$timings, usage=$usage, abort=$abort)"
     }
 }
 
 /**
- * Why a reply ended. The set is final at 1.0 (D26). [TurnLimit] and [ToolCallsPending] come only from `Conversation`'s
- * agent loop (design §6.2).
+ * Why a reply ended. The set is final at 1.0 (D26). [TurnLimit], [ToolCallsPending] and [ToolAborted] come only from
+ * `Conversation`'s agent loop (design §6.2): [ToolCallsPending] when a call waits for the app's result, [ToolAborted]
+ * when a tool threw `LbToolAbort` (D62; the exception is `Done.abort`).
  */
-public enum class FinishReason { Stop, Length, ToolCalls, TurnLimit, ToolCallsPending }
+public enum class FinishReason { Stop, Length, ToolCalls, TurnLimit, ToolCallsPending, ToolAborted }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,10 +39,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.R
 import com.suhel.llamabro.demo.designsystem.theme.DemoColors
+import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
+import com.suhel.llamabro.demo.designsystem.theme.DemoSize
+import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.subtleFill
@@ -79,10 +85,22 @@ data class MarkdownBlocks(val blocks: List<MarkdownBlock>)
  */
 @Composable
 fun MarkdownText(blocks: MarkdownBlocks, onCopyCode: (String) -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (block in blocks.blocks) MarkdownBlockView(block, onCopyCode)
+    // list items group tighter than other blocks ([DemoSpacing.inline] against [DemoSpacing.block]), and a heading
+    // opens a section ([DemoSpacing.item] above it), so the structure reads at a glance
+    Column(modifier) {
+        blocks.blocks.forEachIndexed { index, block ->
+            if (index > 0) Spacer(Modifier.height(gapBefore(blocks.blocks[index - 1], block)))
+            MarkdownBlockView(block, onCopyCode)
+        }
     }
 }
+
+private fun gapBefore(previous: MarkdownBlock, block: MarkdownBlock): Dp =
+    when {
+        block is MarkdownBlock.Heading -> DemoSpacing.item
+        previous is MarkdownBlock.ListItem && block is MarkdownBlock.ListItem -> DemoSpacing.inline
+        else -> DemoSpacing.block
+    }
 
 @Composable
 private fun MarkdownBlockView(block: MarkdownBlock, onCopyCode: (String) -> Unit) {
@@ -95,7 +113,6 @@ private fun MarkdownBlockView(block: MarkdownBlock, onCopyCode: (String) -> Unit
         is MarkdownBlock.Heading -> {
             Text(
                 rememberSpans(block.spans, colors),
-                Modifier.padding(top = 4.dp),
                 color = colors.ink,
                 style = if (block.level <= 2) DemoType.title else DemoType.title,
             )
@@ -109,7 +126,9 @@ private fun MarkdownBlockView(block: MarkdownBlock, onCopyCode: (String) -> Unit
             Row {
                 Text(
                     if (block.ordered) "${block.index}." else "•",
-                    Modifier.widthIn(min = 20.dp).padding(end = 6.dp),
+                    // a column wider than "9." and right-aligned in it, so every item's text starts at one edge; the
+                    // minimum is inside the gap, not around it, or each number's own width would move the text
+                    Modifier.padding(end = DemoSpacing.block).widthIn(min = DemoSpacing.section),
                     color = colors.muted,
                     style = DemoType.body,
                     textAlign = TextAlign.End,
@@ -120,10 +139,10 @@ private fun MarkdownBlockView(block: MarkdownBlock, onCopyCode: (String) -> Unit
 
         is MarkdownBlock.Quote -> {
             Row(Modifier.height(IntrinsicSize.Min)) {
-                Box(Modifier.width(3.dp).fillMaxHeight().background(colors.hairline, RoundedCornerShape(2.dp)))
+                Box(Modifier.width(DemoSize.track).fillMaxHeight().background(colors.hairline, CircleShape))
                 Text(
                     rememberSpans(block.spans, colors),
-                    Modifier.padding(start = 10.dp),
+                    Modifier.padding(start = DemoSpacing.compact),
                     color = colors.muted,
                     style = DemoType.body,
                 )
@@ -165,8 +184,8 @@ fun CodeBlock(code: String, onCopy: () -> Unit, modifier: Modifier = Modifier, l
     Column(
         modifier
             .fillMaxWidth()
-            .background(colors.subtleFill, RoundedCornerShape(12.dp))
-            .padding(start = 12.dp, bottom = 12.dp),
+            .background(colors.subtleFill, DemoShapes.card)
+            .padding(start = DemoSpacing.item, bottom = DemoSpacing.item),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -181,7 +200,7 @@ fun CodeBlock(code: String, onCopy: () -> Unit, modifier: Modifier = Modifier, l
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Text(
                 code,
-                Modifier.horizontalScroll(rememberScrollState()).padding(end = 12.dp),
+                Modifier.horizontalScroll(rememberScrollState()).padding(end = DemoSpacing.item),
                 color = colors.ink,
                 style = DemoType.code,
                 softWrap = false,

@@ -55,7 +55,7 @@ echo "$(wc -l < "$requests" | tr -d ' ') requests on $dev$( [ -n "$mmproj" ] || 
 adb shell "rm -rf $remote && mkdir -p $remote/bin $remote/lb"
 adb push -q "$tools/." "$remote/bin/" >/dev/null
 adb push -q "$requests" "$remote/requests.jsonl" >/dev/null
-env="cd $remote && LD_LIBRARY_PATH=$remote/bin ADSP_LIBRARY_PATH=$remote/bin"
+env="cd $remote && LD_LIBRARY_PATH=$remote/bin"  # ggml-hexagon finds the skeleton beside itself (b12352)
 
 # upstream: the host contract's flags plus the device (design §8)
 cool
@@ -80,7 +80,7 @@ adb pull -q "$remote/llama-server.log" "$out/" >/dev/null
 # the C API: the same config the host contract gives lb-run, with the device as DevicePolicy sends it
 cool
 config="$(python3 -c 'import json,sys; c={"model_path": sys.argv[1], "n_ctx": 8192, "devices": [sys.argv[3]], "n_gpu_layers": 999}; sys.argv[2] and c.update(mmproj_path=sys.argv[2]); print(json.dumps(c))' "$model" "$mmproj" "$dev")"
-backends="[{\"name\":\"hexagon\",\"files\":[\"libggml-hexagon.so\"],\"env\":{\"ADSP_LIBRARY_PATH\":\"$remote/bin\"}}]"
+backends="[{\"name\":\"hexagon\",\"files\":[\"libggml-hexagon.so\"],\"env\":{\"GGML_HEXAGON_LIBHTP_DIR\":\"$remote/bin\"}}]"
 adb shell "$env LB_RUN_LOG_LEVEL=debug LB_RUN_BACKENDS='$backends' bin/lb-run '$config' requests.jsonl lb 2> lb-run.log" || { adb pull -q $remote/lb-run.log "$out/"; echo "FAIL: lb-run (see $out/lb-run.log)"; exit 1; }
 adb pull -q "$remote/lb/." "$out/lb/" >/dev/null
 adb pull -q "$remote/lb-run.log" "$out/" >/dev/null

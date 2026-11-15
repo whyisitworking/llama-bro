@@ -67,11 +67,11 @@ class TestDemoApp : DemoApp() {
         }
 
     private fun build(c: TestConfig): AppContainer {
-        val llama = c.llamaBro ?: LlamaBro.getInstance(this)
+        val llama = c.llamaBro ?: LlamaBro.create(this, llamaBroConfig)
         return AppContainer(
             app = this,
             llamaBro = llama,
-            hub = c.hub ?: RealHubGateway(LlamaBroHub.getInstance(this), llama),
+            hub = c.hub ?: RealHubGateway(LlamaBroHub.create(this, hubConfig), llama),
             streamer = c.streamer,
             scheduler = c.scheduler ?: WorkDownloadScheduler(lazy { WorkManager.getInstance(this) }),
             discoveryOverride = c.discovery,

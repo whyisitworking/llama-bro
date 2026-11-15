@@ -208,7 +208,7 @@ static void log_callback_can_reenter() {
 }
 
 static void version_names_build() {
-    LB_CHECK(std::strstr(lb_version(), "b12052") != nullptr);
+    LB_CHECK(std::strstr(lb_version(), "b12352") != nullptr);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -240,8 +240,8 @@ static void props_build_info_names_llama_build() {
     lb_model * model = load_test_model({{"n_ctx", 512}});
     const std::string build_info = model_info(model).at("props").value("build_info", "");
     std::fprintf(stderr, "build_info: %s\n", build_info.c_str());
-    LB_CHECK(build_info.find("b12052") != std::string::npos);
-    LB_CHECK(build_info.find("84d9ce0") != std::string::npos);
+    LB_CHECK(build_info.find("b12352") != std::string::npos);
+    LB_CHECK(build_info.find("5676dfb") != std::string::npos);
     lb_model_free(model);
 }
 
@@ -262,6 +262,22 @@ static void config_defaults_applied() {
     LB_CHECK(p.devices.size() == 1 && p.devices[0] == nullptr);
     LB_CHECK(p.mmproj_use_gpu == false);
     LB_CHECK(p.fit_params == false);  // context and placement are explicit (D33)
+}
+
+static void mmproj_device_overrides_the_model_device() {
+    // upstream's -mmdev: absent follows the model's device; "none" is the CPU; a CPU device name is refused
+    init_runtime();  // the CPU backend registered, so "CPU" is refused as a CPU device, not as an unknown one
+    common_params p;
+    std::string err;
+    LB_CHECK(lb_parse_model_config(json{{"model_path", "x"}, {"mmproj_device", "none"}}, p, err));
+    LB_CHECK(p.mmproj_use_gpu == false && p.mmproj_device == nullptr);
+    common_params q;
+    LB_CHECK(!lb_parse_model_config(json{{"model_path", "x"}, {"mmproj_device", "CPU"}}, q, err));
+    LB_CHECK(err.find("invalid mmproj_device") != std::string::npos);
+    common_params r;
+    LB_CHECK(!lb_parse_model_config(json{{"model_path", "x"}, {"mmproj_device", "NoSuchDevice"}}, r, err));
+    common_params e;
+    LB_CHECK(!lb_parse_model_config(json{{"model_path", "x"}, {"mmproj_device", ""}}, e, err));
 }
 
 static void model_load_missing_file_fails() {
@@ -1286,6 +1302,7 @@ int main(int argc, char ** argv) {
         {"auto_ctx_cap_is_per_slot", auto_ctx_cap_is_per_slot},
         {"props_build_info_names_llama_build", props_build_info_names_llama_build},
         {"config_defaults_applied", config_defaults_applied},
+        {"mmproj_device_overrides_the_model_device", mmproj_device_overrides_the_model_device},
         {"model_load_missing_file_fails", model_load_missing_file_fails},
         {"model_load_bad_file_has_reason", model_load_bad_file_has_reason},
         {"model_load_unknown_key_fails", model_load_unknown_key_fails},

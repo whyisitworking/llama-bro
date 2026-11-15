@@ -13,9 +13,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.R
 import com.suhel.llamabro.demo.designsystem.theme.DemoColors
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
+import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
@@ -95,7 +99,7 @@ fun DemoCard(
             .then(if (!onSheet) Modifier.softShadow(shape, colors) else Modifier)
             .clip(shape)
             .background(if (onSheet) colors.canvas else colors.surface)
-            .then(if (selected) Modifier.border(2.dp, colors.accent, shape) else Modifier)
+            .then(if (selected) Modifier.border(DemoSize.selectedStroke, colors.accent, shape) else Modifier)
             .then(
                 if (onClick != null || onLongClick != null) {
                     Modifier.combinedClickable(onClick = onClick ?: {}, onLongClick = onLongClick)
@@ -119,8 +123,10 @@ fun EdgeChip(text: String, modifier: Modifier = Modifier) {
     Text(
         text,
         modifier
-            .background(colors.accent, RoundedCornerShape(50))
-            .padding(horizontal = 8.dp, vertical = 1.dp),
+            .background(colors.accent, CircleShape)
+            .heightIn(min = DemoSize.tag)
+            .padding(horizontal = DemoSpacing.block)
+            .wrapContentHeight(Alignment.CenterVertically),
         color = colors.canvas,
         style = DemoType.labelSmall,
         maxLines = 1,
@@ -176,8 +182,19 @@ fun DemoSheet(
 private fun GrabHandle() {
     val colors = LocalDemoColors.current
     val description = stringResource(R.string.ds_drag_handle)
-    Box(Modifier.size(48.dp).semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
-        Box(Modifier.size(width = 32.dp, height = 4.dp).background(colors.hairline, RoundedCornerShape(2.dp)))
+    Box(
+        Modifier.size(DemoSize.target).semantics {
+            contentDescription = description
+        },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .size(
+                    width = DemoSize.handleWidth,
+                    height = DemoSize.handleHeight,
+                ).background(colors.hairline, CircleShape),
+        )
     }
 }
 
@@ -256,8 +273,8 @@ fun DialogCard(
         Text(title, color = colors.ink, style = DemoType.title)
         Text(text, color = colors.muted, style = DemoType.body)
         Row(
-            Modifier.fillMaxWidth().padding(top = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            Modifier.fillMaxWidth().padding(top = DemoSpacing.compact),
+            horizontalArrangement = Arrangement.spacedBy(DemoSpacing.block, Alignment.End),
         ) {
             if (dismissLabel != null) QuietButton(dismissLabel, onDismiss)
             PrimaryButton(confirmLabel, onConfirm)

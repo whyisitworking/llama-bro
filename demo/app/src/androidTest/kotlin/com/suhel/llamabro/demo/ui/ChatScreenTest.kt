@@ -35,7 +35,9 @@ import androidx.compose.ui.test.junit4.accessibility.disableAccessibilityChecks
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -48,6 +50,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.conversation.Conversation
+import com.suhel.llamabro.demo.chat.TurnOptions
+import com.suhel.llamabro.demo.chat.sdkStream
 import com.suhel.llamabro.demo.data.AppLayout
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.NewMessage
@@ -102,9 +106,9 @@ class ChatScreenTest {
                 convo,
                 text,
                 images,
-                level,
+                options,
                 ->
-                scripted(convo, text, images, level)
+                scripted(convo, text, images, options)
             })
         })
     private val compose = createAndroidComposeRule<ComponentActivity>()
@@ -125,8 +129,8 @@ class ChatScreenTest {
         convo: Conversation,
         text: String,
         images: Array<Content.Image>,
-        level: ThinkLevel?,
-    ): Flow<ChatEvent> = script?.invoke(text) ?: convo.send(text, *images)
+        options: TurnOptions,
+    ): Flow<ChatEvent> = script?.invoke(text) ?: sdkStream(convo, text, images, options)
 
     private var wentToModels = false
     private var newChats = 0
@@ -336,24 +340,22 @@ class ChatScreenTest {
         compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)).assertCountEquals(0)
     }
 
-    @Test fun speedLineUnderEachReply() {
+    @Test fun aReplysDetailsSheetShowsItsSpeed() {
         reply("one")
-        reply("two")
         onPhone(swift)
         show()
         ask("first")
         waitFor("one")
-        compose.waitUntil(10_000) {
-            compose.onAllNodesWithText("words/s", substring = true).fetchSemanticsNodes().size ==
-                1
-        }
-        ask("second")
-        waitFor("two")
-        compose.waitUntil(10_000) {
-            compose.onAllNodesWithText("words/s", substring = true).fetchSemanticsNodes().size ==
-                2
-        }
+        // the speed is no longer a line under the reply: the info action opens it with the rest of the measurements
+        compose.onAllNodesWithText("words/s", substring = true).assertCountEquals(0)
+        compose.waitUntil(10_000) { details().fetchSemanticsNodes().isNotEmpty() }
+        details().onFirst().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("reply_details").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Speed").assertExists()
+        compose.onNodeWithText("words/s", substring = true).assertExists()
     }
+
+    private fun details() = compose.onAllNodesWithContentDescription("Reply details")
 
     @Test fun openStyleHasNoModelBubble() {
         reply("a reply")
@@ -361,9 +363,7 @@ class ChatScreenTest {
         show(MessageStyle.Open)
         ask("hello")
         waitFor("a reply")
-        compose.waitUntil(
-            10_000,
-        ) { compose.onAllNodesWithText("words/s", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { details().fetchSemanticsNodes().isNotEmpty() }
         compose.onAllNodes(matchesTime()).assertCountEquals(0) // no time in a corner: replies sit on the page
         compose.onAllNodesWithText("·", substring = true).assertCountEquals(0)
     }
@@ -374,9 +374,7 @@ class ChatScreenTest {
         show(MessageStyle.Bubbles)
         ask("hello")
         waitFor("a reply")
-        compose.waitUntil(
-            10_000,
-        ) { compose.onAllNodesWithText("words/s", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { details().fetchSemanticsNodes().isNotEmpty() }
         compose.onAllNodes(matchesTime()).fetchSemanticsNodes().let {
             assertTrue(
                 "a time in each bubble: ${it.size}",

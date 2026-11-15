@@ -6,7 +6,7 @@ pagination?
 
 ## Method
 
-`run.sh` drives the `samples/background-download` debug build (package `com.suhel.llamabro.download`, no endpoint override,
+`run.sh` drives the download acceptance app's debug build (`sdk/acceptance/download`, formerly `samples/background-download`) (package `com.suhel.llamabro.download`, no endpoint override,
 no token) on the OnePlus 13 over an unmetered Wi-Fi connection:
 
 1. Collect headers only with `curl`: the tree listing's status and `Link` header, a `HEAD` on the resolve URL following

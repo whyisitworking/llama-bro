@@ -1,8 +1,8 @@
 diff --git a/src/models/delta-net-base.cpp b/src/models/delta-net-base.cpp
-index 2e15777ee..18c2fdf5b 100644
+index 45b2de4..a43917f 100644
 --- a/src/models/delta-net-base.cpp
 +++ b/src/models/delta-net-base.cpp
-@@ -560,29 +560,71 @@ ggml_tensor * llm_build_delta_net_base::build_recurrent_attn(
+@@ -115,23 +115,64 @@ ggml_tensor * llm_build_delta_net_base::build_recurrent_attn(
      const int64_t D = S_v * S_v * H_v;
      const int64_t K = cparams.n_rs_seq + 1;
  
@@ -20,7 +20,6 @@ index 2e15777ee..18c2fdf5b 100644
 +        ggml_tensor * head_out = ggml_gated_delta_net(ctx0,
 +            view_tokens(q, 0, n_head, false), view_tokens(k, 0, n_head, false), view_tokens(v, 0, n_head, false),
 +            view_tokens(g, 0, n_head, true), view_tokens(b, 0, n_head, true), s, /*K=*/1);
-+        res->add_fused_node({LLM_FUSED_OP_GDN_CH, head_out, il});
 +
 +        output_head = ggml_view_4d(ctx0, head_out,
 +            S_v, H_v, n_head, n_seqs,
@@ -47,13 +46,6 @@ index 2e15777ee..18c2fdf5b 100644
 +
      // state s is 4D [S_v, S_v, H_v, n_seqs]; K snapshot slots are written into the output.
      ggml_tensor * gdn_out = ggml_gated_delta_net(ctx0, q, k, v, g, b, s, K);
--    if (n_seq_tokens > 1) {
-+    if (n_tail_tokens > 1) {
-         res->add_fused_node({LLM_FUSED_OP_GDN_CH, gdn_out, il});
-     } else {
-         res->add_fused_node({LLM_FUSED_OP_GDN_AR, gdn_out, il});
-     }
- 
 -    const int64_t attn_score_elems    = S_v * H_v * n_seq_tokens * n_seqs;
 +    const int64_t attn_score_elems    = S_v * H_v * n_tail_tokens * n_seqs;
      const int64_t state_size_per_snap = S_v * S_v * H_v * n_seqs;

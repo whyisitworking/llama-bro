@@ -1,6 +1,7 @@
 package com.suhel.llamabro.demo.ui.shell
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.demo.chat.FakeChatDao
 import com.suhel.llamabro.demo.data.ChatRepository
@@ -73,6 +74,7 @@ class ShellViewModelTest {
             ModelRepository(FakeHubGateway(), settings, FakeScheduler(), scope),
             { now },
             zone,
+            SavedStateHandle(),
         ).also {
             viewModels += it
             it.chats.keepAlive(collectors)
@@ -116,6 +118,7 @@ class ShellViewModelTest {
             ModelRepository(hub, settings, FakeScheduler(), scope),
             { now },
             zone,
+            SavedStateHandle(),
         ).also {
             viewModels += it
             it.chats.keepAlive(collectors)
@@ -223,4 +226,14 @@ class ShellViewModelTest {
             vm.delete(id)
             awaitValue<List<ChatSummary>>({ vm.chats.value }) { it.isEmpty() }
         }
+
+    @Test fun theSearchSurvivesProcessDeath() {
+        val saved = SavedStateHandle()
+        val models = ModelRepository(FakeHubGateway(), settings, FakeScheduler(), scope)
+        val vm = ShellViewModel(chats, settings, models, { now }, zone, saved).also { viewModels += it }
+        vm.search("rain")
+        val restored = SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
+        val again = ShellViewModel(chats, settings, models, { now }, zone, restored).also { viewModels += it }
+        assertEquals("rain", again.searchText.value)
+    }
 }

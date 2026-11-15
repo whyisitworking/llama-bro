@@ -40,7 +40,7 @@ class ChatViewModel(private val llama: LlamaBro, private val path: String) : Vie
     override fun onCleared() { model?.close() }   // returns at once; memory is freed in the background
 }
 
-// in the factory: ChatViewModel(LlamaBro.getInstance(application), path)
+// in the factory: ChatViewModel(LlamaBro.create(application), path)
 ```
 
 `Conversation` keeps the history the way llama.cpp's web UI (`tools/ui`) does. Observe:
@@ -154,8 +154,33 @@ llama.loadModel(ModelSource.file(path)) {
 
 `model.info` gives the context size, vision and audio support, template capabilities and the GGUF's metadata.
 `model.close()` returns at once; `closeAndJoin()` waits until the memory is freed. Loading the next model waits for
-a previous close, so two models never share memory. Configure the process-wide runtime (log level, logger) by
-implementing `LlamaBro.ConfigProvider` on your `Application`.
+a previous close, so two models never share memory. Configure the process-wide runtime (log level, logger) with
+`LlamaBro.create(context, config)`. The logger is attached before native initialisation, so
+llama.cpp and ggml lines reach it from the first call; llama-server's own lines (`SRV_*`, `SLT_*`) do not yet, because
+they go to stderr, which Android discards (F22). With none, the core logs to logcat as `llamabro` and the hub as
+`llamabro-hub`, at `Warn` and above by default; to silence them, pass a logger that drops lines (D66).
+
+### Dependency injection
+
+`LlamaBro.create(context, config)` is the entry point, and there is one runtime per process. The first call creates it;
+a later call with an equal config returns the same object, and a different config throws `InvalidRequest` at once (D70).
+A logger is compared by reference, so create the config once. A DI container's singleton scope does that; with Hilt:
+
+```kotlin
+@Module
+@InstallIn(SingletonComponent::class)
+object LlamaBroModule {
+    @Provides
+    @Singleton
+    fun llamaBro(@ApplicationContext context: Context): LlamaBro =
+        LlamaBro.create(context, LlamaBroConfig { logLevel = LogLevel.Info })
+}
+```
+
+The SDK has no DI dependency; without a container, call `LlamaBro.create(context)` where you need it. Keep the config
+on your `Application` or in the DI graph and pass it from every entry point, workers and job services included: a
+fresh process that calls `create(context)` with the default config throws `InvalidRequest` if the UI's process used
+another, or logs through a different logger.
 
 Three more load settings, each a llama-server flag:
 
@@ -187,7 +212,7 @@ implementation("io.github.whyisitworking:llamabro-hub")
 ```
 
 ```kotlin
-val hub = LlamaBroHub.getInstance(application)
+val hub = LlamaBroHub.create(application)
 val ref = HfModel("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")
 val plan = hub.plan(ref)                         // selected GGUF files and their total size
 val fit = hub.estimateFit(plan, llama)           // bounded headers only; no weights downloaded
@@ -202,6 +227,31 @@ val model = llama.loadModel(source)
 putting it in the cache. `hub.progress(ref)` gives a `StateFlow<DownloadState>` for any screen in the process. Cache
 files live in the app's private `noBackupFilesDir/llamabro/hub` by default; they stay across app restarts and cannot
 be read by other apps. Set `cacheDir` in `HubConfig` to another app-private directory if you want a specific location.
+
+`LlamaBroHub.create(context, config)` gives one hub per cache folder (D70). The same folder with an equal `HubConfig`
+returns the same hub; a different config for that folder throws `IllegalStateException` naming the folder. Hubs on
+different folders coexist, so an app can move its models without a restart. A config compares its logger and token
+provider by reference, so create it once. In a DI singleton scope, provide the hub next to the runtime:
+
+```kotlin
+@Module
+@InstallIn(SingletonComponent::class)
+object LlamaBroModule {
+    private val hubConfig = HubConfig { progressInterval = 500.milliseconds }
+
+    @Provides
+    @Singleton
+    fun llamaBro(@ApplicationContext context: Context): LlamaBro =
+        LlamaBro.create(context, LlamaBroConfig { logLevel = LogLevel.Info })
+
+    @Provides
+    @Singleton
+    fun llamaBroHub(@ApplicationContext context: Context): LlamaBroHub = LlamaBroHub.create(context, hubConfig)
+}
+```
+
+A worker or job service started in a fresh process must reach the same config, so keep it where the `Application`
+holds it (the [`download` acceptance app](acceptance/download) keeps it as a property) and pass it to `create`.
 
 An app owns scheduling and the notification. The demo's [`DownloadWorker`](../demo/app/src/main/kotlin/com/suhel/llamabro/demo/models/DownloadWorker.kt) uses a
 `CoroutineWorker` with a foreground notification and returns `Result.retry()` for retryable Hub errors:
@@ -218,13 +268,13 @@ override suspend fun doWork(): Result = try {
 }
 ```
 
-Configure a private token provider on your `Application`; the Hub calls it before each plan or download and sends
-the token only to the Hub endpoint, never to a redirect target:
+Configure a private token provider in the `HubConfig` you pass to `LlamaBroHub.create`; the Hub calls it before each
+plan or download and sends the token only to the Hub endpoint, never to a redirect target:
 
 ```kotlin
-override val llamaBroHubConfig = HubConfig {
-    token { tokenStore.read() }
-}
+// A property, built once: the config compares its token provider by reference (D70).
+val hubConfig = HubConfig { token { tokenStore.read() } }
+val hub = LlamaBroHub.create(context, hubConfig)
 ```
 
 `HubException` distinguishes network failures, unauthorized access, missing files, rate limits, insufficient
@@ -253,8 +303,10 @@ llama.loadModel(ModelSource.file(path)) { contextSize = ContextSize.Fixed(8192) 
   while a dense 3B model's cache stays near 1.8 GB. `Conversation` compacts a chat that outgrows it.
 - **`UpTo(n)`** does the same with your ceiling, for long documents; **`Fixed(n)`** takes exactly `n` and fails if it
   can't be allocated.
-- If even 4096 tokens don't fit, `loadModel` throws `ModelLoadFailed` with reason `InsufficientMemory` and a message
-  with the numbers. `model.loadReport.contextSize` and `contextReason` say what was picked and why, e.g.
+- If even 4096 tokens don't fit, the model loads anyway at 4096 tokens and `model.loadReport.memoryWarning` says how
+  much it needed and how much was free (D57): the check can't see the memory Android frees by closing background apps,
+  so it doubts models that run. Set `memoryCheck = MemoryCheck.Refuse` to fail with `ModelLoadFailed`
+  (`InsufficientMemory`) instead. `model.loadReport.contextSize` and `contextReason` say what was picked and why, e.g.
   "the ceiling of 16384 tokens fits: 4527 MiB of 5291 MiB available".
 
 ## Faster chips
@@ -272,6 +324,15 @@ By default (`DevicePolicy.Auto`) a model loads on the NPU, else the GPU, else th
 ```kotlin
 llama.loadModel(ModelSource.file(path)) {
     devicePolicy = DevicePolicy.Only(DeviceKind.Gpu)   // or Prefer(…); Only throws DeviceUnavailable instead
+}
+```
+
+A model's image and audio encoder (its `mmproj`) runs on the same chip as the model unless you move it, as
+llama-server's `--mmproj-device` does. `loadReport.encoderDevice` says where it was placed:
+
+```kotlin
+llama.loadModel(ModelSource.file(path) { mmproj = projectorPath }) {
+    encoderDevice = DevicePolicy.Only(DeviceKind.Cpu)   // or Prefer(…): falls back to the model's chip
 }
 ```
 

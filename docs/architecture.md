@@ -38,7 +38,7 @@ The SDK adds two kinds of things on top of llama-server:
 
 ### 1.2 The baseline is upstream
 
-The baseline for every behaviour and default is upstream llama.cpp at the pinned build `b12052`: llama-server (`tools/server`) and its web client (`tools/ui`). A behaviour or default that differs from upstream must win an A/B test on a device against the upstream behaviour. Ideas are judged by measured results, not by where they came from (D10, D18). Examples of where upstream won: the sampler order and penalty behaviour (D18, F12-F15), and the sleep mode, which the SDK keeps off because a failed reload aborts the process.
+The baseline for every behaviour and default is upstream llama.cpp at the pinned build `b12352`: llama-server (`tools/server`) and its web client (`tools/ui`). A behaviour or default that differs from upstream must win an A/B test on a device against the upstream behaviour. Ideas are judged by measured results, not by where they came from (D10, D18). Examples of where upstream won: the sampler order and penalty behaviour (D18, F12-F15), and the sleep mode, which the SDK keeps off because a failed reload aborts the process.
 
 The SDK deviates from upstream in a small number of places, each justified by a measurement:
 
@@ -48,7 +48,7 @@ The SDK deviates from upstream in a small number of places, each justified by a 
 | Weights loaded without mmap (`--load-mode none`) | One resident copy of the weights instead of two (D30, F58-F60) |
 | A memory-based `ContextSize.Auto` | Upstream's fit misjudges a phone (D33, F66) |
 | No OpenMP on the CPU path | Same speed, smaller AAR (D38, F77) |
-| One patch: `delta-net-head-tail-split` | Faster prompt processing for hybrid models, identical output (D10, F7, F8) |
+| Two patches ([register](../sdk/native/patches/README.md)): `delta-net-head-tail-split`, and upstream PR #30432 (a NEON path for BF16 dot products) until it merges | Faster prompt processing for hybrid models, identical output (D10, F7, F8, F121); a 5x faster BF16 image encoder on the phone's CPU (D55, F127) |
 | SHA-256 on every download | Upstream never verifies (D40, F83) |
 
 ### 1.3 In-process, one runtime
@@ -75,7 +75,7 @@ The engine runs in the application's process (D5). There is no local HTTP server
  | native/                  |                              llamabro.loadModel(...)
  |  C API (llamabro.h)      |
  |  C++ bridge              |        test-only:  llamabro-testing (FakeLlamaBro)
- |  llama.cpp b12052        |
+ |  llama.cpp b12352        |
  +--------------------------+
 ```
 
@@ -176,7 +176,7 @@ The alternative, a custom pipeline over `libllama`, would give full control but 
 ## 4. Request path
 
 ```
- Kotlin                               native                                 llama.cpp b12052
+ Kotlin                               native                                 llama.cpp b12352
  ------                               ------                                 ----------------
  model.chat(request)
    |  ChatRequest -> JSON body
@@ -235,7 +235,7 @@ The public API dump is checked into the repository ([`llamabro.api`](../sdk/llam
 ### 5.1 Three levels
 
 ```kotlin
-val llama = LlamaBro.getInstance(context)           // runs no native code
+val llama = LlamaBro.create(context)                // runs no native code
 
 val model: Model = llama.loadModel(ModelSource.file(path)) {   // suspend, on Dispatchers.IO
     contextSize = ContextSize.Auto
@@ -260,7 +260,7 @@ The three levels share one engine. A beginner uses `Conversation` and still reac
 
 `LlamaBro` is the process runtime. Its members (D6, D24, D42):
 
-- `LlamaBro.getInstance(context)`: returns the singleton. An `Application` that implements `LlamaBro.ConfigProvider` supplies a `LlamaBroConfig` (log level and logger); otherwise defaults apply. This works the same in a fresh process started by a job or worker.
+- `LlamaBro.create(context, config)`: the first call creates the process's runtime; a later call with an equal config returns the same object, and a different config throws `InvalidRequest` before anything is built (D70). A `LlamaBroConfig` holds the log level and logger, compared by reference, so create it once (in a DI singleton scope, say). With no logger the core logs to logcat as `llamabro` (D66). This works the same in a fresh process started by a job or worker only if that worker passes the same config: keep the config on the `Application` or in the DI graph and pass it from workers, or `create(context)` throws `InvalidRequest` against a UI process's config, or runs with a different logger in a fresh one.
 - `loadModel(source, configure)`: a `suspend` function that returns a `Model`.
 - `estimateFit(source, configure)`: a `FitEstimate` for a model and configuration without loading it (section 9.4).
 - `memoryBudgetBytes(configure)`: the budget `ContextSize.Auto` would use now, before side files, for labelling models in a list without planning each one.
@@ -310,10 +310,10 @@ A request streams `ChatEvent` values:
 | `ReasoningDelta(delta)` | A fragment of the model's reasoning |
 | `ContentDelta(delta)` | A fragment of the reply |
 | `ToolCallReceived(call)` | The model requested a tool |
-| `ToolResult(callId, name, result)` | A tool handler returned (from `Conversation`) |
-| `Done(reason, timings, usage)` | The request ended |
+| `ToolResult(callId, name, result, error)` | A call got its result (from `Conversation`). `result` is the text the model saw; `error` is the exception when the model saw only the generic `Error: the tool failed` (D62) |
+| `Done(reason, timings, usage, abort)` | The request ended; `abort` is the `LbToolAbort` when `reason` is `ToolAborted` (D62) |
 
-`FinishReason` is `Stop`, `Length`, `ToolCalls`, `TurnLimit` or `ToolCallsPending`.
+`FinishReason` is `Stop`, `Length`, `ToolCalls`, `TurnLimit`, `ToolCallsPending` or `ToolAborted`.
 
 ### 5.6 Evolution rules
 
@@ -335,8 +335,9 @@ Chat is fully typed. The other routes are reachable through `rawRequest` today, 
 - `reply: StateFlow<Message.Assistant?>`, the reply being streamed
 - `isBusy: StateFlow<Boolean>`
 - `contextUsage: StateFlow<ContextUsage>`, derived from timings (prompt, cached and predicted tokens)
+- `pendingApproval: StateFlow<ToolCall?>`, the call waiting for `approve` or `deny` (section 6.2)
 
-Operations: `send(text) { options }`, `ask(text)` (returns the reply text, or throws `Incomplete` for `Length`, `TurnLimit` and `ToolCallsPending`, F41), `resume()`, `regenerate()`, `endReasoning()`, `toJson()` and `Model.restoreConversation(json)`. A conversation can also start from the application's own stored messages (F96). Per-conversation `defaults { ... }` apply to every request, and per-send options apply to one (F38).
+Operations: `send(text) { options }`, `ask(text)` (returns the reply text, or throws `Incomplete` for `Length`, `TurnLimit`, `ToolCallsPending` and `ToolAborted`, F41), `resume()`, `approve(callId)`, `deny(callId, reason)`, `regenerate()`, `endReasoning()`, `toJson()` and `Model.restoreConversation(json)`. A conversation can also start from the application's own stored messages (F96). Per-conversation `defaults { ... }` apply to every request, and per-send options apply to one (F38).
 
 Only one operation runs at a time. A second operation fails with `Busy` when its flow is collected, not when it is created.
 
@@ -346,7 +347,7 @@ Only one operation runs at a time. A second operation fails with `Busy` when its
 
 1. Send the request with the tool definitions.
 2. If the reply contains tool calls, append the assistant message (content, reasoning and calls) to the history.
-3. Run the calls one after another, in order. A tool that throws returns `Error: <message>` to the model.
+3. Go through the calls in order, announcing each with `ToolCallReceived` when the loop reaches it. Run each automatic call, or answer it with an error (see below).
 4. Append each result as a `tool` message and go back to step 1.
 5. Stop when a reply has no tool calls, or after `maxTurns` (default 100) with `Done(reason = TurnLimit)`; `resume()` continues.
 
@@ -355,13 +356,49 @@ val chat = model.conversation(system = "...") {
     tool("get_weather", "Current weather for a city", schema = jsonSchema) { args: JsonArgs ->
         weatherApi.fetch(args.string("city"))        // suspend; returns the tool result string
     }
+    tool("delete_file", "Delete a file", schema = deleteSchema, requiresApproval = true) { args ->
+        fileStore.delete(args.string("path"))
+        "deleted"
+    }
     maxTurns = 100
 }
 ```
 
-- **Approval stays in the application.** A handler is a `suspend` function, so it can wait for the person's answer itself and return a "denied" result. The SDK has no permission system (D11).
+Errors (D62, F140). Upstream's loop sends every exception's text to the model. Here only a deliberate error does, so a token or personal data in an exception stays out of the prompt and the saved chat. These are the exact texts the model gets:
+
+| Case | Result the model sees | `ToolResult.error` |
+|---|---|---|
+| The model called a name that is not registered | `Error: Unknown tool: <name>` | null |
+| The arguments do not parse, are not a JSON object, or `JsonArgs` has no such argument or a mistyped argument or list item (the accessors throw `LbToolError("invalid arguments: …")`) | `Error: invalid arguments: <reason>`, for example `Error: invalid arguments: missing string argument: city` | null |
+| The handler throws `LbToolError(message)` | `Error: <message>` | null |
+| The handler throws any other exception | `Error: the tool failed` | the exception |
+| The person denies the call | `Error: denied by the user`, or `Error: <reason>` | null |
+
+- **An unknown name is an automatic call.** It gets its error result and the loop goes on, as upstream does. A manual call is one registered without a handler.
+- **`LbToolError` and `LbToolAbort`** live in the core module, so the later typed module (D61) reuses them. Both are open for subclassing.
+- **`LbToolAbort(reason)`** ends the turn. The aborted call and the reply's later calls get no result, and the flow ends with `Done(reason = ToolAborted)`, whose `abort` holds the exception. `ask()` throws `Incomplete(ToolAborted, …)`. `resume()` runs the aborted call again, then the later calls, then asks the model.
+- **Cancelling and closing.** `CancellationException` and `ModelClosed` propagate unchanged. Cancelling the flow cancels the running handler through structured concurrency, and the generation with it.
+- **Threads.** A handler runs in the collecting coroutine for now. Moving blocking tools to `Dispatchers.IO` comes with the typed layer (D61).
+
+Approval (D62). Whether to ask the person stays the application's policy (D11): the SDK only waits. `tool(name, description, schema, requiresApproval = true) { … }` makes a call wait for the person before its handler runs. `requiresApproval` without a handler fails at registration, because a manual tool already stops.
+
+- The loop stops with `Done(reason = ToolCallsPending)` before the call and sends no further request. `pendingApproval` names the call.
+- `approve(callId)` runs the handler. `deny(callId, reason = null)` answers the model with `Error: denied by the user` (or `Error: <reason>`) and emits `ToolResult` for the call. Each then continues the turn as `resume()` does. Both take per-call `options` like `resume()`, and fail when collected with `IllegalArgumentException` if `callId` is not the pending call.
+- `pendingApproval` is derived from the history and the registered tools, so it is right after `Model.restoreConversation(toJson())`. It is the first unanswered call of the last batch whose tool needs approval, provided no unanswered automatic call comes before it (after an abort the batch is interrupted, not waiting). Manual calls before it are skipped over. It is null while an operation runs.
+- Approval is per run. An approved call that aborts waits for approval again.
+
+The last batch and `resume()` (D62). The last batch is the last assistant message with tool calls, while only tool results follow it. A user message, a reply or a compaction closes it. It comes from the history alone, so a restored conversation finds the same batch.
+
+- `resume()` first finishes the last batch's unanswered automatic calls, in order, then asks the model.
+- With a manual call still unanswered, or a call waiting for approval, it stops with `Done(ToolCallsPending)` and sends nothing, so the model is never sent a call without its result. A stop with no request has null timings and usage.
+- After an abort it runs the aborted call again.
+- Each call is announced when the loop reaches it. `resume()` announces again every unanswered call it reaches: after an abort, a waiting approval call, and every manual call still without a result. `approve` and `deny` start after their own call, so they do not announce the calls before it again.
+- `send` and `regenerate` never touch an old batch, because their history ends at a user message.
+- A compaction would close the last batch, so it waits for it: while a call of the last reply has no result (waiting for approval, or a manual tool), `canCompact()` is false and `compact()` fails with `IllegalStateException` without changing the history. Approve, deny or answer the call first (section 6.4).
+
+Other behaviour:
+
 - **A tool without a handler** stops the loop with `Done(reason = ToolCallsPending)`. The application supplies results with `addToolResult(id, text)` and calls `resume()`.
-- **Cancelling** the flow cancels the running handler through structured concurrency, and the generation with it.
 - **Cache behaviour:** each turn only appends to the end of the history, so the server reuses the whole prefix (section 6.3).
 
 ### 6.3 Prompt cache behaviour
@@ -385,7 +422,8 @@ Compaction is a client feature, and `Conversation` copies the web client's algor
 3. The summary request reuses the prefix the server already has cached and adds a summarisation instruction, so only the instruction is new work.
 4. The summary is stored as a compaction node at the end of the history, with a kept-step count. The full history stays visible, but the model sees only the system prompt, a note that the conversation was compacted with the summary, the preserved steps and anything newer.
 5. A summary cut off by the output limit fails with `CompactionTruncated` and is rolled back.
-6. Optionally (`preEncodeAfterReply`, off by default, as upstream) the shortened prompt is pre-encoded in a cancellable background request, so the next message does not wait for a full prefill.
+6. While a tool call of the last reply has no result, there is nothing to compact: a compaction would close the batch, and the model would later see the call without a result (D62). The web client never has such calls, because its loop answers every call before the user can compact.
+7. Optionally (`preEncodeAfterReply`, off by default, as upstream) the shortened prompt is pre-encoded in a cancellable background request, so the next message does not wait for a full prefill.
 
 If `send()` fails with `ContextExceeded`, an application calls `compact()` and then `resume()`. An application using `Model.chat` directly implements its own compaction.
 
@@ -407,9 +445,9 @@ Errors are a sealed `LlamaBroException`. Applications catch them; only the SDK c
 | `ModelClosed` | The model was closed before or during the call |
 | `CompactionTruncated` | A compaction summary hit the output limit |
 | `Busy` | A `Conversation` operation was started while another was running |
-| `Incomplete(reason, partial)` | `ask()` ended with `Length`, `TurnLimit` or `ToolCallsPending` |
+| `Incomplete(reason, partial)` | `ask()` ended with `Length`, `TurnLimit`, `ToolCallsPending` or `ToolAborted` |
 
-`InsufficientMemory` is raised when the model does not fit at the smallest automatic context (4096 tokens) on any device (D33). The hub has its own sealed `HubException` (section 12.5).
+`InsufficientMemory` is raised when the model does not fit at the smallest automatic context (4096 tokens) on any device and the app set `MemoryCheck.Refuse` (D33, D57); by default the model loads at that context with `LoadReport.memoryWarning` instead. The hub has its own sealed `HubException` (section 12.5).
 
 ---
 
@@ -427,7 +465,7 @@ DevicePolicy.Prefer(DeviceKind.Gpu)   // try the GPU first, then the rest in Aut
 DevicePolicy.Only(DeviceKind.Npu)     // that kind or DeviceUnavailable
 ```
 
-The SDK maps a kind to the backend and device the phone has (`hexagon` and its HTP device for `Npu`, `opencl` for `Gpu`, the built-in CPU backend for `Cpu`) and names both in `loadReport`. An enum is settled at 1.0, so adding another route to a kind, such as Vulkan on the GPU if it returns, changes nothing public.
+The SDK maps a kind to the backend and device the phone has (`hexagon` and its HTP device for `Npu`, `opencl` for `Gpu`, the built-in CPU backend for `Cpu`) and names both in `loadReport`. A model's image and audio encoder (its `mmproj`) runs on the model's device unless `encoderDevice` moves it, as llama-server's `--mmproj-device` does (D53); `loadReport` names both devices. An enum is settled at 1.0, so adding another route to a kind, such as Vulkan on the GPU if it returns, changes nothing public.
 
 ### 8.2 Selection and fallback
 
@@ -459,7 +497,7 @@ Key rules (D24, D33):
 
 ### 8.4 Backend specifics
 
-**Hexagon (NPU).** `llamabro-hexagon` ships `libggml-hexagon.so` and the HTP skeleton libraries for several Hexagon versions as assets. When the runtime starts, every skeleton is copied to `noBackupFilesDir/llamabro/htp/` and checked against its SHA-256; the backend picks the one for its chip, and the library search paths (`ADSP_LIBRARY_PATH` and related variables) point at the directory. A copy that does not match fails the backend with the reason, and the next device is used (F78). FastRPC loads the skeleton from `noBackupFilesDir` for an ordinary app, debuggable or not (F36). `libcdsprpc.so` is declared as an optional native library through the merged manifest, since it exists only on Qualcomm phones.
+**Hexagon (NPU).** `llamabro-hexagon` ships `libggml-hexagon.so` and the HTP skeleton libraries for several Hexagon versions as assets. When the runtime starts, every skeleton is copied to `noBackupFilesDir/llamabro/htp/` and checked against its SHA-256; the backend picks the one for its chip and opens it by absolute path from that directory, which the SDK names in `GGML_HEXAGON_LIBHTP_DIR` (upstream's mechanism since b12352; the SDK no longer sets the process-wide `ADSP_LIBRARY_PATH` and related variables, which ggml uses only as its last fallback). A copy that does not match fails the backend with the reason, and the next device is used (F78). FastRPC loads the skeleton from `noBackupFilesDir` for an ordinary app, debuggable or not (F36). `libcdsprpc.so` is declared as an optional native library through the merged manifest, since it exists only on Qualcomm phones.
 
 **OpenCL (GPU).** `llamabro-opencl` declares `libOpenCL.so` and embeds the Adreno kernels. Its installer sets `GGML_OPENCL_COOPK_DP4A=0` before the backend loads, because the cooperative-K Q4_K kernel returns wrong results on the Adreno 830 for two- to four-row matmuls, which every model with checkpoints sends (F75). OpenCL also answered incorrectly for one model family in testing (F71), which is why device choice is recorded and overridable.
 
@@ -481,7 +519,7 @@ The SDK turns upstream's `--fit` off, so context and placement are always explic
 
 1. The bridge runs upstream's own dry-run measurement (`common_fit_measure`) at 4096 tokens and at the ceiling.
 2. It sums every row of the result (devices and host together, since a phone has one RAM) and interpolates to the budget, as upstream's second step does.
-3. Below 4096 tokens the load fails with `ModelLoadFailed(InsufficientMemory)` instead of loading anyway.
+3. Below 4096 tokens, `memoryCheck` decides (D57): `Warn`, the default, loads at 4096 tokens without the budget and reports the shortfall in `LoadReport.memoryWarning`; `Refuse` fails with `ModelLoadFailed(InsufficientMemory)`.
 
 ### 9.3 Budget and ceiling
 
@@ -573,7 +611,7 @@ The hub therefore schedules nothing and touches no notifications. It makes downl
 ### 12.2 API
 
 ```kotlin
-val hub = LlamaBroHub.getInstance(context)           // Application may implement LlamaBroHub.ConfigProvider
+val hub = LlamaBroHub.create(context, config)       // one hub per cache folder (D70); config is optional
 val ref = HfModel("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")  // or "org/repo", or "org/repo#dir/file.gguf"
 
 val plan = hub.plan(ref) { mmproj = true }           // files, roles, sizes, digests, offline flag
@@ -585,7 +623,7 @@ hub.cached(); hub.delete(ref)
 val model = llama.loadModel(hub.source(ref)) { speculative = Speculative.Auto }
 ```
 
-`HfModel` is a class and converts to a plain string, so it fits in a WorkManager `Data` or an Intent extra. `HubConfig` (through `LlamaBroHub.ConfigProvider`) sets the endpoint, a token provider, the cache directory, the progress interval and a logger.
+`HfModel` is a class and converts to a plain string, so it fits in a WorkManager `Data` or an Intent extra. `HubConfig` sets the endpoint, a token provider, the cache directory, the progress interval and a logger. `create` returns the same hub for the same cache folder and an equal config, throws `IllegalStateException` for a different config on that folder, and lets hubs on different folders coexist; the logger and token provider compare by reference, so create the config once (a DI singleton scope does that).
 
 `DownloadProgress` is shaped for notifications: a `phase` (`Resolving`, `Verifying`, `Downloading`, `Complete`), `bytesDone` and `bytesTotal` (known from the plan), the current file and its index of the file count, a smoothed `bytesPerSecond` and an ETA. Emissions are throttled to the progress interval (one second by default); phase changes and the last emission always arrive. `DownloadState` is `Absent`, `Partial`, `Downloading`, `Complete` or `Failed`.
 
@@ -641,9 +679,9 @@ A background download belongs to the application. The [`download` acceptance app
 
 What is global in a process: ggml's backend registry and the backend libraries it loaded, the environment variables the backends read, and llama.cpp's log callback (D6). So:
 
-- **Kotlin:** `LlamaBro.getInstance(context)` is a singleton, like WorkManager's. It runs no native code, so it is cheap on the main thread (F48).
+- **Kotlin:** `LlamaBro.create(context)` returns the process's one runtime. It runs no native code, so it is cheap on the main thread (F48).
 - **Native:** the runtime is a function-local `static`, which C++ initialises exactly once and thread-safely. A second initialisation with a different configuration returns an error that Kotlin reports as `InvalidRequest`.
-- **When:** native initialisation (about 13 ms on the test phone, F48) runs once on `Dispatchers.IO`, in the first `loadModel`, `devices()` or `backends()` call. A configuration conflict is reported there.
+- **When:** native initialisation (about 13 ms on the test phone, F48) runs once on `Dispatchers.IO`, in the first `loadModel`, `devices()` or `backends()` call. A configuration conflict is refused earlier, in Kotlin: `LlamaBro.create` throws `InvalidRequest` at once (D70); the native refusal remains only as a backstop.
 
 ### 13.2 Models
 
@@ -651,16 +689,16 @@ Models are independent handles. Several can be loaded at once, for example a cha
 
 ### 13.3 Rules
 
-- **Nothing blocks the caller's thread.** `getInstance` runs no native code; `loadModel`, `estimateFit`, `devices` and `backends` are `suspend` and run on `Dispatchers.IO`; `close()` returns at once.
+- **Nothing blocks the caller's thread.** `create` runs no native code; `loadModel`, `estimateFit`, `devices` and `backends` are `suspend` and run on `Dispatchers.IO`; `close()` returns at once.
 - **Closing.** `close()` returns immediately and frees the model in the background; `closeAndJoin()` waits for the memory. `loadModel` first waits for pending closes, so switching models never holds both in memory at once. `lb_model_free` cancels in-flight requests, waits for their terminal events and joins the worker thread.
 - **Cancellation.** Cancelling the collecting coroutine sets the request's `should_stop`. In `Conversation`, it also cancels a running tool handler.
 - **Conversation concurrency.** One operation at a time, enforced with `Busy` at collection.
 - **Sleep mode is off.** Idle models are not put to sleep, because a failed reload aborts the process; the SDK unloads models explicitly.
-- **Memory pressure.** A model that does not fit fails to load with `InsufficientMemory`. Once loaded, the memory reserve (section 9.3) is the margin for growth; running out ends the app through Android's low-memory killer rather than through an exception.
+- **Memory pressure.** A model that the check says doesn't fit loads at the smallest context with a warning, or fails with `InsufficientMemory` under `MemoryCheck.Refuse` (D57). Once loaded, the memory reserve (section 9.3) is the margin for growth; running out ends the app through Android's low-memory killer rather than through an exception.
 
 ### 13.4 Logging and observability
 
-llama.cpp's log output is routed to a `Logger` that the application supplies through `LlamaBroConfig`, with a `LogLevel`. Per-request `Timings` come from llama-server and are available on `ChatEvent.Done`. Trace sections are emitted with `android.os.Trace`.
+llama.cpp's and ggml's log output is routed to a `Logger` that the application supplies through `LlamaBroConfig`, with a `LogLevel`. The logger is attached before the native runtime initialises, so the lines of an init that fails or hangs still reach it (D66, F144). llama-server's own lines (`SRV_*`, `SLT_*`, `COM_*`, written through `common_log`) are not routed yet: they go to stdout and stderr, which Android discards (F22). With no logger the core logs to logcat under the tag `llamabro` and the hub under `llamabro-hub`, filtered at the configured level (`Warn` by default); an app that wants silence passes a logger that drops lines, and there is no other switch. Per-request `Timings` come from llama-server and are available on `ChatEvent.Done`. Trace sections are emitted with `android.os.Trace`.
 
 ---
 
@@ -713,7 +751,7 @@ Deliberately not part of the SDK, with the reason:
 
 | Not included | Reason |
 |---|---|
-| Tool approval or gating | Application policy (D11) |
+| Deciding which calls need approval, and gating (policy) | Application policy (D11); the SDK only pauses (D62, §6.2) |
 | Scheduling, background execution and notifications for downloads | The application's choice of executor (D9) |
 | Model search and recommendations | One Hugging Face API call any app can make; llama.cpp has no search (D42). The SDK provides the fit estimate instead |
 | An out-of-process or HTTP server mode | In-process only (D5) |

@@ -5,7 +5,14 @@ For how the project is put together, read [docs/architecture.md](docs/architectu
 
 ## Setup
 
-- JDK 17, the Android SDK (API 36), NDK 29.0.14206865 and CMake 4.1.2.
+- JDK 17, the Android SDK (API 37), NDK 29.0.14206865 and CMake 4.1.2. The core library (`sdk/llamabro`) needs nothing
+  else: Gradle's `prepareLlama` task builds the patched llama.cpp copy from the submodule and `sdk/native/patches/`
+  (bash and git only).
+- **Docker, running,** for the NPU and GPU backend modules (`sdk/llamabro-hexagon`, `sdk/llamabro-opencl`) and anything
+  that includes them (the demo app, the acceptance apps). Their native libraries are built by the `buildBackends` task in
+  Qualcomm's Snapdragon toolchain image (`ghcr.io/snapdragon-toolchain/arm64-android:v0.8`, about 10 GB, pulled on the
+  first build; it carries the Hexagon SDK). On an Apple Silicon Mac it runs under x86 emulation, so the first build takes a
+  while.
 - Node 20+ and Python 3 (a few checks regenerate goldens or parse results).
 - `git submodule update --init sdk/native/third_party/llama.cpp` (shallow).
 - Open the repository root in Android Studio, or use `./gradlew` from the root. The root build covers the SDK modules and the
@@ -32,6 +39,19 @@ it), and benchmarks run only when a change could move a budget.
 Style is enforced: `./gradlew ktlintFormat` formats Kotlin (ktlint, official style), `./gradlew qualityCheck` runs ktlint
 and detekt, and lint runs with warnings as errors. A public API change fails the API check: review the dump diff and update
 it with `./gradlew -p sdk :<module>:apiDump`, committing the `.api` file with the change.
+
+## Upgrading llama.cpp
+
+1. Read [`sdk/native/patches/README.md`](sdk/native/patches/README.md). For each patch, check its "Drop when": a patch
+   carried from an upstream pull request is deleted once that change is in the new pin.
+2. Move the submodule to the new build tag and update the pin's name where the build reports it (`LB_LLAMA_BUILD` in
+   `sdk/native/CMakeLists.txt`, the version tests, the hub's user agent, the demo's About row).
+3. Re-port any patch that no longer applies, then re-measure it on the phone; a patch that no longer wins is dropped.
+4. Diff the upstream files the SDK ports or copies (each cites its source file and build in a comment) and port the
+   changes.
+5. `sdk/scripts/check.sh` and `--device`. A failing contract, `tools/ui` or hub golden is the list of upstream changes to
+   review (F31); accept a new golden only once the SDK's port matches it.
+6. Record a finding for the upgrade (what changed for the SDK, what was re-measured) and a decision for the new pin.
 
 ## Principles
 

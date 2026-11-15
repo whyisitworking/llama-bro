@@ -43,18 +43,20 @@ import com.suhel.llamabro.demo.designsystem.components.Composer
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DownloadRing
 import com.suhel.llamabro.demo.designsystem.components.Gap
-import com.suhel.llamabro.demo.designsystem.components.GapAbove
 import com.suhel.llamabro.demo.designsystem.components.IconAction
 import com.suhel.llamabro.demo.designsystem.components.InitialAvatar
 import com.suhel.llamabro.demo.designsystem.components.Inline
 import com.suhel.llamabro.demo.designsystem.components.JumpToLatest
 import com.suhel.llamabro.demo.designsystem.components.LimitLine
 import com.suhel.llamabro.demo.designsystem.components.MessageColumn
+import com.suhel.llamabro.demo.designsystem.components.Reveal
 import com.suhel.llamabro.demo.designsystem.components.Stack
 import com.suhel.llamabro.demo.designsystem.components.Thumbnail
 import com.suhel.llamabro.demo.designsystem.components.TopBar
 import com.suhel.llamabro.demo.designsystem.components.TopBarTitle
+import com.suhel.llamabro.demo.designsystem.components.TypingDots
 import com.suhel.llamabro.demo.designsystem.components.WakeHairline
+import com.suhel.llamabro.demo.designsystem.components.messageMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
@@ -77,7 +79,7 @@ fun ChatContent(
 ) {
     Column(modifier.fillMaxSize().statusBarsPadding().testTag("chat_screen")) {
         ChatTopBar(state.bar, layout, actions)
-        WakeHairline(state.bar.waking)
+        WakeHairline(state.bar.waking, progress = state.bar.wakeProgress)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (state.rows.isEmpty()) {
                 EmptyChat(actions.onStarter)
@@ -93,8 +95,9 @@ fun ChatContent(
 @Composable
 private fun BottomArea(state: ChatScreenState, live: ChatLive, actions: ChatScreenActions) {
     BottomBar {
-        state.bottom.problem?.let { LimitLine(it, null, {}, Modifier.testTag("problem_line")) }
-        state.bottom.limit?.let { LimitRow(it, actions.onLimitAction) }
+        // a problem or a note unfolds above the bar when it arrives and folds away when it is fixed or closed
+        Reveal(state.bottom.problem) { LimitLine(it, null, {}, Modifier.testTag("problem_line")) }
+        Reveal(state.bottom.limit) { LimitRow(it, actions.onLimitAction, actions.onDismissLimit) }
         if (!state.bottom.readOnly) ComposerArea(state.bar.header.name, live, actions)
     }
 }
@@ -216,36 +219,48 @@ private fun MessageList(
         listState,
         Modifier.testTag("message_list"),
         overlay = {
-            if (away) {
-                JumpToLatest(
-                    onClick = {
-                        // to the end of the last item, not the start of it: a reply taller than the screen would
-                        // otherwise stay "away" and the button would stay on screen
-                        scope.launch {
-                            listState.animateScrollToItem((rows.size + if (busy) 1 else 0) - 1, Int.MAX_VALUE)
-                        }
-                    },
-                    modifier = Modifier.align(Alignment.BottomCenter).testTag("jump_to_latest"),
-                )
-            }
+            JumpToLatest(
+                visible = away,
+                onClick = {
+                    // to the end of the last item, not the start of it: a reply taller than the screen would
+                    // otherwise stay "away" and the button would stay on screen
+                    scope.launch {
+                        listState.animateScrollToItem((rows.size + if (busy) 1 else 0) - 1, Int.MAX_VALUE)
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomCenter).testTag("jump_to_latest"),
+            )
         },
     ) {
         items(rows, key = { it.key }, contentType = { it.type }) { item ->
-            MessageRow(item, style, actions, showActions = !busy && item.key == lastReplyKey)
+            // a finished reply takes the streaming row's place: it is already on screen, so it does not fade in again
+            Box(Modifier.messageMotion(this, appear = item !is ReplyItem)) {
+                MessageRow(item, style, actions, showActions = !busy && item.key == lastReplyKey)
+            }
         }
-        if (busy) item(key = "streaming", contentType = "streaming") { StreamingHost(streaming, style, actions) }
+        if (busy) {
+            item(key = "streaming", contentType = "streaming") {
+                Box(Modifier.messageMotion(this)) { StreamingHost(streaming, style, actions) }
+            }
+        }
     }
 }
 
-/** The reply being written, in its own row: it reads [streaming] here, so a token redraws this and nothing above. */
+/**
+ * The reply being written, in its own row: it reads [streaming] here, so a token redraws this and nothing above. Until
+ * the first word (the model wakes, then reads the prompt) the typing dots hold its place.
+ */
 @Composable
 private fun StreamingHost(streaming: () -> StreamingItem?, style: MessageStyle, actions: MessageActions) {
-    streaming()?.let { StreamingRow(it, style, actions) } ?: GapAbove(Gap.None)
+    streaming()?.let { StreamingRow(it, style, actions) } ?: TypingDots(Modifier.testTag("typing"))
 }
 
-/** A limit's line and its one button, which does what the limit says (switch, get a model, add a token, retry). */
+/**
+ * A limit's line and its button, which does what the limit says (switch, get a model, add a token, retry); a note
+ * ([Limit.dismissible]) also has a close button.
+ */
 @Composable
-private fun LimitRow(limit: Limit, onAction: (LimitAction) -> Unit) {
+private fun LimitRow(limit: Limit, onAction: (LimitAction) -> Unit, onDismiss: () -> Unit) {
     LimitLine(
         limit.line,
         limit.actionLabel,
@@ -253,19 +268,19 @@ private fun LimitRow(limit: Limit, onAction: (LimitAction) -> Unit) {
         modifier = Modifier.testTag("limit_line"),
         secondAction = limit.secondLabel,
         onSecondAction = { limit.second?.let(onAction) },
+        onDismiss = onDismiss.takeIf { limit.dismissible },
     )
 }
 
 /**
- * The message bar, with the edit line and the draft's pictures above it. It reads the draft here, so typing
+ * The message bar, with the edit line above it and the draft's pictures inside it. It reads the draft here, so typing
  * recomposes this and nothing else.
  */
 @Composable
 private fun ComposerArea(modelName: String, live: ChatLive, actions: ChatScreenActions) {
     val draft = live.draft()
     Stack(Gap.Block) {
-        if (draft.editing != null) LimitLine("Editing your message", "Cancel", actions.onCancelEdit)
-        if (draft.attachments.isNotEmpty()) PhotoRow(draft.attachments, live.thumbnail, actions.onRemovePhoto)
+        Reveal(draft.editing) { LimitLine("Editing your message", "Cancel", actions.onCancelEdit) }
         Composer(
             state = live.composer(),
             placeholder = if (modelName.isEmpty()) "Message" else "Message $modelName",
@@ -275,11 +290,17 @@ private fun ComposerArea(modelName: String, live: ChatLive, actions: ChatScreenA
             onAttach = actions.onAttach,
             onThink = actions.onThink,
             modifier = Modifier.testTag("composer"),
+            attachments =
+                if (draft.attachments.isEmpty()) {
+                    null
+                } else {
+                    { PhotoRow(draft.attachments, live.thumbnail, actions.onRemovePhoto) }
+                },
         )
     }
 }
 
-/** What is attached to the message being written: a small picture each, with a ✕ to take it back. */
+/** What is attached to the message being written, inside the bar: a small picture each, with a ✕ to take it back. */
 @Composable
 private fun PhotoRow(names: List<String>, thumbnail: suspend (String) -> ImageBitmap?, onRemove: (String) -> Unit) {
     Inline(Gap.Block, Modifier.testTag("attachments")) {

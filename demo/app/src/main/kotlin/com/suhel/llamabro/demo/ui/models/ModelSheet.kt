@@ -49,8 +49,8 @@ import com.suhel.llamabro.demo.ui.preview.PreviewFrame
 import com.suhel.llamabro.hub.HfModel
 
 /**
- * A model's sheet: the stateful end. Its view model lives in a store that is cleared when the sheet leaves the screen,
- * which stops the estimates; Get asks about notifications, starts the download and closes.
+ * A model's sheet: the stateful end. Its view model lives in a store that is cleared when the sheet closes, which stops
+ * the estimates, and kept across a rotation; Get asks about notifications, starts the download and closes.
  */
 @Composable
 fun ModelSheetRoute(
@@ -61,7 +61,7 @@ fun ModelSheetRoute(
     startTier: SizeTier? = null,
 ) {
     val viewModel =
-        viewModel(viewModelStoreOwner = rememberSheetViewModelOwner()) {
+        viewModel(viewModelStoreOwner = rememberSheetViewModelOwner("sheet:${row.repo}")) {
             ModelSheetViewModel(
                 row,
                 container.discovery::files,

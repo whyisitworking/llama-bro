@@ -31,6 +31,88 @@ class DevicePolicyTest {
     private fun load(engine: FakeEngine, configure: ModelConfig.() -> Unit = {}): Model =
         runBlocking { testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf"), configure) }
 
+    private fun encoderOf(config: String): String? =
+        (Json.parseToJsonElement(config) as JsonObject)["mmproj_device"]?.jsonPrimitive?.content
+
+    private fun loadVision(engine: FakeEngine, configure: ModelConfig.() -> Unit = {}): Model =
+        runBlocking { testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf") { mmproj = "/mm.gguf" }, configure) }
+
+    @Test
+    fun encoderFollowsTheModelUnlessSet() { // llama-server's --mmproj-device: absent follows --device
+        val e = engine(cpu, opencl, hexagon)
+        val follows = loadVision(e)
+        assertEquals(null, encoderOf(e.loadConfigs.last()))
+        assertEquals(DeviceKind.Npu, follows.loadReport.encoderDevice)
+        assertEquals("HTP0", follows.loadReport.encoderDeviceName)
+
+        val onCpu = loadVision(e) { encoderDevice = DevicePolicy.Only(DeviceKind.Cpu) }
+        assertEquals("none", encoderOf(e.loadConfigs.last()))
+        assertEquals(DeviceKind.Cpu, onCpu.loadReport.encoderDevice)
+
+        val onGpu = loadVision(e) { encoderDevice = DevicePolicy.Prefer(DeviceKind.Gpu) }
+        assertEquals("GPUOpenCL", encoderOf(e.loadConfigs.last()))
+        assertEquals(DeviceKind.Gpu, onGpu.loadReport.encoderDevice)
+
+        // the same device as the model needs no override
+        loadVision(e) { encoderDevice = DevicePolicy.Only(DeviceKind.Npu) }
+        assertEquals(null, encoderOf(e.loadConfigs.last()))
+
+        // no projector: nothing to place, nothing reported
+        val textOnly = load(e) { encoderDevice = DevicePolicy.Only(DeviceKind.Cpu) }
+        assertEquals(null, encoderOf(e.loadConfigs.last()))
+        assertEquals(null, textOnly.loadReport.encoderDevice)
+    }
+
+    @Test
+    fun encoderPreferFallsBackToTheModelAndOnlyFails() {
+        val e = engine(cpu, hexagon) // no GPU in this app
+        val model = loadVision(e) { encoderDevice = DevicePolicy.Prefer(DeviceKind.Gpu) }
+        assertEquals(null, encoderOf(e.loadConfigs.last()))
+        assertEquals(DeviceKind.Npu, model.loadReport.encoderDevice)
+        try {
+            loadVision(e) { encoderDevice = DevicePolicy.Only(DeviceKind.Gpu) }
+            fail("Only(Gpu) for the encoder loaded without a GPU")
+        } catch (x: LlamaBroException.DeviceUnavailable) {
+            assertEquals(DeviceKind.Gpu, x.kind)
+            assertTrue(x.message, x.message!!.contains("image encoder"))
+        }
+    }
+
+    @Test
+    fun encoderThatFailsToLoadFallsBackToTheModelsDevice() { // D53: Prefer and Auto fall back when theirs fails
+        val e = engine(cpu, opencl, hexagon)
+        e.loadError = { config -> if (encoderOf(config) == "GPUOpenCL") """{"error":"no gpu for you"}""" else null }
+        val model = loadVision(e) { encoderDevice = DevicePolicy.Prefer(DeviceKind.Gpu) }
+        assertEquals(listOf("GPUOpenCL", null), e.loadConfigs.takeLast(2).map(::encoderOf)) // same model device twice
+        assertEquals(DeviceKind.Npu, model.loadReport.device)
+        assertEquals(DeviceKind.Npu, model.loadReport.encoderDevice)
+        val tried = model.loadReport.attempts.single()
+        assertEquals("GPUOpenCL", tried.deviceName)
+        assertTrue(tried.reason, tried.reason.contains("image encoder") && tried.reason.contains("no gpu for you"))
+        // Only doesn't fall back to the model's device: the NPU is never retried with the encoder beside it; the
+        // model moves on to the GPU, where the encoder is where it was asked to be
+        val strict = engine(cpu, opencl, hexagon)
+        strict.loadError = { config -> if (encoderOf(config) == "GPUOpenCL") """{"error":"no"}""" else null }
+        val onGpu = loadVision(strict) { encoderDevice = DevicePolicy.Only(DeviceKind.Gpu) }
+        assertEquals(listOf(listOf("HTP0"), listOf("GPUOpenCL")), strict.loadConfigs.map(::devicesOf))
+        assertEquals(DeviceKind.Gpu, onGpu.loadReport.device)
+        assertEquals(DeviceKind.Gpu, onGpu.loadReport.encoderDevice)
+    }
+
+    @Test
+    fun estimateFitRefusesAnEncoderDeviceThatIsMissing() {
+        try {
+            runBlocking {
+                testLlamaBro(engine(cpu, hexagon)).estimateFit(ModelSource.file("/m.gguf") { mmproj = "/mm.gguf" }) {
+                    encoderDevice = DevicePolicy.Only(DeviceKind.Gpu)
+                }
+            }
+            fail("estimated with a missing encoder device")
+        } catch (x: LlamaBroException.DeviceUnavailable) {
+            assertEquals(DeviceKind.Gpu, x.kind)
+        }
+    }
+
     @Test
     fun explicitDeviceAlways() {
         val cpuOnly = engine(cpu)

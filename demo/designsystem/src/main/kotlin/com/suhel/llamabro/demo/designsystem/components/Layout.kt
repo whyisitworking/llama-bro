@@ -44,9 +44,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
+import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import com.suhel.llamabro.demo.designsystem.theme.scrim
 
 /**
  * A screen's top bar, 64 dp (Material's small app bar): an optional [start] (menu, back, 48 dp at 4 dp from the
@@ -65,21 +67,22 @@ fun TopBar(
     Row(
         modifier
             .fillMaxWidth()
-            .heightIn(min = 64.dp)
+            .heightIn(min = DemoSize.topBar)
             .then(
                 if (divider) {
                     Modifier.drawBehind {
-                        val y = size.height - 0.5.dp.toPx()
-                        drawLine(colors.hairline, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
+                        val stroke = DemoSize.hairline.toPx()
+                        val y = size.height - stroke / 2
+                        drawLine(colors.hairline, Offset(0f, y), Offset(size.width, y), strokeWidth = stroke)
                     }
                 } else {
                     Modifier
                 },
-            ).padding(horizontal = 4.dp),
+            ).padding(horizontal = DemoSpacing.inline),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (start != null) start()
-        Box(Modifier.weight(1f).padding(horizontal = 12.dp)) { title() }
+        Box(Modifier.weight(1f).padding(horizontal = DemoSpacing.compact)) { title() }
         if (end != null) end()
     }
 }
@@ -99,10 +102,10 @@ fun TopBarTitle(
     val colors = LocalDemoColors.current
     Column(
         modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(DemoShapes.card)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
-            .heightIn(min = 48.dp)
-            .padding(vertical = 4.dp),
+            .heightIn(min = DemoSize.target)
+            .padding(vertical = DemoSpacing.inline),
         verticalArrangement = Arrangement.Center,
     ) {
         val chevronOnTitle = chevron && subtitle == null
@@ -120,7 +123,7 @@ fun TopBarTitle(
                     DemoIcons.ChevronDown,
                     contentDescription = null,
                     tint = colors.ink,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(DemoSize.iconSmall),
                 )
             }
         }
@@ -138,7 +141,7 @@ fun TopBarTitle(
                         DemoIcons.ChevronDown,
                         contentDescription = null,
                         tint = colors.muted,
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(DemoSize.iconSmall),
                     )
                 }
             }
@@ -158,9 +161,15 @@ fun BottomTabs(tabs: List<BottomTab>, selected: Int, onSelect: (Int) -> Unit, mo
         modifier
             .fillMaxWidth()
             .background(colors.surface)
-            .drawBehind { drawLine(colors.hairline, Offset(0f, 0f), Offset(size.width, 0f), strokeWidth = 1.dp.toPx()) }
-            .navigationBarsPadding()
-            .height(80.dp)
+            .drawBehind {
+                drawLine(
+                    colors.hairline,
+                    Offset(0f, 0f),
+                    Offset(size.width, 0f),
+                    strokeWidth = DemoSize.hairline.toPx(),
+                )
+            }.navigationBarsPadding()
+            .height(DemoSize.navBar)
             .selectableGroup(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -176,19 +185,20 @@ fun BottomTabs(tabs: List<BottomTab>, selected: Int, onSelect: (Int) -> Unit, mo
             ) {
                 Box(
                     Modifier
-                        .then(if (on) Modifier.background(colors.accentSoft, RoundedCornerShape(12.dp)) else Modifier)
-                        .padding(horizontal = 20.dp, vertical = 4.dp),
+                        .size(width = DemoSize.navIndicatorWidth, height = DemoSize.navIndicatorHeight)
+                        .then(if (on) Modifier.background(colors.accentSoft, CircleShape) else Modifier),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         tab.icon,
                         contentDescription = null,
                         tint = if (on) colors.accent else colors.muted,
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(DemoSize.icon),
                     )
                 }
                 Text(
                     tab.label,
-                    Modifier.padding(top = 4.dp),
+                    Modifier.padding(top = DemoSpacing.inline),
                     color = if (on) colors.ink else colors.muted,
                     style = if (on) DemoType.labelSmall else DemoType.bodySmall,
                 )
@@ -217,15 +227,15 @@ fun LayoutPreviewCard(
             .softShadow(shape, colors)
             .clip(shape)
             .background(colors.surface)
-            .border(2.dp, if (selected) colors.accent else colors.surface, shape)
+            .border(DemoSize.selectedStroke, if (selected) colors.accent else colors.surface, shape)
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
             .padding(DemoSpacing.item),
     ) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(120.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .height(DemoSize.LayoutDrawing.height)
+                .clip(DemoShapes.chip)
                 .background(colors.canvas),
         ) {
             when (kind) {
@@ -238,25 +248,33 @@ fun LayoutPreviewCard(
                             .background(colors.hairline),
                     )
                     Box(Modifier.fillMaxHeight().weight(0.66f), contentAlignment = Alignment.Center) {
-                        Box(Modifier.size(18.dp).background(colors.accentSoft, CircleShape))
+                        Box(Modifier.size(DemoSize.LayoutDrawing.dot).background(colors.accentSoft, CircleShape))
                     }
                 }
 
                 LayoutKind.ChatList -> {
                     Column(
-                        Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(9.dp),
+                        Modifier.fillMaxSize().padding(DemoSpacing.block),
+                        verticalArrangement =
+                            Arrangement.spacedBy(
+                                DemoSize.LayoutDrawing.lineGap,
+                                Alignment.CenterVertically,
+                            ),
                     ) {
                         repeat(4) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(12.dp).background(colors.accentSoft, CircleShape))
                                 Box(
                                     Modifier
-                                        .padding(
-                                            start = 6.dp,
-                                        ).weight(1f)
-                                        .height(6.dp)
-                                        .background(colors.hairline, RoundedCornerShape(3.dp)),
+                                        .size(
+                                            DemoSize.LayoutDrawing.avatar,
+                                        ).background(colors.accentSoft, CircleShape),
+                                )
+                                Box(
+                                    Modifier
+                                        .padding(start = DemoSpacing.block)
+                                        .weight(1f)
+                                        .height(DemoSize.LayoutDrawing.line)
+                                        .background(colors.hairline, CircleShape),
                                 )
                             }
                         }
@@ -266,7 +284,7 @@ fun LayoutPreviewCard(
         }
         Text(
             title,
-            Modifier.padding(top = 8.dp),
+            Modifier.padding(top = DemoSpacing.block),
             color = colors.ink,
             style = DemoType.title,
         )
@@ -300,7 +318,9 @@ fun DemoDrawer(
     }
     ModalNavigationDrawer(
         drawerContent = {
+            // the sheet is as wide as its content (the sidebar's 320 dp), not Material's 360 dp with a blank band
             ModalDrawerSheet(
+                modifier = Modifier.drawerWidth(),
                 drawerContainerColor = colors.canvas,
                 drawerContentColor = colors.ink,
                 drawerShape = RectangleShape,
@@ -311,7 +331,8 @@ fun DemoDrawer(
         },
         modifier = modifier,
         drawerState = state,
-        scrimColor = colors.ink.copy(alpha = 0.32f),
+        // the theme's scrim, as the sheets use: the ink would lay a light haze over the page in dark (F131)
+        scrimColor = colors.scrim,
         content = content,
     )
 }

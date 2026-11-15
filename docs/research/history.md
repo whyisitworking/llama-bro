@@ -2,7 +2,7 @@
 
 How the SDK reached its current shape, phase by phase. Each section states the question the phase had to answer, what was built, the key results with numbers, where the work changed course and why, and what stayed open. Findings are cited as F<n> ([findings](./findings.md)) and decisions as D<n> ([decisions](../decisions.md); the overall structure is in [architecture](../architecture.md)). The experiments themselves (scripts, method and raw results) are in [`research/`](../../research/README.md); how the result of each change is verified is in [../testing.md](../testing.md).
 
-All phone measurements were made on one test phone: a OnePlus 13 (Snapdragon 8 Elite, Hexagon v79, Adreno 830, Android 16, 15.5 GB of RAM). The reference for every comparison is upstream llama.cpp at the pinned build b12052, with the same flags. Where upstream and the SDK differ, upstream wins unless a measured test says otherwise (D10, D18). Dates are 2026.
+All phone measurements were made on one test phone: a OnePlus 13 (Snapdragon 8 Elite, Hexagon v79, Adreno 830, Android 16, 15.5 GB of RAM). The reference for every comparison is upstream llama.cpp at the pinned build (b12052 until 2026-11-13, b12352 since, D52), with the same flags. Where upstream and the SDK differ, upstream wins unless a measured test says otherwise (D10, D18). Dates are 2026.
 
 ## Summary of the phases
 
@@ -15,6 +15,7 @@ All phone measurements were made on one test phone: a OnePlus 13 (Snapdragon 8 E
 | PF Feature spike | 11-06 | Which llama-server features beat upstream's defaults on a phone? | n-gram speculation and DFlash as opt-ins; the rest unchanged (D35 to D37) |
 | P3 Hub | 11-07 to 11-09 | Can downloads resume, verify and be fitted before they start? | Yes, verified on a fake and on the real Hub (D39 to D45) |
 | PD Demo app | 11-09 to 11-13 | Does the SDK carry a real chat app end to end? | Yes, with two known defects (F113, F119) |
+| After PD | 11-13 | Why do the phone's models not see pictures, and is the newer llama.cpp worth taking? | The NPU computed some image encoders wrongly at b12052 (F120); b12352 fixes it, keeps the contract and the patch's gain (F121) |
 
 ## Working method
 
@@ -290,10 +291,28 @@ Two SDK additions: a `Conversation` from stored messages, because an app that ke
 
 **Open at the end.** The phase closed with two known defects (F119 and F113) and the items below.
 
+## After PD: pictures on the NPU and llama.cpp b12352
+
+**The pictures (F119, F120).** The demo's vision models answered as if no picture were attached. On the phone, upstream llama-server gave the same wrong answer as the SDK with the image encoder on the NPU, and the right one with it on the CPU or the GPU: ggml-hexagon at b12052 computed Qwen3.5 0.8B's encoder wrongly. It had followed the model onto the NPU since P2 T6, and no test read a reply: they checked that one arrived, or that the SDK matched upstream, which was wrong too. Every image test now asserts the colours the model names. A first fix kept the encoder on the CPU (D51).
+
+**b12352 (F121, F122, F123, F124).** The newer build fixes the encoder, so the encoder follows the model again and an app can move it (`encoderDevice`, D53). The contract held on the Mac and on the NPU; the delta-net patch, re-ported, still makes NPU prefill with MTP about 66% faster. The upgrade found a build bug (stale objects from upstream's file times, F122), a CPU build that encodes BF16 projectors about 3.4x slower than upstream's Snapdragon preset (F123), and NPU memory that no longer shows in PSS (F124). The NPU's skeleton is now found the way upstream finds it (D54).
+
+**Retests and the CPU encoder (F125, F126, F127).** Drafting still aborts the GPU at b12352 and Vulkan's fixes are not upstream yet (F125). The slow BF16 encoder on the phone's CPU was a missing ARM path in ggml-cpu, not the upgrade: `-ffp-model=fast` hid it but changed every CPU result for no gain on text (F126), so the SDK carries upstream's open fix, PR #30432, as a patch until it merges: 16.5 s to 3.1 s (F127, D55).
+
 ## Open items
 
-- **The models do not see an attached picture on the phone (F119).** The suggested vision models answer as if no picture were attached. Next steps: send the same file through the acceptance app and the host test with the phone's models, try the CPU backend, read the native log (it does not reach logcat), then check the image's MIME type. No test yet asserts that a model names the colours of a known picture.
-- **A looping small model has no guard (F113).** Stop is the only exit. A cap on the reply length per Think level and the model card's recommended presence penalty are candidates.
-- **A Settings page for sampling values**, with a reset to the model's default.
-- **A test of the reasoning budget's forced end** on a small model.
+- **The models do not see an attached picture on the phone (F119).** The suggested vision models answer as if no picture were attached. Next steps: send the same file through the acceptance app and the host test with the phone's models, try the CPU backend, read the native log (it does not reach logcat), then check the image's MIME type. No test yet asserts that a model names the colours of a known picture. **Resolved 2026-11-13 (F120, F121, D53):** ggml-hexagon computes some image encoders wrongly, upstream llama-server included. The encoder had followed the model onto the NPU since P2 T6, and no test read what a reply said. b12352 fixes the encoder (F121); it follows the model again, apps can move it (D53), and every image test asserts the colours.
+- **A looping small model has no guard (F113).** Stop is the only exit. A cap on the reply length per Think level and the model card's recommended presence penalty are candidates. **Done 2026-11-14 (D60):** a length limit per Think level with Continue, and each model's card values, Qwen's presence penalty among them.
+- **The model's memory (D59, done 2026-11-14).** Freed by a chosen delay or Android's signal, Unload in Settings and the model sheet, a notification only while a reply runs in the background. F134 holds on the phone. Open: saving the chat's slot to disk on release, measured (F135: about 3 s saved for a 3k-token chat, 300 MB of disk), not built.
+- **A Settings page for sampling values**, with a reset to the model's default. **Done 2026-11-14 (D60):** Settings › Sampling per model and the chat's own values in its model sheet, each with a reset; how other apps do it is F136.
+- **A test of the reasoning budget's forced end** on a small model. **Done 2026-11-14 (F137):** `ReplyLimitDeviceTest` on the phone; it also shows Continue working from inside the thinking.
+- **An intermittent miss of the held-message note (F138)**, twice on the emulator, not reproduced alone; traced part way and left for later.
 - Carried from earlier phases: DFlash's one unexplained divergence (F95); Vulkan on the Adreno 830 and GPU drafting, both waiting on upstream (F64, F80); typed classes for embeddings, rerank, completion and transcription (reachable now through `rawRequest`); CI, sanitizer runs and generated documentation; no non-Qualcomm device verified; and publishing, which needs a decision on the NPU runtime's licence terms.
+- **Load progress in the demo app.** The SDK already reports it (`ModelConfig.onProgress`, from llama-server's loading stages, the projector included), but the demo shows only an indeterminate line while a model wakes. A determinate bar is a small change. Check at the same time whether cancelling a load reaches llama.cpp, whose progress callback can abort it. **Done 2026-11-14:** the wake line fills from the SDK's load progress; whether cancelling a load reaches llama.cpp is in [sdk-review.md](sdk-review.md) (item 7).
+- **Headline features to discuss (proposed 2026-11-13, not decided).** Each stays within what llama-server offers:
+  1. *Typed structured output:* `generate<T>()` returns a Kotlin data class, its JSON schema derived from kotlinx.serialization and enforced by llama-server's schema grammar, so the reply always parses. (`ResponseFormat` exists today, with the schema as a string.)
+  2. *Typed tools:* the tool loop exists (`Conversation.tool`); the schema is a string and the arguments are read by name. Declaring a tool with a typed argument class removes both. Whether a tool may run stays the app's decision.
+  3. *Embeddings and rerank as typed calls* (`/embeddings`, `/rerank`, today only through `rawRequest`): private, offline semantic search on the phone.
+  4. *Audio input* for speech-capable models, through the same multimodal path as pictures.
+  5. *LoRA adapters switched at runtime* (llama-server's `/lora-adapters`): one base model, several tasks, no reload.
+  The suggested lead is 1 and 2. The full usability review, which ranks these with the memory check (done, D57) and loading by a Hugging Face name, is [sdk-review.md](sdk-review.md), with a proposed phase for them (PH) and one for the release (PR). What the SDK already has also counts toward the headline: the Hexagon NPU, MTP drafting, pictures with a choice of encoder device, fit estimates and resumable downloads from the hub.

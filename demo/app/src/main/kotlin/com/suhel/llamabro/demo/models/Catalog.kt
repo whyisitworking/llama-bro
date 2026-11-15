@@ -1,10 +1,17 @@
 package com.suhel.llamabro.demo.models
 
+import com.suhel.llamabro.demo.chat.CardSampling
+import com.suhel.llamabro.demo.chat.Knob.MinP
+import com.suhel.llamabro.demo.chat.Knob.PresencePenalty
+import com.suhel.llamabro.demo.chat.Knob.Temperature
+import com.suhel.llamabro.demo.chat.Knob.TopK
+import com.suhel.llamabro.demo.chat.Knob.TopP
+import com.suhel.llamabro.demo.chat.Knobs
 import com.suhel.llamabro.hub.HfModel
 
 /**
  * A model the app knows by name. Friendly names belong to exactly these files (demo design §3). Sizes are pinned from
- * the repo trees read on 2026-11-10 (commits and file names in `spike/pd/catalog/pin.md`); a mismatch at runtime
+ * the repo trees read on 2026-11-10 (commits and file names in `demo/catalog/pin.md`); a mismatch at runtime
  * (the hub's plan disagrees) only refreshes the size, never the name.
  */
 data class CatalogEntry(
@@ -17,9 +24,23 @@ data class CatalogEntry(
     val sees: Boolean,
     val modelBytes: Long,
     val mmprojBytes: Long,
+    /**
+     * The model card's recommended sampling (D60, F136): the GGUF uploads carry none (F17), so the catalog does, and a
+     * model's settings start from it. Sources: each model's card, or for Gemma 3 the values Unsloth's guide gives from
+     * the Gemma team, and for Llama 3.2 its `generation_config.json`. Qwen3.5's values for pictures are not used.
+     */
+    val sampling: CardSampling,
 )
 
 object Catalog {
+    /** Qwen3.5's card, thinking (every size). */
+    private val qwenThinking =
+        Knobs.of(Temperature to 1f, TopP to 0.95f, TopK to 20f, MinP to 0f, PresencePenalty to 1.5f)
+
+    /** Qwen3.5 4B's and 9B's card, not thinking (the 0.8B's differs). */
+    private val qwenAnswering =
+        Knobs.of(Temperature to 0.7f, TopP to 0.8f, TopK to 20f, MinP to 0f, PresencePenalty to 1.5f)
+
     private val swift =
         CatalogEntry(
             key = HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M"),
@@ -33,6 +54,11 @@ object Catalog {
             sees = true,
             modelBytes = 532_517_120,
             mmprojBytes = 207_346_528,
+            sampling =
+                CardSampling(
+                    thinking = qwenThinking,
+                    answering = Knobs.of(Temperature to 1f, TopP to 1f, TopK to 20f, MinP to 0f, PresencePenalty to 2f),
+                ),
         )
     private val writer =
         CatalogEntry(
@@ -47,6 +73,7 @@ object Catalog {
             sees = true,
             modelBytes = 2_489_894_016,
             mmprojBytes = 851_251_456,
+            sampling = CardSampling(Knobs.of(Temperature to 1f, TopP to 0.95f, TopK to 64f, MinP to 0f)),
         )
     private val deep =
         CatalogEntry(
@@ -61,6 +88,7 @@ object Catalog {
             sees = true,
             modelBytes = 2_740_937_888,
             mmprojBytes = 675_569_344,
+            sampling = CardSampling(thinking = qwenThinking, answering = qwenAnswering),
         )
     private val llama =
         CatalogEntry(
@@ -75,6 +103,7 @@ object Catalog {
             sees = false,
             modelBytes = 2_019_377_600,
             mmprojBytes = 0,
+            sampling = CardSampling(Knobs.of(Temperature to 0.6f, TopP to 0.9f)),
         )
     private val nine =
         CatalogEntry(
@@ -89,6 +118,7 @@ object Catalog {
             sees = true,
             modelBytes = 5_680_522_464,
             mmprojBytes = 921_705_024,
+            sampling = CardSampling(thinking = qwenThinking, answering = qwenAnswering),
         )
 
     /** First run's three picks. */

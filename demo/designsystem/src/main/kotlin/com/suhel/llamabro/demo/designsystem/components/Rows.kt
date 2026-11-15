@@ -10,21 +10,32 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
@@ -61,7 +72,7 @@ fun ListRow(
                 } else {
                     Modifier
                 },
-            ).heightIn(min = if (subtitle != null) 72.dp else 56.dp)
+            ).heightIn(min = if (subtitle != null) DemoSize.rowTwoLine else DemoSize.field)
             .padding(horizontal = DemoSpacing.item, vertical = DemoSpacing.block),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(DemoSpacing.item),
@@ -69,7 +80,7 @@ fun ListRow(
         if (leading !=
             null
         ) {
-            Icon(leading, contentDescription = null, tint = colors.ink, modifier = Modifier.size(24.dp))
+            Icon(leading, contentDescription = null, tint = colors.ink, modifier = Modifier.size(DemoSize.icon))
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(DemoSpacing.inline)) {
             Text(title, color = colors.ink, style = DemoType.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -92,7 +103,7 @@ fun ListRow(
                 DemoIcons.Check,
                 contentDescription = null,
                 tint = colors.accent,
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(DemoSize.icon),
             )
         }
         if (chevron) {
@@ -100,7 +111,7 @@ fun ListRow(
                 DemoIcons.ChevronRight,
                 contentDescription = null,
                 tint = colors.muted,
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(DemoSize.icon),
             )
         }
     }
@@ -134,7 +145,7 @@ fun GroupedList(modifier: Modifier = Modifier, content: GroupScope.() -> Unit) {
                         .fillMaxWidth()
                         .padding(
                             start = DemoSpacing.item,
-                        ).heightIn(min = 1.dp, max = 1.dp)
+                        ).height(DemoSize.hairline)
                         .background(colors.hairline),
                 )
             }
@@ -164,4 +175,69 @@ fun RowCard(
         contentPadding = PaddingValues(0.dp),
         content = content,
     )
+}
+
+/**
+ * A value set with a slider (Material's slider in a list row), for a group of settings such as sampling: the [title]
+ * and the value as [valueText] on one line, a [note] under them (where the value comes from), then the slider over the
+ * row's width. [steps] are the stops between the ends, as Material's slider counts them; the ticks are not drawn, as
+ * there can be a hundred. The row keeps the value under the finger while it moves and calls [onValueChange] once, when
+ * the finger lifts or a key moves it, so a setting is written once per change, not once per frame.
+ */
+@Composable
+fun SliderRow(
+    title: String,
+    value: Float,
+    valueText: (Float) -> String,
+    range: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    note: String? = null,
+) {
+    val colors = LocalDemoColors.current
+    var moving by remember(value) { mutableStateOf<Float?>(null) }
+    val shown = moving ?: value
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = DemoSpacing.item, vertical = DemoSpacing.block),
+        verticalArrangement = Arrangement.spacedBy(DemoSpacing.inline),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                title,
+                Modifier.weight(1f),
+                color = colors.ink,
+                style = DemoType.title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(valueText(shown), color = colors.ink, style = DemoType.title, maxLines = 1)
+        }
+        if (note != null) Text(note, color = colors.muted, style = DemoType.bodyMedium, maxLines = 1)
+        Slider(
+            value = shown,
+            onValueChange = { moving = it },
+            onValueChangeFinished = { moving?.let(onValueChange) },
+            valueRange = range,
+            steps = steps,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = DemoSize.target)
+                    .semantics {
+                        contentDescription = title
+                        stateDescription = valueText(shown)
+                    },
+            colors =
+                SliderDefaults.colors(
+                    thumbColor = colors.accent,
+                    activeTrackColor = colors.accent,
+                    inactiveTrackColor = colors.hairline,
+                    activeTickColor = Color.Transparent,
+                    inactiveTickColor = Color.Transparent,
+                ),
+        )
+    }
 }

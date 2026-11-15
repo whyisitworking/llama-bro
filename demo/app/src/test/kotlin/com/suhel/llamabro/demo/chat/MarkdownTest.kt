@@ -58,6 +58,18 @@ class MarkdownTest {
         assertEquals(listOf(0, 0, 1, 2), b.map { (it as MarkdownBlock.ListItem).index })
     }
 
+    @Test fun aListItemKeepsItsContinuationLines() {
+        // as a model writes it: the item's title, then its text on the next lines, indented or not (CommonMark)
+        val b = blocks("1. **Rest well**\n   Go to bed at the same time.\nEvery day.\n2. Second\n\nAfter the list.")
+        assertEquals(3, b.size)
+        val first = b[0] as MarkdownBlock.ListItem
+        assertEquals(1, first.index)
+        assertEquals("Rest well Go to bed at the same time. Every day.", first.spans.joinToString("") { it.text })
+        assertEquals(true, first.spans[0].bold)
+        assertEquals(2, (b[1] as MarkdownBlock.ListItem).index)
+        assertEquals(true, b[2] is MarkdownBlock.Paragraph)
+    }
+
     @Test fun quotes() {
         assertEquals(MarkdownBlock.Quote(listOf(MarkdownSpan("wise words"))), blocks("> wise words")[0])
     }

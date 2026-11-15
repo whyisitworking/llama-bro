@@ -104,6 +104,22 @@ fun SettingsHome(onBack: () -> Unit, onOpen: (String) -> Unit, routes: SettingsR
                 }
                 row {
                     ListRow(
+                        "Sampling",
+                        subtitle = "How each model picks its words",
+                        chevron = true,
+                        onClick = { onOpen(routes.sampling) },
+                    )
+                }
+                row {
+                    ListRow(
+                        "Memory",
+                        subtitle = "The model in memory, and when it's freed",
+                        chevron = true,
+                        onClick = { onOpen(routes.memory) },
+                    )
+                }
+                row {
+                    ListRow(
                         "Storage",
                         subtitle = "The models on this phone",
                         chevron = true,
@@ -134,6 +150,8 @@ data class SettingsRoutes(
     val defaultModel: String,
     val token: String,
     val storage: String,
+    val memory: String,
+    val sampling: String,
     val about: String,
 )
 
@@ -333,8 +351,8 @@ fun TokenContent(
     }
 }
 
-/** The pinned llama.cpp build (design: the submodule at b12052). */
-private const val LLAMA_CPP_BUILD = "b12052"
+/** The pinned llama.cpp build (design: the submodule at b12352). */
+private const val LLAMA_CPP_BUILD = "b12352"
 
 @Composable
 fun AboutScreen(onBack: () -> Unit) {
@@ -347,9 +365,11 @@ fun AboutScreen(onBack: () -> Unit) {
 @Composable
 fun AboutContent(version: String, onBack: () -> Unit) {
     SettingsPage("About", onBack, Modifier.testTag("about")) {
-        GroupedList {
-            row { ListRow("Version", trailing = version) }
-            row { ListRow("llama.cpp", trailing = LLAMA_CPP_BUILD) }
+        Section("Versions") {
+            GroupedList {
+                row { ListRow("Version", trailing = version) }
+                row { ListRow("llama.cpp", trailing = LLAMA_CPP_BUILD) }
+            }
         }
         Section("Licences") {
             GroupedList {

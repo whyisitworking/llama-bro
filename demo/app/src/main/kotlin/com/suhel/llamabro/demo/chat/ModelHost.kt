@@ -12,13 +12,15 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 sealed interface HostState {
     data object Idle : HostState
 
-    data class Waking(val key: HfModel) : HostState
+    /** [progress] is the SDK's load progress, 0 to 1, once it has reported any; null before. */
+    data class Waking(val key: HfModel, val progress: Float? = null) : HostState
 
     data class Ready(val key: HfModel, val model: Model) : HostState
 
@@ -48,7 +50,23 @@ class ModelHost(private val llamaBro: LlamaBro, private val hub: HubGateway, pri
         private suspend fun run(previous: Load?): Result<Model> {
             previous?.let { retire(it) }
             return try {
-                val loaded = llamaBro.loadModel(hub.source(key))
+                val loaded =
+                    llamaBro.loadModel(hub.source(key)) {
+                        // the load bar under the top bar; a value that arrives after the load ended changes nothing
+                        onProgress { fraction ->
+                            if (current === this@Load) {
+                                _state.update { s ->
+                                    if (s is HostState.Waking &&
+                                        s.key == key
+                                    ) {
+                                        s.copy(progress = fraction)
+                                    } else {
+                                        s
+                                    }
+                                }
+                            }
+                        }
+                    }
                 model = loaded
                 if (current === this) _state.value = HostState.Ready(key, loaded)
                 Result.success(loaded)

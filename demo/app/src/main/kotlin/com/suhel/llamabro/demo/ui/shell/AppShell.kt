@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
@@ -54,10 +55,14 @@ import com.suhel.llamabro.demo.ui.settings.AboutScreen
 import com.suhel.llamabro.demo.ui.settings.AppearanceScreen
 import com.suhel.llamabro.demo.ui.settings.DefaultModelScreen
 import com.suhel.llamabro.demo.ui.settings.InstructionsScreen
+import com.suhel.llamabro.demo.ui.settings.MemoryScreen
+import com.suhel.llamabro.demo.ui.settings.SamplingModelScreen
+import com.suhel.llamabro.demo.ui.settings.SamplingModelsScreen
 import com.suhel.llamabro.demo.ui.settings.SettingsHome
 import com.suhel.llamabro.demo.ui.settings.SettingsRoutes
 import com.suhel.llamabro.demo.ui.settings.SettingsViewModel
 import com.suhel.llamabro.demo.ui.settings.TokenScreen
+import com.suhel.llamabro.hub.HfModel
 
 /**
  * What a chat screen needs from the shell around it: which layout it is in and how to open the drawer, go back, start a
@@ -81,6 +86,8 @@ private val settingsRoutes =
         defaultModel = Routes.DEFAULT_MODEL,
         token = Routes.TOKEN,
         storage = Routes.MODELS,
+        memory = Routes.MEMORY,
+        sampling = Routes.SAMPLING,
         about = Routes.ABOUT,
     )
 
@@ -93,9 +100,23 @@ private val settingsRoutes =
 fun AppShell(
     container: AppContainer,
     chatScreen: @Composable (chatId: Long, chrome: ChatChrome) -> Unit = { _, chrome -> EmptyChatScreen(chrome) },
+    /** Called once the layout and the start screen are known (the settings and the cache scan): the splash ends. */
+    onReady: () -> Unit = {},
 ) {
-    val shell = viewModel { ShellViewModel(container.chats, container.settings, container.models) }
-    val settings = viewModel { SettingsViewModel(container.settings, container.tokenStore, container.models) }
+    val shell =
+        viewModel {
+            ShellViewModel(container.chats, container.settings, container.models, savedState = createSavedStateHandle())
+        }
+    val settings =
+        viewModel {
+            SettingsViewModel(
+                container.settings,
+                container.tokenStore,
+                container.models,
+                container.memory,
+                container.sampling,
+            )
+        }
     val theme by shell.theme.collectAsStateWithLifecycle()
     val layout by shell.layout.collectAsStateWithLifecycle()
     val firstRun by shell.startsWithFirstRun.collectAsStateWithLifecycle()
@@ -111,7 +132,10 @@ fun AppShell(
         ) {
             // the start destination is decided once, when both the layout and first run are known
             val start = firstRun
-            if (layout != null && start != null) Shell(container, layout!!, start, shell, settings, chatScreen)
+            if (layout != null && start != null) {
+                Shell(container, layout!!, start, shell, settings, chatScreen)
+                SideEffect(onReady)
+            }
         }
     }
 }
@@ -295,6 +319,23 @@ private fun Graph(
         composable(Routes.INSTRUCTIONS) { InstructionsScreen(settings, back) }
         composable(Routes.DEFAULT_MODEL) { DefaultModelScreen(settings, back) }
         composable(Routes.TOKEN) { TokenScreen(settings, back) }
+        composable(Routes.MEMORY) { MemoryScreen(settings, back) }
+        composable(Routes.SAMPLING) {
+            SamplingModelsScreen(settings, back) { key ->
+                nav.navigate(Routes.samplingModel(key.toString())) { launchSingleTop = true }
+            }
+        }
+        composable(
+            Routes.SAMPLING_MODEL,
+            arguments = listOf(navArgument(Routes.SAMPLING_KEY_ARG) { type = NavType.StringType }),
+        ) { entry ->
+            val key =
+                entry.arguments
+                    ?.getString(
+                        Routes.SAMPLING_KEY_ARG,
+                    )?.let { runCatching { HfModel.parse(it) }.getOrNull() }
+            if (key != null) SamplingModelScreen(settings, key, back)
+        }
         composable(Routes.ABOUT) { AboutScreen(back) }
     }
 }

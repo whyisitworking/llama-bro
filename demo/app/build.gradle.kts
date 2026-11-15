@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.suhel.llamabro.demo"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.suhel.llamabro.demo"
@@ -72,6 +72,8 @@ android {
 android.sourceSets {
     getByName("test").kotlin.directories.add("src/sharedTest/kotlin")
     getByName("androidTest").kotlin.directories.add("src/sharedTest/kotlin")
+    // the exported Room schemas, for the migration test
+    getByName("androidTest").assets.directories.add("$projectDir/schemas")
 }
 
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
@@ -90,6 +92,8 @@ dependencies {
     implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.process)
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.kotlinx.coroutines.android)
@@ -116,6 +120,7 @@ dependencies {
     androidTestImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.work.testing)
+    androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.androidx.test.uiautomator)
     androidTestImplementation(project(":llamabro-testing"))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

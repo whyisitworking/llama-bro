@@ -72,7 +72,7 @@ class ChatEngineTest {
     private val host by lazy { ModelHost(fake.llamaBro, hub, scope) }
     private val models by lazy { ModelRepository(hub, settings, scheduler, scope, host) }
 
-    private var streamer: ((Conversation, String, Array<Content.Image>, ThinkLevel?) -> Flow<ChatEvent>)? = null
+    private var streamer: Streamer? = null
     private val engine by lazy {
         val custom = streamer
         if (custom != null) {
@@ -358,15 +358,35 @@ class ChatEngineTest {
             assertTrue(rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Failed })
         }
 
-    @Test fun insufficientMemoryBecomesAPlainLimit() =
+    @Test fun aModelTheMemoryCheckDoubtsAnswersWithANote() =
         runBlocking {
-            // every load fails: nothing else (a warm-up, a retry) may use up the one failure the test expects
+            // the SDK's check refuses the first, budgeted load; with MemoryCheck.Warn it loads at the smallest context
+            fake.failLoad(LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory, "not enough memory", times = 1)
+            fake.reply { content("Hi!") }
+            val chat = newChat()
+            chat.send("hello", emptyList())
+            until("answered") { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
+            // a note, not a wall (F128): the reply came, and the line offers a smaller size
+            assertEquals(Limits.memoryWarning("Qwen3.5 0.8B"), chat.limit.value)
+            assertEquals(LimitAction.TrySmallerSize, chat.limit.value!!.action)
+            // the model stays loaded with its note; the next turn doesn't say it again
+            fake.reply { content("Again.") }
+            chat.send("once more", emptyList())
+            until("answered twice") {
+                rows(chat).count { it.kind == MessageKind.Assistant && it.state == MessageState.Done } == 2
+            }
+            assertEquals(null, chat.limit.value)
+        }
+
+    @Test fun aLoadThatFailsForMemoryAllTheSameOffersASmallerSize() =
+        runBlocking {
+            // every load fails, the smallest context too: the phone really has no room
             fake.failLoad(LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory, "not enough memory", times = 100)
             val chat = newChat()
             chat.send("hello", emptyList())
             until("limit shown") { chat.limit.value != null }
-            assertEquals(LimitAction.Retry, chat.limit.value!!.action) // try again first (F115) ...
-            assertEquals(LimitAction.TrySmallerSize, chat.limit.value!!.second) // ... then a smaller size
+            assertEquals(LimitAction.TrySmallerSize, chat.limit.value!!.action)
+            assertEquals(LimitAction.Retry, chat.limit.value!!.second)
             assertEquals("Qwen3.5 0.8B needs more memory than this phone has free right now.", chat.limit.value!!.line)
             assertEquals(
                 "the question waits, held, for a retry",
@@ -566,7 +586,7 @@ class ChatEngineTest {
             val chat = newChat()
             chat.send("hi", emptyList())
             until("failed") { rows(chat).any { it.state == MessageState.Failed } }
-            assertEquals("That didn't work. Try again.", rows(chat).first { it.state == MessageState.Failed }.failure)
+            assertEquals("That didn't work.", rows(chat).first { it.state == MessageState.Failed }.failure)
             chat.regenerate(1)
             until("recovered") {
                 rows(chat).let { r ->

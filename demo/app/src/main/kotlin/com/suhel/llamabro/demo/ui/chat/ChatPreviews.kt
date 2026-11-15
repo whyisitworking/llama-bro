@@ -10,7 +10,10 @@ import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.DeviceKind
+import com.suhel.llamabro.demo.chat.Knob
+import com.suhel.llamabro.demo.chat.Knobs
 import com.suhel.llamabro.demo.chat.Limit
+import com.suhel.llamabro.demo.chat.SamplingLayers
 import com.suhel.llamabro.demo.data.AppLayout
 import com.suhel.llamabro.demo.designsystem.components.ComposerState
 import com.suhel.llamabro.demo.designsystem.components.LimitLine
@@ -18,6 +21,7 @@ import com.suhel.llamabro.demo.designsystem.components.SheetFrame
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.designsystem.components.gutterPadding
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
+import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.ui.preview.DemoPreviews
@@ -162,6 +166,8 @@ internal class MessageRowStates : PreviewParameterProvider<RowPreview> {
             RowPreview("Reply with actions", data.conversation[1], MessageStyle.Open, showActions = true),
             RowPreview("Reply with a thought and code", data.conversation[3], MessageStyle.Open),
             RowPreview("Reply stopped", data.stopped[1], MessageStyle.Open),
+            RowPreview("Reply cut, can continue", data.cut[3], MessageStyle.Open),
+            RowPreview("Reply cut earlier", data.cut[1], MessageStyle.Open),
             RowPreview("Reply failed", data.failed[1], MessageStyle.Open),
             RowPreview("Switched model", data.withSwitch.last(), MessageStyle.Open),
             RowPreview("Question, bubbles", data.bubbles[1], MessageStyle.Bubbles),
@@ -279,8 +285,21 @@ internal fun ModelSwitcherPreview() {
                     onUseForNewChats = {},
                     onGetMore = {},
                     onDone = {},
+                    sampling = SheetSampling(changed = 2, onOpen = {}),
                 )
             }
+        }
+    }
+}
+
+@DemoPreviews
+@Composable
+internal fun ChatSamplingPreview() {
+    val card = Catalog.byRepo("unsloth/Qwen3.5-0.8B-GGUF")?.sampling
+    val layers = SamplingLayers(card, Knobs.of(Knob.TopK to 30f), Knobs.of(Knob.Temperature to 0.6f))
+    PreviewFrame {
+        Column(Modifier.gutterPadding()) {
+            SheetFrame { ChatSamplingContent(layers, thinks = true, onChange = { _, _ -> }, onReset = {}) }
         }
     }
 }

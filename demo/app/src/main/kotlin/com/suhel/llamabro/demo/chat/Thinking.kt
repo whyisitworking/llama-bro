@@ -11,6 +11,28 @@ object Thinking {
     private const val QUICK_TOKENS = 512
     private const val BALANCED_TOKENS = 2_048
 
+    /** The answer's share of a reply's length limit (D60): about 1,500 words, past any answer a chat needs. */
+    private const val ANSWER_TOKENS = 2_048
+
+    /** Deep has no thinking budget, so its limit is a fixed, generous one. */
+    private const val DEEP_REPLY_TOKENS = 8_192
+
+    /** Whether a turn at [level] thinks; null is a model that can't. */
+    fun thinks(level: ThinkLevel?): Boolean = level != null && level != ThinkLevel.Off
+
+    /**
+     * The whole reply's length limit at [level], thinking and answer together (D60, F113): the answer's share plus the
+     * level's thinking budget. A small model that loops ends here, as "Stopped at the length limit", instead of
+     * running until Stop; Continue picks the reply up again.
+     */
+    fun replyTokens(level: ThinkLevel?): Int =
+        when (level) {
+            null, ThinkLevel.Off -> ANSWER_TOKENS
+            ThinkLevel.Quick -> ANSWER_TOKENS + QUICK_TOKENS
+            ThinkLevel.Balanced -> ANSWER_TOKENS + BALANCED_TOKENS
+            ThinkLevel.Deep -> DEEP_REPLY_TOKENS
+        }
+
     /**
      * Whether the Think chip shows: the catalog says so, else the template reports reasoning, else it mentions
      * `enable_thinking` or `<think>` (F97).

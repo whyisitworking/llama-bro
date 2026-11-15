@@ -7,9 +7,12 @@ import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.LimitAction
 import com.suhel.llamabro.demo.designsystem.components.ComposerState
 
-/** The top bar: the model's name, the chat's own title (the chat list layout), and whether the model is waking. */
+/**
+ * The top bar: the model's name, the chat's own title (the chat list layout), whether the model is waking, and how far
+ * its load has come (0 to 1; null while the SDK hasn't said, and the hairline sweeps).
+ */
 @Immutable
-data class ChatBar(val header: ChatHeader, val title: String, val waking: Boolean)
+data class ChatBar(val header: ChatHeader, val title: String, val waking: Boolean, val wakeProgress: Float? = null)
 
 /** Under the messages: whether the chat can be continued, a plain problem line, and the limit line with its button. */
 @Immutable
@@ -50,5 +53,6 @@ class ChatScreenActions(
     val onRemovePhoto: (String) -> Unit = {},
     val onCancelEdit: () -> Unit = {},
     val onLimitAction: (LimitAction) -> Unit = {},
+    val onDismissLimit: () -> Unit = {},
     val message: MessageActions = MessageActions({}, {}, {}, {}, {}, { _, _ -> }),
 )

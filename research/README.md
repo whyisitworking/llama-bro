@@ -22,6 +22,7 @@ benchmarks alternate arms within a round, because the phone throttles under sust
 | P3 | [p3/f95-dflash-repeat](p3/f95-dflash-repeat/README.md) | Does DFlash on the NPU diverge from upstream's greedy reply again? | F95, F98, F99 |
 | P3 | [p3/header-fit](p3/header-fit/README.md) | Does a header-only GGUF give the same memory projection as the full file? Do relative cache symlinks work in app storage? | F84-F86 |
 | P3 | [p3/real-download](p3/real-download/README.md) | Does a download from Hugging Face resume after a kill and verify? | F93 |
+| After PD | [b12352](b12352/README.md) | After the b12352 upgrade: does the delta-net patch still pay, does GPU drafting run, why is the CPU image encoder slow? | F121, F123, F125, F126, F127 |
 | PF | [pf/backend-sampling](pf/backend-sampling/README.md) | Does backend sampling help? Why does OpenCL answer garbage for Qwen3.5? | F70, F71, F75 |
 | PF | [pf/draft-models](pf/draft-models/README.md) | Do EAGLE-3, DFlash and DSpark beat no speculation and MTP? | F73 |
 | PF | [pf/ngram](pf/ngram/README.md) | Does n-gram speculation help without hurting other output? | F72 |

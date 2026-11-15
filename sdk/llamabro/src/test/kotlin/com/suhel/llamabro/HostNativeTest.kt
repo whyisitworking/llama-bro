@@ -260,19 +260,29 @@ class HostNativeTest {
                         .first { "t2-14-image" in it }
                         .substringAfter("base64,")
                         .substringBefore("\"")
-                model
-                    .chat(
-                        ChatRequest {
-                            messages(
-                                Message.user(
-                                    Content.Text("Describe the colours."),
-                                    Content.Image(Base64.getDecoder().decode(dataUrl), "image/png"),
-                                ),
-                            )
-                            sampling = greedy
-                            reasoning = noThink
-                        },
-                    ).collect()
+                val described =
+                    model
+                        .chat(
+                            ChatRequest {
+                                messages(
+                                    Message.user(
+                                        Content.Text("Describe the colours."),
+                                        Content.Image(Base64.getDecoder().decode(dataUrl), "image/png"),
+                                    ),
+                                )
+                                sampling = greedy
+                                reasoning = noThink
+                            },
+                        ).toList()
+                        .filterIsInstance<ChatEvent.ContentDelta>()
+                        .joinToString("") { it.delta }
+                        .lowercase()
+                // the picture is red on the left and blue on the right: matching upstream is not enough, since both can
+                // be wrong together (F119, F120)
+                // whole words, red before blue: "coloured" contains "red"
+                val red = Regex("\\bred\\b").find(described)?.range?.first
+                val blue = Regex("\\bblue\\b").find(described)?.range?.first
+                assertTrue("the model didn't see the picture: $described", red != null && blue != null && red < blue)
             }
             // raw endpoints
             model.rawRequest(Endpoint.Tokenize, """{"content":"Hello, wörld! 😀","with_pieces":true}""").collect()
@@ -413,7 +423,7 @@ class HostNativeTest {
                             null,
                         ) as Endpoint
                     }
-                assertEquals(27, endpoints.size)
+                assertEquals(28, endpoints.size) // b12352 added /v1/audio/speech
                 val unknown = endpoints.filter { bridgeRejects(it) }
                 assertEquals("not in the C API's table: $unknown", emptyList<Endpoint>(), unknown)
                 // the check can fail: a name the table lacks is rejected by the bridge

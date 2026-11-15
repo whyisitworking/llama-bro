@@ -14,6 +14,12 @@ internal class FakeEngine : Engine {
     var initResult: (String) -> String? = { null }
     var logListener: ((Int, String) -> Unit)? = null
     val loadConfigs = mutableListOf<String>()
+
+    /** `setLog` and `init` in the order they were called (D66: the logger goes first). */
+    val calls = mutableListOf<String>()
+
+    /** Lines `init` emits through the log listener, as native init's backend loading does. */
+    var initLines: List<Pair<Int, String>> = emptyList()
     var devicesJson = """[{"name":"CPU","description":"cpu","type":"cpu","memory_free":1,"memory_total":2}]"""
     val model = FakeModel()
 
@@ -24,11 +30,14 @@ internal class FakeEngine : Engine {
     var progress: List<Float> = emptyList()
 
     override fun init(configJson: String): String? {
+        calls += "init"
         initConfigs += configJson
+        initLines.forEach { (level, text) -> logListener?.invoke(level, text) }
         return initResult(configJson)
     }
 
     override fun setLog(listener: ((level: Int, text: String) -> Unit)?) {
+        calls += "setLog"
         logListener = listener
     }
 

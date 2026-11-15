@@ -21,7 +21,8 @@ class SmokeTest {
     @Test
     fun theRuntimeReportsAtLeastOneDevice() {
         val context: Context = InstrumentationRegistry.getInstrumentation().targetContext
-        val devices = runBlocking { LlamaBro.getInstance(context).devices() }
+        val config = (context.applicationContext as DemoApp).llamaBroConfig
+        val devices = runBlocking { LlamaBro.create(context, config).devices() }
         assertTrue("no ggml device", devices.isNotEmpty())
     }
 }

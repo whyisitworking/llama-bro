@@ -12,7 +12,10 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 
-/** The download ring beside a model arriving, the wake hairline (on and off), the thin bar and the storage bar. */
+/**
+ * The download ring beside a model arriving, the wake hairline (sweeping, still, filling to a load's progress,
+ * and off), the thin bar and the storage bar.
+ */
 @Composable
 internal fun ProgressSamples() {
     val c = LocalDemoColors.current
@@ -24,6 +27,7 @@ internal fun ProgressSamples() {
         )
         WakeHairline(active = true)
         StillHairline()
+        WakeHairline(active = true, progress = 0.6f)
         WakeHairline(active = false)
         ThinBar(0.42f)
         Text("6.1 GB used · 120 GB free", color = c.muted, style = DemoType.bodySmall)

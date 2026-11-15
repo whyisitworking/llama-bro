@@ -1,13 +1,13 @@
 // lb-run: sends a request file through the C API and writes the same files as
-// spike/p0/scripts/http-run.py (OUT/<id>.jsonl with {"t_us", "data"} lines, OUT/summary.jsonl), so the
+// research/p0/scripts/http-run.py (OUT/<id>.jsonl with {"t_us", "data"} lines, OUT/summary.jsonl), so the
 // contract test can compare it with upstream llama-server (P1 T5).
 //
 // usage: lb-run CONFIG_JSON REQUESTS.jsonl OUT_DIR
 //   CONFIG_JSON: the lb_model_load config. Backends load from this executable's directory.
 //   LB_RUN_BACKENDS (env, optional): the runtime config's "backends" array, e.g.
-//     [{"name":"hexagon","files":["libggml-hexagon.so"],"env":{"ADSP_LIBRARY_PATH":"/data/local/tmp/x"}}]
+//     [{"name":"hexagon","files":["libggml-hexagon.so"],"env":{"GGML_HEXAGON_LIBHTP_DIR":"/data/local/tmp/x"}}]
 //   LB_RUN_LOG_LEVEL (env, optional): the runtime's log_level (debug shows where each layer went)
-//   REQUESTS.jsonl: {"id": "...", "endpoint": "chat", "body": {...}} per line (spike/p0 format).
+//   REQUESTS.jsonl: {"id": "...", "endpoint": "chat", "body": {...}} per line (research/p0 format).
 #include "llamabro.h"
 #include "lb_common.h"
 

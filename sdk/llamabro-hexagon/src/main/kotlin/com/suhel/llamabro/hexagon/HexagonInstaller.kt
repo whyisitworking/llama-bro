@@ -19,15 +19,10 @@ internal class HexagonInstaller : BackendInstaller {
                 File(context.noBackupFilesDir, "llamabro/htp"),
                 Assets(context.assets, ASSET_DIR),
             ).install()
-        // as upstream's scripts/snapdragon/run.py: every DSP domain's search path (F19); verified from an app in F36
-        val env =
-            listOf(
-                "ADSP_LIBRARY_PATH",
-                "CDSP_LIBRARY_PATH",
-                "CDSP1_LIBRARY_PATH",
-                "CDSP2_LIBRARY_PATH",
-                "CDSP3_LIBRARY_PATH",
-            ).associateWith { dir.absolutePath }
+        // upstream's way since b12352: ggml-hexagon opens the skeleton by its absolute path in this directory, and
+        // falls back by itself to FastRPC's search path and then to the DSP *_LIBRARY_PATH variables. The SDK no longer
+        // sets those variables (F19, F36), which are process-wide and may belong to the app's other DSP users
+        val env = mapOf("GGML_HEXAGON_LIBHTP_DIR" to dir.absolutePath)
         return BackendLibraries(listOf("libllamabro-ggml-hexagon.so"), env)
     }
 

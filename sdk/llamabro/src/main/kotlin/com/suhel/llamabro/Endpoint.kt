@@ -49,8 +49,17 @@ public class Endpoint private constructor(internal val nativeName: String, priva
         /** `POST /v1/rerank` */
         @JvmField public val Rerank: Endpoint = Endpoint("rerank", "POST /v1/rerank")
 
-        /** `POST /tts`, for models with audio output */
+        /**
+         * `POST /tts`, for models with audio output. The audio comes back as bytes, which [Model.rawRequest]'s strings
+         * can't carry intact (F74); useful for its errors until a byte-returning request exists.
+         */
         @JvmField public val Tts: Endpoint = Endpoint("tts", "POST /tts")
+
+        /**
+         * `POST /v1/audio/speech`, OpenAI's speech request over [Tts] (b12352): WAV or 16-bit PCM only. Like [Tts], the
+         * audio can't come back intact through [Model.rawRequest] (F74).
+         */
+        @JvmField public val Speech: Endpoint = Endpoint("speech", "POST /v1/audio/speech")
 
         /** `POST /v1/systemone`, for decision models */
         @JvmField public val SystemOne: Endpoint = Endpoint("systemone", "POST /v1/systemone")

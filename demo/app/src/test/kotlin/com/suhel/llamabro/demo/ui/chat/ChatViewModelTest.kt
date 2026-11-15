@@ -1,9 +1,12 @@
 package com.suhel.llamabro.demo.ui.chat
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.demo.chat.ChatEngine
 import com.suhel.llamabro.demo.chat.FakeChatDao
+import com.suhel.llamabro.demo.chat.LimitAction
 import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ImageStore
@@ -92,12 +95,27 @@ class ChatViewModelTest {
         }
     }
 
-    private suspend fun viewModel(model: HfModel = swift, style: MessageStyle = MessageStyle.Open): ChatViewModel {
+    private suspend fun viewModel(
+        model: HfModel = swift,
+        style: MessageStyle = MessageStyle.Open,
+        saved: SavedStateHandle = SavedStateHandle(),
+        chatId: Long = 0,
+    ): ChatViewModel {
         hub.cachedEntries += CachedEntry(model, 1_000)
         models.changed()
         settings.setLastModel(model.toString())
-        return ChatViewModel(engine.open(0), style, saveImage = { "pic.jpg" }, discardImages = {}).also(viewModels::add)
+        return ChatViewModel(
+            engine.open(chatId),
+            style,
+            saveImage = { "pic.jpg" },
+            discardImages = {},
+            savedState = saved,
+            background = scope,
+        ).also(viewModels::add)
     }
+
+    /** What a process restored after its death hands the view model: the values saved, nothing live. */
+    private fun restored(saved: SavedStateHandle) = SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
 
     private fun reply(text: String) =
         fake.reply {
@@ -116,6 +134,47 @@ class ChatViewModelTest {
             assertEquals(emptyList<String>(), vm.composer.value.attachments)
             until("the reply") { vm.rows.value.any { it is ReplyItem && it.text == "hello" } }
             assertEquals("Hi there", (vm.rows.value.first() as UserItem).text)
+        }
+
+    @Test fun typingReachesTheBarInTheSameCall() =
+        runBlocking {
+            val vm = viewModel()
+            for (text in listOf("H", "He", "Hel")) {
+                vm.onText(text)
+                assertEquals(text, vm.composerState.value.text) // no coroutine between the keystroke and the field
+            }
+            assertTrue(vm.composerState.value.canAct)
+        }
+
+    @Test fun theDraftSurvivesProcessDeathThroughTheSavedState() =
+        runBlocking {
+            val saved = SavedStateHandle()
+            val vm = viewModel(saved = saved)
+            vm.onText("half a thought")
+            vm.attachWith { "pic.jpg" }
+            until("attached") { vm.composer.value.attachments == listOf("pic.jpg") }
+            val again = viewModel(saved = restored(saved))
+            assertEquals(ComposerDraft("half a thought", listOf("pic.jpg")), again.composer.value)
+            assertTrue(again.composerState.value.hasAttachment)
+        }
+
+    @Test fun aNewChatSavesItsIdSoTheRestoredScreenReopensIt() =
+        runBlocking {
+            reply("hello")
+            val saved = SavedStateHandle(mapOf(ChatViewModel.CHAT_ID_KEY to 0L)) // the route's argument: a new chat
+            val vm = viewModel(saved = saved)
+            assertEquals(0L, ChatViewModel.chatIdToOpen(saved, 0))
+            vm.onText("Hi there")
+            vm.send()
+            until("the chat exists") { vm.handle.chatId.value != 0L }
+            val id = vm.handle.chatId.value
+            until("its id is saved") { saved.get<Long>(ChatViewModel.CHAT_ID_KEY) == id }
+            val after = restored(saved)
+            assertEquals(id, ChatViewModel.chatIdToOpen(after, 0))
+            val reopened = viewModel(saved = after, chatId = ChatViewModel.chatIdToOpen(after, 0))
+            until("the restored screen shows the chat") {
+                reopened.rows.value.any { it is UserItem && it.text == "Hi there" }
+            }
         }
 
     @Test fun sendingNothingDoesNothing() =
@@ -237,6 +296,33 @@ class ChatViewModelTest {
             assertEquals(listOf("pic0.jpg", "pic2.jpg", "pic3.jpg"), vm.composer.value.attachments)
         }
 
+    @Test fun theMemoryNoteCanBeClosedButALimitThatHoldsTheChatCannot() =
+        runBlocking {
+            // the SDK refuses the budgeted load and, warned, loads at the smallest context: the note shows
+            fake.failLoad(LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory, "not enough memory", times = 1)
+            reply("Hi!")
+            val vm = viewModel()
+            until("the model is known") {
+                vm.header.value.name
+                    .isNotEmpty()
+            }
+            vm.onText("hello")
+            vm.send()
+            until("the note") { vm.limit.value?.dismissible == true }
+            vm.notes.close(vm.limit.value)
+            until("closed") { vm.limit.value == null }
+
+            // a line the chat waits on has no close button, and closing does nothing to it
+            fake.failLoad(LlamaBroException.ModelLoadFailed.Reason.Other, "the file is corrupt", times = 100)
+            engine.releaseModelIfIdle()
+            vm.onText("again")
+            vm.send()
+            until("the retry line") { vm.limit.value?.action == LimitAction.Retry }
+            assertEquals(false, vm.limit.value!!.dismissible)
+            vm.notes.close(vm.limit.value)
+            assertEquals(LimitAction.Retry, vm.limit.value?.action)
+        }
+
     @Test fun picturesSentToAModelThatCantSeeKeepTheDraftAndSayWhy() =
         runBlocking {
             val vm = viewModel(plain)
@@ -279,7 +365,15 @@ class ChatViewModelTest {
             hub.cachedEntries += CachedEntry(swift, 1_000)
             models.changed()
             settings.setLastModel(swift.toString())
-            val vm = ChatViewModel(engine.open(0), MessageStyle.Open, { "x" }, { deleted += it }).also(viewModels::add)
+            val vm =
+                ChatViewModel(
+                    engine.open(0),
+                    MessageStyle.Open,
+                    { "x" },
+                    { deleted += it },
+                    savedState = SavedStateHandle(),
+                    background = scope,
+                ).also(viewModels::add)
             val gate = CompletableDeferred<Unit>()
             var n = 0
             repeat(5) {
@@ -387,7 +481,15 @@ class ChatViewModelTest {
             hub.cachedEntries += CachedEntry(swift, 1_000)
             models.changed()
             settings.setLastModel(swift.toString())
-            val vm = ChatViewModel(engine.open(0), MessageStyle.Open, { "x" }, { deleted += it })
+            val vm =
+                ChatViewModel(
+                    engine.open(0),
+                    MessageStyle.Open,
+                    { "x" },
+                    { deleted += it },
+                    savedState = SavedStateHandle(),
+                    background = scope,
+                )
             vm.attachWith { "draft.jpg" }
             until("attached") { vm.composer.value.attachments == listOf("draft.jpg") }
             val onCleared = ChatViewModel::class.java.getDeclaredMethod("onCleared").apply { isAccessible = true }

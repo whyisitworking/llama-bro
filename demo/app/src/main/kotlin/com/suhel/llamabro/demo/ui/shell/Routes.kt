@@ -15,6 +15,15 @@ object Routes {
     const val INSTRUCTIONS = "settings/instructions"
     const val DEFAULT_MODEL = "settings/default_model"
     const val TOKEN = "settings/token"
+    const val MEMORY = "settings/memory"
+    const val SAMPLING = "settings/sampling"
+
+    /** One model's values; the key is URL-encoded, as it holds a slash and a colon. */
+    const val SAMPLING_KEY_ARG = "key"
+    const val SAMPLING_MODEL = "settings/sampling/{$SAMPLING_KEY_ARG}"
+
+    fun samplingModel(key: String) = "settings/sampling/" + android.net.Uri.encode(key)
+
     const val ABOUT = "settings/about"
 
     /** The id of a chat that doesn't exist yet: it is created with the first message. */

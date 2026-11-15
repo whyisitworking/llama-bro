@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.suhel.llamabro.demo.chat.InMemory
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DemoSheet
 import com.suhel.llamabro.demo.designsystem.components.EdgeChip
@@ -38,6 +39,7 @@ import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.ui.models.text
 import com.suhel.llamabro.demo.ui.models.tint
+import com.suhel.llamabro.demo.ui.settings.InMemoryList
 import com.suhel.llamabro.hub.HfModel
 
 /**
@@ -59,11 +61,32 @@ fun ModelSwitcherSheet(
     onUseForNewChats: (HfModel) -> Unit,
     onGetMore: () -> Unit,
     onDismiss: () -> Unit,
+    memory: SheetMemory = SheetMemory(),
+    sampling: SheetSampling? = null,
 ) {
     DemoSheet(onDismissRequest = onDismiss) {
-        ModelSwitcherContent(library, current, facts, onSwitch, onUseForNewChats, onGetMore, onDismiss)
+        ModelSwitcherContent(
+            library,
+            current,
+            facts,
+            onSwitch,
+            onUseForNewChats,
+            onGetMore,
+            onDismiss,
+            memory,
+            sampling,
+        )
     }
 }
+
+/**
+ * The chat's sampling row (D60): how many values the chat changed, opening its sheet. A chat with no message yet has
+ * no row: its values would have no chat to belong to.
+ */
+data class SheetSampling(val changed: Int, val onOpen: () -> Unit)
+
+/** The model in memory for the sheet's "In memory" row, and Unload (D59); nothing loaded shows no row. */
+data class SheetMemory(val inMemory: InMemory? = null, val replying: Boolean = false, val onUnload: () -> Unit = {})
 
 /** The sheet's contents, without the window. */
 @Composable
@@ -75,6 +98,8 @@ fun ColumnScope.ModelSwitcherContent(
     onUseForNewChats: (HfModel) -> Unit,
     onGetMore: () -> Unit,
     onDone: () -> Unit,
+    memory: SheetMemory = SheetMemory(),
+    sampling: SheetSampling? = null,
 ) {
     var pressed by remember { mutableStateOf<HfModel?>(null) }
     Section("On this phone") {
@@ -114,6 +139,26 @@ fun ColumnScope.ModelSwitcherContent(
             }
         }
     }
+    sampling?.let {
+        Section("This chat") {
+            GroupedList(Modifier.testTag("chat_sampling_row")) {
+                row {
+                    ListRow(
+                        "Sampling",
+                        subtitle =
+                            when (it.changed) {
+                                0 -> "The model's values"
+                                1 -> "1 value changed for this chat"
+                                else -> "${it.changed} values changed for this chat"
+                            },
+                        chevron = true,
+                        onClick = it.onOpen,
+                    )
+                }
+            }
+        }
+    }
+    memory.inMemory?.let { Section("In memory") { InMemoryList(it, memory.replying, memory.onUnload) } }
     GroupedList {
         row {
             ListRow("Get more models", leading = DemoIcons.Plus, chevron = true, onClick = {

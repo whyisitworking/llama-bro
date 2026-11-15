@@ -1,8 +1,10 @@
 package com.suhel.llamabro
 
+import com.suhel.llamabro.internal.BackendDiscovery
 import com.suhel.llamabro.internal.LlamaBroRuntime
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -29,7 +31,96 @@ class RuntimeTest {
         assertEquals(listOf(LogLevel.Warn to "warn line"), lines)
     }
 
-    /** Native init costs about 13 ms on the phone (F48): getInstance must not run it on the caller's thread. */
+    private class Lines {
+        val all = mutableListOf<Pair<LogLevel, String>>()
+        val logger = Logger { level, msg -> all += level to msg }
+    }
+
+    private fun runtime(
+        engine: FakeEngine,
+        config: LlamaBroConfig,
+        defaultLogger: Logger? = null,
+        discover: () -> BackendDiscovery.Result = { BackendDiscovery.Result.None },
+    ) = LlamaBroRuntime(engine, tempDir(), "/b", config, discoverBackends = discover, defaultLogger = defaultLogger)
+
+    @Test
+    fun loggerIsAttachedBeforeNativeInit() {
+        val engine = FakeEngine()
+        runBlocking { runtime(engine, LlamaBroConfig { logger = Logger { _, _ -> } }).devices() }
+        assertEquals(listOf("setLog", "init"), engine.calls)
+    }
+
+    @Test
+    fun failingInitStillDeliversItsLogLines() {
+        val engine = FakeEngine()
+        engine.initLines = listOf(3 to "ggml: backend failed\n")
+        engine.initResult = { """{"status":1,"error":"boom"}""" }
+        val lines = Lines()
+        val runtime = runtime(engine, LlamaBroConfig { logger = lines.logger })
+        assertThrows(LlamaBroException.InvalidRequest::class.java) { runBlocking { runtime.devices() } }
+        assertEquals(listOf(LogLevel.Error to "ggml: backend failed"), lines.all)
+    }
+
+    @Test
+    fun defaultLoggerReceivesLinesWhenAppGivesNone() {
+        val engine = FakeEngine()
+        engine.initLines = listOf(2 to "ggml: warn\n")
+        val lines = Lines()
+        runBlocking { runtime(engine, LlamaBroConfig.Default, defaultLogger = lines.logger).devices() }
+        assertEquals(listOf(LogLevel.Warn to "ggml: warn"), lines.all)
+    }
+
+    @Test
+    fun appLoggerWinsOverDefault() {
+        val engine = FakeEngine()
+        engine.initLines = listOf(2 to "ggml: warn\n")
+        val app = Lines()
+        val default = Lines()
+        runBlocking {
+            runtime(engine, LlamaBroConfig { logger = app.logger }, defaultLogger = default.logger).devices()
+        }
+        assertEquals(listOf(LogLevel.Warn to "ggml: warn"), app.all)
+        assertEquals(emptyList<Pair<LogLevel, String>>(), default.all)
+    }
+
+    @Test
+    fun throwingLoggerDoesNotBreakInit() {
+        val engine = FakeEngine()
+        engine.initLines = listOf(3 to "ggml: error\n")
+        val runtime = runtime(engine, LlamaBroConfig { logger = Logger { _, _ -> error("logger broke") } })
+        assertEquals(1, runBlocking { runtime.devices() }.size)
+    }
+
+    @Test
+    fun linesAreNotDuplicatedAfterASecondCall() =
+        runBlocking {
+            val engine = FakeEngine()
+            val lines = Lines()
+            val runtime = runtime(engine, LlamaBroConfig { logger = lines.logger })
+            runtime.devices()
+            runtime.devices()
+            runtime.load(ModelSource.file("/m.gguf"), ModelConfig())
+            engine.logListener!!(3, "once\n")
+            assertEquals(listOf(LogLevel.Error to "once"), lines.all)
+        }
+
+    @Test
+    fun backendThatFailsDiscoveryIsLoggedAsWarning() {
+        val lines = Lines()
+        val failed = Backend("hexagon", loaded = false, error = "installer threw: boom", devices = emptyList())
+        runBlocking {
+            runtime(
+                FakeEngine(),
+                LlamaBroConfig { logger = lines.logger },
+                discover = { BackendDiscovery.Result(emptyList(), listOf(failed)) },
+            ).devices()
+        }
+        val (level, text) = lines.all.single()
+        assertEquals(LogLevel.Warn, level)
+        assertTrue(text, "hexagon" in text && "installer threw: boom" in text)
+    }
+
+    /** Native init costs about 13 ms on the phone (F48): create must not run it on the caller's thread. */
     @Test
     fun initRunsOnFirstUseNotOnCreation() =
         runBlocking {

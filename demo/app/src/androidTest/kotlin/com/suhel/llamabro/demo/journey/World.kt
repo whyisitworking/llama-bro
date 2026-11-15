@@ -1,6 +1,7 @@
 package com.suhel.llamabro.demo.journey
 
 import com.suhel.llamabro.DeviceKind
+import com.suhel.llamabro.demo.chat.sdkStream
 import com.suhel.llamabro.demo.models.CachedEntry
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.CatalogEntry
@@ -14,6 +15,9 @@ import com.suhel.llamabro.demo.testing.FakeDiscovery
 import com.suhel.llamabro.demo.testing.TestConfig
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onStart
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -25,6 +29,9 @@ class World(private val realDownloads: Boolean = false) {
     val hub = FakeHubGateway()
     val downloads = ScriptedDownloads(hub)
     val discovery = FakeDiscovery()
+
+    /** While true, a reply waits before it starts (the model "reads the prompt"): the turn is under way, no text yet. */
+    val holdReplies = MutableStateFlow(false)
 
     init {
         // the catalog's models are online: each repo lists its file, and the SDK's estimate says it fits
@@ -55,6 +62,9 @@ class World(private val realDownloads: Boolean = false) {
             scheduler = if (realDownloads) null else downloads,
             discovery = discovery,
             asksForNotifications = asksForNotifications,
+            streamer = { convo, text, images, options ->
+                sdkStream(convo, text, images, options).onStart { holdReplies.first { !it } }
+            },
         )
 }
 

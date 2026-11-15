@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
+import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 
 /**
  * The few icons the app shows, as 24 dp vectors (Material Icons' paths, Apache 2.0), so the module needs no icon
@@ -13,11 +14,21 @@ import androidx.compose.ui.unit.dp
 object DemoIcons {
     val Menu = icon("Menu", "M3,18h18v-2H3v2zM3,13h18v-2H3v2zM3,6v2h18V6H3z")
     val Back = icon("Back", "M20,11H7.83l5.59,-5.59L12,4l-8,8 8,8 1.41,-1.41L7.83,13H20v-2z", autoMirror = true)
+
+    /** A speech bubble with a plus (Material's add_comment): a new conversation, as messaging apps show it. */
     val NewChat =
         icon(
             "NewChat",
-            "M3,17.25V21h3.75L17.81,9.94l-3.75,-3.75L3,17.25zM20.71,7.04c0.39,-0.39 0.39,-1.02 0,-1.41l-2.34,-2.34" +
-                "c-0.39,-0.39 -1.02,-0.39 -1.41,0l-1.83,1.83 3.75,3.75 1.83,-1.83z",
+            "M22,4c0,-1.1 -0.9,-2 -2,-2H4C2.9,2 2,2.9 2,4v12c0,1.1 0.9,2 2,2h14l4,4V4zM20,17.17L18.83,16H4V4h16V17.17z" +
+                "M13,5h-2v4H7v2h4v4h2v-4h4V9h-4V5z",
+        )
+
+    /** A reply's details (Material's info, outlined). */
+    val Info =
+        icon(
+            "Info",
+            "M11,7h2v2h-2zM11,11h2v6h-2zM12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2z" +
+                "M12,20c-4.41,0 -8,-3.59 -8,-8s3.59,-8 8,-8 8,3.59 8,8 -3.59,8 -8,8z",
         )
     val Key =
         icon(
@@ -70,7 +81,14 @@ object DemoIcons {
             "M17.65,6.35C16.2,4.9 14.21,4 12,4c-4.42,0 -7.99,3.58 -7.99,8s3.57,8 7.99,8c3.73,0 6.84,-2.55 7.73,-6h-2.08" +
                 "c-0.82,2.33 -3.04,4 -5.65,4 -3.31,0 -6,-2.69 -6,-6s2.69,-6 6,-6c1.66,0 3.14,0.69 4.22,1.78L13,11h7V4l-2.35,2.35z",
         )
-    val Edit = NewChat
+
+    /** A pencil: edit a message, rename a chat. */
+    val Edit =
+        icon(
+            "Edit",
+            "M3,17.25V21h3.75L17.81,9.94l-3.75,-3.75L3,17.25zM20.71,7.04c0.39,-0.39 0.39,-1.02 0,-1.41l-2.34,-2.34" +
+                "c-0.39,-0.39 -1.02,-0.39 -1.41,0l-1.83,1.83 3.75,3.75 1.83,-1.83z",
+        )
     val Pause = icon("Pause", "M6,19h4V5H6v14zM14,5v14h4V5h-4z")
     val Chats =
         icon(
@@ -108,8 +126,8 @@ object DemoIcons {
             .Builder(
                 name = name,
                 autoMirror = autoMirror,
-                defaultWidth = 24.dp,
-                defaultHeight = 24.dp,
+                defaultWidth = DemoSize.icon,
+                defaultHeight = DemoSize.icon,
                 viewportWidth = 24f,
                 viewportHeight = 24f,
             ).addPath(pathData = addPathNodes(path), fill = SolidColor(Color.Black))

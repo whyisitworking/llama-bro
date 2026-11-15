@@ -52,6 +52,20 @@ class ChatDaoTest {
             assertEquals(listOf("b"), dao.summaries("").first().map { it.title })
         }
 
+    @Test fun lastUseIsEachModelsLatestReply() =
+        runBlocking<Unit> {
+            val a = chat("a", 1)
+            val b = chat("b", 2)
+            dao.append(message(a).copy(kind = "assistant", modelKey = "r/m:Q4", sentAt = 10), 10, null)
+            dao.append(message(b).copy(kind = "assistant", modelKey = "r/m:Q4", sentAt = 30), 30, null)
+            dao.append(message(b).copy(kind = "assistant", modelKey = "r/other:Q8", sentAt = 20), 20, null)
+            // a switch names a model that has not answered yet, and a question carries none
+            dao.append(message(a).copy(kind = "switch", modelKey = "r/never:Q4", sentAt = 40), 40, null)
+            dao.append(message(a).copy(sentAt = 50), 50, null)
+            val used = dao.lastUseByModel().first().associate { it.modelKey to it.lastUsed }
+            assertEquals(mapOf("r/m:Q4" to 30L, "r/other:Q8" to 20L), used)
+        }
+
     @Test fun chatsAreOrderedByUpdatedAtDescending() =
         runBlocking<Unit> {
             chat("old", 10)

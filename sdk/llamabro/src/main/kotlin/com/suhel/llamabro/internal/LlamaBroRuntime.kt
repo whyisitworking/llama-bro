@@ -11,6 +11,8 @@ import com.suhel.llamabro.LlamaBroConfig
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.LoadReport
 import com.suhel.llamabro.LogLevel
+import com.suhel.llamabro.Logger
+import com.suhel.llamabro.MemoryCheck
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelConfig
 import com.suhel.llamabro.ModelSource
@@ -27,6 +29,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -61,6 +64,8 @@ internal class LlamaBroRuntime(
     private val discoverBackends: () -> BackendDiscovery.Result = { BackendDiscovery.Result.None },
     /** Android's memory at load time, for `ContextSize.Auto` (P2 T7); null without it (the P1 default context). */
     private val memorySnapshot: () -> MemoryBudget.Snapshot? = { null },
+    /** Where lines go when the app's [LlamaBroConfig.logger] is null (logcat on Android, D66). */
+    private val defaultLogger: Logger? = null,
 ) {
     private val initLock = Mutex()
 
@@ -68,6 +73,9 @@ internal class LlamaBroRuntime(
 
     /** Native shutdowns still running ([Model.close] returns before they finish). */
     private val closing = mutableSetOf<Deferred<Unit>>()
+
+    /** When the last native close returned ([System.nanoTime]); 0 before any. */
+    @Volatile private var lastClosedAt = 0L
 
     /** Runs native init once; a failure is thrown again on the next call. */
     private suspend fun ensureInit() {
@@ -83,7 +91,12 @@ internal class LlamaBroRuntime(
     @Volatile private var discoveryFailures: List<Backend> = emptyList()
 
     private fun init() {
+        // before native init, which logs why a backend failed to load; with no logger those lines go to stderr, which
+        // Android discards (D66, F144). A second runtime with a mismatched config therefore swaps the process-wide
+        // listener before native init returns status 2; W2's create() refuses such a config in Kotlin first (D70).
+        attachLogger()
         val discovered = discoverBackends()
+        discovered.failed.forEach { log(LogLevel.Warn, "backend ${it.name} not loaded: ${it.error}") }
         val error =
             engine.init(
                 buildJsonObject {
@@ -95,9 +108,11 @@ internal class LlamaBroRuntime(
         discoveryFailures = discovered.failed
         if (error != null) {
             val status =
-                runCatching {
+                try {
                     (Json.parseToJsonElement(error) as JsonObject)["status"]?.jsonPrimitive?.content?.toInt()
-                }.getOrNull()
+                } catch (ignored: Exception) {
+                    null
+                }
             // LB_ERR_ALREADY_INITIALIZED (2): another LlamaBroConfig was used first in this process (design §5)
             throw LlamaBroException.InvalidRequest(
                 if (status == 2) {
@@ -109,12 +124,24 @@ internal class LlamaBroRuntime(
                 },
             )
         }
-        config.logger?.let { logger ->
-            engine.setLog { level, text ->
-                if (level >= config.logLevel.ordinal) {
-                    logger.log(LogLevel.entries[level.coerceIn(0, LogLevel.entries.size - 1)], text.trimEnd('\n'))
-                }
-            }
+    }
+
+    private val logger: Logger? get() = config.logger ?: defaultLogger
+
+    private fun attachLogger() {
+        if (logger == null) return
+        engine.setLog { level, text ->
+            log(LogLevel.entries[level.coerceIn(0, LogLevel.entries.size - 1)], text.trimEnd('\n'))
+        }
+    }
+
+    /** A logger's own exception must not fail init or reach native code. */
+    private fun log(level: LogLevel, text: String) {
+        if (level.ordinal < config.logLevel.ordinal) return
+        try {
+            logger?.log(level, text)
+        } catch (ignored: Exception) {
+            // dropped on purpose
         }
     }
 
@@ -165,6 +192,7 @@ internal class LlamaBroRuntime(
             try {
                 block()
             } finally {
+                lastClosedAt = System.nanoTime()
                 synchronized(closing) { closing -= done }
                 done.complete(Unit)
             }
@@ -177,6 +205,7 @@ internal class LlamaBroRuntime(
         ensureInit()
         // a model being closed still holds its weights and KV cache until its native close returns
         synchronized(closing) { closing.toList() }.awaitAll()
+        awaitMemorySettled()
         val listener = builder.progressListener
         return coroutineScope {
             // progress arrives on the loading thread; it's handed to the caller's context, keeping the latest value
@@ -190,6 +219,7 @@ internal class LlamaBroRuntime(
                     source,
                     builder,
                     DeviceResolver.plan(builder.devicePolicy, backends),
+                    backends,
                 ) { p -> progress?.trySend(p) }
             } finally {
                 progress?.close()
@@ -203,7 +233,9 @@ internal class LlamaBroRuntime(
         ensureInit()
         synchronized(closing) { closing.toList() }.awaitAll()
         return withContext(ioDispatcher) {
-            val plan = DeviceResolver.plan(builder.devicePolicy, nativeBackends() + discoveryFailures)
+            val backends = nativeBackends() + discoveryFailures
+            requireEncoderDevice(builder.encoderDevice.takeIf { (source as? FileSource)?.mmproj != null }, backends)
+            val plan = DeviceResolver.plan(builder.devicePolicy, backends)
             val drafts =
                 builder.speculative is Speculative.Mtp || builder.speculative is Speculative.Ngram ||
                     builder.speculative is Speculative.DFlash
@@ -258,8 +290,11 @@ internal class LlamaBroRuntime(
         source: ModelSource,
         builder: ModelConfig,
         plan: DeviceResolver.Plan,
+        backends: List<Backend>,
         onProgress: (Float) -> Unit,
     ): Model {
+        val encoderPolicy = builder.encoderDevice.takeIf { (source as? FileSource)?.mmproj != null }
+        requireEncoderDevice(encoderPolicy, backends)
         val attempts = plan.skipped.toMutableList()
         var lastError: LlamaBroException.ModelLoadFailed? = null
         for (candidate in plan.candidates) {
@@ -270,7 +305,13 @@ internal class LlamaBroRuntime(
                 continue
             }
             try {
-                return loadModel(source, builder, candidate, attempts.toList(), onProgress)
+                val encoder =
+                    if (source is FileSource && source.mmproj != null) {
+                        DeviceResolver.encoder(encoderPolicy, candidate, backends)
+                    } else {
+                        null
+                    }
+                return loadWithEncoderFallback(source, builder, candidate, encoder, encoderPolicy, attempts, onProgress)
             } catch (e: LlamaBroException.ModelLoadFailed) {
                 if (e.isFinal()) throw e
                 attempts += LoadReport.Attempt(candidate.kind, candidate.deviceName, e.message ?: "load failed")
@@ -280,8 +321,98 @@ internal class LlamaBroRuntime(
         throw noDeviceLoaded(builder.devicePolicy, attempts, lastError)
     }
 
+    /**
+     * One model device: with the encoder moved elsewhere by `Auto` or `Prefer` and the load failing, the same device is
+     * tried once more with the encoder following the model, as those policies promise (D53); the failure is recorded.
+     * `Only` doesn't fall back.
+     */
+    private suspend fun loadWithEncoderFallback(
+        source: ModelSource,
+        builder: ModelConfig,
+        candidate: DeviceResolver.Candidate,
+        encoder: DeviceResolver.Candidate?,
+        encoderPolicy: DevicePolicy?,
+        attempts: MutableList<LoadReport.Attempt>,
+        onProgress: (Float) -> Unit,
+    ): Model {
+        val moved = encoder != null && encoder.deviceName != candidate.deviceName
+        if (!moved || encoderPolicy is DevicePolicy.Only) {
+            return loadModel(source, builder, candidate, encoder, attempts.toList(), onProgress)
+        }
+        return try {
+            loadModel(source, builder, candidate, encoder, attempts.toList(), onProgress)
+        } catch (e: LlamaBroException.ModelLoadFailed) {
+            if (e.isFinal()) throw e
+            attempts +=
+                LoadReport.Attempt(
+                    encoder!!.kind,
+                    encoder.deviceName,
+                    "image encoder on ${encoder.deviceName} failed (${e.message ?: "load failed"}); " +
+                        "it follows the model instead",
+                )
+            loadModel(source, builder, candidate, candidate, attempts.toList(), onProgress)
+        }
+    }
+
+    /** `encoderDevice = Only(kind)` with no device of that kind fails before any load (D53). */
+    private fun requireEncoderDevice(policy: DevicePolicy?, backends: List<Backend>) {
+        if (policy !is DevicePolicy.Only) return
+        val plan = DeviceResolver.plan(policy, backends)
+        if (plan.candidates.isEmpty()) {
+            throw LlamaBroException.DeviceUnavailable(
+                policy.kind,
+                "no ${policy.kind.name} device for the image encoder: " + plan.skipped.joinToString("; ") { it.reason },
+                null,
+            )
+        }
+    }
+
     private fun ModelConfig.drafts() =
         speculative is Speculative.Mtp || speculative is Speculative.Ngram || speculative is Speculative.DFlash
+
+    /**
+     * Loads [configJson]. When the memory check refuses it and the app asked to be warned ([MemoryCheck.Warn], D57),
+     * loads again at the smallest context without the budget, since the check can't see what Android frees by closing
+     * cached apps (F128), and returns the check's message as the warning.
+     */
+    private fun loadOrWarn(
+        source: ModelSource,
+        builder: ModelConfig,
+        candidate: DeviceResolver.Candidate,
+        encoder: DeviceResolver.Candidate?,
+        configJson: String,
+        onProgress: (Float) -> Unit,
+    ): Pair<EngineModel, String?> {
+        val failure =
+            try {
+                return engine.load(configJson, onProgress) to null
+            } catch (e: NativeError) {
+                ErrorMapping.loadFailed(e)
+            }
+        if (!warnsInstead(builder, failure)) throw failure
+        val smallest =
+            builder.toJson(
+                source,
+                slotsDir.path + "/",
+                candidate.devices,
+                null,
+                encoder?.let { DeviceResolver.encoderConfig(it, candidate) },
+                smallestContext = true,
+            )
+        val model =
+            try {
+                engine.load(smallest, onProgress)
+            } catch (e: NativeError) {
+                throw ErrorMapping.loadFailed(e)
+            }
+        return model to failure.message?.removePrefix("failed to load model: ")
+    }
+
+    /** A fitted context that doesn't fit even at its smallest, for an app that asked to be warned (F128). */
+    private fun warnsInstead(builder: ModelConfig, failure: LlamaBroException.ModelLoadFailed) =
+        failure.reason == LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory &&
+            builder.memoryCheck == MemoryCheck.Warn &&
+            builder.contextSize !is ContextSize.Fixed
 
     /** No device fixes a missing file, and every device shares the phone's memory. */
     private fun LlamaBroException.ModelLoadFailed.isFinal() =
@@ -310,6 +441,7 @@ internal class LlamaBroRuntime(
         source: ModelSource,
         builder: ModelConfig,
         candidate: DeviceResolver.Candidate,
+        encoder: DeviceResolver.Candidate?,
         attempts: List<LoadReport.Attempt>,
         onProgress: (Float) -> Unit,
     ): Model {
@@ -321,14 +453,24 @@ internal class LlamaBroRuntime(
             withContext(ioDispatcher + NonCancellable) {
                 slotsDir.mkdirs()
                 val budget = budgetFor(source, builder)
-                val configJson = builder.toJson(source, slotsDir.path + "/", candidate.devices, budget)
-                val engineModel =
-                    try {
-                        engine.load(configJson, onProgress)
-                    } catch (e: NativeError) {
-                        throw ErrorMapping.loadFailed(e)
+                val configJson =
+                    builder.toJson(
+                        source,
+                        slotsDir.path + "/",
+                        candidate.devices,
+                        budget,
+                        encoder?.let { DeviceResolver.encoderConfig(it, candidate) },
+                    )
+                val (engineModel, memoryWarning) =
+                    loadOrWarn(source, builder, candidate, encoder, configJson, onProgress)
+                val (contextSize, contextReason) =
+                    if (memoryWarning != null) {
+                        contextOf(engineModel.infoJson, builder.contextSize).first to
+                            "the smallest context, loaded although the memory check said it may not fit " +
+                            "(MemoryCheck.Warn)"
+                    } else {
+                        contextOf(engineModel.infoJson, builder.contextSize)
                     }
-                val (contextSize, contextReason) = contextOf(engineModel.infoJson, builder.contextSize)
                 val (speculative, speculativeReason) = speculativeOf(builder.speculative, candidate.kind, source)
                 val report =
                     LoadReport(
@@ -340,6 +482,9 @@ internal class LlamaBroRuntime(
                         contextReason,
                         speculative,
                         speculativeReason,
+                        encoder?.kind,
+                        encoder?.deviceName,
+                        memoryWarning,
                     )
                 loaded = Model(engineModel, report, this@LlamaBroRuntime::shutdown)
             }
@@ -363,6 +508,24 @@ internal class LlamaBroRuntime(
                 0L,
                 builder.memoryReserveMib.toLong(),
             ) * BYTES_PER_MIB
+        }
+    }
+
+    /**
+     * After a close, the NPU's buffers come back about a second after the native close returns (F124): a budget read
+     * at once would be short by the closed model's size and refuse a model that fits. Within [SETTLE_WINDOW_NANOS] of
+     * a close, wait until available memory stops rising, at most [SETTLE_MAX_MILLIS].
+     */
+    private suspend fun awaitMemorySettled() {
+        val closedAt = lastClosedAt
+        if (closedAt == 0L || System.nanoTime() - closedAt > SETTLE_WINDOW_NANOS) return
+        var last = withContext(ioDispatcher) { memorySnapshot() }?.available ?: return
+        val until = System.nanoTime() + SETTLE_MAX_MILLIS * NANOS_PER_MILLI
+        while (System.nanoTime() < until) {
+            delay(SETTLE_STEP_MILLIS)
+            val now = withContext(ioDispatcher) { memorySnapshot() }?.available ?: return
+            if (now - last < SETTLE_STILL_BYTES) return
+            last = now
         }
     }
 
@@ -458,3 +621,8 @@ internal class LlamaBroRuntime(
 }
 
 private const val BYTES_PER_MIB = 1024L * 1024L
+private const val NANOS_PER_MILLI = 1_000_000L
+private const val SETTLE_WINDOW_NANOS = 3_000L * NANOS_PER_MILLI
+private const val SETTLE_MAX_MILLIS = 2_000L
+private const val SETTLE_STEP_MILLIS = 100L
+private const val SETTLE_STILL_BYTES = 32L * BYTES_PER_MIB

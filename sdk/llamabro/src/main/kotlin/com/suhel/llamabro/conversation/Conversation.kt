@@ -37,8 +37,9 @@ import kotlinx.serialization.json.put
  * request from the history, appends replies, and only ever appends, so the server reuses its cached prefix.
  *
  * Every request carries the conversation's [Builder.defaults]; one [send], [resume] or [regenerate] can change
- * them for its own requests only. One operation at a time: collecting [send], [resume], [regenerate] (or `compact`)
- * while another runs ([isBusy]) fails with [LlamaBroException.Busy]; creating the flow never throws.
+ * them for its own requests only. One operation at a time: collecting [send], [resume], [regenerate], [approve],
+ * [deny] (or `compact`) while another runs ([isBusy]) fails with [LlamaBroException.Busy]; creating the flow never
+ * throws.
  */
 public class Conversation internal constructor(
     private val model: Model,
@@ -67,8 +68,22 @@ public class Conversation internal constructor(
 
     private val busy = MutableStateFlow(false)
 
-    /** True while a send, resume, regenerate or compaction runs. */
+    /** True while a send, resume, regenerate, approve, deny or compaction runs. */
     public val isBusy: StateFlow<Boolean> = busy.asStateFlow()
+
+    // computed from the history and the registry, so a restored conversation (whose builder is filled before it is
+    // constructed) starts with the right value
+    private val _pendingApproval = MutableStateFlow(awaitingApproval)
+
+    /**
+     * The tool call waiting for [approve] or [deny] (D62), null when none waits or while an operation runs. It is
+     * derived from the history and the registered tools, so it is right after a restore.
+     *
+     * It is null while [isBusy]. An app reacting to it should start [approve] or [deny] once [isBusy] is false, for
+     * example by observing both together: the operation that ended publishes the waiting call just before it clears
+     * busy.
+     */
+    public val pendingApproval: StateFlow<ToolCall?> = _pendingApproval.asStateFlow()
 
     @Volatile
     private var completionId: String? = null
@@ -93,7 +108,8 @@ public class Conversation internal constructor(
     /**
      * [send], collected: returns the final reply's content.
      * @throws LlamaBroException.Incomplete if the reply isn't a complete answer: `Length` (cut at the output limit),
-     *   `TurnLimit` or `ToolCallsPending` (continue with [resume], after [addToolResult] for pending tools).
+     *   `TurnLimit`, `ToolCallsPending` (continue with [resume], after [addToolResult] for pending tools) or
+     *   `ToolAborted` (a tool threw [LbToolAbort]).
      */
     public suspend fun ask(text: String, options: RequestOptions.Builder.() -> Unit = {}): String {
         var done: ChatEvent.Done? = null
@@ -106,9 +122,7 @@ public class Conversation internal constructor(
                 .lastOrNull { it is Message.Assistant } as Message.Assistant?
         val content = reply?.content.orEmpty()
         val reason = done?.reason ?: FinishReason.Stop
-        if (reason == FinishReason.Length || reason == FinishReason.TurnLimit ||
-            reason == FinishReason.ToolCallsPending
-        ) {
+        if (reason in INCOMPLETE) {
             throw LlamaBroException.Incomplete(reason, content)
         }
         return content
@@ -116,11 +130,51 @@ public class Conversation internal constructor(
 
     /**
      * Sends the current history again: after `ContextExceeded` (and a compaction), a turn limit, or pending tool
-     * results.
+     * results. First it finishes the last reply's tool calls that have no result yet, in order, as the loop would
+     * have (D62): after `Done(ToolAborted)` it runs the aborted call again. It stops with `Done(ToolCallsPending)`,
+     * without asking the model, at a call that needs approval or when a call without a handler still has no result.
      */
     public fun resume(options: RequestOptions.Builder.() -> Unit = {}): Flow<ChatEvent> {
         val opts = config.defaults.copy(options)
         return exclusive { runTurns(this, opts) }
+    }
+
+    /**
+     * Runs the call waiting for approval ([pendingApproval]), then continues the turn as [resume] does: the reply's
+     * later calls, then the model (D62).
+     * @param options changes the [Builder.defaults] for this flow's requests only, as [resume]'s does.
+     * @throws IllegalArgumentException (when collected) if [callId] isn't [pendingApproval]'s id.
+     */
+    public fun approve(callId: String, options: RequestOptions.Builder.() -> Unit = {}): Flow<ChatEvent> {
+        val opts = config.defaults.copy(options)
+        return exclusive {
+            val (index, call) = approvalFor(callId)
+            val handler = config.registry.entry(call.name)!!.handler!!
+            answer(this, call, runTool(handler, call))?.let { abort ->
+                emitStop(FinishReason.ToolAborted, null, abort)
+                return@exclusive
+            }
+            runTurns(this, opts, from = index + 1)
+        }
+    }
+
+    /**
+     * Answers the call waiting for approval ([pendingApproval]) without running it: the model gets
+     * `Error: denied by the user`, or `Error: <reason>`. Then continues the turn as [resume] does (D62).
+     * @param options changes the [Builder.defaults] for this flow's requests only, as [resume]'s does.
+     * @throws IllegalArgumentException (when collected) if [callId] isn't [pendingApproval]'s id.
+     */
+    public fun deny(
+        callId: String,
+        reason: String? = null,
+        options: RequestOptions.Builder.() -> Unit = {},
+    ): Flow<ChatEvent> {
+        val opts = config.defaults.copy(options)
+        return exclusive {
+            val (index, call) = approvalFor(callId)
+            answer(this, call, ToolOutcome.Result("Error: ${reason ?: "denied by the user"}"))
+            runTurns(this, opts, from = index + 1)
+        }
     }
 
     /**
@@ -190,19 +244,27 @@ public class Conversation internal constructor(
         internal val registry = ToolRegistry()
 
         /**
-         * Registers a tool (design §6.2). With a [handler], the agent loop runs it and sends its result back;
-         * a thrown exception becomes `Error: <message>`. Without one, a call to it stops the loop with
-         * `Done(ToolCallsPending)`: add results with [addToolResult], then [resume].
+         * Registers a tool (design §6.2). With a [handler], the agent loop runs it and sends its result back. What a
+         * handler throws decides what the model sees (D62): an [LbToolError] sends `Error: <message>` (as do
+         * [JsonArgs]' accessors, with `invalid arguments: …`); an [LbToolAbort] ends the turn with
+         * `Done(ToolAborted)`; any other exception sends `Error: the tool failed` and reaches the app as
+         * `ChatEvent.ToolResult.error`, so its text never enters the prompt. Without a handler, a call to it stops
+         * the loop with `Done(ToolCallsPending)`: add results with [addToolResult], then [resume]. A call to a name
+         * never registered gets `Error: Unknown tool: <name>` and the loop goes on.
          *
          * @param schema the parameters' JSON Schema object, as a string.
+         * @param requiresApproval a call to it stops the loop with `Done(ToolCallsPending)` before the handler runs
+         *   and shows as [pendingApproval]; [approve] runs it, [deny] answers the model instead (D62).
+         * @throws IllegalArgumentException if [requiresApproval] is set without a [handler].
          */
         public fun tool(
             name: String,
             description: String,
             schema: String,
+            requiresApproval: Boolean = false,
             handler: (suspend (JsonArgs) -> String)? = null,
         ) {
-            registry.add(Tool.function(name, description, schema), handler)
+            registry.add(Tool.function(name, description, schema), handler, requiresApproval)
         }
     }
 
@@ -210,6 +272,12 @@ public class Conversation internal constructor(
     internal fun compactInternal(preservedSteps: Int, instruction: String): Flow<ChatEvent> {
         require(preservedSteps >= 0) { "preservedSteps must be >= 0" }
         return exclusive {
+            val unanswered = unansweredToolCalls(_messages.value)
+            check(unanswered.isEmpty()) {
+                "can't compact: tool calls ${unanswered.map {
+                    it.id
+                }} have no result; approve, deny or answer them first"
+            }
             val source = CompactionPlanner.modelView(_messages.value)
             val cut =
                 CompactionPlanner.cutIndex(source, preservedSteps)
@@ -302,30 +370,34 @@ public class Conversation internal constructor(
 
     /** Adds a result for a pending tool call (manual mode); then call [resume]. */
     internal fun addToolResultInternal(toolCallId: String, result: String) {
-        checkIdle()
-        val known = _messages.value.any { m -> m is Message.Assistant && m.toolCalls.any { it.id == toolCallId } }
-        require(known) { "no tool call with id $toolCallId" }
-        require(_messages.value.none { it is Message.ToolResult && it.toolCallId == toolCallId }) {
-            "tool call $toolCallId already has a result"
+        if (!busy.compareAndSet(false, true)) throw LlamaBroException.Busy()
+        try {
+            val known = _messages.value.any { m -> m is Message.Assistant && m.toolCalls.any { it.id == toolCallId } }
+            require(known) { "no tool call with id $toolCallId" }
+            require(_messages.value.none { it is Message.ToolResult && it.toolCallId == toolCallId }) {
+                "tool call $toolCallId already has a result"
+            }
+            append(Message.ToolResult(toolCallId, result))
+            // the app may answer the waiting call itself, or a manual call before it
+            _pendingApproval.value = awaitingApproval
+        } finally {
+            busy.value = false
         }
-        append(Message.ToolResult(toolCallId, result))
     }
 
     // --- internals ------------------------------------------------------------------------------------
 
-    private fun checkIdle() {
-        if (busy.value) throw LlamaBroException.Busy()
-    }
-
     private fun exclusive(block: suspend FlowCollector<ChatEvent>.() -> Unit): Flow<ChatEvent> =
         flow {
             if (!busy.compareAndSet(false, true)) throw LlamaBroException.Busy()
+            _pendingApproval.value = null // nothing can be approved while an operation runs
             try {
                 model.cancelPreEncode()
                 block()
             } finally {
                 completionId = null
                 _reply.value = null
+                _pendingApproval.value = awaitingApproval
                 busy.value = false
             }
         }
@@ -363,68 +435,140 @@ public class Conversation internal constructor(
      * tools, run them one after another in order, append each result, and send again; stop on a reply without
      * tool calls. The turn check sits at the top of the loop (`turn >= maxTurns`), so maxTurns counts model
      * requests per flow; tools/ui then asks the user to continue, which here is `Done(TurnLimit)` + [resume].
+     *
+     * It first finishes the last batch, from call [from] (D62): a no-op for [send] and [regenerate], whose history
+     * ends at a user message; for [resume], [approve] and [deny] it runs the calls a stop left without a result.
      */
-    private suspend fun runTurns(out: FlowCollector<ChatEvent>, options: RequestOptions) {
+    private suspend fun runTurns(out: FlowCollector<ChatEvent>, options: RequestOptions, from: Int = 0) {
         var turn = 0
         var last: ChatEvent.Done? = null
+        var start = from
         while (true) {
-            if (turn >= config.maxTurns) {
-                out.emit(ChatEvent.Done(FinishReason.TurnLimit, last?.timings, last?.usage))
-                return
+            when (val batch = runBatch(out, start)) {
+                BatchOutcome.Answered -> Unit
+                BatchOutcome.Pending -> return out.emitStop(FinishReason.ToolCallsPending, last)
+                is BatchOutcome.Aborted -> return out.emitStop(FinishReason.ToolAborted, last, batch.abort)
             }
+            start = 0
+            if (turn >= config.maxTurns) return out.emitStop(FinishReason.TurnLimit, last)
             val reply = streamReply(out, request(requestMessages(), options))
             last = reply.done
+            turn++
             if (reply.toolCalls.isEmpty()) {
                 out.emit(reply.done)
                 if (config.preEncodeAfterReply) startPreEncode()
                 return
             }
-            var pending = false
-            for (call in reply.toolCalls) {
-                out.emit(ChatEvent.ToolCallReceived(call))
-                val handler = config.registry.handler(call.name)
-                if (handler == null) {
-                    pending = true // manual mode: the app adds the result
-                    continue
-                }
-                val result = runTool(handler, call)
-                append(Message.ToolResult(call.id, result))
-                out.emit(ChatEvent.ToolResult(call.id, call.name, result))
-            }
-            if (pending) {
-                out.emit(ChatEvent.Done(FinishReason.ToolCallsPending, reply.done.timings, reply.done.usage))
-                return
-            }
-            turn++
         }
     }
 
+    /** How a batch run ended: every call has a result, some still wait for the app, or a tool ended the turn. */
+    private sealed interface BatchOutcome {
+        object Answered : BatchOutcome
+
+        object Pending : BatchOutcome
+
+        class Aborted(val abort: LbToolAbort) : BatchOutcome
+    }
+
     /**
-     * One handler call. Errors, including arguments that aren't JSON, become `Error: <message>` as in tools/ui
-     * (the arguments are parsed inside its try block). Cancelling the flow cancels the handler; closing the
-     * model cancels it too and fails the flow with ModelClosed.
+     * Runs the last batch's unanswered calls from index [from] in order, announcing each as it is reached (D62):
+     * an unknown name gets its error result, an automatic call runs, a manual call is left for the app, and a call
+     * that needs approval stops the batch before it runs. Announcing on reach means a call reached again after an
+     * abort is announced again, and calls after an approval stop are announced only when the batch gets to them.
      */
-    private suspend fun runTool(handler: suspend (JsonArgs) -> String, call: ToolCall): String =
-        try {
-            val args = JsonArgs(call.argumentsJson)
-            coroutineScope {
-                val watcher =
-                    launch {
-                        model.awaitClosed()
-                        throw LlamaBroException.ModelClosed()
-                    }
-                try {
-                    handler(args)
-                } finally {
-                    watcher.cancel()
+    private suspend fun runBatch(out: FlowCollector<ChatEvent>, from: Int): BatchOutcome {
+        val batch = ToolBatch.of(_messages.value) ?: return BatchOutcome.Answered
+        val left = batch.unanswered.mapTo(mutableSetOf()) { it.id }
+        for (call in batch.calls.drop(from).filter { it.id in left }) {
+            out.emit(ChatEvent.ToolCallReceived(call))
+            val entry = config.registry.entry(call.name)
+            val handler = entry?.handler
+            val outcome =
+                when {
+                    // tools/ui answers an unknown name and goes on (F140, D62)
+                    entry == null -> ToolOutcome.Result("Error: Unknown tool: ${call.name}")
+
+                    // manual mode: the app adds the result
+                    handler == null -> continue
+
+                    entry.requiresApproval -> return BatchOutcome.Pending
+
+                    else -> runTool(handler, call)
                 }
+            // an abort wins over manual calls skipped before it: the turn ends with ToolAborted, not pending
+            answer(out, call, outcome)?.let { return BatchOutcome.Aborted(it) }
+        }
+        val complete = ToolBatch.of(_messages.value)?.unanswered.isNullOrEmpty()
+        return if (complete) BatchOutcome.Answered else BatchOutcome.Pending
+    }
+
+    /**
+     * Records a call's outcome: a result is appended and emitted; an abort is returned, and neither this call nor
+     * the later ones get a result, so the turn ends here for the app and [resume] runs this call again (D62).
+     */
+    private suspend fun answer(out: FlowCollector<ChatEvent>, call: ToolCall, outcome: ToolOutcome): LbToolAbort? =
+        when (outcome) {
+            is ToolOutcome.Aborted -> {
+                outcome.abort
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: LlamaBroException.ModelClosed) {
-            throw e
-        } catch (e: Throwable) {
-            "Error: ${e.message ?: e.toString()}"
+
+            is ToolOutcome.Result -> {
+                append(Message.ToolResult(call.id, outcome.text))
+                out.emit(ChatEvent.ToolResult(call.id, call.name, outcome.text, outcome.error))
+                null
+            }
+        }
+
+    /** The call waiting for approval, from the history and the registry (see [ToolBatch.awaitingApproval]). */
+    private val awaitingApproval: ToolCall?
+        get() = ToolBatch.of(_messages.value)?.awaitingApproval(config.registry)?.value
+
+    /** [approve] and [deny] act only on the call waiting; returns it with its index in the batch. */
+    private fun approvalFor(callId: String): IndexedValue<ToolCall> {
+        val waiting = ToolBatch.of(_messages.value)?.awaitingApproval(config.registry)
+        require(waiting != null && waiting.value.id == callId) { "tool call $callId isn't waiting for approval" }
+        return waiting
+    }
+
+    /** What one automatic call produced: a result for the model, or an abort that ends the turn. */
+    private sealed interface ToolOutcome {
+        /** [error] is the exception behind a generic `Error: the tool failed`, for the app only. */
+        class Result(val text: String, val error: Throwable? = null) : ToolOutcome
+
+        class Aborted(val abort: LbToolAbort) : ToolOutcome
+    }
+
+    /**
+     * One handler call. Unlike tools/ui, which sends every exception's message to the model, only an [LbToolError]'s
+     * message does; any other exception sends a generic text, so a token or personal data in it stays out of the
+     * prompt and the saved chat (D62). The arguments are parsed inside the try block, so ones that don't parse
+     * become `Error: invalid arguments: …`. Cancelling the flow cancels the handler; closing the model cancels it
+     * too and fails the flow with ModelClosed. Exceptions are sorted inside the scope, so the app gets the
+     * handler's own instance, not a copy made by coroutines' stack-trace recovery when it leaves the scope.
+     */
+    private suspend fun runTool(handler: suspend (JsonArgs) -> String, call: ToolCall): ToolOutcome =
+        coroutineScope {
+            val watcher =
+                launch {
+                    model.awaitClosed()
+                    throw LlamaBroException.ModelClosed()
+                }
+            try {
+                ToolOutcome.Result(handler(JsonArgs(call.argumentsJson)))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: LlamaBroException.ModelClosed) {
+                throw e
+            } catch (e: LbToolAbort) {
+                ToolOutcome.Aborted(e)
+            } catch (e: LbToolError) {
+                ToolOutcome.Result("Error: ${e.message.orEmpty()}")
+            } catch (e: Throwable) {
+                ToolOutcome.Result("Error: the tool failed", e)
+            } finally {
+                watcher.cancel()
+            }
         }
 
     private class Reply(val done: ChatEvent.Done, val toolCalls: List<ToolCall>)
@@ -520,11 +664,34 @@ public class Conversation internal constructor(
             }
         }
     }
+
+    private companion object {
+        /** The reasons [ask] reports as [LlamaBroException.Incomplete]: the turn ended without a final answer. */
+        val INCOMPLETE =
+            setOf(
+                FinishReason.Length,
+                FinishReason.TurnLimit,
+                FinishReason.ToolCallsPending,
+                FinishReason.ToolAborted,
+            )
+    }
 }
 
 /**
  * Adds the result of a pending tool call (after `Done(ToolCallsPending)`); then call [Conversation.resume].
- * @throws LlamaBroException.Busy while a send, resume, regenerate or compaction runs.
+ * @throws LlamaBroException.Busy while a send, resume, regenerate, approve, deny or compaction runs.
  */
 public fun Conversation.addToolResult(toolCallId: String, result: String): Unit =
     addToolResultInternal(toolCallId, result)
+
+/**
+ * Ends a flow early. [last] is the flow's last reply; a stop before any request (resume straight into a waiting
+ * approval) has no timings or usage to report.
+ */
+private suspend fun FlowCollector<ChatEvent>.emitStop(
+    reason: FinishReason,
+    last: ChatEvent.Done?,
+    abort: LbToolAbort? = null,
+) {
+    emit(ChatEvent.Done(reason, last?.timings, last?.usage, abort))
+}

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -33,32 +34,56 @@ import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
+import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 
 /**
- * The model waking up (demo design §4.1): a fine accent hairline across the top of the reply area. While [active] a
- * 30%-wide gradient sweeps across it every 1,400 ms; with animations off it is a static hairline. Not a progress
- * indicator: no spinner, no percentage, no progress semantics. Inactive, it keeps its 2 dp and draws nothing.
- * The sweep is read in the draw phase only, so it never recomposes.
+ * The model waking up (demo design §4.1): a fine accent line across the top of the reply area, [DemoSize.trackThin]
+ * high. Once the load reports how far it has come, [progress] (0 to 1), the line fills: the accent over a soft accent
+ * track, as the download ring does, easing to each new value. Before that, a 30%-wide gradient sweeps across it every
+ * 1,400 ms; with animations off it is a static line. Inactive, it keeps its height and draws nothing. The sweep and the
+ * fill are read in the draw phase only, so neither recomposes.
  */
 @Composable
-fun WakeHairline(active: Boolean, modifier: Modifier = Modifier) {
+fun WakeHairline(active: Boolean, modifier: Modifier = Modifier, progress: Float? = null) {
     val colors = LocalDemoColors.current
     val still = animationsDisabled()
-    // while it sweeps it says so (a state, not a progress: there is no value to read)
     val base =
         modifier
             .testTag(DsTags.WAKE_HAIRLINE)
-            .semantics { if (active) stateDescription = "Waking up" }
-            .fillMaxWidth()
-            .height(2.dp)
-            .clip(RoundedCornerShape(1.dp))
+            .semantics {
+                if (active) {
+                    stateDescription = "Waking up"
+                    if (progress != null) progressBarRangeInfo = ProgressBarRangeInfo(progress.coerceIn(0f, 1f), 0f..1f)
+                }
+            }.fillMaxWidth()
+            .height(DemoSize.trackThin)
+            .clip(CircleShape)
     when {
         !active -> {
             Box(base)
+        }
+
+        progress != null -> {
+            val shown =
+                animateFloatAsState(
+                    progress.coerceIn(0f, 1f),
+                    tween(if (still) 0 else DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard),
+                    label = "wake",
+                )
+            Box(
+                base.drawBehind {
+                    drawRect(colors.accentSoft)
+                    val filled = size.width * shown.value
+                    // it fills from the start edge: the right in a right-to-left language
+                    val x = if (layoutDirection == LayoutDirection.Rtl) size.width - filled else 0f
+                    drawRect(colors.accent, topLeft = Offset(x, 0f), size = size.copy(width = filled))
+                },
+            )
         }
 
         still -> {
@@ -70,7 +95,7 @@ fun WakeHairline(active: Boolean, modifier: Modifier = Modifier) {
         }
 
         else -> {
-            val sweep = rememberSweep()
+            val sweep = rememberLoop(DemoMotion.SWEEP_MILLIS)
             Box(
                 base.drawBehind {
                     val band = size.width * DemoMotion.SWEEP_WIDTH_FRACTION
@@ -88,25 +113,12 @@ fun WakeHairline(active: Boolean, modifier: Modifier = Modifier) {
     }
 }
 
-@Composable
-private fun rememberSweep(): State<Float> =
-    rememberInfiniteTransition(label = "wake").animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec =
-            infiniteRepeatable(
-                tween(DemoMotion.SWEEP_MILLIS, easing = DemoMotion.sweep),
-                RepeatMode.Restart,
-            ),
-        label = "sweep",
-    )
-
 /**
  * The download ring beside a model's name while it arrives: the accent arc over a soft accent track, easing to each
  * new [fraction]. [label] ("Arriving · 38% · about 40 s") is what a screen reader says.
  */
 @Composable
-fun DownloadRing(fraction: Float, modifier: Modifier = Modifier, label: String? = null, size: Dp = 28.dp) {
+fun DownloadRing(fraction: Float, modifier: Modifier = Modifier, label: String? = null, size: Dp = DemoSize.ring) {
     val colors = LocalDemoColors.current
     val shown by animateFloatAsState(
         fraction.coerceIn(0f, 1f),
@@ -119,7 +131,7 @@ fun DownloadRing(fraction: Float, modifier: Modifier = Modifier, label: String? 
             if (label != null) contentDescription = label
         },
     ) {
-        val stroke = 3.5.dp.toPx()
+        val stroke = DemoSize.ringStroke.toPx()
         val inset = stroke / 2
         val arcSize = Size(this.size.width - stroke, this.size.height - stroke)
         drawArc(colors.accentSoft, 0f, 360f, false, Offset(inset, inset), arcSize, style = Stroke(stroke))
@@ -138,13 +150,13 @@ fun DownloadRing(fraction: Float, modifier: Modifier = Modifier, label: String? 
 /** A thin progress bar (a download on its row, in the library): the accent over the hairline, 4 dp. */
 @Composable
 fun ThinBar(fraction: Float, modifier: Modifier = Modifier) {
-    Bar(fraction, 4.dp, modifier)
+    Bar(fraction, DemoSize.track, modifier)
 }
 
 /** How much of the phone's storage is used, as a 6 dp bar ([used] of [total] bytes). */
 @Composable
 fun StorageBar(used: Long, total: Long, modifier: Modifier = Modifier) {
-    Bar(if (total > 0) used.toFloat() / total else 0f, 6.dp, modifier)
+    Bar(if (total > 0) used.toFloat() / total else 0f, DemoSize.trackThick, modifier)
 }
 
 @Composable

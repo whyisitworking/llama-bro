@@ -71,6 +71,7 @@ object Markdown {
         val line = lines[i]
         if (line.isBlank()) return null
         return fence.matchEntire(line)?.let { readCode(lines, i, it) }
+            ?: readListItem(lines, i)
             ?: singleLineBlock(line)?.let { it to i + 1 }
             ?: readParagraph(lines, i)
     }
@@ -84,11 +85,25 @@ object Markdown {
         return MarkdownBlock.Code(language, body.joinToString("\n")) to next
     }
 
-    /** A heading, a list entry or a quote: blocks of exactly one line. */
+    /**
+     * A list entry and its continuation lines: as CommonMark, the non-blank lines after it that start no other
+     * block belong to it ("1. **Rest well**" then "Go to bed at the same time…" is one item), so its text stays
+     * indented under the marker instead of becoming a paragraph of its own.
+     */
+    private fun readListItem(lines: List<String>, i: Int): Pair<MarkdownBlock, Int>? {
+        val line = lines[i]
+        val (ordered, index, first) =
+            bullet.matchEntire(line)?.let { Triple(false, 0, it.groupValues[1]) }
+                ?: numbered.matchEntire(line)?.let { Triple(true, it.groupValues[1].toInt(), it.groupValues[2]) }
+                ?: return null
+        val rest = lines.drop(i + 1).takeWhile { it.isNotBlank() && !startsBlock(it) }
+        val text = (listOf(first) + rest).joinToString(" ") { it.trim() }
+        return ListEntry(ordered, index, spans(text)) to i + 1 + rest.size
+    }
+
+    /** A heading or a quote: blocks of exactly one line. */
     private fun singleLineBlock(line: String): MarkdownBlock? =
         heading.matchEntire(line)?.let { MarkdownBlock.Heading(it.groupValues[1].length, spans(it.groupValues[2])) }
-            ?: bullet.matchEntire(line)?.let { ListEntry(false, 0, spans(it.groupValues[1])) }
-            ?: numbered.matchEntire(line)?.let { ListEntry(true, it.groupValues[1].toInt(), spans(it.groupValues[2])) }
             ?: quote.matchEntire(line)?.let { MarkdownBlock.Quote(spans(it.groupValues[1])) }
 
     /** A paragraph runs to the next blank line or the next block start. */

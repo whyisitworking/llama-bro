@@ -12,7 +12,7 @@ group = "io.github.whyisitworking"
 
 android {
     namespace = "com.suhel.llamabro.hub"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig {
         minSdk = 29
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

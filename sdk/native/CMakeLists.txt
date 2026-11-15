@@ -7,7 +7,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(LB_LLAMA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/build/llama.cpp" CACHE PATH "Patched llama.cpp copy (prepare-llama.sh)")
-set(LB_LLAMA_BUILD "b12052" CACHE STRING "llama.cpp build the copy was made from")
+# not a cache entry: a build directory made before an upgrade must not keep the old name
+set(LB_LLAMA_BUILD "b12352")
 set(LB_VERSION "0.1.0" CACHE STRING "llamabro version")
 option(LB_BUILD_TESTS "Build host tests, lb-run and llama-server" OFF)
 # On by default for Android packaging; host builds keep upstream's names, so the contract test's llama-server

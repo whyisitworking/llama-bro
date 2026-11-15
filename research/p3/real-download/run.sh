@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# P3 T9 Step 2: one real download through samples/background-download (huggingface.co, no token), killed once at
+# P3 T9 Step 2: one real download through the download acceptance app, sdk/acceptance/download (huggingface.co, no token), killed once at
 # 50% of the plan's bytes, resumed, both files verified. Writes hub.log, timeline.txt and headers.txt here.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; sdk="$here/../../../sdk"
@@ -10,7 +10,7 @@ model_oid=bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517
 mmproj_oid=d312c4d02fd46eea7a16e4f3bbb58840e6222209322ca1e33ca03247ad8935d6
 total=739863648
 blobs=no_backup/llamabro/hub/models--unsloth--Qwen3.5-0.8B-GGUF/blobs
-apk="$sdk/samples/background-download/build/outputs/apk/debug/background-download-debug.apk"
+apk="$sdk/acceptance/download/build/outputs/apk/debug/download-debug.apk"
 now() { python3 -c 'import time; print(f"{time.time():.1f}")'; }
 size() { adb shell run-as $pkg stat -c %s "$blobs/$1" 2>/dev/null | tr -d '\r' || echo 0; }
 start() { adb shell am start -W -n $pkg/.MainActivity --es ref "$ref" --ez autostart true >/dev/null; }

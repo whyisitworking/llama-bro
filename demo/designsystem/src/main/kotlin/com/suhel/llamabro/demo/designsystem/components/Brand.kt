@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import kotlin.math.hypot
@@ -38,10 +39,10 @@ private val DarkStops =
 /** The two sizes the orb is drawn at. */
 enum class OrbSize(internal val size: Dp) {
     /** First run's hero. */
-    Hero(56.dp),
+    Hero(DemoSize.markHero),
 
     /** An empty chat. */
-    Empty(40.dp),
+    Empty(DemoSize.markEmpty),
 }
 
 /** The orb at one of the app's two sizes. */

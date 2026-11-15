@@ -130,7 +130,8 @@ class ChatJourneys : Journey() {
         }
         world.engine.failLoad(LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory, times = LOAD_ATTEMPTS)
         askFirstQuestion()
-        see("Qwen3.5 0.8B needs more memory than this phone has free right now.")
+        see("Qwen3.5 0.8B needs more memory than this phone has free right now.", substring = true)
+        see("Try again")
         shot("1-the-plain-line")
 
         // "Smaller size" opens this model's own sheet, on Smaller; Get starts that file

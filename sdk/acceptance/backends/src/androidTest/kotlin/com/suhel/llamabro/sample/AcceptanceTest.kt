@@ -38,7 +38,7 @@ import java.io.File
 @RunWith(Parameterized::class)
 class AcceptanceTest(private val file: String) {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
-    private val llama = LlamaBro.getInstance(context)
+    private val llama = LlamaBro.create(context)
     private val path = File(context.filesDir, file).path
 
     // deterministic and short; thinking off where the template supports the switch

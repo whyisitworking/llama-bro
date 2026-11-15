@@ -4,6 +4,7 @@ import com.suhel.llamabro.demo.chat.Markdown
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.StoredMessage
+import com.suhel.llamabro.demo.data.db.ReplyStats
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -32,6 +33,39 @@ class ChatItemsTest {
         think: Long? = null,
         failure: String? = null,
     ) = StoredMessage(id, 1, id.toInt(), kind, text, null, think, emptyList(), null, at, wps, state, failure)
+
+    @Test fun aReplysDetailsListWhatRanItAndWhatWasMeasured() {
+        val reply =
+            msg(2, MessageKind.Assistant, "yo", now, wps = 38.4, think = 4_200).copy(
+                modelKey = "unsloth/Qwen3.5-4B-GGUF:Q4_K_M",
+                stats = ReplyStats(212, 14.24, 1_024, 980, 310.0, 240, 180, "NPU"),
+            )
+        val details = (builder(MessageStyle.Open).build(listOf(reply), null).single() as ReplyItem).details
+        assertEquals(
+            listOf(
+                ReplyDetail("Ran on", "NPU"),
+                ReplyDetail("Speed", "38 words/s · 14.2 tokens/s"),
+                ReplyDetail("Reply", "212 tokens"),
+                ReplyDetail("Prompt", "1,024 tokens · 980 from the cache"),
+                ReplyDetail("Prompt read at", "310.0 tokens/s"),
+                ReplyDetail("Thought for", "4 s"),
+                ReplyDetail("Drafts kept", "180 of 240"),
+            ),
+            details.drop(1), // the first line is the model's name, from the catalog
+        )
+        assertEquals("Model", details.first().label)
+    }
+
+    @Test fun aReplyFromBeforeStatsShowsWhatItHas() {
+        val reply = msg(2, MessageKind.Assistant, "yo", now, wps = 38.4)
+        val details = (builder(MessageStyle.Open).build(listOf(reply), null).single() as ReplyItem).details
+        assertEquals(listOf(ReplyDetail("Speed", "38 words/s")), details)
+    }
+
+    @Test fun aFailedReplyHasNoDetails() {
+        val reply = msg(2, MessageKind.Assistant, "", now, state = MessageState.Failed, failure = "That didn't work.")
+        assertTrue((builder(MessageStyle.Open).build(listOf(reply), null).single() as ReplyItem).details.isEmpty())
+    }
 
     @Test fun openStyleHasNoTimesOrDayLabels() {
         val items =
@@ -150,5 +184,19 @@ class ChatItemsTest {
     @Test fun keysAreStablePerMessage() {
         val items = builder(MessageStyle.Open).build(listOf(msg(7, MessageKind.User, "hi", now)), null)
         assertEquals("m-7", items.single().key)
+    }
+
+    @Test fun onlyACutReplyThatEndsTheChatOffersContinue() {
+        val rows =
+            listOf(
+                msg(1, MessageKind.User, "one", now),
+                msg(2, MessageKind.Assistant, "cut early", now, state = MessageState.Cut),
+                msg(3, MessageKind.User, "two", now),
+                msg(4, MessageKind.Assistant, "cut too", now, state = MessageState.Cut),
+            )
+        val replies = builder(MessageStyle.Open).build(rows, null).filterIsInstance<ReplyItem>()
+        assertEquals(listOf(true, true), replies.map { it.cut })
+        assertEquals(listOf(false, true), replies.map { it.canContinue })
+        assertEquals(listOf(false, false), replies.map { it.stopped })
     }
 }

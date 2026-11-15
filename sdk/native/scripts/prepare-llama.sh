@@ -29,7 +29,9 @@ fi
 echo "building llama.cpp copy at $copy (submodule $commit)"
 rm -rf "$copy"
 mkdir -p "$copy"
-git -C "$sub" archive --format=tar HEAD | tar -x -C "$copy"
+# -m: files get the current time, not upstream's commit time. Otherwise a newer build's sources can be older than the
+# objects an earlier build left, and ninja keeps those objects (an upgrade to b12352 linked a stale speculative.cpp.o)
+git -C "$sub" archive --format=tar HEAD | tar -x -m -C "$copy"
 
 for p in "$patches"/[0-9]*.patch; do
     [ -e "$p" ] || continue

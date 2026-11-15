@@ -28,13 +28,13 @@ typedef void (*lb_progress_cb)(void * user, float progress);            // 0..1 
 // Called on the request's own thread.
 typedef void (*lb_request_cb)(void * user, lb_event event, int http_status, const char * data, size_t len);
 
-const char * lb_version(void);                                         // "llamabro <ver> llama.cpp b12052"
+const char * lb_version(void);                                         // "llamabro <ver> llama.cpp b12352"
 void lb_string_free(char * s);                                         // frees every char* this API returns
 
 // config: {"backend_dir": "<dir>", "log_level": "warn", "backends": [...]}, all optional. The CPU backend is loaded by
 // file name (libllamabro-ggml-cpu-*.so, the best variant for this CPU); without backend_dir the dynamic linker finds
 // it, which on Android works straight from the APK. Fails if no CPU backend loads.
-// backends: [{"name": "hexagon", "files": ["libllamabro-ggml-hexagon.so"], "env": {"ADSP_LIBRARY_PATH": "..."}}]:
+// backends: [{"name": "hexagon", "files": ["libllamabro-ggml-hexagon.so"], "env": {"GGML_HEXAGON_LIBHTP_DIR": "..."}}]:
 // optional backends, loaded the same way after the CPU, each after its env is set (setenv, under the init lock).
 // One that fails to load never fails init: lb_runtime_backends reports it with ggml's reason.
 lb_status lb_runtime_init(const char * config_json, char ** error_json);
@@ -56,7 +56,8 @@ char * lb_fit_estimate(const char * config_json, char ** error_json);
 // lb_model_info's "ctx_fit" has the numbers (null when not fitted).
 // Model config "devices": ["HTP0"] puts the model (and its image encoder) on those devices, with "n_gpu_layers";
 // absent or [] is CPU only. The device is never llama.cpp's default (every GPU-type device, F32). lb_model_info's
-// "devices" names the ones used ("CPU" for CPU only).
+// "devices" names the ones used ("CPU" for CPU only). "mmproj_device" (upstream's -mmdev) moves the image encoder:
+// "none" for the CPU or a device name such as "GPUOpenCL"; absent, it follows "devices".
 lb_status lb_model_load(const char * config_json, lb_progress_cb cb, void * user, lb_model ** out, char ** error_json);
 char * lb_model_info(lb_model * model);
 // endpoint: every route tools/server/server.cpp registers for one model (server_register_routes), by name:
@@ -65,6 +66,7 @@ char * lb_model_info(lb_model * model);
 //   responses (/v1/responses), responses_input_tokens (/v1/responses/input_tokens),
 //   messages (/v1/messages), messages_count_tokens (/v1/messages/count_tokens),
 //   embeddings (/v1/embeddings), embeddings_native (/embeddings), rerank (/v1/rerank), tts (/tts),
+//   speech (/v1/audio/speech),
 //   systemone (/v1/systemone), tokenize, detokenize, apply_template (/apply-template),
 //   props (GET /props), props_set (POST /props), models (/v1/models), health, slots (GET /slots),
 //   slots_action (POST /slots/:id_slot), metrics, lora_adapters (GET), lora_adapters_set (POST /lora-adapters).

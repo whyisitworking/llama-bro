@@ -1,6 +1,7 @@
 package com.suhel.llamabro.demo.ui.models
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.models.DownloadStatus
@@ -77,6 +78,7 @@ class GetModelsViewModelTest {
             rowFit = rowFit,
             models = models,
             initialQuery = initialQuery,
+            savedState = SavedStateHandle(),
         ).also {
             viewModels += it
             it.state.keepAlive(backgroundScope)
@@ -246,4 +248,17 @@ class GetModelsViewModelTest {
             assertEquals(DownloadStatus.Downloading(300, 740, 9_800_000, 40), vm.progress(row).first { it != null })
             assertNull("another row shows nothing", vm.progress(other).first())
         }
+
+    @Test fun whatWasTypedSurvivesProcessDeath() {
+        val saved = SavedStateHandle()
+        val vm =
+            GetModelsViewModel({ emptyList() }, { null }, models, initialQuery = "", savedState = saved)
+                .also { viewModels += it }
+        vm.setQuery("gemma")
+        val restored = SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
+        val again =
+            GetModelsViewModel({ emptyList() }, { null }, models, initialQuery = "", savedState = restored)
+                .also { viewModels += it }
+        assertEquals("gemma", again.query.value)
+    }
 }

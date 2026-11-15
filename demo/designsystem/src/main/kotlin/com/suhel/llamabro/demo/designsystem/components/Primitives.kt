@@ -1,5 +1,7 @@
 package com.suhel.llamabro.demo.designsystem.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -25,10 +27,16 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
+import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 
 /**
@@ -36,7 +44,7 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
  * there; on a tablet or a phone on its side the content is a readable column in the middle, its gutter measured from
  * the column's edge, and not a line of text 700 dp long.
  */
-val ContentMaxWidth = 640.dp
+val ContentMaxWidth = DemoSize.contentMaxWidth
 
 /**
  * The gaps a screen may use, by what they mean (the design system v2 spec, section 2). A screen names a [Gap] and never
@@ -164,7 +172,7 @@ fun ListScreen(
 }
 
 /** The tallest a list may be inside a sheet before it scrolls: about six rows of a model's files. */
-fun Modifier.sheetListMaxHeight(): Modifier = heightIn(max = 340.dp)
+fun Modifier.sheetListMaxHeight(): Modifier = heightIn(max = DemoSize.sheetListMaxHeight)
 
 /**
  * A lazy list inside a screen that already has the gutter ([Screen]): its items [gap] apart, no edge padding of its
@@ -178,7 +186,8 @@ fun LazyStack(gap: Gap, modifier: Modifier = Modifier, content: LazyListScope.()
 /**
  * A labelled section: the upper-case [label] (with an optional [action] at its end), [Gap.Inline] above its content,
  * and the content's parts [gap] apart. The label belongs to what follows it, so it sits closer to its own content than
- * to the section above: put sections in a [Stack] or a [Screen] with [Gap.Section] between them.
+ * to the section above: put sections in a [Stack] or a [Screen] with [Gap.Section] between them. On a sheet the label
+ * is [Gap.Block] above its content, and [SectionLabel] lines up with the text inside the cards and rows.
  */
 @Composable
 fun Section(
@@ -189,7 +198,8 @@ fun Section(
     gap: Gap = Gap.Block,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(modifier.fillMaxWidth(), Arrangement.spacedBy(Gap.Inline.size)) {
+    val labelGap = if (LocalOnSheet.current) Gap.Block else Gap.Inline
+    Column(modifier.fillMaxWidth(), Arrangement.spacedBy(labelGap.size)) {
         SectionLabel(label, action = action, onAction = onAction)
         Column(Modifier.fillMaxWidth(), Arrangement.spacedBy(gap.size), content = content)
     }
@@ -219,7 +229,8 @@ fun BottomBar(modifier: Modifier = Modifier, content: @Composable ColumnScope.()
 
 /**
  * The messages of a chat: a lazy column on the gutter, the turns a [Gap.Section] apart, [Gap.Item] above the first and
- * below the last. Meta lines (time, speed) are inside a message, [Gap.Inline] from its text.
+ * below the last. Meta lines (time, speed) are inside a message, [Gap.Inline] from its text. Rows move with
+ * [messageMotion].
  */
 @Composable
 fun MessageColumn(
@@ -228,9 +239,18 @@ fun MessageColumn(
     overlay: @Composable BoxScope.() -> Unit = {},
     content: LazyListScope.() -> Unit,
 ) {
+    // the messages fade in when the list first shows (the first message of a new chat, a chat opening), since rows that
+    // are there from the start do not fade in by themselves. A preview runs no effects: it starts shown
+    val still = LocalInspectionMode.current
+    val shown = remember { Animatable(if (still) 1f else 0f) }
+    LaunchedEffect(shown) { shown.animateTo(1f, tween(DemoMotion.ENTER_MILLIS, easing = DemoMotion.enter)) }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         LazyColumn(
-            modifier.fillMaxHeight().widthIn(max = ContentMaxWidth).fillMaxWidth(),
+            modifier
+                .fillMaxHeight()
+                .widthIn(max = ContentMaxWidth)
+                .fillMaxWidth()
+                .graphicsLayer { alpha = shown.value },
             state,
             contentPadding =
                 PaddingValues(
@@ -300,4 +320,4 @@ fun ListHomeScreen(
 fun Modifier.gutterPadding(): Modifier = padding(DemoSpacing.gutter)
 
 /** The widest the Sidebar layout's drawer gets: Material's 360 dp, less the strip of the screen left to tap away. */
-fun Modifier.drawerWidth(): Modifier = widthIn(max = 320.dp)
+fun Modifier.drawerWidth(): Modifier = widthIn(max = DemoSize.drawerWidth)

@@ -9,6 +9,24 @@ import org.junit.Test
 import java.io.File
 
 internal class FileChoiceTest {
+    @Test fun aTagMatchesOnlyAtATokenBoundary() {
+        // upstream b12352 (#31620, #31639): ":F16" must not pick a BF16 file listed first, nor ":Q4_XS" an IQ4_XS one
+        val files =
+            listOf("m-BF16.gguf", "m-F16.gguf", "m-IQ4_XS.gguf", "m-Q4_XS.gguf", "sub/F16.gguf", "m_Q8_0.gguf")
+                .map { RepoFile(it) }
+        assertEquals("m-F16.gguf", findBestModel(files, "F16")?.path)
+        assertEquals("m-Q4_XS.gguf", findBestModel(files, "Q4_XS")?.path)
+        assertEquals("m-BF16.gguf", findBestModel(files, "BF16")?.path)
+        // an underscore is not a boundary
+        assertEquals(null, findBestModel(files, "Q8_0"))
+        // a directory separator and the start of the path are boundaries
+        assertEquals(
+            "sub/F16.gguf",
+            findBestModel(listOf(RepoFile("sub/BF16.gguf"), RepoFile("sub/F16.gguf")), "F16")?.path,
+        )
+        assertEquals("F16.gguf", findBestModel(listOf(RepoFile("BF16.gguf"), RepoFile("F16.gguf")), "F16")?.path)
+    }
+
     @Test fun upstreamFixtureNamesHaveExpectedSplitAndModelClassification() {
         val expected =
             """

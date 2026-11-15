@@ -1,7 +1,13 @@
 package com.suhel.llamabro.demo.designsystem.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -15,12 +21,18 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -28,14 +40,22 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -43,9 +63,13 @@ import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.R
 import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
+import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
+import com.suhel.llamabro.demo.designsystem.theme.onPhotoScrim
+import com.suhel.llamabro.demo.designsystem.theme.photoScrim
 import com.suhel.llamabro.demo.designsystem.theme.subtleFill
 
 /** Long-press for a message's actions (copy, edit, share, regenerate); a plain tap does nothing. */
@@ -80,7 +104,12 @@ fun UserBubble(
             Image(
                 image,
                 contentDescription = null,
-                modifier = Modifier.size(width = 168.dp, height = 126.dp).clip(DemoShapes.card),
+                modifier =
+                    Modifier
+                        .size(
+                            width = DemoSize.messageImageWidth,
+                            height = DemoSize.messageImageHeight,
+                        ).clip(DemoShapes.card),
                 contentScale = ContentScale.Crop,
             )
         }
@@ -91,7 +120,7 @@ fun UserBubble(
                     .clip(DemoShapes.userBubble)
                     .background(colors.bubble)
                     .longPress(onLongClick)
-                    .padding(horizontal = DemoSpacing.item, vertical = 12.dp),
+                    .padding(horizontal = DemoSpacing.item, vertical = DemoSpacing.compact),
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(DemoSpacing.inline),
             ) {
@@ -123,7 +152,7 @@ fun ModelBubble(
                 .clip(DemoShapes.modelBubble)
                 .background(colors.surface)
                 .longPress(onLongClick)
-                .padding(horizontal = DemoSpacing.item, vertical = 12.dp),
+                .padding(horizontal = DemoSpacing.item, vertical = DemoSpacing.compact),
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(DemoSpacing.inline),
         ) {
@@ -174,26 +203,43 @@ fun ThoughtFold(state: ThoughtState, onToggle: () -> Unit, modifier: Modifier = 
     Column(
         modifier.fillMaxWidth().animateContentSize(tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard)),
     ) {
-        Row(
+        // a real 48 dp row, the label centred in it: a touch target that reaches past its row is cut by the parent's
+        // bounds, and accessibility services (and the checks) see only what's left (F130). The row's height above and
+        // below the line is the gap to what follows
+        Box(
             Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(role = Role.Button, onClick = onToggle)
-                .heightIn(min = 48.dp)
-                .padding(end = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .heightIn(min = DemoSize.target)
+                .clip(DemoShapes.chip)
+                .clickable(role = Role.Button, onClickLabel = label, onClick = onToggle)
+                .semantics { contentDescription = label },
+            contentAlignment = Alignment.CenterStart,
         ) {
-            Text(label, color = colors.muted, style = DemoType.bodyMedium)
-            Icon(
-                DemoIcons.ChevronRight,
-                contentDescription = null,
-                tint = colors.muted,
-                modifier = Modifier.size(18.dp).graphicsLayer { rotationZ = if (state.expanded) 90f else 0f },
+            val turn by animateFloatAsState(
+                if (state.expanded) QUARTER_TURN else 0f,
+                tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard),
+                label = "chevron",
             )
+            Row(Modifier.padding(end = DemoSpacing.inline), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    label,
+                    if (state.seconds == null) Modifier.shimmer() else Modifier,
+                    color = colors.muted,
+                    style = DemoType.bodyMedium,
+                )
+                Icon(
+                    DemoIcons.ChevronRight,
+                    contentDescription = null,
+                    tint = colors.muted,
+                    modifier = Modifier.size(DemoSize.iconSmall).graphicsLayer { rotationZ = turn },
+                )
+            }
         }
         if (state.expanded && state.text.isNotEmpty()) {
             Text(
                 state.text,
                 Modifier
+                    // the reply follows a block below the open thought
+                    .padding(bottom = DemoSpacing.block)
                     .fillMaxWidth()
                     .background(colors.subtleFill, DemoShapes.card)
                     .padding(DemoSpacing.item),
@@ -202,6 +248,46 @@ fun ThoughtFold(state: ThoughtState, onToggle: () -> Unit, modifier: Modifier = 
             )
         }
     }
+}
+
+private const val QUARTER_TURN = 90f
+
+/**
+ * A soft band of ink sweeping across muted text, again and again: the text is still being made ("Thinking"). It draws
+ * over the text only, on the same loop as the wake hairline, and holds still with animations off.
+ */
+@Composable
+private fun Modifier.shimmer(): Modifier {
+    if (animationsDisabled()) return this
+    val ink = LocalDemoColors.current.ink
+    val sweep = rememberLoop(DemoMotion.SWEEP_MILLIS)
+    return graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+            val band = size.width * SHIMMER_WIDTH_FRACTION
+            val start = -band + sweep.value * (size.width + band)
+            drawRect(
+                Brush.horizontalGradient(listOf(Color.Transparent, ink, Color.Transparent), start, start + band),
+                blendMode = BlendMode.SrcAtop,
+            )
+        }
+}
+
+/** The band is wider on a short word than the wake line's is on the screen. */
+private const val SHIMMER_WIDTH_FRACTION = 0.6f
+
+/**
+ * The actions under a reply (copy, share, regenerate, details): small [IconAction]s whose glyphs line up with the
+ * reply's text edge. Each glyph sits in the middle of its 48 dp target, so the row starts half the difference earlier,
+ * mirrored in RTL.
+ */
+@Composable
+fun ReplyActions(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier.fillMaxWidth().offset(x = -(DemoSize.target - DemoSize.iconSmall) / 2),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
 }
 
 /** A quiet day label between messages ("Today"). */
@@ -221,9 +307,9 @@ fun DayLabel(text: String, modifier: Modifier = Modifier) {
 fun SwitchDivider(text: String, modifier: Modifier = Modifier) {
     val colors = LocalDemoColors.current
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f).heightIn(min = 1.dp, max = 1.dp).background(colors.hairline))
+        Box(Modifier.weight(1f).height(DemoSize.hairline).background(colors.hairline))
         Text(text, Modifier.padding(horizontal = DemoSpacing.block), color = colors.muted, style = DemoType.bodySmall)
-        Box(Modifier.weight(1f).heightIn(min = 1.dp, max = 1.dp).background(colors.hairline))
+        Box(Modifier.weight(1f).height(DemoSize.hairline).background(colors.hairline))
     }
 }
 
@@ -241,7 +327,7 @@ fun HeldNote(text: String, modifier: Modifier = Modifier) {
 
 /**
  * An honest limit, said once in one plain line with its fix (demo design §4.4): the [text] and, when there is one,
- * an [action] button.
+ * an [action] button. With [onDismiss] the line is a note the person can close: a small ✕ at its end.
  */
 @Composable
 fun LimitLine(
@@ -251,6 +337,7 @@ fun LimitLine(
     modifier: Modifier = Modifier,
     secondAction: String? = null,
     onSecondAction: () -> Unit = {},
+    onDismiss: (() -> Unit)? = null,
 ) {
     val colors = LocalDemoColors.current
     DemoCard(
@@ -279,11 +366,20 @@ fun LimitLine(
                 }
             }
         } else {
-            Row(Modifier.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.heightIn(min = DemoSize.target), verticalAlignment = Alignment.CenterVertically) {
                 Text(text, Modifier.weight(1f), color = colors.ink, style = DemoType.bodyMedium)
                 if (action != null) {
                     Spacer(Modifier.width(DemoSpacing.block))
                     QuietButton(text = action, onClick = onAction)
+                }
+                if (onDismiss != null) {
+                    IconAction(
+                        DemoIcons.Close,
+                        stringResource(R.string.ds_dismiss),
+                        onDismiss,
+                        muted = true,
+                        small = true,
+                    )
                 }
             }
         }
@@ -311,7 +407,9 @@ fun StarterChips(items: List<String>, onPick: (String) -> Unit, modifier: Modifi
                     Modifier
                         .softShadow(DemoShapes.chip, colors)
                         .background(colors.surface, DemoShapes.chip)
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .heightIn(min = DemoSize.chip)
+                        .padding(horizontal = DemoSpacing.compact)
+                        .wrapContentHeight(Alignment.CenterVertically),
                     color = colors.ink,
                     style = DemoType.label,
                 )
@@ -320,7 +418,11 @@ fun StarterChips(items: List<String>, onPick: (String) -> Unit, modifier: Modifi
     }
 }
 
-/** A picture attached to the message being written: 64 dp, with a ✕ at its top end to take it back. */
+/**
+ * A picture attached to the message being written, inside the message bar: 64 dp with a 12 dp corner, a soft fill
+ * while it decodes, and a ✕ on a scrim 4 dp in from its top end to take it back. The ✕'s 48 dp target reaches past the
+ * picture's corner instead of covering most of it.
+ */
 @Composable
 fun Thumbnail(
     picture: ImageBitmap?,
@@ -329,34 +431,73 @@ fun Thumbnail(
     onRemove: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier.size(64.dp).clip(DemoShapes.card)) {
-        picture?.let {
-            Image(
-                it,
-                contentDescription = description,
-                Modifier.size(64.dp),
-                contentScale = ContentScale.Crop,
-            )
+    val colors = LocalDemoColors.current
+    Box(modifier.size(DemoSize.thumbnail)) {
+        Box(Modifier.matchParentSize().clip(DemoShapes.card).background(colors.bubble)) {
+            picture?.let {
+                Image(
+                    it,
+                    contentDescription = description,
+                    Modifier.matchParentSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            }
         }
-        IconAction(DemoIcons.Close, removeLabel, onRemove, Modifier.align(Alignment.TopEnd))
+        Box(Modifier.align(Alignment.TopEnd).padding(DemoSpacing.inline).size(DemoSize.badge)) {
+            // a target larger than its box is centred on it: the 48 dp target sits round the 24 dp circle
+            Box(
+                Modifier
+                    .requiredSize(DemoSize.target)
+                    .clip(CircleShape)
+                    .clickable(role = Role.Button, onClick = onRemove),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    Modifier.size(DemoSize.badge).background(colors.photoScrim, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        DemoIcons.Close,
+                        contentDescription = removeLabel,
+                        tint = colors.onPhotoScrim,
+                        modifier = Modifier.size(DemoSize.iconSmall),
+                    )
+                }
+            }
+        }
     }
 }
 
 /**
  * The "back to the latest message" button of a chat scrolled away from its end: a 40 dp raised circle (in a 48 dp
- * target) with a down arrow, 8 dp above the bottom of the list. The list shows it only while there is more below.
+ * target) with a down arrow, 8 dp above the bottom of the list. It is [visible] while there is more below, growing in
+ * and fading like Material's floating button, and shrinking away quicker.
  */
 @Composable
-fun JumpToLatest(onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun JumpToLatest(visible: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    AnimatedVisibility(
+        visible,
+        modifier,
+        enter =
+            fadeIn(tween(DemoMotion.ENTER_MILLIS, easing = DemoMotion.enter)) +
+                scaleIn(tween(DemoMotion.ENTER_MILLIS, easing = DemoMotion.enter), DemoMotion.POP_SCALE),
+        exit =
+            fadeOut(tween(DemoMotion.EXIT_MILLIS, easing = DemoMotion.exit)) +
+                scaleOut(tween(DemoMotion.EXIT_MILLIS, easing = DemoMotion.exit), DemoMotion.POP_SCALE),
+    ) { JumpButton(onClick) }
+}
+
+@Composable
+private fun JumpButton(onClick: () -> Unit) {
     val colors = LocalDemoColors.current
-    Box(modifier.padding(bottom = DemoSpacing.block).minimumInteractiveComponentSize()) {
+    Box(Modifier.padding(bottom = DemoSpacing.block).minimumInteractiveComponentSize()) {
         Box(
             Modifier
-                .size(40.dp)
+                .size(DemoSize.control)
                 .softShadow(CircleShape, colors)
                 .clip(CircleShape)
                 .background(colors.surface)
-                .border(1.dp, colors.hairline, CircleShape)
+                .border(DemoSize.hairline, colors.hairline, CircleShape)
                 .clickable(role = Role.Button, onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
@@ -364,7 +505,7 @@ fun JumpToLatest(onClick: () -> Unit, modifier: Modifier = Modifier) {
                 DemoIcons.ChevronDown,
                 contentDescription = stringResource(R.string.ds_jump_to_latest),
                 tint = colors.ink,
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(DemoSize.icon),
             )
         }
     }

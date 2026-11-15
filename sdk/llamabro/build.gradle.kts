@@ -13,7 +13,7 @@ group = "io.github.whyisitworking"
 
 android {
     namespace = "com.suhel.llamabro"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = "29.0.14206865"
 
     defaultConfig {
@@ -123,7 +123,11 @@ tasks.withType<Test>().configureEach {
     listOf("lib", "server", "model", "mmproj").forEach { key ->
         providers.gradleProperty("llamabro.host.$key").orNull?.let { systemProperty("llamabro.host.$key", it) }
     }
-    providers.gradleProperty("llamabro.host.lib").orNull?.let { jvmArgs("-Djava.library.path=$it") }
+    providers.gradleProperty("llamabro.host.lib").orNull?.let {
+        jvmArgs("-Djava.library.path=$it")
+        // the native runtime initialises once per process: a test of its first init needs a JVM of its own (D66)
+        forkEvery = 1
+    }
 }
 
 // Public API dump (PA T1, findings F45). `apiCheck` compares the release build's public API with the checked-in

@@ -1,16 +1,20 @@
 package com.suhel.llamabro
 
 /**
- * Process-wide settings, fixed by the first [LlamaBro.getInstance] (design §5). Supply them from your
- * `Application` by implementing [LlamaBro.ConfigProvider]: `LlamaBroConfig { logLevel = LogLevel.Info }`.
+ * Process-wide settings, fixed by the first [LlamaBro.create] (design §5, D70):
+ * `LlamaBroConfig { logLevel = LogLevel.Info }`. A later `create` with an equal config returns the same object
+ * and a different one throws; the logger is compared by reference, so build the config once.
  */
 public class LlamaBroConfig internal constructor(
     /**
-     * The lowest level logged. llama-server's own lines are filtered by it but go to stderr, not to [logger]
-     * (findings F22).
+     * The lowest level of llama.cpp and ggml lines, and of the SDK's own, that reach [logger] or logcat.
+     * llama-server's own lines are filtered by it but go to stderr, not to [logger] (findings F22).
      */
     public val logLevel: LogLevel,
-    /** Receives the SDK's log lines; null = none. */
+    /**
+     * Receives the SDK's log lines, from the first native call. Null logs to logcat under `llamabro` (D66); there is
+     * no off switch, so pass a logger that drops lines for silence.
+     */
     public val logger: Logger?,
 ) {
     public fun copy(configure: Builder.() -> Unit): LlamaBroConfig = Builder(this).apply(configure).build()

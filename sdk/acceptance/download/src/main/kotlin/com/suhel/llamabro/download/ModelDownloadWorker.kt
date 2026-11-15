@@ -9,7 +9,6 @@ import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubException
-import com.suhel.llamabro.hub.LlamaBroHub
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collect
 
@@ -24,7 +23,7 @@ class ModelDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
             }
         var foreground = promote(DownloadNotifications.preparing(applicationContext, ref))
         return try {
-            LlamaBroHub.getInstance(applicationContext).download(model).collect { progress ->
+            (applicationContext as DownloadApplication).hub().download(model).collect { progress ->
                 if (foreground) foreground = promote(DownloadNotifications.build(applicationContext, ref, progress))
             }
             Result.success()

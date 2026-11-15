@@ -36,7 +36,7 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class TaskDeviceTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
-    private val llama = LlamaBro.getInstance(context)
+    private val llama = LlamaBro.create(context)
 
     private fun file(name: String) = File(context.getExternalFilesDir(null), name).path
 
