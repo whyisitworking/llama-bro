@@ -30,6 +30,7 @@ internal fun ThemeSamples() {
                 "muted" to c.muted,
                 "hairline" to c.hairline,
                 "accent" to c.accent,
+                "onAccent" to c.onAccent,
                 "accentSoft" to c.accentSoft,
                 "greatTint" to c.greatTint,
                 "greatInk" to c.greatInk,

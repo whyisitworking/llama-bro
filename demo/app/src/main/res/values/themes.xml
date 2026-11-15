@@ -2,11 +2,14 @@
 <resources>
     <!-- Only the window behind Compose: the canvas colour of demo design §8.6, so there is no flash before the first frame. -->
     <style name="Theme.Demo" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">#FFF7F6F3</item>
+        <item name="android:windowBackground">#FFFAFAFA</item>
     </style>
     <!-- The AndroidX splash: held until the settings and the cache scan are read, so the first frame is the app's own. -->
     <style name="Theme.Demo.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#FFF7F6F3</item>
+        <item name="windowSplashScreenBackground">#FFFAFAFA</item>
+        <!-- Set explicitly: on API 29-30 the compat splash otherwise shows the platform default icon.
+             No icon background: the adaptive icon's own night is the circle on the canvas. -->
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
         <item name="postSplashScreenTheme">@style/Theme.Demo</item>
     </style>
 </resources>

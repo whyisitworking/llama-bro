@@ -24,8 +24,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
@@ -35,9 +37,9 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 
 /**
- * The one strong button of a screen or sheet ("Get Swift", "Save", "New chat"): the navy primary, canvas text, a 56 dp
- * pill (Material's medium button). Disabled, it is a flat hairline pill with muted text, which still reads as a label
- * (a faded navy pill would put white text on grey).
+ * The one strong button of a screen or sheet ("Get Swift", "Save", "New chat"): the ink primary, [onAccent] text, a
+ * 56 dp pill (Material's medium button). Disabled, it is a flat hairline pill with muted text, which still reads as a
+ * label (a faded ink pill would put its label on grey).
  */
 @Composable
 fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
@@ -53,7 +55,7 @@ fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
     ) {
         Text(
             text,
-            color = if (enabled) colors.canvas else colors.muted,
+            color = if (enabled) colors.onAccent else colors.muted,
             style = DemoType.title,
             textAlign = TextAlign.Center,
         )
@@ -61,8 +63,9 @@ fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
 }
 
 /**
- * A quiet text action in the accent ("Get more models", "What's a model?", "Pause"); [bordered] gives it the small
- * hairline outline of the download controls.
+ * A quiet text action in the ink ("Unload", "Reset to the model's defaults"). With no hue to tell it from body text
+ * (D69) it is underlined, unless it is [bordered], which gives it the small hairline outline of the download controls,
+ * or destructive, which has its own colour.
  */
 @Composable
 fun QuietButton(
@@ -97,7 +100,13 @@ fun QuietButton(
             .padding(horizontal = if (bordered) DemoSpacing.item else DemoSpacing.block, vertical = DemoSpacing.block),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = ink, style = DemoType.label, maxLines = 1)
+        Text(
+            text,
+            color = ink,
+            // unbordered, the ink-coloured label has no hue to say it acts, so it is underlined, like a link
+            style = if (bordered || destructive) DemoType.label else DemoType.label.underlined(),
+            maxLines = 1,
+        )
     }
 }
 
@@ -131,7 +140,7 @@ fun IconAction(
     }
 }
 
-/** The floating "New chat" button of the chat list layout: accent fill, canvas text and icon. */
+/** The floating "New chat" button of the chat list layout: accent fill, onAccent text and icon. */
 @Composable
 fun DemoFab(text: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = LocalDemoColors.current
@@ -147,8 +156,8 @@ fun DemoFab(text: String, icon: ImageVector, onClick: () -> Unit, modifier: Modi
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(DemoSpacing.block),
     ) {
-        Icon(icon, contentDescription = null, tint = colors.canvas, modifier = Modifier.size(DemoSize.icon))
-        Text(text, color = colors.canvas, style = DemoType.title)
+        Icon(icon, contentDescription = null, tint = colors.onAccent, modifier = Modifier.size(DemoSize.icon))
+        Text(text, color = colors.onAccent, style = DemoType.title)
     }
 }
 
@@ -205,3 +214,5 @@ fun SegmentedSwitch(options: List<String>, selected: Int, onSelect: (Int) -> Uni
         }
     }
 }
+
+private fun TextStyle.underlined(): TextStyle = copy(textDecoration = TextDecoration.Underline)

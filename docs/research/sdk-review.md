@@ -87,12 +87,12 @@ fixable without changing the architecture.
    values only from their own curated lists. Decided 2026-11-15: search in `llamabro-hub` grouping only quantized
    re-uploads, sizes without a fit verdict, and recommended sampling only where the Hub has it, with its source (F146,
    D68). Not built yet.
-9. **Decided (D69): revisit the demo's theme colours.** The demo carries PH's features to readers, so its palette (the
+9. **Done (D69): revisit the demo's theme colours.** The demo carries PH's features to readers, so its palette (the
    light and dark tokens in `designsystem/theme/Tokens.kt`, demo design §8.6) is looked at again in PH, with the screens
    the new features add. Recorded 2026-11-14 at the user's request. The app's new icon (a llama on deep navy, purple to
    orange, supplied by the user 2026-11-15) replaces the placeholder pearl and is decided together with the palette.
    Decided 2026-11-15: a neutral near-white and AMOLED near-black palette with the ink as primary, the icon's warmth
-   only in the orb, and the icon as an adaptive and themed launcher icon (D69). Not built yet.
+   only in the orb, and the icon as an adaptive and themed launcher icon (D69). Built 2026-11-15.
 10. **Breadth that a headline will be asked about.** No non-Qualcomm phone verified. GPU drafting aborts and Vulkan
     waits on upstream (F125). No CI, sanitizer runs or generated API docs. Publishing waits on a decision about the NPU
     runtime's licence. None of these is visible in a demo, but each comes up in the first issue a reader opens.

@@ -24,6 +24,7 @@ class ThemeTest {
                         muted,
                         hairline,
                         accent,
+                        onAccent,
                         accentSoft,
                         greatTint,
                         greatInk,
@@ -62,7 +63,7 @@ class ThemeTest {
             assertEquals(c.muted, s.onSurfaceVariant)
             assertEquals(c.hairline, s.outlineVariant)
             assertEquals(c.accent, s.primary)
-            assertEquals(c.canvas, s.onPrimary)
+            assertEquals(c.onAccent, s.onPrimary)
             assertEquals(c.accentSoft, s.primaryContainer)
             assertEquals(c.accent, s.onPrimaryContainer)
             assertEquals(c.accentSoft, s.secondaryContainer)

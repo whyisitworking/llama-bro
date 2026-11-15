@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The artwork's night (D69); the icon keeps it in both themes, so there is no values-night twin. -->
+    <color name="ic_launcher_background">#FF02011E</color>
+</resources>

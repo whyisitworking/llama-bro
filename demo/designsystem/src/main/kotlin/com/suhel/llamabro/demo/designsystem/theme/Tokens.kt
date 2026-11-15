@@ -14,7 +14,10 @@ class DemoColors(
     val hairline: Color,
     /** The user's message bubble (D49): a soft neutral, lifted from the canvas in both themes; text on it is [ink]. */
     val bubble: Color,
+    /** The primary: the ink itself, so the app has no hue of its own. */
     val accent: Color,
+    /** Content on an [accent] fill (a primary button's label, the send glyph): white in light, near-black in dark. */
+    val onAccent: Color,
     val accentSoft: Color,
     val greatTint: Color,
     val greatInk: Color,
@@ -24,20 +27,21 @@ class DemoColors(
     val tooBigInk: Color,
     /** A destructive action ("Remove"): not the sand of "slow here", which is a fit and not a warning. */
     val danger: Color,
-    /** Picks the orb's gradient and the shadow strength; not part of the table. */
+    /** The theme-dependent choices that are not table colours (shadow, scrim, switch track, subtle fill). */
     val isDark: Boolean,
 )
 
 val Light =
     DemoColors(
-        canvas = Color(0xFFF7F6F3),
+        canvas = Color(0xFFFAFAFA),
         surface = Color(0xFFFFFFFF),
-        ink = Color(0xFF17181C),
-        muted = Color(0xFF55565C),
-        hairline = Color(0xFFE6E4DF),
-        bubble = Color(0xFFE9E7E1),
-        accent = Color(0xFF25304D),
-        accentSoft = Color(0xFFE4E7EF),
+        ink = Color(0xFF0D0D0D),
+        muted = Color(0xFF5D5D5D),
+        hairline = Color(0xFFE5E5E5),
+        bubble = Color(0xFFEFEFEF),
+        accent = Color(0xFF0D0D0D),
+        onAccent = Color(0xFFFFFFFF),
+        accentSoft = Color(0xFFEBEBEB),
         greatTint = Color(0xFFEDF0EC),
         greatInk = Color(0xFF3E5641),
         slowTint = Color(0xFFF3EEE5),
@@ -50,14 +54,15 @@ val Light =
 
 val Dark =
     DemoColors(
-        canvas = Color(0xFF121316),
-        surface = Color(0xFF1B1C20),
-        ink = Color(0xFFECEBE8),
-        muted = Color(0xFFA5A6AC),
-        hairline = Color(0xFF26272C),
-        bubble = Color(0xFF2A2C31),
-        accent = Color(0xFFB9C4DE),
-        accentSoft = Color(0xFF252A38),
+        canvas = Color(0xFF0A0A0A),
+        surface = Color(0xFF141414),
+        ink = Color(0xFFECECEC),
+        muted = Color(0xFFA8A8A8),
+        hairline = Color(0xFF222222),
+        bubble = Color(0xFF1E1E1E),
+        accent = Color(0xFFECECEC),
+        onAccent = Color(0xFF0A0A0A),
+        accentSoft = Color(0xFF262626),
         greatTint = Color(0xFF1A1F1B),
         greatInk = Color(0xFFA9C3AA),
         slowTint = Color(0xFF221E18),

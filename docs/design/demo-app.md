@@ -48,7 +48,7 @@ It has to work for two kinds of person: someone who has never heard of a model o
 
 ### 4.1 First run
 
-1. **Arrive.** A subtle pearl-coloured orb, a greeting by time of day, one line: "Pick a mind to talk to. It lives on this phone: private, and it works offline.", a search bar, and **Picked for your phone** with a **What's a model?** link that opens a two-line plain answer. Three suggestions (Qwen3.5 0.8B, Gemma 3 4B, Qwen3.5 4B), each with its plain line, its size in GB and a fit word. No icons.
+1. **Arrive.** A small warm orb (amber to rose), a greeting by time of day, one line: "Pick a mind to talk to. It lives on this phone: private, and it works offline.", a search bar, and **Picked for your phone** with a **What's a model?** link that opens a two-line plain answer. Three suggestions (Qwen3.5 0.8B, Gemma 3 4B, Qwen3.5 4B), each with its plain line, its size in GB and a fit word. No icons.
 2. **A closer look (a sheet).** The model's name and maker, what it is good at and its honest limits, a fit line, four facts (thinking, images, memory, download size and time), **Get <name>**, and "From Hugging Face".
 3. **Talk right away.** Tapping Get opens the chat at once. The download shows as a ring with a percentage beside the model's name in the top bar (D50); the person can type the first message now and it is held until the model is ready ("<Name> will answer the moment it's here"). Leaving the app keeps the download going, with a notification.
 4. **It wakes, then answers.** While the model loads, a fine accent line under the top bar fills as the load goes on: the accent over a soft accent track, like the download ring, from the SDK's load progress. Before the first report it sweeps; there is no spinner and no number. Then the held message is answered. With animations turned off the line jumps to each value, and the sweep is static.
@@ -169,7 +169,7 @@ The system lives in `demo/designsystem`. Its values are Material 3's wherever Ma
 
 ### 8.1 Character
 
-Calm, classy, a little alive. Depth and restraint over softness or loudness. Warm-neutral paper in light mode and graphite in dark mode, never pure white or black. A classic serif only for hero moments; a clean sans everywhere else. Soft shadows and generous but not floaty spacing. Motion only where it earns its place, quiet and quick (§8.11): sheets, the download ring, the wake-up hairline, the thinking fold, and in the chat what arrives, leaves or changes in place.
+Calm, classy, a little alive. Depth and restraint over softness or loudness. A neutral near-white in light mode and an AMOLED near-black in dark mode, both untinted (D69). Colour is kept for meaning and for one living moment, the orb. A classic serif only for hero moments; a clean sans everywhere else. Soft shadows and generous but not floaty spacing. Motion only where it earns its place, quiet and quick (§8.11): sheets, the download ring, the wake-up hairline, the thinking fold, and in the chat what arrives, leaves or changes in place.
 
 ### 8.2 Type
 
@@ -208,7 +208,7 @@ The gutter is 16 dp everywhere, measured from the edge of a content column that 
 
 ### 8.4 Layout primitives
 
-Screens and sheets are assembled from primitives that own the gutter and the gaps and that take content, never padding: `Screen`, `ListScreen`, `Sheet`, `Section`, `Stack` and `Inline` (gaps from the named steps only), with `BottomBar`, `MessageColumn`, `Centered`, `ScrollStack` and `LazyStack` for specific jobs. A sheet is the 48 dp handle area, then content on the gutter, ending 16 dp above the bottom inset with no dead space; its primary action is a 56 dp navy button. A sheet whose content grows after it opens re-expands so that its content stays on screen (F118).
+Screens and sheets are assembled from primitives that own the gutter and the gaps and that take content, never padding: `Screen`, `ListScreen`, `Sheet`, `Section`, `Stack` and `Inline` (gaps from the named steps only), with `BottomBar`, `MessageColumn`, `Centered`, `ScrollStack` and `LazyStack` for specific jobs. A sheet is the 48 dp handle area, then content on the gutter, ending 16 dp above the bottom inset with no dead space; its primary action is a 56 dp ink button. A sheet whose content grows after it opens re-expands so that its content stays on screen (F118).
 
 ### 8.5 Controls and shapes
 
@@ -241,7 +241,7 @@ Every size a component uses comes from `DemoSize` (heights, widths, icon sizes, 
 
 ### 8.6 Colour
 
-One primary: **navy**. Primary buttons (Get, Save, New chat), the send button, the floating button, the selected border, links, progress and the selected navigation item are navy. Near-black is ink, used for text only. Contrast is 4.5:1 for every text pair and 3:1 for large text (18 sp, or 14 sp bold) and icons, in both themes, checked by a unit test.
+One primary: the **ink** (D69). Primary buttons (Get, Save, New chat), the send button, the floating button, the selected border, progress and the selected navigation item are ink, and what sits on them is the on-accent colour (white in light, near-black in dark). With no hue to tell states apart, a second signal does it: links and unbordered text actions ("Unload", "Reset to the model's defaults") are underlined, and Think on is a filled ink circle like send. The fit words and Remove keep their colours and are the only hues that carry meaning, besides the orb. Contrast is 4.5:1 for every text pair and 3:1 for large text (18 sp, or 14 sp bold) and icons, in both themes, checked by a unit test.
 
 A scrim (behind the drawer, behind a sheet) is the theme's darkest token: the canvas at 50% in dark, the ink at 30% in light. Never the ink in dark, which would lay a light veil over a dark page (F131).
 
@@ -249,26 +249,29 @@ New chat is a speech bubble with a plus (Material's `add_comment`), the sign mes
 
 | Token | Light | Dark |
 |---|---|---|
-| Canvas | `#F7F6F3` | `#121316` |
-| Surface | `#FFFFFF` | `#1B1C20` |
-| Ink | `#17181C` | `#ECEBE8` |
-| Muted text | `#55565C` | `#A5A6AC` |
-| Hairline | `#E6E4DF` | `#26272C` |
-| User bubble | `#E9E7E1` | `#2A2C31` |
-| Navy primary (accent) | `#25304D` | `#B9C4DE` |
-| Accent soft | `#E4E7EF` | `#252A38` |
+| Canvas | `#FAFAFA` | `#0A0A0A` |
+| Surface | `#FFFFFF` | `#141414` |
+| Ink | `#0D0D0D` | `#ECECEC` |
+| Muted text | `#5D5D5D` | `#A8A8A8` |
+| Hairline | `#E5E5E5` | `#222222` |
+| User bubble | `#EFEFEF` | `#1E1E1E` |
+| Primary (accent, the ink) | `#0D0D0D` | `#ECECEC` |
+| On accent | `#FFFFFF` | `#0A0A0A` |
+| Accent soft | `#EBEBEB` | `#262626` |
 | Fit: runs great (text) | `#3E5641` | `#A9C3AA` |
 | Fit: slow here (text) | `#73572F` | `#D3B588` |
 | Fit: too big (text) | `#6E6E73` | `#8C8C92` |
 | Danger ("Remove") | `#A23B2F` | `#E59A90` |
 
-The orb is a pearl, mostly white with a faint cool and warm sheen (darker blue-grey in dark), about 56 dp on the first screen and 40 dp in an empty chat. Colour was chosen because brightness and saturation affect feeling more than hue: a deep, low-saturation accent reads as composed and trustworthy.
+The orb is the app's one spark of colour: a radial gradient from amber `#FDB969` at its lit point (34% across, 28% down) to rose `#C35F5A` at the edge, the same in both themes, with a soft rose-tinted shadow. It is about 56 dp on the first screen and 40 dp in an empty chat. It takes the warm end of the icon; the icon's violet stays in the icon. Everything else is neutral so that the orb and the fit words are the only colour on a screen (D69).
+
+The launcher icon is adaptive: the llama on a flat night background `#02011E`, scaled into the 66 dp safe zone, with a one-colour themed layer traced from the llama's outline. The splash shows the icon on the canvas, so no other colour flashes before the first screen.
 
 ### 8.7 States
 
 Every state is one signal:
 
-- **Selected** is a 2 dp navy border for a card that is one choice among cards (a size, a file, a model in the switcher, a layout), and a navy check at the end of a row that is one choice inside a grouped list (the Think levels, the default model, the open chat in the drawer). A segmented switch raises its chosen segment. Nothing else means selected; an "included" file is not outlined. A selected row exposes the `selected` semantic.
+- **Selected** is a 2 dp ink border for a card that is one choice among cards (a size, a file, a model in the switcher, a layout), and an ink check at the end of a row that is one choice inside a grouped list (the Think levels, the default model, the open chat in the drawer). A segmented switch raises its chosen segment. Nothing else means selected; an "included" file is not outlined. A selected row exposes the `selected` semantic.
 - **Fit** is a coloured word, never a card tint. **Recommended** is a label inside the card. **Disabled** is ink at 38% on a surface at 12%, still readable as a label.
 - Every string a person reads starts with a capital ("Used today", "Paused"); a count or time that begins with a figure is left as it is.
 
@@ -277,8 +280,8 @@ Every state is one signal:
 The text over a row of buttons, in one outlined surface (1 dp hairline, 28 dp corner). The text (`body`) starts 16 dp from the edge and 16 dp below the top, and grows to six lines; it capitalises the start of each sentence. The buttons' circles sit 12 dp under it (8 dp of padding and the 4 dp each circle leaves in its target). The row holds three 40 dp circles in 48 dp targets, 8 dp from the bar's bottom and sides so that they are concentric with the corner (20 + 8 = 28):
 
 - **+** at the start, tonal.
-- At the end, the **Think** lightbulb (only for a model that can think; tonal when off, the soft accent with the accent ink when on) and **send**, 8 dp apart.
-- **Send** is a tonal circle with muted ink that does nothing while there is no text and no photo, navy when it can act, and a stop button while a reply is coming (D49).
+- At the end, the **Think** lightbulb (only for a model that can think; tonal when off, a filled ink circle like send when on) and **send**, 8 dp apart.
+- **Send** is a tonal circle with muted ink that does nothing while there is no text and no photo, ink when it can act, and a stop button while a reply is coming (D49).
 
 Attached pictures sit inside the bar, above the text, never above the bar where they would read as already sent: 64 dp thumbnails with a 12 dp corner, 16 dp from the bar's top and sides (concentric with its 28 dp corner) and 8 dp apart, scrolling sideways when many; the text then starts 8 dp under them. A thumbnail is a soft fill while its picture decodes. Its ✕ is an 18 dp glyph on a 24 dp dark scrim circle (white glyph, the same in both themes, so it reads on any photo), 4 dp in from the top end; its 48 dp target reaches past the picture's corner. The bar grows and shrinks with the standard motion (250 ms).
 
@@ -366,4 +369,4 @@ The method, the budgets' exact definitions and what they do not cover are in [..
 - Voice dictation is the first feature planned after the app.
 - Not audited: a physical fold or tablet, and right-to-left on a device (the emulator ignored the system setting; it is covered by screenshot tests).
 
-**Rejected directions**, so they do not return: a pastel orb with a serif greeting alone (reads as a meditation app); a dark "instrument" look, an editorial "paper" look and a chat-first minimal screen (soulless); a talking onboarding with a house metaphor (too much text); vivid album-art images per model (cheesy); a professional monogram list (lifeless); a violet accent (generic AI); a mid teal (juvenile); nicknames for models (D50).
+**Rejected directions**, so they do not return: a pastel orb with a serif greeting alone (reads as a meditation app); a dark "instrument" look, an editorial "paper" look and a chat-first minimal screen (soulless); a talking onboarding with a house metaphor (too much text); vivid album-art images per model (cheesy); a professional monogram list (lifeless); a violet accent (generic AI); the warm-paper and navy palette of PD (replaced by the neutral one, D69); a mid teal (juvenile); nicknames for models (D50).
