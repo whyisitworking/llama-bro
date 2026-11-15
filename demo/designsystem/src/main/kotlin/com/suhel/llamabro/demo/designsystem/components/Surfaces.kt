@@ -58,7 +58,8 @@ import com.suhel.llamabro.demo.designsystem.theme.scrim
 /**
  * What a model's fit says, as a word and its colour ([FitText]): [Great] a sage green, [Slow] a sand brown, [TooBig] a
  * grey; "runs well" is [Plain], the muted ink. A fit is never a card fill (D48): a card says *selected* with its border
- * and nothing else, so one signal means one thing. [Accent] is the accent ink, for emphasis.
+ * and nothing else, so one signal means one thing. [Accent] is ink text for emphasis, against [Plain]'s muted one
+ * (the accent is the ink, D69).
  */
 enum class CardTint { Plain, Great, Slow, TooBig, Accent }
 
@@ -127,7 +128,7 @@ fun EdgeChip(text: String, modifier: Modifier = Modifier) {
             .heightIn(min = DemoSize.tag)
             .padding(horizontal = DemoSpacing.block)
             .wrapContentHeight(Alignment.CenterVertically),
-        color = colors.canvas,
+        color = colors.onAccent,
         style = DemoType.labelSmall,
         maxLines = 1,
     )

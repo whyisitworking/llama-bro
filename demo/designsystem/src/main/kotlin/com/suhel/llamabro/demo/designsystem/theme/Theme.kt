@@ -14,23 +14,23 @@ enum class ThemeMode { System, Light, Dark }
 /**
  * Material 3's scheme derived from the tokens. Every role is mapped, so no stock Material colour can
  * reach a screen through a Material widget; the tonal elevation tint is switched off. The roles the design doesn't
- * name follow one rule: secondary and tertiary track the accent, surface containers
+ * name follow one rule: secondary and tertiary track the accent (their "on" roles the onAccent), surface containers
  * are the surface, errors use the "slow here" sand (a limit is stated plainly, not alarmed), the inverse roles swap
  * ink and canvas, and the scrim is the darkest token.
  */
 internal fun DemoColors.toScheme(): ColorScheme =
     ColorScheme(
         primary = accent,
-        onPrimary = canvas,
+        onPrimary = onAccent,
         primaryContainer = accentSoft,
         onPrimaryContainer = accent,
         inversePrimary = accentSoft,
         secondary = accent,
-        onSecondary = canvas,
+        onSecondary = onAccent,
         secondaryContainer = accentSoft,
         onSecondaryContainer = accent,
         tertiary = accent,
-        onTertiary = canvas,
+        onTertiary = onAccent,
         tertiaryContainer = accentSoft,
         onTertiaryContainer = accent,
         background = canvas,

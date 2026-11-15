@@ -255,11 +255,11 @@ fun Composer(
             if (state.think != null) {
                 val on = state.think != ThinkLevel.Off
                 BarIconButton(onClick = onThink) {
-                    BarCircle(if (on) colors.accentSoft else colors.hairline) {
+                    BarCircle(if (on) colors.accent else colors.hairline) {
                         Icon(
                             DemoIcons.Think,
                             contentDescription = thinkLabel(state.think),
-                            tint = if (on) colors.accent else colors.ink,
+                            tint = if (on) colors.onAccent else colors.ink,
                             modifier = Modifier.size(DemoSize.icon),
                         )
                     }
@@ -267,7 +267,7 @@ fun Composer(
             }
             val busy = state.busy
             BarIconButton(onClick = if (busy) onStop else onSend, enabled = state.canAct) {
-                // filled navy when it can act; the hairline's tonal circle with muted ink when there is nothing to
+                // filled ink when it can act; the hairline's tonal circle with muted ink when there is nothing to
                 // send. The fill eases between the two, and send cross-fades into stop, so it changes in place
                 val fill by animateColorAsState(
                     if (state.canAct) colors.accent else colors.hairline,
@@ -275,7 +275,7 @@ fun Composer(
                     label = "send fill",
                 )
                 val tint by animateColorAsState(
-                    if (state.canAct) colors.canvas else colors.muted,
+                    if (state.canAct) colors.onAccent else colors.muted,
                     tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard),
                     label = "send tint",
                 )
