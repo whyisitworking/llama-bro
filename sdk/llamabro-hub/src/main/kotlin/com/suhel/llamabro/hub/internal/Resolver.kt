@@ -13,16 +13,23 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import java.io.File
+import java.io.IOException
 
 /** One repository listing, online or reconstructed from the snapshot tree. */
 internal class RepoListing(val commit: String, val files: List<RepoFile>, val offline: Boolean)
 
-/** Port of hf-cache.cpp's get_repo_commit/get_repo_files and download.cpp's offline fallback. */
+/**
+ * Port of hf-cache.cpp's get_repo_commit/get_repo_files and download.cpp's offline fallback. A [look]
+ * (`hasUpdate`, a header-only fit) leaves the branch's ref as it is, and falls back to the cache only when the Hub
+ * can't be reached: any HTTP answer (a refusal, a rate limit, a 5xx, malformed JSON) is thrown, so a look never passes
+ * off the cache as the Hub's answer (D64).
+ */
 internal class Resolver(
     endpoint: String,
     private val cacheDir: File,
     private val transport: Transport,
     private val storage: Storage,
+    private val look: Boolean = false,
 ) {
     private val endpoint = endpoint.trimEnd('/') + "/"
 
@@ -33,6 +40,9 @@ internal class Resolver(
                 listOnline(repo)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
+                // A look answers from the cache only when the Hub can't be reached: an HTTP answer (a refusal, a 5xx,
+                // malformed JSON) is the Hub's, and passing the cache off as it would hide it (D64).
+                if (look && !isUnreachable(e)) throw asHubFailure(repo, e)
                 cachedListing(repo) ?: throw asHubFailure(repo, e)
             }
         }
@@ -44,7 +54,7 @@ internal class Resolver(
     private suspend fun listOnline(repo: String): RepoListing {
         val repoDir = File(cacheDir, repoFolder(repo))
         val (branch, commit) = pickBranch(repo, branches(repo, repoDir))
-        writeAtomic(File(repoDir, "refs/$branch"), commit.toByteArray(), storage)
+        if (!look) writeAtomic(File(repoDir, "refs/$branch"), commit.toByteArray(), storage)
         val tree =
             getJson("${endpoint}api/models/$repo/tree/$commit?recursive=true", repo) as? JsonArray
                 ?: throw invalidResponse(repo, "tree")
@@ -191,3 +201,6 @@ internal class Resolver(
         return if (files.isEmpty()) null else RepoListing(commit, files, true)
     }
 }
+
+/** No route to the Hub, as opposed to an answer from it ([HubException.Network.unreachable]). */
+internal fun isUnreachable(e: Throwable): Boolean = e is IOException || (e is HubException.Network && e.unreachable)

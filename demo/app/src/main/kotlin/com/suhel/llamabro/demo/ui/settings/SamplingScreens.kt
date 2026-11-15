@@ -12,11 +12,13 @@ import com.suhel.llamabro.demo.chat.Knob
 import com.suhel.llamabro.demo.chat.KnobSource
 import com.suhel.llamabro.demo.chat.KnobValue
 import com.suhel.llamabro.demo.chat.SamplingLayers
+import com.suhel.llamabro.demo.data.ReplyLength
 import com.suhel.llamabro.demo.designsystem.components.GroupScope
 import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.QuietButton
 import com.suhel.llamabro.demo.designsystem.components.Section
+import com.suhel.llamabro.demo.designsystem.components.SectionNote
 import com.suhel.llamabro.demo.designsystem.components.SegmentedSwitch
 import com.suhel.llamabro.demo.designsystem.components.SliderRow
 import com.suhel.llamabro.demo.models.LibraryModel
@@ -33,16 +35,24 @@ fun samplingRows(library: List<LibraryModel>, changed: Map<String, Int>): List<S
 @Composable
 fun SamplingModelsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onOpen: (HfModel) -> Unit) {
     val rows by viewModel.samplingRows.collectAsStateWithLifecycle()
-    SamplingModelsContent(rows, onOpen, onBack)
+    val settings by viewModel.state.collectAsStateWithLifecycle()
+    SamplingModelsContent(settings.replyLength, rows, viewModel::setReplyLength, onOpen, onBack)
 }
 
 /**
- * Settings › Sampling (D60): each model on the phone, opening its values. A model's values start from its model card's
- * recommendations; a chat can change them again for itself.
+ * Settings › Sampling (D60): the reply length, for every model and chat, then each model on the phone, opening its
+ * values. A model's values start from its model card's recommendations; a chat can change them again for itself.
  */
 @Composable
-fun SamplingModelsContent(rows: List<SamplingModelRow>, onOpen: (HfModel) -> Unit, onBack: () -> Unit) {
+fun SamplingModelsContent(
+    length: ReplyLength,
+    rows: List<SamplingModelRow>,
+    onLength: (ReplyLength) -> Unit,
+    onOpen: (HfModel) -> Unit,
+    onBack: () -> Unit,
+) {
     SettingsPage("Sampling", onBack, Modifier.testTag("sampling_settings")) {
+        Section("Reply length") { ReplyLengthList(length, onLength) }
         Section("Models on this phone") {
             GroupedList {
                 if (rows.isEmpty()) row { ListRow("No models yet", subtitle = "Get a model to set its values") }
@@ -60,6 +70,49 @@ fun SamplingModelsContent(rows: List<SamplingModelRow>, onOpen: (HfModel) -> Uni
         }
     }
 }
+
+/**
+ * The reply's length limit, thinking and answer together: Automatic follows the Think level (D60); a reply that reaches
+ * the limit stops, and Continue goes on.
+ */
+@Composable
+private fun ReplyLengthList(chosen: ReplyLength, onLength: (ReplyLength) -> Unit) {
+    GroupedList(Modifier.testTag("reply_length")) {
+        for (choice in ReplyLength.entries) {
+            row {
+                ListRow(
+                    choice.title,
+                    subtitle = choice.subtitle,
+                    selected = chosen == choice,
+                    onClick = { onLength(choice) },
+                )
+            }
+        }
+    }
+    SectionNote(LENGTH_NOTE)
+}
+
+private const val LENGTH_NOTE =
+    "For every model and chat. A reply that reaches its length stops, and Continue goes on, unless the chat has " +
+        "filled the context."
+
+private val ReplyLength.title: String
+    get() =
+        when (this) {
+            ReplyLength.Automatic -> "Automatic"
+            ReplyLength.Short -> "Short"
+            ReplyLength.Long -> "Long"
+            ReplyLength.NoLimit -> "No limit"
+        }
+
+private val ReplyLength.subtitle: String
+    get() =
+        when (this) {
+            ReplyLength.Automatic -> "Set by the Think level: longer when it thinks more"
+            ReplyLength.Short -> "About 1,000 tokens, thinking included"
+            ReplyLength.Long -> "About 8,000 tokens, thinking included"
+            ReplyLength.NoLimit -> "Until the model stops or the context is full"
+        }
 
 @Composable
 fun SamplingModelScreen(viewModel: SettingsViewModel, key: HfModel, onBack: () -> Unit) {

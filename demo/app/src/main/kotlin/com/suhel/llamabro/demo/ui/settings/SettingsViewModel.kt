@@ -1,26 +1,38 @@
 package com.suhel.llamabro.demo.ui.settings
 
+import androidx.annotation.VisibleForTesting
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.chat.InMemory
 import com.suhel.llamabro.demo.chat.Knob
 import com.suhel.llamabro.demo.chat.ModelMemory
 import com.suhel.llamabro.demo.chat.SamplingLayers
 import com.suhel.llamabro.demo.chat.SamplingStore
+import com.suhel.llamabro.demo.chat.contextLine
+import com.suhel.llamabro.demo.chat.runsOnLine
 import com.suhel.llamabro.demo.data.AppLayout
 import com.suhel.llamabro.demo.data.AppSettings
+import com.suhel.llamabro.demo.data.ChipChoice
+import com.suhel.llamabro.demo.data.ContextChoice
 import com.suhel.llamabro.demo.data.KeepLoaded
+import com.suhel.llamabro.demo.data.ReplyLength
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.TokenStore
+import com.suhel.llamabro.demo.data.loadConfig
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
+import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.hub.HfModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -33,6 +45,8 @@ class SettingsViewModel(
     private val models: ModelRepository,
     private val memory: ModelMemory,
     private val sampling: SamplingStore,
+    /** The phone's chips, for Settings › Memory's choice (D72); the SDK is asked once, by the container. */
+    private val facts: suspend () -> DeviceFacts = { DeviceFacts.Fallback },
 ) : ViewModel() {
     val state: StateFlow<AppSettings> =
         settings.settings.stateIn(
@@ -54,6 +68,29 @@ class SettingsViewModel(
     /** A reply holds the model: Unload waits until it ends. */
     val replying: StateFlow<Boolean> get() = memory.replying
 
+    /**
+     * The line under the chip choice (D72): where the model runs and why when it landed off the chip chosen, or when a
+     * model loaded for an earlier choice moves; null when there is nothing to say.
+     */
+    val runsOn: StateFlow<String?> =
+        combine(memory.ready, settings.settings, memory.replying) { ready, s, replying ->
+            runsOnLine(ready, s.chip, replying)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
+
+    /** The line under the context length: when a model loaded at another length reloads at the one chosen. */
+    val contextLine: StateFlow<String?> =
+        combine(memory.ready, settings.settings, memory.replying) { ready, s, replying ->
+            contextLine(ready, s.context, replying)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
+
+    /** The kinds of chip this phone has; every kind until the SDK answers, so nothing is marked missing too soon. */
+    val chips: StateFlow<Set<DeviceKind>> =
+        flow { emit(facts().kinds) }.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(STOP_TIMEOUT),
+            DeviceKind.entries.toSet(),
+        )
+
     /** Settings › Sampling's models, each with how many of its values were changed (D60). */
     val samplingRows: StateFlow<List<SamplingModelRow>> =
         combine(models.library, sampling.changed) { lib, changed ->
@@ -71,6 +108,37 @@ class SettingsViewModel(
     fun setKeepLoaded(keep: KeepLoaded) = viewModelScope.launch { settings.setKeepLoaded(keep) }.let { }
 
     fun unload() = viewModelScope.launch { memory.unload() }.let { }
+
+    // the one wait for replies to end after a chip or context change: a newer choice of either replaces it
+    private var loadChange: Job? = null
+
+    /** Saves [chip] and frees a model loaded for another choice once no reply holds it (D72). */
+    fun setChip(chip: ChipChoice) = changeLoad { settings.setChip(chip) }
+
+    /** Saves [context] and, as for a chip (D72), frees a model loaded for another length once no reply holds it. */
+    fun setContext(context: ContextChoice) = changeLoad { settings.setContext(context) }
+
+    /**
+     * Saves a choice, then waits to free a model loaded under another config. Only the wait is cancelled by a newer
+     * choice: the save runs in its own job, so a chip changed just before a context change is never lost.
+     */
+    private fun changeLoad(save: suspend () -> Unit) {
+        val saved = viewModelScope.launch { save() }
+        loadChange?.cancel()
+        loadChange =
+            viewModelScope.launch {
+                saved.join()
+                memory.loadConfigChanged { settings.settings.first().loadConfig }
+            }
+    }
+
+    /** Waits for the pending chip or context change, if any, to end (tests). */
+    @VisibleForTesting
+    internal suspend fun awaitLoadChange() {
+        loadChange?.join()
+    }
+
+    fun setReplyLength(length: ReplyLength) = viewModelScope.launch { settings.setReplyLength(length) }.let { }
 
     // a counter, not a value: every write asks the store again, so what is shown is what is stored
     private val tokenWrites = MutableStateFlow(0)

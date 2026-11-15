@@ -207,6 +207,10 @@ if(LB_BUILD_TESTS)
         model_load_bad_file_has_reason
         model_load_unknown_key_fails
         model_free_right_after_load
+        load_stops_when_progress_says_false
+        load_stops_midway
+        load_stops_after_the_weights
+        load_runs_when_progress_says_true
         chat_nonstream_ok
         chat_stream_ends_with_done_marker
         cancel_during_decode

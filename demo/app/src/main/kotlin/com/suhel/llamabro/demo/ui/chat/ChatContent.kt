@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
@@ -23,9 +24,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,6 +65,9 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 /**
@@ -183,8 +190,8 @@ private fun DownloadIndicator(header: ChatHeader) {
 }
 
 /**
- * The messages. A new row, or the reply starting to stream, scrolls to the end; the reply's growth follows only while
- * we are at the end.
+ * The messages. While the reader is at the end ([FollowState]), a new row and the streaming reply's growth keep the end
+ * in view; scrolled away, the list stays where they left it until they come back or send a message.
  */
 @Composable
 private fun MessageList(
@@ -195,25 +202,28 @@ private fun MessageList(
     actions: MessageActions,
 ) {
     val listState = rememberLazyListState()
+    val follow = rememberFollowState()
     val lastReplyKey = remember(rows) { rows.lastOrNull { it is ReplyItem }?.key }
-    val bottom = rows.lastOrNull()?.key
+    val bottom = rows.lastOrNull()
+    val count = rows.size + if (busy) 1 else 0 // not the laid-out count, which can still be the old one
+    // the message the reader last sent, so that coming back to the chat (or turning the phone) does not count again
+    var sent by rememberSaveable { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(bottom, busy) {
-        val count = rows.size + if (busy) 1 else 0 // not the laid-out count, which can still be the old one
-        if (count > 0) listState.animateScrollToItem(count - 1)
-    }
-    LaunchedEffect(listState) {
-        snapshotFlow { streaming()?.text?.length ?: 0 }.collect {
-            val info = listState.layoutInfo
-            val last = info.visibleItemsInfo.lastOrNull()
-            if (last != null && last.index >= info.totalItemsCount - 2) {
-                listState.scrollToItem(info.totalItemsCount - 1, Int.MAX_VALUE)
-            }
+    LaunchedEffect(bottom?.key, busy) {
+        // the reader sent a message (or asked again): they want to see the answer, wherever they had scrolled to; a
+        // reply finishing or stopping leaves a reader who scrolled away where they are
+        if (bottom is UserItem && bottom.key != sent) {
+            sent = bottom.key
+            follow.follow()
         }
+        if (follow.following && count > 0) listState.animateScrollToItem(count - 1, Int.MAX_VALUE)
     }
+    LaunchedEffect(listState) { followScrolls(listState, follow) }
+    LaunchedEffect(listState) { keepAtEnd(listState, follow) }
 
-    // away from the end (the reader scrolled up): a button back to the latest message
-    val away by remember { derivedStateOf { listState.canScrollForward } }
+    // away from the end: a button back to the latest message. While a followed reply grows the end runs a frame
+    // ahead of the list, which is not the reader being away
+    val away by remember(busy) { derivedStateOf { listState.canScrollForward && !(busy && follow.following) } }
     val scope = rememberCoroutineScope()
     MessageColumn(
         listState,
@@ -223,9 +233,11 @@ private fun MessageList(
                 visible = away,
                 onClick = {
                     // to the end of the last item, not the start of it: a reply taller than the screen would
-                    // otherwise stay "away" and the button would stay on screen
+                    // otherwise stay "away" and the button would stay on screen. Following resumes once there, so a
+                    // growing reply does not move the end under the animation
                     scope.launch {
-                        listState.animateScrollToItem((rows.size + if (busy) 1 else 0) - 1, Int.MAX_VALUE)
+                        listState.animateScrollToItem(count - 1, Int.MAX_VALUE)
+                        follow.follow()
                     }
                 },
                 modifier = Modifier.align(Alignment.BottomCenter).testTag("jump_to_latest"),
@@ -245,6 +257,45 @@ private fun MessageList(
         }
     }
 }
+
+/** Tells [follow] where every scroll took the list, including the last step of one that has just stopped. */
+private suspend fun followScrolls(listState: LazyListState, follow: FollowState) {
+    var from = listState.position()
+    var wasScrolling = false
+    snapshotFlow { Triple(listState.position(), listState.isScrollInProgress, !listState.canScrollForward) }
+        .collect { (to, scrolling, atEnd) ->
+            if (scrolling || wasScrolling) follow.onScroll(from, to, atEnd)
+            from = to
+            wasScrolling = scrolling
+        }
+}
+
+/**
+ * While following and nothing else scrolls the list, keeps the end of the last item in view as the streaming row grows
+ * (its laid-out height, so the snap sees the grown row; a thought's open fold grows it too) and when it ends.
+ */
+private suspend fun keepAtEnd(listState: LazyListState, follow: FollowState) {
+    snapshotFlow {
+        val streamingHeight =
+            listState.layoutInfo.visibleItemsInfo
+                .lastOrNull()
+                ?.takeIf { it.key == "streaming" }
+                ?.size
+        Triple(streamingHeight, follow.following, listState.isScrollInProgress)
+    }.collect { (_, following, scrolling) ->
+        // only when short of the end: the snap's own scroll ending emits again, and must not snap again
+        if (following && !scrolling && listState.canScrollForward) {
+            try {
+                listState.scrollToItem(listState.layoutInfo.totalItemsCount - 1, Int.MAX_VALUE)
+            } catch (e: CancellationException) {
+                // the reader's touch took the list over: keep listening unless this effect itself was stopped
+                currentCoroutineContext().ensureActive()
+            }
+        }
+    }
+}
+
+private fun LazyListState.position() = ListPosition(firstVisibleItemIndex, firstVisibleItemScrollOffset)
 
 /**
  * The reply being written, in its own row: it reads [streaming] here, so a token redraws this and nothing above. Until

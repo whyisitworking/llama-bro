@@ -2,6 +2,7 @@ package com.suhel.llamabro.hub.internal
 
 import com.suhel.llamabro.hub.CachedModel
 import com.suhel.llamabro.hub.HfModel
+import com.suhel.llamabro.hub.HubFile
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -13,7 +14,34 @@ import java.nio.file.Path
 
 /** Local cache enumeration and upstream-compatible removal. No network requests. */
 internal class Cache(private val cacheDir: File, private val resolver: Resolver) {
+    /**
+     * The installed copies (D64), then what the refs view adds for a cache from before the installed record. The refs
+     * view alone follows `refs/main`, which an online plan or a cancelled update moves off a complete copy, so it would
+     * drop a model that still loads.
+     */
     fun list(): List<CachedModel> =
+        (installedCopies() + refsView())
+            .distinctBy { it.model.toString() }
+            .sortedBy { it.model.toString() }
+
+    /** Each installed record whose model files are all on disk, named `repo:TAG` as the refs view names it. */
+    private fun installedCopies(): List<CachedModel> =
+        PlanStore.readEvery(cacheDir, PlanStore.INSTALLED).mapNotNull { (model, record) ->
+            val parts = record.files.filter { it.role == HubFile.Role.Model }
+            val onDisk =
+                parts.isNotEmpty() &&
+                    parts.all { file ->
+                        val folder = repoFolder(file.repo ?: model.repo)
+                        val path = File(cacheDir, "$folder/snapshots/${file.commit ?: record.commit}/${file.path}")
+                        path.isFile && path.length() == file.size
+                    }
+            if (!onDisk) return@mapNotNull null
+            val tag = splitInfo(parts.first().path).tag
+            CachedModel(if (tag.isEmpty()) model else HfModel("${model.repo}:$tag"), parts.sumOf { it.size })
+        }
+
+    /** Upstream's view: each tag in the snapshot `refs/main` names. */
+    private fun refsView(): List<CachedModel> =
         cacheDir
             .listFiles()
             .orEmpty()
@@ -36,8 +64,7 @@ internal class Cache(private val cacheDir: File, private val resolver: Resolver)
                             }
                         CachedModel(HfModel("$repo:$tag"), splitFiles(files, primary).sumOf { it.sizeBytes })
                     }
-            }.sortedBy { it.model.toString() }
-            .toList()
+            }.toList()
 
     fun delete(model: HfModel): Boolean {
         val repoDir = File(cacheDir, repoFolder(model.repo))
@@ -191,7 +218,12 @@ internal class Cache(private val cacheDir: File, private val resolver: Resolver)
         val removedOids = mutableSetOf<String>()
         val keptOids = mutableSetOf<String>()
         var removed = false
-        for (plan in File(cacheDir, ".llamabro/plans").listFiles().orEmpty()) {
+        // The installed records go with the plans: a removed copy is no longer the one that loads (D64).
+        val records =
+            listOf(PlanStore.PLANS, PlanStore.INSTALLED).flatMap {
+                File(cacheDir, ".llamabro/$it").listFiles().orEmpty().asList()
+            }
+        for (plan in records) {
             val record = readPlan(plan) ?: continue
             val sameRepo = record.reference.repo == model.repo
             if (sameRepo && covers(model, tag, record.reference) && plan.delete()) {

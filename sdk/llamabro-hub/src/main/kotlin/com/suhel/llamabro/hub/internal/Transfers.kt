@@ -1,6 +1,6 @@
 package com.suhel.llamabro.hub.internal
 
-import com.suhel.llamabro.hub.DownloadProgress
+import com.suhel.llamabro.DownloadProgress
 import com.suhel.llamabro.hub.HubException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope

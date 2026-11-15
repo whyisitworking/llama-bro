@@ -1,6 +1,9 @@
 package com.suhel.llamabro.demo.ui
 
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
@@ -186,12 +189,22 @@ class ShellTest {
         seedChat("Portfolio bio")
         waitForShell()
         openDrawer()
-        compose.onNodeWithText("New chat").assertIsDisplayed()
-        compose.onNodeWithText("Models").assertIsDisplayed()
-        compose.onNodeWithText("0 on this phone").assertIsDisplayed() // nothing downloaded in a fresh test app
+
+        // the drawer's actions are icons at its foot: what a screen reader says names them (and the chat's top bar has
+        // a New chat of its own)
+        fun inDrawer(description: String) = hasContentDescription(description) and hasAnyAncestor(hasTestTag("drawer"))
+        compose.onNode(inDrawer("New chat")).assertIsDisplayed()
+        compose.onNode(inDrawer("Models, 0 on this phone")).assertIsDisplayed() // nothing downloaded in a fresh app
+        compose.onNode(inDrawer("Settings")).assertIsDisplayed()
+        // ...and a screen reader reaches them before the chats
+        compose.onNodeWithTag("drawer").assert(SemanticsMatcher.expectValue(SemanticsProperties.IsTraversalGroup, true))
+        compose
+            .onNode(
+                inDrawer("New chat") and
+                    hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.TraversalIndex, -1f)),
+            ).assertExists()
         compose.onNodeWithText("TODAY").assertIsDisplayed()
         compose.onNodeWithText("Portfolio bio").assertIsDisplayed()
-        compose.onNodeWithText("Settings").assertIsDisplayed()
     }
 
     @Test fun drawerRenameAndDelete() {

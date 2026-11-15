@@ -1,5 +1,7 @@
 package com.suhel.llamabro.hub
 
+import java.io.IOException
+
 /** A Hub operation failure with retry information for background workers. */
 public sealed class HubException(message: String, cause: Throwable?) : Exception(message, cause) {
     /** Whether trying this operation again later can help. */
@@ -7,7 +9,19 @@ public sealed class HubException(message: String, cause: Throwable?) : Exception
 
     /** A connection, timeout, or server failure. */
     public class Network internal constructor(message: String, cause: Throwable?, override val retryable: Boolean) :
-        HubException(message, cause)
+        HubException(message, cause) {
+            /**
+             * No route to the Hub (a connection or read that failed, or the cache standing in for it), as opposed to an
+             * HTTP answer the Hub gave: a 5xx, malformed JSON. Only this is "offline" to a look such as `hasUpdate`.
+             */
+            internal var unreachable: Boolean = cause is IOException
+                private set
+
+            internal constructor(message: String, cause: Throwable?, retryable: Boolean, unreachable: Boolean) :
+                this(message, cause, retryable) {
+                this.unreachable = unreachable
+            }
+        }
 
     /** The repository needs access the current token does not provide. */
     public class Unauthorized internal constructor(

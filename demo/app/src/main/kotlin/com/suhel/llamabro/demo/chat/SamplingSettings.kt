@@ -110,8 +110,11 @@ data class SamplingLayers(val card: CardSampling?, val model: Knobs, val chat: K
                 ?: KnobValue(knob.serverDefault, KnobSource.Server)
         }
 
-    /** The request's sampling: every value that isn't llama-server's default, and the reply's length limit. */
-    fun sampling(thinks: Boolean, maxTokens: Int): Sampling {
+    /**
+     * The request's sampling: every value that isn't llama-server's default, and the reply's length limit ([maxTokens];
+     * null sends none).
+     */
+    fun sampling(thinks: Boolean, maxTokens: Int?): Sampling {
         val values = resolve(thinks).filterValues { it.source != KnobSource.Server }.mapValues { it.value.value }
         return Sampling {
             values[Knob.Temperature]?.let { temperature = it }
@@ -119,7 +122,7 @@ data class SamplingLayers(val card: CardSampling?, val model: Knobs, val chat: K
             values[Knob.TopK]?.let { topK = it.roundToInt() }
             values[Knob.MinP]?.let { minP = it }
             values[Knob.PresencePenalty]?.let { presencePenalty = it }
-            this.maxTokens = maxTokens
+            maxTokens?.let { this.maxTokens = it }
         }
     }
 }

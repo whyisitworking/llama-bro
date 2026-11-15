@@ -329,6 +329,88 @@ static void model_free_right_after_load() {
     }
 }
 
+// A load stops when its progress callback returns false (D67, F145): LB_ERR_CANCELLED, nothing returned, and the
+// callback is not called again. The same file then loads normally, so the stopped load left nothing behind.
+struct load_stopper {
+    float stop_past;  // stop at the first call whose progress is past this
+    std::vector<float> seen;
+};
+
+static constexpr float kNeverStop = 2.0f;  // progress never passes 1
+
+static bool load_stopper_cb(void * user, float progress) {
+    auto * s = static_cast<load_stopper *>(user);
+    s->seen.push_back(progress);
+    return progress <= s->stop_past;
+}
+
+static lb_status load_with_stopper(load_stopper & s, lb_model ** model, char ** err, const json & extra = json::object()) {
+    json cfg = {{"model_path", test_model()}, {"n_ctx", 512}};
+    for (const auto & item : extra.items()) cfg[item.key()] = item.value();
+    return lb_model_load(cfg.dump().c_str(), load_stopper_cb, &s, model, err);
+}
+
+// llama.cpp logs "cancelled model load" (src/llama.cpp, llama_model_load_from_file) only when the progress callback
+// made it stop reading weights, which only patch 0003's hook can do; the bridge's own check after the load can't
+static std::atomic<bool> g_weight_read_aborted{false};
+static void watch_for_aborted_read(void *, lb_log_level, const char * text) {
+    if (text && std::strstr(text, "cancelled model load")) g_weight_read_aborted = true;
+}
+
+// read_aborted: whether the stop must end the weight read itself, or arrives after it (and the bridge frees the model)
+static void check_load_stops(float stop_past, bool read_aborted, const json & extra = json::object()) {
+    char * init_err = nullptr;
+    // llama logs it at info, which common/log.cpp counts as trace: only "debug" lets it through
+    LB_CHECK(lb_runtime_init(runtime_config("debug").c_str(), &init_err) == LB_OK);
+    lb_runtime_set_log(watch_for_aborted_read, nullptr);
+    load_stopper s{stop_past, {}};
+    lb_model * model = nullptr;
+    char * err = nullptr;
+    const lb_status st = load_with_stopper(s, &model, &err, extra);
+    std::fprintf(stderr, "status %d after %zu progress calls, last %.3f\n", st, s.seen.size(),
+                 s.seen.empty() ? -1.0f : s.seen.back());
+    LB_CHECK(st == LB_ERR_CANCELLED);
+    LB_CHECK(model == nullptr);
+    LB_CHECK(err == nullptr);
+    LB_CHECK(!s.seen.empty());
+    LB_CHECK(s.seen.back() > stop_past);  // the call that said stop was the last one
+    for (size_t i = 0; i + 1 < s.seen.size(); i++) LB_CHECK(s.seen[i] <= stop_past);
+    LB_CHECK(g_weight_read_aborted.load() == read_aborted);
+
+    load_stopper keep{kNeverStop, {}};
+    LB_CHECK(load_with_stopper(keep, &model, &err) == LB_OK);
+    LB_CHECK(model != nullptr);
+    lb_model_free(model);
+}
+
+static void load_stops_when_progress_says_false() {
+    check_load_stops(-0.5f, true);  // every progress is past -0.5: the first call stops
+}
+
+static void load_stops_midway() {
+    check_load_stops(0.3f, true);
+}
+
+// MTP loads no file: upstream reports its stage's 0 and 1 itself and ignores the answer, so a stop on the last tick
+// arrives after every weight is read. The load finishes, then the bridge frees the model (D67)
+static void load_stops_after_the_weights() {
+    check_load_stops(0.99f, false, {{"speculative", {{"type", "mtp"}}}});
+}
+
+static void load_runs_when_progress_says_true() {
+    init_runtime();
+    load_stopper s{kNeverStop, {}};
+    lb_model * model = nullptr;
+    char * err = nullptr;
+    const lb_status st = load_with_stopper(s, &model, &err);
+    if (st != LB_OK) std::fprintf(stderr, "lb_model_load: %d %s\n", st, err ? err : "");
+    LB_CHECK(st == LB_OK);
+    LB_CHECK(model != nullptr);
+    LB_CHECK(!s.seen.empty());
+    LB_CHECK(s.seen.back() == 1.0f);
+    lb_model_free(model);
+}
+
 // ---------------------------------------------------------------------------------------------
 // requests, streaming, cancel
 // ---------------------------------------------------------------------------------------------
@@ -1307,6 +1389,10 @@ int main(int argc, char ** argv) {
         {"model_load_bad_file_has_reason", model_load_bad_file_has_reason},
         {"model_load_unknown_key_fails", model_load_unknown_key_fails},
         {"model_free_right_after_load", model_free_right_after_load},
+        {"load_stops_when_progress_says_false", load_stops_when_progress_says_false},
+        {"load_stops_midway", load_stops_midway},
+        {"load_stops_after_the_weights", load_stops_after_the_weights},
+        {"load_runs_when_progress_says_true", load_runs_when_progress_says_true},
         {"chat_nonstream_ok", chat_nonstream_ok},
         {"chat_stream_ends_with_done_marker", chat_stream_ends_with_done_marker},
         {"cancel_during_decode", cancel_during_decode},

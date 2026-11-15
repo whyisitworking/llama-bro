@@ -59,13 +59,13 @@ import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 
 /**
  * A small uppercase section heading ("Picked for your phone", "Today"), with an optional link at the end ("What's a
- * model?"). On a sheet it is inset by the cards' and rows' own padding, so it lines up with the text inside them.
+ * model?"). It is inset by the cards' and rows' own padding ([DemoSpacing.item]), on a screen and on a sheet alike, so
+ * it starts where the text of the cards and rows under it starts, not on the edge of their surface.
  */
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier, action: String? = null, onAction: (() -> Unit)? = null) {
     val colors = LocalDemoColors.current
-    val inset = if (LocalOnSheet.current) DemoSpacing.item else 0.dp
-    Row(modifier.fillMaxWidth().padding(start = inset), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.fillMaxWidth().padding(start = DemoSpacing.item), verticalAlignment = Alignment.CenterVertically) {
         Text(
             text.uppercase(),
             Modifier.weight(1f),
@@ -78,6 +78,20 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, action: String? = 
         // its row is cut by the parent's bounds, and accessibility services see only what's left (F130)
         if (action != null) QuietButton(text = action, onClick = onAction ?: {})
     }
+}
+
+/**
+ * A muted line under a section's cards ("Changing this reloads the model."): inset like [SectionLabel], so it starts on
+ * the text of the cards above it, not on the edge of their surface.
+ */
+@Composable
+fun SectionNote(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        modifier.padding(start = DemoSpacing.item),
+        color = LocalDemoColors.current.muted,
+        style = DemoType.bodySmall,
+    )
 }
 
 /** A model's initial in a soft accent circle (the chat list's avatars: W, S, D). */
@@ -462,8 +476,9 @@ data class ListEntry(val key: Long, val title: String, val selected: Boolean)
 data class ListGroup(val label: String, val entries: List<ListEntry>)
 
 /**
- * The drawer's chats: each group's upper-case [label] on the gutter, then its rows, full width with their own 16 dp,
- * the open chat ticked. Lazy, so a long history costs only the rows on screen. Groups are a [Gap.Section] apart.
+ * The drawer's chats: each group's upper-case [label], then its rows, full width and [dense] with their own 16 dp, the
+ * open chat ticked. The rows reach the drawer's edges, so the label's own inset puts it on their text. Lazy, so a long
+ * history costs only the rows on screen. Groups are a [Gap.Section] apart.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -476,18 +491,14 @@ fun GroupedLazyList(
     LazyColumn(modifier.fillMaxWidth()) {
         for ((index, group) in groups.withIndex()) {
             item(key = "label-${group.label}", contentType = "label") {
-                // groups are a section apart; the first has the item gap the header above it already gives
-                SectionLabel(
-                    group.label,
-                    Modifier
-                        .padding(horizontal = DemoSpacing.gutter)
-                        .padding(top = if (index == 0) 0.dp else DemoSpacing.section),
-                )
+                // groups are a section apart; the first has the gap the drawer gives above the list
+                SectionLabel(group.label, Modifier.padding(top = if (index == 0) 0.dp else DemoSpacing.section))
             }
             items(group.entries, key = { it.key }, contentType = { "chat" }) { entry ->
                 ListRow(
                     title = entry.title,
                     selected = entry.selected,
+                    dense = true,
                     onClick = { onClick(entry.key) },
                     onLongClick = { onLongClick(entry.key) },
                 )

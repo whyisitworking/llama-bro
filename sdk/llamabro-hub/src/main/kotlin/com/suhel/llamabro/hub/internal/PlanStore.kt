@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -21,9 +22,24 @@ import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.UUID
 
-/** The SDK's own plan record, separate from upstream's cache tree (C.5). */
-internal class PlanStore(private val cacheDir: File, private val storage: Storage) {
-    internal data class FileRecord(val path: String, val role: HubFile.Role, val size: Long, val oid: String?)
+/**
+ * The SDK's own records of a selection, separate from upstream's cache tree (C.5): in [folder] `plans`, the last plan
+ * made online (what a download fetches); in `installed`, the copy whose download completed, which is what loads (D64).
+ */
+internal class PlanStore(
+    private val cacheDir: File,
+    private val storage: Storage,
+    private val folder: String = PLANS,
+) {
+    /** One file; [repo] and [commit] name its snapshot (null in records written before they were kept). */
+    internal data class FileRecord(
+        val path: String,
+        val role: HubFile.Role,
+        val size: Long,
+        val oid: String?,
+        val repo: String? = null,
+        val commit: String? = null,
+    )
 
     internal data class Record(val commit: String, val files: List<FileRecord>)
 
@@ -37,23 +53,26 @@ internal class PlanStore(private val cacheDir: File, private val storage: Storag
         }
     }
 
-    /** The record in [json] if it is a version 1 record of [model] with every file readable. */
-    private fun parse(json: JsonObject, model: HfModel): Record? {
-        val ours =
-            json["version"]?.jsonPrimitive?.content == "1" && json["model"]?.jsonPrimitive?.content == model.toString()
-        val commit = json["commit"]?.jsonPrimitive?.content
-        val files = json["files"]?.jsonArray?.map(::fileRecord)?.takeIf { records -> records.all { it != null } }
-        if (!ours || commit == null || files == null) return null
-        return Record(commit, files.filterNotNull())
-    }
+    /**
+     * Every record of [model] whatever the options it was made with, read from the folder (a record's name is a digest
+     * of its key, so the model is matched inside).
+     */
+    fun readAll(model: HfModel): List<Record> =
+        File(cacheDir, ".llamabro/$folder")
+            .listFiles { file -> file.isFile && file.name.endsWith(".json") }
+            .orEmpty()
+            .sortedBy { it.name }
+            .mapNotNull { file ->
+                try {
+                    parse(Json.parseToJsonElement(file.readText()).jsonObject, model)
+                } catch (_: Exception) {
+                    null
+                }
+            }
 
-    private fun fileRecord(item: JsonElement): FileRecord? {
-        val value = item.jsonObject
-        val path = value.getValue("path").jsonPrimitive.content
-        val role = HubFile.Role.valueOf(value.getValue("role").jsonPrimitive.content)
-        val size = value.getValue("size").jsonPrimitive.longOrNull ?: return null
-        return FileRecord(path, role, size, value["oid"]?.jsonPrimitive?.content)
-    }
+    /** The record in [json] if it is a version 1 record of [model] with every file readable. */
+    private fun parse(json: JsonObject, model: HfModel): Record? =
+        parseAny(json)?.takeIf { it.first.toString() == model.toString() }?.second
 
     fun key(model: HfModel, options: PlanOptions): String {
         val draft = options.draft?.from?.toString() ?: if (options.draft != null) "same" else "none"
@@ -61,30 +80,38 @@ internal class PlanStore(private val cacheDir: File, private val storage: Storag
     }
 
     fun write(plan: HubPlan, options: PlanOptions) {
-        val key = key(plan.model, options)
-        val destination = destination(key)
+        val files =
+            plan.files.map {
+                FileRecord(it.path, it.role, it.sizeBytes, it.oid, it.sourceRepo, it.sourceCommit)
+            }
+        write(plan.model, options, Record(plan.commit, files))
+    }
+
+    fun write(model: HfModel, options: PlanOptions, record: Record) {
         val content =
             buildJsonObject {
                 put("version", 1)
-                put("model", plan.model.toString())
-                put("commit", plan.commit)
+                put("model", model.toString())
+                put("commit", record.commit)
                 put(
                     "files",
                     buildJsonArray {
-                        for (file in plan.files) {
+                        for (file in record.files) {
                             add(
                                 buildJsonObject {
                                     put("path", file.path)
                                     put("role", file.role.name)
-                                    put("size", file.sizeBytes)
+                                    put("size", file.size)
                                     put("oid", file.oid)
+                                    file.repo?.let { put("repo", it) }
+                                    file.commit?.let { put("commit", it) }
                                 },
                             )
                         }
                     },
                 )
             }.toString()
-        writeAtomic(destination, content.toByteArray(), storage)
+        writeAtomic(destination(key(model, options)), content.toByteArray(), storage)
     }
 
     private fun destination(key: String): File {
@@ -93,7 +120,51 @@ internal class PlanStore(private val cacheDir: File, private val storage: Storag
                 .getInstance("SHA-256")
                 .digest(key.toByteArray())
                 .joinToString("") { "%02x".format(it) }
-        return File(cacheDir, ".llamabro/plans/$digest.json")
+        return File(cacheDir, ".llamabro/$folder/$digest.json")
+    }
+
+    companion object {
+        const val PLANS = "plans"
+        const val INSTALLED = "installed"
+
+        /** Every readable record in [folder] of [cacheDir], whatever its model or options, with its model. */
+        fun readEvery(cacheDir: File, folder: String): List<Pair<HfModel, Record>> =
+            File(cacheDir, ".llamabro/$folder")
+                .listFiles { file -> file.isFile && file.name.endsWith(".json") }
+                .orEmpty()
+                .sortedBy { it.name }
+                .mapNotNull { file ->
+                    try {
+                        parseAny(Json.parseToJsonElement(file.readText()).jsonObject)
+                    } catch (_: Exception) {
+                        null // a record that doesn't read is a record that isn't there
+                    }
+                }
+
+        /** The record in [json] and its model, if it is a version 1 record with every file readable. */
+        private fun parseAny(json: JsonObject): Pair<HfModel, Record>? {
+            if (json["version"]?.jsonPrimitive?.content != "1") return null
+            val model = json["model"]?.jsonPrimitive?.content?.let(HfModel::parse) ?: return null
+            val commit = json["commit"]?.jsonPrimitive?.content
+            val files = json["files"]?.jsonArray?.map(::fileRecord)?.takeIf { records -> records.all { it != null } }
+            if (commit == null || files == null) return null
+            return model to Record(commit, files.filterNotNull())
+        }
+
+        private fun fileRecord(item: JsonElement): FileRecord? {
+            val value = item.jsonObject
+            val path = value.getValue("path").jsonPrimitive.content
+            val role = HubFile.Role.valueOf(value.getValue("role").jsonPrimitive.content)
+            val size = value.getValue("size").jsonPrimitive.longOrNull ?: return null
+            return FileRecord(
+                path,
+                role,
+                size,
+                value["oid"]?.jsonPrimitive?.contentOrNull,
+                value["repo"]?.jsonPrimitive?.contentOrNull,
+                value["commit"]?.jsonPrimitive?.contentOrNull,
+            )
+        }
     }
 }
 

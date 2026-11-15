@@ -11,7 +11,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.WorkManager
-import com.suhel.llamabro.hub.DownloadProgress
+import com.suhel.llamabro.DownloadProgress
 
 internal object DownloadNotifications {
     const val ID = 73

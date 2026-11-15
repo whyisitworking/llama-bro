@@ -336,3 +336,55 @@ fun DemoDrawer(
         content = content,
     )
 }
+
+/**
+ * The Sidebar drawer's actions, in one row at its foot under a hairline (demo design §4.2): Settings and Models as
+ * plain icons at the start, New chat at the end in a tonal circle, the drawer's one strong action. Each is a 48 dp
+ * target; a screen reader says "Settings", [modelsLabel] ("Models, 2 on this phone": the count is in the label, not
+ * on screen) and "New chat". The first glyph starts on the 16 dp line of the rows' text and the circle ends on the
+ * 16 dp line of their ticks.
+ */
+@Composable
+fun DrawerActions(
+    modelsLabel: String,
+    onSettings: () -> Unit,
+    onModels: () -> Unit,
+    onNewChat: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalDemoColors.current
+    Column(modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().height(DemoSize.hairline).background(colors.hairline))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                // a 48 dp target leaves 12 dp round a 24 dp glyph and 4 dp round a 40 dp circle
+                .padding(start = DemoSpacing.inline, end = DemoSpacing.compact)
+                .padding(vertical = DemoSpacing.block),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconAction(DemoIcons.Settings, "Settings", onSettings)
+            IconAction(DemoIcons.Models, modelsLabel, onModels)
+            Spacer(Modifier.weight(1f))
+            Box(
+                Modifier
+                    .size(DemoSize.target)
+                    .clip(CircleShape)
+                    .clickable(role = Role.Button, onClick = onNewChat),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    Modifier.size(DemoSize.control).background(colors.accentSoft, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        DemoIcons.NewChat,
+                        contentDescription = "New chat",
+                        tint = colors.accent,
+                        modifier = Modifier.size(DemoSize.icon),
+                    )
+                }
+            }
+        }
+    }
+}

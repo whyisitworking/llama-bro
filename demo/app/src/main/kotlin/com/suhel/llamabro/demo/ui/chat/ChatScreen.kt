@@ -106,6 +106,7 @@ fun ChatScreen(
     // the menu and a share under way stay open across a rotation
     var menu by rememberSaveable(stateSaver = MenuTargetSaver) { mutableStateOf<MenuTarget?>(null) }
     var details by rememberSaveable { mutableStateOf<Int?>(null) }
+    var photo by rememberSaveable(stateSaver = OpenPhotoSaver) { mutableStateOf<OpenPhoto?>(null) }
     var shareRequest by rememberSaveable(stateSaver = ShareRequestSaver) { mutableStateOf<ShareCardContent?>(null) }
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(vm::attach) }
@@ -130,6 +131,7 @@ fun ChatScreen(
                 openMenu = { position, isReply -> menu = MenuTarget(position, isReply) },
                 details = { position -> details = position },
                 continueReply = vm.handle::continueReply,
+                openPhoto = { position, index -> photo = OpenPhoto(position, index) },
             )
         }
     val actions =
@@ -195,6 +197,9 @@ fun ChatScreen(
     }
     menu?.let { target -> MessageMenu(target, state.rows, messageActions, onDismiss = { menu = null }) }
     details?.let { position -> ReplyDetailsSheet(position, state.rows, onDismiss = { details = null }) }
+    photo?.let { target ->
+        PhotoHost(target, state.rows, onPageChange = { photo = target.copy(index = it) }, onClose = { photo = null })
+    }
     ShareCardRenderer(shareRequest) { shareRequest = null }
 }
 
@@ -249,6 +254,7 @@ private fun limitAction(
         LimitAction.GetVisionModel -> chrome.onGetModels()
         LimitAction.AddToken -> chrome.onToken()
         LimitAction.StartNewChat -> chrome.onNewChat()
+        LimitAction.OpenMemorySettings -> chrome.onMemory()
         LimitAction.CloseOtherAppsAndRetry, LimitAction.Retry -> vm.retry()
     }
 }
@@ -278,7 +284,9 @@ private fun SwitcherHost(
 ) {
     val library by container.models.library.collectAsStateWithLifecycle(emptyList())
     val current by vm.handle.current.collectAsStateWithLifecycle()
-    val facts by produceState(DeviceFacts.Fallback) { value = container.deviceFacts() }
+    // the estimates follow the chip chosen in Settings › Memory (D72), which the other pane can change meanwhile
+    val chip by remember(container) { container.settings.settings.map { it.chip } }.collectAsStateWithLifecycle(null)
+    val facts by produceState(DeviceFacts.Fallback, chip) { value = container.deviceFacts() }
     val inMemory by container.memory.inMemory.collectAsStateWithLifecycle(null)
     val replying by container.memory.replying.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()

@@ -1,6 +1,5 @@
 package com.suhel.llamabro.demo.models
 
-import com.suhel.llamabro.demo.chat.HostState
 import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.models.DownloadFailure.Kind
@@ -126,17 +125,13 @@ class ModelRepository(
         }
     }
 
-    /** Deletes a model from the phone: releases it first when it is the loaded one, and unpins it as the default. */
+    /**
+     * Deletes a model from the phone: closes it first when it is in memory (`ModelHost.close`), and unpins it as the
+     * default. Deleting a model a reply is streaming from waits for that reply to end.
+     */
     suspend fun remove(model: HfModel) {
         scheduler.cancel(model)
-        val loaded =
-            when (val s = host?.state?.value) {
-                is HostState.Ready -> s.key
-                is HostState.Waking -> s.key
-                is HostState.Failed -> s.key
-                else -> null
-            }
-        if (loaded == model) host?.release()
+        host?.close(model)
         awaitStopped(model)
         if (settings.settings.first().defaultModel == model.toString()) settings.pinDefault(null)
         hub.delete(model)

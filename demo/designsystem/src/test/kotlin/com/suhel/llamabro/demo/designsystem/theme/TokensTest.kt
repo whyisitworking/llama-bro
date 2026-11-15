@@ -19,6 +19,8 @@ class TokensTest {
         assertEquals(Color(0xFF0D0D0D), Light.accent)
         assertEquals(Color(0xFFFFFFFF), Light.onAccent)
         assertEquals(Color(0xFFEBEBEB), Light.accentSoft)
+        assertEquals(Color(0xFF4F5BD5), Light.sendAccent)
+        assertEquals(Color(0xFFFFFFFF), Light.onSendAccent)
         assertEquals(Color(0xFFEDF0EC), Light.greatTint)
         assertEquals(Color(0xFF3E5641), Light.greatInk)
         assertEquals(Color(0xFFF3EEE5), Light.slowTint)
@@ -39,6 +41,8 @@ class TokensTest {
         assertEquals(Color(0xFFECECEC), Dark.accent)
         assertEquals(Color(0xFF0A0A0A), Dark.onAccent)
         assertEquals(Color(0xFF262626), Dark.accentSoft)
+        assertEquals(Color(0xFF8E9BFF), Dark.sendAccent)
+        assertEquals(Color(0xFF0A0A0A), Dark.onSendAccent)
         assertEquals(Color(0xFF1A1F1B), Dark.greatTint)
         assertEquals(Color(0xFFA9C3AA), Dark.greatInk)
         assertEquals(Color(0xFF221E18), Dark.slowTint)
@@ -75,6 +79,22 @@ class TokensTest {
             assertTrue("$name accent on its soft fill", contrast(c.accent, c.accentSoft) >= 4.5)
             assertTrue("$name ink on the user's bubble", contrast(c.ink, c.bubble) >= 4.5)
             assertTrue("$name muted (the time) on the user's bubble", contrast(c.muted, c.bubble) >= 4.5)
+        }
+    }
+
+    @Test
+    fun theSendAccentHoldsItsGlyphAndStandsOnTheBar() {
+        // D73: the send and Think-on glyph on the indigo is 5.5:1 in light and 7.8:1 in dark, above text's 4.5:1 though
+        // only an icon's 3:1 is required; the circle itself, a control's boundary, is at least 3:1 on the bar's surface
+        // and on the canvas
+        val glyph = mapOf("light" to 5.54, "dark" to 7.81)
+        for ((name, c) in listOf("light" to Light, "dark" to Dark)) {
+            val onIndigo = contrast(c.onSendAccent, c.sendAccent)
+            assertEquals("$name glyph on the send accent", glyph.getValue(name), onIndigo, 0.01)
+            assertTrue("$name glyph on the send accent", onIndigo >= 4.5)
+            for (ground in listOf(c.canvas, c.surface)) {
+                assertTrue("$name send accent on $ground", contrast(c.sendAccent, ground) >= 3.0)
+            }
         }
     }
 

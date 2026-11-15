@@ -57,6 +57,8 @@ class MessageActions(
     val details: (position: Int) -> Unit = {},
     /** Continues a reply cut at its length limit (D60). */
     val continueReply: (position: Int) -> Unit = {},
+    /** Opens a user message's [index]th photo full-screen. */
+    val openPhoto: (position: Int, index: Int) -> Unit = { _, _ -> },
 )
 
 @Composable
@@ -79,6 +81,7 @@ private fun UserRow(item: UserItem, actions: MessageActions) {
             images = images,
             time = item.time,
             onLongClick = { actions.openMenu(item.position, false) },
+            onImageClick = { index -> actions.openPhoto(item.position, index) },
         )
         if (item.heldNote != null) HeldNote(item.heldNote)
     }

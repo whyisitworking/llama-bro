@@ -1,16 +1,9 @@
 package com.suhel.llamabro.demo.ui.shell
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,22 +11,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.traversalIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.suhel.llamabro.demo.data.ChatSummary
-import com.suhel.llamabro.demo.designsystem.components.DemoIcons
+import com.suhel.llamabro.demo.designsystem.components.DrawerActions
 import com.suhel.llamabro.demo.designsystem.components.Gap
+import com.suhel.llamabro.demo.designsystem.components.GapAbove
 import com.suhel.llamabro.demo.designsystem.components.GroupedLazyList
-import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListEntry
 import com.suhel.llamabro.demo.designsystem.components.ListGroup
-import com.suhel.llamabro.demo.designsystem.components.ListRow
-import com.suhel.llamabro.demo.designsystem.components.PrimaryButton
-import com.suhel.llamabro.demo.designsystem.components.SectionLabel
-import com.suhel.llamabro.demo.designsystem.components.Stack
 import com.suhel.llamabro.demo.designsystem.components.drawerWidth
-import com.suhel.llamabro.demo.designsystem.components.gutterPadding
-import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 
 /**
  * The Sidebar layout's drawer, stateful: it reads the groups and the model count from [viewModel] and owns the
@@ -59,8 +48,9 @@ fun SidebarDrawer(
 }
 
 /**
- * The drawer, stateless (demo design §4.2): New chat, Models with its count, the chats in Today / This week / Earlier
- * groups, Settings at the bottom. [currentChatId] marks the open chat.
+ * The drawer, stateless (demo design §4.2): the chats in Today / This week / Earlier groups, then one row of actions at
+ * the foot: Settings and Models (its count in what a screen reader says), and New chat. [currentChatId] marks the open
+ * chat.
  */
 @Composable
 fun DrawerContent(
@@ -80,22 +70,11 @@ fun DrawerContent(
             .statusBarsPadding()
             .navigationBarsPadding()
             .drawerWidth()
-            .testTag("drawer"),
+            .testTag("drawer")
+            // a screen reader reaches the actions first, not after every chat: they sit at the foot for the thumb
+            .semantics { isTraversalGroup = true },
     ) {
-        Stack(Gap.Item, Modifier.gutterPadding()) {
-            PrimaryButton("New chat", onNewChat, Modifier.fillMaxWidth())
-            GroupedList {
-                row {
-                    ListRow(
-                        "Models",
-                        leading = DemoIcons.Models,
-                        trailing = "$modelCount on this phone",
-                        chevron = true,
-                        onClick = onModels,
-                    )
-                }
-            }
-        }
+        GapAbove(Gap.Item)
         GroupedLazyList(
             groups.map { group ->
                 ListGroup(group.group.label, group.chats.map { ListEntry(it.id, it.title, it.id == currentChatId) })
@@ -106,8 +85,12 @@ fun DrawerContent(
             },
             modifier = Modifier.weight(1f).testTag("chat_list"),
         )
-        GroupedList(Modifier.gutterPadding()) {
-            row { ListRow("Settings", leading = DemoIcons.Settings, chevron = true, onClick = onSettings) }
-        }
+        DrawerActions(
+            "Models, $modelCount on this phone",
+            onSettings,
+            onModels,
+            onNewChat,
+            Modifier.semantics { traversalIndex = -1f },
+        )
     }
 }

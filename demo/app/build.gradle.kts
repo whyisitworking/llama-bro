@@ -102,6 +102,11 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+    // markdown (D74): CommonMark and the GFM tables, strikethrough and bare-URL links
+    implementation(libs.commonmark)
+    implementation(libs.commonmark.ext.gfm.tables)
+    implementation(libs.commonmark.ext.gfm.strikethrough)
+    implementation(libs.commonmark.ext.autolink)
 
     // the SDK's modules, from the same build
     implementation(project(":llamabro"))

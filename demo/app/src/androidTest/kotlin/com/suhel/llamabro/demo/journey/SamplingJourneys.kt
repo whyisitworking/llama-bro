@@ -9,6 +9,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import com.suhel.llamabro.demo.models.Catalog
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.float
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
@@ -68,6 +69,29 @@ class SamplingJourneys : Journey() {
         tap("Sampling")
         tap("Use the model's values")
         gone("Changed for this chat")
+    }
+
+    @Test fun aShortReplyLengthIsSent() {
+        onPhone(swift)
+        world.engine.reply { content("First answer") }
+        world.engine.reply { content("Second answer") }
+        see("What's on your mind?")
+        send("hi")
+        see("First answer")
+
+        tapDescription("Chats")
+        tapDescription("Settings")
+        tap("Sampling")
+        seeTag("reply_length")
+        tap("Short")
+        shot("1-reply-length")
+        robot.pressBack()
+        robot.pressBack()
+
+        send("again")
+        see("Second answer")
+        val body = Json.parseToJsonElement(world.engine.chatRequests.last()).jsonObject
+        assertEquals(1_024, body.getValue("max_tokens").jsonPrimitive.int)
     }
 
     private companion object {

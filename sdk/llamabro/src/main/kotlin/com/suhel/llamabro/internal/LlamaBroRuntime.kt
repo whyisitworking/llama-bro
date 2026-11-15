@@ -9,6 +9,7 @@ import com.suhel.llamabro.FileSource
 import com.suhel.llamabro.FitEstimate
 import com.suhel.llamabro.LlamaBroConfig
 import com.suhel.llamabro.LlamaBroException
+import com.suhel.llamabro.LoadProgress
 import com.suhel.llamabro.LoadReport
 import com.suhel.llamabro.LogLevel
 import com.suhel.llamabro.Logger
@@ -16,6 +17,7 @@ import com.suhel.llamabro.MemoryCheck
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelConfig
 import com.suhel.llamabro.ModelSource
+import com.suhel.llamabro.RemoteModelSource
 import com.suhel.llamabro.Speculative
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -23,6 +25,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitAll
@@ -31,6 +34,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -202,34 +206,56 @@ internal class LlamaBroRuntime(
 
     suspend fun load(source: ModelSource, builder: ModelConfig): Model {
         builder.validateSource(source)
-        ensureInit()
-        // a model being closed still holds its weights and KV cache until its native close returns
-        synchronized(closing) { closing.toList() }.awaitAll()
-        awaitMemorySettled()
         val listener = builder.progressListener
         return coroutineScope {
-            // progress arrives on the loading thread; it's handed to the caller's context, keeping the latest value
+            // progress arrives on the loading (or downloading) thread; it's handed to the caller's context, keeping the
+            // latest value
             val progress =
                 listener?.let { l ->
-                    Channel<Float>(Channel.CONFLATED).also { ch -> launch { for (p in ch) l(p) } }
+                    Channel<LoadProgress>(Channel.CONFLATED).also { ch -> launch { for (p in ch) l(p) } }
                 }
             try {
+                // before a fetch, so that a runtime config conflict fails before a long download
+                ensureInit()
+                // a remote source is fetched first, then its files load like any local file (D64, D75); a cancel
+                // during the fetch is the fetch's to handle, and no load starts
+                val local =
+                    if (source is RemoteModelSource) {
+                        source.fetch { d -> progress?.trySend(LoadProgress.Fetching(d)) }.also {
+                            requireLocal(it, "fetch")
+                            builder.validateSource(it)
+                        }
+                    } else {
+                        source
+                    }
+                // a model being closed still holds its weights and KV cache until its native close returns
+                synchronized(closing) { closing.toList() }.awaitAll()
+                awaitMemorySettled()
                 val backends = withContext(ioDispatcher) { nativeBackends() } + discoveryFailures
                 loadOnFirstDevice(
-                    source,
+                    local,
                     builder,
                     DeviceResolver.plan(builder.devicePolicy, backends),
                     backends,
-                ) { p -> progress?.trySend(p) }
+                ) { p -> progress?.trySend(LoadProgress.Loading(p)) }
             } finally {
                 progress?.close()
             }
         }
     }
 
-    /** Projects the first device a load would attempt, without opening model weights. */
+    /**
+     * Projects the first device a load would attempt, without opening model weights. A remote source lends header
+     * stubs for the estimate and removes them after it, also when it throws (D75); nothing else is downloaded.
+     */
     suspend fun estimateFit(source: ModelSource, builder: ModelConfig): FitEstimate {
         builder.validateSource(source)
+        if (source is RemoteModelSource) {
+            return source.withHeaders { local ->
+                requireLocal(local, "withHeaders")
+                estimateFit(local, builder)
+            }
+        }
         ensureInit()
         synchronized(closing) { closing.toList() }.awaitAll()
         return withContext(ioDispatcher) {
@@ -381,15 +407,18 @@ internal class LlamaBroRuntime(
         candidate: DeviceResolver.Candidate,
         encoder: DeviceResolver.Candidate?,
         configJson: String,
-        onProgress: (Float) -> Unit,
+        caller: Job,
+        onProgress: (Float) -> Boolean,
     ): Pair<EngineModel, String?> {
         val failure =
             try {
                 return engine.load(configJson, onProgress) to null
             } catch (e: NativeError) {
-                ErrorMapping.loadFailed(e)
+                loadFailedOrCancelled(e)
             }
         if (!warnsInstead(builder, failure)) throw failure
+        // the second load would start on a cancelled caller's behalf and stop only at its first tick (D67)
+        caller.ensureActive()
         val smallest =
             builder.toJson(
                 source,
@@ -403,9 +432,18 @@ internal class LlamaBroRuntime(
             try {
                 engine.load(smallest, onProgress)
             } catch (e: NativeError) {
-                throw ErrorMapping.loadFailed(e)
+                throw loadFailedOrCancelled(e)
             }
         return model to failure.message?.removePrefix("failed to load model: ")
+    }
+
+    /**
+     * A refused load's exception: a stop the progress answer asked for is the caller's cancellation, thrown after the
+     * engine freed what it read (D67), so no device fallback or retry treats it as a failure.
+     */
+    private fun loadFailedOrCancelled(e: NativeError): LlamaBroException.ModelLoadFailed {
+        if (e.status == NativeError.CANCELLED) throw CancellationException("model load cancelled")
+        return ErrorMapping.loadFailed(e)
     }
 
     /** A fitted context that doesn't fit even at its smallest, for an app that asked to be warned (F128). */
@@ -445,9 +483,14 @@ internal class LlamaBroRuntime(
         attempts: List<LoadReport.Attempt>,
         onProgress: (Float) -> Unit,
     ): Model {
-        // The native load can't be interrupted, and withContext drops its result if the caller was cancelled
-        // meanwhile (prompt cancellation). So the model is recorded as soon as it exists and closed on cancellation,
-        // instead of leaking its weights and KV cache.
+        // The native load stops only at a progress tick, by the answer it gets there (D67, F145): the caller's job,
+        // read here, since inside NonCancellable the context's job is never cancelled. A cancel after the last tick
+        // can't stop it, and withContext drops its result if the caller was cancelled meanwhile (prompt cancellation).
+        // So the model is recorded as soon as it exists and closed on cancellation, instead of leaking its weights and
+        // KV cache.
+        val caller = currentCoroutineContext().job
+        // a fallback attempt (the encoder following the model) must not start on a cancelled caller's behalf (D67)
+        caller.ensureActive()
         var loaded: Model? = null
         try {
             withContext(ioDispatcher + NonCancellable) {
@@ -462,7 +505,10 @@ internal class LlamaBroRuntime(
                         encoder?.let { DeviceResolver.encoderConfig(it, candidate) },
                     )
                 val (engineModel, memoryWarning) =
-                    loadOrWarn(source, builder, candidate, encoder, configJson, onProgress)
+                    loadOrWarn(source, builder, candidate, encoder, configJson, caller) { p ->
+                        onProgress(p)
+                        caller.isActive
+                    }
                 val (contextSize, contextReason) =
                     if (memoryWarning != null) {
                         contextOf(engineModel.infoJson, builder.contextSize).first to
@@ -626,3 +672,12 @@ private const val SETTLE_WINDOW_NANOS = 3_000L * NANOS_PER_MILLI
 private const val SETTLE_MAX_MILLIS = 2_000L
 private const val SETTLE_STEP_MILLIS = 100L
 private const val SETTLE_STILL_BYTES = 32L * BYTES_PER_MIB
+
+/** What a [RemoteModelSource] hands back must be local files: a second remote hop isn't followed. */
+private fun requireLocal(local: ModelSource, by: String) {
+    if (local !is FileSource) {
+        throw LlamaBroException.InvalidRequest(
+            "RemoteModelSource.$by must give local files (ModelSource.file), not ${local::class.java.name}",
+        )
+    }
+}

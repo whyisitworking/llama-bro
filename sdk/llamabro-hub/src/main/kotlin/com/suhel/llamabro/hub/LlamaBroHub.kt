@@ -1,19 +1,21 @@
 package com.suhel.llamabro.hub
 
 import android.content.Context
-import com.suhel.llamabro.FitEstimate
+import com.suhel.llamabro.DownloadPhase
+import com.suhel.llamabro.DownloadProgress
 import com.suhel.llamabro.InternalLlamaBroApi
-import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.LogLevel
 import com.suhel.llamabro.Logger
-import com.suhel.llamabro.ModelConfig
 import com.suhel.llamabro.ModelSource
+import com.suhel.llamabro.RemoteModelSource
+import com.suhel.llamabro.chat.Sampling
 import com.suhel.llamabro.hub.internal.AndroidStorage
 import com.suhel.llamabro.hub.internal.BlobDownloader
 import com.suhel.llamabro.hub.internal.Cache
 import com.suhel.llamabro.hub.internal.CacheLookup
-import com.suhel.llamabro.hub.internal.HeaderFetch
 import com.suhel.llamabro.hub.internal.HttpTransport
+import com.suhel.llamabro.hub.internal.LocalCopies
+import com.suhel.llamabro.hub.internal.NetworkFailures
 import com.suhel.llamabro.hub.internal.PlanStore
 import com.suhel.llamabro.hub.internal.ProgressMeter
 import com.suhel.llamabro.hub.internal.RepoFile
@@ -23,6 +25,8 @@ import com.suhel.llamabro.hub.internal.Resolver
 import com.suhel.llamabro.hub.internal.Storage
 import com.suhel.llamabro.hub.internal.Transfers
 import com.suhel.llamabro.hub.internal.Transport
+import com.suhel.llamabro.hub.internal.isCompleteSplit
+import com.suhel.llamabro.hub.internal.isUnreachable
 import com.suhel.llamabro.hub.internal.repoFolder
 import com.suhel.llamabro.hub.internal.resolvePlan
 import com.suhel.llamabro.hub.internal.splitInfo
@@ -51,10 +55,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.io.RandomAccessFile
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -94,19 +96,155 @@ public class LlamaBroHub internal constructor(
     private val selections = ConcurrentHashMap<String, Pair<HfModel, PlanOptions>>()
     private val plans: PlanStore = PlanStore(cacheDir, storage)
     private val lookup = CacheLookup(cacheDir)
+    private val copies = LocalCopies(cacheDir, Resolver(config.endpoint, cacheDir, transport, storage), storage)
+    private val searches = HubSearch(config.endpoint, cacheDir, logger)
 
-    private suspend fun operationTransport(): Transport =
-        config.token?.invoke()?.let {
-            HttpTransport(config.endpoint, it, logger)
-        } ?: transport
+    internal suspend fun operationTransport(): Transport =
+        transportFor(config.token?.invoke(), config, transport, logger)
+
+    /**
+     * The model [ref] names (`owner/repo[:tag][#file]`, as `-hf`) as a source for `llama.loadModel` and
+     * `llama.estimateFit` (D64, D75). Building it does no I/O. On load, the installed copy (the last download that
+     * completed) loads with no network request at all; with none it resolves and downloads as `-hf` does (F82),
+     * resuming a partial (F114-F116), and the load reports the download as `LoadProgress.Fetching`. [plan] never
+     * changes what loads; a newer commit replaces the installed copy only when the app asks ([hasUpdate], then
+     * [download]) and that download completes. `estimateFit` on it reads the installed files when complete, else only
+     * GGUF headers.
+     *
+     * The source's failures reach `loadModel` and `estimateFit` unchanged, as [HubException]s:
+     * [HubException.Network] offline with nothing installed (the first launch with no connection),
+     * [HubException.Unauthorized] for a gated repo, [HubException.NotFound] for a removed repo or a tag it lacks, and,
+     * from `loadModel` only, [HubException.InsufficientStorage].
+     *
+     * @throws IllegalArgumentException if [ref] is not a valid Hub reference.
+     */
+    public fun model(ref: String, configure: PlanOptions.() -> Unit = {}): RemoteModelSource =
+        model(HfModel.parse(ref), configure)
+
+    /** [model] as a source to load or fit; see the `String` overload. */
+    public fun model(model: HfModel, configure: PlanOptions.() -> Unit = {}): RemoteModelSource =
+        HubModelSource(this, model, configure)
+
+    /**
+     * Whether the Hub's newest commit of [model] has files that differ from the installed copy (the last download that
+     * completed): an online look that changes nothing in the cache. False when nothing is installed (with no request)
+     * or when the Hub can't be reached (no route to it). [download] fetches the newest files; until it completes,
+     * [model] and [source] keep loading the installed copy (D64). Once it completes, the files only the replaced copy
+     * used are removed, so an update doesn't double the storage; files another selection or tag uses stay.
+     *
+     * @throws HubException.Unauthorized or [HubException.RateLimited] when the Hub refuses the look,
+     * [HubException.NotFound] when the repo is gone, and [HubException.Network] when the Hub answers with an error
+     * (a 5xx, a malformed answer), so "no update" is never a guess.
+     */
+    public suspend fun hasUpdate(model: HfModel, configure: PlanOptions.() -> Unit = {}): Boolean =
+        withContext(Dispatchers.IO) {
+            val options = PlanOptions().apply(configure)
+            try {
+                copies.source(model, options) // adopts an old-format copy, so it has an installed record
+            } catch (notCached: HubException.NotFound) {
+                logger?.log(LogLevel.Debug, "hasUpdate: nothing installed: ${notCached.message}")
+                return@withContext false
+            }
+            val installed = copies.installedRecord(model, options) ?: return@withContext false
+            val latest =
+                try {
+                    planInternal(model, options, operationTransport(), record = false)
+                } catch (offline: HubException.Network) {
+                    if (!isUnreachable(offline)) throw offline // the Hub answered: an error, not "offline"
+                    logger?.log(LogLevel.Info, "hasUpdate: Hub unreachable, no update: ${offline.message}")
+                    return@withContext false
+                }
+            // Same selection, same bytes: every file by path, role, size and digest (an unknown digest never matches).
+            val newest = latest.files.map { listOf(it.path, it.role, it.sizeBytes, it.oid) }.toSet()
+            val held = installed.files.mapNotNull { f -> f.oid?.let { listOf(f.path, f.role, f.size, it) } }.toSet()
+            !latest.offline && newest != held
+        }
+
+    /**
+     * Searches the Hub's GGUF repos for [query] (empty for all), grouping each model's quantized uploads under the
+     * original (D68, F146). Sizes come from [files]; whether one fits is the app's call (`memoryBudgetBytes()` or
+     * `llama.estimateFit(hub.model(…))`). The token goes only to the endpoint's host (F82).
+     *
+     * @throws HubException.Network when the Hub can't be reached, [HubException.RateLimited] or
+     * [HubException.Unauthorized] when it refuses.
+     * @throws IllegalArgumentException if [SearchOptions.limit] is out of range.
+     */
+    public suspend fun search(query: String, configure: SearchOptions.() -> Unit = {}): SearchPage {
+        val url = searches.firstPage(query, SearchOptions().apply(configure))
+        return searches.page(operationTransport(), url)
+    }
+
+    /** The page after the one [next] came with; failures as the first page's. */
+    public suspend fun search(next: SearchCursor): SearchPage = searches.page(operationTransport(), next.url)
+
+    /**
+     * The GGUF files of [repo] (`owner/name`) at its newest commit: each quantisation once with its bytes (split files
+     * summed) and whether an image encoder is there (D68). Changes nothing in the cache; when the Hub can't be reached
+     * it answers from the cache, with [RepoFiles.offline] set, as [plan] does.
+     *
+     * @throws HubException.NotFound, [HubException.Unauthorized] or [HubException.Network] as [plan] does.
+     * @throws IllegalArgumentException if [repo] is not a valid repo id.
+     */
+    public suspend fun files(repo: String): RepoFiles =
+        searches.files(Resolver(config.endpoint, cacheDir, operationTransport(), storage, look = true), repo)
+
+    /**
+     * The sampling recommended for [model] from both places the Hub can hold it, each null when absent (D68, D79):
+     * [RecommendedSampling.fromFile], the GGUF header's `general.sampling.*`, which is what loads by default (F17), and
+     * [RecommendedSampling.fromBaseModel], the base model's `generation_config.json`, found through the repo's
+     * `base_model:quantized:` tag. Nothing is applied. The header is read from disk when the model (as [model] fetches
+     * it, with any options) is on the phone, else with range requests (the header only, from 8 MiB) that leave nothing
+     * behind. With the model on the phone this works offline: the base model can't be looked up then, so
+     * [RecommendedSampling.fromBaseModel] and [RecommendedSampling.baseModel] are null. A gated base model gives a null
+     * [RecommendedSampling.fromBaseModel], not an error. Model card text is never read.
+     *
+     * @throws HubException.Unauthorized when a configured token is refused for [model]'s own repo, as [plan] does;
+     * with no token a gated repo gives nulls instead.
+     * @throws HubException.Network when the Hub can't be reached and the model isn't on the phone,
+     * [HubException.RateLimited] when it refuses, and [HubException.NotFound] when [model]'s repo or file doesn't
+     * exist.
+     */
+    public suspend fun recommendedSampling(model: HfModel): RecommendedSampling =
+        withContext(Dispatchers.IO) {
+            val token = config.token?.invoke()
+            val transport = transportFor(token, config, this@LlamaBroHub.transport, logger)
+            val local = copies.installedModelFile(model)?.let { file -> localSampling(searches, file, logger) }
+            val fromFile =
+                local?.sampling
+                    ?: unlessGated(token, model, logger) {
+                        val plan = planInternal(model, PlanOptions(), transport, record = false)
+                        searches.fromRemoteFile(transport, plan)
+                    }
+            try {
+                val base = unlessGated(token, model, logger) { searches.baseModelOf(transport, model.repo) }
+                RecommendedSampling(fromFile, base?.let { searches.fromBaseModel(transport, it) }, base)
+            } catch (offline: HubException.Network) {
+                // D79: a local header works offline; the base model can't be known then, which isn't the file's loss.
+                // Only no route to the Hub is offline: an error it answered with is thrown as it is.
+                if (local == null || !isUnreachable(offline)) throw offline
+                logger?.log(LogLevel.Debug, "recommendedSampling: base model unknown offline: ${offline.message}")
+                RecommendedSampling(fromFile, null, null)
+            }
+        }
 
     /** Resolves [model] online, falling back to the cache when the Hub is unavailable. */
     public suspend fun plan(model: HfModel, configure: PlanOptions.() -> Unit = {}): HubPlan =
         planInternal(model, PlanOptions().apply(configure), operationTransport())
 
-    private suspend fun planInternal(model: HfModel, options: PlanOptions, operationTransport: Transport): HubPlan =
+    /**
+     * With [record] false the plan is a look only: no ref or plan record moves, and a refusal is thrown rather than
+     * answered from the cache. With [record] true an old-format copy is adopted as installed before the listing moves
+     * `refs/main` (D64).
+     */
+    internal suspend fun planInternal(
+        model: HfModel,
+        options: PlanOptions,
+        operationTransport: Transport,
+        record: Boolean = true,
+    ): HubPlan =
         withContext(Dispatchers.IO) {
-            val resolver = Resolver(config.endpoint, cacheDir, operationTransport, storage)
+            if (record) copies.adoptBeforeListing(model, options)
+            val resolver = Resolver(config.endpoint, cacheDir, operationTransport, storage, look = !record)
             val listing = resolver.list(model.repo)
             val selected =
                 resolvePlan(
@@ -138,14 +276,14 @@ public class LlamaBroHub internal constructor(
             }
             val plan = HubPlan(model, listing.commit, chosen, offline, notesFor(listing))
             plan.partialBytes = lookup.partialBytes(chosen)
-            if (!offline) PlanStore(cacheDir, storage).write(plan, options)
+            if (!offline && record) plans.write(plan, options)
             plan
         }
 
     /** Why nothing matched: offline, the cache only lacks it and the Hub may have it, so a worker should retry. */
     private fun noMatch(model: HfModel, offline: Boolean, available: List<String>): HubException =
         if (offline) {
-            HubException.Network("offline, and no cached GGUF matches $model", null, true)
+            HubException.Network("offline, and no cached GGUF matches $model", null, true, unreachable = true)
         } else {
             HubException.NotFound("no GGUF matches $model", available)
         }
@@ -186,14 +324,11 @@ public class LlamaBroHub internal constructor(
         )
     }
 
-    private fun notesFor(listing: RepoListing): List<String> =
-        if (listing.files.any { it.path == "preset.ini" }) {
-            listOf("preset.ini ignored: llama-server router presets aren't supported")
-        } else {
-            emptyList()
-        }
-
-    /** Shares one transfer per selection; collecting again after cancellation resumes partials. */
+    /**
+     * Shares one transfer per selection; collecting again after cancellation resumes partials. When it completes, its
+     * files become the installed copy that [model] and [source] load (D64), and the files only the replaced copy used
+     * (an older commit's) are removed; files another selection or tag still uses stay.
+     */
     public fun download(model: HfModel, configure: PlanOptions.() -> Unit = {}): Flow<DownloadProgress> {
         val options = PlanOptions().apply(configure)
         val key = plans.key(model, options)
@@ -255,6 +390,8 @@ public class LlamaBroHub internal constructor(
     }
 
     private fun diskState(model: HfModel, options: PlanOptions): DownloadState {
+        // What loads is complete, whatever a later plan or an unfinished update left in the plan record (D64).
+        if (copies.installedSource(model, options) != null) return DownloadState.Complete
         val record =
             plans.read(model, options)
                 ?: return if (offlineComplete(model, options)) DownloadState.Complete else DownloadState.Absent
@@ -290,7 +427,7 @@ public class LlamaBroHub internal constructor(
                 options.mmproj,
                 options.draft?.from == null && options.draft != null,
             )
-        return completeSplit(selected) && draftCached(resolver, options.draft, selected)
+        return isCompleteSplit(selected) && draftCached(resolver, options.draft, selected)
     }
 
     /** Whether the draft the options ask for, if any, can be found in the cache. */
@@ -313,6 +450,7 @@ public class LlamaBroHub internal constructor(
         val done = AtomicLong(plan.bytesTotal - needed)
         meter.update(DownloadPhase.Downloading, done.get(), plan.bytesTotal, null, 0, plan.files.size)
         downloadFiles(plan, requestTransport, done, meter)
+        copies.install(plan, options) // only now does the new copy replace the installed one (D64)
         meter.update(DownloadPhase.Complete, plan.bytesTotal, plan.bytesTotal, null, 0, plan.files.size)
     }
 
@@ -390,132 +528,12 @@ public class LlamaBroHub internal constructor(
             removed
         }
 
-    /** Returns cached files as a core source without contacting the network. */
+    /**
+     * The installed copy of [model] as a core source, from disk only and never the network: the files of the last
+     * download that completed, wherever `refs/main` has moved since (D64). [HubException.NotFound] when there is none.
+     */
     public suspend fun source(model: HfModel, configure: PlanOptions.() -> Unit = {}): ModelSource =
-        withContext(Dispatchers.IO) {
-            val options = PlanOptions().apply(configure)
-            val resolver = Resolver(config.endpoint, cacheDir, transport, storage)
-            val listing =
-                resolver.cachedListing(model.repo)
-                    ?: throw HubException.NotFound("model is not cached: $model", emptyList())
-            plans.read(model, options)?.let { requireRecordedFilesCached(it, model, options, resolver) }
-            val selected =
-                resolvePlan(
-                    listing.files,
-                    model.tag.orEmpty(),
-                    model.file.orEmpty(),
-                    options.mmproj,
-                    options.draft?.from == null && options.draft != null,
-                )
-            val primary =
-                selected.modelFiles.firstOrNull()?.takeIf { completeSplit(selected) }
-                    ?: throw HubException.NotFound("model is not cached: $model", emptyList())
-            selected.modelFiles.forEach { lookup.snapshotPath(model.repo, listing.commit, it) }
-            val mmproj = selected.mmproj?.let { lookup.snapshotPath(model.repo, listing.commit, it) }
-            val draft = options.draft?.let { draftPath(resolver, it, model, selected, listing) }
-            ModelSource.file(lookup.snapshotPath(model.repo, listing.commit, primary)) {
-                this.mmproj = mmproj
-                this.draft = draft
-            }
-        }
-
-    /** A plan record that exists vouches for its files: every one must be on disk at its recorded size. */
-    private fun requireRecordedFilesCached(
-        record: PlanStore.Record,
-        model: HfModel,
-        options: PlanOptions,
-        resolver: Resolver,
-    ) {
-        val alternate = options.draft?.from
-        val draftCommit = alternate?.let { resolver.cachedListing(it.repo)?.commit }
-        for (file in record.files) {
-            val draftSource = alternate.takeIf { file.role == HubFile.Role.Draft }
-            val repo = draftSource?.repo ?: model.repo
-            val commit = if (draftSource != null) draftCommit else record.commit
-            val cached = commit?.let { File(cacheDir, "${repoFolder(repo)}/snapshots/$it/${file.path}") }
-            if (cached?.isFile != true || cached.length() != file.size) {
-                throw HubException.NotFound("file is not cached: ${file.path}", emptyList())
-            }
-        }
-    }
-
-    /** The draft's path: the DFlash file beside the model, or the one in the repo the request names. */
-    private fun draftPath(
-        resolver: Resolver,
-        request: DraftRequest,
-        model: HfModel,
-        selected: Resolved,
-        listing: RepoListing,
-    ): String {
-        val from = request.from
-        if (from == null) {
-            val file = selected.dflash ?: throw HubException.NotFound("draft is not cached: $model", emptyList())
-            return lookup.snapshotPath(model.repo, listing.commit, file)
-        }
-        return namedDraftPath(resolver, from)
-    }
-
-    private fun namedDraftPath(resolver: Resolver, from: HfModel): String {
-        val listing =
-            resolver.cachedListing(from.repo)
-                ?: throw HubException.NotFound("draft is not cached: $from", emptyList())
-        val choice = resolvePlan(listing.files, from.tag.orEmpty(), from.file.orEmpty(), false, true)
-        val files = choice.dflash?.let { listOf(it) } ?: choice.modelFiles
-        if (files.isEmpty()) throw HubException.NotFound("draft is not cached: $from", emptyList())
-        files.forEach { lookup.snapshotPath(from.repo, listing.commit, it) }
-        return lookup.snapshotPath(from.repo, listing.commit, files.first())
-    }
-
-    /** Offline listings hold only the parts on disk: every part of a split model must be there. */
-    private fun completeSplit(selected: Resolved): Boolean {
-        val first = selected.modelFiles.firstOrNull() ?: return false
-        val count = splitInfo(first.path).count
-        return count <= 1 || selected.modelFiles.size == count
-    }
-
-    /** Estimates the memory and context for [plan] from bounded GGUF headers before downloading weights. */
-    public suspend fun estimateFit(
-        plan: HubPlan,
-        llama: LlamaBro,
-        configure: ModelConfig.() -> Unit = {},
-    ): FitEstimate =
-        withContext(Dispatchers.IO) {
-            val models = plan.files.filter { it.role == HubFile.Role.Model }
-            val primary =
-                models.firstOrNull()
-                    ?: throw HubException.NotFound("plan has no model GGUF", emptyList())
-            val drafts = plan.files.filter { it.role == HubFile.Role.Draft }
-            val projector = plan.files.firstOrNull { it.role == HubFile.Role.Mmproj }
-            val root = File(cacheDir, ".llamabro/estimate/${primary.oid ?: "offline"}/${UUID.randomUUID()}")
-            val headers = HeaderFetch(config.endpoint, operationTransport())
-
-            fun destination(role: String, file: HubFile): File = File(root, "$role/${file.path}")
-            try {
-                suspend fun stub(role: String, file: HubFile): String {
-                    val target = destination(role, file)
-                    headers.fetch(file, target)
-                    return target.absolutePath
-                }
-                for (file in models) stub("model", file)
-                for (file in drafts) stub("draft", file)
-                val mmproj =
-                    projector?.let { file ->
-                        val target = destination("mmproj", file)
-                        requireNotNull(target.parentFile).mkdirs()
-                        RandomAccessFile(target, "rw").use { it.setLength(file.sizeBytes) }
-                        target.absolutePath
-                    }
-                val source =
-                    ModelSource.file(destination("model", primary).absolutePath) {
-                        this.mmproj = mmproj
-                        this.draft = drafts.firstOrNull()?.let { destination("draft", it).absolutePath }
-                    }
-                llama.estimateFit(source, configure)
-            } finally {
-                root.deleteRecursively()
-                root.parentFile?.delete() // the per-model folder, once no other estimate uses it
-            }
-        }
+        withContext(Dispatchers.IO) { copies.source(model, PlanOptions().apply(configure)) }
 
     public companion object {
         private val created = mutableMapOf<String, Pair<HubConfig, LlamaBroHub>>()
@@ -533,7 +551,6 @@ public class LlamaBroHub internal constructor(
          */
         @JvmStatic
         @JvmOverloads
-        @OptIn(InternalLlamaBroApi::class)
         public fun create(context: Context, config: HubConfig = HubConfig.Default): LlamaBroHub {
             // A repeat call with an equal config skips the disk work below (D70).
             registered(config)?.let { return it }
@@ -550,6 +567,23 @@ public class LlamaBroHub internal constructor(
                     defaultLogger = defaultLogger,
                 )
             }
+        }
+
+        /**
+         * A hub over another [transport] and [storage], for `llamabro-hub-testing`'s `FakeLlamaBroHub` (D75), as
+         * `LlamaBro.withEngine` is for `FakeLlamaBro` (D27). The cache is [HubConfig.cacheDir], which must be set,
+         * since there is no app folder to default to; the hub is not registered with [create]. An `IOException` from
+         * [transport] is a retryable [HubException.Network], as the network's is.
+         *
+         * @throws IllegalArgumentException if [config] has no cache folder, or has a token provider: with a token the
+         * hub sends its requests through its own HTTP transport (F82), so a scripted Hub would not see them.
+         */
+        @InternalLlamaBroApi
+        @JvmStatic
+        public fun withTransport(transport: Transport, storage: Storage, config: HubConfig): LlamaBroHub {
+            val cacheDir = requireNotNull(config.cacheDir) { "LlamaBroHub.withTransport: set HubConfig.cacheDir" }
+            require(config.token == null) { "LlamaBroHub.withTransport: a scripted Hub takes no token provider" }
+            return LlamaBroHub(config, cacheDir, NetworkFailures(transport), storage)
         }
 
         /** A hub already created for an equal [config]: equal configs name one folder, so no path is resolved. */
@@ -594,3 +628,45 @@ public class LlamaBroHub internal constructor(
 }
 
 private fun HubConfig.effectiveLogger(default: Logger?): Logger? = logger ?: default
+
+private fun notesFor(listing: RepoListing): List<String> =
+    if (listing.files.any { it.path == "preset.ini" }) {
+        listOf("preset.ini ignored: llama-server router presets aren't supported")
+    } else {
+        emptyList()
+    }
+
+/**
+ * [read], or null when [model]'s repo is gated and no token is set. A configured token the repo refuses is thrown, as
+ * `files` and `plan` do: the app's token is wrong, which a null would hide.
+ */
+private inline fun <T> unlessGated(token: String?, model: HfModel, logger: Logger?, read: () -> T): T? =
+    try {
+        read()
+    } catch (gated: HubException.Unauthorized) {
+        if (token != null) throw gated
+        logger?.log(LogLevel.Debug, "recommendedSampling: $model is gated: ${gated.message}")
+        null
+    }
+
+/** With a token, a transport that sends it to the endpoint's host only (F82); without, the hub's own. */
+private fun transportFor(token: String?, config: HubConfig, own: Transport, logger: Logger?): Transport =
+    token?.let { HttpTransport(config.endpoint, it, logger) } ?: own
+
+/** A local header's sampling; [sampling] is null when the header holds none. */
+private class LocalSampling(val sampling: Sampling?)
+
+/**
+ * The sampling in [file]'s header (D79: free, and works offline), or null when the file went between finding and
+ * reading it, or its header doesn't parse: the caller then reads the Hub's copy, as with no local file.
+ */
+private fun localSampling(searches: HubSearch, file: File, logger: Logger?): LocalSampling? =
+    try {
+        LocalSampling(searches.fromLocalFile(file))
+    } catch (unreadable: IOException) {
+        logger?.log(LogLevel.Warn, "recommendedSampling: local header unreadable, reading the Hub's: $unreadable")
+        null
+    } catch (corrupt: IllegalArgumentException) {
+        logger?.log(LogLevel.Warn, "recommendedSampling: local header invalid, reading the Hub's: $corrupt")
+        null
+    }

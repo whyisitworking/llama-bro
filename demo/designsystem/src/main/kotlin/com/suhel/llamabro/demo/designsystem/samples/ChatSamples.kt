@@ -18,6 +18,7 @@ import com.suhel.llamabro.demo.designsystem.components.DayLabel
 import com.suhel.llamabro.demo.designsystem.components.HeldNote
 import com.suhel.llamabro.demo.designsystem.components.JumpToLatest
 import com.suhel.llamabro.demo.designsystem.components.LimitLine
+import com.suhel.llamabro.demo.designsystem.components.MarkdownAlignment
 import com.suhel.llamabro.demo.designsystem.components.MarkdownBlock
 import com.suhel.llamabro.demo.designsystem.components.MarkdownBlocks
 import com.suhel.llamabro.demo.designsystem.components.MarkdownSpan
@@ -70,10 +71,23 @@ internal val KotlinReply =
                 ordered = true,
                 index = 1,
                 spans = listOf(t("A view follows later changes to the list.")),
+                blocks =
+                    listOf(
+                        MarkdownBlock.ListItem(ordered = false, index = 0, spans = listOf(t("Writes show through."))),
+                    ),
             ),
             MarkdownBlock.ListItem(ordered = true, index = 2, spans = listOf(t("A copy doesn't."))),
-            MarkdownBlock.ListItem(ordered = false, index = 0, spans = listOf(t("Both are O(1) to read."))),
-            MarkdownBlock.Quote(listOf(t("Prefer the view unless you need a snapshot."))),
+            MarkdownBlock.Table(
+                alignments = listOf(MarkdownAlignment.Start, MarkdownAlignment.End),
+                header = listOf(listOf(t("Call")), listOf(t("Cost"))),
+                rows =
+                    listOf(
+                        listOf(listOf(MarkdownSpan("asReversed()", code = true)), listOf(t("O(1)"))),
+                        listOf(listOf(MarkdownSpan("reversed()", code = true)), listOf(t("O(n)"))),
+                    ),
+            ),
+            MarkdownBlock.Quote(listOf(p(t("Prefer the view unless you need a snapshot.")))),
+            MarkdownBlock.Rule,
             p(
                 t("More in the "),
                 MarkdownSpan("Kotlin docs", link = "https://kotlinlang.org/docs/collection-ordering.html"),
@@ -154,7 +168,7 @@ internal fun ChatBubbleSamples() {
 }
 
 @Composable
-private fun rememberSamplePhoto(): ImageBitmap =
+internal fun rememberSamplePhoto(): ImageBitmap =
     remember {
         ImageBitmap(336, 252).also { bitmap ->
             val canvas = Canvas(bitmap)

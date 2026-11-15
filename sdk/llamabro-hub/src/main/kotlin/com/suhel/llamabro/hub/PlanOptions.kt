@@ -1,6 +1,10 @@
 package com.suhel.llamabro.hub
 
-/** File roles requested while resolving a Hub model. */
+/**
+ * File roles requested while resolving a Hub model. A property added here must also be carried through
+ * `llamabro-hub-work`'s `DownloadInput`, or a background download would drop it: `DownloadWorkerTest` fails until it
+ * is.
+ */
 public class PlanOptions internal constructor() {
     /** Include the multimodal projector when one is available. */
     public var mmproj: Boolean = true

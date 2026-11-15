@@ -1,8 +1,8 @@
 package com.suhel.llamabro.demo.models
 
+import com.suhel.llamabro.DownloadProgress
 import com.suhel.llamabro.FitEstimate
 import com.suhel.llamabro.ModelSource
-import com.suhel.llamabro.hub.DownloadProgress
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubPlan
 import kotlinx.coroutines.flow.Flow

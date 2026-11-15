@@ -18,6 +18,7 @@ import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.NewMessage
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
+import com.suhel.llamabro.demo.data.loadConfig
 import com.suhel.llamabro.demo.data.modelForNewChat
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.models.Catalog
@@ -115,8 +116,6 @@ internal fun canContinue(reply: StoredMessage, key: HfModel): Boolean =
     reply.kind == MessageKind.Assistant && reply.state == MessageState.Cut && reply.modelKey == key.toString()
 
 /** The chip the model runs on, as a reply's details name it ("NPU"). */
-internal fun Model.deviceName(): String = loadReport.device.name.uppercase()
-
 internal fun missingOrDownloading(name: String, status: DownloadStatus): ChatModelState =
     when (status) {
         is DownloadStatus.Downloading, is DownloadStatus.Partial -> ChatModelState.Downloading(status)
@@ -200,20 +199,26 @@ class ChatEngine(
     val replying: StateFlow<Boolean> =
         activeTurns.map { it > 0 }.stateIn(scope, SharingStarted.Eagerly, false)
 
-    /** Models whose memory note was shown: once per model while the app runs, in whichever chat loads it first. */
-    private val memoryNoted: MutableSet<HfModel> =
-        java.util.concurrent.ConcurrentHashMap
-            .newKeySet()
+    /**
+     * The loaded model whose note (memory or chip) was shown: once per load, in whichever chat loads it first. A model
+     * loaded again (after it was freed, or after a switch) is a new object, so its note is shown again.
+     */
+    @Volatile private var noted: java.lang.ref.WeakReference<Model>? = null
 
     /**
-     * The model for [key] (shown as [name]), or null when it didn't load: [limit] then says why. When the SDK loaded it
-     * although its memory check doubted it (F128), [limit] says so once per model: the note travels with the loaded
-     * model into every turn, and once is enough.
+     * A lease on the model for [key] (shown as [name]) on the chip and context chosen in Settings › Memory (D72), or
+     * null when it didn't load: [limit] then says why. When the SDK loaded it although its memory check doubted it
+     * (F128), or on another chip than the one chosen, [limit] says so on every load of it: the note travels with the
+     * loaded model into every turn, so a turn on a model already loaded doesn't say it again. The turn releases the
+     * lease when it ends: until then the model stays open, and another chat's load of another model waits for it.
      */
-    private suspend fun load(key: HfModel, name: String, limit: MutableStateFlow<Limit?>): Model? {
-        val loaded =
+    private suspend fun load(key: HfModel, name: String, limit: MutableStateFlow<Limit?>): ModelHost.Lease? {
+        val chosen = settings.settings.first().loadConfig
+        val lease =
             try {
-                host.use(key)
+                // this turn is counted: another one may be streaming from the model, so a chip or context changed
+                // meanwhile waits for it (ModelMemory.loadConfigChanged) instead of closing the model under that reply
+                host.hold(key, chosen) { activeTurns.value > 1 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -221,19 +226,39 @@ class ChatEngine(
                     ?: Limit("$name didn't start. Try again.", LimitAction.Retry, "Retry")
                 return null
             }
-        if (loaded.loadReport.memoryWarning != null && memoryNoted.add(key)) limit.value = Limits.memoryWarning(name)
-        return loaded
+        var handedOver = false
+        try {
+            val loaded = lease.model
+            // one line holds one note: the memory note wins, since it warns that other apps may close and offers a
+            // smaller size; where the model runs stays in Settings › Memory and the model sheet
+            val report = loaded.loadReport
+            val note =
+                if (report.memoryWarning != null) {
+                    Limits.memoryWarning(name)
+                } else {
+                    report.fallbackFrom(lease.config.policy)?.let { Limits.chipFallback(name, it) }
+                }
+            if (note != null && firstNote(loaded)) limit.value = note
+            handedOver = true
+            return lease
+        } finally {
+            // a throw here hands the turn no lease to release, so it must not leave the model held
+            if (!handedOver) lease.release()
+        }
+    }
+
+    @Synchronized
+    private fun firstNote(loaded: Model): Boolean {
+        if (noted?.get() === loaded) return false
+        noted = java.lang.ref.WeakReference(loaded)
+        return true
     }
 
     /**
      * Releases the loaded model unless a turn is loading it or streaming from it (the app went to the background); the
      * next send loads it again. True when it was released.
      */
-    suspend fun releaseModelIfIdle(): Boolean {
-        if (activeTurns.value > 0) return false
-        host.release()
-        return true
-    }
+    suspend fun releaseModelIfIdle(): Boolean = host.release { activeTurns.value > 0 }
 
     private suspend fun newConversation(loaded: Model, history: List<Message>): Conversation {
         val s = settings.settings.first()
@@ -249,7 +274,8 @@ class ChatEngine(
                 chat = chats.sampling(id).first(),
             )
         val thinks = Thinking.thinks(level)
-        return TurnOptions(level, layers.sampling(thinks, Thinking.replyTokens(level)), continues)
+        val length = settings.settings.first().replyLength
+        return TurnOptions(level, layers.sampling(thinks, Thinking.replyTokens(level, length)), continues)
     }
 
     /** The chats open now: each registers when opened and leaves when closed. */
@@ -536,9 +562,12 @@ class ChatEngine(
         private suspend fun answer(id: Long, key: HfModel, user: StoredMessage, onReply: () -> Unit) {
             activeTurns.update { it + 1 }
             _busy.value = true
+            var lease: ModelHost.Lease? = null
             try {
                 beforeTurn()
-                val loaded = load(key, displayName(key), _limit) ?: return
+                val held = load(key, displayName(key), _limit) ?: return
+                lease = held
+                val loaded = held.model
                 syncThink(loaded.info)
                 val rows = chats.messages(id).first()
                 var convo = conversation.takeIf { conversationKey == key && conversationModel === loaded }
@@ -568,7 +597,8 @@ class ChatEngine(
                     )
                 onReply()
                 val images = user.images.map { Content.Image(it.readBytes(), "image/jpeg") }.toTypedArray()
-                val draft = ReplyDraft(clock, loaded.deviceName())
+                val report = loaded.loadReport
+                val draft = ReplyDraft(clock, report.device.label, contextSize = report.contextSize)
                 stream(
                     convo,
                     replyId,
@@ -579,6 +609,7 @@ class ChatEngine(
                     draft,
                 )
             } finally {
+                lease?.release()
                 _busy.value = false
                 activeTurns.update { it - 1 }
             }
@@ -616,9 +647,12 @@ class ChatEngine(
         ) {
             activeTurns.update { it + 1 }
             _busy.value = true
+            var lease: ModelHost.Lease? = null
             try {
                 beforeTurn()
-                val loaded = load(key, displayName(key), _limit) ?: return
+                val held = load(key, displayName(key), _limit) ?: return
+                lease = held
+                val loaded = held.model
                 syncThink(loaded.info)
                 // the chat before the reply, then the reply as far as it got, its thinking with it
                 val history =
@@ -631,8 +665,9 @@ class ChatEngine(
                 val draft =
                     ReplyDraft(
                         clock,
-                        loaded.deviceName(),
+                        loaded.loadReport.device.label,
                         ReplyDraft.Continued(reply.text, reply.reasoning, reply.reasoningMillis),
+                        loaded.loadReport.contextSize,
                     )
                 stream(
                     convo,
@@ -645,6 +680,7 @@ class ChatEngine(
                 )
                 invalidate()
             } finally {
+                lease?.release()
                 _busy.value = false
                 activeTurns.update { it - 1 }
             }
@@ -663,7 +699,15 @@ class ChatEngine(
             try {
                 streamer(convo, text, images, options).collect { trace("ChatEngine.onDelta") { draft.accept(it) } }
                 ticker.cancel()
-                finish(replyId, user, draft.ended(MessageState.Done))
+                if (draft.filledContext) {
+                    // no room to continue: it ends as a chat too long for the model, with its way out
+                    val limit = Limits.contextExceeded(currentName())
+                    finish(replyId, user, draft.failed(limit.line))
+                    _limit.value = limit
+                    invalidate()
+                } else {
+                    finish(replyId, user, draft.ended(MessageState.Done))
+                }
             } catch (e: CancellationException) {
                 ticker.cancel()
                 kotlinx.coroutines.withContext(NonCancellable) {

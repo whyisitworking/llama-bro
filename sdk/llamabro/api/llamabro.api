@@ -98,6 +98,53 @@ public final class com/suhel/llamabro/DevicePolicy$Prefer : com/suhel/llamabro/D
 	public fun toString ()Ljava/lang/String;
 }
 
+public abstract interface class com/suhel/llamabro/DownloadPhase {
+}
+
+public final class com/suhel/llamabro/DownloadPhase$Complete : com/suhel/llamabro/DownloadPhase {
+	public static final field INSTANCE Lcom/suhel/llamabro/DownloadPhase$Complete;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/DownloadPhase$Downloading : com/suhel/llamabro/DownloadPhase {
+	public static final field INSTANCE Lcom/suhel/llamabro/DownloadPhase$Downloading;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/DownloadPhase$Resolving : com/suhel/llamabro/DownloadPhase {
+	public static final field INSTANCE Lcom/suhel/llamabro/DownloadPhase$Resolving;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/DownloadPhase$Verifying : com/suhel/llamabro/DownloadPhase {
+	public static final field INSTANCE Lcom/suhel/llamabro/DownloadPhase$Verifying;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/DownloadProgress {
+	public fun <init> (Lcom/suhel/llamabro/DownloadPhase;JJLjava/lang/String;IILjava/lang/Long;Ljava/lang/Long;)V
+	public synthetic fun <init> (Lcom/suhel/llamabro/DownloadPhase;JJLjava/lang/String;IILjava/lang/Long;Ljava/lang/Long;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytesDone ()J
+	public final fun getBytesPerSecond ()Ljava/lang/Long;
+	public final fun getBytesTotal ()J
+	public final fun getCurrentFile ()Ljava/lang/String;
+	public final fun getEtaSeconds ()Ljava/lang/Long;
+	public final fun getFileCount ()I
+	public final fun getFileIndex ()I
+	public final fun getPhase ()Lcom/suhel/llamabro/DownloadPhase;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/suhel/llamabro/Endpoint {
 	public static final field ApplyTemplate Lcom/suhel/llamabro/Endpoint;
 	public static final field ChatCompletions Lcom/suhel/llamabro/Endpoint;
@@ -281,6 +328,25 @@ public final class com/suhel/llamabro/LlamaBroException$ServerError : com/suhel/
 public final class com/suhel/llamabro/LlamaBroException$Unavailable : com/suhel/llamabro/LlamaBroException {
 }
 
+public abstract interface class com/suhel/llamabro/LoadProgress {
+}
+
+public final class com/suhel/llamabro/LoadProgress$Fetching : com/suhel/llamabro/LoadProgress {
+	public fun <init> (Lcom/suhel/llamabro/DownloadProgress;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDownload ()Lcom/suhel/llamabro/DownloadProgress;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/LoadProgress$Loading : com/suhel/llamabro/LoadProgress {
+	public fun <init> (F)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFraction ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/suhel/llamabro/LoadReport {
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getAttempts ()Ljava/util/List;
@@ -455,6 +521,11 @@ public final class com/suhel/llamabro/Pooling : java/lang/Enum {
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lcom/suhel/llamabro/Pooling;
 	public static fun values ()[Lcom/suhel/llamabro/Pooling;
+}
+
+public abstract interface class com/suhel/llamabro/RemoteModelSource : com/suhel/llamabro/ModelSource {
+	public abstract fun fetch (Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun withHeaders (Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
 public abstract interface class com/suhel/llamabro/Speculative {
@@ -1175,9 +1246,14 @@ public final class com/suhel/llamabro/internal/LogcatLogger : com/suhel/llamabro
 }
 
 public final class com/suhel/llamabro/internal/NativeError : java/lang/RuntimeException {
+	public static final field CANCELLED I
+	public static final field Companion Lcom/suhel/llamabro/internal/NativeError$Companion;
 	public fun <init> (ILjava/lang/String;)V
 	public final fun getErrorJson ()Ljava/lang/String;
 	public final fun getStatus ()I
+}
+
+public final class com/suhel/llamabro/internal/NativeError$Companion {
 }
 
 public abstract interface class com/suhel/llamabro/internal/RequestSink {

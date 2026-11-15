@@ -87,6 +87,12 @@ internal val DemoColors.photoScrim: Color get() = Color.Black.copy(alpha = 0.6f)
 internal val DemoColors.onPhotoScrim: Color get() = Color.White
 
 /**
+ * Behind a photo shown full-screen: black in both themes, so the photo reads as it is and the chat doesn't show through
+ * (at 95% it did, in light most of all); it fades only while a pull closes the viewer.
+ */
+internal val DemoColors.photoBackdrop: Color get() = Color.Black
+
+/**
  * Every Material text style mapped onto the [DemoType] roles, all sans: the serif is only for the two hero roles
  * (`displayHero`, `sheetTitle`), which the app's own components use, so a Material widget (a dialog's title) never
  * turns serif.

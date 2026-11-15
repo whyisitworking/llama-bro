@@ -1,5 +1,7 @@
 package com.suhel.llamabro.hub
 
+import com.suhel.llamabro.DownloadProgress
+
 /** The locally known state of a selected Hub download. */
 public sealed interface DownloadState {
     /** No selected files or partial transfer are known locally. */

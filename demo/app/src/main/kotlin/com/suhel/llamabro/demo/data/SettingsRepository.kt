@@ -6,7 +6,11 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
+import com.suhel.llamabro.ContextSize
+import com.suhel.llamabro.DeviceKind
+import com.suhel.llamabro.DevicePolicy
 import com.suhel.llamabro.demo.chat.Knobs
+import com.suhel.llamabro.demo.chat.LoadConfig
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -23,6 +27,50 @@ enum class KeepLoaded(val millis: Long?) {
     UntilNeeded(null),
 }
 
+/**
+ * The chip the person chose in Settings › Memory (D72). [Automatic] is the SDK's `Auto`; a chip is `Prefer`, so a
+ * chip that can't load the model, or that this phone doesn't have, falls back in `Auto`'s order instead of failing.
+ */
+enum class ChipChoice(val kind: DeviceKind?) {
+    Automatic(null),
+    Npu(DeviceKind.Npu),
+    Gpu(DeviceKind.Gpu),
+    Cpu(DeviceKind.Cpu),
+    ;
+
+    val policy: DevicePolicy get() = kind?.let { DevicePolicy.Prefer(it) } ?: DevicePolicy.Auto
+}
+
+/**
+ * The context length chosen in Settings › Memory: [Automatic] is the SDK's `Auto` (the most that fits in memory, up to
+ * 16k); the others are `UpTo`, a ceiling the SDK still shrinks to fit memory, so a load never fails for it.
+ */
+enum class ContextChoice(val tokens: Int?) {
+    Automatic(null),
+    UpTo4k(4_096),
+    UpTo8k(8_192),
+    UpTo16k(16_384),
+    UpTo32k(32_768),
+    ;
+
+    val size: ContextSize get() = tokens?.let { ContextSize.UpTo(it) } ?: ContextSize.Auto
+}
+
+/**
+ * The reply length chosen in Settings › Sampling, for every model and chat: [Automatic] is the Think level's limit
+ * (D60); [Short] and [Long] are a fixed limit, thinking and answer together; [NoLimit] sends none, so a reply runs
+ * until the model stops or the context is full.
+ */
+enum class ReplyLength {
+    Automatic,
+    Short,
+    Long,
+    NoLimit,
+}
+
+/** What the next load asks for: the chip choice and the context length (Settings › Memory). */
+val AppSettings.loadConfig: LoadConfig get() = LoadConfig(chip.policy, context.size)
+
 data class AppSettings(
     val layout: AppLayout = AppLayout.Sidebar,
     val theme: ThemeMode = ThemeMode.System,
@@ -34,6 +82,9 @@ data class AppSettings(
     /** Model keys whose download was started and hasn't finished or been cancelled: the library's "Downloading". */
     val pendingDownloads: Set<String> = emptySet(),
     val keepLoaded: KeepLoaded = KeepLoaded.OneMinute,
+    val chip: ChipChoice = ChipChoice.Automatic,
+    val context: ContextChoice = ContextChoice.Automatic,
+    val replyLength: ReplyLength = ReplyLength.Automatic,
 )
 
 /** The model a new chat starts with: the pinned one, else the one used last (demo design §4.2). */
@@ -58,6 +109,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 seenFirstRun = p[SEEN_FIRST_RUN] ?: false,
                 pendingDownloads = p[PENDING_DOWNLOADS].orEmpty(),
                 keepLoaded = KeepLoaded.entries.firstOrNull { it.name == p[KEEP_LOADED] } ?: KeepLoaded.OneMinute,
+                chip = ChipChoice.entries.firstOrNull { it.name == p[CHIP] } ?: ChipChoice.Automatic,
+                context = ContextChoice.entries.firstOrNull { it.name == p[CONTEXT] } ?: ContextChoice.Automatic,
+                replyLength = ReplyLength.entries.firstOrNull { it.name == p[REPLY_LENGTH] } ?: ReplyLength.Automatic,
             )
         }
 
@@ -87,6 +141,18 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     suspend fun setKeepLoaded(keep: KeepLoaded) {
         store.edit { it[KEEP_LOADED] = keep.name }
+    }
+
+    suspend fun setChip(chip: ChipChoice) {
+        store.edit { it[CHIP] = chip.name }
+    }
+
+    suspend fun setContext(context: ContextChoice) {
+        store.edit { it[CONTEXT] = context.name }
+    }
+
+    suspend fun setReplyLength(length: ReplyLength) {
+        store.edit { it[REPLY_LENGTH] = length.name }
     }
 
     /**
@@ -128,6 +194,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         const val SAMPLING_PREFIX = "sampling:"
         val PENDING_DOWNLOADS = stringSetPreferencesKey("pending_downloads")
         val KEEP_LOADED = stringPreferencesKey("keep_loaded")
+        val CHIP = stringPreferencesKey("chip")
+        val CONTEXT = stringPreferencesKey("context")
+        val REPLY_LENGTH = stringPreferencesKey("reply_length")
         val LAYOUT = stringPreferencesKey("layout")
         val THEME = stringPreferencesKey("theme")
         val DEFAULT_MODEL = stringPreferencesKey("default_model")

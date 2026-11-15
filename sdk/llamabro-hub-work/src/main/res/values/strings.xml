@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="llamabro_downloads_channel">Downloads</string>
+    <string name="llamabro_download_cancel">Cancel</string>
+    <string name="llamabro_download_preparing">Preparing</string>
+    <string name="llamabro_download_verifying">Checking the downloaded part</string>
+    <!-- 1.2 GB of 2.5 GB -->
+    <string name="llamabro_download_size">%1$s of %2$s</string>
+    <!-- 3 min left: the argument is a localised duration -->
+    <string name="llamabro_download_left">%1$s left</string>
+    <string name="llamabro_download_finished">Downloaded</string>
+    <string name="llamabro_download_failed">Download failed</string>
+</resources>

@@ -186,8 +186,8 @@ fun LazyStack(gap: Gap, modifier: Modifier = Modifier, content: LazyListScope.()
 /**
  * A labelled section: the upper-case [label] (with an optional [action] at its end), [Gap.Inline] above its content,
  * and the content's parts [gap] apart. The label belongs to what follows it, so it sits closer to its own content than
- * to the section above: put sections in a [Stack] or a [Screen] with [Gap.Section] between them. On a sheet the label
- * is [Gap.Block] above its content, and [SectionLabel] lines up with the text inside the cards and rows.
+ * to the section above: put sections in a [Stack] or a [Screen] with [Gap.Section] between them. The label starts where
+ * the text inside the cards and rows starts ([SectionLabel]); on a sheet it is [Gap.Block] above its content.
  */
 @Composable
 fun Section(

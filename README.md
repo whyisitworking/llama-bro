@@ -18,7 +18,7 @@ resume and verification.
 
 | Folder | What it is |
 |---|---|
-| [`sdk/`](sdk/README.md) | The SDK: `llamabro` (core), `llamabro-hub` (Hugging Face downloads), `llamabro-hexagon` and `llamabro-opencl` (optional backends), `llamabro-testing` (a fake for your own tests), `acceptance/` (device test apps), `native/` (the C++ bridge and the llama.cpp submodule), `scripts/` (the checks) |
+| [`sdk/`](sdk/README.md) | The SDK: `llamabro` (core), `llamabro-hub` (Hugging Face downloads), `llamabro-hexagon` and `llamabro-opencl` (optional backends), `llamabro-testing` and `llamabro-hub-testing` (fakes for your own tests), `acceptance/` (device test apps), `native/` (the C++ bridge and the llama.cpp submodule), `scripts/` (the checks) |
 | [`demo/`](demo/README.md) | A chat app built on the SDK: find, download, resume and run models, think levels, image input, edit and regenerate, two layouts, a design system on Material 3 |
 | [`docs/`](docs/README.md) | Architecture, decisions, testing, the demo's design, and the research record |
 | [`research/`](research/README.md) | The experiments behind the design: scripts, method and results |

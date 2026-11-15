@@ -26,7 +26,7 @@ class ModelsJourneys : Journey() {
 
     private fun openLibrary() {
         tapDescription("Chats")
-        tap("Models")
+        tapDrawerModels()
         see("Get more models")
     }
 

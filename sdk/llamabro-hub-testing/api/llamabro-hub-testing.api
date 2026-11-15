@@ -1,0 +1,35 @@
+public final class com/suhel/llamabro/hub/testing/FakeLlamaBroHub : java/io/Closeable {
+	public fun <init> ()V
+	public fun <init> (Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public final fun getDownloadMillis ()J
+	public final fun getFreeBytes ()J
+	public final fun getHub ()Lcom/suhel/llamabro/hub/LlamaBroHub;
+	public final fun getOffline ()Z
+	public final fun getRequests ()Ljava/util/List;
+	public final fun rateLimit (Ljava/lang/Long;I)V
+	public static synthetic fun rateLimit$default (Lcom/suhel/llamabro/hub/testing/FakeLlamaBroHub;Ljava/lang/Long;IILjava/lang/Object;)V
+	public final fun repo (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun repo$default (Lcom/suhel/llamabro/hub/testing/FakeLlamaBroHub;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public final fun setDownloadMillis (J)V
+	public final fun setFreeBytes (J)V
+	public final fun setOffline (Z)V
+}
+
+public final class com/suhel/llamabro/hub/testing/FakeLlamaBroHub$Repo {
+	public final fun generationConfig (Ljava/lang/String;)V
+	public final fun getBaseModel ()Ljava/lang/String;
+	public final fun getDownloads ()J
+	public final fun getGated ()Z
+	public final fun getLikes ()J
+	public final fun getTakesImages ()Z
+	public final fun gguf (Ljava/lang/String;ILcom/suhel/llamabro/chat/Sampling;)V
+	public static synthetic fun gguf$default (Lcom/suhel/llamabro/hub/testing/FakeLlamaBroHub$Repo;Ljava/lang/String;ILcom/suhel/llamabro/chat/Sampling;ILjava/lang/Object;)V
+	public final fun setBaseModel (Ljava/lang/String;)V
+	public final fun setDownloads (J)V
+	public final fun setGated (Z)V
+	public final fun setLikes (J)V
+	public final fun setTakesImages (Z)V
+}
+

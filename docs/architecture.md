@@ -85,7 +85,9 @@ The engine runs in the application's process (D5). There is no local HTTP server
 | `llamabro-hexagon` | [`sdk/llamabro-hexagon`](../sdk/llamabro-hexagon) | Qualcomm NPU backend: `libggml-hexagon.so`, the HTP skeleton libraries (as assets) and an installer. |
 | `llamabro-opencl` | [`sdk/llamabro-opencl`](../sdk/llamabro-opencl) | Adreno GPU backend through OpenCL, with kernels embedded. |
 | `llamabro-hub` | [`sdk/llamabro-hub`](../sdk/llamabro-hub) | Hugging Face resolve, download, resume, verify and cache. Pure Kotlin, no native code. |
+| `llamabro-hub-work` | [`sdk/llamabro-hub-work`](../sdk/llamabro-hub-work) | A WorkManager worker and `LlamaBroWorkerFactory(hub)` for background downloads, with default notifications (D75). Apart from the hub so that it doesn't depend on `androidx.work`. |
 | `llamabro-testing` | [`sdk/llamabro-testing`](../sdk/llamabro-testing) | `FakeLlamaBro`, a scripted engine for JVM tests. |
+| `llamabro-hub-testing` | [`sdk/llamabro-hub-testing`](../sdk/llamabro-hub-testing) | `FakeLlamaBroHub`, the real hub over a scripted Hub and disk for JVM tests (D70, D75). Apart from `llamabro-testing` so that apps without the hub never get it. |
 | `native/` | [`sdk/native`](../sdk/native) | The stable C API (`llamabro.h`), the C++ bridge, the JNI layer, build presets, patches and host tests. |
 | Acceptance apps | [`sdk/acceptance`](../sdk/acceptance) | Small apps used by device tests: `backends` (device choice, lifecycle, the full suite) and `download` (background download with a worker and a user-initiated job). |
 | Demo app | [`demo`](../demo) | A complete chat application built against the SDK through a composite build (D46). It uses only public API. |
@@ -103,6 +105,7 @@ dependencies {
     runtimeOnly("io.github.whyisitworking:llamabro-hexagon")        // optional: Snapdragon NPU
     runtimeOnly("io.github.whyisitworking:llamabro-opencl")         // optional: Adreno GPU
     implementation("io.github.whyisitworking:llamabro-hub")         // optional: Hugging Face downloads
+    implementation("io.github.whyisitworking:llamabro-hub-work")    // optional: background downloads (WorkManager)
 }
 ```
 
@@ -240,7 +243,7 @@ val llama = LlamaBro.create(context)                // runs no native code
 val model: Model = llama.loadModel(ModelSource.file(path)) {   // suspend, on Dispatchers.IO
     contextSize = ContextSize.Auto
     devicePolicy = DevicePolicy.Auto
-    onProgress { fraction -> /* load progress, 0..1 */ }
+    onProgress { p -> /* LoadProgress: Fetching(download) for a RemoteModelSource, then Loading(0..1) (D75) */ }
 }
 
 // 1) Conversation: history, tools and compaction managed for the caller.
@@ -268,7 +271,7 @@ The three levels share one engine. A beginner uses `Conversation` and still reac
 
 ### 5.3 `ModelSource`
 
-`ModelSource` describes where a model's files are. `ModelSource.file(path) { mmproj = ...; draft = ... }` names a GGUF and optionally a multimodal projector and a speculative draft file. The hub produces the same type from the cache (`hub.source(ref)`), so a downloaded model and a file the app placed itself load through the same call.
+`ModelSource` describes where a model's files are. `ModelSource.file(path) { mmproj = ...; draft = ... }` names a GGUF and optionally a multimodal projector and a speculative draft file. The hub produces the same type from the cache (`hub.source(ref)`), so a downloaded model and a file the app placed itself load through the same call; `hub.model(ref)` is a `RemoteModelSource` that fetches what is missing first (D64, D75).
 
 ### 5.4 `Model` and `ModelConfig`
 
@@ -538,7 +541,7 @@ The reserve is the application's to change (D45). It covers what grows during a 
 
 ### 9.4 estimateFit
 
-`LlamaBro.estimateFit(source, configure)` returns a `FitEstimate`: whether the model fits (`fits`), the context it would get, the minimum context and the bytes needed at the minimum and at the ceiling, the budget, and the device. It uses the same projection as loading, so an application can warn before loading. The hub's `estimateFit` runs the projection on a GGUF header fetched with an HTTP `Range` request, so a person can learn whether a model fits before downloading it (D42, F84, F88).
+`LlamaBro.estimateFit(source, configure)` returns a `FitEstimate`: whether the model fits (`fits`), the context it would get, the minimum context and the bytes needed at the minimum and at the ceiling, the budget, and the device. It uses the same projection as loading, so an application can warn before loading. On `hub.model(ref)` it runs the projection on GGUF headers fetched with HTTP `Range` requests, so a person can learn whether a model fits before downloading it, with the same call that fits it afterwards (D42, D64, F84, F88).
 
 ### 9.5 Weights are loaded without mmap
 
@@ -600,7 +603,7 @@ Downloading involves two separate jobs:
 - **What to fetch and how to store it:** resolve a reference to files, fetch, resume, verify, store and report progress. This needs knowledge of Hugging Face and llama.cpp. It is the SDK's job.
 - **When and where it runs:** foreground or background, a foreground service, WorkManager, a user-initiated job, network constraints, retry policy and notifications. Every app already decides this its own way. It is the application's job (D9).
 
-The hub therefore schedules nothing and touches no notifications. It makes downloads easy to run anywhere, through five properties:
+The hub therefore schedules nothing and touches no notifications; the optional `llamabro-hub-work` (section 12.7) is one ready answer to the second job, which an app can take or leave. It makes downloads easy to run anywhere, through five properties:
 
 1. **A cold `Flow` with cooperative cancellation.** `hub.download(ref)` runs unchanged inside a `CoroutineWorker`, a `JobService` scope, a `Service` scope or a `ViewModel`.
 2. **Idempotent, with all state on disk.** The cache directory is the state: partial files and their validators. Calling `download` again resumes, and finished verified blobs are skipped. There is no database.
@@ -614,18 +617,56 @@ The hub therefore schedules nothing and touches no notifications. It makes downl
 val hub = LlamaBroHub.create(context, config)       // one hub per cache folder (D70); config is optional
 val ref = HfModel("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")  // or "org/repo", or "org/repo#dir/file.gguf"
 
+val fit   = llama.estimateFit(hub.model(ref))         // does it fit this phone now? (cached files, else headers only)
+val model = llama.loadModel(hub.model(ref)) { speculative = Speculative.Auto }   // fetches if needed, then loads
+hub.hasUpdate(ref)                                    // an online look at the newest commit; changes nothing
+
 val plan = hub.plan(ref) { mmproj = true }           // files, roles, sizes, digests, offline flag
-val fit  = hub.estimateFit(plan, llama)              // does it fit this phone now? (header only)
 hub.download(ref).collect { p: DownloadProgress -> /* ... */ }
 hub.progress(ref)                                    // StateFlow<DownloadState>
 hub.cached(); hub.delete(ref)
+hub.source(ref)                                      // the installed copy as a ModelSource, never the network
 
-val model = llama.loadModel(hub.source(ref)) { speculative = Speculative.Auto }
+val page = hub.search("qwen3") { sort = SearchSort.Trending; takesImages = true }   // grouped results (D68)
+page.next?.let { hub.search(it) }                    // the next page, through the Hub's cursor
+hub.files("unsloth/Qwen3.5-4B-GGUF")                 // each quantisation with its bytes, image encoder or not
+hub.recommendedSampling(ref)                         // fromFile and fromBaseModel, each or null (D79)
 ```
+
+Search (D68) asks `/api/models` for GGUF repos with a query, a sort (downloads by default, likes, trending, recently
+updated), a filter by author and one for models that take pictures, and pages through the Hub's `Link` cursor; a cursor
+that leaves the endpoint's origin is not followed. A result groups the repos tagged `base_model:quantized:X` under X;
+a fine-tune, merge or adapter names the same base under another tag and stays its own result (F146). Grouping is per
+page, so an endless list merges pages by result id. `files(repo)` lists the newest commit through the resolver's look (it moves no ref) and gives each model GGUF
+once, split parts summed, with an `HfModel` naming that file, and whether an `mmproj` is there; sizes, not a fit
+verdict. `recommendedSampling(ref)` returns both sources, labelled, each null when absent (D79): `fromFile`, the GGUF
+header's `general.sampling.*` (what loads by default, F17), read from disk when the model is on the phone, else through
+the header fetch into a stub removed when it returns; and `fromBaseModel`, the base model's `generation_config.json`
+(`temperature`, `top_p`, `top_k`, `min_p`, `repetition_penalty` as the repeat penalty, `presence_penalty`;
+`do_sample: false` is greedy, temperature 0). A gated base model gives a null `fromBaseModel`; a configured token
+refused by the model's own repo throws `Unauthorized`, as `plan` does. Nothing is applied for the app. Every request goes through the hub's
+transport, so the token reaches only the endpoint's host and never crosses a redirect (F82).
+
+`hub.model(ref)` is a `RemoteModelSource` (D64, D75). Its `fetch` loads the installed copy when every one of its files
+is on disk, without a request or a token lookup; otherwise it joins the shared, resumable download (F114-F116) and
+returns the files it left. Its `withHeaders` hands `estimateFit` the installed files when complete, else bounded GGUF
+headers of the model and drafts and a sparse placeholder for the projector, removed when the estimate ends, also when it
+throws.
+
+**The installed copy, a deliberate deviation from upstream (D64).** Upstream's `-hf` re-reads `main` on every start and
+downloads what changed (F82), and its offline read follows `refs/main`. But `refs/main` records the newest commit the
+cache has seen, not the copy on the phone: an online `hub.plan(ref)` or a cancelled update moves it, and a refs-only
+read would then download the newer commit inside a load, or fail offline beside a complete older snapshot. So the hub
+keeps an installed record per model and options (`.llamabro/installed/`), written only when a download completes, and
+`hub.model`, `hub.source` and `hub.progress` follow it. A newer copy replaces it only when its download completes:
+`hasUpdate` compares the newest commit with it (an online look that moves nothing, and throws on a refusal or a rate
+limit rather than answering "no update"), and `download` fetches it. With no installed record, the refs rule applies as
+before; a copy complete by that rule (from a cache written before the record) is adopted as installed when first read,
+or before an online plan moves `refs/main`, so no one downloads again. `hub.delete` removes the record with the files.
 
 `HfModel` is a class and converts to a plain string, so it fits in a WorkManager `Data` or an Intent extra. `HubConfig` sets the endpoint, a token provider, the cache directory, the progress interval and a logger. `create` returns the same hub for the same cache folder and an equal config, throws `IllegalStateException` for a different config on that folder, and lets hubs on different folders coexist; the logger and token provider compare by reference, so create the config once (a DI singleton scope does that).
 
-`DownloadProgress` is shaped for notifications: a `phase` (`Resolving`, `Verifying`, `Downloading`, `Complete`), `bytesDone` and `bytesTotal` (known from the plan), the current file and its index of the file count, a smoothed `bytesPerSecond` and an ETA. Emissions are throttled to the progress interval (one second by default); phase changes and the last emission always arrive. `DownloadState` is `Absent`, `Partial`, `Downloading`, `Complete` or `Failed`.
+`DownloadProgress` (in core's package since D71 and D75, so a core `RemoteModelSource` can report it) is shaped for notifications: a `phase` (`Resolving`, `Verifying`, `Downloading`, `Complete`), `bytesDone` and `bytesTotal` (known from the plan), the current file and its index of the file count, a smoothed `bytesPerSecond` and an ETA. Emissions are throttled to the progress interval (one second by default); phase changes and the last emission always arrive. `DownloadState` is `Absent`, `Partial`, `Downloading`, `Complete` or `Failed`.
 
 ### 12.3 Resolve and cache layout
 
@@ -669,7 +710,11 @@ The SDK disables automatic redirects and follows them itself. Hugging Face redir
 
 ### 12.7 Background downloads
 
-A background download belongs to the application. The [`download` acceptance app](../sdk/acceptance/download) shows a reference recipe: a `CoroutineWorker` that calls `setForeground` with a progress notification and maps `retryable` to a retry, plus an Android 14 user-initiated job variant. Killing the process and force-stopping the app both resume and verify on the test phone (F92). The application should hold its notification permission, or a force-stopped relaunch may stay in the background, where some manufacturers freeze it.
+When and where a download runs stays the application's call, but most apps want the same thing, so `llamabro-hub-work` ships it (D64, D75). The app registers `LlamaBroWorkerFactory(hub)` in WorkManager's `Configuration`, or adds it to a `DelegatingWorkerFactory` beside its DI container's factory; the worker then runs on the app's own hub and config, with no global (D70). `WorkManager.enqueueDownload(ref)` enqueues unique work per model and options (`KEEP` while one is queued or running), with a network constraint and exponential backoff; `cancelDownload` cancels it. The worker collects `hub.download` as a `dataSync` foreground service, reports bytes through WorkManager's progress, retries a retryable `HubException` (each try resumes the partial files, F114-F116) and fails only after five tries in a row that moved no bytes, since WorkManager's own attempt count also counts network loss, process death and Android 15's `dataSync` time limit; any other error fails. Notification and WorkInfo progress are paced to about once a second, phase changes and the last update always included. When Android refuses the foreground service (a start from the background on Android 12+) it downloads as plain background work.
+
+Its notifications work with no setup: the model's name, a progress bar with the size and the time left, and a Cancel action (WorkManager's cancel intent) while it runs; a short "Downloaded" or "Download failed" at the end; all in a low-importance "Downloads" channel the module creates. An app subclasses `DownloadNotifications` to change any of them, or returns null from `finished` or `failed` to show none. The module's manifest declares the `dataSync` type on WorkManager's foreground service, its permissions and `POST_NOTIFICATIONS`; it never requests that permission at run time. Without it the download runs and its notifications stay hidden. The worker reaches the hub through an internal seam, so its JVM tests run on work-testing without a device or Robolectric; WorkManager's `KEEP`, the default notifications and the factory over a real hub are an androidTest.
+
+The [`download` acceptance app](../sdk/acceptance/download) keeps its own reference recipe: a `CoroutineWorker` that calls `setForeground` with a progress notification and maps `retryable` to a retry, plus an Android 14 user-initiated job variant. Killing the process and force-stopping the app both resume and verify on the test phone (F92). The application should hold its notification permission, or a force-stopped relaunch may stay in the background, where some manufacturers freeze it.
 
 ---
 
@@ -692,6 +737,7 @@ Models are independent handles. Several can be loaded at once, for example a cha
 - **Nothing blocks the caller's thread.** `create` runs no native code; `loadModel`, `estimateFit`, `devices` and `backends` are `suspend` and run on `Dispatchers.IO`; `close()` returns at once.
 - **Closing.** `close()` returns immediately and frees the model in the background; `closeAndJoin()` waits for the memory. `loadModel` first waits for pending closes, so switching models never holds both in memory at once. `lb_model_free` cancels in-flight requests, waits for their terminal events and joins the worker thread.
 - **Cancellation.** Cancelling the collecting coroutine sets the request's `should_stop`. In `Conversation`, it also cancels a running tool handler.
+- **Cancelling a load.** `loadModel` runs the native load under `NonCancellable` and answers each progress tick with whether the caller's job, read before entering it, is still active. A `false` stops llama.cpp's weight reading (the model's, a draft's, an image encoder's) at the next tick plus one tensor, through a carried patch (F145); the bridge frees what was read and returns `LB_ERR_CANCELLED`, which JNI throws as `NativeError` with that status and the runtime turns into `CancellationException`, with no device fallback. Nothing asks after the last tick, so context creation, warm-up, GPU kernels and an NPU session finish first (with an image encoder or a draft, the text model's context and warm-up come before their stages and a cancel then lands at the next stage's first tick); the runtime then frees the model they produced before rethrowing the cancellation. A `MemoryCheck.Warn` retry and the next device are not started once the caller is cancelled (D67).
 - **Conversation concurrency.** One operation at a time, enforced with `Busy` at collection.
 - **Sleep mode is off.** Idle models are not put to sleep, because a failed reload aborts the process; the SDK unloads models explicitly.
 - **Memory pressure.** A model that the check says doesn't fit loads at the smallest context with a warning, or fails with `InsufficientMemory` under `MemoryCheck.Refuse` (D57). Once loaded, the memory reserve (section 9.3) is the margin for growth; running out ends the app through Android's low-memory killer rather than through an exception.
@@ -720,11 +766,15 @@ val model = fake.llamaBro.loadModel(/* a fake source */)
 // drive a ViewModel with model, assert on fake.chatRequests
 ```
 
-The script can queue replies, tool calls, a reply cut off by the length limit (`finishLength`), a context-exceeded error, an arbitrary server error, and a failing load. `chatRequests` exposes the JSON bodies the SDK built, so tests can assert on them. Only streamed chat completions are scripted; the slots listing and the reasoning control answer as an idle server would, and any other route fails with `NotSupported`.
+The script can queue replies, tool calls, a reply cut off by the length limit (`finishLength`), a context-exceeded error, an arbitrary server error, a failing load, and a slow one (`loadMillis`) that a cancelled `loadModel` stops at its next progress step, as the phone's does; `openModels` counts the models not yet closed. `chatRequests` exposes the JSON bodies the SDK built, so tests can assert on them. Only streamed chat completions are scripted; the slots listing and the reasoning control answer as an idle server would, and any other route fails with `NotSupported`.
 
 ### 14.2 The engine seam
 
 The seam is the internal `Engine` interface. It is public only under the `@InternalLlamaBroApi` opt-in, so ordinary applications do not see it. The public classes stay final, so adding members never breaks an app. Interface members that the fake does not need get defaults, so adding a native capability does not break the fake (F54).
+
+#### 14.2.1 `llamabro-hub-testing`
+
+Applications that use the hub test with `llamabro-hub-testing`, whose `FakeLlamaBroHub` is a real `LlamaBroHub` over a scripted Hugging Face Hub and a temporary folder (D70, D75), built through `LlamaBroHub.withTransport`, the hub's counterpart of `LlamaBro.withEngine`: its `Transport` and `Storage` interfaces are public only under `@InternalLlamaBroApi`, as `Engine` is. The script declares repos (GGUF files with their sizes and header sampling, a base model and its `generation_config.json`, downloads, likes, whether one takes pictures or is gated) and the scripted Hub answers search, model info, refs, tree and ranged resolve requests from them, as huggingface.co does. Everything above the transport is production code: plan, resolve, the resumable download, the installed-copy rule (D64), `hasUpdate` (declaring a repo again publishes a new commit), search grouping, `files` and `recommendedSampling`. A download writes small valid GGUFs, so `llama.loadModel(fakeHub.hub.model(…))` on a `FakeLlamaBro` fetches and loads end to end. Failures: an undeclared repo (`NotFound`), a gated one (`Unauthorized`), `rateLimit` (`RateLimited`), `offline` (`Network`) and `freeBytes` (`InsufficientStorage`); `downloadMillis` paces a download so its progress shows, and `requests` lists every request, so a test can assert that none was made. The endpoint is `https://hub.invalid/`, a reserved name no request could reach; the fake takes no token provider, since a token sends requests over the hub's own HTTP transport (F82).
 
 ### 14.3 Test layers inside the SDK
 

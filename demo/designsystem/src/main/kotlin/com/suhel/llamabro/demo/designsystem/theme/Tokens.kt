@@ -16,9 +16,16 @@ class DemoColors(
     val bubble: Color,
     /** The primary: the ink itself, so the app has no hue of its own. */
     val accent: Color,
-    /** Content on an [accent] fill (a primary button's label, the send glyph): white in light, near-black in dark. */
+    /** Content on an [accent] fill (a primary button's label): white in light, near-black in dark. */
     val onAccent: Color,
     val accentSoft: Color,
+    /**
+     * The fill of the message bar's send (and stop) and Think-on circles, and nothing else (D73): an indigo from the
+     * icon's night and violet mane, so the two buttons the bar acts with stand apart without the ink's weight.
+     */
+    val sendAccent: Color,
+    /** The glyph on a [sendAccent] fill: white in light, near-black in dark. */
+    val onSendAccent: Color,
     val greatTint: Color,
     val greatInk: Color,
     val slowTint: Color,
@@ -42,6 +49,8 @@ val Light =
         accent = Color(0xFF0D0D0D),
         onAccent = Color(0xFFFFFFFF),
         accentSoft = Color(0xFFEBEBEB),
+        sendAccent = Color(0xFF4F5BD5),
+        onSendAccent = Color(0xFFFFFFFF),
         greatTint = Color(0xFFEDF0EC),
         greatInk = Color(0xFF3E5641),
         slowTint = Color(0xFFF3EEE5),
@@ -63,6 +72,8 @@ val Dark =
         accent = Color(0xFFECECEC),
         onAccent = Color(0xFF0A0A0A),
         accentSoft = Color(0xFF262626),
+        sendAccent = Color(0xFF8E9BFF),
+        onSendAccent = Color(0xFF0A0A0A),
         greatTint = Color(0xFF1A1F1B),
         greatInk = Color(0xFFA9C3AA),
         slowTint = Color(0xFF221E18),

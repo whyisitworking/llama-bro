@@ -12,21 +12,18 @@ import com.suhel.llamabro.demo.designsystem.components.BottomTab
 import com.suhel.llamabro.demo.designsystem.components.BottomTabs
 import com.suhel.llamabro.demo.designsystem.components.DemoDrawer
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
+import com.suhel.llamabro.demo.designsystem.components.DrawerActions
 import com.suhel.llamabro.demo.designsystem.components.Gap
+import com.suhel.llamabro.demo.designsystem.components.GapAbove
 import com.suhel.llamabro.demo.designsystem.components.GroupedLazyList
-import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.IconAction
 import com.suhel.llamabro.demo.designsystem.components.InitialAvatar
 import com.suhel.llamabro.demo.designsystem.components.LayoutKind
 import com.suhel.llamabro.demo.designsystem.components.LayoutPreviewCard
 import com.suhel.llamabro.demo.designsystem.components.ListEntry
 import com.suhel.llamabro.demo.designsystem.components.ListGroup
-import com.suhel.llamabro.demo.designsystem.components.ListRow
-import com.suhel.llamabro.demo.designsystem.components.PrimaryButton
-import com.suhel.llamabro.demo.designsystem.components.Stack
 import com.suhel.llamabro.demo.designsystem.components.TopBar
 import com.suhel.llamabro.demo.designsystem.components.TopBarTitle
-import com.suhel.llamabro.demo.designsystem.components.gutterPadding
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 
 internal val SampleTabs =
@@ -76,12 +73,7 @@ internal fun DrawerSample() {
         open = true,
         onOpenChange = {},
         drawerContent = {
-            Stack(Gap.Item, Modifier.gutterPadding()) {
-                PrimaryButton("New chat", {}, Modifier.fillMaxWidth())
-                GroupedList {
-                    row { ListRow("Models", leading = DemoIcons.Models, trailing = "3 on this phone") }
-                }
-            }
+            GapAbove(Gap.Item)
             GroupedLazyList(
                 listOf(
                     ListGroup("Today", listOf(ListEntry(1, "Portfolio bio", true), ListEntry(2, "Trip plan", false))),
@@ -90,6 +82,7 @@ internal fun DrawerSample() {
                 onLongClick = {},
                 modifier = Modifier.weight(1f),
             )
+            DrawerActions("Models, 3 on this phone", onSettings = {}, onModels = {}, onNewChat = {})
         },
     ) {
         com.suhel.llamabro.demo.designsystem.components

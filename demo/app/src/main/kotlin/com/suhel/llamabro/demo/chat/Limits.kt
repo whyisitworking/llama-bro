@@ -16,6 +16,7 @@ enum class LimitAction {
     Retry,
     AddToken,
     SwitchModel,
+    OpenMemorySettings,
 }
 
 /**
@@ -56,6 +57,18 @@ object Limits {
             "$name is using more memory than was free. Android may close apps in the background.",
             LimitAction.TrySmallerSize,
             "Smaller size",
+            dismissible = true,
+        )
+
+    /**
+     * The model runs on another chip than the one chosen in Settings › Memory (D72), with the gist of why. A note: the
+     * reply goes on, on the chip that loaded it. **Settings** opens the choice.
+     */
+    fun chipFallback(name: String, fallback: ChipFallback) =
+        Limit(
+            "$name is running on the ${fallback.runsOn.label}: ${fallback.why}.",
+            LimitAction.OpenMemorySettings,
+            "Settings",
             dismissible = true,
         )
 

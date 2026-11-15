@@ -23,8 +23,11 @@ public interface Engine {
     public fun fitEstimate(configJson: String): String =
         """{"fits":null,"n_ctx":null,"n_ctx_min":4096,"used_min_mib":0,"used_max_mib":null,"budget_mib":null}"""
 
-    /** `lb_model_load`. A real engine throws on failure. */
-    public fun load(configJson: String, onProgress: (Float) -> Unit): EngineModel
+    /**
+     * `lb_model_load`. A real engine throws on failure. [onProgress] answers whether to go on: `false` stops the load
+     * at that tick, and the engine frees what it read and throws [NativeError] with [NativeError.CANCELLED] (D67).
+     */
+    public fun load(configJson: String, onProgress: (Float) -> Boolean): EngineModel
 }
 
 @InternalLlamaBroApi

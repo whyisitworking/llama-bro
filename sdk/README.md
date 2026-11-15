@@ -21,7 +21,10 @@ class ChatViewModel(private val llama: LlamaBro, private val path: String) : Vie
 
     init {
         viewModelScope.launch {
-            val m = llama.loadModel(ModelSource.file(path)) { onProgress { loading.value = it } }
+            val m =
+                llama.loadModel(ModelSource.file(path)) {
+                    onProgress { if (it is LoadProgress.Loading) loading.value = it.fraction }
+                }
             model = m
             chat = m.conversation(system = "You are a helpful assistant.")
             loading.value = null
@@ -143,14 +146,43 @@ assertTrue(fake.chatRequests[1].contains("\"role\":\"tool\""))
 
 Tool handlers can be tested alone with `JsonArgs.parse("""{"city":"Paris"}""")`.
 
+With the hub, add `testImplementation("io.github.whyisitworking:llamabro-hub-testing")`. `FakeLlamaBroHub` is the real
+`LlamaBroHub` over a scripted Hugging Face Hub and a temporary folder, so search, files, downloads, `hasUpdate`,
+recommended sampling and the installed copy behave as in the app, with no network (D70, D75):
+
+```kotlin
+val fakeHub = FakeLlamaBroHub {
+    downloadMillis = 400                     // pace downloads so their progress shows
+    repo("unsloth/Qwen3-4B-GGUF") {
+        baseModel = "Qwen/Qwen3-4B"          // search groups uploads under it
+        downloads = 900
+        gguf("Qwen3-4B-Q4_K_M.gguf", sampling = Sampling { temperature = 0.7f })
+        gguf("mmproj-F16.gguf")
+    }
+    repo("Qwen/Qwen3-4B") { generationConfig("""{"temperature":0.6,"top_k":20}""") }
+}
+val fake = FakeLlamaBro { reply { content("Hello!") } }
+val vm = ModelsViewModel(fakeHub.hub, fake.llamaBro)
+…
+fake.llamaBro.loadModel(fakeHub.hub.model("unsloth/Qwen3-4B-GGUF:Q4_K_M"))   // downloads, then loads
+fakeHub.offline = true                       // HubException.Network from here on
+```
+
+A repo that isn't declared is `NotFound`, a `gated` one `Unauthorized`; `rateLimit(…)`, `offline` and `freeBytes` give
+`RateLimited`, `Network` and `InsufficientStorage`. Declaring a repo again publishes a new commit, which `hasUpdate`
+reports, and `requests` lists every request the hub made.
+
 ## Loading
 
 ```kotlin
 llama.loadModel(ModelSource.file(path)) {
     contextSize = ContextSize.Fixed(8192)    // default ContextSize.Auto, see "Context size"
-    onProgress { fraction -> … }
+    onProgress { p -> … }                    // LoadProgress.Loading(fraction); Fetching(download) for a remote source
 }
 ```
+
+A `RemoteModelSource` (the hub's, or an app's own) is fetched first, reporting `LoadProgress.Fetching`, and its local
+files then load as any file would; `estimateFit` on one reads only its headers (D64, D75).
 
 `model.info` gives the context size, vision and audio support, template capabilities and the GGUF's metadata.
 `model.close()` returns at once; `closeAndJoin()` waits until the memory is freed. Loading the next model waits for
@@ -213,14 +245,31 @@ implementation("io.github.whyisitworking:llamabro-hub")
 
 ```kotlin
 val hub = LlamaBroHub.create(application)
+try {
+    val fit = llama.estimateFit(hub.model("unsloth/Qwen3.5-4B-GGUF:Q4_K_M"))   // headers only before a download
+    val model = llama.loadModel(hub.model("unsloth/Qwen3.5-4B-GGUF:Q4_K_M"))   // downloads if needed, then loads
+} catch (e: HubException) {
+    // the source's own failure, unchanged: Network (offline with nothing installed), Unauthorized (a gated repo),
+    // NotFound (a removed repo or tag), InsufficientStorage; e.retryable says whether trying later can help
+}
+```
+
+`hub.model(ref)` loads the installed copy (the last download that completed) with no network request; with none it
+resolves the files as `-hf` does and downloads them, reporting `LoadProgress.Fetching` before `LoadProgress.Loading`.
+Looking at the Hub (`hub.plan`) never changes what loads. A newer commit replaces the installed copy only when the app
+asks and its download completes: `hub.hasUpdate(ref)`, then `hub.download(ref)`; a cancelled update leaves the installed
+copy loading, offline too. Once an update completes, the files only the replaced copy used are removed, so it doesn't
+double the storage; files another selection or tag still uses stay. `hasUpdate` is false offline, but an error the Hub
+answers with (a refusal, a removed repo, a 5xx) is thrown, so "no update" is never a guess. For a download screen, use
+the steps underneath:
+
+```kotlin
 val ref = HfModel("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")
 val plan = hub.plan(ref)                         // selected GGUF files and their total size
-val fit = hub.estimateFit(plan, llama)           // bounded headers only; no weights downloaded
 hub.download(ref).collect { progress ->         // bytes, file, speed, ETA and phase
     showProgress(progress.bytesDone, progress.bytesTotal)
 }
-val source = hub.source(ref)                     // local ModelSource, including projector or draft
-val model = llama.loadModel(source)
+val source = hub.source(ref)                     // the installed copy as a ModelSource, offline only
 ```
 
 `download` resumes a partial transfer after the process restarts and verifies each file's published digest before
@@ -253,21 +302,6 @@ object LlamaBroModule {
 A worker or job service started in a fresh process must reach the same config, so keep it where the `Application`
 holds it (the [`download` acceptance app](acceptance/download) keeps it as a property) and pass it to `create`.
 
-An app owns scheduling and the notification. The demo's [`DownloadWorker`](../demo/app/src/main/kotlin/com/suhel/llamabro/demo/models/DownloadWorker.kt) uses a
-`CoroutineWorker` with a foreground notification and returns `Result.retry()` for retryable Hub errors:
-
-```kotlin
-override suspend fun doWork(): Result = try {
-    setForeground(foregroundInfo())
-    hub.download(HfModel(inputData.getString("ref")!!)).collect { update ->
-        setForeground(foregroundInfo(update))
-    }
-    Result.success()
-} catch (error: HubException) {
-    if (error.retryable) Result.retry() else Result.failure()
-}
-```
-
 Configure a private token provider in the `HubConfig` you pass to `LlamaBroHub.create`; the Hub calls it before each
 plan or download and sends the token only to the Hub endpoint, never to a redirect target:
 
@@ -279,6 +313,90 @@ val hub = LlamaBroHub.create(context, hubConfig)
 
 `HubException` distinguishes network failures, unauthorized access, missing files, rate limits, insufficient
 storage and integrity failures. Its `retryable` flag tells a background worker whether another attempt can help.
+
+### Background downloads
+
+The optional `llamabro-hub-work` runs a download as WorkManager work that outlives the app's process, so the hub
+itself doesn't depend on `androidx.work` (D64, D75):
+
+```kotlin
+implementation("io.github.whyisitworking:llamabro-hub-work")
+```
+
+Register `LlamaBroWorkerFactory(hub)` in WorkManager's configuration, so the worker uses your own hub and its config,
+then enqueue:
+
+```kotlin
+class App : Application(), Configuration.Provider {
+    val hub by lazy { LlamaBroHub.create(this, hubConfig) }
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder().setWorkerFactory(LlamaBroWorkerFactory(hub)).build()
+}
+
+val work = WorkManager.getInstance(context)
+work.enqueueDownload(HfModel("unsloth/Qwen3.5-4B-GGUF:Q4_K_M"))   // unique per model and options; KEEP while queued
+work.cancelDownload(HfModel("unsloth/Qwen3.5-4B-GGUF:Q4_K_M"))    // the partial files stay; enqueue again resumes
+
+// When to run is the app's call: the default is any network
+val wifiOnly =
+    Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).setRequiresStorageNotLow(true).build()
+work.enqueueDownload(HfModel("unsloth/Qwen3.5-4B-GGUF:Q4_K_M"), constraints = wifiOnly)
+```
+
+Supplying your own configuration means removing WorkManager's default initializer from the merged manifest
+(`androidx.work.WorkManagerInitializer`, `tools:node="remove"`), as WorkManager's guide describes. With Hilt, add the
+factory next to Hilt's own:
+
+```kotlin
+@HiltAndroidApp
+class App : Application(), Configuration.Provider {
+    @Inject lateinit var hiltWorkerFactory: HiltWorkerFactory
+    @Inject lateinit var hub: LlamaBroHub
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(
+                DelegatingWorkerFactory().apply {
+                    addFactory(LlamaBroWorkerFactory(hub))   // creates only its own worker
+                    addFactory(hiltWorkerFactory)
+                },
+            ).build()
+}
+```
+
+The work waits for its constraints (by default any network; with charging, idle or battery-not-low it isn't expedited,
+which WorkManager refuses with those), runs expedited where the quota allows and as a `dataSync` foreground service, and
+retries a retryable `HubException` with exponential backoff. Each try resumes the partial files, and only tries that
+move no bytes count: after five of those in a row it fails. Watch it with `hub.progress(ref)`, or through WorkManager
+with `downloadWorkName(ref)` and the `DownloadWorkProgress` keys; both the notification and that progress update about
+once a second. The module's manifest declares the foreground service type and its permissions, and
+`POST_NOTIFICATIONS`. `FOREGROUND_SERVICE_DATA_SYNC` merges into your app's manifest, so an app targeting API 34+ on
+Google Play must complete Play Console's foreground service declaration for `dataSync`.
+
+The notifications work with no setup: while it runs, the model's name, a progress bar with the size and the time left,
+and Cancel; when it ends, "Downloaded" or "Download failed"; all in a "Downloads" channel the SDK creates. To change
+them, subclass `DownloadNotifications` and pass it to the factory:
+
+```kotlin
+object MyNotifications : DownloadNotifications() {
+    override fun downloading(context: Context, download: RunningDownload): Notification =
+        downloadingBuilder(context, download).setSmallIcon(R.drawable.ic_download).setContentIntent(openModels).build()
+
+    override fun finished(context: Context, model: HfModel): Notification? = null   // none
+}
+
+LlamaBroWorkerFactory(hub, MyNotifications)
+```
+
+On Android 13+ notifications show only once the app holds `POST_NOTIFICATIONS`. The SDK never asks for it: request it
+at run time when it suits your app. Without it the download runs all the same, with its notifications hidden.
+An app that wants no notification permission at all removes the declaration from its merged manifest, with
+`xmlns:tools="http://schemas.android.com/tools"` declared on its `<manifest>` element:
+
+```xml
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" tools:node="remove" />
+```
 
 ## Context size
 

@@ -155,7 +155,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             try {
                 val choice = hub.plan(model)
-                val fit = hub.estimateFit(choice, LlamaBro.create(this@MainActivity))
+                val fit = LlamaBro.create(this@MainActivity).estimateFit(hub.model(model))
                 status.text =
                     buildString {
                         append("${choice.files.size} files, ${choice.bytesTotal / BYTES_PER_MIB} MB total\n")

@@ -23,19 +23,40 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
      * ```
      * val model = llama.loadModel(ModelSource.file(path)) {
      *     contextSize = ContextSize.Fixed(4096)
-     *     onProgress { fraction -> progress.value = fraction }
+     *     onProgress { p -> if (p is LoadProgress.Loading) progress.value = p.fraction }
      * }
      * ```
+     * Cancelling the calling coroutine stops the load while it reads weights (the model's, a draft's, an image
+     * encoder's): it ends at the next progress tick, frees what it read and throws `CancellationException`. The stages
+     * after the last tick finish first (creating the context, warm-up, compiling GPU kernels, opening an NPU
+     * session; with an image encoder or a draft, the text model's context and warm-up come before their stages, and a
+     * cancel then stops at the next stage's tick). The model they produce is then freed and `CancellationException`
+     * thrown, so a cancelled call leaves nothing open either way (D67). A device or encoder fallback or a
+     * [MemoryCheck.Warn] retry isn't started after a cancel.
+     *
+     * A [RemoteModelSource] is fetched first ([LoadProgress.Fetching]), then its local files load as above; a cancel
+     * during the fetch starts no load (D75).
+     *
      * @throws LlamaBroException.ModelLoadFailed
      * @throws LlamaBroException.DeviceUnavailable with [DevicePolicy.Only] when no device of that kind could load it
      *   (or none is in the app), or when every device [DevicePolicy.Auto] or [DevicePolicy.Prefer] tried failed.
      * @throws LlamaBroException.InvalidRequest if the runtime was already initialised in this process with another
      *   [LlamaBroConfig].
+     * @throws Exception whatever a [RemoteModelSource]'s [RemoteModelSource.fetch] throws, unchanged: for the hub's
+     *   `hub.model(…)` a `HubException` (`Network` when it is offline with nothing installed, `Unauthorized`,
+     *   `NotFound`, `InsufficientStorage`), so catch those where the source can fail.
      */
     public suspend fun loadModel(source: ModelSource, configure: ModelConfig.() -> Unit = {}): Model =
         runtime.load(source, ModelConfig().apply(configure))
 
-    /** Projects the chosen device's memory and context from GGUF headers without loading weights. */
+    /**
+     * Projects the chosen device's memory and context from GGUF headers without loading weights. A
+     * [RemoteModelSource] lends its headers through [RemoteModelSource.withHeaders] and downloads no weights (D75).
+     *
+     * @throws Exception whatever a [RemoteModelSource]'s [RemoteModelSource.withHeaders] throws, unchanged: for the
+     *   hub's `hub.model(…)` a `HubException` (`Network` when it is offline with nothing installed, `Unauthorized`,
+     *   `NotFound`).
+     */
     public suspend fun estimateFit(source: ModelSource, configure: ModelConfig.() -> Unit = {}): FitEstimate =
         runtime.estimateFit(source, ModelConfig().apply(configure))
 
