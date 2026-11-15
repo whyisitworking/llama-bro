@@ -1,5 +1,6 @@
 package com.suhel.llamabro.sample
 
+import android.app.ActivityManager
 import android.os.Debug
 import android.os.StrictMode
 import android.util.Log
@@ -37,7 +38,7 @@ import kotlin.concurrent.thread
 @RunWith(AndroidJUnit4::class)
 class LifecycleDeviceTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
-    private val llama = LlamaBro.getInstance(context)
+    private val llama = LlamaBro.create(context)
 
     private fun file(name: String): String {
         val f = File(context.filesDir, name)
@@ -74,9 +75,36 @@ class LifecycleDeviceTest {
         return run
     }
 
-    private fun pssMib(): Long {
+    /**
+     * The phone's used memory (total minus available), MiB. Not this process's PSS: since b12352 ggml-hexagon's
+     * weights live in DSP buffers that PSS doesn't count (76 MiB PSS for a 3 GB model on the NPU), while
+     * MemAvailable still drops by the model's size (F121).
+     */
+    private fun usedMib(): Long {
         Runtime.getRuntime().gc()
-        return Debug.getPss() / 1024
+        return usedMibNow()
+    }
+
+    /**
+     * [usedMib] once it holds still: an earlier test's NPU model gives its memory back about a second after close
+     * (F124), so a baseline read too early carries it. Two readings 500 ms apart within 64 MiB, at most 5 s.
+     */
+    private fun settledMib(): Long {
+        var last = usedMib()
+        repeat(SETTLE_TRIES) {
+            Thread.sleep(SETTLE_STEP_MS)
+            val now = usedMibNow()
+            if (kotlin.math.abs(now - last) < SETTLE_MIB) return now
+            last = now
+        }
+        return last
+    }
+
+    /** [usedMib] without the collection, for sampling every 20 ms. */
+    private fun usedMibNow(): Long {
+        val am = context.getSystemService(ActivityManager::class.java)
+        val mi = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+        return (mi.totalMem - mi.availMem) / (1024 * 1024)
     }
 
     private fun log(msg: String) = Log.i("Lifecycle", msg)
@@ -132,36 +160,47 @@ class LifecycleDeviceTest {
     @Test
     fun closeDuringGenerationFreesMemory() =
         runBlocking {
-            val baseline = pssMib()
+            val baseline = usedMib()
             log("closeDuringGenerationFreesMemory baseline: ${breakdown()}")
             val model = load(QWEN)
             val run = generate(model)
-            val loaded = pssMib()
+            val loaded = usedMib()
             log("closeDuringGenerationFreesMemory loaded: ${breakdown()}")
             val t0 = System.nanoTime()
             model.closeAndJoin()
             val joinMs = (System.nanoTime() - t0) / 1_000_000
             run.await()
-            val after = pssMib()
+            // the NPU's buffers come back about a second after close returns (F124): wait up to 5 s for them
+            val fileMib = File(context.filesDir, QWEN).length() / (1024 * 1024)
+            var after = usedMib()
+            val waitStart = System.nanoTime()
+            while (loaded - after < fileMib * 8 / 10 && System.nanoTime() - waitStart < 5_000_000_000L) {
+                Thread.sleep(100)
+                after = usedMibNow()
+            }
+            val settleMs = (System.nanoTime() - waitStart) / 1_000_000
             log("closeDuringGenerationFreesMemory after: ${breakdown()}")
             log(
-                "closeDuringGenerationFreesMemory baseline_mib=$baseline loaded_mib=$loaded after_mib=$after close_and_join_ms=$joinMs",
+                "closeDuringGenerationFreesMemory baseline_mib=$baseline loaded_mib=$loaded after_mib=$after " +
+                    "close_and_join_ms=$joinMs settle_ms=$settleMs",
             )
-            assertTrue("the model took no memory? loaded=$loaded baseline=$baseline", loaded - baseline > 500)
+            // what close returns, against the model's file: a baseline can carry memory an earlier test's model is
+            // still giving back (F124), which made "back to baseline" fail on noise
             assertTrue(
-                "PSS after close $after MiB, baseline $baseline MiB",
-                after - baseline < (loaded - baseline) / 10,
+                "close returned ${loaded - after} MiB of a $fileMib MiB model (baseline $baseline, loaded $loaded, " +
+                    "after $after)",
+                loaded - after >= fileMib * 8 / 10,
             )
         }
 
-    /** Close A while it generates, load B at once: peak PSS stays near one model's, never A's plus B's. */
+    /** Close A while it generates, load B at once: peak used memory stays near one model's, never A's plus B's. */
     @Test
     fun closeThenLoadNeverHoldsTwoModels() =
         runBlocking {
-            val baseline = pssMib()
+            val baseline = settledMib()
             val a = load(QWEN)
             val run = generate(a)
-            val aMib = pssMib() - baseline
+            val aMib = usedMib() - baseline
             val sampling =
                 java.util.concurrent.atomic
                     .AtomicBoolean(true)
@@ -171,7 +210,7 @@ class LifecycleDeviceTest {
             val sampler =
                 thread {
                     while (sampling.get()) {
-                        peak.accumulateAndGet(Debug.getPss() / 1024, ::maxOf)
+                        peak.accumulateAndGet(usedMibNow(), ::maxOf)
                         Thread.sleep(20)
                     }
                 }
@@ -180,7 +219,7 @@ class LifecycleDeviceTest {
             sampling.set(false)
             sampler.join()
             run.await()
-            val bMib = pssMib() - baseline
+            val bMib = usedMib() - baseline
             b.closeAndJoin()
             val peakMib = peak.get() - baseline
             log(
@@ -196,5 +235,8 @@ class LifecycleDeviceTest {
     private companion object {
         const val QWEN = "Qwen3.5-4B-Q4_K_M.gguf"
         const val LLAMA = "Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+        const val SETTLE_TRIES = 10
+        const val SETTLE_STEP_MS = 500L
+        const val SETTLE_MIB = 64L
     }
 }

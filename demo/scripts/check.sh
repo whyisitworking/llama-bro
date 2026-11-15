@@ -3,7 +3,7 @@
 #   unit      JVM tests of :designsystem (tokens, theme mapping, contrast) and :app
 #   lint      Android lint on :app and :designsystem, warnings as errors
 #   assemble  debug APK, the minified (R8) release APK signed with the debug key, and the device-test APKs
-#   ds        the component library's gates: the Compose compiler's stability report (scripts/stability.py), and no raw colour, text style, shape, shadow or Material widget in
+#   ds        the component library's gates: the Compose compiler's stability report (scripts/stability.py), and no raw colour, text style, shape, shadow, motion or Material widget in
 #             demo/app/src/main, and (D48) no number, padding or font override in a screen and no role overridden
 #   quality   ktlint and detekt over every Kotlin module (the root build's `qualityCheck`)
 #   device    (--device) :designsystem's and :app's instrumented tests on the
@@ -18,7 +18,7 @@
 #             it never runs by default; the results and Perfetto traces are kept in demo/build/check/perf
 #   real      (--device --real) the end-to-end journey on the phone with real models from huggingface.co
 #             (scripts/e2e/real_model_e2e.py): long (about 30 to 45 minutes) and it downloads about 4 GB, so it is NOT
-#             a routine gate (playbook 4a: a gate runs once; no long runs on the user's phone; ask first);
+#             a routine gate (docs/testing.md: a step that passed once is not repeated; device runs are short; ask first);
 #             the log, results and pictures are kept in demo/build/check/real
 #   map       every test the requirement map names exists and passed in the latest results (scripts/map_check.py)
 #
@@ -53,6 +53,8 @@ if [ -n "$only" ]; then
             *) echo "unknown step for --only: $step (steps: $steps)"; exit 2 ;;
         esac
     done
+    # run() matches a comma list: a space list ("lint quality") once passed this check, ran nothing and said ALL PASS
+    only="$(echo "$only" | tr -s ' ' ',')"
 fi
 
 if [ $perf -eq 1 ] && [ $device -eq 0 ]; then echo "--perf needs --device"; exit 2; fi
@@ -81,6 +83,7 @@ gradle() { (cd "$root" && ./gradlew "$@"); }
 
 # Global constraints, "Design system only": these never appear in :app's main sources.
 raw_visuals='(^|[^A-Za-z0-9_])((Color|TextStyle|RoundedCornerShape|CutCornerShape)\(|Color\.[A-Z]|(Button|OutlinedButton|TextButton|ElevatedButton|FilledTonalButton|IconButton|FloatingActionButton|ExtendedFloatingActionButton|SmallFloatingActionButton|Card|ElevatedCard|OutlinedCard|TextField|OutlinedTextField|ListItem|Surface|ModalBottomSheet|BottomSheetScaffold|TopAppBar|CenterAlignedTopAppBar|MediumTopAppBar|LargeTopAppBar|NavigationBar|NavigationBarItem|NavigationRail|AssistChip|FilterChip|SuggestionChip|InputChip|LinearProgressIndicator|CircularProgressIndicator|HorizontalDivider|VerticalDivider|Divider|Checkbox|RadioButton|Switch|Slider|SegmentedButton|SingleChoiceSegmentedButtonRow|Badge|BadgedBox)[[:space:]]*[({])|\.shadow\('
+raw_motion='(^|[^A-Za-z0-9_.])(tween|spring|keyframes|AnimatedVisibility|animateItem|animate[A-Z][A-Za-z]*AsState|rememberInfiniteTransition)\('
 
 design_system_only() {
     local hits
@@ -90,7 +93,14 @@ design_system_only() {
         echo "$hits"
         return 1
     fi
-    echo "demo/app/src/main: no raw colour, text style, shape, shadow or Material widget"
+    # motion too comes from the design system (DemoMotion's durations and easings, in its components)
+    hits="$(grep -rnE "$raw_motion" "$root/demo/app/src/main" --include='*.kt' || true)"
+    if [ -n "$hits" ]; then
+        echo "raw motion in :app; use a :designsystem component (Reveal, messageMotion, TypingDots...):"
+        echo "$hits"
+        return 1
+    fi
+    echo "demo/app/src/main: no raw colour, text style, shape, shadow, motion or Material widget"
 }
 
 # Font sizes come from DemoType and spacing from DemoSpacing: no sizes in sp, and no dp literal (but 0) in a padding,
@@ -118,6 +128,22 @@ screens_have_no_numbers() {
         return 1
     fi
     echo "demo/app/src/main: no number, padding or font override in a screen; roles used whole"
+    components_use_the_scale
+}
+
+# The components take every size from the scales in theme/ (DemoSpacing, DemoSize, DemoShapes): no dp literal but 0
+# (previews in samples/ excepted)
+# outside theme/, so sizes rank the same way everywhere and a change to the scale reaches every component.
+components_use_the_scale() {
+    local hits
+    hits="$(grep -rnE '[0-9]\.?[0-9]*\.dp\b' "$root/demo/designsystem/src/main" --include='*.kt' | grep -vE '/(theme|samples)/' |
+        grep -vE '[^0-9.]0\.dp\b' || true)"
+    if [ -n "$hits" ]; then
+        echo "a component takes its sizes from DemoSpacing, DemoSize and DemoShapes, not a dp literal:"
+        echo "$hits"
+        return 1
+    fi
+    echo "demo/designsystem: every size from the scales in theme/"
 }
 
 step_ds() {
@@ -167,39 +193,58 @@ journeys="com.suhel.llamabro.demo.journey"
 monkeys="com.suhel.llamabro.demo.monkey"
 denied="com.suhel.llamabro.demo.journey.NotificationDeniedJourney"
 runner_arg() { echo "-Pandroid.testInstrumentationRunnerArguments.$1=$2"; }
+# a test that hangs fails after 10 minutes instead of holding the gate for hours (F129)
+per_test_limit="$(runner_arg timeout_msec 600000)"
 
 # each connected run overwrites the device's coverage file: keep them all, and put them back for the report
 kept="$logs/coverage"
 device_coverage="$root/demo/app/build/outputs/code_coverage/debugAndroidTest/connected"
 device_results="$root/demo/app/build/outputs/androidTest-results/connected"
 keep_coverage() {
+    # this run's results only: a stale file from an earlier run must not count as tests that ran
+    rm -rf "$logs/results/$1"
     mkdir -p "$kept" "$logs/results/$1"
     cp "$device_results"/*/*.xml "$logs/results/$1/" 2>/dev/null
+    # AGP 9.5 writes <device>/coverage_data/coverage.ec, earlier versions <device>/coverage.ec
     local file
-    for file in "$device_coverage"/*/coverage.ec; do
-        [ -f "$file" ] && cp "$file" "$kept/$1.ec"
-    done
+    while IFS= read -r file; do
+        cp "$file" "$kept/$1.ec"
+    done < <(find "$device_coverage" -name coverage.ec 2>/dev/null)
+    # a run that installed nothing (a full emulator) reports zero tests and a successful build: that is not a pass
+    if ! grep -qsE 'tests="[1-9]' "$logs/results/$1"/*.xml; then
+        echo "no $1 test ran (see $logs/$1.log: an install that failed?)"
+        return 1
+    fi
     return 0
 }
 
 device_tests() {
     rm -rf "$logs/results" "$kept"
-    gradle :demo:designsystem:connectedDebugAndroidTest || return 1
-    gradle :demo:app:connectedDebugAndroidTest "$(runner_arg notPackage "$journeys,$monkeys")" || return 1
-    keep_coverage device
+    gradle :demo:designsystem:connectedDebugAndroidTest "$per_test_limit" || return 1
+    # results and coverage are kept whether or not a test failed: the next run overwrites them
+    gradle :demo:app:connectedDebugAndroidTest "$(runner_arg notPackage "$journeys,$monkeys")" "$per_test_limit"
+    local status=$?
+    keep_coverage device || return 1
+    return $status
 }
 
 journey_tests() {
     # a fresh install each (the gradle run uninstalls at its end): the system asks about notifications once
-    gradle :demo:app:connectedDebugAndroidTest "$(runner_arg class "$denied")" || return 1
-    keep_coverage denied
-    gradle :demo:app:connectedDebugAndroidTest "$(runner_arg package "$journeys")" "$(runner_arg notClass "$denied")" || return 1
-    keep_coverage journeys
+    gradle :demo:app:connectedDebugAndroidTest "$(runner_arg class "$denied")" "$per_test_limit"
+    local status=$?
+    keep_coverage denied || return 1
+    [ $status -eq 0 ] || return $status
+    gradle :demo:app:connectedDebugAndroidTest "$(runner_arg package "$journeys")" "$(runner_arg notClass "$denied")" "$per_test_limit"
+    status=$?
+    keep_coverage journeys || return 1
+    return $status
 }
 
 monkey_tests() {
-    gradle :demo:app:connectedDebugAndroidTest "$(runner_arg package "$monkeys")" || return 1
-    keep_coverage monkey
+    gradle :demo:app:connectedDebugAndroidTest "$(runner_arg package "$monkeys")" "$per_test_limit"
+    local status=$?
+    keep_coverage monkey || return 1
+    return $status
 }
 
 step_device() { with_fake_hub device_tests; }
@@ -213,9 +258,10 @@ step_monkey() {
 }
 
 step_coverage() {
-    local dir
-    dir="$(ls -d "$device_coverage"/*/ 2>/dev/null | head -1)"
-    [ -n "$dir" ] && [ -d "$kept" ] && cp "$kept"/*.ec "$dir" 2>/dev/null
+    local last
+    # beside the file the last run wrote, at whatever depth this AGP puts it
+    last="$(find "$device_coverage" -name coverage.ec 2>/dev/null | head -1)"
+    [ -n "$last" ] && [ -d "$kept" ] && cp "$kept"/*.ec "$(dirname "$last")" 2>/dev/null
     gradle :demo:app:createDebugUnitTestCoverageReport :demo:app:createDebugAndroidTestCoverageReport \
         -x :demo:app:testDebugUnitTest -x :demo:app:connectedDebugAndroidTest || return 1
     python3 "$root/demo/scripts/coverage.py" "$root/demo"
@@ -302,5 +348,7 @@ run quality  gradle qualityCheck
 
 echo
 [ ${#results[@]} -gt 0 ] && printf '%s\n' ${results[@]+"${results[@]}"}
+# a step named in --only that needs --device (or --perf, --real) without it runs nothing: that is not a pass
+if [ ${#results[@]} -eq 0 ]; then echo "NO STEP RAN (a device step needs --device)"; exit 1; fi
 if [ $failed -ne 0 ]; then echo "SOME CHECKS FAILED"; elif [ $skipped -ne 0 ]; then echo "PASS, WITH SKIPPED OR PARTIAL STEPS (see SKIP above)"; else echo "ALL PASS"; fi
 exit $failed

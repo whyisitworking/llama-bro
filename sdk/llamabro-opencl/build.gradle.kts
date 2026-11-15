@@ -8,7 +8,7 @@ group = "io.github.whyisitworking"
 // Qualcomm's image by sdk/native/scripts/build-backends.sh. Being on the classpath is enough (F61).
 android {
     namespace = "com.suhel.llamabro.opencl"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 29

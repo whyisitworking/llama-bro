@@ -1,16 +1,19 @@
 package com.suhel.llamabro.demo.data
 
+import com.suhel.llamabro.demo.chat.Knobs
 import com.suhel.llamabro.demo.data.db.ChatDao
 import com.suhel.llamabro.demo.data.db.ChatEntity
 import com.suhel.llamabro.demo.data.db.MessageEntity
 import com.suhel.llamabro.demo.data.db.NEW_CHAT_TITLE
+import com.suhel.llamabro.demo.data.db.ReplyStats
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.io.File
 
 enum class MessageKind { User, Assistant, Switch }
 
-enum class MessageState { Done, Held, Streaming, Stopped, Failed }
+/** [Cut]: the reply reached its length limit (D60); it keeps what it wrote and can be continued. */
+enum class MessageState { Done, Held, Streaming, Stopped, Cut, Failed }
 
 data class ChatSummary(
     val id: Long,
@@ -40,6 +43,8 @@ data class StoredMessage(
     val wordsPerSecond: Double?,
     val state: MessageState,
     val failure: String?,
+    /** A finished reply's measurements; null for other messages and for replies stored before they were kept. */
+    val stats: ReplyStats? = null,
 )
 
 /** A row to append; [images] are file names in the [ImageStore]; [sentAt] defaults to the repository's clock. */
@@ -64,6 +69,7 @@ data class MessageChange(
     val wordsPerSecond: Double? = null,
     val state: MessageState? = null,
     val failure: String? = null,
+    val stats: ReplyStats? = null,
 )
 
 /** Room is the source of truth for chats (demo design §3). Every call runs on Room's own threads. */
@@ -87,7 +93,7 @@ class ChatRepository(private val dao: ChatDao, private val imageStore: ImageStor
                     it.modelKey,
                     it.lastText,
                     it.lastFromUser,
-                    lastStopped = it.lastState == "stopped",
+                    lastStopped = it.lastState == "stopped" || it.lastState == "cut",
                     isEmpty = it.lastState.isEmpty(),
                 )
             }
@@ -96,6 +102,10 @@ class ChatRepository(private val dao: ChatDao, private val imageStore: ImageStor
 
     fun messages(chatId: Long): Flow<List<StoredMessage>> =
         dao.messages(chatId).map { rows -> rows.map { it.toStored() } }
+
+    /** When each model (by key) last answered, for the library; re-read as replies are written. */
+    fun lastUsed(): Flow<Map<String, Long>> =
+        dao.lastUseByModel().map { rows -> rows.associate { it.modelKey to it.lastUsed } }
 
     suspend fun createChat(modelKey: String): Long {
         val now = clock()
@@ -129,6 +139,7 @@ class ChatRepository(private val dao: ChatDao, private val imageStore: ImageStor
                 reasoning = change.reasoning ?: old.reasoning,
                 reasoningMillis = change.reasoningMillis ?: old.reasoningMillis,
                 wordsPerSecond = change.wordsPerSecond ?: old.wordsPerSecond,
+                stats = change.stats ?: old.stats,
                 state = change.state?.key ?: old.state,
                 failure =
                     change.failure
@@ -147,6 +158,15 @@ class ChatRepository(private val dao: ChatDao, private val imageStore: ImageStor
     suspend fun setModel(chatId: Long, modelKey: String) {
         val chat = dao.chat(chatId) ?: return
         dao.updateChat(chat.copy(modelKey = modelKey))
+    }
+
+    /** The chat's own sampling values (D60); none for a chat not created yet or one without changes. */
+    fun sampling(chatId: Long): Flow<Knobs> = dao.sampling(chatId).map { Knobs.decode(it) }
+
+    /** Sets the chat's own sampling values; [Knobs.None] gives the chat back to its model's. */
+    suspend fun setSampling(chatId: Long, knobs: Knobs) {
+        val chat = dao.chat(chatId) ?: return
+        dao.updateChat(chat.copy(sampling = knobs.encode().ifEmpty { null }))
     }
 
     /** Titles are never empty: a blank [title] is rejected. */
@@ -183,6 +203,7 @@ class ChatRepository(private val dao: ChatDao, private val imageStore: ImageStor
             wordsPerSecond = wordsPerSecond,
             state = MessageState.entries.first { it.key == state },
             failure = failure,
+            stats = stats,
         )
 
     private companion object {

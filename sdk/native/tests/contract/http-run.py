@@ -34,6 +34,7 @@ PATHS = {
     "messages_count_tokens": ("POST", "/v1/messages/count_tokens"),
     "embeddings_native": ("POST", "/embeddings"),
     "tts": ("POST", "/tts"),
+    "speech": ("POST", "/v1/audio/speech"),
     "systemone": ("POST", "/v1/systemone"),
     "props_set": ("POST", "/props"),
     "models": ("GET", "/v1/models"),

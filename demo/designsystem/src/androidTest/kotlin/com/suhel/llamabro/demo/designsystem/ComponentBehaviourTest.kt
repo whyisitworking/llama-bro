@@ -19,6 +19,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getBoundsInRoot
@@ -28,6 +32,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -45,12 +50,16 @@ import com.suhel.llamabro.demo.designsystem.components.JumpToLatest
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.PrimaryButton
 import com.suhel.llamabro.demo.designsystem.components.QuantRow
+import com.suhel.llamabro.demo.designsystem.components.Reveal
 import com.suhel.llamabro.demo.designsystem.components.Screen
 import com.suhel.llamabro.demo.designsystem.components.Section
+import com.suhel.llamabro.demo.designsystem.components.SliderRow
 import com.suhel.llamabro.demo.designsystem.components.Stack
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
+import com.suhel.llamabro.demo.designsystem.components.TypingDots
 import com.suhel.llamabro.demo.designsystem.components.WakeHairline
 import com.suhel.llamabro.demo.designsystem.components.ink
+import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.Light
@@ -261,7 +270,7 @@ class ComponentBehaviourTest {
     @Test
     fun jumpToLatestClicks() {
         var clicks = 0
-        rule.setContent { DemoTheme(ThemeMode.Light) { JumpToLatest(onClick = { clicks++ }) } }
+        rule.setContent { DemoTheme(ThemeMode.Light) { JumpToLatest(visible = true, onClick = { clicks++ }) } }
         rule.onNodeWithContentDescription(string(R.string.ds_jump_to_latest)).performClick()
         assertEquals(1, clicks)
     }
@@ -301,6 +310,20 @@ class ComponentBehaviourTest {
     }
 
     @Test
+    fun wakeHairlineFillsToTheLoadsProgress() {
+        rule.setContent {
+            DemoTheme(ThemeMode.Light) {
+                Box(Modifier.width(300.dp).background(Light.canvas)) { WakeHairline(active = true, progress = 0.5f) }
+            }
+        }
+        rule.waitForIdle()
+        val map = rule.onNodeWithTag(DsTags.WAKE_HAIRLINE).captureToImage().toPixelMap()
+        val y = map.height / 2
+        assertEquals("filled up to the value: the accent", Light.accent, map[map.width / 4, y])
+        assertEquals("beyond it: the soft track", Light.accentSoft, map[map.width * 3 / 4, y])
+    }
+
+    @Test
     fun wakeHairlineIsStaticWhenAnimationsAreOff() {
         var scale by mutableFloatStateOf(0f)
         rule.mainClock.autoAdvance = false
@@ -332,6 +355,63 @@ class ComponentBehaviourTest {
         rule.mainClock.advanceTimeBy(350)
         val moving2 = frame()
         assertFalse("animations on: the sweep moves (the check above can see motion)", moving1.contentEquals(moving2))
+    }
+
+    @Test
+    fun aRevealKeepsItsLastLineWhileItFoldsAway() {
+        var note by mutableStateOf<String?>("Writer may not fit")
+        rule.setContent { DemoTheme(ThemeMode.Light) { Reveal(note) { Text(it) } } }
+        rule.onNodeWithText("Writer may not fit").assertIsDisplayed()
+        rule.mainClock.autoAdvance = false
+        note = null
+        rule.mainClock.advanceTimeByFrame()
+        rule.mainClock.advanceTimeBy(DemoMotion.EXIT_MILLIS / 2L)
+        // halfway out, it still says what it said, not nothing
+        rule.onNodeWithText("Writer may not fit").assertExists()
+        rule.mainClock.advanceTimeBy(DemoMotion.EXIT_MILLIS.toLong())
+        rule.onNodeWithText("Writer may not fit").assertDoesNotExist()
+    }
+
+    @Test
+    fun jumpToLatestLeavesWhenTheListIsAtItsEnd() {
+        var away by mutableStateOf(true)
+        rule.setContent { DemoTheme(ThemeMode.Light) { JumpToLatest(visible = away, onClick = {}) } }
+        val label = string(R.string.ds_jump_to_latest)
+        rule.onNodeWithContentDescription(label).assertIsDisplayed()
+        away = false
+        rule.waitForIdle()
+        rule.onNodeWithContentDescription(label).assertDoesNotExist()
+    }
+
+    @Test
+    fun typingDotsSayReplyingAndHoldStillWithAnimationsOff() {
+        var scale by mutableFloatStateOf(0f)
+        rule.mainClock.autoAdvance = false
+        rule.setContent {
+            CompositionLocalProvider(LocalAnimatorDurationScale provides scale) {
+                DemoTheme(ThemeMode.Light) {
+                    Box(Modifier.background(Light.canvas).testTag("dots")) { TypingDots() }
+                }
+            }
+        }
+
+        fun frame(): IntArray {
+            val map = rule.onNodeWithTag("dots").captureToImage().toPixelMap()
+            return IntArray(map.width * map.height) { map[it % map.width, it / map.width].hashCode() }
+        }
+
+        rule.mainClock.advanceTimeByFrame()
+        rule.onNodeWithContentDescription(string(R.string.ds_replying)).assertExists()
+        val still1 = frame()
+        rule.mainClock.advanceTimeBy(DemoMotion.DOTS_MILLIS / 3L)
+        assertTrue("animations off: the dots don't move", still1.contentEquals(frame()))
+
+        scale = 1f
+        rule.mainClock.advanceTimeByFrame()
+        rule.mainClock.advanceTimeBy(DemoMotion.DOTS_MILLIS / 6L)
+        val moving1 = frame()
+        rule.mainClock.advanceTimeBy(DemoMotion.DOTS_MILLIS / 3L)
+        assertFalse("animations on: the dots pulse", moving1.contentEquals(frame()))
     }
 
     @Test
@@ -461,5 +541,34 @@ class ComponentBehaviourTest {
         }
         // three 56 dp rows and two 1 dp dividers
         assertNear("the group's height", 170.dp, rule.onNodeWithTag("group").getBoundsInRoot().height)
+    }
+
+    @Test
+    fun aSliderRowSaysItsValueAndReportsAChangeOnce() {
+        val changes = mutableListOf<Float>()
+        rule.setContent {
+            DemoTheme(ThemeMode.Light) {
+                Column(Modifier.width(360.dp)) {
+                    SliderRow(
+                        "Temperature",
+                        1f,
+                        { "%.1f".format(java.util.Locale.ROOT, it) },
+                        0f..2f,
+                        steps = 39,
+                        onValueChange = { changes += it },
+                        note = "Model default",
+                    )
+                }
+            }
+        }
+        rule
+            .onNodeWithContentDescription("Temperature")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "1.0"))
+        rule.onNodeWithText("Model default").assertExists()
+        rule.onNodeWithContentDescription("Temperature").performSemanticsAction(SemanticsActions.SetProgress) {
+            it(0.5f)
+        }
+        rule.waitForIdle()
+        assertEquals(listOf(0.5f), changes)
     }
 }

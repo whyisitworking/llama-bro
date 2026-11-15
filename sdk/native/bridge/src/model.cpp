@@ -1,5 +1,5 @@
 // lb_model_*: one server_context per model on its own worker thread (P1 T3, design §3.2, F3).
-// The startup order mirrors server.cpp main() as the P0 harness (spike/p0/harness/lb-spike.cpp) does:
+// The startup order mirrors server.cpp main() as the P0 harness (research/p0/harness/lb-spike.cpp) does:
 // server_prepare_params, server_context, server_routes, load_model, update_meta, then start_loop on
 // the same thread.
 #include "model.h"
@@ -50,6 +50,7 @@ std::map<std::string, server_http_context::handler_t> make_endpoints(server_rout
         { "messages_count_tokens",  ex_wrapper(r.post_anthropic_count_tokens) },
         { "embeddings_native",      ex_wrapper(r.post_embeddings) },
         { "tts",                    ex_wrapper(r.post_tts) },
+        { "speech",                 ex_wrapper(r.post_speech_oai) },
         { "systemone",              ex_wrapper(r.post_systemone) },
         { "props_set",              ex_wrapper(r.post_props) },
         { "models",                 ex_wrapper(r.get_models) },

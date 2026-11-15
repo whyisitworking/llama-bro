@@ -11,6 +11,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.theme.DemoColors
+import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 
 /**
  * Marks the area a layout primitive keeps inside the gutter. A test walks the screens and sheets and asserts that every
@@ -47,7 +48,7 @@ internal val LocalOnSheet = staticCompositionLocalOf { false }
 internal fun Modifier.softShadow(
     shape: Shape,
     colors: DemoColors,
-    elevation: Dp = 2.dp,
+    elevation: Dp = DemoSize.elevationSoft,
     lightAlpha: Float = 0.05f,
 ): Modifier {
     val tint = Color.Black.copy(alpha = if (colors.isDark) 0.35f else lightAlpha)

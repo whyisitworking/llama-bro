@@ -34,7 +34,7 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class NgramDeviceTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
-    private val llama = LlamaBro.getInstance(context)
+    private val llama = LlamaBro.create(context)
     private val model = File(context.getExternalFilesDir(null), "Qwen3.5-4B-Q4_K_M.gguf").path
 
     private fun load(s: Speculative): Model =

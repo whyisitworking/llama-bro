@@ -82,6 +82,10 @@ internal val DemoColors.scrim: Color get() = scrimBase.copy(alpha = if (isDark) 
  */
 internal val DemoColors.subtleFill: Color get() = lerp(canvas, ink, if (isDark) 0.02f else 0.035f)
 
+/** A control drawn on a photo (the ✕ on an attached picture): a dark scrim and a white glyph read on any picture. */
+internal val DemoColors.photoScrim: Color get() = Color.Black.copy(alpha = 0.6f)
+internal val DemoColors.onPhotoScrim: Color get() = Color.White
+
 /**
  * Every Material text style mapped onto the [DemoType] roles, all sans: the serif is only for the two hero roles
  * (`displayHero`, `sheetTitle`), which the app's own components use, so a Material widget (a dialog's title) never

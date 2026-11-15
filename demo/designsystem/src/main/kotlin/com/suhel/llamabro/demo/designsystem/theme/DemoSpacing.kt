@@ -16,6 +16,12 @@ object DemoSpacing {
     /** Between the blocks of one unit: a reply's paragraph, list and code block; the cards of one list. */
     val block = 8.dp
 
+    /**
+     * Material's step between [block] and [item]: the vertical padding inside a bubble, a list row and a dialog's
+     * button row, where [item] would make a short line look loose.
+     */
+    val compact = 12.dp
+
     /** Between units: two replies of one speaker, a card's inner padding, the parts of a row. */
     val item = 16.dp
 

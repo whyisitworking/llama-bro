@@ -6,7 +6,7 @@ usage: real_model_e2e.py [--serial S] [--only 1,2,3] [--out DIR] [--fresh APK]
 Steps (each timed, screenshotted, and asserted on structure, not on the model's words):
   1  first open -> Qwen3.5 0.8B -> Get -> send before the download ends -> a reply; seconds from first open to the first token
   2  think it through at Quick and at Deep: the fold "Thought for <n> s"
-  3  an image to Qwen3.5 0.8B: a reply
+  3  an image to Qwen3.5 0.8B: the reply names its colour
   4  get Gemma 3 4B; force-stop during the download; relaunch: it resumes (the hub's log shows a 206) and finishes
   5  switch to Gemma 3 4B mid-chat (the divider and a reply); edit the first message; regenerate
   6  Chat list layout; find the chat by search; share a reply (the share sheet appears)
@@ -277,7 +277,13 @@ def step3(p: Phone, out: Path):
         send(p)
         finish_or_stop(p, "step3", before)
         p.shot("3-answered")
-        say("step 3 done: a reply to the picture")
+        # a reply arriving is not enough: the model must name the picture's colour (F119, F120)
+        nodes = p.dump()
+        replies = p.match(nodes, tag="reply_message")
+        reply = text_within(nodes, replies[-1]).lower() if replies else ""
+        results["step3_names_blue"] = re.search(r"\bblue\b", reply) is not None
+        assert results["step3_names_blue"], f"step 3: the reply does not name the picture's colour (blue): {reply!r}"
+        say("step 3 done: the reply names the picture's colour")
     finally:
         p.shell("content delete --uri content://media/external/images/media --where \"_display_name LIKE 'e2e-blue%'\"", check=False)
         p.shell("rm -f /sdcard/Pictures/e2e-blue.png", check=False)

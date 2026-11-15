@@ -25,6 +25,29 @@ internal object DeviceResolver {
 
     private val autoOrder = listOf(DeviceKind.Npu, DeviceKind.Gpu, DeviceKind.Cpu)
 
+    /**
+     * Where the encoder runs ([com.suhel.llamabro.ModelConfig.encoderDevice]): null follows [model]; `Only` is that
+     * kind, or null when it's unavailable (the caller throws); `Prefer` is that kind or [model]; `Auto` the first
+     * available.
+     */
+    fun encoder(policy: DevicePolicy?, model: Candidate, backends: List<Backend>): Candidate? {
+        if (policy == null) return model
+        val first = plan(policy, backends).candidates.firstOrNull()
+        return when (policy) {
+            is DevicePolicy.Only -> first
+            is DevicePolicy.Prefer -> first?.takeIf { it.kind == policy.kind } ?: model
+            DevicePolicy.Auto -> first ?: model
+        }
+    }
+
+    /** The `mmproj_device` config value for [encoder] when it differs from [model]'s device, else null. */
+    fun encoderConfig(encoder: Candidate, model: Candidate): String? =
+        when {
+            encoder.deviceName == model.deviceName -> null
+            encoder.kind == DeviceKind.Cpu -> "none"
+            else -> encoder.deviceName
+        }
+
     fun plan(policy: DevicePolicy, backends: List<Backend>): Plan {
         val kinds =
             when (policy) {

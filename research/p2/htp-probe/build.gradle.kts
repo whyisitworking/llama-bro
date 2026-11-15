@@ -2,7 +2,7 @@ plugins { id("com.android.application") version "9.1.0" }
 
 android {
     namespace = "com.suhel.htpprobe"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig {
         applicationId = "com.suhel.htpprobe"
         minSdk = 29

@@ -28,6 +28,7 @@ import com.suhel.llamabro.demo.designsystem.components.StarterChips
 import com.suhel.llamabro.demo.designsystem.components.SwitchDivider
 import com.suhel.llamabro.demo.designsystem.components.ThoughtFold
 import com.suhel.llamabro.demo.designsystem.components.ThoughtState
+import com.suhel.llamabro.demo.designsystem.components.TypingDots
 import com.suhel.llamabro.demo.designsystem.components.UserBubble
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 
@@ -96,6 +97,7 @@ internal fun ChatOpenSamples() {
             OpenReply(content = { MarkdownText(BioReply, onCopyCode = {}) }, speed = "38 words/s")
         }
         UserBubble("What's this plant? Is it healthy?", images = listOf(rememberSamplePhoto()))
+        TypingDots()
         ThoughtFold(
             ThoughtState(
                 seconds = null,
@@ -117,7 +119,7 @@ internal fun ChatOpenSamples() {
             secondAction = "Smaller size",
             onSecondAction = {},
         )
-        JumpToLatest(onClick = {})
+        JumpToLatest(visible = true, onClick = {})
     }
 }
 

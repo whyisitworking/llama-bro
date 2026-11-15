@@ -2,7 +2,10 @@ package com.suhel.llamabro
 
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.FinishReason
-import com.suhel.llamabro.conversation.addToolResult
+import com.suhel.llamabro.chat.Message
+import com.suhel.llamabro.conversation.JsonArgs
+import com.suhel.llamabro.conversation.LbToolAbort
+import com.suhel.llamabro.conversation.LbToolError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -17,6 +20,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -68,16 +73,75 @@ class AgentLoopTest {
         }
 
     @Test
-    fun handlerErrorBecomesErrorResult() =
+    fun toolErrorMessageReachesTheModel() =
         runTest {
             val (engine, model) = setup()
             engine.model.script(Replies.toolCalls(call("c1")), Replies.text("sorry"))
-            val chat = model.conversation { tool("get_weather", "w", schema) { throw IllegalStateException("boom") } }
-            chat.send("x").toList()
+            val chat = model.conversation { tool("get_weather", "w", schema) { throw LbToolError("city not found") } }
+            val events = chat.send("x").toList()
             assertEquals(
-                """{"role":"tool","tool_call_id":"c1","content":"Error: boom"}""",
+                """{"role":"tool","tool_call_id":"c1","content":"Error: city not found"}""",
                 messagesOf(engine.model.chatBodies[1]).last(),
             )
+            val result = events.filterIsInstance<ChatEvent.ToolResult>().single()
+            assertEquals("Error: city not found", result.result)
+            assertNull(result.error)
+        }
+
+    @Test
+    fun otherExceptionSendsGenericErrorAndReachesTheApp() =
+        runTest {
+            val (engine, model) = setup()
+            engine.model.script(Replies.toolCalls(call("c1")), Replies.text("sorry"))
+            val secret = IllegalStateException("token=sk-FAKE-123 for alice@example.com")
+            val chat = model.conversation { tool("get_weather", "w", schema) { throw secret } }
+            val events = chat.send("x").toList()
+            assertEquals(
+                """{"role":"tool","tool_call_id":"c1","content":"Error: the tool failed"}""",
+                messagesOf(engine.model.chatBodies[1]).last(),
+            )
+            assertTrue(engine.model.chatBodies.none { "sk-FAKE-123" in it })
+            assertFalse("sk-FAKE-123" in chat.toJson())
+            val result = events.filterIsInstance<ChatEvent.ToolResult>().single()
+            assertEquals("Error: the tool failed", result.result)
+            assertSame(secret, result.error)
+            assertEquals(FinishReason.Stop, (events.last() as ChatEvent.Done).reason)
+        }
+
+    @Test
+    fun abortEndsTheTurn() =
+        runTest {
+            val (engine, model) = setup()
+            engine.model.script(Replies.toolCalls(call("a", "tool_a", "{}"), call("b", "tool_b", "{}")))
+            val abort = LbToolAbort("no network")
+            var secondCalled = false
+            val chat =
+                model.conversation {
+                    tool("tool_a", "a", "{}") { throw abort }
+                    tool("tool_b", "b", "{}") {
+                        secondCalled = true
+                        "B"
+                    }
+                }
+            val events = chat.send("go").toList()
+            val done = events.last() as ChatEvent.Done
+            assertEquals(FinishReason.ToolAborted, done.reason)
+            assertSame(abort, done.abort)
+            assertFalse(secondCalled)
+            assertEquals(1, engine.model.chatBodies.size)
+            assertTrue(events.none { it is ChatEvent.ToolResult })
+            assertTrue(chat.messages.value.none { it is Message.ToolResult })
+        }
+
+    @Test
+    fun askThrowsIncompleteOnAbort() =
+        runTest {
+            val (engine, model) = setup()
+            engine.model.script(Replies.toolCalls(call("c1")))
+            val chat = model.conversation { tool("get_weather", "w", schema) { throw LbToolAbort("no network") } }
+            val e = runCatching { chat.ask("x") }.exceptionOrNull()
+            assertTrue("$e", e is LlamaBroException.Incomplete)
+            assertEquals(FinishReason.ToolAborted, (e as LlamaBroException.Incomplete).reason)
         }
 
     @Test
@@ -139,21 +203,19 @@ class AgentLoopTest {
         }
 
     @Test
-    fun unknownToolStopsWithPending() =
+    fun unknownToolAnswersTheModel() =
         runTest {
             val (engine, model) = setup()
             engine.model.script(Replies.toolCalls(call("c9", "nope", "{}")), Replies.text("thanks"))
             val chat = model.conversation { tool("get_weather", "w", schema) { "sunny" } }
             val events = chat.send("x").toList()
-            assertEquals(1, engine.model.chatBodies.size)
-            assertEquals(FinishReason.ToolCallsPending, (events.last() as ChatEvent.Done).reason)
-            assertTrue(events.any { it is ChatEvent.ToolCallReceived && it.call.name == "nope" })
-            chat.addToolResult("c9", "x")
-            chat.resume().toList()
+            assertEquals(2, engine.model.chatBodies.size)
             assertEquals(
-                """{"role":"tool","tool_call_id":"c9","content":"x"}""",
+                """{"role":"tool","tool_call_id":"c9","content":"Error: Unknown tool: nope"}""",
                 messagesOf(engine.model.chatBodies[1]).last(),
             )
+            assertEquals(ChatEvent.ToolResult("c9", "nope", "Error: Unknown tool: nope"), events[1])
+            assertEquals(FinishReason.Stop, (events.last() as ChatEvent.Done).reason)
         }
 
     @Test
@@ -187,8 +249,26 @@ class AgentLoopTest {
             val events = chat.send("x").toList()
             assertFalse(called)
             val toolMsg = messagesOf(engine.model.chatBodies[1]).last()
-            assertTrue(toolMsg, toolMsg.startsWith("""{"role":"tool","tool_call_id":"c1","content":"Error:"""))
+            assertTrue(
+                toolMsg,
+                toolMsg.startsWith("""{"role":"tool","tool_call_id":"c1","content":"Error: invalid arguments: """),
+            )
+            assertFalse(toolMsg, toolMsg.contains("JSON input"))
+            assertEquals(2, engine.model.chatBodies.size)
             assertEquals(FinishReason.Stop, (events.last() as ChatEvent.Done).reason)
+        }
+
+    @Test
+    fun missingArgumentBecomesInvalidArguments() =
+        runTest {
+            val (engine, model) = setup()
+            engine.model.script(Replies.toolCalls(call("c1", args = "{}")), Replies.text("ok"))
+            val chat = model.conversation { tool("get_weather", "w", schema) { args -> args.string("city") } }
+            chat.send("x").toList()
+            assertEquals(
+                """{"role":"tool","tool_call_id":"c1","content":"Error: invalid arguments: missing string argument: city"}""",
+                messagesOf(engine.model.chatBodies[1]).last(),
+            )
         }
 
     @Test
@@ -248,13 +328,16 @@ class AgentLoopTest {
     @Test
     fun jsonArgsAccessors() {
         val args =
-            com.suhel.llamabro.conversation
-                .JsonArgs("""{"s":"x","i":3,"d":1.5,"b":true}""")
+            JsonArgs.parse("""{"s":"x","i":3,"d":1.5,"b":true}""")
         assertEquals("x", args.string("s"))
         assertEquals(null, args.stringOrNull("missing"))
         assertEquals(3, args.int("i"))
         assertEquals(1.5, args.double("d"), 0.0)
         assertTrue(args.boolean("b"))
-        assertTrue(runCatching { args.string("i") }.exceptionOrNull() is IllegalArgumentException)
+        val e = runCatching { args.string("i") }.exceptionOrNull()
+        assertTrue("$e", e is LbToolError)
+        assertEquals("invalid arguments: missing string argument: i", e?.message)
+        assertTrue(runCatching { JsonArgs.parse("[1]") }.exceptionOrNull() is LbToolError)
+        assertTrue(runCatching { JsonArgs.parse("{") }.exceptionOrNull() is LbToolError)
     }
 }

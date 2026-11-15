@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace = "com.suhel.llamabro.download"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.suhel.llamabro.download"

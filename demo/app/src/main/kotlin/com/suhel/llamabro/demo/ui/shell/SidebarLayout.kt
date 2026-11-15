@@ -90,6 +90,7 @@ fun DrawerContent(
                         "Models",
                         leading = DemoIcons.Models,
                         trailing = "$modelCount on this phone",
+                        chevron = true,
                         onClick = onModels,
                     )
                 }

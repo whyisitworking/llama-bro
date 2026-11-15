@@ -36,6 +36,7 @@ import com.suhel.llamabro.demo.designsystem.components.Gap
 import com.suhel.llamabro.demo.designsystem.components.GapAbove
 import com.suhel.llamabro.demo.designsystem.components.Greeting
 import com.suhel.llamabro.demo.designsystem.components.Inline
+import com.suhel.llamabro.demo.designsystem.components.ModelCard
 import com.suhel.llamabro.demo.designsystem.components.ModelName
 import com.suhel.llamabro.demo.designsystem.components.Orb
 import com.suhel.llamabro.demo.designsystem.components.OrbSize
@@ -147,26 +148,15 @@ private fun FirstRunSearch(onSearch: (String) -> Unit) {
     }, "Search Hugging Face", Modifier.fillMaxWidth().testTag("first_run_search"), onSearch = { onSearch(text) })
 }
 
-/** One pick: the model's name, the plain line, the size and how it runs. No icon. */
+/** One pick, as every model card: the name and how it runs here, the plain line, the size. No icon. */
 @Composable
 private fun PickCardItem(card: PickCard, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val tint = card.fit.label.tint()
-    DemoCard(modifier = modifier.fillMaxWidth().testTag("pick_card"), onClick = onClick) {
-        Inline(Gap.Item, Modifier.fillMaxWidth()) {
-            Stack(Gap.Inline, Modifier.weight(1f)) {
-                val colors = LocalDemoColors.current
-                Text(card.entry.realName, color = colors.ink, style = DemoType.title)
-                Text(card.entry.line, color = colors.muted, style = DemoType.bodyMedium)
-            }
-            PickCardFacts(card.sizeText, card.fit, tint)
-        }
-    }
-}
-
-@Composable
-private fun PickCardFacts(size: String, fit: FitView, tint: CardTint) {
-    Stack(Gap.Inline, horizontalAlignment = Alignment.End) {
-        Text(size, color = LocalDemoColors.current.muted, style = DemoType.bodyMedium)
-        FitText(fit.label.text(), tint)
-    }
+    ModelCard(
+        name = card.entry.realName,
+        line = card.entry.line,
+        modifier = modifier.testTag("pick_card"),
+        fit = card.fit.label.text() to card.fit.label.tint(),
+        facts = card.sizeText,
+        onClick = onClick,
+    )
 }

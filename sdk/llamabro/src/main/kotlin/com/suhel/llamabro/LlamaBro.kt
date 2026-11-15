@@ -8,6 +8,7 @@ import com.suhel.llamabro.internal.BackendInstaller
 import com.suhel.llamabro.internal.Engine
 import com.suhel.llamabro.internal.JniEngine
 import com.suhel.llamabro.internal.LlamaBroRuntime
+import com.suhel.llamabro.internal.LogcatLogger
 import com.suhel.llamabro.internal.MemoryBudget
 import java.io.File
 
@@ -61,40 +62,68 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
      */
     public suspend fun backends(): List<Backend> = runtime.backends()
 
-    /** Implement on your `Application` to configure the runtime. */
-    public interface ConfigProvider {
-        /** Read once, by the first [getInstance]. */
-        public val llamaBroConfig: LlamaBroConfig
-    }
-
     public companion object {
-        @Volatile
-        private var instance: LlamaBro? = null
+        private var created: LlamaBro? = null
+        private var createdConfig: LlamaBroConfig? = null
 
         /**
-         * The process's runtime. Config comes from `(context.applicationContext as? ConfigProvider)`, else defaults.
+         * The process's runtime (D70). The first call creates it; a later call with an equal [config] returns the
+         * same object, so a DI container can hold it as a singleton. The native runtime exists once per process, so a
+         * different config throws at once, before anything is built. [LlamaBroConfig] compares its logger by
+         * reference: create the config once, not on each call.
+         *
          * Runs no native code, so it's cheap on the main thread: the native runtime starts in the first [loadModel]
-         * or [devices], which also reports a config conflict.
+         * or [devices].
+         *
+         * @throws LlamaBroException.InvalidRequest if the process's runtime was created with another [config].
          */
         @JvmStatic
-        public fun getInstance(context: Context): LlamaBro =
-            instance ?: synchronized(this) {
-                instance ?: run {
-                    val app = context.applicationContext
-                    val config = (app as? ConfigProvider)?.llamaBroConfig ?: LlamaBroConfig.Default
-                    // no backend_dir: the backends load by name from the APK, extracted or not (findings F25)
-                    LlamaBro(
-                        LlamaBroRuntime(
-                            JniEngine,
-                            app.noBackupFilesDir,
-                            null,
-                            config,
-                            discoverBackends = { manifestBackends(app) },
-                            memorySnapshot = { memorySnapshot(app) },
-                        ),
-                    )
-                }.also { instance = it }
+        @JvmOverloads
+        public fun create(context: Context, config: LlamaBroConfig = LlamaBroConfig.Default): LlamaBro =
+            create(config) {
+                val app = context.applicationContext
+                // no backend_dir: the backends load by name from the APK, extracted or not (findings F25)
+                LlamaBro(
+                    LlamaBroRuntime(
+                        JniEngine,
+                        app.noBackupFilesDir,
+                        null,
+                        config,
+                        discoverBackends = { manifestBackends(app) },
+                        memorySnapshot = { memorySnapshot(app) },
+                        defaultLogger = LogcatLogger("llamabro"),
+                    ),
+                )
             }
+
+        /**
+         * The registry behind [create], free of `Context`. A refused config never reaches [build]: building attaches
+         * the logger before native init (D66), and a second runtime would swap the process-wide native log listener.
+         */
+        @Synchronized
+        internal fun create(config: LlamaBroConfig, build: () -> LlamaBro): LlamaBro {
+            val existing = created
+            if (existing == null) {
+                return build().also {
+                    created = it
+                    createdConfig = config
+                }
+            }
+            if (createdConfig != config) {
+                throw LlamaBroException.InvalidRequest(
+                    "LlamaBro.create: the runtime already exists with $createdConfig; it can't be created again with " +
+                        "$config. The native runtime is one per process: create the config once and share the object.",
+                )
+            }
+            return existing
+        }
+
+        /** Forgets the created runtime so a test can start clean. */
+        @Synchronized
+        internal fun resetCreatedForTest() {
+            created = null
+            createdConfig = null
+        }
 
         /**
          * A [LlamaBro] over another engine, for `llamabro-testing`'s `FakeLlamaBro` (D27). [filesDir] stands in for

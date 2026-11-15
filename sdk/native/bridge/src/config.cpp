@@ -101,6 +101,7 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string & 
         out.devices = {nullptr};
         out.mmproj_use_gpu = false;
 
+        std::string mmproj_device;
         for (const auto & item : cfg.items()) {
             const std::string & key = item.key();
             const json & v = item.value();
@@ -122,11 +123,15 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string & 
                     }
                     devs.push_back(dev);
                 }
-                // the image encoder goes on the model's device, not "the first GPU" (two chips for one model)
+                // the image encoder goes on the model's device, not "the first GPU" (two chips for one model); on the
+                // NPU too since b12352, which encodes correctly there (F120, F121, D52)
                 out.mmproj_use_gpu = !devs.empty();
                 out.mmproj_device  = devs.empty() ? nullptr : devs.front();
                 devs.push_back(nullptr);
                 out.devices = devs;
+            } else if (key == "mmproj_device") {
+                mmproj_device = str_of(key, v);  // applied after the loop: "devices" sets the default
+                if (mmproj_device.empty()) throw std::invalid_argument("mmproj_device must be \"none\" or a device name");
             } else if (key == "n_ctx_cap") {
                 if (!v.is_number_integer() || v.get<int64_t>() < 1) throw std::invalid_argument("n_ctx_cap must be a positive integer");
             } else if (key == "memory_budget_mib") {
@@ -215,6 +220,22 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string & 
             }
         }
 
+        // upstream's -mmdev: "none" keeps the image encoder on the CPU, a device name puts it there; absent, it follows
+        // the model's device. Resolved by name like "devices", without -mmdev's backend rescan (F35)
+        if (!mmproj_device.empty()) {
+            if (mmproj_device == "none") {
+                out.mmproj_use_gpu = false;
+                out.mmproj_device  = nullptr;
+            } else {
+                ggml_backend_dev_t dev = ggml_backend_dev_by_name(mmproj_device.c_str());
+                if (!dev || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_CPU) {
+                    throw std::invalid_argument("invalid mmproj_device: " + mmproj_device);
+                }
+                out.mmproj_use_gpu = true;
+                out.mmproj_device  = dev;
+            }
+        }
+
         if (has_draft_path && !is_dflash) throw std::invalid_argument("draft_path needs speculative.type dflash");
         if (is_dflash && !has_draft_path) throw std::invalid_argument("speculative.type dflash needs draft_path");
 
@@ -290,7 +311,7 @@ int64_t lb_measure_ctx(common_params & params, uint32_t n_ctx, uint32_t * n_ctx_
     llama_context_params cparams = common_context_params_to_llama(params);
     cparams.n_ctx = n_ctx;
     int64_t sum = 0;
-    for (const auto & row : common_fit_measure(params.model.path.c_str(), &mparams, &cparams, n_ctx_train, nullptr,
+    for (const auto & row : common_fit_measure(params.model.get_paths(), &mparams, &cparams, n_ctx_train, nullptr,
                                                GGML_LOG_LEVEL_ERROR)) {
         sum += (int64_t) (row.model + row.context + row.compute);
     }
@@ -311,7 +332,7 @@ int64_t lb_measure_ctx(common_params & params, uint32_t n_ctx, uint32_t * n_ctx_
         dft_cparams.n_rs_seq = 0;
         dft_cparams.ctx_other = target_ctx.get();
         int64_t draft = 0;
-        for (const auto & row : common_fit_measure(p_dft.model.path.c_str(), &dft_mparams, &dft_cparams,
+        for (const auto & row : common_fit_measure(p_dft.model.get_paths(), &dft_mparams, &dft_cparams,
                                                    nullptr, nullptr, GGML_LOG_LEVEL_ERROR)) {
             draft += (int64_t) (row.model + row.context + row.compute);
         }

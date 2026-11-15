@@ -5,7 +5,7 @@
 #include "gguf.h"
 
 static common_json cases_json() {
-    common_json result = {{"llama_cpp", "b12052"}};
+    common_json result = {{"llama_cpp", "b12352"}};
     result["plan_cases"] = common_json::array();
     for (const auto & c : plan_cases) {
         result["plan_cases"].push_back({
@@ -108,7 +108,7 @@ int main(int argc, char ** argv) {
     if (mode == "self-test") return lb_upstream_resolution_main();
     if (mode == "cases") {
         const auto result = cases_json();
-        if (result["plan_cases"].size() != 14 || result["real_repos"].size() != 171) {
+        if (result["plan_cases"].size() != 18 || result["real_repos"].size() != 172) {
             fprintf(stderr, "unexpected upstream resolution table sizes\n");
             return 1;
         }

@@ -17,7 +17,7 @@ internal object MtpPolicy {
             }
 
             DeviceKind.Gpu -> {
-                "speculative decoding (MTP, n-gram, DFlash) aborts ggml-opencl at b12052 (F67, F80)"
+                "speculative decoding (MTP, n-gram, DFlash) aborts ggml-opencl at b12352 (F67, F80, F125)"
             }
 
             DeviceKind.Cpu -> {
@@ -26,5 +26,6 @@ internal object MtpPolicy {
         }
 
     /** Drafted batches abort ggml-opencl on the first drafted batch (F67, F80). */
-    const val GPU_ABORTS: String = "speculative decoding (MTP, n-gram, DFlash) aborts ggml-opencl at b12052 (F67, F80)"
+    const val GPU_ABORTS: String =
+        "speculative decoding (MTP, n-gram, DFlash) aborts ggml-opencl at b12352 (F67, F80, F125)"
 }

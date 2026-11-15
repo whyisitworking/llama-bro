@@ -1,5 +1,6 @@
 package com.suhel.llamabro.demo.data.db
 
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -35,4 +36,6 @@ data class MessageEntity(
     val wordsPerSecond: Double? = null,
     val state: String = "done",
     val failure: String? = null,
+    /** Added in version 2; null for replies stored before, and for messages that aren't replies. */
+    @Embedded(prefix = "stats_") val stats: ReplyStats? = null,
 )

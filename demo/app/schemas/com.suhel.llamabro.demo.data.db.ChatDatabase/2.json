@@ -1,0 +1,216 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "c317b69c0fdfe91743f4da8860191301",
+    "entities": [
+      {
+        "tableName": "chats",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `modelKey` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modelKey",
+            "columnName": "modelKey",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_chats_updatedAt",
+            "unique": false,
+            "columnNames": [
+              "updatedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chats_updatedAt` ON `${TABLE_NAME}` (`updatedAt`)"
+          }
+        ]
+      },
+      {
+        "tableName": "messages",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `chatId` INTEGER NOT NULL, `position` INTEGER NOT NULL, `kind` TEXT NOT NULL, `text` TEXT NOT NULL, `reasoning` TEXT, `reasoningMillis` INTEGER, `images` TEXT NOT NULL, `modelKey` TEXT, `sentAt` INTEGER NOT NULL, `wordsPerSecond` REAL, `state` TEXT NOT NULL, `failure` TEXT, `stats_replyTokens` INTEGER, `stats_tokensPerSecond` REAL, `stats_promptTokens` INTEGER, `stats_cachedTokens` INTEGER, `stats_promptPerSecond` REAL, `stats_draftTokens` INTEGER, `stats_draftAccepted` INTEGER, `stats_device` TEXT, FOREIGN KEY(`chatId`) REFERENCES `chats`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatId",
+            "columnName": "chatId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "text",
+            "columnName": "text",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reasoning",
+            "columnName": "reasoning",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "reasoningMillis",
+            "columnName": "reasoningMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "images",
+            "columnName": "images",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modelKey",
+            "columnName": "modelKey",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sentAt",
+            "columnName": "sentAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "wordsPerSecond",
+            "columnName": "wordsPerSecond",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "failure",
+            "columnName": "failure",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "stats.replyTokens",
+            "columnName": "stats_replyTokens",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "stats.tokensPerSecond",
+            "columnName": "stats_tokensPerSecond",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "stats.promptTokens",
+            "columnName": "stats_promptTokens",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "stats.cachedTokens",
+            "columnName": "stats_cachedTokens",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "stats.promptPerSecond",
+            "columnName": "stats_promptPerSecond",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "stats.draftTokens",
+            "columnName": "stats_draftTokens",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "stats.draftAccepted",
+            "columnName": "stats_draftAccepted",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "stats.device",
+            "columnName": "stats_device",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_messages_chatId_position",
+            "unique": true,
+            "columnNames": [
+              "chatId",
+              "position"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_messages_chatId_position` ON `${TABLE_NAME}` (`chatId`, `position`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "chats",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "chatId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c317b69c0fdfe91743f4da8860191301')"
+    ]
+  }
+}

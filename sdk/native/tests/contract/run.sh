@@ -2,7 +2,7 @@
 # Contract test (P1 T5, design §12, the per-upgrade check): the C API must answer exactly like upstream
 # llama-server built from the same tree with the same flags. Runs requests.jsonl through llama-server
 # over HTTP (http-run.py) and through the C API (lb-run), then compares with compare.py (both copied
-# from spike/p0/scripts). Passes only on "N/N identical".
+# from research/p0/scripts). Passes only on "N/N identical".
 #
 # Needs: the host build (cmake --preset host -S sdk/native && cmake --build sdk/native/build/host),
 #        LB_TEST_MODEL, and LB_TEST_MMPROJ for the image requests. Requests: make-requests.py.

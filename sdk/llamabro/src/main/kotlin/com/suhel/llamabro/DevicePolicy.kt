@@ -51,6 +51,15 @@ public class LoadReport internal constructor(
     public val speculative: Speculative,
     /** Why: set by the app, measured faster or not on this chip, or the model has no MTP head. */
     public val speculativeReason: String,
+    /** Where the SDK placed the image and audio encoder ([ModelConfig.encoderDevice]); null without an `mmproj`. */
+    public val encoderDevice: DeviceKind? = null,
+    /** ggml's device name for the encoder, e.g. `HTP0`, `GPUOpenCL`, `CPU`; null when there's no `mmproj`. */
+    public val encoderDeviceName: String? = null,
+    /**
+     * Set when the memory check said the model may not fit and it loaded anyway at the smallest context
+     * ([MemoryCheck.Warn]): how much it needed and how much was available. Null when it fit, or there was no check.
+     */
+    public val memoryWarning: String? = null,
 ) {
     /** One device that wasn't used. [deviceName] is null when no device of [kind] was available at all. */
     public class Attempt internal constructor(
@@ -69,7 +78,9 @@ public class LoadReport internal constructor(
     override fun equals(other: Any?): Boolean =
         other is LoadReport && device == other.device && deviceName == other.deviceName && backend == other.backend &&
             attempts == other.attempts && contextSize == other.contextSize && contextReason == other.contextReason &&
-            speculative == other.speculative && speculativeReason == other.speculativeReason
+            speculative == other.speculative && speculativeReason == other.speculativeReason &&
+            encoderDevice == other.encoderDevice && encoderDeviceName == other.encoderDeviceName &&
+            memoryWarning == other.memoryWarning
 
     override fun hashCode(): Int =
         listOf(
@@ -81,10 +92,14 @@ public class LoadReport internal constructor(
             contextReason,
             speculative,
             speculativeReason,
+            encoderDevice,
+            encoderDeviceName,
+            memoryWarning,
         ).hashCode()
 
     override fun toString(): String =
         "LoadReport(device=$device, deviceName=$deviceName, backend=$backend, attempts=$attempts, " +
             "contextSize=$contextSize, contextReason=$contextReason, speculative=$speculative, " +
-            "speculativeReason=$speculativeReason)"
+            "speculativeReason=$speculativeReason, encoderDevice=$encoderDevice, " +
+            "encoderDeviceName=$encoderDeviceName, memoryWarning=$memoryWarning)"
 }

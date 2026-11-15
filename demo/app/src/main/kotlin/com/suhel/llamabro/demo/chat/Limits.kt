@@ -3,6 +3,8 @@ package com.suhel.llamabro.demo.chat
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.demo.models.DownloadFailure
 import com.suhel.llamabro.demo.models.DownloadStatus
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /** What the user can do about a [Limit]: the buttons the design lists, as values the screen maps to components. */
 enum class LimitAction {
@@ -16,24 +18,55 @@ enum class LimitAction {
     SwitchModel,
 }
 
-/** One plain line and its action. */
+/**
+ * One plain line and its action. A [dismissible] line is a note, not a wall (nothing waits on it): it has a close
+ * button. A line that holds the chat up can't be closed, or its way out would go with it.
+ */
 data class Limit(
     val line: String,
     val action: LimitAction,
     val actionLabel: String,
     val second: LimitAction? = null,
     val secondLabel: String? = null,
+    val dismissible: Boolean = false,
 )
+
+/**
+ * The note the person closed (its ✕), so the line under the messages leaves it out. Only a [Limit.dismissible] note
+ * closes: a line the chat waits on keeps its way out.
+ */
+class ClosedNotes {
+    private val _closed = MutableStateFlow<Limit?>(null)
+    val closed: StateFlow<Limit?> = _closed
+
+    fun close(limit: Limit?) {
+        _closed.value = limit?.takeIf { it.dismissible }
+    }
+}
 
 /** The plain limit lines, in one place, so the copy is the design's word for word. */
 object Limits {
+    /**
+     * The model loaded although the SDK's memory check said it may not fit (`LoadReport.memoryWarning`, F128): the
+     * check can't count the background apps Android closes to make room, so this is a note, not a wall. The reply
+     * goes on; the next message clears the line.
+     */
+    fun memoryWarning(name: String) =
+        Limit(
+            "$name is using more memory than was free. Android may close apps in the background.",
+            LimitAction.TrySmallerSize,
+            "Smaller size",
+            dismissible = true,
+        )
+
+    /** A load that failed for memory all the same: the phone really had no room. */
     fun insufficientMemory(name: String) =
         Limit(
             "$name needs more memory than this phone has free right now.",
-            LimitAction.Retry,
-            "Try again",
             LimitAction.TrySmallerSize,
             "Smaller size",
+            LimitAction.Retry,
+            "Try again",
         )
 
     fun closeOtherApps(name: String) =

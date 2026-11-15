@@ -23,6 +23,8 @@
 #        LB_TEST_DFLASH (default ~/llamabro-models/Qwen3.5-4B-DFlash-Q8_0.gguf),
 #        LB_CONTRACT_MODELS extra GGUFs for the contract test, comma-separated (default: Llama 3.2 3B if present),
 #        LB_DEVICE_MODELS file names in the acceptance app's filesDir (default: the three P1 models),
+#        LB_VISION_MODEL, LB_VISION_MMPROJ a small vision model and its projector in the same filesDir, for VisionTest on
+#        the NPU (default: Qwen3.5 0.8B Q4_K_M and its BF16 projector, the demo's files; F120),
 #        LB_TEST_MODELS_DIR upstream's small test models for embeddings, rerank and LoRA (fetch-test-models.sh)
 set -uo pipefail
 
@@ -39,6 +41,9 @@ mmproj="${LB_TEST_MMPROJ:-$HOME/Downloads/mmproj-F16.gguf}"
 default_extra="$HOME/Downloads/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
 contract_models="${LB_CONTRACT_MODELS:-$( [ -f "$default_extra" ] && echo "$default_extra")}"
 device_models="${LB_DEVICE_MODELS:-Qwen3.5-4B-Q4_K_M.gguf,gemma-3-4b-it-qat-UD-Q4_K_XL.gguf,Llama-3.2-3B-Instruct-Q4_K_M.gguf}"
+
+vision_model="${LB_VISION_MODEL:-Qwen3.5-0.8B-Q4_K_M.gguf}"
+vision_mmproj="${LB_VISION_MMPROJ:-mmproj-Qwen3.5-0.8B-BF16.gguf}"
 
 device=0
 only=""
@@ -140,12 +145,15 @@ step_e2e() {
         --ctx-checkpoints 8 --load-mode none --fit off -b 512 -ub 512 --host 127.0.0.1 --port $port > "$logs/e2e-llama-server.log" 2>&1 &
     pid=$!
     for _ in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" > /dev/null && break; sleep 1; done
-    gradle :llamabro:testDebugUnitTest --tests 'com.suhel.llamabro.HostNativeTest' --rerun-tasks -i \
+    gradle :llamabro:testDebugUnitTest --tests 'com.suhel.llamabro.HostNative*' --rerun-tasks -i \
         -Pllamabro.host.lib="$native/build/host/bin" -Pllamabro.host.server="http://127.0.0.1:$port" \
         -Pllamabro.host.model="$model" ${mmproj:+-Pllamabro.host.mmproj="$mmproj"}
     status=$?
     kill $pid; wait $pid 2>/dev/null
-    grep -q 'skipped="0"' "$sdk/llamabro/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.HostNativeTest.xml" || { echo "HostNativeTest was skipped"; return 1; }
+    local t
+    for t in HostNativeTest HostNativeLogTest HostNativeFailedInitTest; do
+        grep -q 'skipped="0"' "$sdk/llamabro/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.$t.xml" || { echo "$t was skipped or has no result"; return 1; }
+    done
     return $status
 }
 
@@ -190,7 +198,9 @@ step_device() {
     # one acceptance flavor per set of backend artifacts (P2 T10, D29): full runs everything on every model; cpu, gpu and
     # noskel (full with the NPU skeleton broken: Auto must say why and use the GPU) run device choice, a chat and stop
     gradle :acceptance:backends:connectedFullDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
-        -Pandroid.testInstrumentationRunnerArguments.models="$device_models"
+        -Pandroid.testInstrumentationRunnerArguments.models="$device_models" \
+        -Pandroid.testInstrumentationRunnerArguments.vision="$vision_model" \
+        -Pandroid.testInstrumentationRunnerArguments.visionMmproj="$vision_mmproj"
     local acceptance=$? f
     for f in Cpu Gpu Noskel; do
         gradle ":acceptance:backends:connected${f}DebugAndroidTest" -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \

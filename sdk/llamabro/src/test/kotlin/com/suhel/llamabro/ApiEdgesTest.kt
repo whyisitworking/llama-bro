@@ -40,8 +40,8 @@ class ApiEdgesTest {
     fun askThrowsWhenToolsArePending() =
         runTest {
             val (engine, model) = setup()
-            engine.model.script(Replies.toolCalls(Triple("c1", "nope", "{}")))
-            val e = runCatching { model.conversation().ask("x") }.exceptionOrNull()
+            engine.model.script(Replies.toolCalls(Triple("c1", "manual", "{}")))
+            val e = runCatching { model.conversation { tool("manual", "m", "{}") }.ask("x") }.exceptionOrNull()
             assertTrue(
                 "$e",
                 e is LlamaBroException.Incomplete && e.reason == FinishReason.ToolCallsPending,
@@ -80,8 +80,8 @@ class ApiEdgesTest {
     fun addToolResultRejectsSecondResultForSameCall() =
         runTest {
             val (engine, model) = setup()
-            engine.model.script(Replies.toolCalls(Triple("c1", "nope", "{}")))
-            val chat = model.conversation()
+            engine.model.script(Replies.toolCalls(Triple("c1", "manual", "{}")))
+            val chat = model.conversation { tool("manual", "m", "{}") }
             chat.send("x").toList()
             chat.addToolResult("c1", "first")
             val e = runCatching { chat.addToolResult("c1", "second") }.exceptionOrNull()

@@ -2,9 +2,13 @@ package com.suhel.llamabro.demo.chat
 
 import androidx.tracing.trace
 import com.suhel.llamabro.LlamaBroException
+import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelInfo
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Content
+import com.suhel.llamabro.chat.Message
+import com.suhel.llamabro.chat.RequestOptions
+import com.suhel.llamabro.chat.Sampling
 import com.suhel.llamabro.conversation
 import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.demo.data.ChatRepository
@@ -23,7 +27,9 @@ import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -40,19 +46,45 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.coroutines.ContinuationInterceptor
 
-private fun sdkStream(
+/**
+ * How a turn asks: its Think [level] (null for a model that can't think), its [sampling] with the reply's length limit
+ * (D60), and whether it [continues] the cut reply that ends the conversation instead of answering a new message.
+ */
+data class TurnOptions(
+    val level: ThinkLevel? = null,
+    val sampling: Sampling = Sampling.Default,
+    val continues: Boolean = false,
+)
+
+/** How a turn reaches the model: the conversation, the message's text and pictures, and the turn's options. */
+typealias Streamer = (Conversation, String, Array<Content.Image>, TurnOptions) -> Flow<ChatEvent>
+
+/**
+ * What a turn streams: the SDK conversation, with the Think level and the sampling applied. A continue resends the
+ * history, whose last message is the cut reply: llama-server then continues that message, its thinking or its answer,
+ * instead of starting a new one (`prefill_assistant`, on by default). Journeys wrap it to hold a reply.
+ */
+internal fun sdkStream(
     convo: Conversation,
     text: String,
     images: Array<Content.Image>,
-    level: ThinkLevel?,
-): Flow<ChatEvent> = convo.send(text, *images) { if (level != null) reasoning { Thinking.configure(level, this) } }
+    options: TurnOptions,
+): Flow<ChatEvent> {
+    val configure: RequestOptions.Builder.() -> Unit = {
+        options.level?.let { level -> reasoning { Thinking.configure(level, this) } }
+        sampling = options.sampling
+    }
+    return if (options.continues) convo.resume(configure) else convo.send(text, *images, options = configure)
+}
 
 /** The divider line for a switch to [key]. */
 internal fun switchNotice(key: HfModel, name: String, now: Long) =
@@ -78,6 +110,39 @@ internal fun modelToRestate(rows: List<StoredMessage>, position: Int, current: H
     return current?.takeIf { answering != null && answering != it.toString() }
 }
 
+/** Whether [reply] can be continued in a chat on [key]: cut at its length limit, and written by that model (D60). */
+internal fun canContinue(reply: StoredMessage, key: HfModel): Boolean =
+    reply.kind == MessageKind.Assistant && reply.state == MessageState.Cut && reply.modelKey == key.toString()
+
+/** The chip the model runs on, as a reply's details name it ("NPU"). */
+internal fun Model.deviceName(): String = loadReport.device.name.uppercase()
+
+internal fun missingOrDownloading(name: String, status: DownloadStatus): ChatModelState =
+    when (status) {
+        is DownloadStatus.Downloading, is DownloadStatus.Partial -> ChatModelState.Downloading(status)
+        is DownloadStatus.Failed -> ChatModelState.DownloadFailed(name, status.failure)
+        else -> ChatModelState.Missing(name)
+    }
+
+internal fun readyOrWaking(key: HfModel, name: String, hostState: HostState): ChatModelState =
+    when {
+        hostState is HostState.Waking && hostState.key == key -> {
+            ChatModelState.Waking(hostState.progress)
+        }
+
+        hostState is HostState.Ready && hostState.key == key -> {
+            ChatModelState.Ready(
+                name,
+                hostState.model.info.supportsVision,
+                Thinking.canThink(hostState.model.info, Catalog.byKey(key)),
+            )
+        }
+
+        else -> {
+            ChatModelState.Ready(name, Catalog.byKey(key)?.sees ?: false, Catalog.byKey(key)?.thinks ?: false)
+        }
+    }
+
 /** The reply being written right now. It is not in [ChatHandle.messages] until the row changes state. */
 data class StreamingReply(
     val messageId: Long,
@@ -92,7 +157,8 @@ data class StreamingReply(
 sealed interface ChatModelState {
     data class Downloading(val status: DownloadStatus?) : ChatModelState
 
-    data object Waking : ChatModelState
+    /** The model is loading; [progress] is how far, 0 to 1, once the SDK has said. */
+    data class Waking(val progress: Float? = null) : ChatModelState
 
     data class Ready(val name: String, val sees: Boolean, val canThink: Boolean) : ChatModelState
 
@@ -117,22 +183,111 @@ class ChatEngine(
     private val frameMillis: Long = 16,
     private val writeMillis: Long = 250,
     /** How a turn reaches the model; tests replace it to script timing. */
-    private val streamer: (Conversation, String, Array<Content.Image>, ThinkLevel?) -> Flow<ChatEvent> = ::sdkStream,
+    private val streamer: Streamer = ::sdkStream,
+    /**
+     * Awaited before every turn: the app's recovery of replies a dead process left streaming, so it can never mark a
+     * reply this process has just started as stopped.
+     */
+    private val beforeTurn: suspend () -> Unit = {},
 ) {
+    /** Turns under way in every chat, from the load to the end of the reply. */
+    private val activeTurns = MutableStateFlow(0)
+
+    /**
+     * A reply is being loaded for or written, in any chat: the model can't be unloaded now, and a reply that goes on
+     * in the background keeps the app alive while it does (D59).
+     */
+    val replying: StateFlow<Boolean> =
+        activeTurns.map { it > 0 }.stateIn(scope, SharingStarted.Eagerly, false)
+
+    /** Models whose memory note was shown: once per model while the app runs, in whichever chat loads it first. */
+    private val memoryNoted: MutableSet<HfModel> =
+        java.util.concurrent.ConcurrentHashMap
+            .newKeySet()
+
+    /**
+     * The model for [key] (shown as [name]), or null when it didn't load: [limit] then says why. When the SDK loaded it
+     * although its memory check doubted it (F128), [limit] says so once per model: the note travels with the loaded
+     * model into every turn, and once is enough.
+     */
+    private suspend fun load(key: HfModel, name: String, limit: MutableStateFlow<Limit?>): Model? {
+        val loaded =
+            try {
+                host.use(key)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                limit.value = Limits.forLoadFailure(name, e)
+                    ?: Limit("$name didn't start. Try again.", LimitAction.Retry, "Retry")
+                return null
+            }
+        if (loaded.loadReport.memoryWarning != null && memoryNoted.add(key)) limit.value = Limits.memoryWarning(name)
+        return loaded
+    }
+
+    /**
+     * Releases the loaded model unless a turn is loading it or streaming from it (the app went to the background); the
+     * next send loads it again. True when it was released.
+     */
+    suspend fun releaseModelIfIdle(): Boolean {
+        if (activeTurns.value > 0) return false
+        host.release()
+        return true
+    }
+
+    private suspend fun newConversation(loaded: Model, history: List<Message>): Conversation {
+        val s = settings.settings.first()
+        return loaded.conversation(Instructions.system(s.instructionsAbout, s.instructionsStyle), history)
+    }
+
+    /** A turn at [level]: sampling from the chat, the model and the card, and the reply's length limit (D60). */
+    private suspend fun turnOptions(id: Long, key: HfModel, level: ThinkLevel?, continues: Boolean): TurnOptions {
+        val layers =
+            SamplingLayers(
+                card = Catalog.byRepo(key.repo)?.sampling,
+                model = settings.modelSampling.first()[key.toString()] ?: Knobs.None,
+                chat = chats.sampling(id).first(),
+            )
+        val thinks = Thinking.thinks(level)
+        return TurnOptions(level, layers.sampling(thinks, Thinking.replyTokens(level)), continues)
+    }
+
+    /** The chats open now: each registers when opened and leaves when closed. */
+    private val open: MutableSet<ChatHandle> =
+        java.util.concurrent.ConcurrentHashMap
+            .newKeySet()
+
     /** [chatId] 0 is a new chat: it is created with the first message. */
-    fun open(chatId: Long): ChatHandle = ChatHandle(chatId)
+    fun open(chatId: Long): ChatHandle = ChatHandle(chatId).also { open += it }
+
+    /**
+     * Stops every reply under way, keeping what arrived, as Stop would: the reply notification's Stop, and Android's
+     * limit on how long a reply may run in the background (D59).
+     */
+    fun stopAllReplies() = open.forEach { it.stop() }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     inner class ChatHandle internal constructor(initialChatId: Long) {
+        /**
+         * One thread at a time for everything this handle runs: [running], [conversation] and [conversationKey] are
+         * plain fields, read and written only on it, so a turn, a stop and an edit never see each other half done.
+         */
+        private val confined: CoroutineDispatcher =
+            (scope.coroutineContext[ContinuationInterceptor] as? CoroutineDispatcher ?: Dispatchers.Default)
+                .limitedParallelism(1)
+
         /**
          * Everything this handle runs lives in its own scope, under the engine's: [close] ends it, so a chat that was
          * left stops observing the database, stops pumping held messages and stops its reply (which is saved as
          * stopped).
          */
-        private val hs = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
+        private val hs = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]) + confined)
 
         /** Ends this handle. Call once, when the chat screen is gone. */
-        fun close() = hs.cancel()
+        fun close() {
+            open -= this
+            hs.cancel()
+        }
 
         private val _chatId = MutableStateFlow(initialChatId)
         val chatId: StateFlow<Long> = _chatId.asStateFlow()
@@ -189,12 +344,21 @@ class ChatEngine(
                             kotlinx.coroutines.flow.flowOf(readyOrWaking(key, name, hostState))
                         }
                     }
-                }.stateIn(hs, SharingStarted.Eagerly, ChatModelState.Waking)
+                }.stateIn(hs, SharingStarted.Eagerly, ChatModelState.Waking())
 
         private val turn = Mutex()
-        private var running: Job? = null
+
+        /** The turn under way, load and reply both; volatile only because [stop] cancels it from the UI's thread. */
+        @Volatile private var running: Job? = null
         private var conversation: Conversation? = null
         private var conversationKey: HfModel? = null
+
+        /**
+         * The loaded model [conversation] was made on. A conversation lives inside one load: after a release (the app
+         * went to the background, or the person unloaded it) the same key loads a new model and the old conversation
+         * is closed with the old one, so it is rebuilt from the stored rows.
+         */
+        private var conversationModel: Model? = null
 
         init {
             hs.launch {
@@ -235,10 +399,12 @@ class ChatEngine(
             return true
         }
 
+        /** Stops the turn, whether the model is still waking (the message stays held) or the reply is streaming. */
         fun stop() {
             running?.cancel()
         }
 
+        /** Asks again from [position]. */
         fun regenerate(position: Int) {
             hs.launch {
                 stopAndWait()
@@ -312,20 +478,23 @@ class ChatEngine(
 
         /** Deletes the chat; a reply still streaming into it is stopped first. */
         fun delete() {
-            scope.launch {
+            scope.launch(confined) {
                 stopAndWait()
                 _chatId.value.takeIf { it != 0L }?.let { chats.delete(it) }
             }
         }
 
         /** Instructions changed in Settings: the next turn rebuilds the conversation with the new system prompt. */
-        fun instructionsChanged() = invalidate()
+        fun instructionsChanged() {
+            hs.launch { invalidate() }
+        }
 
         // ---- the engine ----------------------------------------------------------------------------------
 
         private fun invalidate() {
             conversation = null
             conversationKey = null
+            conversationModel = null
         }
 
         private suspend fun stopAndWait() {
@@ -348,31 +517,32 @@ class ChatEngine(
                                     it.state == MessageState.Held
                             }
                                 ?: return@withLock
-                        if (!answer(id, key, held)) return@withLock
+                        // the turn, load and reply both, is the one job [stop] cancels: it is [running]
+                        // before the load starts, so a Stop while the model wakes ends the turn (the message
+                        // stays held, no reply row is made), and an edit, a regenerate or a switch waits for
+                        // the load as it waits for a reply
+                        var replied = false
+                        val job = hs.launch { answer(id, key, held) { replied = true } }
+                        running = job
+                        job.join()
+                        if (running === job) running = null
+                        if (!replied) return@withLock
                     }
                 }
             }
         }
 
-        /** Answers [user]; false when the turn could not start (the message stays held). */
-        private suspend fun answer(id: Long, key: HfModel, user: StoredMessage): Boolean {
+        /** Answers [user]; [onReply] runs once the reply row exists (the load worked and was not stopped). */
+        private suspend fun answer(id: Long, key: HfModel, user: StoredMessage, onReply: () -> Unit) {
+            activeTurns.update { it + 1 }
             _busy.value = true
             try {
-                val loaded =
-                    try {
-                        host.use(key)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        _limit.value = Limits.forLoadFailure(displayName(key), e)
-                            ?: Limit("${displayName(key)} didn't start. Try again.", LimitAction.Retry, "Retry")
-                        return false
-                    }
+                beforeTurn()
+                val loaded = load(key, displayName(key), _limit) ?: return
                 syncThink(loaded.info)
                 val rows = chats.messages(id).first()
-                var convo = conversation.takeIf { conversationKey == key }
+                var convo = conversation.takeIf { conversationKey == key && conversationModel === loaded }
                 if (convo == null) {
-                    val s = settings.settings.first()
                     // what the model has seen: answered rows before this question, and replies; other held questions
                     // wait their turn
                     val seen =
@@ -380,13 +550,10 @@ class ChatEngine(
                             it.id != user.id && it.state != MessageState.Held &&
                                 (it.position < user.position || it.kind == MessageKind.Assistant)
                         }
-                    convo =
-                        loaded.conversation(
-                            Instructions.system(s.instructionsAbout, s.instructionsStyle),
-                            History.forModel(seen),
-                        )
+                    convo = newConversation(loaded, History.forModel(seen))
                     conversation = convo
                     conversationKey = key
+                    conversationModel = loaded
                 }
                 val replyId =
                     chats.append(
@@ -399,15 +566,87 @@ class ChatEngine(
                             sentAt = clock(),
                         ),
                     )
-                val level = _think.value
+                onReply()
                 val images = user.images.map { Content.Image(it.readBytes(), "image/jpeg") }.toTypedArray()
-                val job = hs.launch { stream(convo, replyId, user, images, level) }
-                running = job
-                job.join()
-                running = null
-                return true
+                val draft = ReplyDraft(clock, loaded.deviceName())
+                stream(
+                    convo,
+                    replyId,
+                    user,
+                    user.text,
+                    images,
+                    turnOptions(id, key, _think.value, continues = false),
+                    draft,
+                )
             } finally {
                 _busy.value = false
+                activeTurns.update { it - 1 }
+            }
+        }
+
+        /**
+         * Continues the cut reply at [position] (D60): the chat's last row, cut at its length limit, written by the
+         * chat's model. The model reads the chat with that reply as its last message and goes on writing it, its
+         * thinking or its answer; the new words join the same row, which may be cut again and continued again.
+         */
+        fun continueReply(position: Int) {
+            hs.launch {
+                turn.withLock {
+                    val id = _chatId.value.takeIf { it != 0L } ?: return@withLock
+                    val key = modelKey.value ?: return@withLock
+                    val rows = chats.messages(id).first()
+                    val reply = rows.lastOrNull()?.takeIf { it.position == position && canContinue(it, key) }
+                    val user = rows.lastOrNull { it.kind == MessageKind.User && it.position < position }
+                    if (reply == null || user == null) return@withLock
+                    _limit.value = null
+                    val job = hs.launch { continueTurn(id, key, rows, reply, user) }
+                    running = job
+                    job.join()
+                    if (running === job) running = null
+                }
+            }
+        }
+
+        private suspend fun continueTurn(
+            id: Long,
+            key: HfModel,
+            rows: List<StoredMessage>,
+            reply: StoredMessage,
+            user: StoredMessage,
+        ) {
+            activeTurns.update { it + 1 }
+            _busy.value = true
+            try {
+                beforeTurn()
+                val loaded = load(key, displayName(key), _limit) ?: return
+                syncThink(loaded.info)
+                // the chat before the reply, then the reply as far as it got, its thinking with it
+                val history =
+                    History.forModel(rows, upTo = reply.position) +
+                        Message.Assistant(content = reply.text, reasoning = reply.reasoning)
+                // a one-off: kept, this conversation would hold the reply twice once the next message is sent
+                invalidate()
+                val convo = newConversation(loaded, history)
+                chats.update(reply.id, MessageChange(state = MessageState.Streaming))
+                val draft =
+                    ReplyDraft(
+                        clock,
+                        loaded.deviceName(),
+                        ReplyDraft.Continued(reply.text, reply.reasoning, reply.reasoningMillis),
+                    )
+                stream(
+                    convo,
+                    reply.id,
+                    user,
+                    "",
+                    emptyArray(),
+                    turnOptions(id, key, _think.value, continues = true),
+                    draft,
+                )
+                invalidate()
+            } finally {
+                _busy.value = false
+                activeTurns.update { it - 1 }
             }
         }
 
@@ -415,13 +654,14 @@ class ChatEngine(
             convo: Conversation,
             replyId: Long,
             user: StoredMessage,
+            text: String,
             images: Array<Content.Image>,
-            level: ThinkLevel?,
+            options: TurnOptions,
+            draft: ReplyDraft,
         ) {
-            val draft = ReplyDraft(clock)
             val ticker = hs.launch { showAndSave(draft, replyId) }
             try {
-                streamer(convo, user.text, images, level).collect { trace("ChatEngine.onDelta") { draft.accept(it) } }
+                streamer(convo, text, images, options).collect { trace("ChatEngine.onDelta") { draft.accept(it) } }
                 ticker.cancel()
                 finish(replyId, user, draft.ended(MessageState.Done))
             } catch (e: CancellationException) {
@@ -434,7 +674,7 @@ class ChatEngine(
             } catch (e: Exception) {
                 ticker.cancel()
                 val limit = Limits.forLoadFailure(currentName(), e)
-                finish(replyId, user, draft.failed(limit?.line ?: "That didn't work. Try again."))
+                finish(replyId, user, draft.failed(limit?.line ?: "That didn't work."))
                 _limit.value = limit
                 invalidate()
             }
@@ -497,32 +737,6 @@ class ChatEngine(
             library.value?.firstOrNull { it.key == key }?.name
                 ?: Catalog.byRepo(key.repo)?.realName
                 ?: key.repo.substringAfter('/').removeSuffix("-GGUF")
-
-        private fun missingOrDownloading(name: String, status: DownloadStatus): ChatModelState =
-            when (status) {
-                is DownloadStatus.Downloading, is DownloadStatus.Partial -> ChatModelState.Downloading(status)
-                is DownloadStatus.Failed -> ChatModelState.DownloadFailed(name, status.failure)
-                else -> ChatModelState.Missing(name)
-            }
-
-        private fun readyOrWaking(key: HfModel, name: String, hostState: HostState): ChatModelState =
-            when {
-                hostState is HostState.Waking && hostState.key == key -> {
-                    ChatModelState.Waking
-                }
-
-                hostState is HostState.Ready && hostState.key == key -> {
-                    ChatModelState.Ready(
-                        name,
-                        hostState.model.info.supportsVision,
-                        Thinking.canThink(hostState.model.info, Catalog.byKey(key)),
-                    )
-                }
-
-                else -> {
-                    ChatModelState.Ready(name, Catalog.byKey(key)?.sees ?: false, Catalog.byKey(key)?.thinks ?: false)
-                }
-            }
     }
 
     private companion object {

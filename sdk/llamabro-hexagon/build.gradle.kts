@@ -8,7 +8,7 @@ group = "io.github.whyisitworking"
 // by sdk/native/scripts/build-backends.sh. Being on the classpath is enough: the core finds it through the manifest.
 android {
     namespace = "com.suhel.llamabro.hexagon"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 29

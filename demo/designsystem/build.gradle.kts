@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.suhel.llamabro.demo.designsystem"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig {
         minSdk = 29
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

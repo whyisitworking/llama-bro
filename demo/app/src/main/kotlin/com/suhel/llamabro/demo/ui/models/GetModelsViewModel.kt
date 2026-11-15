@@ -1,5 +1,6 @@
 package com.suhel.llamabro.demo.ui.models
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.demo.models.DownloadStatus
@@ -57,9 +58,11 @@ class GetModelsViewModel(
     private val markFirstRunSeen: suspend () -> Unit = {},
     initialQuery: String = "",
     private val debounceMillis: Long = 350,
+    /** Keeps what was typed across process death. */
+    savedState: SavedStateHandle,
 ) : ViewModel() {
     // the user's inputs: what was typed, how often "Retry" was tapped, which download started from which row
-    private val queryInput = MutableStateFlow(initialQuery)
+    private val queryInput = savedState.getMutableStateFlow(QUERY_KEY, initialQuery)
     private val retryInput = MutableStateFlow(0)
     private val startedInput = MutableStateFlow<Map<String, HfModel>>(emptyMap())
 
@@ -174,6 +177,7 @@ class GetModelsViewModel(
     companion object {
         const val MIN_QUERY = 2
         private const val FIT_PARALLELISM = 4
+        private const val QUERY_KEY = "query"
         private const val STOP_TIMEOUT = 5_000L
         const val OFFLINE_LINE = "You're offline. These are suggested for this phone."
     }

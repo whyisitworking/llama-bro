@@ -1,5 +1,6 @@
 package com.suhel.llamabro.demo.ui.shell
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.demo.data.AppLayout
@@ -9,7 +10,6 @@ import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.models.ModelRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -27,6 +27,8 @@ class ShellViewModel(
     models: ModelRepository,
     private val clock: () -> Long = System::currentTimeMillis,
     private val zone: ZoneId = ZoneId.systemDefault(),
+    /** Keeps the drawer's search across process death. */
+    savedState: SavedStateHandle,
 ) : ViewModel() {
     val layout: StateFlow<AppLayout?> =
         settings.settings
@@ -49,7 +51,7 @@ class ShellViewModel(
         ) { seen, empty -> !seen && empty }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
 
-    private val query = MutableStateFlow("")
+    private val query = savedState.getMutableStateFlow(QUERY_KEY, "")
     val searchText: StateFlow<String> = query
 
     val chats: StateFlow<List<ChatSummary>> =
@@ -87,5 +89,6 @@ class ShellViewModel(
 
     private companion object {
         const val STOP_TIMEOUT = 5_000L
+        const val QUERY_KEY = "query"
     }
 }

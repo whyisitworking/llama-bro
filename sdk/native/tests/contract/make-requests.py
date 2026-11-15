@@ -121,6 +121,7 @@ add("x-54-models", "models", None, compare="events")
 add("x-55-health", "health", None)
 add("x-56-lora-adapters", "lora_adapters", None)
 add("x-57-lora-adapters-set", "lora_adapters_set", [])
+add("x-58-speech", "speech", {"input": "hello"})  # new at b12352: OpenAI's /v1/audio/speech
 
 for spec in out:
     print(json.dumps(spec, ensure_ascii=False))

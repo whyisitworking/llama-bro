@@ -18,7 +18,7 @@ class HexagonDeviceTest {
     fun hexagonBackendLoads() =
         runBlocking {
             val context = InstrumentationRegistry.getInstrumentation().targetContext
-            val llama = LlamaBro.getInstance(context)
+            val llama = LlamaBro.create(context)
             val backends = llama.backends()
             val hexagon = backends.single { it.name == "hexagon" }
             assertTrue("$backends", hexagon.loaded)

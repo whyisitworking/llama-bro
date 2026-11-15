@@ -2,6 +2,7 @@ package com.suhel.llamabro.conversation
 
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Message
+import com.suhel.llamabro.chat.ToolCall
 import kotlinx.coroutines.flow.Flow
 
 /** Compaction constants, verbatim from llama.cpp b12052 tools/ui/src/lib/constants/compaction.constants.ts. */
@@ -29,7 +30,8 @@ public object Compaction {
  *
  * @throws com.suhel.llamabro.LlamaBroException.CompactionTruncated if the summary hit the output limit; the
  *   history is unchanged.
- * @throws IllegalStateException if no step lies before the preserved ones (nothing to compact).
+ * @throws IllegalStateException if no step lies before the preserved ones (nothing to compact), or a tool call of
+ *   the last reply still has no result (waiting for approval, or a manual tool): approve, deny or answer it first.
  */
 public fun Conversation.compact(
     preservedSteps: Int = Compaction.DEFAULT_PRESERVED_STEPS,
@@ -38,10 +40,18 @@ public fun Conversation.compact(
 
 /**
  * Whether [compact] with [preservedSteps] has anything to summarise (tools/ui `canCompactMessages`), e.g. to
- * enable a Compact button. A step is a user message, or an assistant message with its tool results.
+ * enable a Compact button. A step is a user message, or an assistant message with its tool results. False while a
+ * tool call of the last reply has no result, since a compaction would drop it (D62).
  */
 public fun Conversation.canCompact(preservedSteps: Int = Compaction.DEFAULT_PRESERVED_STEPS): Boolean =
-    CompactionPlanner.canCompact(messages.value, preservedSteps)
+    CompactionPlanner.canCompact(messages.value, preservedSteps) && unansweredToolCalls(messages.value).isEmpty()
+
+/**
+ * The calls of the last reply still without a result. A compaction closes that batch (D62), so the call would never
+ * be approved or answered and the model would later see it without a result; tools/ui never has such calls, since
+ * its loop answers every call before the user can compact.
+ */
+internal fun unansweredToolCalls(history: List<Message>): List<ToolCall> = ToolBatch.of(history)?.unanswered.orEmpty()
 
 /** Port of llama.cpp b12052 tools/ui/src/lib/utils/compaction.ts. */
 internal object CompactionPlanner {

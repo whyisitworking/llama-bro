@@ -6,7 +6,10 @@
 # Output: sdk/native/build/android-device-tools/ (executables, every .so they need, the v79 skeleton, libc++).
 # Needs scripts/prepare-llama.sh first.
 # Usage: build-device-tools.sh   (env: LB_DEVICE_TOOLS_NAME output name, default android-device-tools;
-#                                  LB_EXTRA_CMAKE_ARGS more -D options for a comparison build)
+#                                  LB_EXTRA_CMAKE_ARGS more -D options for a comparison build;
+#                                  LB_EXTRA_TARGETS more targets, e.g. ggml-opencl with
+#                                  LB_EXTRA_CMAKE_ARGS='"-DLB_BACKENDS=hexagon;opencl"' (the inner quotes keep the ;
+#                                  out of the container's shell))
 set -euo pipefail
 
 native="$(cd "$(dirname "$0")/.." && pwd)"
@@ -14,6 +17,7 @@ image="ghcr.io/snapdragon-toolchain/arm64-android:v0.8"
 ndk_rev="29.0.14206865"
 name="${LB_DEVICE_TOOLS_NAME:-android-device-tools}"
 extra="${LB_EXTRA_CMAKE_ARGS:-}"
+targets="${LB_EXTRA_TARGETS:-}"
 build="$native/build/$name-build"
 out="$native/build/$name"
 
@@ -29,7 +33,7 @@ docker run --rm -u "$(id -u):$(id -g)" --platform linux/amd64 --volume "$native:
         -DCMAKE_BUILD_TYPE=Release -DLB_LLAMA_DIR=/native/build/llama.cpp -DLB_BACKENDS=hexagon \
         -DLB_BUILD_TESTS=ON -DLB_PREFIX_LIBS=OFF -DPREBUILT_LIB_DIR=android_aarch64 '"$extra"' >/dev/null
   cpu=$(cmake --build /native/build/'"$name"'-build --target help | sed -n "s/^\(ggml-cpu[^:]*\):.*/\1/p" | tr "\n" " ")
-  cmake --build /native/build/'"$name"'-build --target llama-server lb-run llama-fit-params ggml-hexagon htp-v79 $cpu
+  cmake --build /native/build/'"$name"'-build --target llama-server lb-run llama-fit-params ggml-hexagon htp-v79 $cpu '"$targets"'
   # the NDK runtime the AAR ships too (check-aar.sh); no libomp.so, as OpenMP is off (D38)
   cp "$(find "$ANDROID_NDK_ROOT" -path "*aarch64-linux-android/libc++_shared.so" -print -quit)" /native/build/'"$name"'-build/
 '

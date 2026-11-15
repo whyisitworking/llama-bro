@@ -27,7 +27,7 @@ class MainActivity : ComponentActivity() {
         }
         lifecycleScope.launch {
             try {
-                val model = LlamaBro.getInstance(applicationContext).loadModel(ModelSource.file(gguf.path))
+                val model = LlamaBro.create(applicationContext).loadModel(ModelSource.file(gguf.path))
                 Log.i(TAG, "loaded: ${model.info.description}, context ${model.info.contextSize}")
                 model.close()
             } catch (e: Exception) {

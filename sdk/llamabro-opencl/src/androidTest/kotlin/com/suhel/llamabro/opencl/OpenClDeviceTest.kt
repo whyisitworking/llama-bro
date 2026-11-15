@@ -14,7 +14,7 @@ class OpenClDeviceTest {
     @Test
     fun openclBackendLoads() =
         runBlocking {
-            val llama = LlamaBro.getInstance(InstrumentationRegistry.getInstrumentation().targetContext)
+            val llama = LlamaBro.create(InstrumentationRegistry.getInstrumentation().targetContext)
             val backends = llama.backends()
             val opencl = backends.single { it.name == "opencl" }
             assertTrue("$backends", opencl.loaded)

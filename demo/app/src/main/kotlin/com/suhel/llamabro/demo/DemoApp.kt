@@ -3,24 +3,19 @@ package com.suhel.llamabro.demo
 import android.app.Application
 import android.content.pm.ApplicationInfo
 import android.util.Log
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
-import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.LlamaBroConfig
 import com.suhel.llamabro.LogLevel
 import com.suhel.llamabro.Logger
+import com.suhel.llamabro.demo.chat.BackgroundRelease
+import com.suhel.llamabro.demo.chat.ReplyKeeper
 import com.suhel.llamabro.hub.HubConfig
-import com.suhel.llamabro.hub.LlamaBroHub
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 /** Open so the test application can supply its own container (androidTest `TestDemoApp`). */
 open class DemoApp :
     Application(),
-    LlamaBro.ConfigProvider,
-    LlamaBroHub.ConfigProvider,
     Configuration.Provider {
     /** Created on first use, on whichever thread asks; building it runs no native code. */
     open val container: AppContainer by lazy { ContainerFactory.create(this) }
@@ -30,21 +25,43 @@ open class DemoApp :
         onStartup()
     }
 
-    /** A reply left `Streaming` by a dead process becomes `Stopped` (Review focus 2), off the main thread. */
+    /**
+     * Starts the recovery of interrupted replies on the container's scope (the engine's first turn waits for it), and
+     * gives the model's memory back while the app sits in the background.
+     */
     protected open fun onStartup() {
         ContainerFactory.onStart(this)
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            try {
-                container.chats.recoverInterrupted()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w("DemoApp", "could not recover interrupted replies: ${e.javaClass.simpleName}")
-            }
-        }
+        container.recoverInterrupted()
+        ProcessLifecycleOwner.get().lifecycle.addObserver(release)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(replyKeeper)
     }
 
-    override val llamaBroConfig: LlamaBroConfig get() = LlamaBroConfig.Default
+    /** A reply under way as the app leaves the screen keeps the app alive until it ends (D59). */
+    private val replyKeeper by lazy { ReplyKeeper(this) { container.engine.replying.value } }
+
+    /** Frees the model a while after the app leaves the screen (Settings › Memory), or when Android needs it. */
+    private val release by lazy {
+        BackgroundRelease(
+            container.appScope,
+            keepMillis = {
+                container.settings.settings
+                    .first()
+                    .keepLoaded.millis
+            },
+        ) { container.engine.releaseModelIfIdle() }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        release.onTrimMemory(level)
+    }
+
+    /**
+     * The configs are properties, built once: `create` returns the same object for an equal config, and a logger is
+     * compared by reference, so a config built per call would differ each time (D70). A worker started in a fresh
+     * process reaches them through [container], so it sees the config the UI used.
+     */
+    val llamaBroConfig: LlamaBroConfig = LlamaBroConfig.Default
 
     /** The Hub's address; the test application points it at its fake server. */
     protected open val hubEndpoint: String get() = HubConfig.Default.endpoint
@@ -53,7 +70,7 @@ open class DemoApp :
     override val workManagerConfiguration: Configuration get() = Configuration.Builder().build()
 
     /** The token is read from the Keystore-backed store before each plan or download, and goes nowhere else. */
-    override val llamaBroHubConfig: HubConfig get() =
+    val hubConfig: HubConfig by lazy {
         HubConfig {
             endpoint = hubEndpoint
             token { container.tokenStore.read() }
@@ -63,6 +80,7 @@ open class DemoApp :
                 logger = Logger { level, message -> Log.println(priority(level), "LlamaBroHub", message) }
             }
         }
+    }
 
     private fun priority(level: LogLevel): Int =
         when (level) {

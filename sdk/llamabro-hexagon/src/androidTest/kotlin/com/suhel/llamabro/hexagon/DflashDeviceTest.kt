@@ -34,7 +34,7 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class DflashDeviceTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
-    private val llama = LlamaBro.getInstance(context)
+    private val llama = LlamaBro.create(context)
     private val modelPath = File(context.getExternalFilesDir(null), "Qwen3.5-4B-Q4_K_M.gguf").absolutePath
     private val draftPath = File(context.getExternalFilesDir(null), "Qwen3.5-4B-DFlash-Q8_0.gguf").absolutePath
 

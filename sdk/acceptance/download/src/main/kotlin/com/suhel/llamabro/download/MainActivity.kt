@@ -49,7 +49,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         (application as DownloadApplication).rememberDebugEndpoint(intent.getStringExtra("endpoint"))
-        hub = LlamaBroHub.getInstance(this)
+        hub = (application as DownloadApplication).hub()
         reference =
             EditText(this).apply {
                 setSingleLine(true)
@@ -155,7 +155,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             try {
                 val choice = hub.plan(model)
-                val fit = hub.estimateFit(choice, LlamaBro.getInstance(this@MainActivity))
+                val fit = hub.estimateFit(choice, LlamaBro.create(this@MainActivity))
                 status.text =
                     buildString {
                         append("${choice.files.size} files, ${choice.bytesTotal / BYTES_PER_MIB} MB total\n")
@@ -225,7 +225,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             try {
                 val source = hub.source(model)
-                val loaded = LlamaBro.getInstance(this@MainActivity).loadModel(source)
+                val loaded = LlamaBro.create(this@MainActivity).loadModel(source)
                 try {
                     // A one-line greeting needs no thinking; Qwen3.5 thinks by default and could spend the turn on it.
                     val conversation =

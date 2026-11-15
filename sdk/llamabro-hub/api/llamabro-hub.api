@@ -109,10 +109,13 @@ public final class com/suhel/llamabro/hub/HfModel$Companion {
 public final class com/suhel/llamabro/hub/HubConfig {
 	public static final field Companion Lcom/suhel/llamabro/hub/HubConfig$Companion;
 	public static final field Default Lcom/suhel/llamabro/hub/HubConfig;
+	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCacheDir ()Ljava/io/File;
 	public final fun getEndpoint ()Ljava/lang/String;
 	public final fun getLogger ()Lcom/suhel/llamabro/Logger;
 	public final fun getProgressInterval-UwyO8pc ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/suhel/llamabro/hub/HubConfig$Builder {
@@ -201,12 +204,13 @@ public final class com/suhel/llamabro/hub/HubPlan {
 public final class com/suhel/llamabro/hub/LlamaBroHub {
 	public static final field Companion Lcom/suhel/llamabro/hub/LlamaBroHub$Companion;
 	public final fun cached (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static final fun create (Landroid/content/Context;)Lcom/suhel/llamabro/hub/LlamaBroHub;
+	public static final fun create (Landroid/content/Context;Lcom/suhel/llamabro/hub/HubConfig;)Lcom/suhel/llamabro/hub/LlamaBroHub;
 	public final fun delete (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun download (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/flow/Flow;
 	public static synthetic fun download$default (Lcom/suhel/llamabro/hub/LlamaBroHub;Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
 	public final fun estimateFit (Lcom/suhel/llamabro/hub/HubPlan;Lcom/suhel/llamabro/LlamaBro;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun estimateFit$default (Lcom/suhel/llamabro/hub/LlamaBroHub;Lcom/suhel/llamabro/hub/HubPlan;Lcom/suhel/llamabro/LlamaBro;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
-	public static final fun getInstance (Landroid/content/Context;)Lcom/suhel/llamabro/hub/LlamaBroHub;
 	public final fun plan (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun plan$default (Lcom/suhel/llamabro/hub/LlamaBroHub;Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun progress (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/flow/StateFlow;
@@ -216,11 +220,9 @@ public final class com/suhel/llamabro/hub/LlamaBroHub {
 }
 
 public final class com/suhel/llamabro/hub/LlamaBroHub$Companion {
-	public final fun getInstance (Landroid/content/Context;)Lcom/suhel/llamabro/hub/LlamaBroHub;
-}
-
-public abstract interface class com/suhel/llamabro/hub/LlamaBroHub$ConfigProvider {
-	public abstract fun getLlamaBroHubConfig ()Lcom/suhel/llamabro/hub/HubConfig;
+	public final fun create (Landroid/content/Context;)Lcom/suhel/llamabro/hub/LlamaBroHub;
+	public final fun create (Landroid/content/Context;Lcom/suhel/llamabro/hub/HubConfig;)Lcom/suhel/llamabro/hub/LlamaBroHub;
+	public static synthetic fun create$default (Lcom/suhel/llamabro/hub/LlamaBroHub$Companion;Landroid/content/Context;Lcom/suhel/llamabro/hub/HubConfig;ILjava/lang/Object;)Lcom/suhel/llamabro/hub/LlamaBroHub;
 }
 
 public final class com/suhel/llamabro/hub/PlanOptions {

@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.suhel.llamabro.demo.benchmark"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 29

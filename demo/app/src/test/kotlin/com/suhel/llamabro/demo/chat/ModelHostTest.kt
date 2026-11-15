@@ -130,7 +130,7 @@ class ModelHostTest {
                 ModelSource.file("/fake/a.gguf")
             }
             val pending = async { host.use(a) }
-            withTimeout(10_000) { while (host.state.value != HostState.Waking(a)) kotlinx.coroutines.yield() }
+            withTimeout(10_000) { while ((host.state.value as? HostState.Waking)?.key != a) kotlinx.coroutines.yield() }
             gate.complete(Unit)
             pending.await()
             assertTrue(host.state.value is HostState.Ready)

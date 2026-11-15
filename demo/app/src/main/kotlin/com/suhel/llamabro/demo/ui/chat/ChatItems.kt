@@ -5,7 +5,10 @@ import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.StoredMessage
 import com.suhel.llamabro.demo.designsystem.components.MarkdownBlocks
+import com.suhel.llamabro.demo.models.Catalog
+import com.suhel.llamabro.hub.HfModel
 import java.io.File
+import java.text.NumberFormat
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -56,10 +59,19 @@ sealed interface ChatItem {
     val time: String?,
     val stopped: Boolean,
     val failure: String?,
+    /** What the details sheet lists (the model, the chip, speeds and token counts); empty for a failed reply. */
+    val details: List<ReplyDetail> = emptyList(),
+    /** The reply reached its length limit (D60). */
+    val cut: Boolean = false,
+    /** A cut reply that is the chat's last row: it can be continued. */
+    val canContinue: Boolean = false,
 ) : ChatItem {
     override val key get() = "m-$id"
     override val type get() = "reply"
 }
+
+/** One line of a reply's details: "Speed", "38 words/s · 14.2 tokens/s". */
+@Immutable data class ReplyDetail(val label: String, val value: String)
 
 @Immutable data class SwitchItem(val id: Long, val text: String) : ChatItem {
     override val key get() = "m-$id"
@@ -84,22 +96,38 @@ class ChatItems(
         val out = ArrayList<ChatItem>(messages.size + 2)
         var lastDay: Long? = null
         // the reply being written is drawn from the streaming flow, not from its stored row
-        for (m in messages.filterNot { it.kind == MessageKind.Assistant && it.state == MessageState.Streaming }) {
+        val shown = messages.filterNot { it.kind == MessageKind.Assistant && it.state == MessageState.Streaming }
+        // only the chat's last row can be continued: anything after a cut reply (a divider, a question) moved on
+        val last = messages.lastOrNull()
+        for (m in shown) {
             val at = Instant.ofEpochMilli(m.sentAt).atZone(zone)
             val day = at.toLocalDate().toEpochDay()
             if (style == MessageStyle.Bubbles && m.kind != MessageKind.Switch && day != lastDay) {
                 out += DayItem(dayLabel(day), day)
                 lastDay = day
             }
-            out += item(m, time = if (style == MessageStyle.Bubbles) timeFormat.format(at) else null, waitingFor)
+            out +=
+                item(
+                    m,
+                    time =
+                        if (style ==
+                            MessageStyle.Bubbles
+                        ) {
+                            timeFormat.format(at)
+                        } else {
+                            null
+                        },
+                    waitingFor,
+                    m === last,
+                )
         }
         return out
     }
 
-    private fun item(m: StoredMessage, time: String?, waitingFor: String?): ChatItem =
+    private fun item(m: StoredMessage, time: String?, waitingFor: String?, isLast: Boolean): ChatItem =
         when (m.kind) {
             MessageKind.User -> userItem(m, time, waitingFor)
-            MessageKind.Assistant -> replyItem(m, time)
+            MessageKind.Assistant -> replyItem(m, time, isLast)
             MessageKind.Switch -> SwitchItem(m.id, m.text)
         }
 
@@ -109,7 +137,7 @@ class ChatItems(
         return UserItem(m.id, m.position, m.text, m.images, time, heldNote)
     }
 
-    private fun replyItem(m: StoredMessage, time: String?): ReplyItem =
+    private fun replyItem(m: StoredMessage, time: String?, isLast: Boolean): ReplyItem =
         ReplyItem(
             m.id,
             m.position,
@@ -120,8 +148,45 @@ class ChatItems(
             speed = speed(m.wordsPerSecond),
             time = time,
             stopped = m.state == MessageState.Stopped,
-            failure = if (m.state == MessageState.Failed) m.failure ?: "That didn't work. Try again." else null,
+            failure = if (m.state == MessageState.Failed) m.failure ?: "That didn't work." else null,
+            details = if (m.state == MessageState.Failed) emptyList() else details(m),
+            cut = m.state == MessageState.Cut,
+            canContinue = m.state == MessageState.Cut && isLast,
         )
+
+    /** The details sheet's lines, each only when it's known: replies stored before version 2 have fewer. */
+    private fun details(m: StoredMessage): List<ReplyDetail> {
+        val s = m.stats
+        val count = NumberFormat.getIntegerInstance(locale)
+
+        fun rate(perSecond: Double) = String.format(locale, "%.1f tokens/s", perSecond)
+        return buildList {
+            m.modelKey
+                ?.let { key -> runCatching { Catalog.nameOf(HfModel.parse(key)) }.getOrNull() }
+                ?.let { add(ReplyDetail("Model", it)) }
+            s?.device?.let { add(ReplyDetail("Ran on", it)) }
+            val words = speed(m.wordsPerSecond)
+            val tokens = s?.tokensPerSecond?.takeIf { it > 0 }?.let(::rate)
+            listOfNotNull(words, tokens).takeIf { it.isNotEmpty() }?.let {
+                add(ReplyDetail("Speed", it.joinToString(" · ")))
+            }
+            s?.replyTokens?.let { add(ReplyDetail("Reply", "${count.format(it)} tokens")) }
+            s?.promptTokens?.let { prompt ->
+                val cached = s.cachedTokens?.takeIf { it > 0 }
+                val line =
+                    "${count.format(prompt)} tokens" + (cached?.let { " · ${count.format(it)} from the cache" } ?: "")
+                add(ReplyDetail("Prompt", line))
+            }
+            s?.promptPerSecond?.takeIf { it > 0 }?.let { add(ReplyDetail("Prompt read at", rate(it))) }
+            m.reasoningMillis?.let {
+                add(ReplyDetail("Thought for", "${(it / MILLIS_PER_SECOND).roundToInt()} s"))
+            }
+            val drafted = s?.draftTokens?.takeIf { it > 0 }
+            if (drafted != null) {
+                add(ReplyDetail("Drafts kept", "${count.format(s.draftAccepted ?: 0)} of ${count.format(drafted)}"))
+            }
+        }
+    }
 
     private fun dayLabel(epochDay: Long): String {
         val today =

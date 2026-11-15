@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.suhel.llamabro.demo.AppContainer
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
@@ -48,6 +49,7 @@ fun GetModelsRoute(container: AppContainer, initialQuery: String, onBack: () -> 
                 models = container.models,
                 markFirstRunSeen = container.settings::markFirstRunSeen,
                 initialQuery = initialQuery,
+                savedState = createSavedStateHandle(),
             )
         }
     val state by viewModel.state.collectAsStateWithLifecycle()

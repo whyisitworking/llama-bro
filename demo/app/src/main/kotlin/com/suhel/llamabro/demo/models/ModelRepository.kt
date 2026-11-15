@@ -10,11 +10,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -31,7 +36,8 @@ data class LibraryModel(
 /**
  * The models on the phone and their downloads. `pause` stops the work and keeps the hub's partial; `get` starts it
  * again and the hub resumes; `cancel` stops it and deletes the partial. [host], when given, is released before a model
- * it holds is removed. [lastUsedAt] reads when a model was last used in a chat (null when unknown).
+ * it holds is removed. [lastUsed] is when each model (by key) last answered in a chat; a model absent from it was never
+ * used.
  */
 class ModelRepository(
     private val hub: HubGateway,
@@ -39,27 +45,38 @@ class ModelRepository(
     private val scheduler: DownloadScheduler,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val host: ModelHost? = null,
-    private val lastUsedAt: suspend (HfModel) -> Long? = { null },
+    lastUsed: Flow<Map<String, Long>> = flowOf(emptyMap()),
 ) {
     private val changes = MutableStateFlow(0)
 
+    private class Scan(val version: Int, val entries: List<CachedEntry>)
+
+    /**
+     * The cache, scanned once per [changed] for every collector (the shell, each open chat, the library screen), not
+     * once per collector. Tagged with the version it read, so a collector after [changed] waits for the new scan.
+     */
+    private val scan: StateFlow<Scan?> =
+        changes
+            .map { version -> Scan(version, hub.cached()) }
+            .stateIn(scope, SharingStarted.Eagerly, null)
+
     val library: Flow<List<LibraryModel>> =
         combine(
+            scan.filterNotNull().filter { it.version == changes.value },
             settings.settings.map { it.defaultModel }.distinctUntilChanged(),
-            changes,
-        ) { defaultKey, _ -> defaultKey }.map { defaultKey ->
-            hub
-                .cached()
+            lastUsed.distinctUntilChanged(),
+        ) { scanned, defaultKey, used ->
+            scanned.entries
                 .map { entry ->
                     LibraryModel(
                         key = entry.model,
                         name = Catalog.byRepo(entry.model.repo)?.realName ?: tidy(entry.model),
                         sizeBytes = entry.sizeBytes,
-                        lastUsed = lastUsedAt(entry.model),
+                        lastUsed = used[entry.model.toString()],
                         isDefault = entry.model.toString() == defaultKey,
                     )
                 }.sortedWith(compareByDescending<LibraryModel> { it.lastUsed ?: 0L }.thenBy { it.name })
-        }
+        }.distinctUntilChanged()
 
     /**
      * The downloads under way or paused, started here and not yet finished or cancelled, oldest first. The hub keeps a

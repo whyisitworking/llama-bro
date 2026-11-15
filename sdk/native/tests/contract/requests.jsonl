@@ -75,3 +75,4 @@
 {"id": "x-55-health", "endpoint": "health"}
 {"id": "x-56-lora-adapters", "endpoint": "lora_adapters"}
 {"id": "x-57-lora-adapters-set", "endpoint": "lora_adapters_set", "body": []}
+{"id": "x-58-speech", "endpoint": "speech", "body": {"input": "hello"}}

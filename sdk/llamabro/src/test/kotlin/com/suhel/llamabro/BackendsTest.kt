@@ -11,7 +11,11 @@ import org.junit.Test
 
 /** P2 T2: backend artifacts found through the manifest, loaded by native init, failures reported, never fatal. */
 class BackendsTest {
-    private val hexagon = BackendLibraries(listOf("libllamabro-ggml-hexagon.so"), mapOf("ADSP_LIBRARY_PATH" to "/skel"))
+    private val hexagon =
+        BackendLibraries(
+            listOf("libllamabro-ggml-hexagon.so"),
+            mapOf("GGML_HEXAGON_LIBHTP_DIR" to "/skel"),
+        )
     private val cpuOnly = Backend("cpu", loaded = true, error = null, devices = listOf("CPU"))
 
     private fun runtime(engine: FakeEngine, discover: () -> BackendDiscovery.Result) =
@@ -47,7 +51,8 @@ class BackendsTest {
         assertEquals(listOf("x.Hexagon", "x.OpenCl"), calls)
         assertEquals(emptyList<Backend>(), result.failed)
         assertEquals(
-            """[{"name":"hexagon","files":["libllamabro-ggml-hexagon.so"],"env":{"ADSP_LIBRARY_PATH":"/skel"}},""" +
+            """[{"name":"hexagon","files":["libllamabro-ggml-hexagon.so"],""" +
+                """"env":{"GGML_HEXAGON_LIBHTP_DIR":"/skel"}},""" +
                 """{"name":"opencl","files":["libllamabro-ggml-opencl.so"]}]""",
             result.toJson().toString(),
         )

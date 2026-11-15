@@ -19,6 +19,9 @@ data class ChatSummaryRow(
     val lastState: String,
 )
 
+/** When a model last answered in any chat. */
+data class ModelUseRow(val modelKey: String, val lastUsed: Long)
+
 @Dao
 abstract class ChatDao {
     @Insert abstract suspend fun insertChat(chat: ChatEntity): Long
@@ -27,6 +30,9 @@ abstract class ChatDao {
 
     @Query("SELECT * FROM chats WHERE id = :id")
     abstract suspend fun chat(id: Long): ChatEntity?
+
+    @Query("SELECT sampling FROM chats WHERE id = :id")
+    abstract fun sampling(id: Long): Flow<String?>
 
     /**
      * Newest first. [pattern] is a LIKE pattern (escaped with `\`) or empty for every chat; it matches titles and
@@ -77,6 +83,13 @@ abstract class ChatDao {
 
     @Query("DELETE FROM chats WHERE id = :chatId")
     abstract suspend fun deleteChat(chatId: Long)
+
+    /** Each model's latest reply, for the library's "last used" and its sort by recent use. */
+    @Query(
+        "SELECT modelKey, MAX(sentAt) AS lastUsed FROM messages " +
+            "WHERE kind = 'assistant' AND modelKey IS NOT NULL GROUP BY modelKey",
+    )
+    abstract fun lastUseByModel(): Flow<List<ModelUseRow>>
 
     @Query("UPDATE messages SET state = 'stopped' WHERE state = 'streaming'")
     abstract suspend fun stopStreaming(): Int

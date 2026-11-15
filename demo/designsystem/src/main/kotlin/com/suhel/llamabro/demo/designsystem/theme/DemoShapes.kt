@@ -10,6 +10,15 @@ import androidx.compose.ui.unit.dp
  * message bubble and the composer have no Material counterpart and are chosen: 20 dp and 28 dp.
  */
 object DemoShapes {
+    /** The corner scale; every shape below, and any component that clips, uses these. */
+    val radiusSmall = 8.dp
+    val radiusMedium = 12.dp
+    val radiusLarge = 16.dp
+    val radiusExtraLarge = 28.dp
+
+    /** The bubble's tail corner. */
+    val radiusTail = 6.dp
+
     val card = RoundedCornerShape(12.dp)
     val sheet = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     val chip = RoundedCornerShape(8.dp)

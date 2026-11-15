@@ -17,6 +17,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:theme="@style/Theme.Demo.Starting"
             android:windowSoftInputMode="adjustNothing">  <!-- the screens pad for the keyboard themselves (imePadding); the window must not resize as well -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -32,6 +33,11 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        <!-- a reply still being written when the app leaves the screen (D59): at most a few minutes, never an idle model -->
+        <service
+            android:name=".chat.ReplyService"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"

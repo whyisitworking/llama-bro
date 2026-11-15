@@ -71,7 +71,8 @@ internal fun splitFiles(all: List<RepoFile>, file: RepoFile): List<RepoFile> {
 internal fun findBestModel(files: List<RepoFile>, tag: String): RepoFile? {
     val tags = if (tag.isNotEmpty()) listOf(tag) else listOf("Q4_K_M", "Q8_0")
     for (wanted in tags) {
-        val pattern = Regex(wanted + "[.-]", RegexOption.IGNORE_CASE)
+        // the tag starts at a token boundary, so ":F16" does not pick a BF16 file (upstream #31620, #31639)
+        val pattern = Regex("(^|[-./])" + wanted + "[.-]", RegexOption.IGNORE_CASE)
         files
             .firstOrNull { isModelGguf(it.path) && pattern.containsMatchIn(it.path) && startsSplit(it.path) }
             ?.let { return it }

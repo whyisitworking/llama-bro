@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -35,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
@@ -50,18 +52,20 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
+import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 
 /**
  * A small uppercase section heading ("Picked for your phone", "Today"), with an optional link at the end ("What's a
- * model?").
+ * model?"). On a sheet it is inset by the cards' and rows' own padding, so it lines up with the text inside them.
  */
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier, action: String? = null, onAction: (() -> Unit)? = null) {
     val colors = LocalDemoColors.current
-    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    val inset = if (LocalOnSheet.current) DemoSpacing.item else 0.dp
+    Row(modifier.fillMaxWidth().padding(start = inset), verticalAlignment = Alignment.CenterVertically) {
         Text(
             text.uppercase(),
             Modifier.weight(1f),
@@ -70,19 +74,21 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, action: String? = 
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        // with an action the row is the action's 48 dp, like Material's list subheader: a target that reaches past
+        // its row is cut by the parent's bounds, and accessibility services see only what's left (F130)
         if (action != null) QuietButton(text = action, onClick = onAction ?: {})
     }
 }
 
 /** A model's initial in a soft accent circle (the chat list's avatars: W, S, D). */
 @Composable
-fun InitialAvatar(letter: String, modifier: Modifier = Modifier, size: Dp = 40.dp) {
+fun InitialAvatar(letter: String, modifier: Modifier = Modifier, size: Dp = DemoSize.control) {
     val colors = LocalDemoColors.current
     Box(modifier.size(size).background(colors.accentSoft, CircleShape), contentAlignment = Alignment.Center) {
         Text(
             letter.take(1).uppercase(),
             color = colors.accent,
-            style = if (size >= 36.dp) DemoType.title else DemoType.label,
+            style = if (size >= DemoSize.control) DemoType.title else DemoType.label,
         )
     }
 }
@@ -121,8 +127,8 @@ fun ChatRow(
         modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .heightIn(min = 72.dp)
-            .padding(start = DemoSpacing.item, end = DemoSpacing.item, top = 12.dp),
+            .heightIn(min = DemoSize.rowTwoLine)
+            .padding(start = DemoSpacing.item, end = DemoSpacing.item, top = DemoSpacing.compact),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         InitialAvatar(avatar)
@@ -131,9 +137,10 @@ fun ChatRow(
             Modifier
                 .weight(1f)
                 .drawBehind {
-                    val y = size.height - 0.5.dp.toPx()
-                    drawLine(colors.hairline, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
-                }.padding(bottom = 12.dp),
+                    val stroke = DemoSize.hairline.toPx()
+                    val y = size.height - stroke / 2
+                    drawLine(colors.hairline, Offset(0f, y), Offset(size.width, y), strokeWidth = stroke)
+                }.padding(bottom = DemoSpacing.compact),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -183,7 +190,7 @@ private fun rememberQuantGrid(): QuantGrid {
                 stacked = stacked,
                 sizeWidth = 68.sp.toDp(),
                 fitWidth = 96.sp.toDp(),
-                rowHeight = if (stacked) 18.sp.toDp() * 2 + 20.dp else 48.dp,
+                rowHeight = if (stacked) 18.sp.toDp() * 2 + DemoSpacing.item + DemoSpacing.inline else DemoSize.target,
             )
         }
     }
@@ -195,7 +202,7 @@ fun QuantHeader(quant: String, size: String, fit: String, modifier: Modifier = M
     val colors = LocalDemoColors.current
     val grid = rememberQuantGrid()
     val style = DemoType.labelSmall
-    Row(modifier.fillMaxWidth().padding(QuantPadding).padding(bottom = 6.dp)) {
+    Row(modifier.fillMaxWidth().padding(QuantPadding).padding(bottom = DemoSpacing.inline)) {
         Text(
             quant.uppercase(),
             Modifier.weight(1f),
@@ -248,10 +255,10 @@ fun QuantRow(
         Text(
             quant,
             Modifier
-                .background(
-                    colors.accentSoft,
-                    RoundedCornerShape(6.dp),
-                ).padding(horizontal = 6.dp, vertical = 1.dp),
+                .background(colors.accentSoft, DemoShapes.chip)
+                .heightIn(min = DemoSize.tag)
+                .padding(horizontal = DemoSpacing.block)
+                .wrapContentHeight(Alignment.CenterVertically),
             color = colors.accent,
             style = DemoType.code,
             maxLines = 1,
@@ -370,7 +377,7 @@ fun DownloadRow(
             IconAction(DemoIcons.Close, cancelLabel, onClick = onCancel, muted = true)
         }
         Column(
-            Modifier.padding(end = 12.dp),
+            Modifier.padding(end = DemoSpacing.compact),
             verticalArrangement = Arrangement.spacedBy(DemoSpacing.block),
         ) {
             ThinBar(fraction)
@@ -435,7 +442,7 @@ fun SwipeToRemove(label: String, onRemove: () -> Unit, modifier: Modifier = Modi
                         .fillMaxSize()
                         .clip(DemoShapes.card)
                         .background(colors.tooBigTint)
-                        .padding(end = 20.dp),
+                        .padding(end = DemoSpacing.item),
                     contentAlignment = Alignment.CenterEnd,
                 ) {
                     Text(label, color = colors.tooBigInk, style = DemoType.label)

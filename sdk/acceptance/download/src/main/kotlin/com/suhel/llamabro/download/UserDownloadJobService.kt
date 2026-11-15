@@ -7,7 +7,6 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubException
-import com.suhel.llamabro.hub.LlamaBroHub
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +43,7 @@ class UserDownloadJobService : JobService() {
             scope.launch {
                 val reschedule =
                     try {
-                        LlamaBroHub.getInstance(applicationContext).download(model).collect { progress ->
+                        (applicationContext as DownloadApplication).hub().download(model).collect { progress ->
                             setNotification(
                                 params,
                                 id,

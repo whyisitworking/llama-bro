@@ -4,6 +4,7 @@ import com.suhel.llamabro.demo.data.db.ChatDao
 import com.suhel.llamabro.demo.data.db.ChatEntity
 import com.suhel.llamabro.demo.data.db.ChatSummaryRow
 import com.suhel.llamabro.demo.data.db.MessageEntity
+import com.suhel.llamabro.demo.data.db.ModelUseRow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -34,6 +35,16 @@ class FakeChatDao : ChatDao() {
     }
 
     override suspend fun chat(id: Long): ChatEntity? = chats.value.firstOrNull { it.id == id }
+
+    override fun sampling(id: Long): Flow<String?> = chats.map { list -> list.firstOrNull { it.id == id }?.sampling }
+
+    override fun lastUseByModel(): Flow<List<ModelUseRow>> =
+        messages.map { all ->
+            all
+                .filter { it.kind == "assistant" && it.modelKey != null }
+                .groupBy { it.modelKey!! }
+                .map { (key, rows) -> ModelUseRow(key, rows.maxOf { it.sentAt }) }
+        }
 
     override fun summaries(pattern: String): Flow<List<ChatSummaryRow>> =
         combine(chats, messages) { list, all ->

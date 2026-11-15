@@ -27,7 +27,7 @@ resume and verification.
 ## Five minutes
 
 ```kotlin
-val llama = LlamaBro.getInstance(application)
+val llama = LlamaBro.create(application)
 val model = llama.loadModel(ModelSource.file(path))
 val chat = model.conversation(system = "You are a helpful assistant.")
 chat.send("Hello").collect()          // observe chat.messages and chat.reply

@@ -1,20 +1,34 @@
 package com.suhel.llamabro.demo.chat
 
 import com.suhel.llamabro.chat.ChatEvent
+import com.suhel.llamabro.chat.FinishReason
 import com.suhel.llamabro.demo.data.MessageChange
 import com.suhel.llamabro.demo.data.MessageState
+import com.suhel.llamabro.demo.data.db.ReplyStats
 import com.suhel.llamabro.demo.models.Fit
 
 /**
  * The reply being written: its text and its reasoning so far, how long the model thought, and whether anything
  * arrived since the last frame. [ChatEngine] feeds it the model's events and reads the stored and the shown form back.
+ * [device] is the kind of chip the model runs on ("NPU"), kept with the reply's measurements.
  */
-internal class ReplyDraft(private val clock: () -> Long) {
-    private val text = StringBuilder()
-    private val reasoning = StringBuilder()
-    private var thinkStart: Long? = null
-    private var thinkMillis: Long? = null
+internal class ReplyDraft(private val clock: () -> Long, private val device: String? = null, from: Continued? = null) {
+    /**
+     * A cut reply that is being continued (D60): what it had written, and how long it had thought. The new tokens are
+     * added to it, and a reply cut while still thinking keeps its thinking clock running.
+     */
+    data class Continued(val text: String, val reasoning: String?, val reasoningMillis: Long?)
+
+    private val text = StringBuilder(from?.text.orEmpty())
+    private val reasoning = StringBuilder(from?.reasoning.orEmpty())
+    private var thinkStart: Long? =
+        from?.reasoning?.takeIf { it.isNotEmpty() }?.let { clock() - (from.reasoningMillis ?: 0L) }
+    private var thinkMillis: Long? = from?.reasoningMillis?.takeIf { from.text.isNotEmpty() }
+
+    /** The reply reached its length limit: it ends [MessageState.Cut], not done (D60). */
+    private var cut = false
     private var wordsPerSecond = 0.0
+    private var stats: ReplyStats? = null
 
     /** True when something arrived since the last [takeIfDirty]. */
     @Volatile
@@ -38,7 +52,20 @@ internal class ReplyDraft(private val clock: () -> Long) {
             }
 
             is ChatEvent.Done -> {
-                wordsPerSecond = (event.timings?.predictedPerSecond ?: 0.0) * Fit.WORDS_PER_TOKEN
+                cut = event.reason == FinishReason.Length
+                val t = event.timings
+                wordsPerSecond = (t?.predictedPerSecond ?: 0.0) * Fit.WORDS_PER_TOKEN
+                stats =
+                    ReplyStats(
+                        replyTokens = t?.predictedTokens,
+                        tokensPerSecond = t?.predictedPerSecond,
+                        promptTokens = t?.promptTokens,
+                        cachedTokens = t?.cachedTokens,
+                        promptPerSecond = t?.promptPerSecond,
+                        draftTokens = t?.draftTokens,
+                        draftAccepted = t?.draftAccepted,
+                        device = device,
+                    )
             }
 
             else -> {
@@ -56,15 +83,22 @@ internal class ReplyDraft(private val clock: () -> Long) {
     /** The periodic write of what has arrived: text and reasoning only. */
     fun progress() = MessageChange(text = text.toString(), reasoning = reasoningOrNull())
 
-    /** The reply as it ended: finished ([MessageState.Done], with its speed) or stopped by the user. */
+    /**
+     * The reply as it ended: finished ([MessageState.Done], with its speed), cut at its length limit
+     * ([MessageState.Cut], with its speed too: it ran to the end it was given), or stopped by the user. A reply cut
+     * while thinking keeps how long it had thought, so a continue goes on counting from there.
+     */
     fun ended(state: MessageState): MessageChange {
-        if (state == MessageState.Done) endThinking()
+        val end = if (state == MessageState.Done && cut) MessageState.Cut else state
+        val measured = end == MessageState.Done || end == MessageState.Cut
+        if (end == MessageState.Done || text.isNotEmpty()) endThinking()
         return MessageChange(
             text = text.toString(),
             reasoning = reasoningOrNull(),
-            reasoningMillis = thinkMillis,
-            wordsPerSecond = wordsPerSecond.takeIf { state == MessageState.Done && it > 0 },
-            state = state,
+            reasoningMillis = thinkMillis ?: thinkStart?.takeIf { end == MessageState.Cut }?.let { clock() - it },
+            wordsPerSecond = wordsPerSecond.takeIf { measured && it > 0 },
+            stats = stats.takeIf { measured },
+            state = end,
         )
     }
 

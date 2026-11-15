@@ -117,7 +117,7 @@ class HubDeviceTest {
                 assertTrue("projector was not staged: $mmprojFile", mmprojFile.isFile)
                 assertEquals(setOf(HubFile.Role.Model, HubFile.Role.Mmproj), plan.files.map { it.role }.toSet())
 
-                val llama = LlamaBro.getInstance(context)
+                val llama = LlamaBro.create(context)
                 val fitConfig: ModelConfig.() -> Unit = {
                     contextSize = ContextSize.Auto
                     ramCacheMib = 0

@@ -1,6 +1,6 @@
 package com.suhel.llamabro.demo
 
-import android.app.Application
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
@@ -13,6 +13,9 @@ import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.demo.chat.ChatEngine
 import com.suhel.llamabro.demo.chat.ModelHost
+import com.suhel.llamabro.demo.chat.ModelMemory
+import com.suhel.llamabro.demo.chat.SamplingStore
+import com.suhel.llamabro.demo.chat.Streamer
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.SettingsRepository
@@ -28,10 +31,13 @@ import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.RealHubGateway
 import com.suhel.llamabro.demo.models.WorkDownloadScheduler
 import com.suhel.llamabro.hub.LlamaBroHub
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
@@ -42,9 +48,9 @@ import java.io.File
  * inject fakes or fresh files; later tasks add the engines.
  */
 class AppContainer(
-    val app: Application,
-    val llamaBro: LlamaBro = LlamaBro.getInstance(app),
-    val hub: HubGateway = RealHubGateway(LlamaBroHub.getInstance(app), llamaBro),
+    val app: DemoApp,
+    val llamaBro: LlamaBro = LlamaBro.create(app, app.llamaBroConfig),
+    val hub: HubGateway = RealHubGateway(LlamaBroHub.create(app, app.hubConfig), llamaBro),
     val scheduler: DownloadScheduler = WorkDownloadScheduler(lazy { WorkManager.getInstance(app) }),
     databaseName: String = "chats.db",
     settingsName: String = "settings",
@@ -62,20 +68,49 @@ class AppContainer(
     val asksForNotifications: Boolean = true,
     val images: ImageStore = ImageStore(File(app.filesDir, "images")),
     /** How a turn reaches the model; the phone tests script timing here, the app leaves it. */
-    streamer: ((Conversation, String, Array<Content.Image>, ThinkLevel?) -> Flow<ChatEvent>)? = null,
+    streamer: Streamer? = null,
 ) {
+    /** The app's own scope: work that outlives a screen or a view model runs here, never in an ad-hoc scope. */
+    val appScope: CoroutineScope get() = scope
+
     val chats: ChatRepository = ChatRepository(database.chatDao(), images, clock)
     val settings: SettingsRepository = SettingsRepository(settingsStore)
     val host: ModelHost = ModelHost(llamaBro, hub, scope)
-    val models: ModelRepository = ModelRepository(hub, settings, scheduler, scope, host)
+    val models: ModelRepository = ModelRepository(hub, settings, scheduler, scope, host, chats.lastUsed())
+
+    /**
+     * A reply left `Streaming` by a dead process becomes `Stopped` (Review focus 2). Once per process, before the
+     * engine's first turn: run any later and it would mark a reply this process has just started as stopped.
+     */
+    private val recovery =
+        scope.async(start = CoroutineStart.LAZY) {
+            try {
+                chats.recoverInterrupted()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("AppContainer", "could not recover interrupted replies: ${e.javaClass.simpleName}")
+            }
+        }
+
+    /** Starts the recovery of interrupted replies at launch; the first turn waits for it either way. */
+    fun recoverInterrupted() {
+        recovery.start()
+    }
 
     /** Runs every chat (one handle per open chat); the chat screens read it. */
     val engine: ChatEngine =
         if (streamer != null) {
-            ChatEngine(chats, host, models, settings, clock, scope, streamer = streamer)
+            ChatEngine(chats, host, models, settings, clock, scope, streamer = streamer, beforeTurn = recovery::await)
         } else {
-            ChatEngine(chats, host, models, settings, clock, scope)
+            ChatEngine(chats, host, models, settings, clock, scope, beforeTurn = recovery::await)
         }
+
+    /** The loaded model as Settings › Memory and the model sheet show it, with Unload (D59). */
+    val memory: ModelMemory by lazy { ModelMemory(host, engine) }
+
+    /** Each model's and each chat's sampling values (D60). */
+    val sampling: SamplingStore by lazy { SamplingStore(settings, chats) }
 
     /** Hugging Face search and a repo's files; the phone tests pass a fake in [discoveryOverride]. */
     val discovery: ModelDiscovery =

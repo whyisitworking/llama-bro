@@ -5,6 +5,7 @@ import com.suhel.llamabro.internal.MemoryBudget
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import org.junit.Assert.assertEquals
@@ -40,6 +41,34 @@ class ContextFitTest {
 
     private fun capIn(config: String): Long? =
         (Json.parseToJsonElement(config) as JsonObject)["n_ctx_cap"]?.jsonPrimitive?.long
+
+    @Test
+    fun aLoadRightAfterACloseWaitsForTheMemoryToComeBack() =
+        runBlocking {
+            // F124: the NPU gives a closed model's memory back about a second after its native close returns
+            val readings = ArrayDeque(listOf(2L, 3L, 5L, 6L, 6L).map { it * gib })
+            var last = readings.first()
+            val e = FakeEngine()
+            val llama =
+                LlamaBro(
+                    LlamaBroRuntime(
+                        e,
+                        tempDir(),
+                        null,
+                        LlamaBroConfig.Default,
+                        memorySnapshot = {
+                            if (readings.isNotEmpty()) last = readings.removeFirst()
+                            MemoryBudget.Snapshot(last, gib)
+                        },
+                    ),
+                )
+            llama.loadModel(ModelSource.file("/a.gguf")).closeAndJoin()
+            readings.clear()
+            readings.addAll(listOf(2L, 3L, 5L, 6L, 6L).map { it * gib })
+            llama.loadModel(ModelSource.file("/b.gguf")).close()
+            // the budget is read once the memory stopped rising: 6 GiB, not the 2 GiB right after the close
+            assertEquals(6L * 1024 - 1024 - 1024 - 512, budgetIn(e.loadConfigs.last()))
+        }
 
     @Test
     fun memAvailableFromProcMeminfo() {
@@ -123,12 +152,60 @@ class ContextFitTest {
                     { """{"error":"failed to load model: not enough memory: ...","code":"insufficient_memory"}""" }
             }
         try {
-            runBlocking { LlamaBro(runtime(e, gib)).loadModel(ModelSource.file("/m.gguf")) }
+            runBlocking {
+                LlamaBro(runtime(e, gib)).loadModel(ModelSource.file("/m.gguf")) { memoryCheck = MemoryCheck.Refuse }
+            }
             fail()
         } catch (ex: LlamaBroException.ModelLoadFailed) {
             assertEquals(LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory, ex.reason)
         }
         assertEquals(1, e.loadConfigs.size) // the CPU shares the same RAM: no point trying it
+    }
+
+    /** What the native fit check does when even the smallest context is over the budget (config.cpp). */
+    private fun refusesBudgetedLoads() =
+        FakeEngine().apply {
+            loadError = { config ->
+                if ("memory_budget_mib" in config) {
+                    """{"error":"failed to load model: not enough memory: the model needs 5000 MiB at the smallest """ +
+                        """context (4096 tokens), 3000 MiB available","code":"insufficient_memory"}"""
+                } else {
+                    null
+                }
+            }
+        }
+
+    @Test
+    fun aModelOverTheBudgetLoadsAtTheSmallestContextWithAWarning() {
+        val e = refusesBudgetedLoads()
+        val model = runBlocking { LlamaBro(runtime(e, gib)).loadModel(ModelSource.file("/m.gguf")) }
+        assertEquals(2, e.loadConfigs.size)
+        val retry = Json.parseToJsonElement(e.loadConfigs.last()) as JsonObject
+        assertEquals(4096, retry["n_ctx"]!!.jsonPrimitive.int)
+        assertEquals(null, retry["memory_budget_mib"])
+        assertEquals(
+            "not enough memory: the model needs 5000 MiB at the smallest context (4096 tokens), 3000 MiB available",
+            model.loadReport.memoryWarning,
+        )
+        assertTrue(model.loadReport.contextReason.contains("MemoryCheck.Warn"))
+    }
+
+    @Test
+    fun aSmallerCeilingIsTheSmallestContext() {
+        val e = refusesBudgetedLoads()
+        runBlocking {
+            LlamaBro(runtime(e, gib)).loadModel(ModelSource.file("/m.gguf")) {
+                contextSize = ContextSize.UpTo(2048)
+            }
+        }
+        val retry = Json.parseToJsonElement(e.loadConfigs.last()) as JsonObject
+        assertEquals(2048, retry["n_ctx"]!!.jsonPrimitive.int)
+    }
+
+    @Test
+    fun aModelThatFitsHasNoWarning() {
+        val model = runBlocking { LlamaBro(runtime(FakeEngine(), 8 * gib)).loadModel(ModelSource.file("/m.gguf")) }
+        assertEquals(null, model.loadReport.memoryWarning)
     }
 
     private fun loadWithInfo(info: String, configure: ModelConfig.() -> Unit = {}): LoadReport {
