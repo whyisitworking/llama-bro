@@ -41,7 +41,8 @@ abstract class ChatDao {
     @Query(
         """
         SELECT c.id AS id, c.title AS title, c.updatedAt AS updatedAt, c.modelKey AS modelKey,
-          COALESCE((SELECT CASE WHEN m.text = '' AND m.images != '' THEN 'Image' ELSE m.text END
+          COALESCE((SELECT CASE WHEN m.text = '' AND m.audio IS NOT NULL THEN 'Voice message'
+                                WHEN m.text = '' AND m.images != '' THEN 'Image' ELSE m.text END
                     FROM messages m WHERE m.chatId = c.id AND m.kind != 'switch'
                     ORDER BY m.position DESC LIMIT 1), '') AS lastText,
           COALESCE((SELECT m.kind = 'user' FROM messages m WHERE m.chatId = c.id AND m.kind != 'switch'
@@ -77,6 +78,12 @@ abstract class ChatDao {
 
     @Query("SELECT images FROM messages WHERE chatId = :chatId AND images != ''")
     abstract suspend fun imagesOf(chatId: Long): List<String>
+
+    @Query("SELECT audio FROM messages WHERE chatId = :chatId AND audio IS NOT NULL")
+    abstract suspend fun audioOf(chatId: Long): List<String>
+
+    @Query("SELECT audio FROM messages WHERE chatId = :chatId AND position >= :position AND audio IS NOT NULL")
+    abstract suspend fun audioFrom(chatId: Long, position: Int): List<String>
 
     @Query("DELETE FROM messages WHERE chatId = :chatId AND position >= :position")
     abstract suspend fun deleteFrom(chatId: Long, position: Int)

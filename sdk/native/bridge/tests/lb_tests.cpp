@@ -28,6 +28,10 @@
 #include <filesystem>
 #include <fstream>
 #include <unistd.h>
+#include <fcntl.h>
+#include <iterator>
+
+#include "base64.hpp"
 
 
 #define LB_CHECK(cond)                                                              \
@@ -1349,6 +1353,603 @@ static void fit_estimate_on_stub_equals_real() {
     std::filesystem::remove_all(dir);
 }
 
+// ---------------------------------------------------------------------------------------------
+// Attachments (D84) and transcription (F55): upstream's own audio test model (tools/server/tests/utils.py
+// ServerPreset.tinylfm3omni, fetch-test-models.sh) and a clip generated at check time (make-test-clip.sh)
+// ---------------------------------------------------------------------------------------------
+
+int lb_attachments_live();  // request.cpp, declared in model.h
+
+static std::string test_clip() {
+    const std::string path = env_or("LB_TEST_CLIP", "");
+    if (path.empty() || !std::filesystem::exists(path)) {
+        std::fprintf(stderr, "test clip not found at '%s': run sdk/scripts/make-test-clip.sh <out.wav> and set LB_TEST_CLIP\n",
+                     path.c_str());
+        std::exit(1);
+    }
+    return path;
+}
+
+static std::vector<uint8_t> file_bytes(const std::string & path) {
+    std::ifstream in(path, std::ios::binary);
+    LB_CHECK(in.good());
+    return std::vector<uint8_t>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+
+static lb_model * load_omni() {
+    return load_at(upstream_test_model("tinyLFM3-Omni-for-testing-Q2_K.gguf"),
+                   {{"mmproj_path", upstream_test_model("mmproj-tinyLFM3-Omni-for-testing-Q2_K.gguf")}, {"n_ctx", 2048}});
+}
+
+static lb_attachment att_path(const char * name, const char * mime, const std::string & path) {
+    return lb_attachment{ name, mime, path.c_str(), -1, nullptr, 0 };
+}
+static lb_attachment att_fd(const char * name, const char * mime, int fd) {
+    return lb_attachment{ name, mime, nullptr, fd, nullptr, 0 };
+}
+static lb_attachment att_bytes(const char * name, const char * mime, const std::vector<uint8_t> & data) {
+    return lb_attachment{ name, mime, nullptr, -1, data.data(), data.size() };
+}
+
+static lb_status start_with(lb_model * m, const char * endpoint, const json & body, const std::vector<lb_attachment> & atts,
+                            collector & c, lb_request ** req) {
+    const std::string b = body.dump();
+    return lb_model_request_with(m, endpoint, nullptr, b.data(), b.size(), atts.data(), atts.size(), collector::cb, &c, req);
+}
+
+// one non-streaming request with attachments: the HTTP status and the parsed body
+static std::pair<int, json> call_with(lb_model * m, const char * endpoint, const json & body,
+                                      const std::vector<lb_attachment> & atts) {
+    collector c;
+    lb_request * req = nullptr;
+    LB_CHECK(start_with(m, endpoint, body, atts, c, &req) == LB_OK);
+    LB_CHECK(req != nullptr);
+    c.wait_terminal();
+    LB_CHECK(c.terminal == LB_EVENT_DONE);
+    lb_request_free(req);
+    std::string all;
+    for (const auto & ch : c.chunks) all += ch;
+    return { c.statuses.empty() ? 0 : c.statuses.front(), json::parse(all) };
+}
+
+// form fields as upstream's form-data parsing gives them: strings (server-http.cpp, convert_transcriptions_to_chatcmpl);
+// reasoning left in the text, where the test model's output goes
+static json transcription_form() {
+    return json{{"temperature", "0"}, {"max_tokens", "16"}, {"reasoning_format", "none"}};
+}
+
+static json audio_chat(const std::string & data) {
+    json parts = json::array();
+    parts.push_back(json{{"type", "text"}, {"text", "What is said here?"}});
+    parts.push_back(json{{"type", "input_audio"}, {"input_audio", json{{"data", data}, {"format", "wav"}}}});
+    json body = chat_body("", 8, false);
+    body["messages"][0]["content"] = parts;
+    body["cache_prompt"] = false;
+    return body;
+}
+
+static void check_400(const std::pair<int, json> & r, const std::string & needle) {
+    if (r.first != 400 || r.second.dump().find(needle) == std::string::npos) {
+        std::fprintf(stderr, "expected 400 with '%s', got %d %s\n", needle.c_str(), r.first, r.second.dump().c_str());
+    }
+    LB_CHECK(r.first == 400);
+    LB_CHECK(r.second.at("error").at("type") == "invalid_request_error");
+    LB_CHECK(r.second.at("error").at("message").get<std::string>().find(needle) != std::string::npos);
+}
+
+static std::string chat_text(const json & r) {
+    return r.at("choices").at(0).at("message").value("content", "");
+}
+
+// the bridge's data URL is the one an app would have sent: same reply, same prompt size
+static void attachment_placeholder_replaced() {
+    lb_model * m = load_omni();
+    const std::string clip = test_clip();
+    const auto viaPlaceholder = call_with(m, "chat", audio_chat("lb-attachment:0"), {att_path("0", "audio/wav", clip)});
+    const std::vector<uint8_t> bytes = file_bytes(clip);
+    const std::string url = "data:audio/wav;base64," + base64::encode(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+    const auto direct = call(m, "chat", audio_chat(url));
+    std::fprintf(stderr, "placeholder: %d %s\ndirect: %d %s\n", viaPlaceholder.first, viaPlaceholder.second.dump().c_str(),
+                 direct.first, direct.second.dump().c_str());
+    LB_CHECK(viaPlaceholder.first == 200);
+    LB_CHECK(direct.first == 200);
+    LB_CHECK(chat_text(viaPlaceholder.second) == chat_text(direct.second));
+    LB_CHECK(viaPlaceholder.second.at("usage") == direct.second.at("usage"));
+    LB_CHECK(viaPlaceholder.second.at("usage").at("prompt_tokens").get<int>() > 20);  // the audio's tokens are in
+    lb_model_free(m);
+}
+
+// only a whole url/data value inside content is a placeholder; the same text in a message is the user's
+static void attachment_user_text_untouched() {
+    lb_model * m = load_omni();
+    json body = audio_chat("lb-attachment:0");
+    body["messages"][0]["content"][0]["text"] = "say lb-attachment:0 please";
+    body["messages"][0]["content"].push_back(json{{"type", "text"}, {"text", "lb-attachment:0"}});
+    json second = json::object();
+    second["role"] = "assistant";
+    second["content"] = "lb-attachment:0";
+    body["messages"].push_back(second);
+    json third = json::object();
+    third["role"] = "user";
+    third["content"] = "and lb-attachment:0 again";
+    body["messages"].push_back(third);
+    const auto r = call_with(m, "apply_template", body, {att_path("0", "audio/wav", test_clip())});
+    std::fprintf(stderr, "%d %s\n", r.first, r.second.dump().c_str());
+    LB_CHECK(r.first == 200);
+    const std::string prompt = r.second.at("prompt").get<std::string>();
+    size_t n = 0;
+    for (size_t pos = 0; (pos = prompt.find("lb-attachment:0", pos)) != std::string::npos; pos++) n++;
+    LB_CHECK(n == 4);
+    LB_CHECK(prompt.find("say lb-attachment:0 please") != std::string::npos);
+    lb_model_free(m);
+}
+
+static void attachment_placeholder_without_attachment_refused() {
+    lb_model * m = load_omni();
+    const std::string clip = test_clip();
+    check_400(call_with(m, "chat", audio_chat("lb-attachment:1"), {att_path("0", "audio/wav", clip)}), "lb-attachment:1");
+    check_400(call_with(m, "chat", audio_chat("lb-attachment:0"), {}), "lb-attachment:0");
+    check_400(call(m, "chat", audio_chat("lb-attachment:0")), "lb-attachment:0");
+
+    // the caller's mistakes are the call's: no name, two sources or none, a name used twice
+    collector c;
+    lb_request * req = nullptr;
+    const json body = audio_chat("lb-attachment:0");
+    lb_attachment two = att_path("0", "audio/wav", clip);
+    two.fd = 0;
+    lb_attachment none = att_path("0", "audio/wav", clip);
+    none.path = nullptr;
+    lb_attachment unnamed = att_path(nullptr, "audio/wav", clip);
+    for (const auto & atts : std::vector<std::vector<lb_attachment>>{
+             {two}, {none}, {unnamed}, {att_path("0", "audio/wav", clip), att_path("0", "audio/wav", clip)}}) {
+        LB_CHECK(start_with(m, "chat", body, atts, c, &req) == LB_ERR_INVALID_ARG);
+        LB_CHECK(req == nullptr);
+    }
+    LB_CHECK(c.chunks.empty() && c.n_terminal == 0);
+    lb_model_free(m);
+}
+
+// An ADTS AAC header (MPEG-4, layer bits 00) has MP3's sync word: upstream's check passes it and its decoder then
+// fails with a 500, so the bridge refuses it first, as a bad request.
+static void attachment_adts_aac_refused() {
+    lb_model * m = load_omni();
+    const std::vector<uint8_t> adts = {0xFF, 0xF1, 0x50, 0x80, 0x02, 0x1F, 0xFC, 0x21, 0x00, 0x49, 0x90, 0x02, 0x19, 0x00};
+    check_400(call_with(m, "chat", audio_chat("lb-attachment:0"), {att_bytes("0", "audio/aac", adts)}), "WAV, MP3 or FLAC");
+    check_400(call_with(m, "transcriptions", transcription_form(), {att_bytes("file", "audio/wav", adts)}), "WAV, MP3 or FLAC");
+    lb_model_free(m);
+}
+
+static void attachment_read_errors_are_400() {
+    lb_model * m = load_omni();
+    const auto dir = std::filesystem::temp_directory_path() / ("lb-att-" + std::to_string(getpid()));
+    std::filesystem::create_directories(dir);
+    const std::string text = (dir / "notes.wav").string();
+    { std::ofstream(text) << "these are notes, not audio at all"; }
+
+    check_400(call_with(m, "transcriptions", transcription_form(), {att_path("file", "audio/wav", (dir / "missing.wav").string())}),
+              "missing.wav");
+    check_400(call_with(m, "transcriptions", transcription_form(), {att_fd("file", "audio/wav", 4000)}), "descriptor 4000");
+    check_400(call_with(m, "transcriptions", transcription_form(), {att_path("file", "audio/wav", text)}), "WAV, MP3 or FLAC");
+    const std::vector<uint8_t> notes = file_bytes(text);
+    check_400(call_with(m, "chat", audio_chat("lb-attachment:0"), {att_bytes("0", "audio/wav", notes)}), "WAV, MP3 or FLAC");
+    // upstream's own refusal without the file (convert_transcriptions_to_chatcmpl)
+    check_400(call(m, "transcriptions", transcription_form()), "No input file found");
+    std::filesystem::remove_all(dir);
+    lb_model_free(m);
+}
+
+// the whole response (text and token counts; it has no id or time), checked to have read the audio. The model is a
+// random-weights test model (upstream's), so the text itself means nothing: equal answers are the check
+static std::string transcribed(const std::pair<int, json> & r) {
+    std::fprintf(stderr, "transcription: %d %s\n", r.first, r.second.dump().c_str());
+    LB_CHECK(r.first == 200);
+    LB_CHECK(!r.second.at("text").get<std::string>().empty());
+    LB_CHECK(r.second.at("usage").at("input_tokens").get<int>() > 30);  // the prompt alone is far fewer
+    // a repeat of the same request reuses the cache (F153), so the cached count is the one field that may differ
+    json same = r.second;
+    same["usage"].erase("input_tokens_details");
+    return same.dump();
+}
+
+static void attachment_fd_read_and_left_open() {
+    lb_model * m = load_omni();
+    const std::string clip = test_clip();
+    const std::string by_path = transcribed(call_with(m, "transcriptions", transcription_form(), {att_path("file", "audio/wav", clip)}));
+
+    // a seekable file: read from offset 0 with pread; the caller's offset and descriptor stay as they were
+    const int fd = open(clip.c_str(), O_RDONLY);
+    LB_CHECK(fd >= 0);
+    LB_CHECK(lseek(fd, 100, SEEK_SET) == 100);
+    LB_CHECK(transcribed(call_with(m, "transcriptions", transcription_form(), {att_fd("file", "audio/wav", fd)})) == by_path);
+    LB_CHECK(fcntl(fd, F_GETFD) != -1);
+    LB_CHECK(lseek(fd, 0, SEEK_CUR) == 100);
+    close(fd);
+
+    // a pipe can't seek: read with read() until the writer closes it
+    int p[2];
+    LB_CHECK(pipe(p) == 0);
+    const std::vector<uint8_t> bytes = file_bytes(clip);
+    std::thread writer([&] {
+        size_t off = 0;
+        while (off < bytes.size()) {
+            const ssize_t n = write(p[1], bytes.data() + off, bytes.size() - off);
+            if (n <= 0) break;
+            off += (size_t) n;
+        }
+        close(p[1]);
+    });
+    LB_CHECK(transcribed(call_with(m, "transcriptions", transcription_form(), {att_fd("file", "audio/wav", p[0])})) == by_path);
+    writer.join();
+    LB_CHECK(fcntl(p[0], F_GETFD) != -1);
+    close(p[0]);
+    lb_model_free(m);
+}
+
+static void transcription_path_fd_bytes_same_text() {
+    lb_model * m = load_omni();
+    const std::string clip = test_clip();
+    const std::string by_path = transcribed(call_with(m, "transcriptions", transcription_form(), {att_path("file", "audio/wav", clip)}));
+    const int fd = open(clip.c_str(), O_RDONLY);
+    LB_CHECK(fd >= 0);
+    const std::string by_fd = transcribed(call_with(m, "transcriptions", transcription_form(), {att_fd("file", "audio/wav", fd)}));
+    close(fd);
+
+    // the caller's bytes are copied before the call returns: scribbling over them right after changes nothing
+    collector c;
+    lb_request * req = nullptr;
+    {
+        std::vector<uint8_t> bytes = file_bytes(clip);
+        LB_CHECK(start_with(m, "transcriptions", transcription_form(), {att_bytes("file", nullptr, bytes)}, c, &req) == LB_OK);
+        std::fill(bytes.begin(), bytes.end(), 0);
+    }
+    c.wait_terminal();
+    lb_request_free(req);
+    std::string all;
+    for (const auto & ch : c.chunks) all += ch;
+    const std::string by_bytes = transcribed({ c.statuses.front(), json::parse(all) });
+
+    std::fprintf(stderr, "path '%s', fd '%s', bytes '%s'\n", by_path.c_str(), by_fd.c_str(), by_bytes.c_str());
+    LB_CHECK(by_path == by_fd);
+    LB_CHECK(by_path == by_bytes);
+    lb_model_free(m);
+}
+
+// a request's attachment buffers are freed by its end, whether it ran, was cancelled or its model was freed
+static void attachment_buffers_freed_on_cancel() {
+    lb_model * m = load_omni();
+    const std::string clip = test_clip();
+    const std::vector<uint8_t> bytes = file_bytes(clip);
+    LB_CHECK(lb_attachments_live() == 0);
+    for (const char * endpoint : {"transcriptions", "chat"}) {
+        const bool chat = std::strcmp(endpoint, "chat") == 0;
+        collector c;
+        lb_request * req = nullptr;
+        const json body = chat ? audio_chat("lb-attachment:0") : transcription_form();
+        LB_CHECK(start_with(m, endpoint, body, {att_bytes(chat ? "0" : "file", "audio/wav", bytes)}, c, &req) == LB_OK);
+        // read and held by the request; a chat's may already be in the body, freed
+        if (chat) {
+            LB_CHECK(lb_attachments_live() <= 1);
+        } else {
+            LB_CHECK(lb_attachments_live() == 1);
+        }
+        lb_request_cancel(req);
+        c.wait_terminal();
+        LB_CHECK(lb_attachments_live() == 0);
+        lb_request_free(req);
+    }
+    // freeing the model cancels the request; it ends with its buffers freed
+    collector c;
+    lb_request * req = nullptr;
+    LB_CHECK(start_with(m, "transcriptions", transcription_form(), {att_path("file", "audio/wav", clip)}, c, &req) == LB_OK);
+    lb_model_free(m);
+    LB_CHECK(c.n_terminal == 1);
+    LB_CHECK(lb_attachments_live() == 0);
+    lb_request_free(req);
+}
+
+static void read_fd_reads_whole_file_and_leaves_it_open() {
+    init_runtime();
+    const std::string clip = test_clip();
+    const std::vector<uint8_t> want = file_bytes(clip);
+    const int fd = open(clip.c_str(), O_RDONLY);
+    LB_CHECK(fd >= 0);
+    LB_CHECK(lseek(fd, 50, SEEK_SET) == 50);
+    uint8_t * buf = nullptr;
+    size_t len = 0;
+    char * err = nullptr;
+    LB_CHECK(lb_read_fd(fd, &buf, &len, &err) == LB_OK);
+    LB_CHECK(err == nullptr);
+    LB_CHECK(len == want.size() && std::memcmp(buf, want.data(), len) == 0);
+    lb_buffer_free(buf);
+    LB_CHECK(fcntl(fd, F_GETFD) != -1);
+    LB_CHECK(lseek(fd, 0, SEEK_CUR) == 50);
+    close(fd);
+
+    LB_CHECK(lb_read_fd(4000, &buf, &len, &err) == LB_ERR_INVALID_ARG);
+    LB_CHECK(buf == nullptr && err != nullptr);
+    LB_CHECK(json::parse(err).at("error").get<std::string>().find("descriptor 4000") != std::string::npos);
+    lb_string_free(err);
+}
+
+// only chat-completions routes get placeholders filled: Anthropic's source.data on /v1/messages is the caller's own,
+// so the request answers exactly as without the attachment (no double data URL)
+static void placeholder_untouched_on_other_routes() {
+    lb_model * m = load_omni();
+    const std::vector<uint8_t> bytes = file_bytes(test_clip());
+    json block = json::object();
+    block["type"] = "image";
+    block["source"] = json{{"type", "base64"}, {"media_type", "image/png"}, {"data", "lb-attachment:0"}};
+    json msg = json::object();
+    msg["role"] = "user";
+    msg["content"] = json::array();
+    msg["content"].push_back(block);
+    msg["content"].push_back(json{{"type", "text"}, {"text", "What is this?"}});
+    json body = json::object();
+    body["model"] = "x";
+    body["max_tokens"] = 4;
+    body["messages"] = json::array();
+    body["messages"].push_back(msg);
+    for (const char * endpoint : {"messages", "messages_count_tokens"}) {
+        const auto with = call_with(m, endpoint, body, {att_bytes("0", "image/png", bytes)});
+        const auto without = call(m, endpoint, body);
+        std::fprintf(stderr, "%s with: %d %s\nwithout: %d %s\n", endpoint, with.first, with.second.dump().c_str(),
+                     without.first, without.second.dump().c_str());
+        LB_CHECK(with.first == without.first);
+        if (with.first != 200) LB_CHECK(with.second == without.second);
+        LB_CHECK(with.second.dump().find("Invalid uri") == std::string::npos);
+    }
+    lb_model_free(m);
+}
+
+// a placeholder-looking string outside messages[].content[] media fields (here a response_format schema's const, under
+// a property named "content") is the caller's: the grammar makes the model write it back verbatim
+static void placeholder_untouched_in_response_format() {
+    lb_model * m = load_omni();
+    const std::string clip = test_clip();
+    json schema = json::object();
+    schema["type"] = "object";
+    schema["properties"] = json::object();
+    schema["properties"]["content"] = json{{"const", json{{"url", "lb-attachment:0"}, {"data", "lb-attachment:0"}}}};
+    schema["required"] = json::array({"content"});
+    auto with_format = [&](json body) {
+        json js = json::object();
+        js["name"] = "r";
+        js["schema"] = schema;
+        body["response_format"] = json{{"type", "json_schema"}, {"json_schema", js}};
+        body["max_tokens"] = 96;
+        return body;
+    };
+    const auto via = call_with(m, "chat", with_format(audio_chat("lb-attachment:0")), {att_path("0", "audio/wav", clip)});
+    const std::vector<uint8_t> bytes = file_bytes(clip);
+    const std::string url = "data:audio/wav;base64," + base64::encode(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+    const auto direct = call(m, "chat", with_format(audio_chat(url)));
+    std::fprintf(stderr, "via: %d %s\ndirect: %d %s\n", via.first, via.second.dump().c_str(), direct.first,
+                 direct.second.dump().c_str());
+    LB_CHECK(via.first == 200 && direct.first == 200);
+    LB_CHECK(chat_text(via.second) == chat_text(direct.second));
+    LB_CHECK(via.second.at("usage") == direct.second.at("usage"));
+    const json reply = json::parse(chat_text(via.second));
+    LB_CHECK(reply.at("content").at("url") == "lb-attachment:0");
+    LB_CHECK(reply.at("content").at("data") == "lb-attachment:0");
+    lb_model_free(m);
+}
+
+// embeddings read OAI content parts too (handle_embeddings_impl, tokenize_oai_content_array): a placeholder in a part's
+// input_audio.data becomes the file's data URL, on both routes and in an array of entries; a plain text input that
+// reads like a placeholder is the caller's
+static void embeddings_placeholder_replaced() {
+    lb_model * m = load_at(upstream_test_model("tinyLFM3-Omni-for-testing-Q2_K.gguf"),
+                           {{"mmproj_path", upstream_test_model("mmproj-tinyLFM3-Omni-for-testing-Q2_K.gguf")},
+                            {"n_ctx", 2048}, {"embeddings", true}, {"pooling", "mean"}});
+    const std::string clip = test_clip();
+    const std::vector<uint8_t> bytes = file_bytes(clip);
+    const std::string url = "data:audio/wav;base64," + base64::encode(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+    auto entry = [](const std::string & data) {
+        json parts = json::array();
+        parts.push_back(json{{"type", "text"}, {"text", "a clip"}});
+        parts.push_back(json{{"type", "input_audio"}, {"input_audio", json{{"data", data}, {"format", "wav"}}}});
+        return json{{"content", parts}};
+    };
+    const auto via = call_with(m, "embeddings", json{{"input", entry("lb-attachment:0")}}, {att_path("0", "audio/wav", clip)});
+    const auto direct = call(m, "embeddings", json{{"input", entry(url)}});
+    std::fprintf(stderr, "via: %d %.200s\ndirect: %d %.200s\n", via.first, via.second.dump().c_str(), direct.first,
+                 direct.second.dump().c_str());
+    LB_CHECK(via.first == 200 && direct.first == 200);
+    LB_CHECK(via.second.at("data") == direct.second.at("data"));
+    LB_CHECK(via.second.at("usage") == direct.second.at("usage"));
+    LB_CHECK(via.second.at("usage").at("prompt_tokens").get<int>() > 20);  // the audio's tokens are in
+
+    // the native route, "content" holding an array of entries, the second one with the placeholder
+    const json texts = json{{"content", json::array({json{{"content", json::array({json{{"type", "text"}, {"text", "x"}}})}},
+                                                       entry("lb-attachment:0")})}};
+    const auto native = call_with(m, "embeddings_native", texts, {att_bytes("0", "audio/wav", bytes)});
+    json direct_texts = texts;
+    direct_texts["content"][1] = entry(url);
+    const auto native_direct = call(m, "embeddings_native", direct_texts);
+    LB_CHECK(native.first == 200 && native_direct.first == 200);
+    LB_CHECK(native.second == native_direct.second);
+
+    // a text input is not a media field: answered as without the attachment
+    const auto text_via = call_with(m, "embeddings", json{{"input", "lb-attachment:0"}}, {att_path("0", "audio/wav", clip)});
+    const auto text_direct = call(m, "embeddings", json{{"input", "lb-attachment:0"}});
+    LB_CHECK(text_via.first == 200);
+    LB_CHECK(text_via.second.at("data") == text_direct.second.at("data"));
+    lb_model_free(m);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Prompt cache on hybrid memory with SWA layers (F153, patch 0004). tinyLFM3 mixes full-attention, sliding-window and
+// recurrent layers, as LFM3 does. Without the patch, llama-server restores only the checkpoint before the last user
+// message, so each turn processes that whole message again (its audio too)
+// ---------------------------------------------------------------------------------------------
+
+// a user message of some 150 tokens, different every turn
+static std::string user_note(int turn) {
+    std::string s = "Note " + std::to_string(turn) + ", please keep it:";
+    for (int i = 0; i < 40; i++) s += " item " + std::to_string(turn * 100 + i) + ",";
+    return s;
+}
+
+static json conversation_body(const json & messages, int max_tokens, bool cache_prompt) {
+    json body = chat_body("", max_tokens, false);
+    body["messages"] = messages;
+    body["cache_prompt"] = cache_prompt;
+    return body;
+}
+
+// sends turns 1..n, each with a fixed reply in the history, and checks that every turn after the first reuses the
+// previous prompt up to the checkpoint llama-server makes 4 tokens before its end, not just up to its last user message
+static void check_cache_covers_previous_prompt(lb_model * m, const std::function<json(int)> & user_content, int n) {
+    json messages = json::array();
+    int prev_prompt = 0;
+    for (int turn = 1; turn <= n; turn++) {
+        messages.push_back(json{{"role", "user"}, {"content", user_content(turn)}});
+        const auto r = call(m, "chat", conversation_body(messages, 4, true));
+        LB_CHECK(r.first == 200);
+        const int prompt = r.second.at("usage").at("prompt_tokens").get<int>();
+        const int cached = r.second.at("timings").at("cache_n").get<int>();
+        std::fprintf(stderr, "turn %d: prompt %d, cached %d (previous prompt %d)\n", turn, prompt, cached, prev_prompt);
+        if (turn > 1) {
+            LB_CHECK(cached >= prev_prompt - 8);
+            LB_CHECK(cached < prompt);
+        }
+        prev_prompt = prompt;
+        messages.push_back(json{{"role", "assistant"}, {"content", "Noted."}});
+    }
+}
+
+// LB_TEST_MODEL (a real LFM3 GGUF, with LB_TEST_MMPROJ if it has an encoder) replaces the tiny model, for attended runs
+static lb_model * load_omni_long() {
+    const std::string own = env_or("LB_TEST_MODEL", "");
+    if (!own.empty()) {
+        json cfg = {{"n_ctx", 8192}};
+        const std::string proj = env_or("LB_TEST_MMPROJ", "");
+        if (!proj.empty()) {
+            cfg["mmproj_path"] = proj;
+        }
+        return load_at(own, cfg);
+    }
+    return load_at(upstream_test_model("tinyLFM3-Omni-for-testing-Q2_K.gguf"),
+                   {{"mmproj_path", upstream_test_model("mmproj-tinyLFM3-Omni-for-testing-Q2_K.gguf")}, {"n_ctx", 8192}});
+}
+
+static void hybrid_swa_cache_covers_last_message() {
+    lb_model * m = load_omni_long();
+    check_cache_covers_previous_prompt(m, [](int turn) { return json(user_note(turn)); }, 5);
+    lb_model_free(m);
+}
+
+// a chat of short turns, under 500 tokens in all: without the patch nothing but the first token is reused, since every
+// checkpoint and the live state lie within n_swa of the prompt's end, so each turn processes the whole chat again
+static void hybrid_swa_cache_covers_short_chat() {
+    lb_model * m = load_omni_long();
+    check_cache_covers_previous_prompt(m, [](int turn) { return json("Short note " + std::to_string(turn) + "."); }, 12);
+    lb_model_free(m);
+}
+
+// the live state: when the previous prompt and its reply are both a prefix of the new prompt, llama-server goes on from
+// the slot's own memory, with no checkpoint. Without the patch that is refused by the same SWA threshold. Raw completions
+// of token arrays make the reply part of the prefix exactly
+static void hybrid_swa_cache_reuses_live_state() {
+    lb_model * m = load_omni_long();
+    auto tokenize = [&](const std::string & text) {
+        const auto r = call(m, "tokenize", json{{"content", text}});
+        LB_CHECK(r.first == 200);
+        return r.second.at("tokens");
+    };
+    json prompt = tokenize("Short note 1.");
+    size_t prev_reused = 0;  // the previous prompt and its reply but the last token, which was sampled, never decoded
+    for (int turn = 1; turn <= 8; turn++) {
+        const auto r = call(m, "completion", json{{"prompt", prompt}, {"n_predict", 8}, {"temperature", 0}, {"seed", 1},
+                                                  {"return_tokens", true}, {"cache_prompt", true}});
+        LB_CHECK(r.first == 200);
+        const int cached = r.second.at("timings").at("cache_n").get<int>();
+        const json gen = r.second.at("tokens");
+        std::fprintf(stderr, "turn %d: prompt %zu, cached %d, generated %zu\n", turn, prompt.size(), cached, gen.size());
+        // beyond every checkpoint, which lie 4 or more tokens before the previous prompt's end
+        if (turn > 1) LB_CHECK(cached == (int) prev_reused);
+        LB_CHECK(!gen.empty());
+        prev_reused = prompt.size() + gen.size() - 1;
+        for (const auto & t : gen) prompt.push_back(t);
+        for (const auto & t : tokenize(" Short note " + std::to_string(turn + 1) + ".")) prompt.push_back(t);
+    }
+    lb_model_free(m);
+}
+
+// voice notes: without the patch each turn encodes the previous turn's clip again
+static void hybrid_swa_cache_covers_last_voice_note() {
+    lb_model * m = load_omni_long();
+    const std::vector<uint8_t> bytes = file_bytes(test_clip());
+    const std::string url = "data:audio/wav;base64," + base64::encode(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+    check_cache_covers_previous_prompt(m, [&](int turn) {
+        json parts = json::array();
+        parts.push_back(json{{"type", "text"}, {"text", "Here is voice note " + std::to_string(turn) + "."}});
+        if (turn < 4) {  // the last turn is text only, as a reply after voice notes
+            parts.push_back(json{{"type", "input_audio"}, {"input_audio", json{{"data", url}, {"format", "wav"}}}});
+        }
+        return parts;
+    }, 4);
+    lb_model_free(m);
+}
+
+// the restored checkpoints change nothing in the output: over 8 greedy turns with the model's own replies, every reply
+// equals the reply of the same conversation without the prompt cache, and so do the top-5 logprobs of each token, up to
+// the noise of different batch splits (0.024 nat at most when measured, F153). The tiny model's output barely depends on
+// the history (another first message moves them by 0.034), so this catches a broken state, not a subtle one
+static void hybrid_swa_cache_replies_equal_uncached() {
+    lb_model * m = load_omni_long();
+    auto run = [&](bool cache_prompt) {
+        std::vector<json> replies;
+        json messages = json::array();
+        int prev_prompt = 0;
+        for (int turn = 1; turn <= 8; turn++) {
+            messages.push_back(json{{"role", "user"}, {"content", user_note(turn)}});
+            json body = conversation_body(messages, 16, cache_prompt);
+            body["logprobs"] = true;
+            body["top_logprobs"] = 5;
+            const auto r = call(m, "chat", body);
+            LB_CHECK(r.first == 200);
+            const int cached = r.second.at("timings").at("cache_n").get<int>();
+            const int prompt = r.second.at("usage").at("prompt_tokens").get<int>();
+            // the previous prompt but a few tokens: the new resume points are used, not a fallback to an old checkpoint
+            LB_CHECK(cache_prompt ? (turn == 1 || cached >= prev_prompt - 8) : cached == 0);
+            prev_prompt = prompt;
+            const json & choice = r.second.at("choices").at(0);
+            std::fprintf(stderr, "cache_prompt %d, turn %d: cached %d of %d\n", cache_prompt, turn, cached,
+                         r.second.at("usage").at("prompt_tokens").get<int>());
+            replies.push_back(json{{"message", choice.at("message")}, {"logprobs", choice.at("logprobs").at("content")}});
+            messages.push_back(json{{"role", "assistant"}, {"content", choice.at("message").value("content", "")}});
+        }
+        return replies;
+    };
+    const auto cached = run(true);
+    const auto uncached = run(false);
+    double max_diff = 0;
+    for (size_t i = 0; i < cached.size(); i++) {
+        if (cached[i].at("message") != uncached[i].at("message")) {
+            std::fprintf(stderr, "turn %zu differs:\n  cached:   %s\n  uncached: %s\n", i + 1,
+                         cached[i].at("message").dump().c_str(), uncached[i].at("message").dump().c_str());
+        }
+        LB_CHECK(cached[i].at("message") == uncached[i].at("message"));
+        const json & a = cached[i].at("logprobs");
+        const json & b = uncached[i].at("logprobs");
+        LB_CHECK(a.size() == b.size() && !a.empty());
+        for (size_t k = 0; k < a.size(); k++) {
+            LB_CHECK(a[k].at("id") == b[k].at("id"));
+            for (const auto & x : a[k].at("top_logprobs")) {
+                for (const auto & y : b[k].at("top_logprobs")) {
+                    if (x.at("id") == y.at("id")) {
+                        max_diff = std::max(max_diff, std::abs(x.at("logprob").get<double>() - y.at("logprob").get<double>()));
+                    }
+                }
+            }
+        }
+    }
+    std::fprintf(stderr, "largest top-5 logprob difference: %.4f\n", max_diff);
+    LB_CHECK(max_diff < 0.1);
+    lb_model_free(m);
+}
+
 int main(int argc, char ** argv) {
     const std::map<std::string, std::function<void()>> tests = {
         {"runtime_init_twice_same_config_ok", runtime_init_twice_same_config_ok},
@@ -1409,6 +2010,23 @@ int main(int argc, char ** argv) {
         {"rerank_orders_documents", rerank_orders_documents},
         {"lora_scale_changes_output", lora_scale_changes_output},
         {"kv_cache_q8_0_loads_and_generates", kv_cache_q8_0_loads_and_generates},
+        {"attachment_placeholder_replaced", attachment_placeholder_replaced},
+        {"attachment_user_text_untouched", attachment_user_text_untouched},
+        {"attachment_placeholder_without_attachment_refused", attachment_placeholder_without_attachment_refused},
+        {"attachment_read_errors_are_400", attachment_read_errors_are_400},
+        {"attachment_adts_aac_refused", attachment_adts_aac_refused},
+        {"attachment_fd_read_and_left_open", attachment_fd_read_and_left_open},
+        {"transcription_path_fd_bytes_same_text", transcription_path_fd_bytes_same_text},
+        {"attachment_buffers_freed_on_cancel", attachment_buffers_freed_on_cancel},
+        {"read_fd_reads_whole_file_and_leaves_it_open", read_fd_reads_whole_file_and_leaves_it_open},
+        {"placeholder_untouched_on_other_routes", placeholder_untouched_on_other_routes},
+        {"placeholder_untouched_in_response_format", placeholder_untouched_in_response_format},
+        {"embeddings_placeholder_replaced", embeddings_placeholder_replaced},
+        {"hybrid_swa_cache_covers_last_message", hybrid_swa_cache_covers_last_message},
+        {"hybrid_swa_cache_covers_last_voice_note", hybrid_swa_cache_covers_last_voice_note},
+        {"hybrid_swa_cache_covers_short_chat", hybrid_swa_cache_covers_short_chat},
+        {"hybrid_swa_cache_reuses_live_state", hybrid_swa_cache_reuses_live_state},
+        {"hybrid_swa_cache_replies_equal_uncached", hybrid_swa_cache_replies_equal_uncached},
     };
     if (argc < 2 || !tests.count(argv[1])) {
         std::fprintf(stderr, "usage: lb-tests <test>\n");

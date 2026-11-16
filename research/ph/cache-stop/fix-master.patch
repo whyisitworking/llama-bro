@@ -1,0 +1,133 @@
+diff --git a/tests/test-server-component.cpp b/tests/test-server-component.cpp
+index 2ef8b04..44f2cc0 100644
+--- a/tests/test-server-component.cpp
++++ b/tests/test-server-component.cpp
+@@ -4,6 +4,7 @@
+ #include "../tools/server/server-common.h"
+ #include "../tools/server/server-decision.h"
+ #include "../tools/server/server-schema.h"
++#include "../tools/server/server-slot-sched.h"
+ 
+ #include <algorithm>
+ #include <cmath>
+@@ -242,6 +243,57 @@ static void test_server_tokens(testing & t) {
+     t.test("prefix_hashes", test_server_tokens_prefix_hashes);
+ }
+ 
++//
++// server_prompt::get_reuse
++//
++
++static void test_server_prompt_get_reuse(testing & t) {
++    // the cached prompt has 1000 tokens, the new prompt shares the first 990 and differs after that
++    const auto make_prompt = [](std::vector<std::pair<llama_pos, llama_pos>> ranges) {
++        server_prompt prompt;
++        prompt.tokens = server_tokens(llama_tokens(1000, 1), false);
++        for (const auto & r : ranges) {
++            auto ckpt = std::make_shared<common_prompt_checkpoint>();
++            ckpt->update_pos(r.second + 1, r.first, r.second);
++            prompt.checkpoints.push_back(ckpt);
++        }
++        return prompt;
++    };
++
++    t.test("attention, live state", [&](testing & t) {
++        const auto reuse = make_prompt({}).get_reuse(990, true, 0, COMMON_CONTEXT_SEQ_RM_TYPE_PART, 0);
++        t.assert_true("no checkpoint", reuse.ckpt == nullptr);
++        t.assert_equal("n_past", 990, reuse.n_past);
++    });
++
++    t.test("SWA, the window must reach back n_swa", [&](testing & t) {
++        // the newest checkpoint's window starts too late, the older one starts at 0
++        const auto reuse = make_prompt({{0, 100}, {800, 985}}).get_reuse(990, true, 256, COMMON_CONTEXT_SEQ_RM_TYPE_PART, 900);
++        t.assert_true("checkpoint", reuse.ckpt != nullptr);
++        t.assert_equal("n_past", 100, reuse.n_past);
++    });
++
++    // a checkpoint of recurrent memory has pos_min == pos_max, the position of the recurrent state
++    t.test("recurrent, the newest checkpoint", [&](testing & t) {
++        const auto reuse = make_prompt({{100, 100}, {985, 985}}).get_reuse(990, true, 0, COMMON_CONTEXT_SEQ_RM_TYPE_FULL, 999);
++        t.assert_true("checkpoint", reuse.ckpt != nullptr);
++        t.assert_equal("n_past", 986, reuse.n_past);
++    });
++
++    t.test("hybrid with SWA layers, the newest checkpoint", [&](testing & t) {
++        const auto reuse = make_prompt({{100, 100}, {985, 985}}).get_reuse(990, true, 256, COMMON_CONTEXT_SEQ_RM_TYPE_FULL, 999);
++        t.assert_true("checkpoint", reuse.ckpt != nullptr);
++        t.assert_equal("n_past", 986, reuse.n_past);
++    });
++
++    t.test("hybrid with SWA layers, live state", [&](testing & t) {
++        // the whole cached prompt is shared, the recurrent state is at its last token
++        const auto reuse = make_prompt({{100, 100}, {995, 995}}).get_reuse(1000, true, 256, COMMON_CONTEXT_SEQ_RM_TYPE_FULL, 999);
++        t.assert_true("no checkpoint", reuse.ckpt == nullptr);
++        t.assert_equal("n_past", 1000, reuse.n_past);
++    });
++}
++
+ //
+ // string / json helpers
+ //
+@@ -865,6 +917,7 @@ int main(int argc, char ** argv) {
+     }
+ 
+     t.test("server_tokens", test_server_tokens);
++    t.test("server_prompt_get_reuse", test_server_prompt_get_reuse);
+     t.test("utf8",          test_utf8);
+     t.test("sse",           test_sse);
+     t.test("json_helpers",  test_json_helpers);
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 28e01c6..6333dde 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -4182,7 +4182,7 @@ private:
+                                     SLT_WRN(slot, "%s\n", st1.str().c_str());
+                                 }
+ 
+-                                auto reuse = slot.prompt.get_reuse(n_past, has_new_tokens, n_swa, pos_min);
++                                auto reuse = slot.prompt.get_reuse(n_past, has_new_tokens, n_swa, ctx_tgt_seq_rm_type, pos_min);
+ 
+                                 if (reuse.ckpt) {
+                                     const auto & cur = *reuse.ckpt;
+diff --git a/tools/server/server-slot-sched.cpp b/tools/server/server-slot-sched.cpp
+index 5b33292..7120a04 100644
+--- a/tools/server/server-slot-sched.cpp
++++ b/tools/server/server-slot-sched.cpp
+@@ -10,7 +10,7 @@
+ // server_prompt
+ //
+ 
+-server_prompt_reuse server_prompt::get_reuse(int32_t n_prefix, bool has_new_tokens, int32_t n_swa, llama_pos pos_min) const {
++server_prompt_reuse server_prompt::get_reuse(int32_t n_prefix, bool has_new_tokens, int32_t n_swa, common_context_seq_rm_type seq_rm_type, llama_pos pos_min) const {
+     server_prompt_reuse res;
+     res.n_past   = n_prefix;
+     res.pos_next = tokens.pos_next(n_prefix);
+@@ -19,8 +19,11 @@ server_prompt_reuse server_prompt::get_reuse(int32_t n_prefix, bool has_new_toke
+     // starting at pos_eval - n_swa + 1 is enough, while a state without SWA must end before pos_eval
+     const llama_pos pos_eval = res.pos_next - (has_new_tokens ? 0 : 1);
+ 
++    // memory that cannot be partly removed reports pos_min at its end (a recurrent state, or DSV4's compressed state), not at the start of the SWA window
++    const bool use_swa = n_swa > 0 && seq_rm_type == COMMON_CONTEXT_SEQ_RM_TYPE_PART;
++
+     // a state or a checkpoint is useful when its pos_min is below this threshold
+-    const auto pos_min_thold = std::max(0, n_swa > 0 ? pos_eval - n_swa + 2 : pos_eval);
++    const auto pos_min_thold = std::max(0, use_swa ? pos_eval - n_swa + 2 : pos_eval);
+ 
+     if (pos_min < pos_min_thold) {
+         return res;
+diff --git a/tools/server/server-slot-sched.h b/tools/server/server-slot-sched.h
+index 8389d05..d951e02 100644
+--- a/tools/server/server-slot-sched.h
++++ b/tools/server/server-slot-sched.h
+@@ -42,9 +42,10 @@ struct server_prompt {
+ 
+     // n_prefix: tokens shared with the new prompt, must be > 0
+     // has_new_tokens: the new prompt is longer than n_prefix
++    // seq_rm_type: of the target context, the SWA window applies only to memory that can be partially removed
+     // pos_min: min position of the live state
+     // n_past == 0 without a checkpoint means that nothing can be reused
+-    server_prompt_reuse get_reuse(int32_t n_prefix, bool has_new_tokens, int32_t n_swa, llama_pos pos_min) const;
++    server_prompt_reuse get_reuse(int32_t n_prefix, bool has_new_tokens, int32_t n_swa, common_context_seq_rm_type seq_rm_type, llama_pos pos_min) const;
+ };
+ 
+ struct server_prompt_data {

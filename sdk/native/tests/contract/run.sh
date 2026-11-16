@@ -6,6 +6,8 @@
 #
 # Needs: the host build (cmake --preset host -S sdk/native && cmake --build sdk/native/build/host),
 #        LB_TEST_MODEL, and LB_TEST_MMPROJ for the image requests. Requests: make-requests.py.
+#        LB_CONTRACT_REQUESTS picks another requests file (audio.jsonl: with LB_TEST_CLIP, a WAV clip, put where a
+#        request says "@clip"; check.sh runs it on upstream's audio test model).
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -16,19 +18,22 @@ mmproj="${LB_TEST_MMPROJ:-}"   # optional: without it, requests that need images
 port="${LB_CONTRACT_PORT:-18181}"
 out="$native/build/host/contract"
 requests="$out/requests.jsonl"
+source_requests="${LB_CONTRACT_REQUESTS:-$here/requests.jsonl}"
+clip="${LB_TEST_CLIP:-}"   # optional: without it, requests that need the clip are left out
 
 for exe in llama-server lb-run; do
     [ -x "$bin/$exe" ] || { echo "FAIL: $bin/$exe missing (build the host preset)"; exit 1; }
 done
 
 rm -rf "$out" && mkdir -p "$out/upstream" "$out/lb"
-python3 - "$here/requests.jsonl" "$requests" "${mmproj:+mmproj}" <<'PY'
+python3 - "$source_requests" "$requests" "$clip" "${mmproj:+mmproj}" "${clip:+clip}" <<'PY'
 import json, sys
-have = set(sys.argv[3:]) - {""}
+clip = sys.argv[3]
+have = set(sys.argv[4:]) - {""}
 with open(sys.argv[2], "w") as out:
     for line in open(sys.argv[1]):
-        if line.strip() and set(json.loads(line).get("needs", [])) <= have:
-            out.write(line)
+        if line.strip() and not line.startswith("#") and set(json.loads(line).get("needs", [])) <= have:
+            out.write(line.replace('"@clip"', json.dumps(clip)))
 PY
 echo "$(wc -l < "$requests" | tr -d ' ') requests$( [ -n "$mmproj" ] || echo ", without the image ones (no LB_TEST_MMPROJ)")"
 

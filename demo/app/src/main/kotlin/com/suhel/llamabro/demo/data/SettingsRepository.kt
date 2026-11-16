@@ -81,6 +81,8 @@ data class AppSettings(
     val seenFirstRun: Boolean = false,
     /** Model keys whose download was started and hasn't finished or been cancelled: the library's "Downloading". */
     val pendingDownloads: Set<String> = emptySet(),
+    /** The pending downloads the person paused: kept paused across a restart, not started with the queue. */
+    val pausedDownloads: Set<String> = emptySet(),
     val keepLoaded: KeepLoaded = KeepLoaded.OneMinute,
     val chip: ChipChoice = ChipChoice.Automatic,
     val context: ContextChoice = ContextChoice.Automatic,
@@ -108,6 +110,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 instructionsStyle = p[INSTRUCTIONS_STYLE].orEmpty(),
                 seenFirstRun = p[SEEN_FIRST_RUN] ?: false,
                 pendingDownloads = p[PENDING_DOWNLOADS].orEmpty(),
+                pausedDownloads = p[PAUSED_DOWNLOADS].orEmpty(),
                 keepLoaded = KeepLoaded.entries.firstOrNull { it.name == p[KEEP_LOADED] } ?: KeepLoaded.OneMinute,
                 chip = ChipChoice.entries.firstOrNull { it.name == p[CHIP] } ?: ChipChoice.Automatic,
                 context = ContextChoice.entries.firstOrNull { it.name == p[CONTEXT] } ?: ContextChoice.Automatic,
@@ -177,6 +180,20 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         store.edit { if (knobs.isEmpty) it.remove(key) else it[key] = knobs.encode() }
     }
 
+    /**
+     * The models (by key) that heard on their last load (`ModelInfo.supportsAudio`), so a chat shows the mic before
+     * its model is loaded again (D76): the SDK can only say once a model is loaded.
+     */
+    val hearingModels: Flow<Set<String>> = store.data.map { it[HEARING_MODELS].orEmpty() }
+
+    /** Records whether [modelKey] heard when it loaded. */
+    suspend fun setHears(modelKey: String, hears: Boolean) {
+        store.edit {
+            val now = it[HEARING_MODELS].orEmpty()
+            if ((modelKey in now) != hears) it[HEARING_MODELS] = if (hears) now + modelKey else now - modelKey
+        }
+    }
+
     suspend fun markFirstRunSeen() {
         store.edit { it[SEEN_FIRST_RUN] = true }
     }
@@ -185,14 +202,27 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         store.edit { it[PENDING_DOWNLOADS] = it[PENDING_DOWNLOADS].orEmpty() + modelKey }
     }
 
+    /** A download that ends, is cancelled or arrives is neither pending nor paused. */
     suspend fun removePendingDownloads(modelKeys: Collection<String>) {
         if (modelKeys.isEmpty()) return
-        store.edit { it[PENDING_DOWNLOADS] = it[PENDING_DOWNLOADS].orEmpty() - modelKeys.toSet() }
+        store.edit {
+            it[PENDING_DOWNLOADS] = it[PENDING_DOWNLOADS].orEmpty() - modelKeys.toSet()
+            it[PAUSED_DOWNLOADS] = it[PAUSED_DOWNLOADS].orEmpty() - modelKeys.toSet()
+        }
+    }
+
+    suspend fun setDownloadPaused(modelKey: String, paused: Boolean) {
+        store.edit {
+            val now = it[PAUSED_DOWNLOADS].orEmpty()
+            it[PAUSED_DOWNLOADS] = if (paused) now + modelKey else now - modelKey
+        }
     }
 
     private companion object {
         const val SAMPLING_PREFIX = "sampling:"
         val PENDING_DOWNLOADS = stringSetPreferencesKey("pending_downloads")
+        val PAUSED_DOWNLOADS = stringSetPreferencesKey("paused_downloads")
+        val HEARING_MODELS = stringSetPreferencesKey("hearing_models")
         val KEEP_LOADED = stringPreferencesKey("keep_loaded")
         val CHIP = stringPreferencesKey("chip")
         val CONTEXT = stringPreferencesKey("context")

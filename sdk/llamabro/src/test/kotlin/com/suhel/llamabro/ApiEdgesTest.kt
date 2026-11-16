@@ -29,27 +29,27 @@ class ApiEdgesTest {
                 """{"version":1,"messages":["x"]}""",
                 """{"version":2,"messages":[]}""", // v2 always has settings
                 """{"version":2,"settings":{"options":{}},"messages":[]}""",
-                """{"version":3,"messages":[]}""",
+                """{"version":3,"messages":[]}""", // v3 always has settings
+                """{"version":4,"settings":{"options":{}},"messages":[]}""", // a newer version is unknown
             )) {
                 val e = runCatching { model.restoreConversation(bad) }.exceptionOrNull()
                 assertTrue("$bad -> $e", e is IllegalArgumentException)
             }
+            val newer = runCatching { model.restoreConversation("""{"version":4,"messages":[]}""") }.exceptionOrNull()
+            assertTrue("$newer", newer!!.message!!.contains("unsupported conversation version: 4"))
         }
 
     @Test
-    fun askThrowsWhenToolsArePending() =
+    fun askIsIncompleteWhenToolsArePending() =
         runTest {
             val (engine, model) = setup()
             engine.model.script(Replies.toolCalls(Triple("c1", "manual", "{}")))
-            val e = runCatching { model.conversation { tool("manual", "m", "{}") }.ask("x") }.exceptionOrNull()
-            assertTrue(
-                "$e",
-                e is LlamaBroException.Incomplete && e.reason == FinishReason.ToolCallsPending,
-            )
+            val result = model.conversation { tool("manual", "m", "{}") }.ask("x")
+            assertTrue("$result", result is Typed.Incomplete && result.reason == FinishReason.ToolCallsPending)
         }
 
     @Test
-    fun askThrowsAtTurnLimit() =
+    fun askIsIncompleteAtTurnLimit() =
         runTest {
             val (engine, model) = setup()
             engine.model.script(Replies.toolCalls(Triple("c1", "t", "{}")))
@@ -58,22 +58,19 @@ class ApiEdgesTest {
                     maxTurns = 1
                     tool("t", "t", "{}") { "r" }
                 }
-            val e = runCatching { chat.ask("x") }.exceptionOrNull()
-            assertTrue(
-                "$e",
-                e is LlamaBroException.Incomplete && e.reason == FinishReason.TurnLimit,
-            )
+            val result = chat.ask("x")
+            assertTrue("$result", result is Typed.Incomplete && result.reason == FinishReason.TurnLimit)
         }
 
     @Test
-    fun askThrowsIncompleteOnLength() =
+    fun askIsIncompleteOnLength() =
         runTest {
             val (engine, model) = setup()
             engine.model.script(Replies.text("half an ans", finish = "length"))
-            val e = runCatching { model.conversation().ask("x") }.exceptionOrNull()
-            e as LlamaBroException.Incomplete
-            assertEquals(FinishReason.Length, e.reason)
-            assertEquals("half an ans", e.partial)
+            assertEquals(
+                Typed.Incomplete(FinishReason.Length, "half an ans"),
+                model.conversation().ask("x"),
+            )
         }
 
     @Test

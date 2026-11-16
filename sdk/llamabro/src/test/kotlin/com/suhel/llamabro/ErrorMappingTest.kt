@@ -86,4 +86,16 @@ class ErrorMappingTest {
         val native = NativeError(4, """{"error":"x"}""")
         assertSame(native, ErrorMapping.loadFailed(native).cause)
     }
+
+    @Test
+    fun undecodableMediaIsInvalidRequest() {
+        val e = ErrorMapping.fromBody(500, body("server_error", "Failed to load image or audio file"))
+        assertTrue("$e", e is LlamaBroException.InvalidRequest)
+        assertTrue(e.message!!, e.message!!.contains("JPEG, PNG") && e.message!!.contains("not HEIC or WebP"))
+        assertTrue("${e.cause}", e.cause is LlamaBroException.ServerError)
+        assertTrue(ErrorMapping.isMediaError(e))
+        // the bridge's own refusal of a file or a clip is a media error too; a plain bad request isn't
+        assertTrue(ErrorMapping.isMediaError(ErrorMapping.fromBody(400, body("invalid_request_error", "attachment x"))))
+        assertTrue(!ErrorMapping.isMediaError(ErrorMapping.fromBody(400, body("invalid_request_error", "bad"))))
+    }
 }

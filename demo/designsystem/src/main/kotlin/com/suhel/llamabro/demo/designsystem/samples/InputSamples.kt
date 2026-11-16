@@ -5,12 +5,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.suhel.llamabro.demo.designsystem.components.Composer
 import com.suhel.llamabro.demo.designsystem.components.ComposerState
+import com.suhel.llamabro.demo.designsystem.components.RecordingState
 import com.suhel.llamabro.demo.designsystem.components.SearchField
 import com.suhel.llamabro.demo.designsystem.components.TextArea
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 
-/** Search (empty and typed), the instructions box, and the message bar in its four states. */
+/**
+ * Search (empty and typed), the instructions box, and the message bar in its states: empty, typed, replying, a model
+ * that can't think, and for a model that hears (D76) the mic, recording, and a recording that stopped and waits.
+ */
 @Composable
 internal fun InputSamples() {
     SampleFrame {
@@ -30,6 +34,43 @@ internal fun InputSamples() {
         )
         SampleComposer(ComposerState("", canAttach = true, think = ThinkLevel.Quick, busy = true), "Message Deep")
         SampleComposer(ComposerState("", canAttach = false, think = null, busy = false), "Message Writer")
+        SampleComposer(
+            ComposerState("", canAttach = true, think = null, busy = false, canRecord = true),
+            "Message Omni",
+        )
+        SampleComposer(
+            ComposerState(
+                "",
+                canAttach = true,
+                think = null,
+                busy = false,
+                canRecord = true,
+                recording = RecordingState(SampleLevels, "0:42", live = true),
+            ),
+            "Message Omni",
+        )
+        SampleComposer(
+            ComposerState(
+                "",
+                canAttach = true,
+                think = null,
+                busy = false,
+                canRecord = true,
+                recording = RecordingState(SampleLevels, "1:52", live = true, nearEnd = true),
+            ),
+            "Message Omni",
+        )
+        SampleComposer(
+            ComposerState(
+                "",
+                canAttach = true,
+                think = null,
+                busy = false,
+                canRecord = true,
+                recording = RecordingState(SampleLevels, "0:42", live = false),
+            ),
+            "Message Omni",
+        )
     }
 }
 
@@ -46,6 +87,10 @@ private fun SampleComposer(state: ComposerState, placeholder: String) {
         modifier = Modifier.fillMaxWidth(),
     )
 }
+
+/** A voice's levels for the samples: speech, with pauses. */
+internal val SampleLevels: List<Float> =
+    List(96) { i -> if (i % 17 < 3) 0.05f else 0.3f + 0.6f * (((i * 37) % 11) / 10f) }
 
 @LightDarkPreviews
 @Composable

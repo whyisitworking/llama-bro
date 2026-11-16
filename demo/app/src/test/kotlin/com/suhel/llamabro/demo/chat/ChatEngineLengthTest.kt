@@ -11,10 +11,10 @@ import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.ReplyLength
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.loadConfig
-import com.suhel.llamabro.demo.models.CachedEntry
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.TestHub
+import com.suhel.llamabro.demo.models.installedModel
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CompletableDeferred
@@ -39,6 +39,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -54,7 +55,8 @@ class ChatEngineLengthTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val swift = HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M")
     private val fake = FakeLlamaBro()
-    private val hub = FakeHubGateway()
+    private val testHub = TestHub()
+    private val hub get() = testHub.hub
     private val settings by lazy {
         SettingsRepository(
             PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "settings.preferences_pb") },
@@ -63,7 +65,7 @@ class ChatEngineLengthTest {
     private val chats by lazy {
         ChatRepository(FakeChatDao(), ImageStore(File(folder.root, "images")), System::currentTimeMillis)
     }
-    private val host by lazy { ModelHost(fake.llamaBro, hub, scope) }
+    private val host by lazy { ModelHost(fake.llamaBro, { hub.installedModel(it) }, scope) }
     private val models by lazy { ModelRepository(hub, settings, FakeScheduler(), scope, host) }
     private var streamer: Streamer? = null
     private val engine by lazy {
@@ -76,9 +78,13 @@ class ChatEngineLengthTest {
     }
     private val memory by lazy { ModelMemory(host, engine) }
 
+    /** The model is on the phone: the host loads the hub's installed copy, as the app's does. */
+    @Before fun installModel() = testHub.install(swift)
+
     @After fun stop() {
         runBlocking { host.release() }
         scope.cancel()
+        testHub.close()
     }
 
     private suspend fun until(what: String, condition: suspend () -> Boolean) {
@@ -88,7 +94,7 @@ class ChatEngineLengthTest {
 
     private suspend fun newChat(): ChatEngine.ChatHandle {
         settings.setLastModel(swift.toString())
-        hub.cachedEntries += CachedEntry(swift, 1_000)
+        testHub.install(swift)
         models.changed()
         return engine.open(0)
     }

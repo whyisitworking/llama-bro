@@ -6,7 +6,8 @@ templates, tool calls, reasoning, prompt cache and sampling as `llama-server`, w
 
 > `implementation("io.github.whyisitworking:llamabro:2.0.0-alpha")` from Maven Central, plus `llamabro-hexagon` and
 > `llamabro-opencl` for the NPU and GPU, and the other modules as needed (the same group and version).
-> arm64-v8a, Android 10 (API 29) and up.
+> arm64-v8a, Android 10 (API 29) and up. Kotlin 2.2 or later: the SDK is built with Kotlin 2.3, whose metadata a
+> 2.2 compiler still reads (D82). `llamabro-typed-ksp` needs KSP 2.3 or later.
 
 ## Five minutes: a chat screen
 
@@ -50,7 +51,7 @@ class ChatViewModel(private val llama: LlamaBro, private val path: String) : Vie
 
 - `messages`: the history; `reply`: the assistant message while it streams, null otherwise.
 - `isBusy`, and `contextUsage` (tokens used of the context).
-- `ask(text)` returns the answer as a `String`, or throws `LlamaBroException.Incomplete` if it was cut off.
+- `ask(text)` returns a `Typed<String>`: `Typed.Value` (the text and the reasoning), or `Typed.Incomplete` if the reply was cut off or ended without a final answer.
 - `regenerate()`, `endReasoning()` (stop thinking now), `toJson()` and `model.restoreConversation(json)`.
 
 The demo chat app ([demo](../demo)) is this, with a full UI; its `ChatEngine` is the part that talks to `Conversation`.
@@ -116,15 +117,243 @@ model.rawRequest(Endpoint.Infill, """{"input_prefix": "def add(a, b):\n    ", "i
 ```
 
 `Endpoint` has a constant for every route llama-server serves for one model: chat, completion, infill, the
-Responses and Anthropic Messages formats, token counting, embeddings, rerank, TTS, tokenize, slots, metrics, LoRA
-adapters and more. Audio transcription is not there yet.
+Responses and Anthropic Messages formats, token counting, embeddings, rerank, transcriptions, TTS, tokenize, slots,
+metrics, LoRA adapters and more. `rawRequest` sends JSON only, so a transcription goes through `transcribe` (below).
+
+## Pictures and speech
+
+A model loaded with its encoder (`ModelSource.file(path) { mmproj = encoderPath }`) sees pictures
+(`model.info.supportsVision`), hears audio (`model.info.supportsAudio`), or both. Pictures and clips come from a
+`MediaSource` (D84), however the app holds them:
+
+- `MediaSource.file(path)`: a file on the phone, read natively on every request that sends it, so it must stay there;
+- `MediaSource.descriptor(pfd)`: an open `ParcelFileDescriptor`, such as a `content://` URI from the photo picker or a
+  recorder, read natively from its start and left open for the app to close;
+- `MediaSource.bytes(bytes)`: bytes in memory, copied once into native memory.
+
+A file or descriptor never enters the Java heap, and Kotlin never writes base64: the request carries a placeholder and
+the native side writes the data URL llama-server reads. In a conversation a descriptor is read once into bytes when its
+message is added, off the main thread; later turns and `toJson` use those bytes, so the app may close the descriptor as
+soon as the message is in `messages`, and a descriptor in a `history` you start a conversation from is read once, by its
+first request or by `toJson`, whichever comes first. A file must exist when its message is added (otherwise
+`InvalidRequest` naming the path, and nothing is added), and a descriptor must be open until then: a closed one is
+`InvalidRequest` too. `toJson` saves a file as its path (restore it on the same phone) and bytes as base64. If a
+restored chat's file is gone, its requests fail with `InvalidRequest` naming the path; start a conversation from its
+`messages` with that part removed or replaced (`model.conversation(system, history = …)`). Each turn re-sends the whole
+history, earlier media included; the server's cache keeps the model from re-reading it, but its decoding repeats.
+
+```kotlin
+// a voice note: ask about it in a chat…
+context.contentResolver.openFileDescriptor(voiceNoteUri, "r")!!.use { pfd ->
+    chat.send("Reply to this voice note.", Content.Audio(MediaSource.descriptor(pfd), "audio/wav")).collect { … }
+}
+// …or only write down what it says
+when (val text = model.transcribe(MediaSource.file(recording.path), language = "en")) {
+    is Typed.Value -> showTranscript(text.value)
+    is Typed.Incomplete -> showTranscript(text.json + "…")   // cut at maxTokens
+    is Typed.Invalid -> Unit                                  // never for a transcript
+}
+
+chat.send("What is in this picture?", Content.Image(MediaSource.file(photo.path), "image/png"))
+```
+
+Audio must be WAV, MP3 or FLAC (`audio/wav`, `audio/mpeg`, `audio/flac`), the formats llama.cpp decodes; the SDK
+converts nothing, so an app that records AAC or Opus records WAV instead (`AudioRecord` gives PCM) or converts first.
+Pictures are decoded by llama.cpp's stb_image: JPEG, PNG, BMP and GIF (its first frame), and the rarer TGA, PSD, HDR,
+PIC and PNM. HEIC, the iPhone's and many Android cameras' format, is not supported, and neither is WebP (upstream
+decodes it only through an `ffmpeg` binary, which an Android app doesn't have): ask the photo picker or camera for
+JPEG, or convert first (`Bitmap.compress`). Another audio format (by MIME type, and by the first bytes of a file or
+bytes), a missing file, an unreadable descriptor, or a picture or clip for a model that can't see or hear it throws
+`InvalidRequest` naming the problem, before anything is added to the chat. Media only llama.cpp can judge (a HEIC or
+WebP picture, a descriptor's clip in another format) fails the send's first request with `InvalidRequest`; then the
+message is taken out of the chat again, so the next send works. Any other failure keeps the message, for `resume()`. `transcribe(source, language,
+prompt, options)` returns `Typed.Value(text)`, or `Typed.Incomplete(Length, textSoFar)` when cut at `maxTokens`;
+`prompt` is upstream's (words to expect, or an instruction in place of the model's own), and `options`' sampling
+applies. Speech output and live transcription are not part of the SDK.
+
+## Embeddings and rerank
+
+An embedding model turns text into vectors and a reranker scores documents against a query, each loaded for its task
+(D65). Private semantic search is a few calls; the similarity is yours to write, here a cosine:
+
+```kotlin
+val embedder = llama.loadModel(ModelSource.file(bgePath)) { task = ModelTask.Embedding(Pooling.Mean) }
+val passages = listOf("The cat sleeps on the sofa.", "Stocks fell on Monday.", "Kittens nap a lot.")
+val vectors = embedder.embed(passages)                      // one FloatArray per text, in order
+val query = embedder.embed("Where do cats rest?")
+
+fun cosine(a: FloatArray, b: FloatArray): Float {
+    var dot = 0f; var na = 0f; var nb = 0f
+    for (i in a.indices) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i] }
+    return dot / kotlin.math.sqrt(na * nb)
+}
+val best = passages.indices.sortedByDescending { cosine(query, vectors[it]) }.map { passages[it] }
+
+// then let a reranker order the best few, best first
+val reranker = llama.loadModel(ModelSource.file(rerankerPath)) { task = ModelTask.Rerank }
+reranker.rerank("Where do cats rest?", best, topN = 2)       // [Ranked(index=…, score=…), …]
+```
+
+Vectors are unit length by default (`Normalization.Euclidean`, llama-server's `embd_normalize` 2), so a dot product
+alone would do; `None`, `MaxAbsInt16`, `Taxicab` and `PNorm(p)` are upstream's others. `embed(Content.Text(…),
+Content.Image(…))` reads text and a picture as one input on a model whose embeddings take pictures; one that can't
+throws `InvalidRequest` with llama-server's reason. Pictures and clips come from a `MediaSource` and are sent as in chat
+(above): a file or descriptor is read natively, and a clip gets chat's checks. Each input, and each query with a
+document, is read in one batch: past `microBatchSize` (512 tokens) the call throws `InputTooLong(tokens, limit)`, and
+the SDK neither splits the text nor raises the batch. Calling `embed` or `rerank` on a model loaded for another task
+throws `InvalidRequest` naming the task to load with. Per-token vectors (`Pooling.None`) stay raw, through
+`Endpoint.EmbeddingsNative`.
+
+## Typed output and tools
+
+Typed replies and typed tools are an optional library over kotlinx.serialization (D63):
+
+```kotlin
+implementation("io.github.whyisitworking:llamabro-typed")
+```
+
+`typedSchema<T>()` writes a `@Serializable` class's JSON Schema, the one llama.cpp's grammar holds a reply to.
+Properties keep their declaration order, which is the order the model writes them in, required ones first: declare a
+reasoning field before the answer. A property with a default is optional. Add `@LbDescription`, `@LbRange` (integers),
+`@LbLength` and `@LbPattern` (strings) and `@LbItems` (lists); decimals take no bounds, since the grammar ignores them.
+llama.cpp supports a subset of regex and rejects the rest when it builds the grammar, so a bad `@LbPattern` fails the
+first request, and in a conversation with typed tools every request in it, since the tools are sent with each one. A
+test against a real model catches it; `assertTypedSchema` can't check the pattern.
+A sealed subclass needs a short `@SerialName`. Call `assertTypedSchema<T>()` in a unit test to find what the schema
+refuses (a recursive type, open polymorphism, a contextual serializer, a free-form `JsonElement`, a non-`String`
+map key) before release.
+
+```kotlin
+@Serializable
+data class Review(
+    val reasoning: String,
+    @LbRange(min = 1, max = 5) val stars: Int,
+    @LbDescription("At most three") @LbItems(max = 3) val tags: List<String> = emptyList(),
+)
+```
+
+Ask for a reply as that class with `ask<T>` in a conversation, or `generate<T>` for one reply with no history. The
+model writes the fields in the order they are declared, so `reasoning` comes before `stars`: the model works out its
+verdict in words first and the number follows from it (F143). Declared after, the number would be written first and
+the reasoning would only justify it.
+
+```kotlin
+when (val r = chat.ask<Review>("Review: the battery lasts two days, but the screen scratches easily.")) {
+    is Typed.Value -> show(r.value)           // r.json is the model's JSON, r.reasoning its thinking (Think on)
+    is Typed.Incomplete -> retry(r.reason)    // cut at the output limit (Length), with r.json so far
+    is Typed.Invalid -> report(r.cause)       // the JSON didn't decode: a number past Int, a failing init check
+}
+val review = model.generate<Review>(text, system = "You review products.")
+```
+
+The schema is checked before any request, so a type without one throws `IllegalArgumentException` at once; so do
+`options` that set a `responseFormat`. A `responseFormat` in the conversation's defaults is replaced by the typed
+call's, while one set in this call's `options` is refused. Think on works, but the grammar applies only after the
+thinking, so the model thinks without knowing the format: it reasons as if replying to a chat. With no budget, Qwen3.5
+4B thought for 114 s on the phone before writing correct JSON, and 0.8B ran out of tokens (F151). For typed calls,
+turn Think off or set a thinking budget (`reasoning { budgetTokens = 256 }`), and phrase the prompt as the task
+("Extract the person from: …"); a reasoning field in the class gives the model room to think inside the JSON. A typed turn keeps the conversation's tools in the prompt but cannot call them, and stores the JSON as
+the assistant message, so later turns see what the model wrote. Pass `serializer =` and `json =` to use a
+`KSerializer` or a `Json` of your own; the schema and the decoding both follow that `Json`.
+
+A typed tool takes a `@Serializable` arguments class and returns a value. Its parameters' schema is the arguments
+class's `typedSchema`, so the same annotations describe and bound them. The handler is a suspending lambda that
+captures whatever your app injected; register tools one by one or as a `Toolbox`:
+
+```kotlin
+@Serializable
+data class CityArgs(@LbDescription("City name, e.g. Paris") val city: String, val days: Int = 1)
+
+@Serializable
+data class Forecast(val city: String, val sky: String, val highC: Int)
+
+val forecast = tool<CityArgs, Forecast>("get_forecast", "Weather forecast for a city; highC is in Celsius") { args ->
+    weatherApi.forecast(args.city, args.days)  // `this` is the call: callId, toolName, rawArguments
+}
+val sendEmail = tool<EmailArgs, Unit>("send_email", "Sends an email", requiresApproval = true) { mail.send(it) }
+
+val chat = model.conversation { toolbox(toolboxOf(forecast, sendEmail)) }
+```
+
+Inside `conversation { }`, `tool<A, R>(name, description) { … }` makes the tool and registers it in one step.
+
+A `String` result is sent as is (a null `String?` as `null`), `Unit` or `Unit?` as `Done`, anything else as JSON;
+the model sees no schema for a result, so say what it means in the description. Arguments that don't decode send
+`Error: invalid arguments: <reason>` and the loop goes on, so the model can retry, but only kotlinx-serialization's own
+decode errors (a missing field, bad JSON, a custom serializer's `SerializationException`) give their reason. Anything else thrown while decoding, such as a `require`
+in the arguments class, sends `Error: invalid arguments` and reaches the app as `ChatEvent.ToolResult.error`. An app
+that wants to explain throws `LbToolError` from its validation, and its message is what the model reads:
+`init { if (days !in 1..7) throw LbToolError("days must be 1-7") }` sends `Error: days must be 1-7`, so write it for
+the model and keep secrets out of it. What the handler throws is handled as for a raw tool. `tool(…)` throws
+`IllegalArgumentException` for a name that doesn't match `^[a-zA-Z0-9_-]{1,64}$`, a blank description, or arguments
+that aren't an object. The handler runs where the agent loop calls it: move blocking work to `Dispatchers.IO`.
+
+### Annotated toolboxes
+
+Tools can also be methods of a class of yours, written once with annotations and checked when the app builds (D61).
+Add the KSP processor and the kotlinx.serialization compiler plugin, which compiles the arguments classes it writes:
+
+```kotlin
+plugins {
+    id("com.google.devtools.ksp")
+    id("org.jetbrains.kotlin.plugin.serialization")
+}
+
+dependencies {
+    implementation("io.github.whyisitworking:llamabro-typed")
+    ksp("io.github.whyisitworking:llamabro-typed-ksp")
+}
+```
+
+Mark the class `@LbToolbox` and each tool `@LbTool("description")`. A method takes one `@Serializable` arguments class
+(where real defaults apply), or parameters that each carry `@LbToolParam` (a nullable `= null` is optional); an
+`LbToolCallContext` parameter gets the call and stays out of the schema. Bounds (`@LbRange`, `@LbLength`, `@LbPattern`,
+`@LbItems`) and defaults other than `null` need the arguments class. The name is the method's in snake_case
+unless `@LbTool(name = …)` gives one, after the toolbox's `prefix`. A `suspend` method runs where the loop calls it;
+any other runs on `Dispatchers.IO`, so a blocking call is safe.
+
+```kotlin
+@LbToolbox
+class AssistantTools @Inject constructor(private val weather: WeatherApi, private val mail: Mailer) {
+    @LbTool("Weather forecast for a city; highC is in Celsius")
+    suspend fun getForecast(
+        @LbToolParam("City name, e.g. Paris") city: String,
+        @LbToolParam days: Int? = null,
+    ): Forecast = weather.forecast(city, days ?: 1)
+
+    @LbTool("Sends an email", requiresApproval = true)
+    fun sendEmail(args: EmailArgs) = mail.send(args)  // blocking: runs on Dispatchers.IO
+}
+```
+
+The build writes `fun AssistantTools.asToolbox(json: Json = Json): Toolbox` beside it, with the class's visibility, so
+you register the tools of an instance you built, or one your DI container provides. The SDK constructs nothing:
+
+```kotlin
+@Module
+@InstallIn(SingletonComponent::class)
+object ToolsModule {
+    @Provides
+    fun toolbox(tools: AssistantTools): Toolbox = tools.asToolbox()
+}
+
+val chat = model.conversation { toolbox(toolbox) }
+```
+
+The `@LbTool` methods of `@LbToolbox` supertypes are included, each once; an override implements a tool and must not
+be annotated again. Each misuse is a build error naming the fix: a blank description, a name that doesn't match
+`^[a-zA-Z0-9_-]{1,64}$` with its prefix, two tools with one name, an annotated override, a default other than `= null`
+on a separate parameter, a parameter without `@LbToolParam` beside annotated ones or a lone one that isn't a
+`@Serializable` class, `@LbTool` outside an `@LbToolbox`, a sealed subclass without a short `@SerialName` in the
+arguments, and a result that isn't a `String`, `Unit`, a primitive, a `List` or `@Serializable`.
 
 ## Errors
 
 Everything the SDK throws is a `LlamaBroException`, with the underlying error as its `cause`:
-`InvalidRequest`, `ContextExceeded` (prompt and context sizes), `NotSupported`, `Unavailable`, `ServerError`,
+`InvalidRequest`, `ContextExceeded` (prompt and context sizes), `InputTooLong` (an embedding or rerank input past the
+batch), `NotSupported`, `Unavailable`, `ServerError`,
 `ModelLoadFailed` (`reason` `FileNotFound` or `Other`, with llama.cpp's own reason in the message), `ModelClosed`,
-`CompactionTruncated`, `Busy` (a second send on a busy conversation) and `Incomplete` (from `ask`).
+`CompactionTruncated`, and `Busy` (a second send on a busy conversation).
 
 ## Testing your app
 
@@ -145,6 +374,13 @@ assertTrue(fake.chatRequests[1].contains("\"role\":\"tool\""))
 ```
 
 Tool handlers can be tested alone with `JsonArgs.parse("""{"city":"Paris"}""")`.
+
+`embed` and `rerank` take their answers from their own queue: `embeddings(vector, …)` gives one vector per input,
+`ranking(score, …)` one score per document in the documents' order (answered best first and cut at `topN`, as
+llama-server does), and `inputTooLong(tokens)` the batch error. `embedRequests` and `rerankRequests` keep the bodies.
+`transcribe` takes `transcript(text, cut = false)` from the same queue, and `transcribeRequests` keeps its fields. The
+fake model neither sees nor hears until you set `supportsVision` or `supportsAudio` before loading, as a text model
+on the phone refuses pictures and clips.
 
 With the hub, add `testImplementation("io.github.whyisitworking:llamabro-hub-testing")`. `FakeLlamaBroHub` is the real
 `LlamaBroHub` over a scripted Hugging Face Hub and a temporary folder, so search, files, downloads, `hasUpdate`,
@@ -217,11 +453,10 @@ another, or logs through a different logger.
 Three more load settings, each a llama-server flag:
 
 ```kotlin
-// an embedding model for search or RAG: answers Endpoint.Embeddings (OpenAI shape) and nothing else
+// an embedding model for search or RAG: embed(…), or Endpoint.Embeddings raw, and nothing else
 val embedder = llama.loadModel(ModelSource.file(bgePath)) { task = ModelTask.Embedding(Pooling.Mean) }
-embedder.rawRequest(Endpoint.Embeddings, """{"input": ["first passage", "second passage"]}""").collect { … }
 
-// a reranker: Endpoint.Rerank with {"query": …, "documents": [...]}
+// a reranker: rerank(query, documents), or Endpoint.Rerank raw
 llama.loadModel(ModelSource.file(rerankerPath)) { task = ModelTask.Rerank }
 
 // a context cache in 8 bits: about half the memory, so ContextSize.Auto fits about twice the tokens

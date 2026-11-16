@@ -8,7 +8,6 @@ import com.suhel.llamabro.demo.AppContainer
 import com.suhel.llamabro.demo.DemoApp
 import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.TokenStore
-import com.suhel.llamabro.demo.models.RealHubGateway
 import com.suhel.llamabro.demo.models.WorkDownloadScheduler
 import com.suhel.llamabro.hub.LlamaBroHub
 import java.io.File
@@ -66,12 +65,11 @@ class TestDemoApp : DemoApp() {
             deleteFiles(config)
         }
 
-    private fun build(c: TestConfig): AppContainer {
-        val llama = c.llamaBro ?: LlamaBro.create(this, llamaBroConfig)
-        return AppContainer(
+    private fun build(c: TestConfig): AppContainer =
+        AppContainer(
             app = this,
-            llamaBro = llama,
-            hub = c.hub ?: RealHubGateway(LlamaBroHub.create(this, hubConfig), llama),
+            llamaBro = c.llamaBro ?: LlamaBro.create(this, llamaBroConfig),
+            hub = c.hub ?: LlamaBroHub.create(this, hubConfig),
             streamer = c.streamer,
             scheduler = c.scheduler ?: WorkDownloadScheduler(lazy { WorkManager.getInstance(this) }),
             discoveryOverride = c.discovery,
@@ -81,8 +79,8 @@ class TestDemoApp : DemoApp() {
             clock = c.clock,
             tokenStore = TokenStore(this, File(filesDir, c.tokenFileName)),
             images = ImageStore(File(filesDir, c.imagesDirName)),
+            microphone = c.microphone,
         )
-    }
 
     private fun deleteFiles(c: TestConfig) {
         deleteDatabase(c.databaseName)

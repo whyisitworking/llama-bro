@@ -24,7 +24,7 @@ import java.io.File
 
 /** PA T2 (F37, F43): request types built through builders, with P1's bodies unchanged. */
 class RequestTypesTest {
-    private fun body(r: ChatRequest) = Json.parseToJsonElement(ChatJson.body(r)) as JsonObject
+    private fun body(r: ChatRequest) = Json.parseToJsonElement(ChatJson.encode(r).body) as JsonObject
 
     /** The same requests as P1 built (golden recorded from P1's code before the change): byte-identical bodies. */
     @Test
@@ -120,18 +120,26 @@ class RequestTypesTest {
                     },
             )
         for ((name, request) in cases) {
-            assertEquals(name, golden.getValue(name).jsonPrimitive.content, ChatJson.body(request))
+            // the one deliberate change since P1 (D84): a picture is a placeholder the native side fills
+            val expected =
+                golden
+                    .getValue(
+                        name,
+                    ).jsonPrimitive.content
+                    .replace("data:image/png;base64,AQID", "lb-attachment:0")
+            assertEquals(name, expected, ChatJson.encode(request).body)
         }
-        // the one deliberate change (F43): P1 replaced the whole object and lost enable_thinking
+        // the other deliberate change (F43): P1 replaced the whole object and lost enable_thinking
         val nested =
-            ChatJson.body(
-                ChatRequest {
-                    messages(Message.user("hi"))
-                    reasoning { enableThinking = false }
-                    extra =
-                        """{"chat_template_kwargs":{"foo":1}}"""
-                },
-            )
+            ChatJson
+                .encode(
+                    ChatRequest {
+                        messages(Message.user("hi"))
+                        reasoning { enableThinking = false }
+                        extra =
+                            """{"chat_template_kwargs":{"foo":1}}"""
+                    },
+                ).body
         assertEquals(
             golden
                 .getValue(

@@ -33,7 +33,7 @@ internal object ErrorMapping {
             }
 
             "invalid_request_error", "not_found_error", "authentication_error", "permission_error" -> {
-                LlamaBroException.InvalidRequest(message)
+                LlamaBroException.InvalidRequest(Media.advise(message))
             }
 
             "not_supported_error" -> {
@@ -45,10 +45,70 @@ internal object ErrorMapping {
             }
 
             else -> {
-                LlamaBroException.ServerError(status, message)
+                inputTooLong(message) ?: undecodable(status, message) ?: LlamaBroException.ServerError(status, message)
             }
         }
     }
+
+    /** Upstream's decoder refusal of a picture or clip (server-common.cpp, a `runtime_error`, so a `server_error`). */
+    const val UNDECODABLE = "Failed to load image or audio file"
+
+    /**
+     * A picture or clip llama.cpp can't decode (HEIC, WebP, AAC, …): the request's fault, though upstream reports it
+     * as a server error. The [LlamaBroException.ServerError] it was is the cause.
+     */
+    private fun undecodable(status: Int, message: String): LlamaBroException.InvalidRequest? =
+        if (message.contains(UNDECODABLE)) {
+            LlamaBroException.InvalidRequest(
+                "a picture or clip is in a format llama.cpp can't decode: a picture must be JPEG, PNG, BMP or GIF " +
+                    "(not HEIC or WebP), a clip WAV, MP3 or FLAC; convert it first",
+                LlamaBroException.ServerError(status, message),
+            )
+        } else {
+            null
+        }
+
+    /**
+     * An [LlamaBroException.InvalidRequest] that a request's media caused, found after it was sent: a file or
+     * descriptor the bridge can't read or whose audio header is wrong (`attachment "<n>" …`, request.cpp), or one the
+     * decoder refused ([UNDECODABLE]).
+     */
+    fun isMediaError(e: Throwable): Boolean =
+        e is LlamaBroException.InvalidRequest &&
+            // the whole chain: coroutines' stack-trace recovery may hand over a copy whose cause is the original
+            generateSequence<Throwable>(e) { it.cause }.take(MAX_CAUSES).any {
+                (it is LlamaBroException.InvalidRequest && it.message.orEmpty().startsWith("attachment")) ||
+                    (it is LlamaBroException.ServerError && it.message.orEmpty().contains(UNDECODABLE))
+            }
+
+    private const val MAX_CAUSES = 8
+
+    /**
+     * An input that can't be split (embeddings, rerank) and is longer than the batch: upstream sends it as a plain
+     * `server_error` whose message alone has the numbers (server-context.cpp, "is too large to process").
+     */
+    private val tooLarge = Regex("""^input \((\d+) tokens\) is too large to process.*current batch size: (\d+)""")
+
+    private fun inputTooLong(message: String): LlamaBroException.InputTooLong? {
+        val (tokens, limit) = tooLarge.find(message)?.destructured ?: return null
+        return LlamaBroException.InputTooLong(
+            tokens.toInt(),
+            limit.toInt(),
+            "input ($tokens tokens) is longer than the batch ($limit tokens), which an embedding or rerank input " +
+                "must fit: shorten it, or load with a larger microBatchSize and batchSize",
+        )
+    }
+
+    /**
+     * Media a model can't read (no projector, or one without that modality): upstream throws a `runtime_error`, which
+     * reaches the app as a `server_error`, though it's the request that is wrong (oaicompat_content_load_media).
+     */
+    fun unsupportedMedia(e: LlamaBroException): LlamaBroException =
+        if (e is LlamaBroException.ServerError && e.message?.contains(" input is not supported") == true) {
+            LlamaBroException.InvalidRequest(e.message!!, e)
+        } else {
+            e
+        }
 
     /** A failed `lb_model_load`: its error JSON carries `"code": "file_not_found"` when a file can't be opened. */
     fun loadFailed(e: NativeError): LlamaBroException.ModelLoadFailed {

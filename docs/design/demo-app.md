@@ -24,26 +24,35 @@ It has to work for two kinds of person: someone who has never heard of a model o
 - First run with three suggested models, plain-language descriptions and a chat that is usable before the download ends.
 - Get models: search over Hugging Face, one fixed list of suggestions, and a model sheet with plain sizes (Basic) or every quantisation (Advanced), each shown with how it runs on this phone before anything is downloaded.
 - Downloads that continue in the background, survive process death and resume where they stopped, verified by hash (D40, D47).
-- Chat with streaming replies, markdown and code blocks, a folded thought ("Thought for 8 s"), Think levels, image input for models that can see, stop, edit, regenerate, copy, share, and a divider when the model changes mid-chat.
+- Chat with streaming replies, markdown and code blocks, a folded thought ("Thought for 8 s"), Think levels, image input for models that can see, voice messages for models that hear (D76), stop, edit, regenerate, copy, share, and a divider when the model changes mid-chat.
 - Custom instructions applied to every chat, a default model, an optional Hugging Face token for gated models, and storage management.
 - A choice of chip in Settings › Memory (Automatic, NPU, GPU or CPU), with where the model actually runs and why when that isn't the chip chosen (D72).
 - Two layouts, Sidebar and Chat list, and light, dark and system themes, both themes first-class.
 - Plain limit lines with one action each: not enough memory, context full, missing model, a failed or gated download.
 
-**Not in the app:** voice dictation and text to speech (D37), web search, tools or agents, side-by-side model comparison, accounts, cloud sync, exporting chats, and maintained lists such as "new this week" or "most loved".
+**Not in the app:** dictation (speech turned into text) and text to speech (D37, D76), web search, tools or agents, side-by-side model comparison, accounts, cloud sync, exporting chats, and maintained lists such as "new this week" or "most loved".
 
 **Failures regardless of function:** a design language that feels lifeless and corporate, cheesy, juvenile, or like a meditation app (each was tried and rejected, section 12), and exposed machinery that a newcomer must understand before chatting.
 
 ## 3. Constraints and architecture
 
 - The app uses only the SDK's public API (`LlamaBro`, `Conversation`, `estimateFit`, `llamabro-hub`). A need the SDK lacks is first a finding and then an SDK change, never a workaround: the two that arose were starting a `Conversation` from stored messages (F96) and reading the memory budget for fit labels (F97).
-- Search is the app's job (D42): `GET /api/models?search=…&filter=gguf` on Hugging Face, then the Hub resolves the chosen repository.
+- Search is the SDK's (D68, replacing D42's rule): `hub.search` finds GGUF models, grouping a model's quantized uploads
+  under its original, and `hub.files` lists a repository's quantisations with their sizes. The app names the rows
+  (section 5), merges results that share a name into one row, and makes its own fit verdict from
+  `llama.estimateFit(hub.model(…))` (section 7.1); the SDK makes none.
+- A model loads by its name, `llama.loadModel(hub.model(key))`, whose installed copy loads with no network (D64). The
+  app never starts a download the person didn't ask for: it loads only what the library lists, and a load of a model
+  deleted meanwhile fails rather than fetching it.
 - Loading takes seconds and cannot be made faster (D30, F58); the interface masks it (section 4.1). Memory is tight on real phones: a load can be refused with `InsufficientMemory`, and the app explains that in plain words and offers what to do, never crashing (F90).
 - Layers: UI, view models exposing `StateFlow`s derived with `combine` and `stateIn`, repositories, the SDK. Only genuine input is a mutable flow. Manual wiring through an application container, no dependency injection framework. Room holds chats and messages (text, image references, thinking text, the model used, times and timings), DataStore holds settings, images are copied into app-private storage, and the Hugging Face token lives under a Keystore key and is sent only to `huggingface.co`.
 - Chats are stored by the app and sent to the model through the SDK's `Conversation`; editing, regenerating, switching models and reopening a chat rebuild the `Conversation` from the stored messages (F96).
 - Speculative decoding stays at the SDK default, which is off on every chip (F67, F68): the app downloads no draft models and offers no switch.
 - The model loads with the chip choice's `DevicePolicy` (D72) and the context length's `ContextSize` (`Auto`, or `UpTo(n)`, D78); the host keys a load on both (`LoadConfig`), so a model loaded under another config is not reused.
-- Background downloads run as WorkManager jobs with a foreground notification. The app must hold its notification permission for a force-stopped download to resume as a foreground service (F92).
+- Background downloads are the SDK's worker (`llamabro-hub-work`, D64, D75): `DemoApp` registers `LlamaBroWorkerFactory`
+  over the container's hub, so a download uses the app's token and its progress is the hub's own, and the notifications
+  speak the app's words through the SDK's override (`ModelNotifications`). The app must hold its notification permission
+  for a force-stopped download to resume as a foreground service (F92).
 - Package `com.suhel.llamabro.demo`, API 29 and up, arm64-v8a only. No network except Hugging Face; no analytics.
 
 ## 4. The experience
@@ -88,6 +97,7 @@ Thinking folds, code, images, edit, regenerate, share, copy and the model divide
 
 - Messages with markdown, parsed as CommonMark with the GitHub tables and strikethrough (D74): paragraphs, headings of every level, bold, italic and strikethrough with `*` or `_`, inline code, fenced and indented code with a copy button, nested ordered and bulleted lists, nested quotes, tables, horizontal rules, links and bare URLs, and backslash escapes. An image shows its alt text, HTML shows as typed, and maths is not rendered (it shows as typed). Only http, https and mailto links open; any other target shows as plain text. Copy, and stop. A stopped reply is kept and marked "Stopped". A reply that reaches its length limit is kept too: as the chat's last reply it shows "Stopped at the length limit." with **Continue**, which goes on writing the same reply; once the chat has moved on it is only marked (section 4.7).
 - **Images:** the **+** button attaches a photo. The button stays visible for a model that cannot see images; using it shows the plain limit line that says so. Tapping a photo in a sent message opens it full-screen, where it zooms and pans, swipes to the message's other photos, and closes with a swipe down, the ✕ or back (section 8.10).
+- **Voice messages** (D76), for a model that hears: with the text field empty, the mic in Send's slot records; the recording is sent as audio, so the model hears the words and the tone, with nothing transcribed. Photos already in the bar go with it. In the chat it is a sent-side bubble with play and pause, a waveform and its length, and no Edit. A recording stops at 2 minutes (about 1,500 tokens, F152) and, when the screen is left or a call comes, waits in the bar for ✕ or ↑. A chat that moves to a model that can't hear sends a placeholder for each voice message, with a limit line offering a model that hears. Recordings are app-private and deleted with their chat.
 - **Edit and regenerate:** edit a sent message to cut the chat back to it and send again, or ask for a new answer. Copy, share and regenerate show under the latest reply only.
 - **Share a reply** as a tidy image card with the reply, the model's name and its speed.
 - **Speed and the rest of what was measured:** behind the info icon among a reply's actions, in a "Reply details" sheet: the model, the chip it ran on, the speed ("38 words/s · 14.2 tokens/s", words being tokens times 0.75), the reply's and the prompt's tokens (with what came from the cache), how fast the prompt was read, how long it thought, and how many MTP drafts were kept. Each line shows only when it's known. The actions themselves (copy, share, regenerate, details) are 18 dp glyphs in 48 dp targets.
@@ -115,7 +125,19 @@ After the model is freed the next message loads it again behind the wake line, a
 How a model picks its words starts from what its makers recommend and can be changed for the model or for one chat (D60):
 
 - **Values.** Temperature, Top P, Top K, Min P and Presence penalty, each a slider row with its value and where it comes from. Nothing else: the repeat penalty (Qwen says to leave it), DRY, XTC and presets are left out.
-- **Layers.** A suggested model starts from its card's values, which the catalog carries, per mode where the card differs (Qwen3.5 recommends other values when it thinks). Settings › Sampling lists the models on the phone ("Model defaults", "2 values changed"); a model's page shows "Model default", "Changed" or "llama.cpp default" under each value, a Thinking / Not thinking switch when its card has two sets, and **Reset to the model's defaults** once something changed. A change applies in both modes. In a chat, the model sheet's **This chat › Sampling** opens the same sliders at the chat's Think level, marked "Changed for this chat", "The model's setting", "Model default" or "llama.cpp default", with **Use the model's values**. The chat's value wins over the model's, the model's over the card's. A value nobody set is not sent, so a model file's own recommendation still applies. A chat with no message yet has no row: its values would have nothing to belong to.
+- **Layers.** A suggested model starts from its card's values, which the catalog carries, per mode where the card
+  differs (Qwen3.5 recommends other values when it thinks). Any other model starts from the hub's recommended sampling
+  (D79): the GGUF file's own values, which are what llama.cpp applies at load, else the base model's
+  `generation_config.json`; one set for both modes, shown as the model's default. The lookup runs in the background
+  and never holds a turn: until it answers nothing is sent and the file's own values apply (F17), and one that fails is
+  not tried again for five minutes. Settings
+  › Sampling lists the models on the phone ("Model defaults", "2 values changed"); a model's page shows "Model default",
+  "Changed" or "llama.cpp default" under each value, a Thinking / Not thinking switch when its card has two sets, and
+  **Reset to the model's defaults** once something changed. A change applies in both modes. In a chat, the model sheet's
+  **This chat › Sampling** opens the same sliders at the chat's Think level, marked "Changed for this chat", "The
+  model's setting", "Model default" or "llama.cpp default", with **Use the model's values**. The chat's value wins over
+  the model's, the model's over the card's. A value nobody set is not sent, so a model file's own recommendation still
+  applies. A chat with no message yet has no row: its values would have nothing to belong to.
 - **The length limit.** Every reply has one unless the person removes it, its thinking and answer together. Settings › Sampling › **Reply length** sets it for every model and chat, with no per-chat override (D78): **Automatic** (the default: about 2,000 tokens for the answer plus the Think level's budget, table in section 7.2), **Short** (1,024 tokens) or **Long** (8,192), which replace the level's total and leave its thinking budget as it is (so a Short reply at Balanced or Deep can stop while it still thinks), or **No limit** ("Until the model stops or the context is full": no `max_tokens` is sent). Note under the group: "For every model and chat. A reply that reaches its length stops, and Continue goes on, unless the chat has filled the context." A small model that loops ends at the limit instead of running until Stop (F113); No limit gives that guard up on purpose. The reply is kept, "Stopped at the length limit.", and **Continue** sends the chat with that reply last, so llama-server goes on writing it, from inside its thinking if it was cut there (F137). It can be cut and continued again. A reply that ends because the chat filled the context (prompt and reply reach the loaded context) has no room to continue: it ends failed with "This chat is longer than {model} can hold." and **Start a new chat**, keeping what it wrote.
 
 ## 5. Model naming
@@ -136,7 +158,16 @@ A catalog entry is keyed by repository and quantisation, but its name applies to
 
 ## 6. Downloads
 
-- Each download is a WorkManager job with a foreground notification showing progress; one file at a time by default (D44). The Hub checks every file's SHA-256 before it enters the cache and re-hashes a resumed partial (D40, D47).
+- Each download is the SDK's WorkManager job (`llamabro-hub-work`) with a foreground notification showing progress,
+  "Downloading Qwen3.5 0.8B" over the size, time left and Cancel, and "Downloaded" or "Download failed" at its end. One
+  download runs at a time, one file at a time within it (D44, F89): a second Get waits in the app's queue and starts
+  when the work of the one before ends, whether it completed, was paused or cancelled (in the app or from the
+  notification), or failed for good; a try the worker retries keeps its place. One stopped from the notification or
+  given up by the worker reads Paused, and only Resume or Retry starts it again. The queue is rebuilt at start from the
+  pending downloads and WorkManager's work, so it carries on after a restart; a download the person paused stays paused,
+  and one paused before it started reads Paused with Resume. The Hub checks every file's SHA-256 before it enters the
+  cache and re-hashes a resumed partial (D40, D47). The library lists a model once every one of its files is on the
+  phone (`hub.source` reads it from disk); a model whose image reader is still arriving stays under Downloading.
 - Progress shows on the row it was started from (a thin bar, percentage and time left), in the library under Downloading (megabytes done of total, speed, time left, Pause and cancel), in the chat's top bar beside the model's name, and as a notification outside the app. Cancel deletes the partial; Pause keeps it.
 - The estimated time on a button is the size divided by 8 MB/s, rounded up to minutes ("about 3 min", "under a minute"); the real download measured about 10 MB/s on Wi-Fi (F93).
 - A failed download becomes a plain line with an action (section 9); saving a token restarts the downloads refused for want of one.
@@ -287,7 +318,9 @@ The text over a row of buttons, in one outlined surface (1 dp hairline, 28 dp co
 
 - **+** at the start, tonal (the hairline's fill, an ink glyph).
 - At the end, the **Think** lightbulb (only for a model that can think; tonal when off, filled with the send accent when on) and **send**, 12 dp apart.
-- **Send** is a tonal circle with a muted glyph that does nothing while there is no text and no photo, filled with the send accent (indigo, `#4F5BD5` / `#8E9BFF`, §8.6) when it can act, and a stop button on the same fill while a reply is coming (D49). The glyph on the indigo is 5.5:1 in light and 7.8:1 in dark.
+- **Send** is a tonal circle with a muted glyph that does nothing while there is no text and no photo, filled with the send accent (indigo, `#4F5BD5` / `#8E9BFF`, §8.6) when it can act, and a stop button on the same fill while a reply is coming (D49). The glyph on the indigo is 5.5:1 in light and 7.8:1 in dark. For a model that hears, an empty text field shows the **mic** in its place instead (D76); with photos attached and no text, the mic sits just before Send, 12 dp apart like Think, so photos alone can still be sent. The mic appears once the model has said it hears on a load, and the app remembers that for its next load.
+
+**Recording** (D76). A tap on the mic turns the text area into a live waveform of the input level with a timer; **✕** takes the + slot and discards, **↑** takes Send's slot and sends. The timer turns ink in the last 10 s before the 2-minute stop. Starting and stopping are announced, and with animations off the waveform holds still.
 
 Attached pictures sit inside the bar, above the text, never above the bar where they would read as already sent: 64 dp thumbnails with a 12 dp corner, 16 dp from the bar's top and sides (concentric with its 28 dp corner) and 8 dp apart, scrolling sideways when many; the text then starts 8 dp under them. A thumbnail is a soft fill while its picture decodes. Its ✕ is an 18 dp glyph on a 24 dp dark scrim circle (white glyph, the same in both themes, so it reads on any photo), 4 dp in from the top end; its 48 dp target reaches past the picture's corner. The bar grows and shrinks with the standard motion (250 ms).
 
@@ -375,7 +408,7 @@ Budgets are for the test phone with the release build and the Baseline Profile a
 - A small model can loop without end in its answer and the app has no guard (F113). **Done (D60):** the length limit and Continue, section 4.7.
 - Sampling values have no Settings page, with a "reset to the model's default". **Done (D60):** section 4.7.
 - The reasoning budget's forced end is untested on a small model.
-- Voice dictation is the first feature planned after the app.
+- Voice dictation is the first feature planned after the app. **Decided (D76):** voice messages for models that hear, not dictation (section 4.4); built after the SDK's `Content.Audio` (W7).
 - Not audited: a physical fold or tablet, and right-to-left on a device (the emulator ignored the system setting; it is covered by screenshot tests).
 
 **Rejected directions**, so they do not return: a pastel orb with a serif greeting alone (reads as a meditation app); a dark "instrument" look, an editorial "paper" look and a chat-first minimal screen (soulless); a talking onboarding with a house metaphor (too much text); vivid album-art images per model (cheesy); a professional monogram list (lifeless); a violet accent (generic AI); the warm-paper and navy palette of PD (replaced by the neutral one, D69); a mid teal (juvenile); nicknames for models (D50).

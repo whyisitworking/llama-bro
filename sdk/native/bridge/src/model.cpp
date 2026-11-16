@@ -51,6 +51,7 @@ std::map<std::string, server_http_context::handler_t> make_endpoints(server_rout
         { "embeddings_native",      ex_wrapper(r.post_embeddings) },
         { "tts",                    ex_wrapper(r.post_tts) },
         { "speech",                 ex_wrapper(r.post_speech_oai) },
+        { "transcriptions",         ex_wrapper(r.post_transcriptions_oai) },  // the audio arrives as an attachment (F55)
         { "systemone",              ex_wrapper(r.post_systemone) },
         { "props_set",              ex_wrapper(r.post_props) },
         { "models",                 ex_wrapper(r.get_models) },

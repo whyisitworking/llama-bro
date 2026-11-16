@@ -3,17 +3,21 @@
 #   patched copy   prepare-llama.sh applies every patch and leaves the submodule untouched
 #   native         host C API tests (ctest)
 #   hub-golden     upstream model-resolution self-test and recorded golden cases
-#   contract       the C API vs upstream llama-server, same build, same flags, per model (run.sh)
+#   contract       the C API vs upstream llama-server, same build, same flags, per model (run.sh); audio on
+#                  upstream's audio test model with a clip spoken at check time (make-test-clip.sh)
 #   tools-ui       llama.cpp's own tools/ui compaction code regenerated in node; must equal the committed golden
-#   api            core release public API equals its reviewed dump (D26)
+#   api            core and llamabro-typed release public APIs equal their reviewed dumps (D26)
 #   hub-api        Hub, hub-work and hub-testing release public APIs equal their dumps (sdk/llamabro-hub*/api/*.api)
 #   quality        ktlint and detekt on every Kotlin module (the root build's qualityCheck; detekt's baselines list what predates it)
 #   lint           Android lint on all SDK libraries, warnings as errors
-#   jvm            Kotlin unit tests of the libraries (FakeLlamaBroHub's included), including the 400-case tools/ui
-#                  golden replay; hub-work's androidTest compiles
-#   e2e            Kotlin + JNI + native on this machine vs upstream llama-server (HostNativeTest), load cancel
-#   aar            release AAR: libraries, names, exports, 16 KB alignment (check-aar.sh); hub and hub-work carry no
-#                  native code, and hub-work's manifest declares the dataSync foreground service
+#   jvm            Kotlin unit tests of the libraries (FakeLlamaBroHub's and llamabro-typed's included),
+#                  including the 400-case tools/ui golden replay; hub-work's androidTest compiles; llamabro-typed-ksp's
+#                  build errors and generated code on snippets compiled by kctfork (D81)
+#   e2e            Kotlin + JNI + native on this machine vs upstream llama-server (HostNativeTest), load cancel;
+#                  typed output on the same model, Think off and on (HostTypedTest); speech input from a file, a
+#                  descriptor and bytes on upstream's audio test model (HostAudioTest)
+#   aar            release AAR: libraries, names, exports, 16 KB alignment (check-aar.sh); hub, hub-work and typed carry
+#                  no native code, and hub-work's manifest declares the dataSync foreground service
 #   device         (--device) phone tests: native, UI, acceptance per model and per acceptance-app flavor (cpu, gpu, full,
 #                  noskel), and each flavor's minified (R8) build
 #   device-contract (--device) the C API vs upstream llama-server on the phone's NPU (tests/device-contract/run.sh)
@@ -27,7 +31,7 @@
 #        LB_DEVICE_MODELS file names in the acceptance app's filesDir (default: the three P1 models),
 #        LB_VISION_MODEL, LB_VISION_MMPROJ a small vision model and its projector in the same filesDir, for VisionTest on
 #        the NPU (default: Qwen3.5 0.8B Q4_K_M and its BF16 projector, the demo's files; F120),
-#        LB_TEST_MODELS_DIR upstream's small test models for embeddings, rerank and LoRA (fetch-test-models.sh)
+#        LB_TEST_MODELS_DIR upstream's small test models for embeddings, rerank, LoRA and audio (fetch-test-models.sh)
 set -uo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -78,9 +82,15 @@ run() {  # run NAME COMMAND...: logs to $logs/NAME.log, records PASS/FAIL
 export LB_TEST_MODEL="$model"
 export LB_TEST_DFLASH="$draft_model"
 export LB_TEST_MODELS_DIR="${LB_TEST_MODELS_DIR:-$HOME/Downloads/llamabro-test}"
-for f in bge-small-f16.gguf jina-reranker-tiny-f16.gguf stories15M_MOE-F16.gguf moe_shakespeare15M.gguf; do
+omni="$LB_TEST_MODELS_DIR/tinyLFM3-Omni-for-testing-Q2_K.gguf"
+omni_mmproj="$LB_TEST_MODELS_DIR/mmproj-tinyLFM3-Omni-for-testing-Q2_K.gguf"
+for f in bge-small-f16.gguf jina-reranker-tiny-f16.gguf stories15M_MOE-F16.gguf moe_shakespeare15M.gguf \
+    "$(basename "$omni")" "$(basename "$omni_mmproj")"; do
     [ -f "$LB_TEST_MODELS_DIR/$f" ] || { echo "$LB_TEST_MODELS_DIR/$f not found: run sdk/scripts/fetch-test-models.sh"; exit 2; }
 done
+# the audio tests' clip, spoken by macOS at check time (D84); cmake bakes this path into the native tests
+export LB_TEST_CLIP="$logs/clip.wav"
+bash "$sdk/scripts/make-test-clip.sh" "$LB_TEST_CLIP" || { echo "could not make the test clip (needs macOS say and afconvert)"; exit 2; }
 
 gradle() { (cd "$root" && ./gradlew -p sdk "$@"); }
 
@@ -116,7 +126,8 @@ step_jvm() {
     gradle :llamabro:testDebugUnitTest :llamabro-testing:testDebugUnitTest \
         :llamabro-hexagon:testDebugUnitTest :llamabro-hub:testDebugUnitTest \
         :llamabro-hub-work:testDebugUnitTest :llamabro-hub-work:compileDebugAndroidTestKotlin \
-        :llamabro-hub-testing:testDebugUnitTest \
+        :llamabro:compileDebugAndroidTestKotlin \
+        :llamabro-hub-testing:testDebugUnitTest :llamabro-typed:testDebugUnitTest :llamabro-typed-ksp:test \
         -Pllamabro.hub.model.dir="$HOME/Downloads" -Pllamabro.hub.golden.dir="$logs/hub-golden" || return 1
     grep -q 'skipped="0"' \
         "$sdk/llamabro-hub/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.hub.GgufHeaderTest.xml" || {
@@ -133,6 +144,10 @@ step_contract() {
         echo "=== contract: $m"
         LB_TEST_MODEL="$m" LB_TEST_MMPROJ="" LB_CONTRACT_PORT=18182 bash "$native/tests/contract/run.sh" || return 1
     done
+    # audio: the clip through upstream's multipart upload and through attachments (F55, D84), on upstream's audio test model
+    echo "=== contract: audio on $(basename "$omni")"
+    LB_TEST_MODEL="$omni" LB_TEST_MMPROJ="$omni_mmproj" LB_CONTRACT_REQUESTS="$native/tests/contract/audio.jsonl" \
+        LB_CONTRACT_PORT="$(( ${LB_CONTRACT_PORT:-18181} + 4 ))" bash "$native/tests/contract/run.sh"
 }
 
 step_tools_ui() {
@@ -149,15 +164,24 @@ step_e2e() {
         --ctx-checkpoints 8 --load-mode none --fit off -b 512 -ub 512 --host 127.0.0.1 --port $port > "$logs/e2e-llama-server.log" 2>&1 &
     pid=$!
     for _ in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" > /dev/null && break; sleep 1; done
-    gradle :llamabro:testDebugUnitTest --tests 'com.suhel.llamabro.HostNative*' --rerun-tasks -i \
+    # HostEmbeddingTest: typed embed and rerank on upstream's test models (D65); HostAudioTest: speech input through
+    # the public API (D84); neither needs a server
+    gradle :llamabro:testDebugUnitTest --tests 'com.suhel.llamabro.HostNative*' \
+        --tests 'com.suhel.llamabro.HostEmbeddingTest' --tests 'com.suhel.llamabro.HostAudioTest' --rerun-tasks -i \
         -Pllamabro.host.lib="$native/build/host/bin" -Pllamabro.host.server="http://127.0.0.1:$port" \
-        -Pllamabro.host.model="$model" ${mmproj:+-Pllamabro.host.mmproj="$mmproj"}
+        -Pllamabro.host.model="$model" ${mmproj:+-Pllamabro.host.mmproj="$mmproj"} \
+        -Pllamabro.host.models="$LB_TEST_MODELS_DIR" -Pllamabro.host.clip="$LB_TEST_CLIP"
     status=$?
     kill $pid; wait $pid 2>/dev/null
+    # typed output over the same core and model, Think off and on (D63, F143); it needs no server
+    gradle :llamabro-typed:testDebugUnitTest --tests 'com.suhel.llamabro.typed.HostTyped*' --rerun-tasks -i \
+        -Pllamabro.host.lib="$native/build/host/bin" -Pllamabro.host.model="$model" || status=1
     local t
-    for t in HostNativeTest HostNativeLogTest HostNativeFailedInitTest HostNativeLoadCancelTest; do
+    for t in HostNativeTest HostNativeLogTest HostNativeFailedInitTest HostNativeLoadCancelTest HostNativeAttachmentTest \
+        HostEmbeddingTest HostAudioTest; do
         grep -q 'skipped="0"' "$sdk/llamabro/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.$t.xml" || { echo "$t was skipped or has no result"; return 1; }
     done
+    grep -q 'skipped="0"' "$sdk/llamabro-typed/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.typed.HostTypedTest.xml" || { echo "HostTypedTest was skipped or has no result"; return 1; }
     return $status
 }
 
@@ -177,6 +201,9 @@ step_aar() {
     for b in 'foregroundServiceType="dataSync"' FOREGROUND_SERVICE_DATA_SYNC POST_NOTIFICATIONS; do
         grep -q "$b" <<< "$work_manifest" || { echo "llamabro-hub-work's manifest lacks $b"; return 1; }
     done
+    gradle :llamabro-typed:assembleRelease || return 1
+    unzip -l "$sdk/llamabro-typed/build/outputs/aar/llamabro-typed-release.aar" > "$logs/typed-aar-contents.txt" || return 1
+    ! grep -q ' jni/' "$logs/typed-aar-contents.txt" || return 1
     for b in hexagon opencl; do
         echo "--- llamabro-$b"
         bash "$sdk/scripts/check-aar.sh" "$sdk/llamabro-$b/build/outputs/aar/llamabro-$b-release.aar" "$core" || return 1
@@ -357,11 +384,11 @@ run native   ctest --test-dir "$native/build/host" --output-on-failure
 run hub-golden step_hub_golden
 run contract step_contract
 run tools-ui step_tools_ui
-run api      gradle :llamabro:apiCheck
+run api      gradle :llamabro:apiCheck :llamabro-typed:apiCheck
 run hub-api  gradle :llamabro-hub:apiCheck :llamabro-hub-work:apiCheck :llamabro-hub-testing:apiCheck
 run quality  step_quality
 run lint     gradle :llamabro:lintRelease :llamabro-testing:lintRelease :llamabro-hexagon:lintRelease :llamabro-opencl:lintRelease :llamabro-hub:lintRelease \
-    :llamabro-hub-work:lintRelease :llamabro-hub-testing:lintRelease
+    :llamabro-hub-work:lintRelease :llamabro-hub-testing:lintRelease :llamabro-typed:lintRelease
 run jvm      step_jvm
 run e2e      step_e2e
 run aar      step_aar

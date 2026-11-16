@@ -27,7 +27,7 @@ class RealDownloadJourneys : Journey(seenFirstRun = false, asksForNotifications 
     }
 
     @After fun cleanUp() =
-        runBlocking(Dispatchers.IO) {
+        runBlocking<Unit>(Dispatchers.IO) {
             robot.collapseNotificationShade() // an open shade keeps the focus, and the next test reads no clipboard
             WorkManager.getInstance(app.app).cancelAllWork()
             FakeHubServer.reset()

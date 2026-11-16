@@ -10,9 +10,9 @@ import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.NewMessage
 import com.suhel.llamabro.demo.data.SettingsRepository
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.ui.keepAlive
 import com.suhel.llamabro.demo.ui.shutDown
 import com.suhel.llamabro.hub.HfModel
@@ -60,18 +60,21 @@ class ShellViewModelTest {
     private val viewModels = mutableListOf<ShellViewModel>()
     private val collectors = CoroutineScope(Dispatchers.Unconfined)
 
+    private val testHub = TestHub()
+
     @After fun stop() {
         viewModels.forEach { it.shutDown() }
         collectors.cancel()
         Dispatchers.resetMain()
         scope.cancel()
+        testHub.close()
     }
 
     private fun viewModel() =
         ShellViewModel(
             chats,
             settings,
-            ModelRepository(FakeHubGateway(), settings, FakeScheduler(), scope),
+            ModelRepository(testHub.hub, settings, FakeScheduler(), scope),
             { now },
             zone,
             SavedStateHandle(),
@@ -111,11 +114,11 @@ class ShellViewModelTest {
             read()
         }
 
-    private fun viewModelOver(hub: FakeHubGateway) =
+    private fun viewModelOver(hub: TestHub) =
         ShellViewModel(
             chats,
             settings,
-            ModelRepository(hub, settings, FakeScheduler(), scope),
+            ModelRepository(hub.hub, settings, FakeScheduler(), scope),
             { now },
             zone,
             SavedStateHandle(),
@@ -131,35 +134,17 @@ class ShellViewModelTest {
 
     @Test fun startsOnFirstRunOnlyWhenNothingIsSeenAndNoModelIsOnThePhone() =
         runBlocking<Unit> {
-            val hub = FakeHubGateway()
-            assertEquals(true, awaitValue({ viewModelOver(hub).startsWithFirstRun.value }) { it != null })
+            // one view model per launch, read until it has decided (the library scan is the hub's, off this thread)
+            suspend fun launch() =
+                viewModelOver(testHub).let { vm -> awaitValue({ vm.startsWithFirstRun.value }) { it != null } }
+            assertEquals(true, launch())
 
-            hub.cachedEntries +=
-                com.suhel.llamabro.demo.models
-                    .CachedEntry(
-                        HfModel
-                            .parse(swift),
-                        1,
-                    )
-            assertEquals(
-                "a model on the phone is enough",
-                false,
-                awaitValue({ viewModelOver(hub).startsWithFirstRun.value }) {
-                    it !=
-                        null
-                },
-            )
+            testHub.install(HfModel.parse(swift))
+            assertEquals("a model on the phone is enough", false, launch())
 
-            hub.cachedEntries.clear()
+            testHub.hub.delete(HfModel.parse(swift))
             settings.markFirstRunSeen()
-            assertEquals(
-                "seen once is seen for good",
-                false,
-                awaitValue({ viewModelOver(hub).startsWithFirstRun.value }) {
-                    it !=
-                        null
-                },
-            )
+            assertEquals("seen once is seen for good", false, launch())
         }
 
     @Test fun chatsAreGroupedByDay() =
@@ -229,7 +214,7 @@ class ShellViewModelTest {
 
     @Test fun theSearchSurvivesProcessDeath() {
         val saved = SavedStateHandle()
-        val models = ModelRepository(FakeHubGateway(), settings, FakeScheduler(), scope)
+        val models = ModelRepository(testHub.hub, settings, FakeScheduler(), scope)
         val vm = ShellViewModel(chats, settings, models, { now }, zone, saved).also { viewModels += it }
         vm.search("rain")
         val restored = SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })

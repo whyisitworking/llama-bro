@@ -17,7 +17,122 @@ topic, and within a topic newest first. The index lists every ID.
 
 ---
 
-## PH: the headline API (F139–F148)
+## PH: the headline API (F139–F153)
+
+### F153. On the LFM3 family (hybrid with SWA layers), the prompt cache reuses neither the live state nor the latest checkpoint, because the SWA threshold rejects them
+
+- **Finding:** The cache stop in F152 is not about media. LFM3 models (`sliding_window: 256`: LFM3-1.7B, LFM3-Omni-2B,
+  LFM3-VL-2B, LFM3-Audio-2B) mix full-attention, sliding-window and recurrent layers (`llama_memory_hybrid_iswa`). To
+  reuse a prefix, llama-server accepts the live slot state or a context checkpoint only if its `pos_min` lies n_swa - 2
+  tokens before the end of the shared prefix (`server-context.cpp` ~4219, used at ~4271 and ~4284, at `5676dfb`). On
+  this memory `pos_min` is the recurrent position, which equals the state's end (`llama-memory-hybrid-iswa.cpp:178`).
+  So the live state is never reused, nor the checkpoint made 4 tokens before the previous prompt's end; the newest
+  checkpoint at least 255 positions back is used instead. After a long message that is the one at or inside its
+  start, so each turn re-processes the whole last user message: the clip in F152 (encoded again), or plain text the
+  same way. In a chat of short messages it is the checkpoint at position 0, so each turn re-processes the whole chat
+  (cache_n 1 on every one of 12 short turns on LFM3-Omni-2B). Voice turns encode the previous clip again too. The
+  state that is rejected is a valid resume point: the recurrent state is exact at its end, the SWA cells within n_swa
+  of that end are kept (a checkpoint saves the unmasked ones, `llama_kv_cache::state_write`), and full attention is
+  cut after it. Patch 0004 applies the SWA threshold only to memory that can be partly removed
+  (`use_swa = n_swa > 0 && seq_rm_type == PART`, the fix tested on upstream master); otherwise the state must end
+  before the first token to evaluate, upstream's rule for memory without SWA. With it (or with `--swa-full`), each turn
+  reuses the live state, or the previous prompt up to 4 tokens from its end: turn 4 of the voice-note chat caches
+  1,206 of 1,237 tokens and processes 31; on LFM3-Omni-2B the turn-4 prompt time drops from 1,815 ms to 149 ms (Mac
+  CPU). On Metal, replies equal an uncached run, word for word, over 10 greedy turns on LFM3-Omni-2B and LFM3-1.7B; on the
+  tiny test model (CPU) over 8 turns, top-5 logprobs are within 0.024 nat. On CPU, reusing a state that holds decoded
+  reply tokens can flip near-ties: unpatched master, Gemma 3 and `--swa-full` do the same, and the fix equals
+  `--swa-full` turn for turn, while with fixed assistant turns its output equals no-cache (`theory-test.md` G1, G1b iii,
+  G1c). Models without SWA layers are unaffected, the
+  threshold being pos_eval for them already: LFM2 and LFM2.5 (conv and full attention only), Qwen3.5, and Llama 3.2
+  and Gemma 3 (partly removable memory) give the same cache and replies with and without the fix.
+  `--ctx-checkpoints` (2, 8, 32) and `--checkpoint-min-step` change nothing.
+- **Evidence:** upstream `llama-server` at the pin (host build, `5676dfb`, CPU) at trace verbosity with
+  `LLAMA_SERVER_SLOTS_DEBUG`, on tinyLFM3-Omni Q2_K and LFM3-Omni-2B Q4_K_M, with a 4-turn chat of three 30 s clips
+  (report `cache-stop-report.md`, W9). Then a test on upstream master `ef3848f` (Metal), with the predictions written
+  before each run: chats of long, short and mixed messages and of clips on tinyLFM3, LFM3-Omni-2B and LFM3-1.7B;
+  controls on Llama 3.2 3B, Gemma 3 4B, Qwen3.5 0.8B and LFM2.5-230M; every reuse decision in 120 calls re-derived
+  from the logs and matched; upstream's own unit test of the rule (report `theory-test.md`, W9), all 2026-11-16.
+  Native tests on tinyLFM3-Omni, each failing at turn 2 without the patch (1 token cached): `hybrid_swa_cache_covers_last_message`,
+  `_covers_last_voice_note` and `_covers_short_chat` (each turn caches the previous prompt but 4 tokens),
+  `_reuses_live_state` (raw completions; the previous prompt and its reply are reused); and
+  `hybrid_swa_cache_replies_equal_uncached` (which also asserts each cached turn covers the previous prompt but 8
+  tokens, so it exercises the new resume points; `LB_TEST_MODEL` points it at a real LFM3 GGUF for attended runs). The
+  tiny model's output barely depends on the history (another first message moves its top logprobs by 0.034 nat), so
+  that last test catches a broken state only; the 2B and 1.7B comparisons are the stronger evidence.
+- **Means:** Without the patch, on LFM3 each turn pays for at least its predecessor's whole user message, and for the
+  whole chat while the messages are short: about 550 ms per text turn after a voice note on the phone (F152), and a
+  re-encode on each voice turn. `--swa-full` avoids it, but grows LFM3-Omni-2B's SWA cache from 7.5 MiB to 40 MiB at
+  4,096 context, and more for other SWA models. Patch 0004 avoids it for a bounded memory cost and is carried until upstream
+  changes the rule. Without it, a fallback erased the newer checkpoints; with it up to `--ctx-checkpoints` (8) survive
+  per slot, so at most 8 times a checkpoint's size more (G4: 8 checkpoints 22.4 MiB against 5 at 10.9 MiB, about 2.8 MiB
+  each on LFM3-Omni-2B, so about +11 MiB), also in each RAM prompt cache entry, and a saved slot file grew from 23.9 MB
+  to 36.0 MB; `--swa-full` costs +32.5 MiB. DeepSeek V4's compressed cache also cannot be partly removed, so it falls
+  under the same rule (it reports n_swa 0, so its threshold is unchanged); an upstream issue and PR with the same fix are drafted, not posted. A repeated identical request
+  now reuses its cache too (the transcription tests compare responses without the cached count). The phone saving is
+  still to measure.
+- **Feeds:** D84, F152; D65, D17; patch 0004 (`sdk/native/patches/README.md`).
+
+### F152. Speech input on the phone: LFM3-Omni-2B transcribes exactly; audio costs 12.6 tokens a second; earlier voice notes slow later turns, mostly because the cache stops before the last clip
+
+- **Finding:** On the phone's NPU, LFM3-Omni-2B (Q4_K_M, Q8_0 encoder) transcribes a 30.5 s spoken clip word for word
+  in 3.4 s, the same from a file and from a descriptor, and a chat about the clip summarises it correctly with the first
+  token after 0.6 s. Audio costs 12.6 tokens per second (383 tokens for 30.47 s), so a 2-minute voice message is about
+  1,500 tokens and a 4,096-token context holds roughly 4-5 minutes of audio. In a chat holding 3 voice notes of 30 s, a
+  4th, text-only turn reaches its first token after 790-824 ms, against 113-176 ms with no media. Of that, about 200 ms
+  is base64 and JSON (the bridge writing base64, 51 ms, and the body, 26 ms; llama-server parsing it, 39 ms, and
+  decoding the base64, 81 ms), about 30 ms is decoding the WAV files and tokenizing, and about 550 ms is the prompt cache
+  stopping just before the last voice note: that clip is encoded again (245 ms) and 525 tokens are processed again,
+  with 1,007 cached. The host run with upstream's tiny test model shows the same cache stop.
+- **Evidence:** `AudioDeviceTest` (sdk/acceptance/backends, `full`) on the development branch, run attended 2026-11-16 with a
+  clip made by macOS `say`; the breakdown from a temporary timing build (branch `tmp/w7-timing`, never merged: spans
+  logged in the bridge and through a temporary patch in llama-server's `handle_media`, mtmd and the slot timings).
+- **Means:** speech input works on the phone (D65, D84). The no-base64 patch D84 left open would save about a quarter
+  of such a turn; the larger cost is the cache stopping before the last media, likely LFM3's hybrid memory restoring only
+  at checkpoints (unverified). The maintainer chose to investigate the cache first (W9) and to revisit the patch after; the
+  bridge keeps writing chat media's base64 for now. Cause: F153.
+- **Feeds:** D65, D84, D76.
+
+### F151. Typed output on the phone: clean JSON with Think off and with a thinking budget; with no budget the model thinks as if chatting, for minutes or until it runs out
+
+- **Finding:** On the phone's NPU, `generate<Person>("A person named Bob aged 30.")` returns `Value(Person("Bob", 30))`
+  with Think off and with Think on under a 256-token thinking budget, for Qwen3.5 4B and 0.8B (Q4_K_M, greedy, 4096
+  context). The grammar holds the JSON in every case: no reply was `Invalid`, and the JSON is sometimes spread over
+  lines, which decodes the same. With Think on and no budget, the model never learns it should write JSON, since
+  llama-server applies the grammar only after the thinking (F143): 4B reasoned about how to answer a chat message,
+  re-drafted that reply in a loop, and wrote correct JSON after 114 s and about 7,000 characters of thinking; 0.8B
+  thought past its 3,072-token limit and returned `Incomplete(Length)` with no JSON after 58 s.
+- **Evidence:** `TypedDeviceTest` (sdk/acceptance/backends, `full` flavour), cases `personWithThinkOff`,
+  `personWithThinkOn` and `personWithThinkOnAndNoBudget`, run attended on 2026-11-16 on the development branch plus the
+  no-budget case; replies logged to the app's `typed.log`. The host run (`HostTypedTest`, Mac CPU, 4B) matched: Think
+  on without a budget ended at its 1,024-token limit.
+- **Means:** typed output works on the phone (D63). Apps should turn Think off for typed calls, or set a budget, and
+  phrase the prompt as the task; the README says so. Telling the model the format before it thinks (for example the
+  schema or an instruction in the prompt) would be a deviation from upstream and needs an A/B first; not done.
+- **Feeds:** D63.
+
+### F150. W5 on the phone: the hub's device steps and the demo's device tests pass; three failures are the phone, not the change
+
+- **Finding:** With W5 built (the development branch), `sdk/scripts/check.sh --device` passes `device` and `hub-device`, and
+  `demo/scripts/check.sh --device` passes everything but one journey. Three failures come from the phone, not the change.
+  First, `hub-resume`'s notification test can't see the download's notification, which is posted and updated about every
+  second: it is low-importance, and with about thirty other notifications it sits below the visible part of the shade,
+  which the test never scrolls. Second, the device contract matched 75 of 76 cases. `t2-14-image` splits at a near-tie
+  ("the color palette" or "the overall color palette"), and which side takes "overall" swapped between two clean runs of
+  the same build, whose 22 pushed files matched the local build byte for byte. Third, the journey
+  `aReplyGoesOnInTheBackgroundUnderANotification` can't grant a runtime permission
+  (`GRANT_RUNTIME_PERMISSIONS` refused to the shell user), a restriction of this phone's system. A first run, made while
+  another session probed the same phone, also failed `e2e` and `hub-device`. A port forward its probe left on 18183 sent
+  the host contract's requests to the phone, and the phone's free memory moved between two fit estimates. Both passed
+  once the phone was used by one check alone.
+- **Evidence:** the two SDK device runs and their reruns of single steps, with `.lb-stamp`, pushed-file hashes,
+  `dumpsys notification` and `adb forward --list` (diagnosis notes kept locally, not committed); two
+  `demo/scripts/check.sh --device` runs, before and after the test fixes (a `@After` returning a value, a drawer
+  checked before it finished sliding in, the shade opened with `cmd statusbar expand-notifications` and scrolled).
+  2026-11-16.
+- **Means:** W5 needs no SDK change from its device run. The device contract needs a tolerance for near-tie splits on
+  the NPU, `hub-resume`'s test must scroll the shade, and a journey that grants a permission must allow for phones that
+  refuse it. Two sessions must never share the phone during a device check. All are carried to W9.
+- **Feeds:** D64, D75.
 
 ### F148. On the phone, a cancelled 4B load returns in 0.4-1.8 s on the CPU and about 1 s on the NPU, against 6-11 s for a full load
 
@@ -1394,6 +1509,10 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F153 | On the LFM3 family (hybrid with SWA layers) the prompt cache reuses neither the live state nor the latest checkpoint; patch 0004 fixes it | D84, F152, patch 0004 |
+| F152 | Speech input on the phone: LFM3-Omni-2B transcribes exactly; audio costs 12.6 tokens a second; earlier voice notes slow later turns, mostly the cache stopping before the last clip | D65, D84, D76 |
+| F151 | Typed output on the phone: clean JSON with Think off and with a thinking budget; with no budget the model thinks for minutes | see F151 |
+| F150 | W5 on the phone: hub device steps and demo device tests pass; three failures are the phone, not the change | see F150 |
 | F148 | A cancelled 4B load returns in 0.4-1.8 s (CPU) and ~1 s (NPU) on the phone, vs 6-11 s for a full load; nothing left behind | D67 |
 | F147 | With no logger, init's native lines (backends loading) reach logcat as `llamabro` on the phone; all Info | D66 |
 | F146 | Recommended sampling is on the Hub only sometimes (4 of 6 open models, none for Qwen3.5, gated needs a token); fine-tunes share the base tag | D68 |

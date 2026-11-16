@@ -28,7 +28,6 @@ import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
-import java.util.Base64
 
 /**
  * [ChatRequest] → the `/v1/chat/completions` body. Field names are llama-server's
@@ -36,18 +35,25 @@ import java.util.Base64
  * server-common.cpp oaicompat_chat_params_parse). Null fields are left out.
  */
 internal object ChatJson {
-    fun body(r: ChatRequest): String {
+    /** A chat body and the files beside it, whose placeholders the native side fills (D84). */
+    class Encoded(val body: String, val attachments: List<EngineAttachment>)
+
+    fun encode(r: ChatRequest): Encoded {
+        val media = Attachments()
         val base =
             buildJsonObject {
-                put("messages", messages(r.messages))
+                put("messages", messages(r.messages, media))
                 if (r.tools.isNotEmpty()) put("tools", JsonArray(r.tools.map { tool(it) }))
                 options(r.options).forEach { (k, v) -> put(k, v) }
                 put("stream", true)
                 put("return_progress", true)
                 putJsonObject("stream_options") { put("include_usage", true) }
             }
-        val extra = r.extra ?: return base.toString()
-        return JsonMergePatch.apply(base, JsonMergePatch.checkPatch(extra, RequestOptions.OWNED)).toString()
+        val extra = r.extra ?: return Encoded(base.toString(), media.all)
+        return Encoded(
+            JsonMergePatch.apply(base, JsonMergePatch.checkPatch(extra, RequestOptions.OWNED)).toString(),
+            media.all,
+        )
     }
 
     /** The body fields of [o], in P1's order; `extra` is not among them (it is applied to the whole body). */
@@ -201,9 +207,9 @@ internal object ChatJson {
             }
         }
 
-    fun messages(list: List<Message>): JsonArray = JsonArray(list.map { message(it) })
+    fun messages(list: List<Message>, media: MediaWriter): JsonArray = JsonArray(list.map { message(it, media) })
 
-    fun message(m: Message): JsonObject =
+    private fun message(m: Message, media: MediaWriter): JsonObject =
         when (m) {
             is Message.System -> {
                 buildJsonObject {
@@ -219,7 +225,7 @@ internal object ChatJson {
                     if (only is Content.Text) {
                         put("content", only.text)
                     } else {
-                        put("content", JsonArray(m.content.map { part(it) }))
+                        put("content", JsonArray(m.content.map { part(it, media) }))
                     }
                 }
             }
@@ -266,7 +272,12 @@ internal object ChatJson {
             }
         }
 
-    private fun part(c: Content): JsonObject =
+    /**
+     * One content part as llama-server reads it in chat and in embeddings' `content` input
+     * (server-common.cpp oaicompat_content_load_media): a picture's `image_url.url` and a clip's `input_audio.data` are
+     * what [media] writes.
+     */
+    fun part(c: Content, media: MediaWriter): JsonObject =
         when (c) {
             is Content.Text -> {
                 buildJsonObject {
@@ -278,8 +289,16 @@ internal object ChatJson {
             is Content.Image -> {
                 buildJsonObject {
                     put("type", "image_url")
-                    putJsonObject("image_url") {
-                        put("url", "data:${c.mimeType};base64," + Base64.getEncoder().encodeToString(c.bytes))
+                    putJsonObject("image_url") { put("url", media.url(c.source, c.mimeType)) }
+                }
+            }
+
+            is Content.Audio -> {
+                buildJsonObject {
+                    put("type", "input_audio")
+                    putJsonObject("input_audio") {
+                        put("data", media.url(c.source, c.mimeType))
+                        put("format", Media.audioFormat(c.mimeType))
                     }
                 }
             }

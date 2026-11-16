@@ -1,6 +1,10 @@
 package com.suhel.llamabro.internal
 
 import com.suhel.llamabro.InternalLlamaBroApi
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileInputStream
+import java.nio.ByteBuffer
 
 /**
  * The native layer as the Kotlin API sees it: [JniEngine] in production, a fake in tests. Public only for
@@ -28,6 +32,27 @@ public interface Engine {
      * at that tick, and the engine frees what it read and throws [NativeError] with [NativeError.CANCELLED] (D67).
      */
     public fun load(configJson: String, onProgress: (Float) -> Boolean): EngineModel
+
+    /**
+     * `lb_read_fd`: the whole file behind [fd], read from offset 0, and [fd] left open with its offset unchanged (D84:
+     * a descriptor in chat content is read once into bytes). Throws [NativeError] when it can't be read. The default,
+     * for fakes on a JVM, reads it through `/dev/fd` with positional reads, as the native side uses `pread`.
+     */
+    public fun readFd(fd: Int): ByteArray =
+        FileInputStream(File("/dev/fd/$fd")).use { stream ->
+            val channel = stream.channel
+            val out = ByteArrayOutputStream()
+            val buffer = ByteBuffer.allocate(64 * 1024)
+            var position = 0L
+            while (true) {
+                buffer.clear()
+                val n = channel.read(buffer, position)
+                if (n < 0) break
+                out.write(buffer.array(), 0, n)
+                position += n
+            }
+            out.toByteArray()
+        }
 }
 
 @InternalLlamaBroApi
@@ -36,13 +61,46 @@ public interface EngineModel {
     public val infoJson: String
 
     /**
-     * `lb_model_request`: [endpoint] is the C API's name for the route (`llamabro.h`). Callbacks may arrive
-     * before this returns. A real engine throws if the request couldn't start.
+     * `lb_model_request_with` (`lb_model_request` when [attachments] is empty): [endpoint] is the C API's name for the
+     * route (`llamabro.h`). One method with no overloads, so a wrapper delegating with `by` can't miss one.
+     * [attachments] go beside the body (D84): a transcription's `file`, or, on the chat routes, the file behind each
+     * `lb-attachment:<name>` placeholder in a content part's `image_url.url` or `input_audio.data`, which the native
+     * side writes into the body as a data URL. They are read before this returns, so a descriptor may be closed and
+     * bytes reused once it has. Callbacks may arrive before this returns. A real engine throws if the request couldn't
+     * start.
      */
-    public fun request(endpoint: String, paramsJson: String?, body: ByteArray, sink: RequestSink): EngineRequest
+    public fun request(
+        endpoint: String,
+        paramsJson: String?,
+        body: ByteArray,
+        attachments: List<EngineAttachment>,
+        sink: RequestSink,
+    ): EngineRequest
 
     /** Cancels every request, waits for their terminal events, frees the model. */
     public fun close()
+}
+
+/**
+ * A file sent beside a request (`lb_attachment`, D84): [name] is the placeholder's (`"0"` for `lb-attachment:0`) or the
+ * form field (`"file"` for a transcription), [mime] its type (`audio/wav`, `image/png`), and the bytes come from one
+ * source: a path or a descriptor, read natively, or bytes, copied across JNI once.
+ */
+@InternalLlamaBroApi
+public sealed class EngineAttachment {
+    public abstract val name: String
+    public abstract val mime: String
+
+    /** A file the native side opens and reads. */
+    public class Path(override val name: String, override val mime: String, public val path: String) :
+        EngineAttachment()
+
+    /** An open descriptor the native side reads from offset 0 and leaves open: the caller closes it. */
+    public class Fd(override val name: String, override val mime: String, public val fd: Int) : EngineAttachment()
+
+    /** Bytes already in memory. */
+    public class Bytes(override val name: String, override val mime: String, public val bytes: ByteArray) :
+        EngineAttachment()
 }
 
 @InternalLlamaBroApi

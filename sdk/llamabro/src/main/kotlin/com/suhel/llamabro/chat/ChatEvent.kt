@@ -32,8 +32,9 @@ public sealed interface ChatEvent {
      * A tool call's result, as sent to the model. Emitted only by `Conversation`'s agent loop.
      * @param result the text the model sees: the handler's return, or an `Error: …` text (D62).
      * @param error the exception a handler threw when the model got the generic `Error: the tool failed` instead of
-     *   its message, so the app can log or show it; null otherwise, including for an `LbToolError`, whose message the
-     *   model already has.
+     *   its message, so the app can log or show it; or the `cause` of an `LbToolError` that has one, which the model
+     *   never sees; null otherwise, including for an `LbToolError` without a cause, whose message the model
+     *   already has.
      */
     public data class ToolResult(
         public val callId: String,

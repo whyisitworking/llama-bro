@@ -1,5 +1,6 @@
 package com.suhel.llamabro.conversation
 
+import com.suhel.llamabro.MediaSource
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.chat.ToolCall
@@ -8,6 +9,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonArray
@@ -18,17 +20,25 @@ import kotlinx.serialization.json.put
 import java.util.Base64
 
 /**
- * `Conversation.toJson()` format. Version 2: `{"version":2,"system":…,"settings":{…},"messages":[…]}`, where
+ * `Conversation.toJson()` format. Version 3: `{"version":3,"system":…,"settings":{…},"messages":[…]}`, where
  * settings holds the defaults as body fields (ChatJson.options), `extra` as written, `max_turns` and
- * `pre_encode_after_reply`. Version 1 had no settings; it still loads. Each message keeps every field exactly,
- * so a restored conversation sends byte-identical requests (and the server's prompt cache still hits).
+ * `pre_encode_after_reply`. Version 3 adds media a version-2 reader can't read: `"type":"audio"` parts and a `"path"`
+ * source (D84). Version 2 is the same shape without them and still loads; version 1 had no settings and still loads.
+ * Each message keeps every field exactly, so a restored conversation sends byte-identical requests (and the server's
+ * prompt cache still hits).
  */
 internal object ConversationJson {
-    const val VERSION = 2
+    const val VERSION = 3
 
     class Saved(val system: String?, val messages: List<Message>, val settings: (Conversation.Builder.() -> Unit))
 
-    fun encode(system: String?, messages: List<Message>, config: Conversation.Builder): String =
+    /** [read] gives a descriptor's bytes, for one still in a `history` no request has sent yet. */
+    fun encode(
+        system: String?,
+        messages: List<Message>,
+        config: Conversation.Builder,
+        read: (MediaSource.Descriptor) -> ByteArray,
+    ): String =
         buildJsonObject {
             put("version", VERSION)
             put("system", system?.let { JsonPrimitive(it) } ?: JsonNull)
@@ -41,19 +51,19 @@ internal object ConversationJson {
                     put("pre_encode_after_reply", config.preEncodeAfterReply)
                 },
             )
-            put("messages", JsonArray(messages.map { message(it) }))
+            put("messages", JsonArray(messages.map { message(it, read) }))
         }.toString()
 
-    /** @throws IllegalArgumentException for anything that isn't a version-1 or version-2 saved conversation. */
+    /** @throws IllegalArgumentException for anything that isn't a version-1, -2 or -3 saved conversation. */
     fun decode(text: String): Saved =
         try {
             val o = Json.parseToJsonElement(text) as JsonObject
             val version = (o["version"] as? JsonPrimitive)?.int
-            require(version == 1 || version == VERSION) { "unsupported conversation version: $version" }
+            require(version == 1 || version == 2 || version == VERSION) { "unsupported conversation version: $version" }
             val system = (o["system"] as? JsonPrimitive)?.takeIf { it.isString }?.content
             val messages = (o["messages"] as JsonArray).map { message(it as JsonObject) }
             val settings = o["settings"] as? JsonObject
-            require(version == 1 || settings != null) { "version-2 conversation without settings" }
+            require(version == 1 || settings != null) { "version-$version conversation without settings" }
             val apply: Conversation.Builder.() -> Unit =
                 if (settings == null) {
                     ({})
@@ -80,7 +90,7 @@ internal object ConversationJson {
             )
         }
 
-    private fun message(m: Message): JsonObject =
+    private fun message(m: Message, read: (MediaSource.Descriptor) -> ByteArray): JsonObject =
         buildJsonObject {
             when (m) {
                 is Message.System -> {
@@ -90,7 +100,7 @@ internal object ConversationJson {
 
                 is Message.User -> {
                     put("role", "user")
-                    put("content", buildJsonArray { m.content.forEach { add(contentJson(it)) } })
+                    put("content", buildJsonArray { m.content.forEach { add(contentJson(it, read)) } })
                 }
 
                 is Message.Assistant -> {
@@ -114,7 +124,11 @@ internal object ConversationJson {
             }
         }
 
-    private fun contentJson(c: Content): JsonObject =
+    /**
+     * A part as saved: media as `{"type":"image"|"audio","mime":…}` with the file's `path` (the file must still be
+     * there when the chat is restored) or its bytes as base64 `data`, the saved chat's own format (not a request).
+     */
+    private fun contentJson(c: Content, read: (MediaSource.Descriptor) -> ByteArray): JsonObject =
         buildJsonObject {
             when (c) {
                 is Content.Text -> {
@@ -124,11 +138,31 @@ internal object ConversationJson {
 
                 is Content.Image -> {
                     put("type", "image")
-                    put("mime", c.mimeType)
-                    put("data", Base64.getEncoder().encodeToString(c.bytes))
+                    media(c.mimeType, c.source, read)
+                }
+
+                is Content.Audio -> {
+                    put("type", "audio")
+                    media(c.mimeType, c.source, read)
                 }
             }
         }
+
+    private fun JsonObjectBuilder.media(
+        mime: String,
+        source: MediaSource,
+        read: (MediaSource.Descriptor) -> ByteArray,
+    ) {
+        put("mime", mime)
+        when (source) {
+            is MediaSource.File -> put("path", source.path)
+            is MediaSource.Bytes -> put("data", Base64.getEncoder().encodeToString(source.bytes))
+            is MediaSource.Descriptor -> put("data", Base64.getEncoder().encodeToString(read(source)))
+        }
+    }
+
+    private fun mediaSource(p: JsonObject): MediaSource =
+        p.str("path")?.let { MediaSource.file(it) } ?: MediaSource.bytes(Base64.getDecoder().decode(p.str("data")!!))
 
     private fun toolCallJson(call: ToolCall): JsonObject =
         buildJsonObject {
@@ -149,7 +183,8 @@ internal object ConversationJson {
                         p as JsonObject
                         when (p.str("type")) {
                             "text" -> Content.Text(p.str("text")!!)
-                            "image" -> Content.Image(Base64.getDecoder().decode(p.str("data")!!), p.str("mime")!!)
+                            "image" -> Content.Image(mediaSource(p), p.str("mime")!!)
+                            "audio" -> Content.Audio(mediaSource(p), p.str("mime")!!)
                             else -> throw IllegalArgumentException("unknown content type: ${p.str("type")}")
                         }
                     },

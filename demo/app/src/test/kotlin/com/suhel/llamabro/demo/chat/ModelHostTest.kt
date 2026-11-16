@@ -4,7 +4,6 @@ import com.suhel.llamabro.Endpoint
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CompletableDeferred
@@ -32,9 +31,10 @@ class ModelHostTest {
     private val a = HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M")
     private val b = HfModel.parse("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")
 
-    private val hub = FakeHubGateway()
+    /** Where a load finds its files; the fake engine reads none, so any path loads. */
+    private var onSource: suspend (HfModel) -> ModelSource = { ModelSource.file("/fake/${it.repo}.gguf") }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val host = ModelHost(FakeLlamaBro().llamaBro, hub, scope)
+    private val host = ModelHost(FakeLlamaBro().llamaBro, { onSource(it) }, scope)
 
     @After fun stop() {
         runBlocking { host.release() }
@@ -53,7 +53,7 @@ class ModelHostTest {
         runBlocking {
             val sources = AtomicInteger()
             val gate = CompletableDeferred<Unit>()
-            hub.onSource = {
+            onSource = {
                 sources.incrementAndGet()
                 gate.await()
                 ModelSource.file("/fake/a.gguf")
@@ -73,7 +73,7 @@ class ModelHostTest {
         runBlocking {
             val first = host.use(a, LoadConfig())
             var firstWasClosedWhenBLoaded: Boolean? = null
-            hub.onSource = {
+            onSource = {
                 if (it == b) firstWasClosedWhenBLoaded = isClosed(first)
                 ModelSource.file("/fake/b.gguf")
             }
@@ -90,13 +90,13 @@ class ModelHostTest {
 
     @Test fun loadFailureIsFailedStateNotACrash() =
         runBlocking {
-            hub.onSource = { throw IOException("the file is gone") }
+            onSource = { throw IOException("the file is gone") }
             assertThrows(IOException::class.java) { runBlocking { host.use(a, LoadConfig()) } }
             val state = host.state.value as HostState.Failed
             assertEquals(a, state.key)
             assertEquals("the file is gone", state.error.message)
             // the host still works afterwards: a later use loads
-            hub.onSource = { ModelSource.file("/fake/a.gguf") }
+            onSource = { ModelSource.file("/fake/a.gguf") }
             val model = withTimeout(10_000) { host.use(a, LoadConfig()) }
             assertEquals(HostState.Ready(a, model, LoadConfig()), host.state.value)
         }
@@ -126,7 +126,7 @@ class ModelHostTest {
     @Test fun stateIsWakingWhileTheModelLoads() =
         runBlocking {
             val gate = CompletableDeferred<Unit>()
-            hub.onSource = {
+            onSource = {
                 gate.await()
                 ModelSource.file("/fake/a.gguf")
             }

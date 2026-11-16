@@ -64,10 +64,8 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
-import com.suhel.llamabro.demo.models.CachedEntry
 import com.suhel.llamabro.demo.models.Catalog
-import com.suhel.llamabro.demo.models.DownloadStatus
-import com.suhel.llamabro.demo.models.FakeHubGateway
+import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.testing.TestAppRule
 import com.suhel.llamabro.demo.testing.TestConfig
 import com.suhel.llamabro.demo.testing.demoRules
@@ -84,6 +82,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -101,11 +100,11 @@ import java.io.File
 @OptIn(ExperimentalTestApi::class)
 class ChatScreenTest {
     private val fake = FakeLlamaBro()
-    private val hub = FakeHubGateway()
+    private val hub = TestHub()
     private var script: ((String) -> Flow<ChatEvent>)? = null
     private val app =
         TestAppRule(config = {
-            TestConfig.fresh(llamaBro = fake.llamaBro, hub = hub, streamer = {
+            TestConfig.fresh(llamaBro = fake.llamaBro, hub = hub.hub, streamer = {
                 convo,
                 text,
                 images,
@@ -117,6 +116,8 @@ class ChatScreenTest {
     private val compose = createAndroidComposeRule<ComponentActivity>()
 
     @get:Rule val rules: RuleChain = RuleChain.outerRule(demoRules(app)).around(compose)
+
+    @After fun closeHub() = hub.close()
 
     private val swift = HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M")
     private val deep = HfModel.parse("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")
@@ -131,15 +132,15 @@ class ChatScreenTest {
     private fun scripted(
         convo: Conversation,
         text: String,
-        images: Array<Content.Image>,
+        media: Array<Content>,
         options: TurnOptions,
-    ): Flow<ChatEvent> = script?.invoke(text) ?: sdkStream(convo, text, images, options)
+    ): Flow<ChatEvent> = script?.invoke(text) ?: sdkStream(convo, text, media, options)
 
     private var wentToModels = false
     private var newChats = 0
 
     private fun onPhone(vararg models: HfModel) {
-        hub.cachedEntries += models.map { CachedEntry(it, 700_000_000) }
+        hub.install(*models)
         app.container.models.changed()
         runBlocking { app.container.settings.setLastModel(models.first().toString()) }
     }
@@ -380,7 +381,7 @@ class ChatScreenTest {
 
     @Test fun heldMessageShowsTheWaitLine() {
         settingsLastModel(swift)
-        hub.status(swift).value = DownloadStatus.Downloading(100, 1_000, 10, 90)
+        hub.downloading(swift)
         show()
         ask("Hello when you're ready")
         waitFor("Qwen3.5 0.8B will answer the moment it's here")
@@ -388,10 +389,7 @@ class ChatScreenTest {
     }
 
     @Test fun wakingShowsTheHairlineNotASpinner() {
-        hub.onSource = {
-            delay(60_000)
-            throw IllegalStateException("never loaded")
-        }
+        fake.loadMillis = LONG_LOAD_MILLIS // the model wakes for longer than the test looks
         onPhone(swift)
         show()
         ask("Hi")
@@ -951,4 +949,9 @@ class ChatScreenTest {
     }
 
     private fun settingsLastModel(m: HfModel) = runBlocking { app.container.settings.setLastModel(m.toString()) }
+
+    private companion object {
+        /** A load that outlasts the test's look at the wake line (the fake engine's load sleeps in four steps). */
+        const val LONG_LOAD_MILLIS = 20_000L
+    }
 }

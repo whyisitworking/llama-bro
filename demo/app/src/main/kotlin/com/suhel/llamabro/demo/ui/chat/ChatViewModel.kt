@@ -15,9 +15,13 @@ import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.Limits
 import com.suhel.llamabro.demo.chat.Markdown
 import com.suhel.llamabro.demo.chat.StreamingReply
+import com.suhel.llamabro.demo.chat.Take
+import com.suhel.llamabro.demo.chat.VoicePlayer
+import com.suhel.llamabro.demo.chat.VoiceRecorder
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.designsystem.components.ComposerState
 import com.suhel.llamabro.demo.designsystem.components.MarkdownBlocks
+import com.suhel.llamabro.demo.designsystem.components.RecordingState
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.ui.shell.ChatListFormat
@@ -31,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
@@ -80,6 +85,10 @@ class ChatViewModel(
     private val savedState: SavedStateHandle,
     /** The app's scope: work that must finish after this view model is gone (deleting a draft's pictures). */
     private val background: CoroutineScope,
+    /** Records voice messages (D76); null where there is no microphone (most tests). */
+    private val recorder: VoiceRecorder? = null,
+    /** Plays the chat's voice messages (D76). */
+    val player: VoicePlayer = VoicePlayer.None,
 ) : ViewModel() {
     private val parsed = HashMap<Long, Pair<String, MarkdownBlocks>>()
 
@@ -189,16 +198,50 @@ class ChatViewModel(
                 (it as? ChatModelState.Ready)?.sees ?: false
             }.stateIn(viewModelScope, eager, false)
 
+    /** Whether the model takes voice messages (D76): the mic shows only then. */
+    val hears: StateFlow<Boolean> =
+        handle.model
+            .map {
+                (it as? ChatModelState.Ready)?.hears ?: false
+            }.stateIn(viewModelScope, eager, false)
+
     /** The note the person closed; the line leaves it out (the engine's own limit is left as it is). */
     val notes = ClosedNotes()
+
+    private val sending = Mutex()
+
+    /** The bar's voice messages (D76); null without a microphone. */
+    val voice: VoiceComposer? =
+        recorder?.let { r ->
+            VoiceComposer(
+                r,
+                handle,
+                viewModelScope,
+                canRecord = { hears.value && draft.value.editing == null },
+                sending = sending,
+                photos = { draft.value.attachments },
+                onSent = { sent ->
+                    updateDraft { if (it.attachments == sent) it.copy(attachments = emptyList()) else it }
+                    _problem.value = null
+                },
+                problem = { _problem.value = it },
+            )
+        }
 
     /**
      * The one limit line shown above the bar: the engine's, else the model's own: gone from the phone, or its
      * download stopped (a token, the network, the disk). A closed note is left out.
      */
     val limit: StateFlow<Limit?> =
-        combine(handle.limit, handle.model, handle.name, notes.closed) { limit, model, name, closed ->
-            limit?.takeUnless { it == closed }
+        combine(
+            handle.limit,
+            handle.model,
+            handle.name,
+            notes.closed,
+            voice?.limit ?: flowOf(null),
+        ) { limit, model, name, closed, mic ->
+            mic?.takeUnless { it == closed }
+                ?: limit?.takeUnless { it == closed }
                 ?: when (model) {
                     is ChatModelState.Missing -> Limits.modelGone(name.ifEmpty { model.name })
                     is ChatModelState.DownloadFailed -> Limits.forDownload(model.failure)
@@ -243,6 +286,10 @@ class ChatViewModel(
     /** The model's Think level and whether a reply is coming, copied from the engine for the bar. */
     private val barFlags = mutableStateOf<Pair<ThinkLevel?, Boolean>>(null to false)
 
+    /** Whether the model hears, and the voice message being recorded, copied for the bar (D76). */
+    private val hearsNow = mutableStateOf(false)
+    private val take = mutableStateOf<Take?>(null)
+
     /** What the design system's message bar draws, derived synchronously from the draft (no Think bulb: null). */
     val composerState: State<ComposerState> =
         derivedStateOf {
@@ -254,11 +301,15 @@ class ChatViewModel(
                 think = think,
                 busy = busy,
                 hasAttachment = d.attachments.isNotEmpty(),
+                canRecord = voice != null && hearsNow.value && d.editing == null,
+                recording = take.value?.let(::recordingState),
             )
         }
 
     init {
         viewModelScope.launch { combine(handle.think, handle.busy, ::Pair).collect { barFlags.value = it } }
+        viewModelScope.launch { hears.collect { hearsNow.value = it } }
+        voice?.let { v -> viewModelScope.launch { v.take.collect { take.value = it } } }
         // a new chat's id, once its first message made it: the restored screen reopens it instead of a blank chat
         viewModelScope.launch { handle.chatId.collect { if (it != 0L) savedState[CHAT_ID_KEY] = it } }
     }
@@ -287,8 +338,6 @@ class ChatViewModel(
             }
             before
         }
-
-    private val sending = Mutex()
 
     /**
      * Sends the draft (or, while editing, replaces the message with it). The bar is emptied once the engine has taken
@@ -422,13 +471,25 @@ class ChatViewModel(
     }
 
     override fun onCleared() {
-        // the chat is gone: its engine handle ends, and pictures attached to a draft nobody sent are deleted
+        // the chat is gone: its engine handle ends, and pictures attached to a draft nobody sent are deleted, with a
+        // recording nobody sent
         val left = draft.value.attachments
         handle.close()
+        player.release()
         if (left.isNotEmpty()) background.launch { discardImages(left) }
+        recorder?.let { r -> background.launch { r.discard() } }
     }
 
     companion object {
+        /** The bar's view of a recording: its levels, its time, and whether the limit is near (D76). */
+        fun recordingState(take: Take): RecordingState =
+            RecordingState(
+                take.levels,
+                clipLength(take.millis),
+                live = take.live,
+                nearEnd = take.live && take.millis >= VoiceRecorder.LIMIT_MILLIS - VoiceRecorder.NEAR_END_MILLIS,
+            )
+
         /** The chat route's own argument name, so in a back-stack entry the saved id overrides the route's 0. */
         const val CHAT_ID_KEY = "chatId"
         private const val DRAFT_TEXT_KEY = "draft.text"

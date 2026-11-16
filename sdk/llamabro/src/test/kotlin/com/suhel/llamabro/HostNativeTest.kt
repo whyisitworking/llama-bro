@@ -11,6 +11,7 @@ import com.suhel.llamabro.chat.Tool
 import com.suhel.llamabro.conversation.compact
 import com.suhel.llamabro.internal.ChatStreamDecoder
 import com.suhel.llamabro.internal.Engine
+import com.suhel.llamabro.internal.EngineAttachment
 import com.suhel.llamabro.internal.EngineModel
 import com.suhel.llamabro.internal.EngineRequest
 import com.suhel.llamabro.internal.JniEngine
@@ -62,14 +63,16 @@ class HostNativeTest {
                     endpoint: String,
                     paramsJson: String?,
                     body: ByteArray,
+                    attachments: List<EngineAttachment>,
                     sink: RequestSink,
                 ): EngineRequest {
-                    val r = Record(endpoint, paramsJson, String(body, Charsets.UTF_8))
+                    val r = Record(endpoint, paramsJson, withDataUrls(String(body, Charsets.UTF_8), attachments))
                     synchronized(records) { records += r }
                     return model.request(
                         endpoint,
                         paramsJson,
                         body,
+                        attachments,
                         object : RequestSink {
                             override fun onChunk(httpStatus: Int, data: ByteArray) {
                                 synchronized(r) {
@@ -93,6 +96,26 @@ class HostNativeTest {
                 }
             }
         }
+    }
+
+    private companion object {
+        /**
+         * The body as the bridge hands it to llama-server (D84): each placeholder replaced by its attachment's data URL,
+         * written here independently of the bridge, so upstream's replay gets the same request.
+         */
+        fun withDataUrls(body: String, attachments: List<EngineAttachment>): String =
+            attachments.fold(body) { b, a ->
+                val bytes =
+                    when (a) {
+                        is EngineAttachment.Bytes -> a.bytes
+                        is EngineAttachment.Path -> java.io.File(a.path).readBytes()
+                        is EngineAttachment.Fd -> error("the scenario sends no descriptor")
+                    }
+                b.replace(
+                    "\"lb-attachment:${a.name}\"",
+                    "\"data:${a.mime};base64,${java.util.Base64.getEncoder().encodeToString(bytes)}\"",
+                )
+            }
     }
 
     private val paths =
@@ -423,7 +446,7 @@ class HostNativeTest {
                             null,
                         ) as Endpoint
                     }
-                assertEquals(28, endpoints.size) // b12352 added /v1/audio/speech
+                assertEquals(29, endpoints.size) // b12352 added /v1/audio/speech; D84 /v1/audio/transcriptions
                 val unknown = endpoints.filter { bridgeRejects(it) }
                 assertEquals("not in the C API's table: $unknown", emptyList<Endpoint>(), unknown)
                 // the check can fail: a name the table lacks is rejected by the bridge

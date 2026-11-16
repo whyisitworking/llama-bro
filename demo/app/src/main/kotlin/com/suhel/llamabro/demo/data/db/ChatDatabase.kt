@@ -6,13 +6,19 @@ import androidx.room.RoomDatabase
 
 /**
  * `chats.db`; each version's schema is exported to `demo/app/schemas/`. Version 2 adds a reply's measurements
- * ([ReplyStats]), version 3 a chat's own sampling values (D60): nullable columns, so Room migrates on its own.
+ * ([ReplyStats]), version 3 a chat's own sampling values (D60), version 4 voice messages (D76): nullable columns, so
+ * Room migrates on its own.
  */
 @Database(
     entities = [ChatEntity::class, MessageEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
+    autoMigrations = [
+        AutoMigration(
+            from = 1,
+            to = 2,
+        ), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4),
+    ],
 )
 abstract class ChatDatabase : RoomDatabase() {
     abstract fun chatDao(): ChatDao

@@ -15,6 +15,8 @@ listOf(
     ":llamabro-hub",
     ":llamabro-hub-work",
     ":llamabro-hub-testing",
+    ":llamabro-typed",
+    ":llamabro-typed-ksp",
     ":acceptance",
     ":acceptance:backends",
     ":acceptance:download",

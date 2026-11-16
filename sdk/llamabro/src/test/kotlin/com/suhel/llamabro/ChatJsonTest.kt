@@ -9,6 +9,7 @@ import com.suhel.llamabro.chat.Tool
 import com.suhel.llamabro.chat.ToolCall
 import com.suhel.llamabro.chat.ToolChoice
 import com.suhel.llamabro.internal.ChatJson
+import com.suhel.llamabro.internal.EngineAttachment
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -20,7 +21,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChatJsonTest {
-    private fun body(r: ChatRequest) = Json.parseToJsonElement(ChatJson.body(r)) as JsonObject
+    private fun body(r: ChatRequest) = Json.parseToJsonElement(ChatJson.encode(r).body) as JsonObject
 
     @Test
     fun nullSamplingFieldsOmitted() {
@@ -55,18 +56,28 @@ class ChatJsonTest {
     }
 
     @Test
-    fun imageBecomesDataUrl() {
-        val b = body(ChatRequest { messages(Message.user(Content.Text("what?"), Content.Image(byteArrayOf(1, 2, 3)))) })
-        val parts = b["messages"]!!.jsonArray[0].jsonObject["content"]!!.jsonArray
+    fun imageBecomesAPlaceholderWithItsAttachment() {
+        val encoded =
+            ChatJson.encode(
+                ChatRequest { messages(Message.user(Content.Text("what?"), Content.Image(byteArrayOf(1, 2, 3)))) },
+            )
+        val body = Json.parseToJsonElement(encoded.body) as JsonObject
+        val parts = body["messages"]!!.jsonArray[0].jsonObject["content"]!!.jsonArray
         assertEquals("""{"type":"text","text":"what?"}""", parts[0].toString())
-        val url =
-            parts[1]
-                .jsonObject["image_url"]!!
-                .jsonObject["url"]!!
-                .jsonPrimitive.content
-        assertEquals("image_url", parts[1].jsonObject["type"]!!.jsonPrimitive.content)
-        assertTrue(url, url.startsWith("data:image/jpeg;base64,"))
-        assertEquals("data:image/jpeg;base64,AQID", url)
+        // D84: the native side writes the data URL in place of the placeholder
+        assertEquals("""{"type":"image_url","image_url":{"url":"lb-attachment:0"}}""", parts[1].toString())
+        val a = encoded.attachments.single() as EngineAttachment.Bytes
+        assertEquals("0", a.name)
+        assertEquals("image/jpeg", a.mime)
+        assertTrue(a.bytes.contentEquals(byteArrayOf(1, 2, 3)))
+    }
+
+    @Test
+    fun userTextWithThePlaceholderIsLeftAsText() {
+        val body =
+            body(ChatRequest { messages(Message.user(Content.Text("lb-attachment:0"), Content.Image(byteArrayOf(1)))) })
+        val parts = body["messages"]!!.jsonArray[0].jsonObject["content"]!!.jsonArray
+        assertEquals("""{"type":"text","text":"lb-attachment:0"}""", parts[0].toString())
     }
 
     @Test

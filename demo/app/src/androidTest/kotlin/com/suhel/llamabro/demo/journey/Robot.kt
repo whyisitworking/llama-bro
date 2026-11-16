@@ -9,6 +9,7 @@ import android.provider.MediaStore
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import java.util.regex.Pattern
 
@@ -54,9 +55,19 @@ class Robot {
         device.wait(Until.gone(By.pkg(packageName)), TIMEOUT)
     }
 
+    /**
+     * Opens the shade at its notifications. UI Automator's `openNotification` left a ColorOS phone on the Home screen, and its
+     * shade has no `notification_stack_scroller`, so the shell's own command asks for the notifications instead.
+     */
     fun openNotificationShade() {
-        device.openNotification()
-        device.wait(Until.hasObject(By.res("com.android.systemui", "notification_stack_scroller")), TIMEOUT)
+        shell("cmd statusbar expand-notifications")
+        device.waitForIdle()
+    }
+
+    private fun shell(command: String) {
+        ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use {
+            it.readBytes()
+        }
     }
 
     /**
@@ -86,11 +97,29 @@ class Robot {
     }
 
     /** True when the shade holds a notification whose text contains [text]. */
-    fun shadeShows(text: String): Boolean = device.wait(Until.hasObject(By.textContains(text)), TIMEOUT)
+    fun shadeShows(text: String): Boolean = findInShade(text) != null
 
     fun tapInShade(text: String) {
-        device.wait(Until.findObject(By.textContains(text)), TIMEOUT)?.click()
-            ?: error("no notification mentions \"$text\"")
+        findInShade(text)?.click() ?: error("no notification mentions \"$text\"")
+    }
+
+    /**
+     * The notification that mentions [text]. A download's notification is a quiet one (low importance), which a phone
+     * with other notifications lists below them, off the screen: the shade is scrolled up to [SHADE_SCROLLS] times.
+     */
+    private fun findInShade(text: String): UiObject2? {
+        device.wait(Until.findObject(By.textContains(text)), TIMEOUT)?.let { return it }
+        repeat(SHADE_SCROLLS) {
+            device.swipe(
+                device.displayWidth / 2,
+                device.displayHeight * 3 / 4,
+                device.displayWidth / 2,
+                device.displayHeight / 4,
+                SWIPE_STEPS,
+            )
+            device.wait(Until.findObject(By.textContains(text)), SCROLL_WAIT)?.let { return it }
+        }
+        return null
     }
 
     /** Brings the app's task back to the front, as its launcher icon would. */
@@ -168,6 +197,9 @@ class Robot {
         const val POLL_MILLIS = 250L
         const val CONFIRM_MILLIS = 2_000L
         const val TIMEOUT = 10_000L
+        const val SHADE_SCROLLS = 6
+        const val SWIPE_STEPS = 20
+        const val SCROLL_WAIT = 1_000L
         const val NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"
         const val PHOTO_WIDTH = 300
         const val PHOTO_HEIGHT = 200

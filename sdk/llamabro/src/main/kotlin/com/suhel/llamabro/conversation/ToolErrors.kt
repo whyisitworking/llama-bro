@@ -4,7 +4,8 @@ package com.suhel.llamabro.conversation
  * A tool's error meant for the model: the agent loop sends `Error: <message>` as the call's result and goes on, so
  * the model can correct itself (D62). Only this exception's message reaches the model; any other exception sends
  * `Error: the tool failed` and reaches the app as `ChatEvent.ToolResult.error`, so a failing tool can't leak a token
- * or personal data into the prompt and the saved chat unless it chooses to. Open for subclassing.
+ * or personal data into the prompt and the saved chat unless it chooses to. Its [cause], if any, reaches the app as
+ * `ChatEvent.ToolResult.error` and not the model. Open for subclassing.
  */
 public open class LbToolError(message: String, cause: Throwable? = null) : Exception(message, cause)
 

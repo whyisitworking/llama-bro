@@ -1,6 +1,7 @@
 package com.suhel.llamabro
 
 import com.suhel.llamabro.internal.Engine
+import com.suhel.llamabro.internal.EngineAttachment
 import com.suhel.llamabro.internal.EngineModel
 import com.suhel.llamabro.internal.EngineRequest
 import com.suhel.llamabro.internal.LlamaBroRuntime
@@ -63,6 +64,22 @@ internal class FakeEngine : Engine {
         return super.fitEstimate(configJson)
     }
 
+    /** What each descriptor holds, for [readFd]; a missing one fails as the native read does. */
+    val fdContents = mutableMapOf<Int, ByteArray>()
+
+    /** Each [readFd]: the descriptor and the thread it ran on. */
+    val fdReads = mutableListOf<Pair<Int, Thread>>()
+
+    /** Runs at each [readFd] with how many reads came before it, on the reading thread: block here for a slow read. */
+    var onReadFd: (Int) -> Unit = {}
+
+    override fun readFd(fd: Int): ByteArray {
+        val before = synchronized(fdReads) { fdReads.size.also { fdReads += fd to Thread.currentThread() } }
+        onReadFd(before)
+        return fdContents[fd]?.copyOf()
+            ?: throw NativeError(1, """{"error":"cannot read descriptor $fd: Bad file descriptor"}""")
+    }
+
     /** A load error for a config (the C API's error JSON), or null to load. */
     var loadError: (String) -> String? = { null }
 
@@ -84,6 +101,9 @@ internal class FakeModel : EngineModel {
     override var infoJson: String = DEFAULT_INFO
     val requests = mutableListOf<FakeRequest>()
 
+    /** The thread each request started on. */
+    val requestThreads = mutableListOf<Thread>()
+
     /** Runs on the calling thread when a request starts: script the reply here. */
     var onRequest: (FakeRequest) -> Unit = {}
 
@@ -92,9 +112,18 @@ internal class FakeModel : EngineModel {
     /** Runs at the start of close(), on the closing thread: block here to model a slow native shutdown. */
     var onClose: () -> Unit = {}
 
-    override fun request(endpoint: String, paramsJson: String?, body: ByteArray, sink: RequestSink): EngineRequest {
-        val r = FakeRequest(endpoint, paramsJson, String(body, Charsets.UTF_8), sink)
-        synchronized(requests) { requests += r }
+    override fun request(
+        endpoint: String,
+        paramsJson: String?,
+        body: ByteArray,
+        attachments: List<EngineAttachment>,
+        sink: RequestSink,
+    ): EngineRequest {
+        val r = FakeRequest(endpoint, paramsJson, String(body, Charsets.UTF_8), sink, attachments)
+        synchronized(requests) {
+            requests += r
+            requestThreads += Thread.currentThread()
+        }
         onRequest(r)
         return r
     }
@@ -107,6 +136,9 @@ internal class FakeModel : EngineModel {
     }
 
     companion object {
+        /** [DEFAULT_INFO] for a model that sees and hears. */
+        val HEARING_INFO: String get() = DEFAULT_INFO.replace("\"audio\":false", "\"audio\":true")
+
         const val DEFAULT_INFO = """{"n_ctx":8192,"n_ctx_train":262144,"n_params":4000000000,"size":2800000000,
             "desc":"qwen35 4B Q4_K - Medium","metadata":{"general.architecture":"qwen35","qwen35.nextn_predict_layers":"1"},
             "props":{"total_slots":1,"chat_template":"{{ messages }}","modalities":{"vision":true,"video":false,"audio":false},
@@ -114,8 +146,14 @@ internal class FakeModel : EngineModel {
     }
 }
 
-internal class FakeRequest(val endpoint: String, val paramsJson: String?, val body: String, val sink: RequestSink) :
-    EngineRequest {
+internal class FakeRequest(
+    val endpoint: String,
+    val paramsJson: String?,
+    val body: String,
+    val sink: RequestSink,
+    /** What went beside the body (D84), as the Kotlin layer passed it. */
+    val attachments: List<EngineAttachment> = emptyList(),
+) : EngineRequest {
     @Volatile var cancelCount = 0
 
     @Volatile var freed = false

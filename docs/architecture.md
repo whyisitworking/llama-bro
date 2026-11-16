@@ -88,6 +88,8 @@ The engine runs in the application's process (D5). There is no local HTTP server
 | `llamabro-hub-work` | [`sdk/llamabro-hub-work`](../sdk/llamabro-hub-work) | A WorkManager worker and `LlamaBroWorkerFactory(hub)` for background downloads, with default notifications (D75). Apart from the hub so that it doesn't depend on `androidx.work`. |
 | `llamabro-testing` | [`sdk/llamabro-testing`](../sdk/llamabro-testing) | `FakeLlamaBro`, a scripted engine for JVM tests. |
 | `llamabro-hub-testing` | [`sdk/llamabro-hub-testing`](../sdk/llamabro-hub-testing) | `FakeLlamaBroHub`, the real hub over a scripted Hub and disk for JVM tests (D70, D75). Apart from `llamabro-testing` so that apps without the hub never get it. |
+| `llamabro-typed` | [`sdk/llamabro-typed`](../sdk/llamabro-typed) | Typed output and typed tools over kotlinx.serialization: the JSON-schema converter and its annotations (D63, section 5.8). Pure Kotlin, no native code. |
+| `llamabro-typed-ksp` | [`sdk/llamabro-typed-ksp`](../sdk/llamabro-typed-ksp) | The KSP processor that turns `@LbToolbox` classes into `asToolbox()` extensions over `llamabro-typed`'s `tool(…)`, with a build error for each misuse D61 lists (section 5.8). A JVM library that apps add with `ksp(…)`; it never ships in the app. |
 | `native/` | [`sdk/native`](../sdk/native) | The stable C API (`llamabro.h`), the C++ bridge, the JNI layer, build presets, patches and host tests. |
 | Acceptance apps | [`sdk/acceptance`](../sdk/acceptance) | Small apps used by device tests: `backends` (device choice, lifecycle, the full suite) and `download` (background download with a worker and a user-initiated job). |
 | Demo app | [`demo`](../demo) | A complete chat application built against the SDK through a composite build (D46). It uses only public API. |
@@ -106,6 +108,8 @@ dependencies {
     runtimeOnly("io.github.whyisitworking:llamabro-opencl")         // optional: Adreno GPU
     implementation("io.github.whyisitworking:llamabro-hub")         // optional: Hugging Face downloads
     implementation("io.github.whyisitworking:llamabro-hub-work")    // optional: background downloads (WorkManager)
+    implementation("io.github.whyisitworking:llamabro-typed")       // optional: typed replies and tools
+    ksp("io.github.whyisitworking:llamabro-typed-ksp")               // optional: annotated toolboxes (with the KSP plugin)
 }
 ```
 
@@ -221,7 +225,7 @@ The C API in [`llamabro.h`](../sdk/native/bridge/include/llamabro.h) is a stable
 | `lb_request_cancel(req)` / `lb_request_free(req)` | Cancel a request and release its handle |
 | `lb_model_free(model)` | Cancel in-flight requests, stop the loop, join the thread |
 
-A single generic request function means any llama-server feature that has no Kotlin type yet is still reachable with raw JSON (section 5.5). Images travel as llama-server takes them: base64 data URLs inside the message JSON.
+A single generic request function means any llama-server feature that has no Kotlin type yet is still reachable with raw JSON (section 5.5). Pictures and clips travel beside the JSON (D84): Kotlin writes a placeholder (`lb-attachment:<n>`) as a part's `image_url.url` or `input_audio.data` and passes each file as an `lb_attachment` (a path or a descriptor, read natively, or bytes, copied across JNI once); the bridge reads them in the call and writes the base64 data URL llama-server takes into the body (chat's `messages[].content[]` parts on the chat-completion routes, and the `{"content": [...]}` entries of an embeddings input), so neither llama-server's code nor the Java heap holds a base64 copy. A transcription's file goes into the request's files as upstream's multipart upload would. Because the files are read inside the native call, a request with attachments starts on the IO dispatcher.
 
 ### 4.2 Streaming and cancellation
 
@@ -280,6 +284,8 @@ The three levels share one engine. A beginner uses `Conversation` and still reac
 - `info` (`ModelInfo`): context size, trained context size, parameter count, size, description, chat template, vision and audio support, whether the model has an MTP head, template capabilities and GGUF metadata.
 - `loadReport` (`LoadReport`): which device and backend were chosen, every attempt, the context size and why, and the speculative mode and why (section 8.3).
 - `chat(request)`, `conversation(...)`, `restoreConversation(json)` and `rawRequest(endpoint, json)`.
+- `embed(text)`, `embed(texts)` and `embed(vararg content)`, which return `FloatArray`s with a `Normalization` that mirrors upstream's `embd_normalize` (`None`, `MaxAbsInt16`, `Taxicab`, `Euclidean` by default, `PNorm(p)`), and `rerank(query, documents, topN)`, which returns `Ranked(index, score)` best first (D65). They read the `embeddings` route as base64 and the `rerank` route. Each checks the model's `task` first and throws `InvalidRequest` naming the task to load with, before any request. `embed(vararg content)` sends pictures and clips as chat does, placeholders with the files beside the request, which the bridge fills in the embeddings body's content parts (D84); a clip gets chat's `supportsAudio` and format checks.
+- `transcribe(source, language, prompt, options)`, which returns `Typed<String>`: `Value(text)`, or `Incomplete(Length, textSoFar)` when the reply is as long as `maxTokens`, since upstream's transcription response has no finish reason (D84). It checks the task and `info.supportsAudio` first.
 - `close()`, which returns at once and frees the model in the background, and `closeAndJoin()`, which waits for the memory to be released. Freed memory returns to the system on Android (F49).
 
 `ModelConfig` is configured in the `loadModel` block:
@@ -303,7 +309,7 @@ The three levels share one engine. A beginner uses `Conversation` and still reac
 
 A `ChatRequest` is built with a DSL and carries messages, tools, a `ResponseFormat`, sampling and reasoning options, and an `extra` JSON string applied as a JSON Merge Patch over the final body (F43). Because of that, any field llama-server accepts is reachable without waiting for a typed property. Unset sampling fields fall back to the GGUF's defaults and then to the server's.
 
-Messages are `Message.system`, `Message.user` (with `Content.Text` and `Content.Image` parts), assistant messages and tool results. Request-level overrides use `RequestOptions`.
+Messages are `Message.system`, `Message.user` (with `Content.Text`, `Content.Image` and `Content.Audio` parts), assistant messages and tool results. A picture or clip comes from a `MediaSource`: `file(path)`, `descriptor(pfd)` or `bytes(bytes)` (D84). Before any request, a picture on a model without `supportsVision`, a clip on one without `supportsAudio`, and audio that isn't WAV, MP3 or FLAC (by MIME type, and by header for bytes and, in a conversation, for a file; the native side checks a descriptor's header) throw `InvalidRequest`. `MediaSource` lives in the root package beside `ModelSource`, since `transcribe` and `embed` take it too. llama.cpp's decoder refusing a picture (HEIC, WebP) is upstream's `server_error`; the SDK maps it to `InvalidRequest`. Request-level overrides use `RequestOptions`.
 
 A request streams `ChatEvent` values:
 
@@ -324,7 +330,20 @@ Public types that will grow are immutable classes built through a builder or DSL
 
 ### 5.7 Typed and raw coverage
 
-Chat is fully typed. The other routes are reachable through `rawRequest` today, with the request and response exactly as llama-server documents them (F53): completion, embeddings, rerank, tokenize, token counting, slots and the Responses and Anthropic message formats. Transcription and realtime audio are not reachable through `rawRequest`, since upstream takes a multipart upload and a WebSocket for them. Typed calls for the other routes are planned; the raw level remains the escape hatch.
+Chat, embeddings (pooled vectors), rerank (text documents) and transcription are typed (D65, D84). The other routes are reachable through `rawRequest`, with the request and response exactly as llama-server documents them (F53): completion, per-token embeddings (`EmbeddingsNative`), tokenize, token counting, slots and the Responses and Anthropic message formats. Transcription is not reachable through `rawRequest`, which carries no file (`Endpoint.Transcriptions` names the route; `transcribe` sends it), and realtime audio, a WebSocket upstream, is not built. Typed calls for the other routes are planned; the raw level remains the escape hatch.
+
+### 5.8 `llamabro-typed`
+
+Typed output and typed tools live in their own module, `llamabro-typed` (package `com.suhel.llamabro.typed`), so that core's public API never mentions kotlinx.serialization (D63); the module depends on core and exposes `kotlinx-serialization-json`. Its base is `typedSchema(serializer, json)`, which turns a `SerialDescriptor` into the JSON Schema that `ResponseFormat.JsonSchema` and a tool's parameters carry, and that llama.cpp's json-schema-to-grammar holds the model to. The `Json` passed in is the one that decodes the reply, so its naming strategy, class discriminator (or the class's `@JsonClassDiscriminator`) and `explicitNulls` shape the schema.
+
+- Properties appear in declaration order. The grammar writes an object's required properties first, in schema order, then its optional ones (F143), so declaration order is the order the model writes, and a reasoning field declared before the answer is written first.
+- A property with a default is optional (and, with `explicitNulls = false`, a nullable one); every other property is required. Objects are closed (`"additionalProperties": false`).
+- A nullable type is `{"anyOf":[X,{"type":"null"}]}`, with the property's keywords inside `X`. Enums are their serial names; an inline value class is its underlying type; a `Char` is a one-character string.
+- A sealed class is an `anyOf` of its subclasses' objects, in the serialization plugin's order, each opening with the discriminator as a required `{"const":"<serial name>"}`; an `object` subclass holds only the discriminator. `Map<String, V>` is an object with `additionalProperties: V`.
+- Annotations (`@SerialInfo`): `@LbDescription` writes `description` (on a property or a class); `@LbRange` on integers writes `minimum`/`maximum`, `@LbLength` and `@LbPattern` on strings `minLength`/`maxLength` and `pattern`, `@LbItems` on lists `minItems`/`maxItems`. A bound left at its default is not written. A `@LbRange` is intersected with the range of `Byte`, `Short`, `Int` and the unsigned types, and refused when nothing is left. `@LbPattern` is sent as written: llama.cpp supports a subset of regex and rejects the rest when it builds the grammar, so a bad pattern fails the first request, and in a conversation with typed tools every request, since the tools go with each one; a test against a real model catches it, `assertTypedSchema` cannot. Decimals take no bounds: the grammar ignores them (F143).
+- Refused with an `IllegalArgumentException` naming the field's path (`$.items[].name`): a recursive type (a class inside itself with the same type arguments; `Box<Box<String>>` is fine), open polymorphism, a contextual serializer, free-form JSON (`JsonElement`, `JsonObject`, `JsonArray`, `JsonPrimitive`), a sealed serializer not laid out as the plugin's, a non-`String` map key, a bound on a type it does not apply to, and a sealed subclass whose serial name is a qualified class name (no `@SerialName`; the model would have to write the full name, and a rename would break stored replies). `assertTypedSchema<T>()` lets an app's tests find these before release.
+- Typed tools (D61): `tool<A, R>(name, description) { args -> … }` builds a `TypedTool` whose parameters' schema is `typedSchema` of `A`, refused unless it is an object, with the name checked against `^[a-zA-Z0-9_-]{1,64}$` and the description non-blank. `Conversation.Builder.tool(typedTool)` and `toolbox(Toolbox)` register it through core's `toolForCall` (`@InternalLlamaBroApi`), whose handler takes the whole `ToolCall`; core's raw `tool(… handler: (JsonArgs) -> String)` adapts to the same registry entry, so the agent loop (section 6) runs both alike. The typed handler decodes `argumentsJson` with the tool's `Json` (blank is `{}`; a kotlinx decode error is `LbToolError("invalid arguments: <reason>")`; any other exception while decoding, such as an arguments class's `require`, is `LbToolError("invalid arguments")` with it as the cause (which reaches the app as `ToolResult.error`), and an `LbToolError` thrown from an `init` passes through with its message, D62), runs with an `LbToolCallContext` (call id, tool name, raw arguments) as its receiver, and sends a `String` as is, `Unit` as `Done` (D81) and anything else as JSON.
+- Annotated toolboxes (D61): `llamabro-typed` declares `@LbToolbox(prefix)` (class, interface or object), `@LbTool(description, name, requiresApproval)` and `@LbToolParam(description)`, all with binary retention. `llamabro-typed-ksp`, a JVM module that reads them by fully qualified name and writes code with a small writer of its own (no KotlinPoet), writes `X_LbToolbox.kt` for each toolbox `X`: `fun X.asToolbox(json: Json = Json): Toolbox`, with `X`'s visibility, built from `tool(…)`, so the runtime checks still run. It covers the `@LbTool` methods of `X` and of its `@LbToolbox` supertypes, each declaration once; the name is the method's in snake_case or `@LbTool.name`, after the prefix as written. A method takes one `@Serializable` class (used as is) or parameters that each carry `@LbToolParam`, for which the processor writes a private `@Serializable` class, `X_LbArgs_<tool>`, with `@LbDescription` from each parameter's text and `= null` for a nullable `= null` parameter (bounds such as `@LbRange` target properties, so they need the arguments class, as other defaults do); an `LbToolCallContext` parameter receives the call's context and stays out of the schema. A method that does not suspend is called inside `withContext(Dispatchers.IO)`. Each misuse is a `KSPLogger.error` on its symbol: a blank description, a name failing the pattern with its prefix, two tools with one name, an override annotated again, a separate parameter's default other than `= null` (read from the source, comments left out, since KSP gives no default expressions; a default it can't read, as on a supertype from a library, is an error too), a parameter without `@LbToolParam` beside annotated ones or a lone non-`@Serializable` one, `@LbTool` outside an `@LbToolbox`, a sealed subclass reached from the arguments whose serial name is missing or dotted (as the runtime schema refuses it), and a result other than `String`, `Unit`, a primitive, a `List` or a `@Serializable` class. kctfork tests each error and the generated code on snippets (D81); `AnnotatedToolboxTest` runs a toolbox the real processor wrote through the loop with `FakeLlamaBro`.
 
 ---
 
@@ -340,7 +359,7 @@ Chat is fully typed. The other routes are reachable through `rawRequest` today, 
 - `contextUsage: StateFlow<ContextUsage>`, derived from timings (prompt, cached and predicted tokens)
 - `pendingApproval: StateFlow<ToolCall?>`, the call waiting for `approve` or `deny` (section 6.2)
 
-Operations: `send(text) { options }`, `ask(text)` (returns the reply text, or throws `Incomplete` for `Length`, `TurnLimit`, `ToolCallsPending` and `ToolAborted`, F41), `resume()`, `approve(callId)`, `deny(callId, reason)`, `regenerate()`, `endReasoning()`, `toJson()` and `Model.restoreConversation(json)`. A conversation can also start from the application's own stored messages (F96). Per-conversation `defaults { ... }` apply to every request, and per-send options apply to one (F38).
+Operations: `send(text) { options }`, `ask(text, vararg attachments)` (returns `Typed<String>`: `Value(value, json, reasoning)`, or `Incomplete(reason, json)` for `Length`, `TurnLimit`, `ToolCallsPending` and `ToolAborted`, F41, D63; engine failures still throw), `resume()`, `approve(callId)`, `deny(callId, reason)`, `regenerate()`, `endReasoning()`, `toJson()` and `Model.restoreConversation(json)`. A conversation can also start from the application's own stored messages (F96). A descriptor in a message is read once into bytes when the message is added (D84), off the caller's thread, so later turns and `toJson` use the bytes; one in a starting `history` is read once by the first request or by `toJson`, and a closed descriptor, a missing file or a clip file in another format is `InvalidRequest` before the message is added. When a send's first request fails with `InvalidRequest` caused by its media (the bridge's attachment errors, or the decoder's) before any token or tool call, the message is removed again, atomically and only while it is still the last one, so the chat isn't wedged by media that fails every request; any other failure keeps it for `resume()`. `toJson` saves a file source as its path and bytes as base64, in save format version 3 (audio parts and paths); version 2 saves, with inline image data, and version 1 saves still load. Per-conversation `defaults { ... }` apply to every request, and per-send options apply to one (F38).
 
 Only one operation runs at a time. A second operation fails with `Busy` when its flow is collected, not when it is created.
 
@@ -372,16 +391,19 @@ Errors (D62, F140). Upstream's loop sends every exception's text to the model. H
 | Case | Result the model sees | `ToolResult.error` |
 |---|---|---|
 | The model called a name that is not registered | `Error: Unknown tool: <name>` | null |
-| The arguments do not parse, are not a JSON object, or `JsonArgs` has no such argument or a mistyped argument or list item (the accessors throw `LbToolError("invalid arguments: …")`) | `Error: invalid arguments: <reason>`, for example `Error: invalid arguments: missing string argument: city` | null |
-| The handler throws `LbToolError(message)` | `Error: <message>` | null |
+| The arguments do not parse, are not a JSON object, or `JsonArgs` has no such argument or a mistyped argument or list item (the accessors throw `LbToolError("invalid arguments: …")`) | `Error: invalid arguments: <reason>`, for example `Error: invalid arguments: missing string argument: city` | the parse exception (`JsonArgs` throws with a cause), otherwise null |
+| The handler throws `LbToolError(message)` | `Error: <message>` | its `cause`, or null |
+| A typed tool's arguments fail kotlinx's decoding (a missing field, bad JSON, a custom serializer's `SerializationException`) | `Error: invalid arguments: <reason>` | the `SerializationException` |
+| A typed tool's arguments throw any other exception while decoding (a `require` in `init`) | `Error: invalid arguments` | that exception |
+| A typed tool's arguments class throws `LbToolError` from `init` | `Error: <message>` | its `cause`, or null |
 | The handler throws any other exception | `Error: the tool failed` | the exception |
 | The person denies the call | `Error: denied by the user`, or `Error: <reason>` | null |
 
 - **An unknown name is an automatic call.** It gets its error result and the loop goes on, as upstream does. A manual call is one registered without a handler.
 - **`LbToolError` and `LbToolAbort`** live in the core module, so the later typed module (D61) reuses them. Both are open for subclassing.
-- **`LbToolAbort(reason)`** ends the turn. The aborted call and the reply's later calls get no result, and the flow ends with `Done(reason = ToolAborted)`, whose `abort` holds the exception. `ask()` throws `Incomplete(ToolAborted, …)`. `resume()` runs the aborted call again, then the later calls, then asks the model.
+- **`LbToolAbort(reason)`** ends the turn. The aborted call and the reply's later calls get no result, and the flow ends with `Done(reason = ToolAborted)`, whose `abort` holds the exception. `ask()` returns `Incomplete(ToolAborted, …)`. `resume()` runs the aborted call again, then the later calls, then asks the model.
 - **Cancelling and closing.** `CancellationException` and `ModelClosed` propagate unchanged. Cancelling the flow cancels the running handler through structured concurrency, and the generation with it.
-- **Threads.** A handler runs in the collecting coroutine for now. Moving blocking tools to `Dispatchers.IO` comes with the typed layer (D61).
+- **Threads.** A handler runs in the collecting coroutine, as does a typed tool's lambda. An annotated tool that does not suspend is called inside `withContext(Dispatchers.IO)` by its generated code, so a blocking method leaves the caller's thread; a suspending one runs where it is called (D62, section 5.8).
 
 Approval (D62). Whether to ask the person stays the application's policy (D11): the SDK only waits. `tool(name, description, schema, requiresApproval = true) { … }` makes a call wait for the person before its handler runs. `requiresApproval` without a handler fails at registration, because a manual tool already stops.
 
@@ -440,6 +462,7 @@ Errors are a sealed `LlamaBroException`. Applications catch them; only the SDK c
 |---|---|
 | `InvalidRequest` | The request or configuration is invalid, including a runtime configuration conflict |
 | `ContextExceeded(promptTokens, contextSize)` | The prompt does not fit; both numbers come from llama-server and are null if it omits one |
+| `InputTooLong(tokens, limit)` | An embedding or rerank input is longer than the batch (`microBatchSize`), which it must fit since such inputs can't be split. Upstream sends it as a server error whose message alone has the numbers; the SDK reads them (D65) |
 | `NotSupported` | The model or build cannot do it, for example embeddings without an embedding model |
 | `Unavailable` | The server cannot take the request now |
 | `ServerError(httpStatus, message)` | Any other llama-server error |
@@ -448,7 +471,6 @@ Errors are a sealed `LlamaBroException`. Applications catch them; only the SDK c
 | `ModelClosed` | The model was closed before or during the call |
 | `CompactionTruncated` | A compaction summary hit the output limit |
 | `Busy` | A `Conversation` operation was started while another was running |
-| `Incomplete(reason, partial)` | `ask()` ended with `Length`, `TurnLimit`, `ToolCallsPending` or `ToolAborted` |
 
 `InsufficientMemory` is raised when the model does not fit at the smallest automatic context (4096 tokens) on any device and the app set `MemoryCheck.Refuse` (D33, D57); by default the model loads at that context with `LoadReport.memoryWarning` instead. The hub has its own sealed `HubException` (section 12.5).
 

@@ -63,10 +63,24 @@ class NativeBridgeDeviceTest {
             .toString()
             .toByteArray()
 
+    private fun request(body: ByteArray, sink: Sink): Long =
+        NativeBridge.modelRequest(
+            model,
+            "chat",
+            null,
+            body,
+            emptyArray(),
+            emptyArray(),
+            emptyArray(),
+            IntArray(0),
+            emptyArray(),
+            sink,
+        )
+
     @Test
     fun loadChatAndDone() {
         val sink = Sink()
-        val req = NativeBridge.modelRequest(model, "chat", null, chatBody("Say hi", 8, false), sink)
+        val req = request(chatBody("Say hi", 8, false), sink)
         assertTrue(sink.terminal.await(120, TimeUnit.SECONDS))
         assertTrue(sink.done)
         assertEquals(1, sink.chunks.size)
@@ -85,7 +99,7 @@ class NativeBridgeDeviceTest {
     fun cancelDuringPrefillFast() {
         val prompt = "Repeat nothing. " + "The quick brown fox jumps over the lazy dog. ".repeat(300)
         val sink = Sink()
-        val req = NativeBridge.modelRequest(model, "chat", null, chatBody(prompt, 16, true), sink)
+        val req = request(chatBody(prompt, 16, true), sink)
         Thread.sleep(200)
         val cancelAt = System.nanoTime()
         NativeBridge.requestCancel(req)

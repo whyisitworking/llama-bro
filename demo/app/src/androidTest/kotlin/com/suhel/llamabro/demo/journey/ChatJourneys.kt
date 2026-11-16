@@ -125,7 +125,7 @@ class ChatJourneys : Journey() {
         val best = RepoFile("Qwen3.5-0.8B-Q8_0.gguf", "Q8_0", 875_000_000)
         world.discovery.repoFiles[swift.repo] = listOf(smaller, usual, best)
         for (file in listOf(smaller, usual, best)) {
-            world.hub.estimates[HfModel.parse("${swift.repo}:${file.quant}")] =
+            world.discovery.estimates[HfModel.parse("${swift.repo}:${file.quant}")] =
                 HubEstimate(file.bytes, 0, true, 32_768, file.bytes + 300_000_000, DeviceKind.Npu)
         }
         world.engine.failLoad(LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory, times = LOAD_ATTEMPTS)

@@ -7,9 +7,12 @@ import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.conversation.ConversationJson
 import com.suhel.llamabro.internal.ChatJson
 import com.suhel.llamabro.internal.ChatStreamDecoder
+import com.suhel.llamabro.internal.EngineAttachment
 import com.suhel.llamabro.internal.EngineModel
 import com.suhel.llamabro.internal.EngineRequest
 import com.suhel.llamabro.internal.ErrorMapping
+import com.suhel.llamabro.internal.Media
+import com.suhel.llamabro.internal.MediaIo
 import com.suhel.llamabro.internal.NativeError
 import com.suhel.llamabro.internal.RequestSink
 import com.suhel.llamabro.internal.SseParser
@@ -28,7 +31,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -50,7 +55,17 @@ public class Model internal constructor(
     public val loadReport: LoadReport,
     /** Runs the native shutdown off the caller's thread (LlamaBroRuntime.shutdown). */
     private val shutdown: (() -> Unit) -> Deferred<Unit>,
+    /** What it was loaded for ([ModelConfig.task]): `embed`, `rerank` and `transcribe` check it first (D65). */
+    internal val task: ModelTask,
+    /**
+     * `lb_read_fd`, for a chat's descriptor, read once (D84), and where a request with attachments starts: the native
+     * side reads files in the call, so a slow descriptor (a remote `content://`) must not block the caller's thread.
+     */
+    private val mediaIo: MediaIo,
 ) : AutoCloseable {
+    /** Where file reads and requests with attachments run (D84). */
+    internal val io get() = mediaIo.dispatcher
+
     /** What the loaded model is and what it supports, read once at load. */
     public val info: ModelInfo = ModelInfo.parse(engineModel.infoJson)
 
@@ -76,6 +91,38 @@ public class Model internal constructor(
         endpoint: Endpoint,
         jsonBody: String,
         params: Map<String, String> = emptyMap(),
+    ): Flow<String> = request(endpoint, jsonBody, emptyList(), params)
+
+    /**
+     * [rawRequest] with [attachments] beside the body (D84). With attachments the native call starts on [io], since
+     * it reads them before it returns.
+     */
+    internal fun request(
+        endpoint: Endpoint,
+        jsonBody: String,
+        attachments: List<EngineAttachment>,
+        params: Map<String, String> = emptyMap(),
+    ): Flow<String> {
+        val flow = requestFlow(endpoint, jsonBody, attachments, params)
+        return if (attachments.isEmpty()) flow else flow.flowOn(io)
+    }
+
+    /** A descriptor's bytes, read once on [io] (D84); one that can't be read is the request's fault. */
+    internal suspend fun read(descriptor: MediaSource.Descriptor): ByteArray = withContext(io) { readNow(descriptor) }
+
+    /** [read] on the caller's thread, for `Conversation.toJson`, which is not suspending. */
+    internal fun readNow(descriptor: MediaSource.Descriptor): ByteArray =
+        try {
+            mediaIo.readFd(Media.fdOf(descriptor))
+        } catch (e: NativeError) {
+            throw LlamaBroException.InvalidRequest(ErrorMapping.nativeMessage(e.errorJson), e)
+        }
+
+    private fun requestFlow(
+        endpoint: Endpoint,
+        jsonBody: String,
+        attachments: List<EngineAttachment>,
+        params: Map<String, String>,
     ): Flow<String> =
         callbackFlow {
             val call = ActiveCall(this)
@@ -99,6 +146,7 @@ public class Model internal constructor(
                             endpoint.nativeName,
                             paramsJson,
                             jsonBody.toByteArray(Charsets.UTF_8),
+                            attachments,
                             call.sink(stream),
                         )
                     }
@@ -304,10 +352,12 @@ public fun Model.chat(request: ChatRequest): Flow<ChatEvent> = chatInternal(requ
 /** [Model.chat], reporting the stream's completion id as soon as it's known (Conversation.endReasoning). */
 internal fun Model.chatInternal(request: ChatRequest, onCompletionId: ((String) -> Unit)?): Flow<ChatEvent> =
     flow {
+        Media.checkMessages(info, request.messages)
         cancelPreEncode() // tools/ui cancels a pending pre-encode before every chat request
         val decoder = ChatStreamDecoder()
         var reported = false
-        rawRequest(Endpoint.ChatCompletions, ChatJson.body(request)).collect { payload ->
+        val encoded = ChatJson.encode(request)
+        request(Endpoint.ChatCompletions, encoded.body, encoded.attachments).collect { payload ->
             val events = decoder.accept(payload)
             if (!reported && onCompletionId != null) {
                 decoder.completionId?.let {

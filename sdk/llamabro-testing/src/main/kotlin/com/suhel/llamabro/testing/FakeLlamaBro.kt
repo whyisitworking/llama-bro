@@ -4,6 +4,7 @@ import com.suhel.llamabro.InternalLlamaBroApi
 import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.internal.Engine
+import com.suhel.llamabro.internal.EngineAttachment
 import com.suhel.llamabro.internal.EngineModel
 import com.suhel.llamabro.internal.EngineRequest
 import com.suhel.llamabro.internal.NativeError
@@ -13,7 +14,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.file.Files
+import java.util.Base64
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -32,18 +36,31 @@ import java.util.concurrent.atomic.AtomicInteger
  * …
  * assertTrue(fake.chatRequests[1].contains("\"role\":\"tool\""))
  * ```
- * Only streamed chat completions are scripted (what `Conversation` and `Model.chat` send). `GET /slots` and the
- * reasoning control answer as an idle server would; any other route fails with `NotSupported`. Pre-encodes
- * (`preEncodeAfterReply`) are answered without taking a reply.
+ * Streamed chat completions are scripted (what `Conversation` and `Model.chat` send), and so are `Model.embed`,
+ * `Model.rerank` on a model loaded with their `ModelTask`, and `Model.transcribe`: each takes the next [embeddings],
+ * [ranking], [inputTooLong] or [transcript], in their own queue. Pictures and clips need [supportsVision] and
+ * [supportsAudio], as on a phone. `GET /slots` and the reasoning control answer as an idle server would; any
+ * other route fails with `NotSupported`. Pre-encodes (`preEncodeAfterReply`) are answered without taking a reply.
  */
 @OptIn(InternalLlamaBroApi::class)
 public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
     /** The model's context size (`Model.info.contextSize`); set it before loading. */
     public var contextSize: Int = 8192
 
+    /** Whether the model sees (`Model.info.supportsVision`), so chat takes pictures; set it before loading. */
+    public var supportsVision: Boolean = false
+
+    /** Whether the model hears (`Model.info.supportsAudio`), so chat and `transcribe` take clips; set first. */
+    public var supportsAudio: Boolean = false
+
     private val lock = Any()
     private val queue = ArrayDeque<Scripted>()
     private val chat = mutableListOf<String>()
+    private val chatMedia = mutableListOf<List<EngineAttachment>>()
+    private val taskQueue = ArrayDeque<TaskAnswer>()
+    private val embed = mutableListOf<String>()
+    private val rerank = mutableListOf<String>()
+    private val transcribe = mutableListOf<String>()
 
     /**
      * How long each model load takes, reported as progress in four steps. A `loadModel` cancelled meanwhile
@@ -58,6 +75,22 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
 
     /** The body of every chat request that took a reply, in order (pre-encodes left out). */
     public val chatRequests: List<String> get() = synchronized(lock) { chat.toList() }
+
+    /**
+     * What went beside each of [chatRequests], at the same index (empty when nothing did): the files whose
+     * `lb-attachment:<name>` placeholders the native side would write into the body (D84).
+     */
+    @InternalLlamaBroApi
+    public val chatAttachments: List<List<EngineAttachment>> get() = synchronized(lock) { chatMedia.toList() }
+
+    /** The body of every embeddings request (`Model.embed`), in order. */
+    public val embedRequests: List<String> get() = synchronized(lock) { embed.toList() }
+
+    /** The body of every rerank request (`Model.rerank`), in order. */
+    public val rerankRequests: List<String> get() = synchronized(lock) { rerank.toList() }
+
+    /** The form fields of every transcription (`Model.transcribe`), as JSON, in order. */
+    public val transcribeRequests: List<String> get() = synchronized(lock) { transcribe.toList() }
 
     /** The [LlamaBro] to hand to the code under test. */
     public val llamaBro: LlamaBro =
@@ -108,6 +141,41 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
     public fun reply(block: Reply.() -> Unit) {
         val r = Reply().apply(block)
         synchronized(lock) { queue += Scripted.Stream(r) }
+    }
+
+    /** Queues the vectors for the next `Model.embed`: one per input, in the inputs' order. */
+    public fun embeddings(vararg vectors: FloatArray) {
+        val copy = vectors.map { it.copyOf() }
+        synchronized(lock) { taskQueue += TaskAnswer.Vectors(copy) }
+    }
+
+    /**
+     * Queues the next `Model.rerank`'s scores, one per document in the documents' order. The answer is best first and
+     * cut at `topN`, as llama-server does.
+     */
+    public fun ranking(vararg scores: Float) {
+        val copy = scores.copyOf()
+        synchronized(lock) { taskQueue += TaskAnswer.Scores(copy) }
+    }
+
+    /**
+     * Queues the next `Model.transcribe`'s text. [cut] ends it at the request's `maxTokens`, so `transcribe` gives
+     * `Typed.Incomplete` with `Length`; a cut one sent without `maxTokens` fails that `transcribe` with a
+     * `LlamaBroException.ServerError` saying to set it.
+     */
+    public fun transcript(text: String, cut: Boolean = false) {
+        synchronized(lock) { taskQueue += TaskAnswer.Transcript(text, cut) }
+    }
+
+    /**
+     * Queues llama-server's error for an input longer than the batch (`LlamaBroException.InputTooLong`) for the next
+     * `Model.embed` or `Model.rerank`.
+     */
+    public fun inputTooLong(tokens: Int, limit: Int = 512) {
+        val message =
+            "input ($tokens tokens) is too large to process. increase the physical batch size " +
+                "(current batch size: $limit)"
+        synchronized(lock) { taskQueue += TaskAnswer.Error(serverError(message)) }
     }
 
     /** Queues llama-server's `exceed_context_size_error` (`LlamaBroException.ContextExceeded`). */
@@ -170,6 +238,17 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
         class Error(val status: Int, val body: String) : Scripted
     }
 
+    /** An answer for `Model.embed` or `Model.rerank`, which have their own queue. */
+    private sealed interface TaskAnswer {
+        class Vectors(val vectors: List<FloatArray>) : TaskAnswer
+
+        class Scores(val scores: FloatArray) : TaskAnswer
+
+        class Transcript(val text: String, val cut: Boolean) : TaskAnswer
+
+        class Error(val body: String) : TaskAnswer
+    }
+
     private inner class FakeEngine : Engine {
         override fun init(configJson: String): String? = null
 
@@ -192,21 +271,28 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
                 }
             }
             open.incrementAndGet()
-            return FakeModel(contextSize)
+            return FakeModel(contextSize, supportsVision, supportsAudio)
         }
     }
 
-    private inner class FakeModel(private val nCtx: Int) : EngineModel {
+    private inner class FakeModel(private val nCtx: Int, vision: Boolean, audio: Boolean) : EngineModel {
         override val infoJson: String = """{"n_ctx":$nCtx,"n_ctx_train":$nCtx,"n_params":0,"size":0,"desc":"FakeLlamaBro",
-            "metadata":{},"props":{"total_slots":1,"chat_template":"","modalities":{"vision":false,"video":false,"audio":false},
+            "metadata":{},"props":{"total_slots":1,"chat_template":"","modalities":{"vision":$vision,"video":false,"audio":$audio},
             "chat_template_caps":{"supports_tools":true,"supports_parallel_tool_calls":true,"supports_system_role":true}}}"""
 
-        override fun request(endpoint: String, paramsJson: String?, body: ByteArray, sink: RequestSink): EngineRequest {
+        override fun request(
+            endpoint: String,
+            paramsJson: String?,
+            body: ByteArray,
+            attachments: List<EngineAttachment>,
+            sink: RequestSink,
+        ): EngineRequest {
             val text = String(body, Charsets.UTF_8)
 
             fun send(status: Int, data: String) = sink.onChunk(status, data.toByteArray(Charsets.UTF_8))
             when (endpoint) {
-                "chat" -> chat(text, ::send)
+                "chat" -> chat(text, attachments, ::send)
+                "embeddings", "rerank", "transcriptions" -> task(endpoint, text, ::send)
                 "slots" -> send(200, """[{"id":0,"is_processing":false}]""")
                 "control" -> send(200, "{}")
                 else -> send(501, notSupported("FakeLlamaBro doesn't script the $endpoint route"))
@@ -215,7 +301,7 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
             return Finished
         }
 
-        private fun chat(body: String, send: (Int, String) -> Unit) {
+        private fun chat(body: String, attachments: List<EngineAttachment>, send: (Int, String) -> Unit) {
             val json = runCatching { Json.parseToJsonElement(body) as? JsonObject }.getOrNull()
             if ((json?.get("n_predict") as? JsonPrimitive)?.intOrNull == 0) {
                 send(200, """{"choices":[],"timings":{"cache_n":0,"prompt_n":10,"predicted_n":0}}""")
@@ -228,6 +314,7 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
             val next =
                 synchronized(lock) {
                     chat += body
+                    chatMedia += attachments
                     queue.removeFirstOrNull()
                         ?: return send(
                             500,
@@ -237,6 +324,46 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
             when (next) {
                 is Scripted.Error -> send(next.status, next.body)
                 is Scripted.Stream -> stream(next.reply).forEach { send(200, it) }
+            }
+        }
+
+        private fun task(endpoint: String, body: String, send: (Int, String) -> Unit) {
+            val next =
+                synchronized(lock) {
+                    val log =
+                        when (endpoint) {
+                            "rerank" -> rerank
+                            "transcriptions" -> transcribe
+                            else -> embed
+                        }
+                    log += body
+                    taskQueue.removeFirstOrNull()
+                        ?: return send(
+                            500,
+                            serverError("FakeLlamaBro: nothing scripted for $endpoint request ${log.size}"),
+                        )
+                }
+            val mismatch = serverError("FakeLlamaBro: the next scripted answer isn't for $endpoint")
+            when (next) {
+                is TaskAnswer.Error -> {
+                    send(500, next.body)
+                }
+
+                is TaskAnswer.Vectors -> {
+                    if (endpoint == "embeddings") send(200, embeddingsJson(next.vectors)) else send(500, mismatch)
+                }
+
+                is TaskAnswer.Scores -> {
+                    if (endpoint == "rerank") send(200, rankingJson(next.scores, body)) else send(500, mismatch)
+                }
+
+                is TaskAnswer.Transcript -> {
+                    when {
+                        endpoint != "transcriptions" -> send(500, mismatch)
+                        next.cut && maxTokens(body) == null -> send(500, serverError(CUT_WITHOUT_LIMIT))
+                        else -> send(200, transcriptJson(next, body))
+                    }
+                }
             }
         }
 
@@ -266,6 +393,50 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
 
         fun notSupported(message: String) =
             """{"error":{"code":501,"message":${q(message)},"type":"not_supported_error"}}"""
+
+        /** `format_embeddings_response_oaicompat` with base64: each vector's floats, little-endian. */
+        fun embeddingsJson(vectors: List<FloatArray>): String =
+            vectors
+                .mapIndexed { i, v ->
+                    val bytes = ByteBuffer.allocate(v.size * Float.SIZE_BYTES).order(ByteOrder.LITTLE_ENDIAN)
+                    v.forEach { bytes.putFloat(it) }
+                    val b64 = Base64.getEncoder().encodeToString(bytes.array())
+                    """{"embedding":"$b64","index":$i,"object":"embedding","encoding_format":"base64"}"""
+                }.joinToString(",", """{"model":"FakeLlamaBro","object":"list","data":[""", "]}")
+
+        /** `format_response_rerank`: best first, cut at the request's `top_n`. */
+        fun rankingJson(scores: FloatArray, body: String): String {
+            val topN =
+                runCatching { ((Json.parseToJsonElement(body) as JsonObject)["top_n"] as JsonPrimitive).intOrNull }
+                    .getOrNull() ?: scores.size
+            return scores
+                .withIndex()
+                .sortedByDescending { it.value }
+                .take(topN)
+                .joinToString(",", """{"model":"FakeLlamaBro","object":"list","results":[""", "]}") {
+                    """{"index":${it.index},"relevance_score":${it.value}}"""
+                }
+        }
+
+        /** `to_json_oaicompat_asr`; a cut one wrote as many tokens as the request's `max_tokens` allowed. */
+        fun transcriptJson(t: TaskAnswer.Transcript, body: String): String {
+            val limit = maxTokens(body)
+            val written = if (t.cut && limit != null) limit else maxOf(1, t.text.length / 4)
+            return """{"type":"transcript.text.done","text":${q(
+                t.text,
+            )},"usage":{"type":"tokens","input_tokens":60,""" +
+                """"output_tokens":$written,"total_tokens":${60 + written},"input_tokens_details":{"cached_tokens":0}}}"""
+        }
+
+        /** A transcription's `max_tokens`, null when the request has none. */
+        fun maxTokens(body: String): Int? =
+            runCatching {
+                ((Json.parseToJsonElement(body) as JsonObject)["max_tokens"] as JsonPrimitive).content.toInt()
+            }.getOrNull()
+
+        /** A cut transcript ends at `max_tokens`; without one, nothing says where, so the script is wrong. */
+        const val CUT_WITHOUT_LIMIT =
+            "FakeLlamaBro: a cut transcript ends at the request's max_tokens; set maxTokens to script a cut transcript"
 
         fun serverError(message: String) = """{"error":{"code":500,"message":${q(message)},"type":"server_error"}}"""
 

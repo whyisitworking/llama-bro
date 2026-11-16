@@ -31,6 +31,7 @@ import com.suhel.llamabro.demo.designsystem.components.ThoughtFold
 import com.suhel.llamabro.demo.designsystem.components.ThoughtState
 import com.suhel.llamabro.demo.designsystem.components.TypingDots
 import com.suhel.llamabro.demo.designsystem.components.UserBubble
+import com.suhel.llamabro.demo.designsystem.components.VoiceClip
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 
 private fun p(vararg spans: MarkdownSpan) = MarkdownBlock.Paragraph(spans.toList())
@@ -111,6 +112,7 @@ internal fun ChatOpenSamples() {
             OpenReply(content = { MarkdownText(BioReply, onCopyCode = {}) }, speed = "38 words/s")
         }
         UserBubble("What's this plant? Is it healthy?", images = listOf(rememberSamplePhoto()))
+        UserBubble("", voice = VoiceClip(SampleLevels, "0:42"))
         TypingDots()
         ThoughtFold(
             ThoughtState(
@@ -162,6 +164,7 @@ internal fun ChatBubbleSamples() {
             speed = "38 words/s",
         )
         UserBubble("How do I reverse a list in Kotlin?", time = "9:39")
+        UserBubble("", time = "9:40", voice = VoiceClip(SampleLevels, "0:42", playing = true, progress = 0.4f))
         ModelBubble(content = { MarkdownText(KotlinReply, onCopyCode = {}) }, time = "9:39", speed = "41 words/s")
         CodeBlock("adb shell am start -n com.suhel.llamabro.demo/.MainActivity", onCopy = {})
     }

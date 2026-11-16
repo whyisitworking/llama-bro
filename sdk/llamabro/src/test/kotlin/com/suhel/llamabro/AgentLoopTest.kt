@@ -89,6 +89,24 @@ class AgentLoopTest {
         }
 
     @Test
+    fun toolErrorCauseReachesTheAppButNotTheModel() =
+        runTest {
+            val (engine, model) = setup()
+            engine.model.script(Replies.toolCalls(call("c1")), Replies.text("sorry"))
+            val cause = IllegalStateException("token=sk-FAKE-123")
+            val chat =
+                model.conversation { tool("get_weather", "w", schema) { throw LbToolError("city not found", cause) } }
+            val events = chat.send("x").toList()
+            assertEquals(
+                """{"role":"tool","tool_call_id":"c1","content":"Error: city not found"}""",
+                messagesOf(engine.model.chatBodies[1]).last(),
+            )
+            val result = events.filterIsInstance<ChatEvent.ToolResult>().single()
+            assertEquals("Error: city not found", result.result)
+            assertSame(cause, result.error)
+        }
+
+    @Test
     fun otherExceptionSendsGenericErrorAndReachesTheApp() =
         runTest {
             val (engine, model) = setup()
@@ -134,14 +152,14 @@ class AgentLoopTest {
         }
 
     @Test
-    fun askThrowsIncompleteOnAbort() =
+    fun askIsIncompleteOnAbort() =
         runTest {
             val (engine, model) = setup()
             engine.model.script(Replies.toolCalls(call("c1")))
             val chat = model.conversation { tool("get_weather", "w", schema) { throw LbToolAbort("no network") } }
-            val e = runCatching { chat.ask("x") }.exceptionOrNull()
-            assertTrue("$e", e is LlamaBroException.Incomplete)
-            assertEquals(FinishReason.ToolAborted, (e as LlamaBroException.Incomplete).reason)
+            val result = chat.ask("x")
+            assertTrue("$result", result is Typed.Incomplete)
+            assertEquals(FinishReason.ToolAborted, (result as Typed.Incomplete).reason)
         }
 
     @Test

@@ -50,6 +50,14 @@ public class Endpoint private constructor(internal val nativeName: String, priva
         @JvmField public val Rerank: Endpoint = Endpoint("rerank", "POST /v1/rerank")
 
         /**
+         * `POST /v1/audio/transcriptions`. llama-server takes its audio as a multipart upload; here the body is the
+         * form fields as a JSON object of strings, and the audio goes beside it (D84), which [Model.rawRequest] can't
+         * send: use [transcribe].
+         */
+        @JvmField public val Transcriptions: Endpoint =
+            Endpoint("transcriptions", "POST /v1/audio/transcriptions")
+
+        /**
          * `POST /tts`, for models with audio output. The audio comes back as bytes, which [Model.rawRequest]'s strings
          * can't carry intact (F74); useful for its errors until a byte-returning request exists.
          */

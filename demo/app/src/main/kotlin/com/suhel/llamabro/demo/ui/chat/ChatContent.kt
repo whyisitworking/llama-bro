@@ -341,6 +341,7 @@ private fun ComposerArea(modelName: String, live: ChatLive, actions: ChatScreenA
             onAttach = actions.onAttach,
             onThink = actions.onThink,
             modifier = Modifier.testTag("composer"),
+            voice = actions.voice,
             attachments =
                 if (draft.attachments.isEmpty()) {
                     null

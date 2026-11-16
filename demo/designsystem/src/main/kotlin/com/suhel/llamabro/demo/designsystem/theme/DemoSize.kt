@@ -81,6 +81,15 @@ object DemoSize {
     /** A markdown list's bullet: a disc, a ring or a square by depth, drawn rather than a glyph (D74). */
     val bullet = 6.dp
 
+    /**
+     * A voice message's level bars (D76): each bar [levelBar] wide with [levelGap] between, at most [levelHeight] tall
+     * (one line of body text, so recording keeps the bar's height), and a sent clip's bars [voiceWaveWidth] across.
+     */
+    val levelBar = 3.dp
+    val levelGap = 2.dp
+    val levelHeight = 24.dp
+    val voiceWaveWidth = 136.dp
+
     /** A divider and an outline. */
     val hairline = 1.dp
 

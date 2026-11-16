@@ -1,5 +1,6 @@
 package com.suhel.llamabro.demo
 
+import android.annotation.SuppressLint
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
@@ -7,15 +8,20 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.room.Room
 import androidx.work.WorkManager
+import androidx.work.WorkerFactory
 import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.demo.chat.ChatEngine
+import com.suhel.llamabro.demo.chat.Microphone
 import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.chat.ModelMemory
+import com.suhel.llamabro.demo.chat.SampleSource
 import com.suhel.llamabro.demo.chat.SamplingStore
 import com.suhel.llamabro.demo.chat.Streamer
+import com.suhel.llamabro.demo.chat.recommendedCard
+import com.suhel.llamabro.demo.data.AudioStore
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.SettingsRepository
@@ -24,13 +30,13 @@ import com.suhel.llamabro.demo.data.db.ChatDatabase
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.DownloadScheduler
-import com.suhel.llamabro.demo.models.HfSearch
-import com.suhel.llamabro.demo.models.HubGateway
 import com.suhel.llamabro.demo.models.ModelDiscovery
+import com.suhel.llamabro.demo.models.ModelNotifications
 import com.suhel.llamabro.demo.models.ModelRepository
-import com.suhel.llamabro.demo.models.RealHubGateway
 import com.suhel.llamabro.demo.models.WorkDownloadScheduler
+import com.suhel.llamabro.demo.models.installedModel
 import com.suhel.llamabro.hub.LlamaBroHub
+import com.suhel.llamabro.hub.work.LlamaBroWorkerFactory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -51,7 +57,8 @@ import java.io.File
 class AppContainer(
     val app: DemoApp,
     val llamaBro: LlamaBro = LlamaBro.create(app, app.llamaBroConfig),
-    val hub: HubGateway = RealHubGateway(LlamaBroHub.create(app, app.hubConfig), llamaBro),
+    /** The SDK's hub; tests pass `FakeLlamaBroHub`'s (D70, D75). */
+    val hub: LlamaBroHub = LlamaBroHub.create(app, app.hubConfig),
     val scheduler: DownloadScheduler = WorkDownloadScheduler(lazy { WorkManager.getInstance(app) }),
     databaseName: String = "chats.db",
     settingsName: String = "settings",
@@ -70,13 +77,20 @@ class AppContainer(
     val images: ImageStore = ImageStore(File(app.filesDir, "images")),
     /** How a turn reaches the model; the phone tests script timing here, the app leaves it. */
     streamer: Streamer? = null,
+    /** Voice messages' recordings (D76). */
+    val audio: AudioStore = AudioStore(File(app.filesDir, "audio")),
+    /**
+     * Where a voice message's samples come from: the microphone, opened only after the chat screen has the permission
+     * (D76); the phone tests give scripted samples.
+     */
+    @SuppressLint("MissingPermission") val microphone: () -> SampleSource = { Microphone(app) },
 ) {
     /** The app's own scope: work that outlives a screen or a view model runs here, never in an ad-hoc scope. */
     val appScope: CoroutineScope get() = scope
 
-    val chats: ChatRepository = ChatRepository(database.chatDao(), images, clock)
+    val chats: ChatRepository = ChatRepository(database.chatDao(), images, clock, audio)
     val settings: SettingsRepository = SettingsRepository(settingsStore)
-    val host: ModelHost = ModelHost(llamaBro, hub, scope)
+    val host: ModelHost = ModelHost(llamaBro, { hub.installedModel(it) }, scope)
     val models: ModelRepository = ModelRepository(hub, settings, scheduler, scope, host, chats.lastUsed())
 
     /**
@@ -102,20 +116,39 @@ class AppContainer(
     /** Runs every chat (one handle per open chat); the chat screens read it. */
     val engine: ChatEngine =
         if (streamer != null) {
-            ChatEngine(chats, host, models, settings, clock, scope, streamer = streamer, beforeTurn = recovery::await)
+            ChatEngine(
+                chats,
+                host,
+                models,
+                settings,
+                clock,
+                scope,
+                streamer = streamer,
+                beforeTurn = recovery::await,
+                card = { sampling.card(it) },
+            )
         } else {
-            ChatEngine(chats, host, models, settings, clock, scope, beforeTurn = recovery::await)
+            ChatEngine(chats, host, models, settings, clock, scope, beforeTurn = recovery::await) { sampling.card(it) }
         }
 
     /** The loaded model as Settings › Memory and the model sheet show it, with Unload (D59). */
     val memory: ModelMemory by lazy { ModelMemory(host, engine) }
 
-    /** Each model's and each chat's sampling values (D60). */
-    val sampling: SamplingStore by lazy { SamplingStore(settings, chats) }
+    /**
+     * Each model's and each chat's sampling values (D60), with the hub's for models the catalog lacks (D79), looked up
+     * in the background on the app's scope.
+     */
+    val sampling: SamplingStore by lazy { SamplingStore(settings, chats, { hub.recommendedCard(it) }, scope) }
 
-    /** Hugging Face search and a repo's files; the phone tests pass a fake in [discoveryOverride]. */
+    /** The SDK's search, a repo's files and the fit projection; the phone tests pass a fake in [discoveryOverride]. */
     val discovery: ModelDiscovery =
-        discoveryOverride ?: ModelDiscovery(HfSearch(token = tokenStore::read)) { deviceFacts() }
+        discoveryOverride ?: ModelDiscovery(hub, llamaBro) { deviceFacts() }
+
+    /**
+     * Creates the SDK's download worker on this container's hub (D75), so a download runs with the app's token and
+     * its progress is the hub's [ModelRepository] reads; the notifications speak in the app's words.
+     */
+    val workers: WorkerFactory by lazy { LlamaBroWorkerFactory(hub, ModelNotifications()) }
 
     @Volatile private var facts: DeviceFacts? = null
 

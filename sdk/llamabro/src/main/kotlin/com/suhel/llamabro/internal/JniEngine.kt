@@ -19,6 +19,8 @@ internal object JniEngine : Engine {
         val handle = NativeBridge.modelLoad(configJson) { onProgress(it) }
         return JniModel(handle)
     }
+
+    override fun readFd(fd: Int): ByteArray = NativeBridge.readFd(fd)
 }
 
 private class JniModel(private val handle: Long) : EngineModel {
@@ -26,9 +28,23 @@ private class JniModel(private val handle: Long) : EngineModel {
 
     override val infoJson: String = NativeBridge.modelInfo(handle)
 
-    override fun request(endpoint: String, paramsJson: String?, body: ByteArray, sink: RequestSink): EngineRequest {
+    override fun request(
+        endpoint: String,
+        paramsJson: String?,
+        body: ByteArray,
+        attachments: List<EngineAttachment>,
+        sink: RequestSink,
+    ): EngineRequest {
         check(!freed.get()) { "model is closed" }
-        return JniRequest(NativeBridge.modelRequest(handle, endpoint, paramsJson, body, sink))
+        // parallel arrays: JNI reads them without a field lookup per attachment
+        val names = Array(attachments.size) { attachments[it].name }
+        val mimes = Array(attachments.size) { attachments[it].mime }
+        val paths = Array(attachments.size) { (attachments[it] as? EngineAttachment.Path)?.path }
+        val fds = IntArray(attachments.size) { (attachments[it] as? EngineAttachment.Fd)?.fd ?: -1 }
+        val bytes = Array(attachments.size) { (attachments[it] as? EngineAttachment.Bytes)?.bytes }
+        return JniRequest(
+            NativeBridge.modelRequest(handle, endpoint, paramsJson, body, names, mimes, paths, fds, bytes, sink),
+        )
     }
 
     override fun close() {

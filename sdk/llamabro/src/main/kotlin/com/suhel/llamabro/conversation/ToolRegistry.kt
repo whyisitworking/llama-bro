@@ -1,15 +1,19 @@
 package com.suhel.llamabro.conversation
 
 import com.suhel.llamabro.chat.Tool
+import com.suhel.llamabro.chat.ToolCall
 
 /** Tools registered on a [Conversation.Builder]: sent with every request; those with a handler run automatically. */
 internal class ToolRegistry {
-    /** [requiresApproval]: a call waits for `approve` or `deny` before the handler runs (D62). */
-    class Entry(val tool: Tool, val handler: (suspend (JsonArgs) -> String)?, val requiresApproval: Boolean)
+    /**
+     * [requiresApproval]: a call waits for `approve` or `deny` before the handler runs (D62). The handler takes the
+     * whole call, so a typed tool (llamabro-typed) can decode the raw arguments and see the call's id.
+     */
+    class Entry(val tool: Tool, val handler: (suspend (ToolCall) -> String)?, val requiresApproval: Boolean)
 
     private val entries = linkedMapOf<String, Entry>()
 
-    fun add(tool: Tool, handler: (suspend (JsonArgs) -> String)?, requiresApproval: Boolean) {
+    fun add(tool: Tool, handler: (suspend (ToolCall) -> String)?, requiresApproval: Boolean) {
         require(tool.name !in entries) { "tool registered twice: ${tool.name}" }
         // a call to a tool without a handler already stops for the app, so approving it would mean nothing
         require(handler != null || !requiresApproval) { "tool ${tool.name} requires approval but has no handler" }

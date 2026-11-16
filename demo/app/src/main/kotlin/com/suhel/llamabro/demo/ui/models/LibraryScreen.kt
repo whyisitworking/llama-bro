@@ -190,7 +190,8 @@ fun DownloadItem(
             is DownloadStatus.Partial -> {
                 Triple(
                     status.bytesDone.toFloat() / status.bytesTotal.coerceAtLeast(1),
-                    Format.progress(status.bytesDone, status.bytesTotal, null, null),
+                    // paused before any byte arrived (it was waiting its turn): no sizes to show yet
+                    if (status.bytesTotal > 0) Format.progress(status.bytesDone, status.bytesTotal, null, null) else "",
                     "Paused",
                 )
             }

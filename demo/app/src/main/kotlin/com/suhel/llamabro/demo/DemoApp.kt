@@ -1,10 +1,14 @@
 package com.suhel.llamabro.demo
 
 import android.app.Application
+import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.util.Log
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
+import androidx.work.ListenableWorker
+import androidx.work.WorkerFactory
+import androidx.work.WorkerParameters
 import com.suhel.llamabro.LlamaBroConfig
 import com.suhel.llamabro.LogLevel
 import com.suhel.llamabro.Logger
@@ -66,10 +70,26 @@ open class DemoApp :
     /** The Hub's address; the test application points it at its fake server. */
     protected open val hubEndpoint: String get() = HubConfig.Default.endpoint
 
-    /** WorkManager starts on first use with its defaults (the startup initializer is removed in the manifest). */
-    override val workManagerConfiguration: Configuration get() = Configuration.Builder().build()
+    /**
+     * WorkManager starts on first use (the startup initializer is removed in the manifest), creating the SDK's download
+     * worker on the container's hub (D75). Asked per worker rather than captured: WorkManager reads its configuration
+     * once per process, and the test application changes its container per test.
+     */
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder().setWorkerFactory(ContainerWorkers()).build()
 
-    /** The token is read from the Keystore-backed store before each plan or download, and goes nowhere else. */
+    private inner class ContainerWorkers : WorkerFactory() {
+        override fun createWorker(
+            appContext: Context,
+            workerClassName: String,
+            workerParameters: WorkerParameters,
+        ): ListenableWorker? = container.workers.createWorker(appContext, workerClassName, workerParameters)
+    }
+
+    /**
+     * The token is read from the Keystore-backed store before each search, plan or download; the hub sends it only to
+     * its own host (F82).
+     */
     val hubConfig: HubConfig by lazy {
         HubConfig {
             endpoint = hubEndpoint

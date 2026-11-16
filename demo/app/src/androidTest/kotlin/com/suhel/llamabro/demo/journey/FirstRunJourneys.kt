@@ -31,8 +31,8 @@ class FirstRunJourneys : Journey(seenFirstRun = false, asksForNotifications = tr
         see("Qwen3.5 0.8B will answer the moment it's here")
         shot("3-held")
 
-        world.downloads.advance(swift, 0.5)
-        seeDescription("Arriving · 50%")
+        world.downloads.advance(swift)
+        seeArrivingUnderWay()
         world.downloads.finish(swift)
 
         see("Hello from Qwen3.5 0.8B")

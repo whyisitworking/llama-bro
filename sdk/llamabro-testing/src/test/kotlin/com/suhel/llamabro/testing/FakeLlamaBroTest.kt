@@ -5,9 +5,14 @@ import com.suhel.llamabro.DevicePolicy
 import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.LoadReport
+import com.suhel.llamabro.MediaSource
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
+import com.suhel.llamabro.ModelTask
+import com.suhel.llamabro.Ranked
+import com.suhel.llamabro.Typed
 import com.suhel.llamabro.chat.ChatEvent
+import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.FinishReason
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.conversation
@@ -15,6 +20,9 @@ import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.conversation.JsonArgs
 import com.suhel.llamabro.conversation.canCompact
 import com.suhel.llamabro.conversation.compact
+import com.suhel.llamabro.embed
+import com.suhel.llamabro.rerank
+import com.suhel.llamabro.transcribe
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -175,7 +183,7 @@ class FakeLlamaBroTest {
         }
 
     @Test
-    fun askThrowsIncompleteOnLength() =
+    fun askIsIncompleteOnLength() =
         runBlocking {
             val fake =
                 FakeLlamaBro {
@@ -185,13 +193,7 @@ class FakeLlamaBroTest {
                     }
                 }
             val chat = fake.llamaBro.loadModel(ModelSource.file("/m.gguf")).conversation()
-            try {
-                chat.ask("Explain everything.")
-                fail("expected Incomplete")
-            } catch (e: LlamaBroException.Incomplete) {
-                assertEquals(FinishReason.Length, e.reason)
-                assertEquals("half an", e.partial)
-            }
+            assertEquals(Typed.Incomplete(FinishReason.Length, "half an"), chat.ask("Explain everything."))
         }
 
     @Test
@@ -254,6 +256,75 @@ class FakeLlamaBroTest {
             assertEquals(1, fake.openModels)
             model.closeAndJoin()
             assertEquals(0, fake.openModels)
+        }
+
+    @Test
+    fun embedAndRerankAreScripted() =
+        runBlocking {
+            val fake =
+                FakeLlamaBro {
+                    embeddings(floatArrayOf(1f, 0f), floatArrayOf(0f, 1f))
+                    ranking(0.1f, 0.9f, 0.5f)
+                    inputTooLong(tokens = 700)
+                }
+            val embedder = fake.llamaBro.loadModel(ModelSource.file("/e.gguf")) { task = ModelTask.Embedding() }
+            val vectors = embedder.embed(listOf("cats", "stocks"))
+            assertEquals(listOf(listOf(1f, 0f), listOf(0f, 1f)), vectors.map { it.toList() })
+            assertTrue(fake.embedRequests.single().contains("\"cats\""))
+
+            val reranker = fake.llamaBro.loadModel(ModelSource.file("/r.gguf")) { task = ModelTask.Rerank }
+            // scores are per document, in the documents' order; the answer is best first, cut at topN as upstream
+            assertEquals(listOf(Ranked(1, 0.9f), Ranked(2, 0.5f)), reranker.rerank("q", listOf("a", "b", "c"), 2))
+            assertTrue(fake.rerankRequests.single().contains("\"q\""))
+
+            val e = runCatching { embedder.embed("long") }.exceptionOrNull()
+            assertTrue("$e", e is LlamaBroException.InputTooLong && e.tokens == 700 && e.limit == 512)
+            val unscripted = runCatching { embedder.embed("more") }.exceptionOrNull()
+            assertTrue("$unscripted", unscripted is LlamaBroException.ServerError)
+        }
+
+    @Test
+    fun audioAndTranscribeAreScripted() =
+        runBlocking {
+            val wav = "RIFF".toByteArray() + ByteArray(4) + "WAVEfmt ".toByteArray()
+            val fake =
+                FakeLlamaBro {
+                    supportsAudio = true
+                    reply { content("You asked about the weather.") }
+                    transcript("What's the weather?")
+                    transcript("What's the", cut = true)
+                }
+            val model = fake.llamaBro.loadModel(ModelSource.file("/omni.gguf"))
+            val reply = model.conversation().ask("What did I say?", Content.Audio(MediaSource.bytes(wav)))
+            assertEquals("You asked about the weather.", (reply as Typed.Value).value)
+            assertTrue(fake.chatRequests.single().contains("lb-attachment:0"))
+            assertEquals(
+                Typed.Value("What's the weather?", "What's the weather?", null),
+                model.transcribe(MediaSource.file("/a.wav")),
+            )
+            assertEquals(
+                Typed.Incomplete(FinishReason.Length, "What's the"),
+                model.transcribe(MediaSource.bytes(wav), language = "en") { sampling { maxTokens = 3 } },
+            )
+            assertTrue(fake.transcribeRequests[1].contains("\"language\":\"en\""))
+            // a model that doesn't hear refuses audio before any request, as on the phone
+            val deaf = FakeLlamaBro().llamaBro.loadModel(ModelSource.file("/text.gguf"))
+            val e = runCatching { deaf.transcribe(MediaSource.bytes(wav)) }.exceptionOrNull()
+            assertTrue("$e", e is LlamaBroException.InvalidRequest)
+        }
+
+    @Test
+    fun cutTranscriptWithoutMaxTokensFailsTheScript() =
+        runBlocking {
+            val fake =
+                FakeLlamaBro {
+                    supportsAudio = true
+                    transcript("What's the", cut = true)
+                }
+            val model = fake.llamaBro.loadModel(ModelSource.file("/omni.gguf"))
+            val e = runCatching { model.transcribe(MediaSource.file("/a.wav")) }.exceptionOrNull()
+            assertTrue("$e", e is LlamaBroException.ServerError)
+            assertTrue("$e", e!!.message!!.contains("set maxTokens to script a cut transcript"))
         }
 
     private companion object {

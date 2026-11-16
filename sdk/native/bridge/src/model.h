@@ -48,3 +48,6 @@ struct lb_model {
 
 // request.cpp: cancels every registered request and waits until each has sent its terminal event
 void lb_model_cancel_all_requests(lb_model * model);
+
+// request.cpp: attachment buffers alive now (read, not yet freed); for the tests that check a request frees them
+int lb_attachments_live();

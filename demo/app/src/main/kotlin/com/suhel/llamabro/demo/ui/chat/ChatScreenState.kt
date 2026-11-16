@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.LimitAction
 import com.suhel.llamabro.demo.designsystem.components.ComposerState
+import com.suhel.llamabro.demo.designsystem.components.VoiceActions
 
 /**
  * The top bar: the model's name, the chat's own title (the chat list layout), whether the model is waking, and how far
@@ -54,5 +55,7 @@ class ChatScreenActions(
     val onCancelEdit: () -> Unit = {},
     val onLimitAction: (LimitAction) -> Unit = {},
     val onDismissLimit: () -> Unit = {},
+    /** The message bar's voice controls (D76): record (after the microphone permission), discard, send. */
+    val voice: VoiceActions = VoiceActions.None,
     val message: MessageActions = MessageActions({}, {}, {}, {}, {}, { _, _ -> }),
 )

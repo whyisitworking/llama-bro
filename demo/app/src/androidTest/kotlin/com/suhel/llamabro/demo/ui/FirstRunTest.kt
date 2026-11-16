@@ -20,12 +20,10 @@ import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.MainActivity
-import com.suhel.llamabro.demo.models.CachedEntry
 import com.suhel.llamabro.demo.models.Catalog
-import com.suhel.llamabro.demo.models.DownloadStatus
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.HubEstimate
+import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.testing.FakeDiscovery
 import com.suhel.llamabro.demo.testing.ScreenshotRule
 import com.suhel.llamabro.demo.testing.TestAppRule
@@ -35,6 +33,7 @@ import com.suhel.llamabro.demo.testing.withAccessibilityChecks
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -49,15 +48,15 @@ import org.junit.rules.RuleChain
 @OptIn(ExperimentalTestApi::class)
 class FirstRunTest {
     private val fake = FakeLlamaBro()
-    private val hub = FakeHubGateway()
+    private val hub = TestHub()
     private val scheduler = FakeScheduler()
-    private val discovery = FakeDiscovery()
+    private val discovery = FakeDiscovery(hub, fake.llamaBro)
     private val app =
         TestAppRule(
             config = {
                 TestConfig.fresh(
                     llamaBro = fake.llamaBro,
-                    hub = hub,
+                    hub = hub.hub,
                     scheduler = scheduler,
                     discovery = discovery,
                 )
@@ -70,6 +69,8 @@ class FirstRunTest {
     @get:Rule val rules: RuleChain = RuleChain.outerRule(demoRules(app)).around(compose).around(shots)
 
     private val swift = Catalog.picks[0]
+
+    @After fun closeHub() = hub.close()
 
     private fun waitForFirstRun(checks: Boolean = true) {
         if (checks) compose.withAccessibilityChecks()
@@ -166,21 +167,21 @@ class FirstRunTest {
     }
 
     @Test fun pickSheetFitIsQuickWhenOffline() {
-        // no estimate for Qwen3.5 0.8B in the fake hub: it fails as an offline phone does, so the weights' size is shown
+        // no estimate for Qwen3.5 0.8B: it fails as an offline phone does, so the weights' size is shown
         waitForFirstRun()
         compose.onNodeWithText("Qwen3.5 0.8B").performClick()
         waitFor("Uses about 0.7 GB")
     }
 
     @Test fun pickSheetFitIsRealWhenOnline() {
-        hub.estimates[swift.key] = HubEstimate(532_517_120, 207_346_528, true, 32_768, 900_000_000, DeviceKind.Npu)
+        discovery.estimates[swift.key] =
+            HubEstimate(532_517_120, 207_346_528, true, 32_768, 900_000_000, DeviceKind.Npu)
         waitForFirstRun()
         compose.onNodeWithText("Qwen3.5 0.8B").performClick()
         waitFor("Uses about 0.9 GB") // the SDK's projection replaced the quick figure
     }
 
     @Test fun getOpensTheChatAndHoldsAMessage() {
-        hub.status(swift.key).value = DownloadStatus.Downloading(100_000_000, 739_000_000, 9_000_000, 70)
         fake.reply {
             content("Hello from Qwen3.5 0.8B")
             timings(promptTokens = 5, predictedTokens = 5)
@@ -190,7 +191,8 @@ class FirstRunTest {
         waitFor("Get Qwen3.5 0.8B")
         compose.onNodeWithText("Get Qwen3.5 0.8B").performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("chat_screen"), 15_000)
-        assertEquals("the download was started", listOf(swift.key), scheduler.enqueued)
+        compose.waitUntil(10_000) { scheduler.enqueued == listOf(swift.key) } // the download was started
+        hub.downloading(swift.key) // and the worker, here the fake hub, has it under way
 
         // type during the download: the message is held, with the wait line
         compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("composer"))).performTextInput("hello there")
@@ -198,9 +200,8 @@ class FirstRunTest {
         waitFor("Qwen3.5 0.8B will answer the moment it's here")
 
         // the model arrives: the held message is answered
-        hub.cachedEntries += CachedEntry(swift.key, 739_000_000)
+        hub.install(swift.key)
         app.container.models.changed()
-        hub.status(swift.key).value = DownloadStatus.Complete
         waitFor("Hello from Qwen3.5 0.8B")
     }
 

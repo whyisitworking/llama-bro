@@ -19,11 +19,11 @@ import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.TokenStore
-import com.suhel.llamabro.demo.models.CachedEntry
 import com.suhel.llamabro.demo.models.DeviceFacts
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.TestHub
+import com.suhel.llamabro.demo.models.installedModel
 import com.suhel.llamabro.demo.ui.keepAlive
 import com.suhel.llamabro.demo.ui.shutDown
 import com.suhel.llamabro.hub.HfModel
@@ -62,12 +62,13 @@ class SettingsViewModelChipTest {
     private val collectors = CoroutineScope(Dispatchers.Unconfined)
     private val swift = HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M")
     private val fake = FakeLlamaBro()
-    private val hub = FakeHubGateway()
+    private val testHub = TestHub()
+    private val hub get() = testHub.hub
     private val settings by lazy {
         SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "s.preferences_pb") })
     }
     private val chats by lazy { ChatRepository(FakeChatDao(), ImageStore(File(folder.root, "images")), { 1_000L }) }
-    private val host by lazy { ModelHost(fake.llamaBro, hub, scope) }
+    private val host by lazy { ModelHost(fake.llamaBro, { hub.installedModel(it) }, scope) }
     private val models by lazy { ModelRepository(hub, settings, FakeScheduler(), scope, host) }
     private val gate = CompletableDeferred<Unit>()
 
@@ -85,6 +86,9 @@ class SettingsViewModelChipTest {
 
     @Before fun main() = Dispatchers.setMain(UnconfinedTestDispatcher())
 
+    /** The model is on the phone: the host loads the hub's installed copy, as the app's does. */
+    @Before fun installModel() = testHub.install(swift)
+
     @After fun stop() {
         gate.complete(Unit)
         viewModels.forEach { it.shutDown() }
@@ -92,6 +96,7 @@ class SettingsViewModelChipTest {
         collectors.cancel()
         runBlocking { host.release() }
         scope.cancel()
+        testHub.close()
     }
 
     private fun viewModel(facts: suspend () -> DeviceFacts): SettingsViewModel =
@@ -145,7 +150,7 @@ class SettingsViewModelChipTest {
     @Test fun choosingAChipAndBackDuringAReplyKeepsTheModel() =
         runBlocking {
             settings.setLastModel(swift.toString())
-            hub.cachedEntries += CachedEntry(swift, 1_000)
+            testHub.install(swift)
             models.changed()
             fake.reply { content("Done.") }
             val chat = engine.open(0)
@@ -167,7 +172,7 @@ class SettingsViewModelChipTest {
 
     private suspend fun streamingChat(): ChatEngine.ChatHandle {
         settings.setLastModel(swift.toString())
-        hub.cachedEntries += CachedEntry(swift, 1_000)
+        testHub.install(swift)
         models.changed()
         fake.reply { content("Done.") }
         val chat = engine.open(0)

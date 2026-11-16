@@ -26,9 +26,7 @@ import com.suhel.llamabro.demo.data.NewMessage
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
-import com.suhel.llamabro.demo.models.CachedEntry
-import com.suhel.llamabro.demo.models.DownloadStatus
-import com.suhel.llamabro.demo.models.FakeHubGateway
+import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.testing.TestAppRule
 import com.suhel.llamabro.demo.testing.TestConfig
 import com.suhel.llamabro.demo.testing.demoRules
@@ -41,6 +39,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -57,6 +56,9 @@ import java.io.File
 @RunWith(Parameterized::class)
 class ChatScreenshotsTest(private val style: MessageStyle, private val theme: ThemeMode) {
     companion object {
+        /** A load that outlasts the test's look at the wake line (the fake engine's load sleeps in four steps). */
+        private const val LONG_LOAD_MILLIS = 20_000L
+
         @JvmStatic
         @Parameterized.Parameters(name = "{0}-{1}")
         fun cases() =
@@ -69,11 +71,11 @@ class ChatScreenshotsTest(private val style: MessageStyle, private val theme: Th
     }
 
     private val fake = FakeLlamaBro()
-    private val hub = FakeHubGateway()
+    private val hub = TestHub()
     private var script: ((String) -> Flow<ChatEvent>)? = null
     private val app =
         TestAppRule(config = {
-            TestConfig.fresh(llamaBro = fake.llamaBro, hub = hub, streamer = { c, t, i, _ ->
+            TestConfig.fresh(llamaBro = fake.llamaBro, hub = hub.hub, streamer = { c, t, i, _ ->
                 script?.invoke(t)
                     ?: c.send(t, *i)
             })
@@ -82,11 +84,13 @@ class ChatScreenshotsTest(private val style: MessageStyle, private val theme: Th
 
     @get:Rule val rules: RuleChain = RuleChain.outerRule(demoRules(app)).around(compose)
 
+    @After fun closeHub() = hub.close()
+
     private val swift = HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M")
     private val deep = HfModel.parse("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")
 
     private fun onPhone(vararg models: HfModel) {
-        hub.cachedEntries += models.map { CachedEntry(it, 700_000_000) }
+        hub.install(*models)
         app.container.models.changed()
         runBlocking { app.container.settings.setLastModel(models.first().toString()) }
     }
@@ -240,10 +244,7 @@ class ChatScreenshotsTest(private val style: MessageStyle, private val theme: Th
     }
 
     @Test fun waking() {
-        hub.onSource = {
-            delay(60_000)
-            throw IllegalStateException("never loaded")
-        }
+        fake.loadMillis = LONG_LOAD_MILLIS // the model wakes for longer than the test looks
         onPhone(swift)
         show()
         ask("Hello")
@@ -263,7 +264,7 @@ class ChatScreenshotsTest(private val style: MessageStyle, private val theme: Th
 
     @Test fun heldWhileDownloading() {
         runBlocking { app.container.settings.setLastModel(swift.toString()) }
-        hub.status(swift).value = DownloadStatus.Downloading(300_000_000, 700_000_000, 9_000_000, 40)
+        hub.downloading(swift)
         show()
         ask("Hello when you're ready")
         waitFor("Qwen3.5 0.8B will answer the moment it's here")

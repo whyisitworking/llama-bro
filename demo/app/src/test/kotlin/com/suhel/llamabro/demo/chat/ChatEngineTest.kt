@@ -13,13 +13,13 @@ import com.suhel.llamabro.demo.data.NewMessage
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
-import com.suhel.llamabro.demo.models.CachedEntry
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DownloadFailure
 import com.suhel.llamabro.demo.models.DownloadStatus
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.TestHub
+import com.suhel.llamabro.demo.models.installedModel
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CoroutineScope
@@ -54,7 +54,8 @@ class ChatEngineTest {
     private val llamaKey: HfModel = Catalog.suggested.first { !it.sees && !it.thinks }.key
 
     private val fake = FakeLlamaBro()
-    private val hub = FakeHubGateway()
+    private val testHub = TestHub()
+    private val hub get() = testHub.hub
     private val dao = FakeChatDao()
     private val scheduler = FakeScheduler()
     private val settings by lazy {
@@ -69,7 +70,7 @@ class ChatEngineTest {
             System::currentTimeMillis,
         )
     }
-    private val host by lazy { ModelHost(fake.llamaBro, hub, scope) }
+    private val host by lazy { ModelHost(fake.llamaBro, { hub.installedModel(it) }, scope) }
     private val models by lazy { ModelRepository(hub, settings, scheduler, scope, host) }
 
     private var streamer: Streamer? = null
@@ -85,10 +86,11 @@ class ChatEngineTest {
     @After fun stop() {
         runBlocking { host.release() }
         scope.cancel()
+        testHub.close()
     }
 
     private fun onPhone(vararg keys: HfModel) {
-        hub.cachedEntries += keys.map { CachedEntry(it, 1_000) }
+        testHub.install(*keys)
         models.changed()
     }
 
@@ -132,8 +134,7 @@ class ChatEngineTest {
     @Test fun aRefusedDownloadBecomesAPlainLineAndRetryStartsItAgain() =
         runBlocking {
             settings.setLastModel(swift.toString())
-            hub.status(swift).value =
-                DownloadStatus.Failed(DownloadFailure(DownloadFailure.Kind.Unauthorized, retryable = false))
+            testHub.refuse(swift, TestHub.Refusal.Unauthorized)
             val chat = engine.open(0)
             until("the model says its download stopped") { chat.model.value is ChatModelState.DownloadFailed }
             // the held message is still waiting for it: the line says why, and what the user can do about it
@@ -154,7 +155,7 @@ class ChatEngineTest {
             reply("first answer")
             reply("second answer")
             settings.setLastModel(swift.toString())
-            hub.status(swift).value = DownloadStatus.Downloading(10, 100, null, null)
+            testHub.downloading(swift)
             val chat = engine.open(0)
             chat.send("one", emptyList())
             until("first held") { rows(chat).size == 1 }
