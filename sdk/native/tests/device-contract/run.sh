@@ -4,7 +4,10 @@
 # with its request set, http-run.py and compare.py, but both sides run on the phone: llama-server in the background
 # (reached through adb forward, F20) and lb-run with the Hexagon backend passed as the app passes it. Passes only on
 # "N/N identical". compare.py compares the rebuilt reply text, not checksums; the script also prints the first
-# replies, since two identical garbage answers would pass (F71).
+# replies, since two identical garbage answers would pass (F71). One allowance: the NPU breaks a near-tie between two
+# tokens either way from run to run, in either process (F149), so streamed chat requests without tools also ask for
+# the top 2 logprobs, and a reply that matches token for token up to one near-tie (top-2 gap at most
+# LB_CONTRACT_NEAR_TIE, default 0.25) and splits there passes as "near-tie".
 #
 # Needs: scripts/build-device-tools.sh, a phone on adb (ANDROID_SERIAL), and on it the model (and mmproj for the image
 # request) in $LB_DEVICE_MODEL_DIR. Env: LB_DEVICE_MODEL (file name, default Qwen3.5-4B-Q4_K_M.gguf),
@@ -47,8 +50,19 @@ import json, sys
 have = set(sys.argv[3:]) - {""}
 with open(sys.argv[2], "w") as out:
     for line in open(sys.argv[1]):
-        if line.strip() and set(json.loads(line).get("needs", [])) <= have:
-            out.write(line)
+        if not line.strip():
+            continue
+        spec = json.loads(line)
+        if not set(spec.get("needs", [])) <= have:
+            continue
+        body = spec.get("body")
+        # logprobs only for the near-tie check (F149): they don't change sampling, and their values aren't compared;
+        # never with tools, which llama-server refuses ("logprobs is not supported with tools + stream")
+        if (spec["endpoint"] == "chat" and isinstance(body, dict) and body.get("stream") and "logprobs" not in body
+                and "tools" not in body):
+            spec["body"] = dict(body, logprobs=True, top_logprobs=2)
+            spec["near_tie_logprobs"] = True
+        out.write(json.dumps(spec) + "\n")
 PY
 echo "$(wc -l < "$requests" | tr -d ' ') requests on $dev$( [ -n "$mmproj" ] || echo ", without the image ones (no mmproj)")"
 
@@ -103,7 +117,8 @@ for rid in ("t2-01-plain", "t2-03-list", "t2-12-json-schema"):
     print(f"{rid}: {content[:160]!r}")
 PY
 
-result="$(python3 "$contract/compare.py" "$out/upstream" "$out/lb" "$requests" || true)"
+tie="${LB_CONTRACT_NEAR_TIE:-0.25}"
+result="$(python3 "$contract/compare.py" --near-tie "$tie" "$out/upstream" "$out/lb" "$requests" || true)"
 echo "$result"
 echo "$result" | tail -1 | awk -F'[/ ]' '$3 == "identical" && $1 == $2 && $1 > 0 { ok = 1 } END { exit !ok }' || { echo "FAIL"; exit 1; }
 echo PASS

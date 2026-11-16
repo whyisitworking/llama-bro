@@ -1,0 +1,13 @@
+diff --git a/ggml/src/ggml-hexagon/htp-kparams.cpp b/ggml/src/ggml-hexagon/htp-kparams.cpp
+index 8c75be2..c96336c 100644
+--- a/ggml/src/ggml-hexagon/htp-kparams.cpp
++++ b/ggml/src/ggml-hexagon/htp-kparams.cpp
+@@ -562,7 +562,7 @@ static bool htp_kparams_solve_gated_delta_net(
+                              (S_v % 64 == 0) &&
+                              (n_tokens >= HTP_GDN_MIN_TOKENS) &&
+                              (g->ne[0] == 1) &&
+-                             (K == 1);
++                             (K == 1 || n_tokens > K);
+ 
+     struct htp_gdn_hmx_vtcm_layout hmx_layout;
+     struct htp_gdn_vtcm_layout hvx_layout;

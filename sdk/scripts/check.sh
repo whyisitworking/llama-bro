@@ -21,6 +21,8 @@
 #   device         (--device) phone tests: native, UI, acceptance per model and per acceptance-app flavor (cpu, gpu, full,
 #                  noskel), and each flavor's minified (R8) build
 #   device-contract (--device) the C API vs upstream llama-server on the phone's NPU (tests/device-contract/run.sh)
+#   device-speech (--device) LFM3-Omni-2B speaks through upstream /tts with everything on the NPU (patch 0005, F155;
+#                  tests/device-speech/run.sh, after device-contract, which builds the device tools)
 #   hub-device    (--device) Hub cache and fake download tests on the phone
 #   hub-resume    (--device) acceptance-app kill/force-stop resume and notification checks on the phone
 #
@@ -396,6 +398,7 @@ run aar      step_aar
 [ $device -eq 1 ] && run hub-device step_hub_device
 [ $device -eq 1 ] && run hub-resume step_hub_resume
 [ $device -eq 1 ] && run device-contract step_device_contract
+[ $device -eq 1 ] && run device-speech bash "$native/tests/device-speech/run.sh"
 
 echo
 printf '%s\n' "${results[@]}"

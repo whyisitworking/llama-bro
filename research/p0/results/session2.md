@@ -3,7 +3,7 @@
 > **Parent:** [P0](../README.md) · **Summarised in:** [findings](../../../docs/research/findings.md) (tests A and C; findings F7–F11, decisions D10 and D17)
 
 Date: 2026-11-03. Same phone, model and flags as session 1 (`-dev HTP0 -ngl 99 -c 16384 -t 6 -tb 6`).
-MTP: `--spec-type draft-mtp --spec-draft-n-max 3`. P = U + `sdk/native/patches/0001-delta-net-head-tail-split.patch`
+MTP: `--spec-type draft-mtp --spec-draft-n-max 3`. P = U + `research/ph/delta-net/delta-net-head-tail-split.patch` (then the SDK's 0001)
 (only `libllama.so` differs). The phone reaches thermal status 3 after about 4 minutes of continuous NPU work,
 even in AC. Comparisons are therefore always made within a round (alternating builds or settings), never across rounds.
 

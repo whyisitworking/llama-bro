@@ -5,8 +5,13 @@ For chat streams it rebuilds the final message: content, reasoning_content, tool
 arguments; ids are random, server-common.cpp) and finish_reason. id / created / timings / usage
 timing fields are ignored. Non-stream responses are compared as JSON minus those fields.
 
-usage: compare.py DIR_A DIR_B [REQUESTS.jsonl]   -> one line per request, exits 1 on any difference.
+usage: compare.py [--near-tie GAP] DIR_A DIR_B [REQUESTS.jsonl]   -> one line per request, exits 1 on any difference.
 REQUESTS gives per-request options (see make-requests.py): compare=skip|metrics_names|events, compare_timings.
+
+--near-tie GAP (the device contract only, F149/D80): the phone's NPU breaks a near-tie between two tokens either way
+from run to run, in either process. A chat reply whose request carries `near_tie_logprobs` (logprobs added only for
+this check) passes when both sides chose the same tokens up to one position, and there each side's token is in the
+other's top 2 with both sides' top-2 gaps at most GAP; the logprob values themselves are not compared.
 """
 import json
 import os
@@ -144,7 +149,27 @@ def all_events(path):
     return out
 
 
-def main(a, b, requests=None):
+def tokens_only(msg):
+    """The rebuilt reply with the logprob values dropped and only the chosen tokens kept."""
+    return dict(msg, logprobs=[e.get("token") for e in msg["logprobs"]])
+
+
+def near_tie(na, nb, gap):
+    """(position, token A, token B, largest top-2 gap) where the replies first split, if it is a near-tie; else None."""
+    la, lb = na["logprobs"], nb["logprobs"]
+    i = next((k for k in range(min(len(la), len(lb))) if la[k]["token"] != lb[k]["token"]), None)
+    if i is None:
+        return None
+    ta, tb = la[i]["token"], lb[i]["token"]
+    top_a = {t["token"]: t["logprob"] for t in la[i].get("top_logprobs") or []}
+    top_b = {t["token"]: t["logprob"] for t in lb[i].get("top_logprobs") or []}
+    if not {ta, tb} <= top_a.keys() or not {ta, tb} <= top_b.keys():
+        return None
+    worst = max(top_a[ta] - top_a[tb], top_b[tb] - top_b[ta])
+    return (i, ta, tb, worst) if worst <= gap else None
+
+
+def main(a, b, requests=None, tie_gap=None):
     specs = {}
     if requests:
         for line in open(requests):
@@ -152,7 +177,7 @@ def main(a, b, requests=None):
                 spec = json.loads(line)
                 specs[spec["id"]] = spec
     ids = [json.loads(l)["id"] for l in open(os.path.join(a, "summary.jsonl"))]
-    bad = 0
+    bad = ties = 0
     for rid in ids:
         spec = specs.get(rid, {})
         pa, pb = os.path.join(a, rid + ".jsonl"), os.path.join(b, rid + ".jsonl")
@@ -169,6 +194,15 @@ def main(a, b, requests=None):
             na, nb = all_events(pa), all_events(pb)
         else:
             na, nb = normalized(pa), normalized(pb)
+            with_lp = all(isinstance(n, dict) and "logprobs" in n for n in (na, nb))
+            if tie_gap is not None and spec.get("near_tie_logprobs") and with_lp:
+                if tokens_only(na) != tokens_only(nb):
+                    tie = near_tie(na, nb, tie_gap)
+                    if tie:
+                        ties += 1
+                        print(f"NEAR-TIE {rid}: token {tie[0]} {tie[1]!r} / {tie[2]!r}, top-2 gap {tie[3]:.3f}")
+                        continue
+                na, nb = tokens_only(na), tokens_only(nb)
             fields = spec.get("compare_timings")
             if fields:
                 na, nb = {"response": na, "timings": timings_of(pa, fields)}, {"response": nb, "timings": timings_of(pb, fields)}
@@ -178,9 +212,13 @@ def main(a, b, requests=None):
             bad += 1
             print(f"DIFF    {rid}\n  A: {json.dumps(na)[:400]}\n  B: {json.dumps(nb)[:400]}")
     compared = len(ids) - sum(1 for r in ids if specs.get(r, {}).get("compare") == "skip")
-    print(f"{compared - bad}/{compared} identical")
+    print(f"{compared - bad}/{compared} identical" + (f" ({ties} near-tie)" if ties else ""))
     return 1 if bad else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None))
+    args = sys.argv[1:]
+    gap = None
+    if args[:1] == ["--near-tie"]:
+        gap, args = float(args[1]), args[2:]
+    sys.exit(main(args[0], args[1], args[2] if len(args) > 2 else None, gap))
