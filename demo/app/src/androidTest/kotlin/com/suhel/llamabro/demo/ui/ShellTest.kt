@@ -182,6 +182,18 @@ class ShellTest {
         whileItMoves {
             compose.onNodeWithContentDescription("Chats").performClick()
             compose.waitUntilAtLeastOneExists(hasTestTag("drawer"), 10_000)
+            // the drawer is in the tree as soon as it starts to slide in, its start edge off the screen: on the phone
+            // a check of the icons at its foot ran while Models, at the start, was still off it (New chat, at the
+            // end, was already on). Wait until it has slid all the way in.
+            compose.waitUntil(10_000) {
+                compose
+                    .onAllNodes(hasTestTag("drawer"))
+                    .fetchSemanticsNodes()
+                    .singleOrNull()
+                    ?.boundsInRoot
+                    ?.left
+                    ?.let { it >= 0f } == true
+            }
         }
     }
 

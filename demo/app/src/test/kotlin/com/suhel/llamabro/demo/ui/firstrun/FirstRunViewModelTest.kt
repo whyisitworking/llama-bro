@@ -9,11 +9,12 @@ import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.FitLabel
 import com.suhel.llamabro.demo.models.HubEstimate
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.ScriptedEstimates
+import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.ui.keepAlive
 import com.suhel.llamabro.demo.ui.shutDown
 import com.suhel.llamabro.hub.HfModel
@@ -44,7 +45,10 @@ import java.time.ZoneOffset
 class FirstRunViewModelTest {
     @get:Rule val folder = TemporaryFolder()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val hub = FakeHubGateway()
+    private val testHub = TestHub()
+
+    /** The SDK's projection, as the test sets it. */
+    private val hub = ScriptedEstimates()
     private val dao = FakeChatDao()
     private val chats = ChatRepository(dao, ImageStore(File("/tmp/none")), { 1_000L })
     private val settings by lazy {
@@ -53,7 +57,7 @@ class FirstRunViewModelTest {
     private val scheduler = FakeScheduler()
     private val models by lazy {
         ModelRepository(
-            hub,
+            testHub.hub,
             settings,
             scheduler,
             CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
@@ -70,6 +74,7 @@ class FirstRunViewModelTest {
         Dispatchers.resetMain()
         collectors.cancel()
         scope.cancel()
+        testHub.close()
     }
 
     private fun viewModel(
@@ -162,7 +167,7 @@ class FirstRunViewModelTest {
             val vm = viewModel()
             vm.get(deep)
             val id = kotlinx.coroutines.withTimeout(5_000) { vm.chatOpened.first() }
-            assertEquals(listOf(deep.key), scheduler.enqueued)
+            scheduler.awaitEnqueued(deep.key) // the repository starts it off this thread
             assertEquals(deep.key.toString(), chats.modelKey(id))
             val saved = settings.settings.first()
             assertTrue(saved.seenFirstRun)

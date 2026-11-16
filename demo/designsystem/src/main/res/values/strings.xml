@@ -21,4 +21,12 @@
     <string name="ds_open_photo">Open photo</string>
     <string name="ds_close_photo">Close photo</string>
     <string name="ds_photo_unavailable">This photo can\'t be shown.</string>
+    <string name="ds_record">Record a voice message</string>
+    <string name="ds_recording">Recording</string>
+    <string name="ds_recording_stopped">Recording stopped</string>
+    <string name="ds_discard_recording">Discard the recording</string>
+    <string name="ds_send_recording">Send the voice message</string>
+    <string name="ds_play">Play</string>
+    <string name="ds_pause">Pause</string>
+    <string name="ds_voice_message">Voice message, %1$s</string>
 </resources>

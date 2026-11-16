@@ -27,8 +27,8 @@ class NotificationDeniedJourney : Journey(seenFirstRun = false, asksForNotificat
         // saying no to notifications only means no progress in the shade: the download goes on while the app is open
         seeTag("chat_screen")
         assertEquals(listOf(swift), world.downloads.enqueued)
-        world.downloads.advance(swift, 0.5)
-        seeDescription("Arriving · 50%")
+        world.downloads.advance(swift)
+        seeArrivingUnderWay()
         world.downloads.finish(swift)
         goneTag("download_ring")
         send("hi")

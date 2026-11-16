@@ -1,10 +1,15 @@
 package com.suhel.llamabro.demo.ui.chat
 
+import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,13 +34,18 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.suhel.llamabro.demo.AppContainer
 import com.suhel.llamabro.demo.chat.LimitAction
+import com.suhel.llamabro.demo.chat.MediaVoicePlayer
 import com.suhel.llamabro.demo.chat.Thinking
+import com.suhel.llamabro.demo.chat.VoiceRecorder
 import com.suhel.llamabro.demo.data.AppLayout
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DemoSheet
@@ -43,6 +53,7 @@ import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
+import com.suhel.llamabro.demo.designsystem.components.VoiceActions
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.SizeTier
@@ -110,6 +121,8 @@ fun ChatScreen(
     var shareRequest by rememberSaveable(stateSaver = ShareRequestSaver) { mutableStateOf<ShareCardContent?>(null) }
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(vm::attach) }
+    val voice = rememberVoiceActions(vm.voice)
+    val playing = vm.player.clip.collectAsStateWithLifecycle()
 
     val messageActions =
         remember(vm) {
@@ -132,10 +145,12 @@ fun ChatScreen(
                 details = { position -> details = position },
                 continueReply = vm.handle::continueReply,
                 openPhoto = { position, index -> photo = OpenPhoto(position, index) },
+                toggleVoice = vm.player::toggle,
+                playing = { playing.value },
             )
         }
     val actions =
-        remember(vm, chrome, messageActions) {
+        remember(vm, chrome, messageActions, voice) {
             ChatScreenActions(
                 onMenu = chrome.onMenu,
                 onBack = chrome.onBack,
@@ -157,8 +172,11 @@ fun ChatScreen(
                 onCancelEdit = vm::cancelEdit,
                 onDismissLimit = { vm.notes.close(vm.limit.value) },
                 onLimitAction = { action ->
-                    limitAction(action, vm, chrome, openSwitcher = { sheet = Sheet.Switcher }) { sheet = Sheet.Smaller }
+                    limitAction(action, vm, chrome, context, openSwitcher = { sheet = Sheet.Switcher }) {
+                        sheet = Sheet.Smaller
+                    }
                 },
+                voice = voice,
                 message = messageActions,
             )
         }
@@ -228,6 +246,8 @@ private fun chatViewModel(
         },
         savedState = saved,
         background = container.appScope,
+        recorder = VoiceRecorder(container.audio, container.microphone, container.appScope),
+        player = MediaVoicePlayer(container.appScope),
     )
 }
 
@@ -245,6 +265,7 @@ private fun limitAction(
     action: LimitAction,
     vm: ChatViewModel,
     chrome: ChatChrome,
+    context: Context,
     openSwitcher: () -> Unit,
     openSmaller: () -> Unit,
 ) {
@@ -256,6 +277,49 @@ private fun limitAction(
         LimitAction.StartNewChat -> chrome.onNewChat()
         LimitAction.OpenMemorySettings -> chrome.onMemory()
         LimitAction.CloseOtherAppsAndRetry, LimitAction.Retry -> vm.retry()
+        LimitAction.OpenAppSettings -> openAppSettings(context)
+    }
+}
+
+/**
+ * The bar's voice controls (D76): the mic asks for the microphone the first time, then records; refused, a line offers
+ * Android's settings for the app. Leaving the screen stops a recording and keeps it in the bar, never sent by itself.
+ */
+@Composable
+private fun rememberVoiceActions(voice: VoiceComposer?): VoiceActions {
+    val context = LocalContext.current
+    val ask =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) voice?.start() else voice?.refused()
+        }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { voice?.pause() }
+    return remember(voice, context, ask) {
+        if (voice == null) {
+            VoiceActions.None
+        } else {
+            VoiceActions(
+                onRecord = {
+                    if (hasMicrophone(context)) voice.start() else ask.launch(Manifest.permission.RECORD_AUDIO)
+                },
+                onDiscard = voice::discard,
+                onSend = voice::send,
+            )
+        }
+    }
+}
+
+private fun hasMicrophone(context: Context): Boolean =
+    ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+/** Android's own page for the app, where a refused permission is given (D76). */
+private fun openAppSettings(context: Context) {
+    val intent =
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(intent)
+    } catch (_: ActivityNotFoundException) {
+        Unit // a phone without that page: the line stays, and the system's own settings still have the switch
     }
 }
 

@@ -1,7 +1,5 @@
 package com.suhel.llamabro
 
-import com.suhel.llamabro.chat.FinishReason
-
 /**
  * Every error the SDK raises, mapped from llama-server's error types (design §6.1). Apps catch these; only the SDK
  * creates them. [cause] holds the underlying error where there is one.
@@ -20,6 +18,15 @@ public sealed class LlamaBroException(message: String, cause: Throwable?) : Exce
         public val contextSize: Int?,
         message: String,
     ) : LlamaBroException(message, null)
+
+    /**
+     * An embedding or rerank input is longer than the batch (D65): llama-server reads each such input in one batch
+     * and can't split it. [tokens] is the input's length and [limit] the batch size, `ModelConfig.microBatchSize`
+     * (512 by default). Shorten or split the text, or load with a larger `microBatchSize` and `batchSize`; the SDK
+     * does neither by itself.
+     */
+    public class InputTooLong internal constructor(public val tokens: Int, public val limit: Int, message: String) :
+        LlamaBroException(message, null)
 
     /** The model or this build can't do it (`not_supported_error`), e.g. embeddings without an embedding model. */
     public class NotSupported internal constructor(message: String) : LlamaBroException(message, null)
@@ -69,12 +76,4 @@ public sealed class LlamaBroException(message: String, cause: Throwable?) : Exce
     /** Another send, resume, regenerate or compaction is running on this conversation (`Conversation.isBusy`). */
     public class Busy internal constructor() :
         LlamaBroException("another send, resume, regenerate or compact is running on this conversation", null)
-
-    /**
-     * `Conversation.ask()` got no complete answer. [reason] is `Length` (cut at the output limit), `TurnLimit` or
-     * `ToolCallsPending` (continue with `resume()`, after `addToolResult` for pending tools). [partial] is the
-     * reply's text so far.
-     */
-    public class Incomplete internal constructor(public val reason: FinishReason, public val partial: String) :
-        LlamaBroException("the reply ended with $reason, not a complete answer", null)
 }

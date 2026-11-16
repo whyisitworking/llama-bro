@@ -118,13 +118,17 @@ tasks.configureEach {
 
 // Host end-to-end (HostNativeTest), run by sdk/scripts/check.sh: Kotlin + JNI + the real core on this machine,
 // compared with upstream llama-server. -Pllamabro.host.lib=<host bin dir> -Pllamabro.host.server=<url>
-// -Pllamabro.host.model=<gguf> [-Pllamabro.host.mmproj=<gguf>]. Without them the test is skipped.
+// -Pllamabro.host.model=<gguf> [-Pllamabro.host.mmproj=<gguf>]; HostEmbeddingTest also takes
+// -Pllamabro.host.models=<LB_TEST_MODELS_DIR>, and HostNativeAttachmentTest -Pllamabro.host.clip=<wav> too. Without
+// them the tests are skipped.
 tasks.withType<Test>().configureEach {
-    listOf("lib", "server", "model", "mmproj").forEach { key ->
+    listOf("lib", "server", "model", "mmproj", "models", "clip").forEach { key ->
         providers.gradleProperty("llamabro.host.$key").orNull?.let { systemProperty("llamabro.host.$key", it) }
     }
     providers.gradleProperty("llamabro.host.lib").orNull?.let {
         jvmArgs("-Djava.library.path=$it")
+        // HostNativeAttachmentTest reads a FileDescriptor's number, as an Android ParcelFileDescriptor gives it
+        jvmArgs("--add-opens=java.base/java.io=ALL-UNNAMED")
         // the native runtime initialises once per process: a test of its first init needs a JVM of its own (D66)
         forkEvery = 1
     }

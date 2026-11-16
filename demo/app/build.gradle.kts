@@ -68,7 +68,7 @@ android {
     }
 }
 
-// fakes used by both the JVM tests and the phone tests (FakeHubGateway, FakeScheduler)
+// fakes used by both the JVM tests and the phone tests (TestHub over the SDK's FakeLlamaBroHub, FakeScheduler)
 android.sourceSets {
     getByName("test").kotlin.directories.add("src/sharedTest/kotlin")
     getByName("androidTest").kotlin.directories.add("src/sharedTest/kotlin")
@@ -111,9 +111,11 @@ dependencies {
     // the SDK's modules, from the same build
     implementation(project(":llamabro"))
     implementation(project(":llamabro-hub"))
+    implementation(project(":llamabro-hub-work"))
     implementation(project(":llamabro-hexagon"))
     implementation(project(":llamabro-opencl"))
     testImplementation(project(":llamabro-testing"))
+    testImplementation(project(":llamabro-hub-testing"))
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
@@ -128,6 +130,7 @@ dependencies {
     androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.androidx.test.uiautomator)
     androidTestImplementation(project(":llamabro-testing"))
+    androidTestImplementation(project(":llamabro-hub-testing"))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4.accessibility)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
@@ -135,8 +138,8 @@ dependencies {
     androidTestImplementation(libs.leakcanary.android.instrumentation)
 }
 
-// the benchmark and profile-generating builds run over the SDK's fake engine and seeded chats (src/benchmark); the
-// baseline profile plugin makes their build types after this script runs, so they are configured as they appear
+// the benchmark and profile-generating builds run over the SDK's fake engine and hub and seeded chats (src/benchmark);
+// the baseline profile plugin makes their build types after this script runs, so they are configured as they appear
 val benchmarkBuilds = setOf("benchmarkRelease", "nonMinifiedRelease")
 android.sourceSets.configureEach {
     if (name in benchmarkBuilds) {
@@ -146,6 +149,7 @@ android.sourceSets.configureEach {
 configurations.configureEach {
     if (name in benchmarkBuilds.map { "${it}Implementation" }) {
         dependencies.add(project.dependencies.create(project(":llamabro-testing")))
+        dependencies.add(project.dependencies.create(project(":llamabro-hub-testing")))
     }
 }
 

@@ -17,6 +17,7 @@ enum class LimitAction {
     AddToken,
     SwitchModel,
     OpenMemorySettings,
+    OpenAppSettings,
 }
 
 /**
@@ -101,6 +102,27 @@ object Limits {
             "$name can't see images. ${visionModelName ?: "Qwen3.5 4B"} can.",
             if (visionModelName != null) LimitAction.UseVisionModel else LimitAction.GetVisionModel,
             if (visionModelName != null) "Switch to $visionModelName" else "Get one that can",
+        )
+
+    /**
+     * The chat holds voice messages its model can't hear (D76): each went as a note saying one was there. A note, so it
+     * can be closed; its way out is another model.
+     */
+    fun cantHear(name: String) =
+        Limit(
+            "$name can't hear voice messages, so it got a note in their place.",
+            LimitAction.SwitchModel,
+            "Switch model",
+            dismissible = true,
+        )
+
+    /** The microphone permission was refused (D76): Android's own page for the app is where it is given. */
+    fun microphone() =
+        Limit(
+            "Llama Bro needs the microphone for voice messages.",
+            LimitAction.OpenAppSettings,
+            "Open settings",
+            dismissible = true,
         )
 
     fun modelGone(name: String) = Limit("$name isn't on this phone any more.", LimitAction.SwitchModel, "Switch model")

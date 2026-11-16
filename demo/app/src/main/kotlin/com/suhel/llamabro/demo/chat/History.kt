@@ -1,6 +1,7 @@
 package com.suhel.llamabro.demo.chat
 
 import androidx.tracing.trace
+import com.suhel.llamabro.MediaSource
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.demo.data.MessageKind
@@ -14,20 +15,29 @@ object History {
      * The messages before position [upTo], for a model. Divider rows and failed replies aren't sent. A user message
      * with
      * no reply after it (its reply failed or was held) is joined to the next user message with a blank line, because
-     * some templates refuse two user turns in a row (F27). Stopped replies go with what they hold.
+     * some templates refuse two user turns in a row (F27). Stopped replies go with what they hold. Pictures and voice
+     * messages go as their files, which the SDK reads natively (D84); for a model that can't [hear], each voice message
+     * is a short note saying one was there (D76).
      */
-    fun forModel(
-        messages: List<StoredMessage>,
-        upTo: Int = messages.size,
-        readImage: (File) -> ByteArray = { it.readBytes() },
-    ): List<Message> = trace("History.forModel") { build(messages, upTo, readImage) }
+    fun forModel(messages: List<StoredMessage>, upTo: Int = messages.size, hears: Boolean = true): List<Message> =
+        trace("History.forModel") { build(messages, upTo, hears) }
 
-    private fun build(messages: List<StoredMessage>, upTo: Int, readImage: (File) -> ByteArray): List<Message> {
+    /**
+     * What stands for a voice message the model can't hear (D76): the conversation stays readable, and the model knows
+     * something was said.
+     */
+    const val VOICE_PLACEHOLDER = "(A voice message was sent here; this model can't hear it.)"
+
+    /** [user]'s message for the model: its pictures and voice message as files, then its text (D76, D84). */
+    fun userMessage(user: StoredMessage, hears: Boolean): Message =
+        PendingUser(user.text, user.images, listOfNotNull(user.voice?.file)).toMessage(hears)
+
+    private fun build(messages: List<StoredMessage>, upTo: Int, hears: Boolean): List<Message> {
         val out = mutableListOf<Message>()
         var pending: PendingUser? = null
 
         fun flush() {
-            pending?.let { out += it.toMessage(readImage) }
+            pending?.let { out += it.toMessage(hears) }
             pending = null
         }
         for (m in messages) {
@@ -41,11 +51,12 @@ object History {
                     val p = pending
                     pending =
                         if (p == null) {
-                            PendingUser(m.text, m.images)
+                            PendingUser(m.text, m.images, listOfNotNull(m.voice?.file))
                         } else {
                             PendingUser(
                                 joinText(p.text, m.text),
                                 p.images + m.images,
+                                p.voices + listOfNotNull(m.voice?.file),
                             )
                         }
                 }
@@ -73,13 +84,20 @@ object History {
             "$a\n\n$b"
         }
 
-    private class PendingUser(val text: String, val images: List<File>) {
-        fun toMessage(readImage: (File) -> ByteArray): Message {
-            if (images.isEmpty()) return Message.user(text)
+    private class PendingUser(val text: String, val images: List<File>, val voices: List<File>) {
+        fun toMessage(hears: Boolean): Message {
+            val words =
+                if (hears || voices.isEmpty()) {
+                    text
+                } else {
+                    joinText(voices.joinToString("\n\n") { VOICE_PLACEHOLDER }, text)
+                }
+            if (images.isEmpty() && (voices.isEmpty() || !hears)) return Message.user(words)
             val content =
                 buildList<Content> {
-                    images.forEach { add(Content.Image(readImage(it), "image/jpeg")) }
-                    if (text.isNotEmpty()) add(Content.Text(text))
+                    images.forEach { add(Content.Image(MediaSource.file(it.path), "image/jpeg")) }
+                    if (hears) voices.forEach { add(Content.Audio(MediaSource.file(it.path), "audio/wav")) }
+                    if (words.isNotEmpty()) add(Content.Text(words))
                 }
             return Message.user(*content.toTypedArray())
         }

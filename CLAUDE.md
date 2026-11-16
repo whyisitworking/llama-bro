@@ -44,3 +44,8 @@ DEMO_DEVICE=<serial> demo/scripts/check.sh --device     # instrumented tests, jo
 Kotlin, ktlint official style (`.editorconfig`), detekt, lint as errors; four-space indent, 120 columns. Prefer small
 composables and stateless screens over a view model; derive UI state declaratively (`combine`, `stateIn`). Name things for what
 they are; comments explain why, not what.
+
+Soft rule, for a later Kotlin Multiplatform port (iOS, Flutter on top): in new SDK logic, prefer multiplatform-friendly
+choices where one exists at little cost (kotlinx.serialization, coroutines, Okio or kotlinx-io over `java.io`/`java.nio`,
+pure-Kotlin helpers over `java.util` ones), and keep `android.*`, `java.net` and JNI at the edges (`internal/`, the
+public entry points). Existing code and Android-only modules (`llamabro-hub-work`, the backends) need no change.

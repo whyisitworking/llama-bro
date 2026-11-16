@@ -32,14 +32,11 @@ import com.suhel.llamabro.demo.designsystem.testing.RecompositionCounter
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
-import com.suhel.llamabro.demo.models.CachedEntry
-import com.suhel.llamabro.demo.models.DownloadStatus
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.demo.models.FakeScheduler
+import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.HubEstimate
 import com.suhel.llamabro.demo.models.RepoFile
-import com.suhel.llamabro.demo.models.SearchFailed
-import com.suhel.llamabro.demo.models.SearchModel
+import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.testing.FakeDiscovery
 import com.suhel.llamabro.demo.testing.ScreenshotRule
 import com.suhel.llamabro.demo.testing.TestAppRule
@@ -48,10 +45,12 @@ import com.suhel.llamabro.demo.testing.demoRules
 import com.suhel.llamabro.demo.testing.withAccessibilityChecks
 import com.suhel.llamabro.demo.ui.models.GetModelsRoute
 import com.suhel.llamabro.demo.ui.models.LibraryRoute
+import com.suhel.llamabro.hub.DownloadState
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -60,20 +59,22 @@ import org.junit.rules.RuleChain
 
 /**
  * Finding models and the library on the phone: Get models, a model's sheet, downloads on their rows, and the
- * library. The screens run bare in an activity, over a fake hub and a fake Hugging Face, so a test can supply the
- * recomposition counter and stays fast and exact.
+ * library. The screens run bare in an activity, over the SDK's fake hub (search, downloads and what is on the phone are
+ * its own, D70) with real file sizes stood in for the sheet, so a test can supply the recomposition counter and stays
+ * fast and exact.
  */
 @OptIn(ExperimentalTestApi::class)
 class ModelsTest {
-    private val hub = FakeHubGateway()
+    private val hub = TestHub()
     private val scheduler = FakeScheduler()
-    private val discovery = FakeDiscovery()
+    private val engine = FakeLlamaBro()
+    private val discovery = FakeDiscovery(hub, engine.llamaBro)
     private val app =
         TestAppRule(
             config = {
                 TestConfig.fresh(
-                    llamaBro = FakeLlamaBro().llamaBro,
-                    hub = hub,
+                    llamaBro = engine.llamaBro,
+                    hub = hub.hub,
                     scheduler = scheduler,
                     discovery = discovery,
                 )
@@ -88,31 +89,22 @@ class ModelsTest {
     private val q4 = RepoFile("Qwen3.5-4B-Q4_K_M.gguf", "Q4_K_M", 2_740_937_888)
     private val q8 = RepoFile("Qwen3.5-4B-Q8_0.gguf", "Q8_0", 4_500_000_000)
     private val bf16 = RepoFile("Qwen3.5-4B-BF16.gguf", "BF16", 8_400_000_000)
-    private val phi =
-        SearchModel(
-            "phi-4-mini",
-            "Phi 4 mini",
-            "bartowski/phi-4-mini-GGUF",
-            "bartowski",
-            1_200_000,
-            false,
-            "Balanced, a good all-rounder",
-            null,
-        )
-    private val vision =
-        SearchModel(
-            "llava-7b",
-            "Llava 7B",
-            "someone/llava-7b-GGUF",
-            "someone",
-            412_000,
-            true,
-            "Smarter, but heavy for a phone",
-            null,
-        )
+
+    @After fun closeHub() = hub.close()
+
+    /** Phi 4 mini on the fake Hub, as search finds it. */
+    private fun listPhi() = hub.list("bartowski/phi-4-mini-GGUF", downloads = 1_200_000)
+
+    /** Llava 7B, which takes pictures. */
+    private fun listVision() = hub.list("someone/llava-7b-GGUF", downloads = 412_000, takesImages = true)
+
+    private fun listBoth() {
+        listPhi()
+        listVision()
+    }
 
     private fun fitFor(file: RepoFile, repo: String, fits: Boolean = true) =
-        hub.estimates.put(
+        discovery.estimates.put(
             HfModel.parse("$repo:${file.quant}"),
             HubEstimate(
                 file.bytes,
@@ -183,7 +175,7 @@ class ModelsTest {
         compose.waitUntilAtLeastOneExists(hasText(text, substring = substring), 15_000)
 
     private fun openPhi() {
-        discovery.results = { listOf(phi, vision) }
+        listBoth()
         seedRepo()
         showGetModels()
         search("phi")
@@ -207,9 +199,12 @@ class ModelsTest {
     }
 
     @Test fun resultsCollapseByModel() {
-        discovery.results = { listOf(phi, vision) }
+        listBoth()
+        // a second upload of Llava 7B: the SDK groups it under the original, so it is still one row
+        hub.list("someone/llava-7b-GGUF", downloads = 412_000, takesImages = true, baseModel = "someone/llava-7b")
+        hub.list("other/llava-7b-GGUF", downloads = 100, baseModel = "someone/llava-7b")
         showGetModels()
-        search("model")
+        search("gguf")
         waitFor("Phi 4 mini")
         compose.onAllNodesWithTag("model_row").assertCountEquals(2)
         compose.onNodeWithText("Sees images", substring = true).assertIsDisplayed()
@@ -224,18 +219,17 @@ class ModelsTest {
     }
 
     @Test fun searchErrorShowsRetry() {
-        discovery.searchFailure = SearchFailed("Hugging Face answered 503", retryable = true)
+        listPhi()
+        hub.fake.rateLimit() // Hugging Face asks the next request to wait: a failure worth retrying
         showGetModels()
-        search("qwen")
+        search("phi")
         waitFor("Try again")
-        discovery.searchFailure = null
-        discovery.results = { listOf(phi) }
         compose.onNodeWithText("Try again").performClick()
         waitFor("Phi 4 mini")
     }
 
     @Test fun offlineKeepsSuggestionsAndSaysSo() {
-        discovery.searchFailure = FakeDiscovery.offline()
+        hub.fake.offline = true
         showGetModels()
         search("qwen")
         waitFor("You're offline. These are suggested for this phone.")
@@ -248,7 +242,7 @@ class ModelsTest {
     }
 
     @Test fun aQueryFromFirstRunIsSearchedOnArrival() {
-        discovery.results = { listOf(phi) }
+        listPhi()
         showGetModels(query = "phi")
         waitFor("Phi 4 mini")
         assertTrue(discovery.searches.contains("phi"))
@@ -314,7 +308,7 @@ class ModelsTest {
     }
 
     @Test fun sheetFailureOffersRetry() {
-        discovery.results = { listOf(phi) }
+        listPhi()
         showGetModels()
         search("phi")
         waitFor("Phi 4 mini")
@@ -333,17 +327,19 @@ class ModelsTest {
         compose.onNodeWithTag("get_button").performClick()
         compose.waitUntil(10_000) { scheduler.enqueued.isNotEmpty() }
         val key = scheduler.enqueued.single()
-        hub.status(key).value = DownloadStatus.Downloading(310_000_000, 740_000_000, 9_800_000, 40)
-        waitFor("Downloading · 41%")
-        waitFor("about 40 s")
+        hub.advance(key) // the worker, here the fake hub: some bytes arrive, and the download goes on
+        waitFor("Downloading · ", substring = true)
+        val line = compose.onNodeWithText("Downloading · ", substring = true).fetchSemanticsNode()
+        val text = line.config[SemanticsProperties.Text].joinToString()
+        assertTrue("the row says how far: $text", text.contains("%") && !text.contains("· 0%"))
     }
 
     @Test fun progressTicksRecomposeOnlyTheDownloadingRow() {
-        discovery.results = { listOf(phi, vision) }
+        listBoth()
         seedRepo()
         val counter = RecompositionCounter()
         showGetModels(counter)
-        search("model")
+        search("gguf")
         waitFor("Phi 4 mini")
         compose.onNodeWithText("Phi 4 mini").performClick()
         waitFor("Smaller")
@@ -353,23 +349,20 @@ class ModelsTest {
         val key = scheduler.enqueued.single()
         compose.waitForIdle()
         counter.reset()
-        for (i in 1..30) {
-            hub.status(key).value = DownloadStatus.Downloading(i * 20_000_000L, 740_000_000, 9_800_000, 40)
-            compose.waitForIdle()
-        }
+        ticks(key)
         assertEquals("the other row never recomposed", 0, counter.counts["model-llava-7b"] ?: 0)
         assertTrue("the downloading row did", (counter.counts["model-phi-4-mini"] ?: 0) > 0)
     }
 
     @Test fun aLateEstimateRecomposesOnlyItsRow() {
-        discovery.results = { listOf(phi, vision) }
+        listBoth()
         discovery.repoFiles["bartowski/phi-4-mini-GGUF"] = listOf(q3, q4, q8)
         discovery.repoFiles["someone/llava-7b-GGUF"] = listOf(q3, q4, q8)
         val gate = CompletableDeferred<Unit>()
         discovery.fitGates["someone/llava-7b-GGUF"] = gate
         val counter = RecompositionCounter()
         showGetModels(counter)
-        search("model")
+        search("gguf")
         waitFor("Phi 4 mini")
         compose.waitUntil(10_000) { (counter.counts["model-phi-4-mini"] ?: 0) >= 1 }
         compose.waitForIdle()
@@ -386,54 +379,81 @@ class ModelsTest {
 
     // ---- the library ----
 
-    private fun onPhone(vararg entries: Pair<String, Long>) {
-        for ((ref, size) in entries) hub.cachedEntries += CachedEntry(HfModel.parse(ref), size)
+    /**
+     * The download of [key] moves on in its four steps, as the hub reports them (each one a tick on screen), then stops
+     * short of the end, so nothing but its progress changes.
+     */
+    private fun ticks(key: HfModel) {
+        hub.progressing(key, millis = TICK_MILLIS * 4)
+        compose.waitUntil(TICK_MILLIS * 8) {
+            compose.waitForIdle()
+            val running = hub.hub.progress(key).value as? DownloadState.Downloading ?: return@waitUntil false
+            running.progress.bytesDone * 2 >= running.progress.bytesTotal
+        }
+        hub.stop(key)
+        compose.waitForIdle()
+    }
+
+    /** These models are on the phone, downloaded through the fake hub; their sizes are the hub's. */
+    private fun onPhone(vararg refs: String) {
+        hub.install(*refs.map(HfModel::parse).toTypedArray())
         app.container.models.changed()
     }
 
+    private fun sizeOf(ref: String): Long =
+        runBlocking {
+            hub.hub
+                .cached()
+                .single { it.model == HfModel.parse(ref) }
+                .sizeBytes
+        }
+
     @Test fun storageBarShowsUsedAndFree() {
-        onPhone("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M" to 740_000_000L, "unsloth/Qwen3.5-4B-GGUF:Q4_K_M" to 3_400_000_000L)
+        onPhone("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M", "unsloth/Qwen3.5-4B-GGUF:Q4_K_M")
+        val used = sizeOf("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M") + sizeOf("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")
         showLibrary()
-        waitFor("4.1 GB used", substring = true)
+        waitFor("${Format.storageGb(used)} used", substring = true)
         compose.onNodeWithText(" free", substring = true).assertIsDisplayed()
         compose.onNodeWithTag("storage").assertIsDisplayed()
         shots.capture("library")
     }
 
     @Test fun libraryShowsModelsWithNamesAndSizes() {
-        onPhone("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M" to 740_000_000L)
+        onPhone("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M")
         showLibrary()
         waitFor("Qwen3.5 0.8B")
-        compose.onNodeWithText("0.7 GB").assertIsDisplayed()
+        compose.onNodeWithText(Format.sizeInGb(sizeOf("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M"))).assertIsDisplayed()
         compose.onNodeWithText("Get more models").assertIsDisplayed()
     }
 
     @Test fun libraryShowsDownloadingSection() {
         val key = HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M")
-        hub.status(key).value = DownloadStatus.Downloading(310_000_000, 740_000_000, 9_800_000, 40)
         app.container.models.get(key)
+        compose.waitUntil(10_000) { scheduler.enqueued.isNotEmpty() }
+        hub.advance(key)
         showLibrary()
         waitFor("DOWNLOADING")
         compose.onNodeWithText("Pause").assertIsDisplayed()
-        compose.onNodeWithText("310 MB of 740 MB", substring = true).assertIsDisplayed()
+        compose.onNodeWithText(" of ", substring = true).assertIsDisplayed() // done of total
         shots.capture("downloading")
     }
 
     @Test fun swipeToRemoveAsksFirst() {
-        onPhone("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M" to 740_000_000L)
+        val swift = HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M")
+        onPhone(swift.toString())
         showLibrary()
         waitFor("Qwen3.5 0.8B")
         compose.onNodeWithTag("library_model").performTouchInput { swipeLeft() }
         waitFor("Remove Qwen3.5 0.8B?")
-        compose.onNodeWithText("This frees 0.7 GB", substring = true).assertIsDisplayed()
-        assertTrue("nothing is deleted until confirmed", hub.deleted.isEmpty())
+        val frees = "This frees ${Format.sizeInGb(sizeOf(swift.toString()))}"
+        compose.onNodeWithText(frees, substring = true).assertIsDisplayed()
+        assertTrue("nothing is deleted until confirmed", hub.onPhone(swift))
         compose.onNodeWithText("Keep").performClick()
-        assertTrue(hub.deleted.isEmpty())
+        assertTrue(hub.onPhone(swift))
         compose.onNodeWithTag("library_model").performTouchInput { swipeLeft() }
         waitFor("Remove Qwen3.5 0.8B?")
         compose.onNodeWithText("Remove").performClick()
-        compose.waitUntil(10_000) { hub.deleted.isNotEmpty() }
-        assertEquals(listOf(HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M")), hub.deleted)
+        compose.waitUntil(10_000) { !hub.onPhone(swift) }
     }
 
     @Test fun emptyLibrarySaysSo() {
@@ -444,20 +464,23 @@ class ModelsTest {
     @Test fun downloadTicksRecomposeOnlyTheDownloadingRowInTheLibrary() {
         val a = HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M")
         val b = HfModel.parse("unsloth/Llama-3.2-3B-Instruct-GGUF:Q4_K_M")
-        hub.status(a).value = DownloadStatus.Downloading(1, 740_000_000, 9_800_000, 40)
-        hub.status(b).value = DownloadStatus.Downloading(1, 2_000_000_000, 9_800_000, 200)
         app.container.models.get(a)
         app.container.models.get(b)
+        // one download at a time (D44): A runs, B waits its turn; both are listed under Downloading
+        compose.waitUntil(10_000) { scheduler.enqueued == listOf(a) }
+        hub.downloading(a)
         val counter = RecompositionCounter()
         showLibrary(counter)
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("download_row").fetchSemanticsNodes().size == 2 }
         compose.waitForIdle()
         counter.reset()
-        for (i in 1..30) {
-            hub.status(a).value = DownloadStatus.Downloading(i * 20_000_000L, 740_000_000, 9_800_000, 40)
-            compose.waitForIdle()
-        }
+        ticks(a)
         assertEquals(0, counter.counts["download-$b"] ?: 0)
         assertTrue((counter.counts["download-$a"] ?: 0) > 0)
+    }
+
+    private companion object {
+        /** One step of a download the tests watch move: long enough for the screen to show each. */
+        const val TICK_MILLIS = 600L
     }
 }

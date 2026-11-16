@@ -13,11 +13,10 @@ import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
-import com.suhel.llamabro.demo.models.CachedEntry
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.demo.models.FakeScheduler
-import com.suhel.llamabro.demo.models.HubGateway
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.TestHub
+import com.suhel.llamabro.demo.models.installedModel
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CompletableDeferred
@@ -39,6 +38,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -53,7 +53,8 @@ class ModelLeaseTest {
     private val big = HfModel.parse("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")
 
     private val fake = FakeLlamaBro()
-    private val hub = FakeHubGateway()
+    private val testHub = TestHub()
+    private val hub get() = testHub.hub
     private val settings by lazy {
         SettingsRepository(
             PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "settings.preferences_pb") },
@@ -62,12 +63,15 @@ class ModelLeaseTest {
     private val chats by lazy {
         ChatRepository(FakeChatDao(), ImageStore(File(folder.root, "images")), System::currentTimeMillis)
     }
-    private val host by lazy { ModelHost(fake.llamaBro, hub, scope) }
+    private val host by lazy { ModelHost(fake.llamaBro, { hub.installedModel(it) }, scope) }
     private val models by lazy { ModelRepository(hub, settings, FakeScheduler(), scope, host) }
     private var streamer: Streamer = ::sdkStream
     private val engine by lazy {
         ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope, streamer = streamer)
     }
+
+    /** Both models are on the phone: the host loads the hub's installed copies, as the app's does. */
+    @Before fun install() = testHub.install(swift, big)
 
     @After fun stop() {
         // turns first: a lease a test left held would keep the release waiting
@@ -76,6 +80,7 @@ class ModelLeaseTest {
             scope.coroutineContext[Job]?.join()
             host.release()
         }
+        testHub.close()
     }
 
     private suspend fun until(what: String, condition: suspend () -> Boolean) {
@@ -93,8 +98,7 @@ class ModelLeaseTest {
 
     private suspend fun newChat(): ChatEngine.ChatHandle {
         settings.setLastModel(swift.toString())
-        hub.cachedEntries += CachedEntry(swift, 1_000)
-        hub.cachedEntries += CachedEntry(big, 1_000)
+        testHub.install(swift, big)
         models.changed()
         return engine.open(0)
     }
@@ -216,12 +220,7 @@ class ModelLeaseTest {
     @Test fun aLoadReplacedWhileItWaitsAndHeldByNoTurnIsNeverLoaded() =
         runBlocking {
             val sourced = java.util.Collections.synchronizedList(mutableListOf<HfModel>())
-            val counting =
-                object : HubGateway by hub {
-                    override suspend fun source(model: HfModel): ModelSource =
-                        hub.source(model).also { sourced += model }
-                }
-            val host = ModelHost(fake.llamaBro, counting, scope)
+            val host = ModelHost(fake.llamaBro, { model -> hub.installedModel(model).also { sourced += model } }, scope)
             val lease = host.hold(swift, LoadConfig())
             val waiting = async { host.hold(big, LoadConfig()) }
             until("the 4B waits") { (host.state.value as? HostState.Waking)?.key == big }
@@ -256,13 +255,10 @@ class ModelLeaseTest {
         runBlocking {
             // the 4B's load waits at its source, so the wake line stays up after the 0.8B closes
             val gate = CompletableDeferred<Unit>()
-            val gated =
-                object : HubGateway by hub {
-                    override suspend fun source(model: HfModel): ModelSource {
-                        if (model == big) gate.await()
-                        return hub.source(model)
-                    }
-                }
+            val gated: suspend (HfModel) -> ModelSource = { model ->
+                if (model == big) gate.await()
+                hub.installedModel(model)
+            }
             val host = ModelHost(fake.llamaBro, gated, scope)
             val lease = host.hold(swift, LoadConfig())
             val next = async { host.hold(big, LoadConfig()) }

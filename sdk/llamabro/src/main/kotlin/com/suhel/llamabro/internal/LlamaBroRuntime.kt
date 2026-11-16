@@ -73,6 +73,9 @@ internal class LlamaBroRuntime(
 ) {
     private val initLock = Mutex()
 
+    /** How each model reads its attachments (D84). */
+    private val mediaIo = MediaIo(engine::readFd, ioDispatcher)
+
     @Volatile private var initialized = false
 
     /** Native shutdowns still running ([Model.close] returns before they finish). */
@@ -532,7 +535,7 @@ internal class LlamaBroRuntime(
                         encoder?.deviceName,
                         memoryWarning,
                     )
-                loaded = Model(engineModel, report, this@LlamaBroRuntime::shutdown)
+                loaded = Model(engineModel, report, this@LlamaBroRuntime::shutdown, builder.task, mediaIo)
             }
             currentCoroutineContext().ensureActive()
             return loaded!!

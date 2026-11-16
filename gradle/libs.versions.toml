@@ -100,6 +100,9 @@ kotlinx-bcv = { group = "org.jetbrains.kotlinx", name = "binary-compatibility-va
 bcv-asm = { group = "org.ow2.asm", name = "asm", version.ref = "bcvAsm" }
 bcv-asm-tree = { group = "org.ow2.asm", name = "asm-tree", version.ref = "bcvAsm" }
 kotlin-metadata-jvm = { group = "org.jetbrains.kotlin", name = "kotlin-metadata-jvm", version.ref = "kotlin" }
+# llamabro-typed-ksp: the KSP API it builds on, and kctfork, which compiles snippets with it in its tests only (D81)
+ksp-api = { group = "com.google.devtools.ksp", name = "symbol-processing-api", version.ref = "ksp" }
+kctfork-ksp = { group = "dev.zacsweers.kctfork", name = "ksp", version = "0.14.0" }
 
 [plugins]
 androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "benchmark" }
@@ -109,6 +112,7 @@ detekt = { id = "dev.detekt", version.ref = "detekt" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 jetbrains-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 hilt-android = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

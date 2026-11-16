@@ -6,12 +6,14 @@ compared directly. Standard library only.
 usage: http-run.py --url http://127.0.0.1:18080 --requests FILE --out DIR
 """
 import argparse
+import base64
 import http.client
 import json
 import os
 import threading
 import time
 import urllib.parse
+import uuid
 
 PATHS = {
     "chat": ("POST", "/v1/chat/completions"),
@@ -35,6 +37,7 @@ PATHS = {
     "embeddings_native": ("POST", "/embeddings"),
     "tts": ("POST", "/tts"),
     "speech": ("POST", "/v1/audio/speech"),
+    "transcriptions": ("POST", "/v1/audio/transcriptions"),
     "systemone": ("POST", "/v1/systemone"),
     "props_set": ("POST", "/props"),
     "models": ("GET", "/v1/models"),
@@ -42,6 +45,51 @@ PATHS = {
     "lora_adapters": ("GET", "/lora-adapters"),
     "lora_adapters_set": ("POST", "/lora-adapters"),
 }
+
+
+PLACEHOLDER = "lb-attachment:"
+
+
+def with_data_urls(body, attachments):
+    """What an app sends llama-server where lb-run sends a placeholder and an attachment: the file as a data URL,
+    in a "url" or "data" value inside "content" (built here in Python, apart from the bridge's own code, D84)."""
+    by_name = {a["name"]: a for a in attachments}
+
+    def url_of(name):
+        a = by_name[name]
+        with open(a["path"], "rb") as f:
+            return f"data:{a['mime']};base64," + base64.b64encode(f.read()).decode("ascii")
+
+    def walk(obj, in_content):
+        if isinstance(obj, dict):
+            out = {}
+            for k, v in obj.items():
+                if in_content and k in ("url", "data") and isinstance(v, str) and v.startswith(PLACEHOLDER):
+                    out[k] = url_of(v[len(PLACEHOLDER):])
+                else:
+                    out[k] = walk(v, in_content or k == "content")
+            return out
+        if isinstance(obj, list):
+            return [walk(v, in_content) for v in obj]
+        return obj
+
+    return walk(body, False)
+
+
+def multipart(fields, attachments):
+    """An OpenAI client's form upload (/v1/audio/transcriptions): each field a string part, each file a file part."""
+    boundary = "lbcontract" + uuid.uuid4().hex
+    parts = []
+    for k, v in fields.items():
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode())
+    for a in attachments:
+        with open(a["path"], "rb") as f:
+            data = f.read()
+        head = (f'--{boundary}\r\nContent-Disposition: form-data; name="{a["name"]}"; '
+                f'filename="{os.path.basename(a["path"])}"\r\nContent-Type: {a["mime"]}\r\n\r\n')
+        parts.append(head.encode() + data + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode())
+    return b"".join(parts), f"multipart/form-data; boundary={boundary}"
 
 
 def now_us():
@@ -89,7 +137,12 @@ def run(url, requests_path, out_dir):
             t0 = now_us()
             # body_raw: sent as is (malformed-JSON error cases); body: JSON-encoded
             body = spec.get("body_raw") if "body_raw" in spec else (json.dumps(spec["body"]) if method == "POST" else None)
-            conn.request(method, path, body=body, headers={"Content-Type": "application/json"})
+            content_type = "application/json"
+            if endpoint == "transcriptions":
+                body, content_type = multipart(spec.get("body", {}), spec.get("attachments", []))
+            elif spec.get("attachments"):
+                body = json.dumps(with_data_urls(spec["body"], spec["attachments"]))
+            conn.request(method, path, body=body, headers={"Content-Type": content_type})
             if timer:
                 timer.start()
             n_chunks, t_first = 0, 0

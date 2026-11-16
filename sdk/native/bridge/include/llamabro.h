@@ -80,21 +80,62 @@ char * lb_model_info(lb_model * model);
 //   responses (/v1/responses), responses_input_tokens (/v1/responses/input_tokens),
 //   messages (/v1/messages), messages_count_tokens (/v1/messages/count_tokens),
 //   embeddings (/v1/embeddings), embeddings_native (/embeddings), rerank (/v1/rerank), tts (/tts),
-//   speech (/v1/audio/speech),
+//   speech (/v1/audio/speech), transcriptions (/v1/audio/transcriptions: the audio is attachment "file", F55),
 //   systemone (/v1/systemone), tokenize, detokenize, apply_template (/apply-template),
 //   props (GET /props), props_set (POST /props), models (/v1/models), health, slots (GET /slots),
 //   slots_action (POST /slots/:id_slot), metrics, lora_adapters (GET), lora_adapters_set (POST /lora-adapters).
-// Left out: /v1/audio/transcriptions (its audio arrives as a multipart file; this call takes a JSON body),
-//   /v1/realtime (a WebSocket), and the routes that are the HTTP layer's or the router's (/cors-proxy, /tools,
+// Left out: /v1/realtime (a WebSocket), and the routes that are the HTTP layer's or the router's (/cors-proxy, /tools,
 //   /models/load, /v1/stream and /v1/streams/lookup, the GCP compat routes).
 // params_json: path/query params as a flat JSON object (e.g. {"id_slot":"0","action":"save"}), or NULL.
+// lb_model_request_with below is the same call with attachments; this one sends none.
 lb_status lb_model_request(lb_model * model, const char * endpoint, const char * params_json,
                            const char * body, size_t body_len, lb_request_cb cb, void * user,
                            lb_request ** out);
+
+// A file sent beside a request (D84): exactly one of path, fd (>= 0) or data (len bytes) is set; set path NULL,
+// fd -1 and data NULL for the others. Every attachment is read before lb_model_request_with returns, so the caller
+// may release its data and close its fd as soon as the call returns; the bridge never closes fd. A descriptor is
+// read whole from offset 0 with pread (its file offset unchanged), or with read when it can't seek (a pipe).
+//   transcriptions: name is the form field, "file" for the audio (F55); body is the form's other fields as a JSON
+//     object of strings ({"language": "en", "temperature": "0"}), as upstream reads form data.
+//   chat, count_tokens, apply_template (the routes whose body is a chat completion's): in messages[].content[], a
+//     part's image_url.url or input_audio.data that is exactly "lb-attachment:<name>" becomes
+//     "data:<mime>;base64,<the file>", written here, so llama-server reads it as if the app had sent it. The same text
+//     anywhere else (a message's text, response_format, tools) is left as is, and a body with nothing to replace is
+//     passed on byte for byte. A placeholder there with no attachment of its name fails the request.
+//   embeddings, embeddings_native: the same, in the content parts of the {"content": [...]} entries of "input" (or
+//     "content"), one entry or an array of them, as llama-server reads multimodal embedding input. A text input or
+//     anything else is left as is.
+//   other routes: attachments are read and checked, then unused; the body is passed on as written.
+// Audio (transcriptions, or a mime starting with "audio/") must be WAV, MP3 or FLAC, as llama.cpp decodes
+// (mtmd-helper.cpp is_audio_file): the bridge checks the first bytes.
+typedef struct {
+    const char * name;      // the placeholder's name ("0" for "lb-attachment:0") or the form field ("file")
+    const char * mime;      // e.g. "audio/wav", "image/png"; needed for a placeholder, optional for "file"
+    const char * path;
+    int fd;
+    const uint8_t * data;
+    size_t len;
+} lb_attachment;
+
+// lb_model_request with attachments. LB_ERR_INVALID_ARG, as for a bad endpoint or params_json, when an attachment
+// has no name, a name used twice, not exactly one source, or (on a route other than transcriptions) no mime. A file
+// that can't be read, audio that isn't WAV, MP3 or FLAC, or a placeholder with no attachment of its name is the
+// request's error, as llama-server answers a bad body: one CHUNK with status 400 and
+// {"error": {"code": 400, "message": "...", "type": "invalid_request_error"}}, then DONE.
+lb_status lb_model_request_with(lb_model * model, const char * endpoint, const char * params_json,
+                                const char * body, size_t body_len, const lb_attachment * atts, size_t n_atts,
+                                lb_request_cb cb, void * user, lb_request ** out);
 void lb_request_cancel(lb_request * req);      // idempotent; the terminal event follows soon after
 void lb_request_free(lb_request * req);        // never blocks; may be called from inside the callback
 void lb_model_free(lb_model * model);          // cancels in-flight requests, waits for their terminal
                                                // events, stops the loop, joins the worker thread
+
+// Bridge-only (upstream has no such call): reads the whole file behind fd, from offset 0 with pread or with read when
+// it can't seek, and leaves fd open. For an app that keeps a descriptor's media as bytes (D84). On success *out
+// (free with lb_buffer_free) and *out_len are set; else LB_ERR_INVALID_ARG and error_json {"error": "..."}.
+lb_status lb_read_fd(int fd, uint8_t ** out, size_t * out_len, char ** error_json);
+void lb_buffer_free(uint8_t * buf);
 #ifdef __cplusplus
 }
 #endif

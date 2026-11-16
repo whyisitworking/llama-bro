@@ -1,5 +1,6 @@
 package com.suhel.llamabro.demo.journey
 
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
@@ -17,6 +18,7 @@ import com.suhel.llamabro.demo.testing.TestAppRule
 import com.suhel.llamabro.demo.testing.demoRules
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.rules.RuleChain
@@ -45,6 +47,9 @@ abstract class Journey(
         world.downloads.hasToken = { runBlocking { app.container.tokenStore.read() } != null }
     }
 
+    /** The fake hub's downloads stop and its folder goes. */
+    @After fun closeWorld() = world.close()
+
     /** These models are on the phone before the journey begins, and the first is the one the last chat used. */
     fun onPhone(vararg models: HfModel) {
         models.forEach(world.downloads::finish)
@@ -56,6 +61,15 @@ abstract class Journey(
 
     fun see(text: String, substring: Boolean = false, timeoutMillis: Long = WAIT) =
         compose.waitUntilAtLeastOneExists(hasText(text, substring = substring), timeoutMillis)
+
+    /** A download's ring says how far it is, past 0% (the fake hub's file arrives in quarters). */
+    fun seeArrivingUnderWay() =
+        compose.waitUntil(WAIT) {
+            compose
+                .onAllNodes(hasContentDescription("Arriving · ", substring = true))
+                .fetchSemanticsNodes()
+                .any { node -> !node.config[SemanticsProperties.ContentDescription].joinToString().contains("· 0%") }
+        }
 
     fun seeDescription(text: String, timeoutMillis: Long = WAIT) =
         compose.waitUntilAtLeastOneExists(hasContentDescription(text, substring = true), timeoutMillis)

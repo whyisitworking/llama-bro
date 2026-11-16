@@ -6,7 +6,7 @@ import com.suhel.llamabro.DevicePolicy
 import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.LoadProgress
 import com.suhel.llamabro.Model
-import com.suhel.llamabro.demo.models.HubGateway
+import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -38,7 +38,10 @@ sealed interface HostState {
      */
     data class Ready(val key: HfModel, val model: Model, val config: LoadConfig) : HostState
 
-    /** [error] is a `LlamaBroException` (a refused load, with its reason) or whatever stopped the hub's source. */
+    /**
+     * [error] is a `LlamaBroException` (a refused load, with its reason), a `HubException` from the hub's source, or
+     * `NotOnPhone` for a model deleted since it was chosen.
+     */
     data class Failed(val key: HfModel, val error: Exception) : HostState
 }
 
@@ -57,9 +60,14 @@ data class LoadConfig(val policy: DevicePolicy = DevicePolicy.Auto, val context:
  * `keepConfig`, so it shares the load in use whatever its config rather than waiting. Every load waits for the one
  * before it to close, whether it was replaced or released, so a [release] that waits for a reply still keeps the next
  * load out of memory until that reply ends. The load sets the config's `DevicePolicy` and `ContextSize` and leaves the
- * rest to the SDK: `Speculative` is not set (demo design §3).
+ * rest to the SDK: `Speculative` is not set (demo design §3). [source] names a model's files: the app passes the hub's
+ * installed copy (`hub.model`, D64, which never downloads here); tests pass their own.
  */
-class ModelHost(private val llamaBro: LlamaBro, private val hub: HubGateway, private val scope: CoroutineScope) {
+class ModelHost(
+    private val llamaBro: LlamaBro,
+    private val source: suspend (HfModel) -> ModelSource,
+    private val scope: CoroutineScope,
+) {
     private val _state = MutableStateFlow<HostState>(HostState.Idle)
     val state: StateFlow<HostState> = _state.asStateFlow()
 
@@ -141,10 +149,11 @@ class ModelHost(private val llamaBro: LlamaBro, private val hub: HubGateway, pri
             }
             return try {
                 val loaded =
-                    llamaBro.loadModel(hub.source(key)) {
+                    llamaBro.loadModel(source(key)) {
                         devicePolicy = config.policy
                         contextSize = config.context
-                        // the load bar under the top bar; a value that arrives after the load ended changes nothing
+                        // the load bar under the top bar, from the load's own phase: an installed copy is not fetched
+                        // (D64); a value that arrives after the load ended changes nothing
                         onProgress { progress ->
                             if (current === this@Load && progress is LoadProgress.Loading) {
                                 _state.update { s ->

@@ -7,15 +7,16 @@ import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
-import com.suhel.llamabro.demo.models.CachedEntry
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.TestHub
+import com.suhel.llamabro.demo.models.installedModel
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -30,6 +31,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -43,7 +45,8 @@ class ChatEngineSamplingTest {
     private val swift = HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M")
 
     private val fake = FakeLlamaBro()
-    private val hub = FakeHubGateway()
+    private val testHub = TestHub()
+    private val hub get() = testHub.hub
     private val settings by lazy {
         SettingsRepository(
             PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "settings.preferences_pb") },
@@ -52,7 +55,7 @@ class ChatEngineSamplingTest {
     private val chats by lazy {
         ChatRepository(FakeChatDao(), ImageStore(File(folder.root, "images")), System::currentTimeMillis)
     }
-    private val host by lazy { ModelHost(fake.llamaBro, hub, scope) }
+    private val host by lazy { ModelHost(fake.llamaBro, { hub.installedModel(it) }, scope) }
     private val models by lazy { ModelRepository(hub, settings, FakeScheduler(), scope, host) }
     private val engine by lazy { ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope) }
     private val store by lazy { SamplingStore(settings, chats) }
@@ -60,6 +63,7 @@ class ChatEngineSamplingTest {
     @After fun stop() {
         runBlocking { host.release() }
         scope.cancel()
+        testHub.close()
     }
 
     private suspend fun until(what: String, condition: suspend () -> Boolean) {
@@ -68,7 +72,7 @@ class ChatEngineSamplingTest {
 
     private suspend fun newChat(): ChatEngine.ChatHandle {
         settings.setLastModel(swift.toString())
-        hub.cachedEntries += CachedEntry(swift, 1_000)
+        testHub.install(swift)
         models.changed()
         return engine.open(0)
     }
@@ -92,6 +96,25 @@ class ChatEngineSamplingTest {
             assertEquals(20, body.getValue("top_k").jsonPrimitive.int)
             assertEquals(2f, body.float("presence_penalty"))
             assertEquals(2_048, body.getValue("max_tokens").jsonPrimitive.int)
+        }
+
+    @Test fun aTurnOnAModelTheCatalogLacksDoesNotWaitForTheHubsValues() =
+        runBlocking {
+            // the hub's lookup hangs, as on Wi-Fi with no route: the turn goes on without a card
+            val thing = HfModel.parse("someone/Thing-GGUF:Q4_K_M")
+            val hanging = SamplingStore(settings, chats, { awaitCancellation() }, scope)
+            val engine =
+                ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope, card = hanging::card)
+            fake.reply { content("Hi.") }
+            settings.setLastModel(thing.toString())
+            testHub.install(thing)
+            models.changed()
+            val chat = engine.open(0)
+            chat.send("Hello", emptyList())
+            withTimeoutOrNull(2_000) { while (rows(chat).lastOrNull()?.state != MessageState.Done) delay(10) }
+                ?: throw AssertionError("the turn waited for the lookup")
+            // nothing the hub didn't say is sent, so the file's own values apply (F17)
+            assertFalse(request(0).containsKey("temperature"))
         }
 
     @Test fun aChatsOwnValueGoesOverTheModelsAndTheCards() =

@@ -5,13 +5,12 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.models.DownloadStatus
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.FitLabel
 import com.suhel.llamabro.demo.models.FitView
 import com.suhel.llamabro.demo.models.ModelRepository
-import com.suhel.llamabro.demo.models.SearchFailed
 import com.suhel.llamabro.demo.models.SearchModel
+import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.ui.keepAlive
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CompletableDeferred
@@ -43,7 +42,8 @@ import java.io.IOException
 class GetModelsViewModelTest {
     @get:Rule val folder = TemporaryFolder()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val hub = FakeHubGateway()
+    private val testHub = TestHub()
+    private val hub get() = testHub.hub
     private val settings by lazy {
         SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "s.preferences_pb") })
     }
@@ -66,6 +66,7 @@ class GetModelsViewModelTest {
         viewModels.forEach { it.viewModelScope.cancel() }
         Dispatchers.resetMain()
         scope.cancel()
+        testHub.close()
     }
 
     /** The screen collects `state`, so the test does too, for as long as the test runs. */
@@ -148,8 +149,8 @@ class GetModelsViewModelTest {
 
     @Test fun offlineKeepsSuggestionsAndSaysSo() =
         runTest {
-            answer =
-                { throw SearchFailed("Couldn't reach Hugging Face", retryable = true, cause = IOException("no route")) }
+            val offline = testHub.offlineFailure()
+            answer = { throw offline }
             val vm = viewModel()
             vm.setQuery("qwen")
             advanceTimeBy(351)
@@ -162,13 +163,11 @@ class GetModelsViewModelTest {
     @Test fun anErrorShowsRetryAndRetryAsksAgain() =
         runTest {
             var fail = true
+            val busy = testHub.busyFailure()
             answer =
                 {
                     if (fail) {
-                        throw SearchFailed(
-                            "Hugging Face answered 503",
-                            retryable = true,
-                        )
+                        throw busy
                     } else {
                         listOf(result("Qwen"))
                     }
@@ -244,8 +243,8 @@ class GetModelsViewModelTest {
             val key = HfModel.parse("someone/Qwen-GGUF:Q4_K_M")
             assertNull(vm.progress(row).first())
             vm.started(row, key)
-            hub.status(key).value = DownloadStatus.Downloading(300, 740, 9_800_000, 40)
-            assertEquals(DownloadStatus.Downloading(300, 740, 9_800_000, 40), vm.progress(row).first { it != null })
+            testHub.downloading(key)
+            assertTrue(vm.progress(row).first { it != null } is DownloadStatus.Downloading)
             assertNull("another row shows nothing", vm.progress(other).first())
         }
 

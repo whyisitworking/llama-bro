@@ -1,50 +1,47 @@
 package com.suhel.llamabro.demo.benchmark
 
-import com.suhel.llamabro.DeviceKind
-import com.suhel.llamabro.DownloadProgress
-import com.suhel.llamabro.FitEstimate
-import com.suhel.llamabro.ModelSource
-import com.suhel.llamabro.demo.models.CachedEntry
 import com.suhel.llamabro.demo.models.DownloadScheduler
-import com.suhel.llamabro.demo.models.DownloadStatus
-import com.suhel.llamabro.demo.models.HubEstimate
-import com.suhel.llamabro.demo.models.HubGateway
 import com.suhel.llamabro.hub.HfModel
-import com.suhel.llamabro.hub.HubPlan
+import com.suhel.llamabro.hub.LlamaBroHub
+import com.suhel.llamabro.hub.testing.FakeLlamaBroHub
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.emptyFlow
 
-/** A hub with two models on the phone and nothing to download: the benchmarks never touch the network. */
-class BenchmarkHub : HubGateway {
-    private val onPhone =
-        listOf(
-            CachedEntry(HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M"), 739_000_000),
-            CachedEntry(HfModel.parse("unsloth/Qwen3.5-4B-GGUF:Q4_K_M"), 3_400_000_000),
-        )
+/**
+ * The SDK's fake hub (D70, D75) with two models on the phone and nothing else to download: the benchmarks never touch
+ * the network. [install] puts the two in its folder (a few KB each) once per process, before the seeding.
+ */
+class BenchmarkHub {
+    private val fake =
+        FakeLlamaBroHub {
+            for (model in onPhone) {
+                repo(model.repo) { gguf("${model.repo.substringAfter('/').removeSuffix("-GGUF")}-${model.tag}.gguf") }
+            }
+        }
 
-    override suspend fun plan(model: HfModel): HubPlan = throw UnsupportedOperationException("plan")
+    val hub: LlamaBroHub get() = fake.hub
 
-    override fun download(model: HfModel): Flow<DownloadProgress> = emptyFlow()
+    suspend fun install() {
+        for (model in onPhone) hub.download(model).collect()
+    }
 
-    override fun progress(model: HfModel): StateFlow<DownloadStatus> = MutableStateFlow(DownloadStatus.Complete)
-
-    override suspend fun source(model: HfModel): ModelSource = ModelSource.file("/benchmark/${model.repo}.gguf")
-
-    override suspend fun cached(): List<CachedEntry> = onPhone
-
-    override suspend fun delete(model: HfModel) = Unit
-
-    override suspend fun estimateFit(plan: HubPlan): FitEstimate = throw UnsupportedOperationException("estimateFit")
-
-    override suspend fun estimate(model: HfModel): HubEstimate =
-        HubEstimate(model.repo.length * 1_000_000L, 0, true, 32_768, 1_200_000_000, DeviceKind.Npu)
+    private companion object {
+        val onPhone =
+            listOf(
+                HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M"),
+                HfModel.parse("unsloth/Qwen3.5-4B-GGUF:Q4_K_M"),
+            )
+    }
 }
 
 /** Nothing is downloaded in a benchmark. */
 object NoDownloads : DownloadScheduler {
     override fun enqueue(model: HfModel) = Unit
 
-    override fun cancel(model: HfModel) = Unit
+    override suspend fun cancel(model: HfModel) = Unit
+
+    override suspend fun isScheduled(model: HfModel): Boolean = false
+
+    override fun ends(model: HfModel): Flow<Unit> = emptyFlow()
 }

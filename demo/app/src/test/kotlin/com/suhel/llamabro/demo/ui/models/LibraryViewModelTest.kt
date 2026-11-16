@@ -3,12 +3,11 @@ package com.suhel.llamabro.demo.ui.models
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.demo.data.SettingsRepository
-import com.suhel.llamabro.demo.models.CachedEntry
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.ui.keepAlive
 import com.suhel.llamabro.demo.ui.shutDown
 import com.suhel.llamabro.hub.HfModel
@@ -18,6 +17,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -25,6 +25,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -36,7 +37,8 @@ import java.time.ZoneOffset
 class LibraryViewModelTest {
     @get:Rule val folder = TemporaryFolder()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val hub = FakeHubGateway()
+    private val testHub = TestHub()
+    private val hub get() = testHub.hub
     private val settings by lazy {
         SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "s.preferences_pb") })
     }
@@ -63,6 +65,7 @@ class LibraryViewModelTest {
         Dispatchers.resetMain()
         collectors.cancel()
         scope.cancel()
+        testHub.close()
     }
 
     private fun viewModel(free: Long = 120_000_000_000L) =
@@ -74,11 +77,12 @@ class LibraryViewModelTest {
         }
 
     @Test fun storageIsTheModelsAndWhatIsFree() {
-        hub.cachedEntries += CachedEntry(swift, 740_000_000)
-        hub.cachedEntries += CachedEntry(deep, 3_400_000_000)
+        testHub.install(swift)
+        testHub.install(deep)
+        val onPhone = runBlocking { hub.cached().sumOf { it.sizeBytes } }
         val vm = viewModel(free = 120_000_000_000L)
-        val storage = withTimeoutBlocking { vm.storage.first { it != null } }!!
-        assertEquals(4_140_000_000L, storage.usedBytes)
+        val storage = withTimeoutBlocking { vm.storage.first { it != null && it.usedBytes > 0 } }!!
+        assertEquals("the models' bytes as the hub counts them", onPhone, storage.usedBytes)
         assertEquals(120_000_000_000L, storage.freeBytes)
     }
 
@@ -88,19 +92,18 @@ class LibraryViewModelTest {
     }
 
     @Test fun askingToRemoveDeletesNothingUntilConfirmed() {
-        hub.cachedEntries += CachedEntry(swift, 740_000_000)
+        testHub.install(swift)
         val vm = viewModel()
         val row = withTimeoutBlocking { vm.rows.first { !it.isNullOrEmpty() } }!!.first()
         vm.askRemove(row)
         assertEquals(row, vm.pendingRemove.value)
-        assertEquals(emptyList<HfModel>(), hub.deleted)
+        assertTrue(testHub.onPhone(swift))
         vm.dismissRemove()
         assertNull(vm.pendingRemove.value)
-        assertEquals("dismissing keeps the model", emptyList<HfModel>(), hub.deleted)
+        assertTrue("dismissing keeps the model", testHub.onPhone(swift))
         vm.askRemove(row)
         vm.confirmRemove()
-        withTimeoutBlocking { while (hub.deleted.isEmpty()) kotlinx.coroutines.delay(10) }
-        assertEquals(listOf(swift), hub.deleted)
+        withTimeoutBlocking { while (testHub.onPhone(swift)) kotlinx.coroutines.delay(10) }
         assertNull(vm.pendingRemove.value)
     }
 

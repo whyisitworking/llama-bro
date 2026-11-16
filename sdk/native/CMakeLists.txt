@@ -249,6 +249,23 @@ if(LB_BUILD_TESTS)
         rerank_orders_documents
         lora_scale_changes_output
         kv_cache_q8_0_loads_and_generates
+        attachment_placeholder_replaced
+        attachment_user_text_untouched
+        attachment_placeholder_without_attachment_refused
+        attachment_read_errors_are_400
+        attachment_adts_aac_refused
+        attachment_fd_read_and_left_open
+        transcription_path_fd_bytes_same_text
+        attachment_buffers_freed_on_cancel
+        read_fd_reads_whole_file_and_leaves_it_open
+        placeholder_untouched_on_other_routes
+        placeholder_untouched_in_response_format
+        embeddings_placeholder_replaced
+        hybrid_swa_cache_covers_last_message
+        hybrid_swa_cache_covers_last_voice_note
+        hybrid_swa_cache_covers_short_chat
+        hybrid_swa_cache_reuses_live_state
+        hybrid_swa_cache_replies_equal_uncached
     )
     foreach(name ${LB_TESTS})
         add_test(NAME ${name} COMMAND lb-tests ${name})
@@ -261,6 +278,9 @@ if(LB_BUILD_TESTS)
         endif()
         if(DEFINED ENV{LB_TEST_MODELS_DIR})
             set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "LB_TEST_MODELS_DIR=$ENV{LB_TEST_MODELS_DIR}")
+        endif()
+        if(DEFINED ENV{LB_TEST_CLIP})  # the audio tests' clip (sdk/scripts/make-test-clip.sh, D84)
+            set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "LB_TEST_CLIP=$ENV{LB_TEST_CLIP}")
         endif()
     endforeach()
 endif()

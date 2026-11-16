@@ -12,10 +12,10 @@ import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
-import com.suhel.llamabro.demo.models.CachedEntry
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.TestHub
+import com.suhel.llamabro.demo.models.installedModel
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CompletableDeferred
@@ -46,7 +46,8 @@ class ChatEngineTurnTest {
     private val swift = HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M")
 
     private val fake = FakeLlamaBro()
-    private val hub = FakeHubGateway()
+    private val testHub = TestHub()
+    private val hub get() = testHub.hub
     private val dao = FakeChatDao()
     private val settings by lazy {
         SettingsRepository(
@@ -60,7 +61,10 @@ class ChatEngineTurnTest {
             System::currentTimeMillis,
         )
     }
-    private val host by lazy { ModelHost(fake.llamaBro, hub, scope) }
+
+    /** Where a load finds its files: the hub's installed copy, unless a test holds the load back ([slowLoad]). */
+    private var onSource: suspend (HfModel) -> ModelSource = { hub.installedModel(it) }
+    private val host by lazy { ModelHost(fake.llamaBro, { onSource(it) }, scope) }
     private val models by lazy { ModelRepository(hub, settings, FakeScheduler(), scope, host) }
 
     private var streamer: Streamer? = null
@@ -76,10 +80,11 @@ class ChatEngineTurnTest {
     @After fun stop() {
         runBlocking { host.release() }
         scope.cancel()
+        testHub.close()
     }
 
     private fun onPhone(vararg keys: HfModel) {
-        hub.cachedEntries += keys.map { CachedEntry(it, 1_000) }
+        testHub.install(*keys)
         models.changed()
     }
 
@@ -104,9 +109,9 @@ class ChatEngineTurnTest {
 
     /** A load that waits for [gate]: the model stays waking until the test opens it. */
     private fun slowLoad(gate: CompletableDeferred<Unit>) {
-        hub.onSource = {
+        onSource = {
             gate.await()
-            ModelSource.file("/fake/${it.repo}.gguf")
+            hub.installedModel(it)
         }
     }
 

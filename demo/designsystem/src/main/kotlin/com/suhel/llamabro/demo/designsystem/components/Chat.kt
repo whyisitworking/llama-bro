@@ -85,7 +85,8 @@ private fun Modifier.longPress(onLongClick: (() -> Unit)?): Modifier =
 /**
  * The user's message: an ink bubble on the right with canvas text, its tail corner bottom end, at most 80% of the
  * row; attached [images] above it, each opening with [onImageClick] (its index) when given; the [time] in its corner
- * (the chat list layout only).
+ * (the chat list layout only). A voice message (D76) is its [voice] clip in a bubble of the same shape, played and
+ * paused with [onVoiceToggle], the time after its length.
  */
 @Composable
 fun UserBubble(
@@ -95,6 +96,8 @@ fun UserBubble(
     time: String? = null,
     onLongClick: (() -> Unit)? = null,
     onImageClick: ((index: Int) -> Unit)? = null,
+    voice: VoiceClip? = null,
+    onVoiceToggle: () -> Unit = {},
 ) {
     val colors = LocalDemoColors.current
     Column(
@@ -123,7 +126,20 @@ fun UserBubble(
                 contentScale = ContentScale.Crop,
             )
         }
-        if (text.isNotEmpty() || time != null) {
+        if (voice != null) {
+            VoiceBubble(
+                voice,
+                onVoiceToggle,
+                Modifier
+                    .bubbleIn(end = true)
+                    .clip(DemoShapes.userBubble)
+                    .background(colors.bubble)
+                    .longPress(onLongClick)
+                    .padding(start = DemoSpacing.inline, end = DemoSpacing.item),
+                time = time.takeIf { text.isEmpty() },
+            )
+        }
+        if (text.isNotEmpty() || (time != null && voice == null)) {
             Column(
                 Modifier
                     .bubbleIn(end = true)

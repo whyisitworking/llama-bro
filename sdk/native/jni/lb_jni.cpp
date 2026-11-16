@@ -17,8 +17,12 @@
 #define __android_log_print(prio, tag, ...) (std::fprintf(stderr, "%s: ", tag), std::fprintf(stderr, __VA_ARGS__), std::fputc('\n', stderr))
 #endif
 
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -230,17 +234,84 @@ jstring modelInfo(JNIEnv * env, jobject, jlong model) {
     return take_string(env, lb_model_info(reinterpret_cast<lb_model *>(model)));
 }
 
-jlong modelRequest(JNIEnv * env, jobject, jlong model, jstring endpoint, jstring params, jbyteArray body, jobject sink) {
+void release_lent(JNIEnv * env, std::vector<std::pair<jbyteArray, jbyte *>> & lent) {
+    for (auto & [arr, p] : lent) {
+        env->ReleaseByteArrayElements(arr, p, JNI_ABORT);  // unchanged: nothing to copy back
+        env->DeleteLocalRef(arr);
+    }
+    lent.clear();
+}
+
+// Attachments arrive as parallel arrays (names, mimes, paths, fds, bytes; JniEngine): a path or fd passes as is. A
+// byte[] is lent with GetByteArrayElements and released unchanged (JNI_ABORT) once the call returns, since
+// lb_model_request_with copies it before then (D84): one native copy. ART lends a large array (the large-object space
+// doesn't move) without a copy of its own; a JVM that copies frees that copy at once.
+jlong modelRequest(JNIEnv * env, jobject, jlong model, jstring endpoint, jstring params, jbyteArray body,
+                   jobjectArray names, jobjectArray mimes, jobjectArray paths, jintArray fds, jobjectArray bytes,
+                   jobject sink) {
     const std::string ep = get_string(env, endpoint);
     const std::string pj = get_string(env, params);
     const jsize n = body ? env->GetArrayLength(body) : 0;
     std::string b(static_cast<size_t>(n), '\0');
     if (n > 0) env->GetByteArrayRegion(body, 0, n, reinterpret_cast<jbyte *>(&b[0]));
 
+    const jsize n_atts = names ? env->GetArrayLength(names) : 0;
+    // the five arrays describe the same attachments: a mismatch is the caller's bug, not something to guess around
+    const bool same_length = (!mimes ? n_atts == 0 : env->GetArrayLength(mimes) == n_atts) &&
+                             (!paths ? n_atts == 0 : env->GetArrayLength(paths) == n_atts) &&
+                             (!fds ? n_atts == 0 : env->GetArrayLength(fds) == n_atts) &&
+                             (!bytes ? n_atts == 0 : env->GetArrayLength(bytes) == n_atts);
+    if (!same_length) {
+        throw_native_error(env, LB_ERR_INVALID_ARG, nullptr,
+                           "{\"error\":\"attachment arrays differ in length (names, mimes, paths, fds, bytes)\"}");
+        return 0;
+    }
+    std::vector<std::string> strings(static_cast<size_t>(n_atts) * 3);  // name, mime, path per attachment
+    std::vector<std::pair<jbyteArray, jbyte *>> lent;  // released after the call
+    std::vector<lb_attachment> atts(static_cast<size_t>(n_atts));
+    std::vector<jint> fd_values(static_cast<size_t>(n_atts), -1);
+    if (n_atts > 0) env->GetIntArrayRegion(fds, 0, n_atts, fd_values.data());
+    static const uint8_t empty = 0;  // an empty byte[] is still a bytes source: data must not be NULL
+    for (jsize i = 0; i < n_atts; i++) {
+        const size_t k = static_cast<size_t>(i);
+        auto * name = static_cast<jstring>(env->GetObjectArrayElement(names, i));
+        auto * mime = static_cast<jstring>(env->GetObjectArrayElement(mimes, i));
+        auto * path = static_cast<jstring>(env->GetObjectArrayElement(paths, i));
+        auto * data = static_cast<jbyteArray>(env->GetObjectArrayElement(bytes, i));
+        strings[k * 3] = get_string(env, name);
+        strings[k * 3 + 1] = get_string(env, mime);
+        strings[k * 3 + 2] = get_string(env, path);
+        lb_attachment & a = atts[k];
+        a = lb_attachment{ strings[k * 3].c_str(), strings[k * 3 + 1].c_str(), nullptr, fd_values[k], nullptr, 0 };
+        if (path) a.path = strings[k * 3 + 2].c_str();
+        for (jobject o : { (jobject) name, (jobject) mime, (jobject) path }) {
+            if (o) env->DeleteLocalRef(o);
+        }
+        if (!data) continue;
+        const jsize len = env->GetArrayLength(data);
+        jbyte * p = len > 0 ? env->GetByteArrayElements(data, nullptr) : nullptr;
+        if (len > 0 && !p) {  // out of memory: give back what was lent, fail the call
+            report_oom(env, "an attachment's bytes");
+            env->DeleteLocalRef(data);
+            release_lent(env, lent);
+            throw_native_error(env, LB_ERR_INTERNAL, nullptr, "{\"error\":\"out of memory reading an attachment\"}");
+            return 0;
+        }
+        a.data = p ? reinterpret_cast<const uint8_t *>(p) : &empty;
+        a.len = static_cast<size_t>(len);
+        if (p) {
+            lent.emplace_back(data, p);  // its local ref goes with it
+        } else {
+            env->DeleteLocalRef(data);
+        }
+    }
+
     auto * ctx = new request_ctx{ env->NewGlobalRef(sink) };
     lb_request * req = nullptr;
-    const lb_status st = lb_model_request(reinterpret_cast<lb_model *>(model), ep.c_str(), params ? pj.c_str() : nullptr,
-                                          b.data(), b.size(), request_cb, ctx, &req);
+    const lb_status st = lb_model_request_with(reinterpret_cast<lb_model *>(model), ep.c_str(),
+                                               params ? pj.c_str() : nullptr, b.data(), b.size(), atts.data(),
+                                               atts.size(), request_cb, ctx, &req);
+    release_lent(env, lent);  // read by now (llamabro.h)
     if (st != LB_OK) {
         env->DeleteGlobalRef(ctx->sink);
         delete ctx;
@@ -248,6 +319,29 @@ jlong modelRequest(JNIEnv * env, jobject, jlong model, jstring endpoint, jstring
         return 0;
     }
     return reinterpret_cast<jlong>(req);
+}
+
+// the whole file behind fd, which stays open (lb_read_fd, D84)
+jbyteArray readFd(JNIEnv * env, jobject, jint fd) {
+    uint8_t * buf = nullptr;
+    size_t len = 0;
+    char * err = nullptr;
+    const lb_status st = lb_read_fd(fd, &buf, &len, &err);
+    if (st != LB_OK) {
+        throw_native_error(env, st, err);
+        return nullptr;
+    }
+    if (len > static_cast<size_t>(INT32_MAX)) {  // a Java array holds at most 2^31 - 1 bytes
+        lb_buffer_free(buf);
+        const std::string e = "{\"error\":\"descriptor " + std::to_string(fd) + " holds " + std::to_string(len) +
+                              " bytes, more than a byte array can\"}";
+        throw_native_error(env, LB_ERR_INVALID_ARG, nullptr, e.c_str());
+        return nullptr;
+    }
+    jbyteArray out = env->NewByteArray(static_cast<jsize>(len));
+    if (out && len > 0) env->SetByteArrayRegion(out, 0, static_cast<jsize>(len), reinterpret_cast<const jbyte *>(buf));
+    lb_buffer_free(buf);
+    return out;  // null with OutOfMemoryError pending when the array couldn't be made
 }
 
 void requestCancel(JNIEnv *, jobject, jlong req) { lb_request_cancel(reinterpret_cast<lb_request *>(req)); }
@@ -305,7 +399,9 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM * vm, void *) {
         {"modelLoad",      "(Ljava/lang/String;Lcom/suhel/llamabro/internal/ProgressListener;)J", (void *) modelLoad},
         {"fitEstimate",    "(Ljava/lang/String;)Ljava/lang/String;", (void *) fitEstimate},
         {"modelInfo",      "(J)Ljava/lang/String;", (void *) modelInfo},
-        {"modelRequest",   "(JLjava/lang/String;Ljava/lang/String;[BLcom/suhel/llamabro/internal/RequestSink;)J", (void *) modelRequest},
+        {"modelRequest",   "(JLjava/lang/String;Ljava/lang/String;[B[Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;[I[[B"
+                           "Lcom/suhel/llamabro/internal/RequestSink;)J", (void *) modelRequest},
+        {"readFd",         "(I)[B", (void *) readFd},
         {"requestCancel",  "(J)V", (void *) requestCancel},
         {"requestFree",    "(J)V", (void *) requestFree},
         {"modelFree",      "(J)V", (void *) modelFree},

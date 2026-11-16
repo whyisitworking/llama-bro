@@ -65,7 +65,7 @@ fun ModelSheetRoute(
             ModelSheetViewModel(
                 row,
                 container.discovery::files,
-                container.hub::estimate,
+                container.discovery::estimate,
                 container::deviceFacts,
                 container.models,
                 startTier = startTier,

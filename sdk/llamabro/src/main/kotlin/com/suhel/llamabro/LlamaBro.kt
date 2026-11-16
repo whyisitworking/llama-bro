@@ -157,6 +157,19 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
             filesDir: File,
             config: LlamaBroConfig = LlamaBroConfig.Default,
         ): LlamaBro = LlamaBro(LlamaBroRuntime(engine, filesDir, null, config))
+
+        /**
+         * A [LlamaBro] over the real native core built for this machine, for other modules' host end-to-end tests
+         * (`llamabro-typed`'s `HostTypedTest`). [libDir] holds the host build's libraries, which must also be on
+         * `java.library.path`.
+         */
+        @InternalLlamaBroApi
+        @JvmStatic
+        public fun withHostEngine(
+            libDir: String,
+            filesDir: File,
+            config: LlamaBroConfig = LlamaBroConfig.Default,
+        ): LlamaBro = LlamaBro(LlamaBroRuntime(JniEngine, filesDir, libDir, config))
     }
 }
 

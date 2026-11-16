@@ -336,7 +336,7 @@ class ConversationOptionsTest {
                 }
             original.send("u1").toList()
             val saved = original.toJson()
-            assertTrue(saved, saved.startsWith("""{"version":2"""))
+            assertTrue(saved, saved.startsWith("""{"version":3"""))
             original.send("x").toList()
             // tool handlers can't be saved: the app registers them again, nothing else
             val restored = model.restoreConversation(saved) { tool("get_weather", "w", weather) { "sunny" } }

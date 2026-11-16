@@ -32,7 +32,27 @@ sealed interface ChatItem {
     override val type get() = "day"
 }
 
-/** [heldNote] is "<Name> will answer the moment it's here", set while the message waits for its model. */
+/** A voice message's recording, its length as shown ("0:42") and its levels for the bubble (D76). */
+@Immutable data class VoiceItem(val file: File, val length: String, val levels: List<Float>)
+
+/** A clip's length as a voice message shows it: minutes and seconds, "0:42", "2:00". */
+fun clipLength(millis: Long): String {
+    val seconds =
+        java.util.concurrent.TimeUnit.MILLISECONDS
+            .toSeconds(millis + HALF_SECOND_MILLIS)
+    val minutes =
+        java.util.concurrent.TimeUnit.SECONDS
+            .toMinutes(seconds)
+    return "$minutes:${(seconds - minutes * SECONDS_PER_MINUTE).toString().padStart(2, '0')}"
+}
+
+private const val HALF_SECOND_MILLIS = 500L
+private const val SECONDS_PER_MINUTE = 60
+
+/**
+ * [heldNote] is "<Name> will answer the moment it's here", set while the message waits for its model. [voice] is a
+ * voice message's recording (D76).
+ */
 @Immutable data class UserItem(
     val id: Long,
     val position: Int,
@@ -40,6 +60,7 @@ sealed interface ChatItem {
     val images: List<File>,
     val time: String?,
     val heldNote: String?,
+    val voice: VoiceItem? = null,
 ) : ChatItem {
     override val key get() = "m-$id"
     override val type get() = "user"
@@ -134,7 +155,8 @@ class ChatItems(
     private fun userItem(m: StoredMessage, time: String?, waitingFor: String?): UserItem {
         val held = m.state == MessageState.Held && waitingFor != null
         val heldNote = if (held) "$waitingFor will answer the moment it's here" else null
-        return UserItem(m.id, m.position, m.text, m.images, time, heldNote)
+        val voice = m.voice?.let { VoiceItem(it.file, clipLength(it.millis), it.levels) }
+        return UserItem(m.id, m.position, m.text, m.images, time, heldNote, voice)
     }
 
     private fun replyItem(m: StoredMessage, time: String?, isLast: Boolean): ReplyItem =

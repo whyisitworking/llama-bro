@@ -147,7 +147,9 @@ enum class ThinkLevel { Off, Quick, Balanced, Deep }
 /**
  * What the message bar shows. [think] is null when the model can't think (no Think bulb); [canAttach] shows the
  * **+**; [busy] turns send into stop; [hasAttachment] (a photo is attached) lets send act without text. Send is
- * quiet and does nothing while there is nothing to send, the way the common chat bars do.
+ * quiet and does nothing while there is nothing to send, the way the common chat bars do. [canRecord] (a model that
+ * hears, D76) shows the mic while the text is empty: in send's place, or beside it when photos alone could be sent.
+ * [recording], while a voice message is recorded or waits, takes the text's place.
  */
 @Immutable
 data class ComposerState(
@@ -156,9 +158,22 @@ data class ComposerState(
     val think: ThinkLevel?,
     val busy: Boolean,
     val hasAttachment: Boolean = false,
+    val canRecord: Boolean = false,
+    val recording: RecordingState? = null,
 ) {
     /** Send can act: there is something to send (text or a photo), or a reply is coming and the button is stop. */
     val canAct: Boolean get() = busy || text.isNotBlank() || hasAttachment
+
+    /** The mic shows: the model hears, nothing is typed, no reply is coming and nothing is being recorded. */
+    val showsMic: Boolean get() = canRecord && recording == null && !busy && text.isEmpty()
+}
+
+/** What the message bar's voice controls do (D76): start recording, throw the recording away, or send it. */
+@Immutable
+data class VoiceActions(val onRecord: () -> Unit, val onDiscard: () -> Unit, val onSend: () -> Unit) {
+    companion object {
+        val None = VoiceActions({}, {}, {})
+    }
 }
 
 /**
@@ -189,9 +204,11 @@ fun Composer(
     onThink: () -> Unit,
     modifier: Modifier = Modifier,
     attachments: (@Composable () -> Unit)? = null,
+    voice: VoiceActions = VoiceActions.None,
 ) {
     val colors = LocalDemoColors.current
     val shape = DemoShapes.composer
+    val recording = state.recording
     Column(
         modifier
             .fillMaxWidth()
@@ -209,49 +226,31 @@ fun Composer(
                     .padding(start = DemoSpacing.item, end = DemoSpacing.item, top = DemoSpacing.item),
             ) { attachments() }
         }
-        BasicTextField(
-            value = state.text,
-            onValueChange = onTextChange,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        start = DemoSpacing.item,
-                        end = DemoSpacing.item,
-                        top = if (attachments != null) DemoSpacing.block else DemoSpacing.item,
-                        // 8 dp here and the 6 dp a 36 dp circle leaves in its 48 dp target: the buttons sit 14 dp
-                        // under the text, and the bar keeps the height it had with 40 dp circles
-                        bottom = DemoSpacing.block,
-                    ),
-            textStyle = DemoType.body.copy(color = colors.ink),
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-            cursorBrush = SolidColor(colors.accent),
-            maxLines = 6,
-            decorationBox = { field ->
-                Box {
-                    if (state.text.isEmpty()) {
-                        Text(placeholder, color = colors.muted, style = DemoType.body, maxLines = 1)
-                    }
-                    field()
-                }
-            },
-        )
+        val textPadding =
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = DemoSpacing.item,
+                    end = DemoSpacing.item,
+                    top = if (attachments != null) DemoSpacing.block else DemoSpacing.item,
+                    // 8 dp here and the 6 dp a 36 dp circle leaves in its 48 dp target: the buttons sit 14 dp
+                    // under the text, and the bar keeps the height it had with 40 dp circles
+                    bottom = DemoSpacing.block,
+                )
+        if (recording != null) {
+            RecordingLine(recording, textPadding)
+        } else {
+            MessageField(state, placeholder, onTextChange, textPadding)
+        }
         // 4 dp round the 48 dp targets: a 36 dp circle is 10 dp from the bar's bottom, start and end
         Row(
             Modifier.fillMaxWidth().padding(start = IconButtonInset, end = IconButtonInset, bottom = IconButtonInset),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (state.canAttach) {
-                BarIconButton(onClick = onAttach) {
-                    BarCircle(colors.hairline) {
-                        Icon(
-                            DemoIcons.Plus,
-                            contentDescription = stringResource(R.string.ds_attach),
-                            tint = colors.ink,
-                            modifier = Modifier.size(DemoSize.barGlyph),
-                        )
-                    }
-                }
+            if (recording != null) {
+                BarButton(DemoIcons.Close, stringResource(R.string.ds_discard_recording), voice.onDiscard)
+            } else if (state.canAttach) {
+                BarButton(DemoIcons.Plus, stringResource(R.string.ds_attach), onAttach)
             }
             Spacer(Modifier.weight(1f))
             if (state.think != null) {
@@ -267,32 +266,100 @@ fun Composer(
                     }
                 }
             }
-            val busy = state.busy
-            BarIconButton(onClick = if (busy) onStop else onSend, enabled = state.canAct) {
-                // filled with the send accent when it can act; the hairline's tonal circle with muted ink when there
-                // is nothing to send. The fill eases between the two, and send cross-fades into stop, so it changes
-                // in place
-                val fill by animateColorAsState(
-                    if (state.canAct) colors.sendAccent else colors.hairline,
-                    tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard),
-                    label = "send fill",
-                )
-                val tint by animateColorAsState(
-                    if (state.canAct) colors.onSendAccent else colors.muted,
-                    tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard),
-                    label = "send tint",
-                )
-                BarCircle(fill) {
-                    Crossfade(busy, animationSpec = tween(DemoMotion.SWAP_MILLIS), label = "send or stop") { stop ->
-                        Icon(
-                            if (stop) DemoIcons.Stop else DemoIcons.Send,
-                            contentDescription = stringResource(if (stop) R.string.ds_stop else R.string.ds_send),
-                            tint = tint,
-                            modifier = Modifier.size(DemoSize.barGlyph),
-                        )
+            when {
+                recording != null -> {
+                    BarIconButton(onClick = voice.onSend) {
+                        BarCircle(colors.sendAccent) {
+                            Icon(
+                                DemoIcons.Send,
+                                contentDescription = stringResource(R.string.ds_send_recording),
+                                tint = colors.onSendAccent,
+                                modifier = Modifier.size(DemoSize.barGlyph),
+                            )
+                        }
                     }
                 }
+
+                state.showsMic && !state.hasAttachment -> {
+                    BarButton(DemoIcons.Mic, stringResource(R.string.ds_record), voice.onRecord)
+                }
+
+                else -> {
+                    if (state.showsMic) BarButton(DemoIcons.Mic, stringResource(R.string.ds_record), voice.onRecord)
+                    SendButton(state, onSend, onStop)
+                }
             }
+        }
+    }
+}
+
+/** The bar's text: body type, sentences capitalised, up to six lines, the [placeholder] while empty. */
+@Composable
+private fun MessageField(
+    state: ComposerState,
+    placeholder: String,
+    onTextChange: (String) -> Unit,
+    modifier: Modifier,
+) {
+    val colors = LocalDemoColors.current
+    BasicTextField(
+        value = state.text,
+        onValueChange = onTextChange,
+        modifier = modifier,
+        textStyle = DemoType.body.copy(color = colors.ink),
+        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+        cursorBrush = SolidColor(colors.accent),
+        maxLines = 6,
+        decorationBox = { field ->
+            Box {
+                if (state.text.isEmpty()) {
+                    Text(placeholder, color = colors.muted, style = DemoType.body, maxLines = 1)
+                }
+                field()
+            }
+        },
+    )
+}
+
+/** Send, which fills with the send accent when it can act and cross-fades into stop while a reply is coming (D73). */
+@Composable
+private fun SendButton(state: ComposerState, onSend: () -> Unit, onStop: () -> Unit) {
+    val colors = LocalDemoColors.current
+    val busy = state.busy
+    BarIconButton(onClick = if (busy) onStop else onSend, enabled = state.canAct) {
+        // filled with the send accent when it can act; the hairline's tonal circle with muted ink when there
+        // is nothing to send. The fill eases between the two, and send cross-fades into stop, so it changes
+        // in place
+        val fill by animateColorAsState(
+            if (state.canAct) colors.sendAccent else colors.hairline,
+            tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard),
+            label = "send fill",
+        )
+        val tint by animateColorAsState(
+            if (state.canAct) colors.onSendAccent else colors.muted,
+            tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard),
+            label = "send tint",
+        )
+        BarCircle(fill) {
+            Crossfade(busy, animationSpec = tween(DemoMotion.SWAP_MILLIS), label = "send or stop") { stop ->
+                Icon(
+                    if (stop) DemoIcons.Stop else DemoIcons.Send,
+                    contentDescription = stringResource(if (stop) R.string.ds_stop else R.string.ds_send),
+                    tint = tint,
+                    modifier = Modifier.size(DemoSize.barGlyph),
+                )
+            }
+        }
+    }
+}
+
+/** A tonal button of the bar (+, the mic, discard): an ink glyph on the hairline's circle. */
+@Composable
+private fun BarButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+    val colors = LocalDemoColors.current
+    BarIconButton(onClick = onClick) {
+        BarCircle(colors.hairline) {
+            Icon(icon, contentDescription = label, tint = colors.ink, modifier = Modifier.size(DemoSize.barGlyph))
         }
     }
 }

@@ -16,6 +16,7 @@ import com.suhel.llamabro.demo.data.MessageChange
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.NewMessage
+import com.suhel.llamabro.demo.data.NewVoice
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
 import com.suhel.llamabro.demo.data.loadConfig
@@ -66,8 +67,11 @@ data class TurnOptions(
     val continues: Boolean = false,
 )
 
-/** How a turn reaches the model: the conversation, the message's text and pictures, and the turn's options. */
-typealias Streamer = (Conversation, String, Array<Content.Image>, TurnOptions) -> Flow<ChatEvent>
+/**
+ * How a turn reaches the model: the conversation, the message's text, its pictures and voice message, and the turn's
+ * options.
+ */
+typealias Streamer = (Conversation, String, Array<Content>, TurnOptions) -> Flow<ChatEvent>
 
 /**
  * What a turn streams: the SDK conversation, with the Think level and the sampling applied. A continue resends the
@@ -77,14 +81,14 @@ typealias Streamer = (Conversation, String, Array<Content.Image>, TurnOptions) -
 internal fun sdkStream(
     convo: Conversation,
     text: String,
-    images: Array<Content.Image>,
+    media: Array<Content>,
     options: TurnOptions,
 ): Flow<ChatEvent> {
     val configure: RequestOptions.Builder.() -> Unit = {
         options.level?.let { level -> reasoning { Thinking.configure(level, this) } }
         sampling = options.sampling
     }
-    return if (options.continues) convo.resume(configure) else convo.send(text, *images, options = configure)
+    return if (options.continues) convo.resume(configure) else convo.send(text, *media, options = configure)
 }
 
 /** The divider line for a switch to [key]. */
@@ -123,7 +127,16 @@ internal fun missingOrDownloading(name: String, status: DownloadStatus): ChatMod
         else -> ChatModelState.Missing(name)
     }
 
-internal fun readyOrWaking(key: HfModel, name: String, hostState: HostState): ChatModelState =
+/**
+ * The chat's model as the composer sees it. Loaded, the model says whether it sees and hears; otherwise the catalog
+ * says whether it sees, and [heard] (the models that heard on their last load) whether it hears (D76).
+ */
+internal fun readyOrWaking(
+    key: HfModel,
+    name: String,
+    hostState: HostState,
+    heard: Set<String> = emptySet(),
+): ChatModelState =
     when {
         hostState is HostState.Waking && hostState.key == key -> {
             ChatModelState.Waking(hostState.progress)
@@ -134,13 +147,51 @@ internal fun readyOrWaking(key: HfModel, name: String, hostState: HostState): Ch
                 name,
                 hostState.model.info.supportsVision,
                 Thinking.canThink(hostState.model.info, Catalog.byKey(key)),
+                hears = hostState.model.info.supportsAudio,
             )
         }
 
         else -> {
-            ChatModelState.Ready(name, Catalog.byKey(key)?.sees ?: false, Catalog.byKey(key)?.thinks ?: false)
+            ChatModelState.Ready(
+                name,
+                Catalog.byKey(key)?.sees ?: false,
+                Catalog.byKey(key)?.thinks ?: false,
+                hears = key.toString() in heard,
+            )
         }
     }
+
+/**
+ * Why model [name] can't take a message's pictures or voice message, when it can't see or hear them, or null when it
+ * can; [visionModel] is a model on the phone that sees.
+ */
+internal fun refusal(
+    sees: Boolean,
+    hears: Boolean,
+    pictures: Boolean,
+    voice: Boolean,
+    name: String,
+    visionModel: String?,
+): Limit? =
+    when {
+        pictures && !sees -> Limits.noVision(name, visionModel)
+        voice && !hears -> Limits.cantHear(name)
+        else -> null
+    }
+
+/** Records whether the model heard on this load, so the mic shows before its next load (D76). */
+private suspend fun rememberHearing(settings: SettingsRepository, key: HfModel, hears: Boolean) {
+    val known = key.toString() in settings.hearingModels.first()
+    if (known != hears) settings.setHears(key.toString(), hears)
+}
+
+/** What the chat's model state is derived from. */
+private data class ModelInputs(
+    val key: HfModel?,
+    val library: List<LibraryModel>?,
+    val host: HostState,
+    val heard: Set<String>,
+)
 
 /** The reply being written right now. It is not in [ChatHandle.messages] until the row changes state. */
 data class StreamingReply(
@@ -159,7 +210,9 @@ sealed interface ChatModelState {
     /** The model is loading; [progress] is how far, 0 to 1, once the SDK has said. */
     data class Waking(val progress: Float? = null) : ChatModelState
 
-    data class Ready(val name: String, val sees: Boolean, val canThink: Boolean) : ChatModelState
+    /** [hears]: the model takes voice messages (D76). */
+    data class Ready(val name: String, val sees: Boolean, val canThink: Boolean, val hears: Boolean = false) :
+        ChatModelState
 
     data class Missing(val name: String) : ChatModelState
 
@@ -188,6 +241,11 @@ class ChatEngine(
      * reply this process has just started as stopped.
      */
     private val beforeTurn: suspend () -> Unit = {},
+    /**
+     * A model's card values (D60), at once: the catalog's; the app adds the hub's for other models once looked up
+     * ([SamplingStore.card], which never holds a turn).
+     */
+    private val card: (HfModel) -> CardSampling? = { Catalog.byRepo(it.repo)?.sampling },
 ) {
     /** Turns under way in every chat, from the load to the end of the reply. */
     private val activeTurns = MutableStateFlow(0)
@@ -269,7 +327,7 @@ class ChatEngine(
     private suspend fun turnOptions(id: Long, key: HfModel, level: ThinkLevel?, continues: Boolean): TurnOptions {
         val layers =
             SamplingLayers(
-                card = Catalog.byRepo(key.repo)?.sampling,
+                card = card(key),
                 model = settings.modelSampling.first()[key.toString()] ?: Knobs.None,
                 chat = chats.sampling(id).first(),
             )
@@ -355,9 +413,12 @@ class ChatEngine(
                 modelKey,
                 library,
                 host.state,
-            ) { key, lib, hostState -> key to (lib to hostState) }
-                .flatMapLatest { (key, rest) ->
-                    val (lib, hostState) = rest
+                settings.hearingModels,
+            ) { key, lib, hostState, heard -> ModelInputs(key, lib, hostState, heard) }
+                .flatMapLatest { inputs ->
+                    val key = inputs.key
+                    val lib = inputs.library
+                    val hostState = inputs.host
                     if (key == null || lib == null) {
                         emptyFlow()
                     } else {
@@ -367,7 +428,7 @@ class ChatEngine(
                                 kotlinx.coroutines.flow.flow { status.collect { emit(missingOrDownloading(name, it)) } }
                             }
                         } else {
-                            kotlinx.coroutines.flow.flowOf(readyOrWaking(key, name, hostState))
+                            kotlinx.coroutines.flow.flowOf(readyOrWaking(key, name, hostState, inputs.heard))
                         }
                     }
                 }.stateIn(hs, SharingStarted.Eagerly, ChatModelState.Waking())
@@ -399,27 +460,35 @@ class ChatEngine(
 
         /**
          * Whether the message was taken: false while a reply is coming, for an empty message, when the chat has no
-         * model
-         * at all, and for pictures sent to a model that can't see them (the limit line says so). The caller keeps the
-         * draft when this is false. A taken message is stored as held and answered as soon as its model is on the
-         * phone.
+         * model at all, and for pictures or a [voice] message sent to a model that can't see or hear them (the limit
+         * line says so). The caller keeps the draft when this is false. A taken message is stored as held and answered
+         * as soon as its model is on the phone.
          */
-        suspend fun send(text: String, images: List<String> = emptyList()): Boolean {
+        suspend fun send(text: String, images: List<String> = emptyList(), voice: NewVoice? = null): Boolean {
             if (_busy.value) return false
-            if (text.isBlank() && images.isEmpty()) return false
+            if (text.isBlank() && images.isEmpty() && voice == null) return false
             val key = modelKey.value ?: initialModelKey()?.also { modelKey.value = it } ?: return false
             val names = images.take(MAX_IMAGES)
+            val ready = model.value as? ChatModelState.Ready
             // the model's own answer once it is loaded; until then what the catalog says about it
-            val sees = (model.value as? ChatModelState.Ready)?.sees ?: Catalog.byKey(key)?.sees ?: false
-            if (names.isNotEmpty() && !sees) {
-                _limit.value = Limits.noVision(currentName(), visionModelName())
+            val sees = ready?.sees ?: Catalog.byKey(key)?.sees ?: false
+            val hears = ready?.hears == true
+            refusal(sees, hears, names.isNotEmpty(), voice != null, currentName(), visionModelName())?.let {
+                _limit.value = it
                 return false
             }
             val id = ensureChat() ?: return false
             _limit.value = null
             chats.append(
                 id,
-                NewMessage(MessageKind.User, text.trim(), names, state = MessageState.Held, sentAt = clock()),
+                NewMessage(
+                    MessageKind.User,
+                    text.trim(),
+                    names,
+                    state = MessageState.Held,
+                    sentAt = clock(),
+                    voice = voice,
+                ),
             )
             pump()
             return true
@@ -569,6 +638,8 @@ class ChatEngine(
                 lease = held
                 val loaded = held.model
                 syncThink(loaded.info)
+                val hears = loaded.info.supportsAudio
+                rememberHearing(settings, key, hears)
                 val rows = chats.messages(id).first()
                 var convo = conversation.takeIf { conversationKey == key && conversationModel === loaded }
                 if (convo == null) {
@@ -579,7 +650,7 @@ class ChatEngine(
                             it.id != user.id && it.state != MessageState.Held &&
                                 (it.position < user.position || it.kind == MessageKind.Assistant)
                         }
-                    convo = newConversation(loaded, History.forModel(seen))
+                    convo = newConversation(loaded, History.forModel(seen, hears = hears))
                     conversation = convo
                     conversationKey = key
                     conversationModel = loaded
@@ -596,15 +667,21 @@ class ChatEngine(
                         ),
                     )
                 onReply()
-                val images = user.images.map { Content.Image(it.readBytes(), "image/jpeg") }.toTypedArray()
+                // a model that can't hear gets a note for each voice message, and the line says so (D76)
+                if (!hears && rows.any { it.voice != null && it.position <= user.position }) {
+                    _limit.value = Limits.cantHear(currentName())
+                }
+                val parts = (History.userMessage(user, hears) as Message.User).content
+                val text = parts.filterIsInstance<Content.Text>().joinToString("") { it.text }
+                val media = parts.filterNot { it is Content.Text }.toTypedArray()
                 val report = loaded.loadReport
                 val draft = ReplyDraft(clock, report.device.label, contextSize = report.contextSize)
                 stream(
                     convo,
                     replyId,
                     user,
-                    user.text,
-                    images,
+                    text,
+                    media,
                     turnOptions(id, key, _think.value, continues = false),
                     draft,
                 )
@@ -656,7 +733,7 @@ class ChatEngine(
                 syncThink(loaded.info)
                 // the chat before the reply, then the reply as far as it got, its thinking with it
                 val history =
-                    History.forModel(rows, upTo = reply.position) +
+                    History.forModel(rows, upTo = reply.position, hears = loaded.info.supportsAudio) +
                         Message.Assistant(content = reply.text, reasoning = reply.reasoning)
                 // a one-off: kept, this conversation would hold the reply twice once the next message is sent
                 invalidate()
@@ -691,13 +768,13 @@ class ChatEngine(
             replyId: Long,
             user: StoredMessage,
             text: String,
-            images: Array<Content.Image>,
+            media: Array<Content>,
             options: TurnOptions,
             draft: ReplyDraft,
         ) {
             val ticker = hs.launch { showAndSave(draft, replyId) }
             try {
-                streamer(convo, text, images, options).collect { trace("ChatEngine.onDelta") { draft.accept(it) } }
+                streamer(convo, text, media, options).collect { trace("ChatEngine.onDelta") { draft.accept(it) } }
                 ticker.cancel()
                 if (draft.filledContext) {
                     // no room to continue: it ends as a chat too long for the model, with its way out

@@ -6,13 +6,14 @@ import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.FitLabel
 import com.suhel.llamabro.demo.models.HubEstimate
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.RepoFile
+import com.suhel.llamabro.demo.models.ScriptedEstimates
 import com.suhel.llamabro.demo.models.SizeTier
+import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.ui.keepAlive
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CompletableDeferred
@@ -45,14 +46,17 @@ import java.io.IOException
 class ModelSheetViewModelTest {
     @get:Rule val folder = TemporaryFolder()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val hub = FakeHubGateway()
+    private val testHub = TestHub()
+
+    /** The SDK's projection, as the test sets it. */
+    private val hub = ScriptedEstimates()
     private val settings by lazy {
         SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "s.preferences_pb") })
     }
     private val scheduler = FakeScheduler()
     private val models by lazy {
         ModelRepository(
-            hub,
+            testHub.hub,
             settings,
             scheduler,
             CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
@@ -74,6 +78,7 @@ class ModelSheetViewModelTest {
         viewModels.forEach { it.viewModelScope.cancel() }
         Dispatchers.resetMain()
         scope.cancel()
+        testHub.close()
     }
 
     private fun estimateFor(file: RepoFile, fits: Boolean? = true, context: Int? = 32_768) =
@@ -295,7 +300,7 @@ class ModelSheetViewModelTest {
             val key = vm.get()
             runCurrent()
             assertEquals(HfModel.parse("unsloth/Qwen3.5-4B-GGUF:Q3_K_M"), key)
-            assertEquals(listOf(key), scheduler.enqueued)
+            scheduler.awaitEnqueued(checkNotNull(key))
         }
 
     @Test fun aRepoThatCantBeListedFailsAndRetryTriesAgain() =

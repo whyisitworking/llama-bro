@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.suhel.llamabro.demo.chat.PlayingClip
 import com.suhel.llamabro.demo.designsystem.components.DayLabel
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.Gap
@@ -37,6 +38,7 @@ import com.suhel.llamabro.demo.designsystem.components.ThoughtFold
 import com.suhel.llamabro.demo.designsystem.components.ThoughtState
 import com.suhel.llamabro.demo.designsystem.components.TypingDots
 import com.suhel.llamabro.demo.designsystem.components.UserBubble
+import com.suhel.llamabro.demo.designsystem.components.VoiceClip
 import com.suhel.llamabro.demo.designsystem.testing.CountRecompositions
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
@@ -59,6 +61,10 @@ class MessageActions(
     val continueReply: (position: Int) -> Unit = {},
     /** Opens a user message's [index]th photo full-screen. */
     val openPhoto: (position: Int, index: Int) -> Unit = { _, _ -> },
+    /** Plays or pauses a voice message (D76). */
+    val toggleVoice: (messageId: Long, file: File) -> Unit = { _, _ -> },
+    /** The voice message playing or paused now; read where a bubble is drawn, so playing redraws that bubble only. */
+    val playing: () -> PlayingClip? = { null },
 )
 
 @Composable
@@ -76,12 +82,20 @@ private fun UserRow(item: UserItem, actions: MessageActions) {
     CountRecompositions("row-${item.key}")
     Stack(Gap.Inline, Modifier.fillMaxWidth().testTag("user_message")) {
         val images = rememberImages(item.images)
+        val voice =
+            item.voice?.let { v ->
+                val clip = actions.playing()?.takeIf { it.messageId == item.id }
+                VoiceClip(v.levels, v.length, playing = clip?.playing == true, progress = clip?.progress ?: 0f)
+            }
         UserBubble(
             text = item.text,
             images = images,
             time = item.time,
-            onLongClick = { actions.openMenu(item.position, false) },
+            // a voice message has nothing to copy or edit (D76): no menu
+            onLongClick = if (item.voice == null) ({ actions.openMenu(item.position, false) }) else null,
             onImageClick = { index -> actions.openPhoto(item.position, index) },
+            voice = voice,
+            onVoiceToggle = { item.voice?.let { actions.toggleVoice(item.id, it.file) } },
         )
         if (item.heldNote != null) HeldNote(item.heldNote)
     }

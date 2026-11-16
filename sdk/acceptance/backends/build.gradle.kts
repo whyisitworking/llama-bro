@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -75,4 +76,6 @@ dependencies {
 
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.runner)
+    // typed output on the phone (TypedDeviceTest, D63)
+    androidTestImplementation(project(":llamabro-typed"))
 }

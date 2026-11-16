@@ -8,11 +8,28 @@
 // Cancel sets the flag read by req.should_stop. The stream returns from next() at its next result or
 // polling tick (server-queue.cpp server_response_reader::next, HTTP_POLLING_SECONDS); destroying the
 // response then posts the cancel task to the server loop (server-queue.cpp server_response_reader::stop).
+//
+// Attachments (D84, F55) are read on the caller's thread, before the request's thread starts, so the caller may release
+// its bytes or descriptor when the call returns. The request's thread owns the buffers: a transcription's audio moves
+// into server_http_req::files, which upstream's handler reads as a multipart upload; for other routes each placeholder
+// becomes a base64 data URL in the body. The buffers live no longer than the req, which ends before the terminal event.
 #include "model.h"
+#include "upstream.h"
+
+#include "base64.hpp"
 
 #include <atomic>
+#include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <iterator>
+#include <stdexcept>
+#include <vector>
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 struct lb_request {
     std::atomic<int> refs{2};          // caller + thread
@@ -24,17 +41,223 @@ struct lb_request {
 
 namespace {
 
+constexpr const char * kPlaceholder = "lb-attachment:";
+constexpr const char * kTranscriptions = "transcriptions";
+
+std::atomic<int> g_live_attachments{0};
+
+// One attachment's bytes, read once. Counted while alive, for the tests that check a request frees them.
+struct attachment {
+    std::string name;
+    std::string mime;
+    std::string filename;  // a path's base name, as an upload would carry it
+    raw_buffer data;
+
+    attachment() { g_live_attachments++; }
+    attachment(attachment && o) noexcept
+        : name(std::move(o.name)), mime(std::move(o.mime)), filename(std::move(o.filename)), data(std::move(o.data)) {
+        g_live_attachments++;
+    }
+    attachment(const attachment &) = delete;
+    attachment & operator=(const attachment &) = delete;
+    attachment & operator=(attachment &&) = delete;
+    ~attachment() { g_live_attachments--; }
+};
+
+// lb_read_fd's buffer, handed to the caller as is: malloc'd, so lb_buffer_free is free(), with no copy at the end
+struct malloc_buffer {
+    uint8_t * p = nullptr;
+    size_t n = 0;
+    ~malloc_buffer() { std::free(p); }
+    uint8_t * data() { return p; }
+    size_t size() const { return n; }
+    void resize(size_t size) {
+        auto * q = static_cast<uint8_t *>(std::realloc(p, size ? size : 1));
+        if (!q) throw std::bad_alloc();
+        p = q;
+        n = size;
+    }
+    void clear() { resize(0); }
+    void shrink_to_fit() {}
+};
+
+// Reads the whole file behind fd from offset 0 with pread, so the caller's offset is untouched, or with read when the
+// descriptor can't seek (a pipe, a socket). Never closes fd. Returns 0, or the errno that stopped it.
+template <typename Buffer>
+int read_fd(int fd, Buffer & out) {
+    struct stat st{};
+    if (fstat(fd, &st) != 0) return errno;
+    out.resize(S_ISREG(st.st_mode) && st.st_size > 0 ? (size_t) st.st_size + 1 : 64 * 1024);  // +1: EOF in one read
+    size_t len = 0;
+    bool seekable = true;
+    while (true) {
+        if (len == out.size()) out.resize(out.size() * 2);
+        const ssize_t n = seekable ? pread(fd, out.data() + len, out.size() - len, (off_t) len)
+                                   : read(fd, out.data() + len, out.size() - len);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            if (seekable && errno == ESPIPE && len == 0) {
+                seekable = false;
+                continue;
+            }
+            const int e = errno;
+            out.clear();
+            return e;
+        }
+        if (n == 0) break;
+        len += (size_t) n;
+    }
+    const size_t cap = out.size();
+    out.resize(len);
+    if (cap - len > len / 4) out.shrink_to_fit();  // a pipe's doubling; a file's one spare byte isn't worth a copy
+    return 0;
+}
+
+std::string fd_error(int fd, int e) {
+    return "cannot read descriptor " + std::to_string(fd) + ": " + std::strerror(e);
+}
+
+bool read_path(const char * path, raw_buffer & out, std::string & err) {
+    const int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        err = std::string("cannot open ") + path + ": " + std::strerror(errno);
+        return false;
+    }
+    const int e = read_fd(fd, out);
+    close(fd);
+    if (e != 0) err = std::string("cannot read ") + path + ": " + std::strerror(e);
+    return e == 0;
+}
+
+// WAV, MP3 or FLAC by their first bytes: the formats llama.cpp decodes (b12352 tools/mtmd/mtmd-helper.cpp
+// audio_helpers::is_audio_file); anything else it would try as an image. One addition, as Kotlin's Media.isAudio: an
+// MPEG sync word must also be layer I-III, since an ADTS AAC header has the sync word with layer bits 00, passes
+// upstream's check, then fails to decode.
+bool is_audio_file(const char * buf, size_t len) {
+    if (len < 12) return false;
+    const bool is_wav = memcmp(buf, "RIFF", 4) == 0 && memcmp(buf + 8, "WAVE", 4) == 0;
+    const bool is_mp3 = len >= 3 && (memcmp(buf, "ID3", 3) == 0 ||
+                                     ((unsigned char) buf[0] == 0xFF && ((unsigned char) buf[1] & 0xE0) == 0xE0 &&
+                                      ((unsigned char) buf[1] & 0x06) != 0));
+    const bool is_flac = memcmp(buf, "fLaC", 4) == 0;
+    return is_wav || is_mp3 || is_flac;
+}
+
+std::string data_url(const attachment & a) {
+    std::string url = "data:" + a.mime + ";base64,";
+    url.reserve(url.size() + base64::required_encode_size(a.data.size()));
+    base64::encode(a.data.begin(), a.data.end(), std::back_inserter(url));
+    return url;
+}
+
+// The routes whose body is a chat completion's (server-context.cpp: post_chat_completions, handle_count_tokens with
+// TASK_RESPONSE_TYPE_OAI_CHAT, post_apply_template; each calls oaicompat_chat_params_parse on it). Only these get
+// placeholders filled (D84); every other route's body goes to its handler as the caller wrote it.
+bool takes_chat_messages(const std::string & path) {
+    return path == "/chat" || path == "/count_tokens" || path == "/apply_template";
+}
+
+// One media field of a content part: replaced when its value is exactly "lb-attachment:<name>". Returns whether it was.
+// Throws std::invalid_argument for a placeholder with no attachment of that name.
+bool fill_field(json & part, const char * holder, const char * field, const std::vector<attachment> & atts) {
+    if (!part.contains(holder) || !part.at(holder).is_object()) return false;
+    json & obj = part.at(holder);
+    if (!obj.contains(field) || !obj.at(field).is_string()) return false;
+    const std::string s = obj.at(field).get<std::string>();
+    if (s.rfind(kPlaceholder, 0) != 0) return false;
+    const std::string name = s.substr(std::strlen(kPlaceholder));
+    for (const auto & a : atts) {
+        if (a.name == name) {
+            obj[field] = data_url(a);
+            return true;
+        }
+    }
+    throw std::invalid_argument("no attachment for the placeholder \"" + s + "\"");
+}
+
+// The embeddings routes (server-context.cpp handle_embeddings_impl, post_embeddings and post_embeddings_oai): their
+// "input" (or "content") may hold OAI content parts, read by tokenize_oai_content_array. Filled too (D84).
+bool takes_embedding_content(const std::string & path) {
+    return path == "/embeddings" || path == "/embeddings_native";
+}
+
+// One content array's media parts: image_url.url and input_audio.data, the two fields media arrives in
+// (server-common.cpp oaicompat_content_load_media). Returns whether anything was replaced.
+bool fill_parts(json & content, const std::vector<attachment> & atts) {
+    if (!content.is_array()) return false;
+    bool replaced = false;
+    for (auto & part : content) {
+        if (!part.is_object()) continue;
+        replaced = fill_field(part, "image_url", "url", atts) || replaced;
+        replaced = fill_field(part, "input_audio", "data", atts) || replaced;
+    }
+    return replaced;
+}
+
+// Replaces each placeholder that is the whole value of a content part's image_url.url or input_audio.data with the
+// attachment's data URL: in a chat body, the parts of messages[].content[]; in an embeddings body, the parts of
+// {"content": [...]} entries in "input" (or "content", as handle_embeddings_impl reads it), one entry or an array of
+// them. Nothing else in the body is looked at (a message's text, response_format, tools, a text input). The body is
+// written again only when something was replaced.
+void write_placeholders(std::string & body, const std::vector<attachment> & atts, bool embeddings) {
+    if (body.find(kPlaceholder) == std::string::npos) return;
+    json j = json::parse_no_throw(body);
+    if (j.is_discarded() || !j.is_object()) return;
+    bool replaced = false;
+    if (!embeddings) {
+        if (!j.contains("messages") || !j.at("messages").is_array()) return;
+        for (auto & msg : j.at("messages")) {
+            if (msg.is_object() && msg.contains("content")) replaced = fill_parts(msg.at("content"), atts) || replaced;
+        }
+    } else {
+        const char * key = j.contains("input") ? "input" : "content";
+        if (!j.contains(key)) return;
+        json & prompt = j.at(key);
+        auto entry = [&](json & e) {
+            if (e.is_object() && e.contains("content")) replaced = fill_parts(e.at("content"), atts) || replaced;
+        };
+        if (prompt.is_array()) {
+            for (auto & e : prompt) entry(e);
+        } else {
+            entry(prompt);
+        }
+    }
+    if (replaced) body = j.dump();
+}
+
 void release(lb_request * r) {
     if (r->refs.fetch_sub(1) == 1) delete r;
 }
 
 void run_request(lb_model * m, lb_request * r, server_http_context::handler_t handler,
-                 std::map<std::string, std::string> params, std::string query, std::string path, std::string body) {
+                 std::map<std::string, std::string> params, std::string query, std::string path, std::string body,
+                 std::vector<attachment> atts, std::string att_error) {
     bool cancelled = false;
     {
+        // the attachments become what upstream's handler reads: the upload's files for a transcription, data URLs in
+        // the body for the rest. A bad attachment is a bad request, answered as ex_wrapper answers one (400)
+        std::map<std::string, uploaded_file> files;
+        const bool transcription = path == std::string("/") + kTranscriptions;
+        auto prepare = [&](const server_http_req &) -> server_http_res_ptr {
+            if (!att_error.empty()) throw std::invalid_argument(att_error);
+            if (!transcription) {
+                if (takes_chat_messages(path)) write_placeholders(body, atts, false);
+                if (takes_embedding_content(path)) write_placeholders(body, atts, true);
+                atts.clear();  // in the body now, or not wanted by this route
+            }
+            return nullptr;
+        };
+        const server_http_req no_req{ {}, {}, {}, {}, {}, {}, r->should_stop };
+        server_http_res_ptr failed = ex_wrapper(prepare)(no_req);
+        if (transcription && !failed) {
+            for (auto & a : atts) files[a.name] = uploaded_file{ std::move(a.data), a.filename, a.mime };
+        }
+
         // req must outlive the response: a stream keeps a pointer to it (server-stream.cpp:611-629)
-        server_http_req req{ std::move(params), {}, std::move(path), std::move(query), std::move(body), {}, r->should_stop };
-        server_http_res_ptr res = handler(req);  // ex_wrapper turns exceptions into an error response
+        server_http_req req{ std::move(params), {}, std::move(path), std::move(query), std::move(body), std::move(files),
+                             r->should_stop };
+        // ex_wrapper turns exceptions into an error response
+        server_http_res_ptr res = failed ? std::move(failed) : handler(req);
         const int status = res->status;
 
         if (res->is_stream()) {
@@ -58,6 +281,7 @@ void run_request(lb_model * m, lb_request * r, server_http_context::handler_t ha
         // destroying the response is what sends the cancel to the server loop (server-queue.cpp:603)
         res->on_complete();
         res.reset();
+        atts.clear();  // with req's files, freed at the end of this scope: before the terminal event
     }
 
     r->cb(r->user, cancelled ? LB_EVENT_CANCELLED : LB_EVENT_DONE, 0, nullptr, 0);
@@ -80,16 +304,64 @@ void lb_model_cancel_all_requests(lb_model * m) {
     m->cv.wait(lk, [m] { return m->requests.empty(); });
 }
 
+int lb_attachments_live() { return g_live_attachments.load(); }
+
 extern "C" {
 
 lb_status lb_model_request(lb_model * m, const char * endpoint, const char * params_json,
                            const char * body, size_t body_len, lb_request_cb cb, void * user,
                            lb_request ** out) {
+    return lb_model_request_with(m, endpoint, params_json, body, body_len, nullptr, 0, cb, user, out);
+}
+
+lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char * params_json,
+                                const char * body, size_t body_len, const lb_attachment * atts, size_t n_atts,
+                                lb_request_cb cb, void * user, lb_request ** out) {
     if (out) *out = nullptr;
-    if (!m || !endpoint || !cb || !out) return LB_ERR_INVALID_ARG;
+    if (!m || !endpoint || !cb || !out || (n_atts > 0 && !atts)) return LB_ERR_INVALID_ARG;
 
     const auto it = m->endpoints.find(endpoint);
     if (it == m->endpoints.end()) return LB_ERR_INVALID_ARG;
+    const bool transcription = std::strcmp(endpoint, kTranscriptions) == 0;
+
+    // the caller's mistakes first, then every read, all before this returns (the caller may release its sources)
+    for (size_t i = 0; i < n_atts; i++) {
+        const lb_attachment & a = atts[i];
+        const int sources = (a.path ? 1 : 0) + (a.fd >= 0 ? 1 : 0) + (a.data ? 1 : 0);
+        if (!a.name || !*a.name || sources != 1) return LB_ERR_INVALID_ARG;
+        if (!transcription && (!a.mime || !*a.mime)) return LB_ERR_INVALID_ARG;  // a data URL needs its type
+        for (size_t j = 0; j < i; j++) {
+            if (std::strcmp(atts[j].name, a.name) == 0) return LB_ERR_INVALID_ARG;
+        }
+    }
+    std::vector<attachment> read;
+    std::string att_error;
+    try {
+        read.reserve(n_atts);
+        for (size_t i = 0; i < n_atts && att_error.empty(); i++) {
+            const lb_attachment & a = atts[i];
+            attachment & b = read.emplace_back();
+            b.name = a.name;
+            b.mime = a.mime ? a.mime : "";
+            std::string err;
+            if (a.path) {
+                const char * slash = std::strrchr(a.path, '/');
+                b.filename = slash ? slash + 1 : a.path;
+                if (!read_path(a.path, b.data, err)) att_error = "attachment \"" + b.name + "\": " + err;
+            } else if (a.fd >= 0) {
+                if (const int e = read_fd(a.fd, b.data)) att_error = "attachment \"" + b.name + "\": " + fd_error(a.fd, e);
+            } else {
+                b.data.assign(a.data, a.data + a.len);
+            }
+            const bool audio = transcription || b.mime.rfind("audio/", 0) == 0;
+            if (att_error.empty() && audio && !is_audio_file(reinterpret_cast<const char *>(b.data.data()), b.data.size())) {
+                att_error = "attachment \"" + b.name + "\" is not WAV, MP3 or FLAC audio, the formats llama.cpp decodes";
+            }
+        }
+    } catch (const std::bad_alloc &) {
+        att_error = "attachments too large to read into memory";
+    }
+    if (!att_error.empty()) read.clear();  // the request only reports the error
 
     std::map<std::string, std::string> params;
     std::string query;
@@ -123,7 +395,8 @@ lb_status lb_model_request(lb_model * m, const char * endpoint, const char * par
     }
     try {
         std::thread(run_request, m, r, it->second, std::move(params), std::move(query),
-                    std::string("/") + endpoint, std::string(body ? body : "", body ? body_len : 0)).detach();
+                    std::string("/") + endpoint, std::string(body ? body : "", body ? body_len : 0),
+                    std::move(read), std::move(att_error)).detach();
     } catch (...) {
         std::lock_guard<std::mutex> lk(m->mtx);
         m->requests.erase(r);
@@ -142,5 +415,29 @@ void lb_request_cancel(lb_request * r) {
 void lb_request_free(lb_request * r) {
     if (r) release(r);
 }
+
+lb_status lb_read_fd(int fd, uint8_t ** out, size_t * out_len, char ** error_json) {
+    if (out) *out = nullptr;
+    if (out_len) *out_len = 0;
+    if (error_json) *error_json = nullptr;
+    if (!out || !out_len) return LB_ERR_INVALID_ARG;
+    malloc_buffer data;
+    try {
+        if (const int e = fd < 0 ? EBADF : read_fd(fd, data)) {
+            lb_set_error(error_json, fd_error(fd, e));
+            return LB_ERR_INVALID_ARG;
+        }
+        data.resize(data.size());  // never NULL, even for an empty file
+    } catch (const std::bad_alloc &) {
+        lb_set_error(error_json, "descriptor " + std::to_string(fd) + " is too large to read into memory");
+        return LB_ERR_INVALID_ARG;
+    }
+    *out = data.p;
+    *out_len = data.n;
+    data.p = nullptr;  // the caller's now
+    return LB_OK;
+}
+
+void lb_buffer_free(uint8_t * buf) { std::free(buf); }
 
 }  // extern "C"

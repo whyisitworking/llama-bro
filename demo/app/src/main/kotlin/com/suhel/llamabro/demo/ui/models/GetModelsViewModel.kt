@@ -6,10 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.models.FitView
 import com.suhel.llamabro.demo.models.ModelRepository
-import com.suhel.llamabro.demo.models.SearchFailed
 import com.suhel.llamabro.demo.models.SearchModel
 import com.suhel.llamabro.demo.models.attempt
+import com.suhel.llamabro.demo.models.offline
 import com.suhel.llamabro.hub.HfModel
+import com.suhel.llamabro.hub.HubException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -134,7 +135,7 @@ class GetModelsViewModel(
             if (rows.isEmpty()) GetModelsState.NoResults else GetModelsState.Results(rows)
         } catch (e: CancellationException) {
             throw e
-        } catch (e: SearchFailed) {
+        } catch (e: HubException) {
             if (e.offline) {
                 GetModelsState.Suggestions(
                     ModelRow.suggestions,

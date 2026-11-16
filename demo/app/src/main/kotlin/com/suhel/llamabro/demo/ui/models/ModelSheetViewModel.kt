@@ -10,11 +10,11 @@ import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.HubEstimate
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.RepoFile
-import com.suhel.llamabro.demo.models.SearchFailed
 import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.models.Sizes
 import com.suhel.llamabro.demo.models.attempt
 import com.suhel.llamabro.hub.HfModel
+import com.suhel.llamabro.hub.HubException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
@@ -175,7 +175,7 @@ class ModelSheetViewModel(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    SheetState.Failed(retryable = (e as? SearchFailed)?.retryable ?: true)
+                    SheetState.Failed(retryable = (e as? HubException)?.retryable ?: true)
                 },
             )
         }

@@ -2,33 +2,36 @@ package com.suhel.llamabro.demo.journey
 
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.chat.sdkStream
-import com.suhel.llamabro.demo.models.CachedEntry
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.CatalogEntry
-import com.suhel.llamabro.demo.models.DownloadFailure
 import com.suhel.llamabro.demo.models.DownloadScheduler
-import com.suhel.llamabro.demo.models.DownloadStatus
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.demo.models.HubEstimate
 import com.suhel.llamabro.demo.models.RepoFile
+import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.testing.FakeDiscovery
 import com.suhel.llamabro.demo.testing.TestConfig
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.update
+import java.io.Closeable
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Everything a journey stands on besides the app: a fake engine, a hub whose downloads move only when the journey says
- * so, and a fake Hugging Face. The app itself (screens, view models, database, settings) is the real one.
+ * Everything a journey stands on besides the app: a fake engine, the SDK's fake hub (D70, D75) whose downloads move
+ * only when the journey says so, and search over it. The app itself (screens, view models, database, settings) is the
+ * real one.
  */
-class World(private val realDownloads: Boolean = false) {
+class World(private val realDownloads: Boolean = false) : Closeable {
     val engine = FakeLlamaBro()
-    val hub = FakeHubGateway()
+    val hub = TestHub()
     val downloads = ScriptedDownloads(hub)
-    val discovery = FakeDiscovery()
+    val discovery = FakeDiscovery(hub, engine.llamaBro)
 
     /** While true, a reply waits before it starts (the model "reads the prompt"): the turn is under way, no text yet. */
     val holdReplies = MutableStateFlow(false)
@@ -41,9 +44,10 @@ class World(private val realDownloads: Boolean = false) {
     /** Puts [entry]'s repo on the fake Hugging Face, and says its estimate fits this phone. */
     fun stock(entry: CatalogEntry, fits: Boolean = true) {
         val quant = entry.key.toString().substringAfter(':')
+        hub.publish(entry.key)
         discovery.repoFiles[entry.key.repo] =
             listOf(RepoFile("${entry.realName.replace(' ', '-')}-$quant.gguf", quant, entry.modelBytes))
-        hub.estimates[entry.key] =
+        discovery.estimates[entry.key] =
             HubEstimate(
                 entry.modelBytes,
                 entry.mmprojBytes,
@@ -54,11 +58,14 @@ class World(private val realDownloads: Boolean = false) {
             )
     }
 
-    /** The scripted hub and scheduler, or (for the journeys about WorkManager itself) the real ones over the fake server. */
+    /**
+     * The fake hub and the scripted worker, or (for the journeys about WorkManager itself) the real hub and worker over
+     * the fake server.
+     */
     fun config(asksForNotifications: Boolean = false): TestConfig =
         TestConfig.fresh(
             llamaBro = engine.llamaBro,
-            hub = if (realDownloads) null else hub,
+            hub = if (realDownloads) null else hub.hub,
             scheduler = if (realDownloads) null else downloads,
             discovery = discovery,
             asksForNotifications = asksForNotifications,
@@ -66,70 +73,72 @@ class World(private val realDownloads: Boolean = false) {
                 sdkStream(convo, text, images, options).onStart { holdReplies.first { !it } }
             },
         )
+
+    override fun close() = hub.close()
 }
 
 private const val CONTEXT_TOKENS = 32_768
 private const val WORKING_MEMORY = 300_000_000L
 
 /**
- * The download worker, scripted. `get` starts a download that stands at 0 until [advance] moves it, [finish] puts the
- * model on the phone, and a cancel keeps what had arrived (the pause the library offers) until the model is deleted.
+ * The download worker, scripted over the fake hub: `get` starts a download that stands still until [advance] moves it
+ * on, [finish] completes it, and a cancel keeps what had arrived (the pause the library offers) until the model is
+ * deleted. The hub's own state shows each step, as it shows the SDK worker's.
  */
-class ScriptedDownloads(private val hub: FakeHubGateway) : DownloadScheduler {
-    val enqueued = CopyOnWriteArrayList<HfModel>()
-    val cancelled = CopyOnWriteArrayList<HfModel>()
+class ScriptedDownloads(private val hub: TestHub) : DownloadScheduler {
+    val enqueued: MutableList<HfModel> = CopyOnWriteArrayList()
+    val cancelled: MutableList<HfModel> = CopyOnWriteArrayList()
 
-    /** Told when a model is on the phone, as the worker tells the repository. */
+    /** Told when a model is on the phone, for one that no `get` started (the repository watches the ones it did). */
     var onFinished: () -> Unit = {}
 
     /** Models the fake Hugging Face only gives to someone with a token ([hasToken] says whether the app has one). */
-    val gated = mutableSetOf<HfModel>()
+    val gated: MutableSet<HfModel> = ConcurrentHashMap.newKeySet()
     var hasToken: () -> Boolean = { false }
 
-    private val done = mutableMapOf<HfModel, Long>()
-    private val totals = mutableMapOf<HfModel, Long>()
-
-    fun total(model: HfModel) = totals.getOrPut(model) { DEFAULT_TOTAL }
+    /** Each model's work: true while queued or running, false once it ended, as WorkManager reports it. */
+    private val work = MutableStateFlow<Map<HfModel, Boolean>>(emptyMap())
 
     override fun enqueue(model: HfModel) {
         enqueued += model
-        hub.status(model).value =
-            if (model in gated && !hasToken()) {
-                DownloadStatus.Failed(DownloadFailure(DownloadFailure.Kind.Unauthorized, retryable = false))
-            } else {
-                running(model)
-            }
+        work.update { it + (model to true) }
+        if (model in gated && !hasToken()) {
+            hub.refuse(model, TestHub.Refusal.Unauthorized)
+            work.update { it + (model to false) } // the worker fails for good
+        } else {
+            hub.downloading(model)
+        }
     }
 
-    override fun cancel(model: HfModel) {
+    override suspend fun cancel(model: HfModel) {
         cancelled += model
-        val soFar = done[model] ?: 0L
-        hub.status(model).value =
-            if (soFar > 0) DownloadStatus.Partial(soFar, total(model)) else DownloadStatus.Absent
+        hub.stop(model)
+        work.update { if (model in it) it + (model to false) else it }
     }
 
-    /** Moves the download to [fraction] of the whole, at a steady 9 MB/s. */
-    fun advance(model: HfModel, fraction: Double) {
-        done[model] = (total(model) * fraction).toLong()
-        hub.status(model).value = running(model)
-    }
+    override suspend fun isScheduled(model: HfModel): Boolean = work.value[model] == true
+
+    override fun ends(model: HfModel): Flow<Unit> =
+        flow {
+            var live = false
+            work.collect {
+                val now = it[model]
+                if (now == true) {
+                    live = true
+                } else if (live && now == false) {
+                    live = false
+                    emit(Unit)
+                }
+            }
+        }
+
+    /** Some bytes arrive: the download is under way past 0%. */
+    fun advance(model: HfModel) = hub.advance(model)
 
     /** The model arrives: it is on the phone, complete, and the repository is told. */
     fun finish(model: HfModel) {
-        done[model] = total(model)
-        hub.cachedEntries += CachedEntry(model, total(model))
-        hub.status(model).value = DownloadStatus.Complete
+        hub.install(model)
+        work.update { it + (model to false) }
         onFinished()
-    }
-
-    private fun running(model: HfModel): DownloadStatus.Downloading {
-        val soFar = done[model] ?: 0L
-        val left = total(model) - soFar
-        return DownloadStatus.Downloading(soFar, total(model), SPEED, left / SPEED)
-    }
-
-    private companion object {
-        const val DEFAULT_TOTAL = 739_000_000L
-        const val SPEED = 9_000_000L
     }
 }

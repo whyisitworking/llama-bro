@@ -8,17 +8,20 @@ import com.suhel.llamabro.demo.chat.ChatEngine
 import com.suhel.llamabro.demo.chat.FakeChatDao
 import com.suhel.llamabro.demo.chat.LimitAction
 import com.suhel.llamabro.demo.chat.ModelHost
+import com.suhel.llamabro.demo.chat.SampleSource
+import com.suhel.llamabro.demo.chat.VoiceRecorder
+import com.suhel.llamabro.demo.data.AudioStore
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
-import com.suhel.llamabro.demo.models.CachedEntry
 import com.suhel.llamabro.demo.models.Catalog
-import com.suhel.llamabro.demo.models.FakeHubGateway
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.TestHub
+import com.suhel.llamabro.demo.models.installedModel
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CompletableDeferred
@@ -59,21 +62,24 @@ class ChatViewModelTest {
     private val plain: HfModel = Catalog.suggested.first { !it.thinks && !it.sees }.key
 
     private val fake = FakeLlamaBro()
-    private val hub = FakeHubGateway()
+    private val testHub = TestHub()
+    private val hub get() = testHub.hub
     private val dao = FakeChatDao()
     private val settings by lazy {
         SettingsRepository(
             PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "settings.preferences_pb") },
         )
     }
+    private val audio by lazy { AudioStore(File(folder.root, "audio")) }
     private val chats by lazy {
         ChatRepository(
             dao,
             ImageStore(File(folder.root, "images")),
             System::currentTimeMillis,
+            audio,
         )
     }
-    private val host by lazy { ModelHost(fake.llamaBro, hub, scope) }
+    private val host by lazy { ModelHost(fake.llamaBro, { hub.installedModel(it) }, scope) }
     private val models by lazy { ModelRepository(hub, settings, FakeScheduler(), scope, host) }
     private val engine by lazy { ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope) }
     private val viewModels = mutableListOf<ChatViewModel>()
@@ -85,6 +91,7 @@ class ChatViewModelTest {
         runBlocking { host.release() }
         Dispatchers.resetMain()
         scope.cancel()
+        testHub.close()
     }
 
     private suspend fun until(what: String, condition: () -> Boolean) {
@@ -100,8 +107,9 @@ class ChatViewModelTest {
         style: MessageStyle = MessageStyle.Open,
         saved: SavedStateHandle = SavedStateHandle(),
         chatId: Long = 0,
+        recorder: VoiceRecorder? = null,
     ): ChatViewModel {
-        hub.cachedEntries += CachedEntry(model, 1_000)
+        testHub.install(model)
         models.changed()
         settings.setLastModel(model.toString())
         return ChatViewModel(
@@ -111,6 +119,7 @@ class ChatViewModelTest {
             discardImages = {},
             savedState = saved,
             background = scope,
+            recorder = recorder,
         ).also(viewModels::add)
     }
 
@@ -121,6 +130,82 @@ class ChatViewModelTest {
         fake.reply {
             content(text)
             timings(promptTokens = 10, predictedTokens = 20)
+        }
+
+    /** A microphone that hears a steady voice for [blocks] reads of 50 ms, then stops, as one taken by a call does. */
+    private fun microphone(blocks: Int) =
+        VoiceRecorder(
+            audio,
+            {
+                object : SampleSource {
+                    var reads = 0
+                    override val rate = 16_000
+
+                    override fun read(buffer: ShortArray): Int {
+                        if (reads++ >= blocks) return -1
+                        buffer.fill(4_000)
+                        return buffer.size
+                    }
+
+                    override fun close() = Unit
+                }
+            },
+            scope,
+        )
+
+    @Test fun theMicShowsOnlyForAModelThatHears() =
+        runBlocking {
+            settings.setHears(swift.toString(), true)
+            val hearing = viewModel(recorder = microphone(1))
+            until("the mic") { hearing.composerState.value.showsMic }
+            val deaf = viewModel(model = plain, recorder = microphone(1))
+            until("the model is known") {
+                deaf.hears.value == false &&
+                    deaf.handle.name.value
+                        .isNotEmpty()
+            }
+            assertFalse(deaf.composerState.value.canRecord)
+        }
+
+    @Test fun aRecordingIsSentAsAVoiceMessageAndLeavesTheBar() =
+        runBlocking {
+            fake.supportsAudio = true
+            settings.setHears(swift.toString(), true)
+            reply("I hear you")
+            val vm = viewModel(recorder = microphone(10))
+            until("the mic") { vm.composerState.value.showsMic }
+            val voice = vm.voice!!
+            voice.start()
+            // the recorder's take is the bar's source: the bar's own state is drawn from it each frame
+            until("the recording stopped and waits") { voice.take.value?.live == false }
+            assertEquals("0:01", ChatViewModel.recordingState(voice.take.value!!).elapsed)
+            voice.send()
+            until("the voice message") { vm.rows.value.any { it is UserItem && it.voice != null } }
+            until("the take is let go") { voice.take.value == null }
+            val sent = (vm.rows.value.first { it is UserItem } as UserItem).voice!!
+            assertEquals("0:01", sent.length)
+            assertTrue(sent.file.exists())
+            until("the reply") { vm.rows.value.any { it is ReplyItem && it.text == "I hear you" } }
+        }
+
+    @Test fun discardingARecordingDeletesItAndARefusedMicSaysWhereToAllowIt() =
+        runBlocking {
+            settings.setHears(swift.toString(), true)
+            val vm = viewModel(recorder = microphone(2))
+            until("the mic") { vm.composerState.value.showsMic }
+            vm.voice!!.refused()
+            until("the line") { vm.limit.value?.action == LimitAction.OpenAppSettings }
+            vm.voice!!.start()
+            until("the line goes once recording starts") { vm.limit.value == null }
+            until("the recording stopped") {
+                vm.voice!!
+                    .take.value
+                    ?.live == false
+            }
+            vm.voice!!.discard()
+            until("the take is let go") { vm.voice!!.take.value == null }
+            val folder = audio.file("x").parentFile!!
+            until("the recording is deleted") { folder.listFiles().orEmpty().isEmpty() }
         }
 
     @Test fun sendClearsTheComposer() =
@@ -362,7 +447,7 @@ class ChatViewModelTest {
     @Test fun aPhotoThatLosesTheRaceForTheLastSlotIsDeleted() =
         runBlocking {
             val deleted = Collections.synchronizedList(mutableListOf<String>())
-            hub.cachedEntries += CachedEntry(swift, 1_000)
+            testHub.install(swift)
             models.changed()
             settings.setLastModel(swift.toString())
             val vm =
@@ -478,7 +563,7 @@ class ChatViewModelTest {
     @Test fun leavingTheChatClosesItsHandleAndDeletesTheUnsentPictures() =
         runBlocking {
             val deleted = Collections.synchronizedList(mutableListOf<String>())
-            hub.cachedEntries += CachedEntry(swift, 1_000)
+            testHub.install(swift)
             models.changed()
             settings.setLastModel(swift.toString())
             val vm =

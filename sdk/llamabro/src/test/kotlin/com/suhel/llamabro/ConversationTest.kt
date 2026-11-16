@@ -2,6 +2,7 @@ package com.suhel.llamabro
 
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Content
+import com.suhel.llamabro.chat.FinishReason
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.conversation.ContextUsage
 import kotlinx.coroutines.CompletableDeferred
@@ -53,11 +54,47 @@ class ConversationTest {
         }
 
     @Test
-    fun askReturnsContent() =
+    fun askReturnsValueWithReasoning() =
+        runTest {
+            val (engine, model) = setup()
+            engine.model.script(Replies.text("Paris", reasoning = "France's capital"))
+            assertEquals(
+                Typed.Value("Paris", "Paris", "France's capital"),
+                model.conversation().ask("Capital of France?"),
+            )
+        }
+
+    @Test
+    fun askWithoutReasoningHasNone() =
         runTest {
             val (engine, model) = setup()
             engine.model.script(Replies.text("Paris"))
-            assertEquals("Paris", model.conversation().ask("Capital of France?"))
+            assertEquals(Typed.Value("Paris", "Paris", null), model.conversation().ask("Capital of France?"))
+        }
+
+    @Test
+    fun askCutAtLengthIsIncomplete() =
+        runTest {
+            val (engine, model) = setup()
+            engine.model.script(Replies.text("Par", finish = "length"))
+            assertEquals(
+                Typed.Incomplete(FinishReason.Length, "Par"),
+                model.conversation().ask("Capital of France?"),
+            )
+        }
+
+    @Test
+    fun askWithAnAttachmentSendsIt() =
+        runTest {
+            val (engine, model) = setup()
+            engine.model.script(Replies.text("A cat."))
+            val chat = model.conversation()
+            chat.ask("What is this?", Content.Image(byteArrayOf(9, 8, 7), "image/png"))
+            val user = chat.messages.value.first() as Message.User
+            assertEquals(2, user.content.size)
+            assertEquals(Content.Text("What is this?"), user.content[0])
+            assertTrue(user.content[1] is Content.Image)
+            assertTrue(messagesOf(engine.model.chatBodies.single()).single().contains("image_url"))
         }
 
     @Test

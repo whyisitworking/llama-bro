@@ -9,6 +9,8 @@ import androidx.room.PrimaryKey
 /**
  * One row of a chat. [kind] is `user`, `assistant` or `switch`; [state] is `done`, `held`, `streaming`,
  * `stopped` or `failed`; [images] holds newline-separated file names under `filesDir/images/`, empty for none.
+ * [audio] is a voice message's file name under `filesDir/audio/` (D76), with its length and its levels
+ * ([com.suhel.llamabro.demo.data.Levels]); null for a message that isn't one.
  */
 @Entity(
     tableName = "messages",
@@ -38,4 +40,8 @@ data class MessageEntity(
     val failure: String? = null,
     /** Added in version 2; null for replies stored before, and for messages that aren't replies. */
     @Embedded(prefix = "stats_") val stats: ReplyStats? = null,
+    /** Added in version 4 (D76). */
+    val audio: String? = null,
+    val audioMillis: Long? = null,
+    val audioLevels: String? = null,
 )

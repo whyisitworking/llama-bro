@@ -31,14 +31,25 @@ internal object NativeBridge {
 
     external fun modelInfo(model: Long): String
 
-    /** `lb_model_request`. Throws [NativeError] if the request couldn't start. */
+    /**
+     * `lb_model_request_with`. Attachment `i` is [names]`[i]` and [mimes]`[i]` with one source: [paths]`[i]`,
+     * [fds]`[i]` (≥ 0, else -1) or [bytes]`[i]`, copied once. Throws [NativeError] if the request couldn't start.
+     */
     external fun modelRequest(
         model: Long,
         endpoint: String,
         paramsJson: String?,
         body: ByteArray,
+        names: Array<String>,
+        mimes: Array<String>,
+        paths: Array<String?>,
+        fds: IntArray,
+        bytes: Array<ByteArray?>,
         sink: RequestSink,
     ): Long
+
+    /** `lb_read_fd`: the whole file behind [fd], which stays open. Throws [NativeError] when it can't be read. */
+    external fun readFd(fd: Int): ByteArray
 
     external fun requestCancel(request: Long)
 

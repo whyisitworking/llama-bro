@@ -7,7 +7,9 @@
 //   LB_RUN_BACKENDS (env, optional): the runtime config's "backends" array, e.g.
 //     [{"name":"hexagon","files":["libggml-hexagon.so"],"env":{"GGML_HEXAGON_LIBHTP_DIR":"/data/local/tmp/x"}}]
 //   LB_RUN_LOG_LEVEL (env, optional): the runtime's log_level (debug shows where each layer went)
-//   REQUESTS.jsonl: {"id": "...", "endpoint": "chat", "body": {...}} per line (research/p0 format).
+//   REQUESTS.jsonl: {"id": "...", "endpoint": "chat", "body": {...}} per line (research/p0 format), plus
+//     "attachments": [{"name", "mime", "path", "via": "path" | "fd" | "bytes"}] sent with lb_model_request_with:
+//     the file by its path, an open descriptor (closed once the call returns) or its bytes (D84).
 #include "llamabro.h"
 #include "lb_common.h"
 
@@ -16,8 +18,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <iterator>
 #include <mutex>
 #include <string>
+#include <vector>
+
+#include <fcntl.h>
+#include <unistd.h>
 
 namespace {
 
@@ -114,8 +121,39 @@ int main(int argc, char ** argv) {
         s.out = &out;
         s.cancel_after = cancel_after;
         s.t0 = now_us();
+        // attachments: the caller's side of each source is released as soon as the call returns
+        const json atts_spec = spec.value("attachments", json::array());
+        std::vector<std::string> strings;
+        strings.reserve(atts_spec.size() * 3);
+        std::vector<std::vector<uint8_t>> buffers;
+        buffers.reserve(atts_spec.size());
+        std::vector<int> fds;
+        std::vector<lb_attachment> atts;
+        for (const auto & a : atts_spec) {
+            const std::string & name = strings.emplace_back(a.at("name").get<std::string>());
+            const std::string & mime = strings.emplace_back(a.at("mime").get<std::string>());
+            const std::string & path = strings.emplace_back(a.at("path").get<std::string>());
+            const std::string via = a.value("via", "path");
+            lb_attachment att{ name.c_str(), mime.c_str(), nullptr, -1, nullptr, 0 };
+            if (via == "fd") {
+                att.fd = open(path.c_str(), O_RDONLY);
+                fds.push_back(att.fd);
+            } else if (via == "bytes") {
+                std::ifstream f(path, std::ios::binary);
+                auto & b = buffers.emplace_back((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+                att.data = b.data();
+                att.len = b.size();
+            } else {
+                att.path = path.c_str();
+            }
+            atts.push_back(att);
+        }
         lb_request * req = nullptr;
-        if (lb_model_request(model, endpoint.c_str(), nullptr, body.data(), body.size(), on_event, &s, &req) != LB_OK) {
+        const lb_status st = lb_model_request_with(model, endpoint.c_str(), nullptr, body.data(), body.size(),
+                                                   atts.data(), atts.size(), on_event, &s, &req);
+        for (const int fd : fds) if (fd >= 0) close(fd);
+        buffers.clear();
+        if (st != LB_OK) {
             std::fprintf(stderr, "%s: lb_model_request failed\n", id.c_str());
             rc = 1;
             continue;

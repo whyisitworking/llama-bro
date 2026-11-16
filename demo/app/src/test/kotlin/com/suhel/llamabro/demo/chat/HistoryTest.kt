@@ -1,10 +1,12 @@
 package com.suhel.llamabro.demo.chat
 
+import com.suhel.llamabro.MediaSource
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.StoredMessage
+import com.suhel.llamabro.demo.data.StoredVoice
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -63,17 +65,14 @@ class HistoryTest {
         assertEquals(listOf("U:hi", "A:half", "U:go on"), texts(History.forModel(rows)))
     }
 
-    @Test fun imagesBecomeImageContent() {
-        val file =
-            File.createTempFile("img", ".jpg").apply {
-                writeBytes(byteArrayOf(1, 2, 3))
-                deleteOnExit()
-            }
+    @Test fun imagesGoAsTheirFiles() {
+        // the SDK reads the file natively on each request; the app never reads it into memory (D76, D84)
+        val file = File("/data/images/a.jpg")
         val history = History.forModel(listOf(row(0, MessageKind.User, "what is this", images = listOf(file))))
         val user = history.single() as Message.User
         val image = user.content.filterIsInstance<Content.Image>().single()
         assertEquals("image/jpeg", image.mimeType)
-        assertEquals(listOf<Byte>(1, 2, 3), image.bytes.toList())
+        assertEquals(MediaSource.file(file.path), image.source)
         assertEquals(
             "what is this",
             user.content
@@ -81,6 +80,40 @@ class HistoryTest {
                 .single()
                 .text,
         )
+    }
+
+    private fun voiceRow(position: Int, name: String) =
+        row(position, MessageKind.User, "").copy(voice = StoredVoice(File("/data/audio/$name"), 4_000, emptyList()))
+
+    @Test fun aVoiceMessageGoesAsItsFileToAModelThatHears() {
+        val history = History.forModel(listOf(voiceRow(0, "a.wav")), hears = true)
+        val user = history.single() as Message.User
+        val audio = user.content.filterIsInstance<Content.Audio>().single()
+        assertEquals(MediaSource.file("/data/audio/a.wav"), audio.source)
+        assertEquals("audio/wav", audio.mimeType)
+        assertTrue(user.content.none { it is Content.Text })
+    }
+
+    @Test fun aModelThatCantHearGetsANoteForEachVoiceMessage() {
+        val rows =
+            listOf(
+                voiceRow(0, "a.wav"),
+                row(1, MessageKind.Assistant, "", MessageState.Failed),
+                voiceRow(2, "b.wav"),
+                row(3, MessageKind.Assistant, "ok"),
+                row(4, MessageKind.User, "and now?"),
+            )
+        val history = History.forModel(rows, hears = false)
+        val note = History.VOICE_PLACEHOLDER
+        assertEquals(listOf("U:$note\n\n$note", "A:ok", "U:and now?"), texts(history))
+        assertTrue(history.filterIsInstance<Message.User>().all { u -> u.content.none { it is Content.Audio } })
+    }
+
+    @Test fun theNewMessageIsBuiltTheSameWay() {
+        val heard = History.userMessage(voiceRow(0, "a.wav"), hears = true) as Message.User
+        assertEquals(1, heard.content.filterIsInstance<Content.Audio>().size)
+        val unheard = History.userMessage(voiceRow(0, "a.wav"), hears = false) as Message.User
+        assertEquals(listOf(Content.Text(History.VOICE_PLACEHOLDER)), unheard.content)
     }
 
     @Test fun upToStopsBeforeThatPosition() {

@@ -3,7 +3,8 @@ package com.suhel.llamabro.demo.models
 enum class SizeTier { Smaller, Recommended, Best }
 
 /**
- * One model file in a repo: [quant] is the tag in its name (`Q4_K_M`, `UD-Q4_K_XL`, `BF16`), [bytes] all its shards.
+ * One model file in a repo: [quant] is the tag in its name as the hub names it (`Q4_K_M`, `Q4_K_XL`, `BF16`), [bytes]
+ * all its shards. The hub's tag drops Unsloth's `UD-` prefix (upstream's tag rule), so `UD-` is optional below.
  */
 data class RepoFile(val path: String, val quant: String, val bytes: Long)
 
@@ -13,7 +14,7 @@ object Sizes {
         val models = files.filterNot { it.path.substringAfterLast('/').contains("mmproj", ignoreCase = true) }
         val recommended =
             models.firstOrNull { it.quant == "Q4_K_M" }
-                ?: models.firstOrNull { it.quant == "UD-Q4_K_XL" }
+                ?: models.firstOrNull { it.quant.removePrefix("UD-") == "Q4_K_XL" }
                 ?: models.filter { it.quant.startsWith("Q4_") }.maxByOrNull { it.bytes }
         val smaller = recommended?.let { smallerThan(models, it) }
         val best =
