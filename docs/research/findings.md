@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the SDK v2 design document (decisions D*), the phase plans, and the experiment results in [`research/p0/results/`](../../research/p0/results/session1.md).
-> **Status:** living document, updated 2026-11-15 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F148)
+> **Status:** living document, updated 2026-11-15 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F149)
 
 A finding is something learned from a measurement or from reading upstream source. Every finding has a stable ID
 (`F<n>`, numbered in the order found, never reused). Other documents cite findings by ID, for example "per F10".
@@ -17,7 +17,53 @@ topic, and within a topic newest first. The index lists every ID.
 
 ---
 
-## PH: the headline API (F139–F153)
+## PH: the headline API (F139–F155)
+
+### F155. LFM3-Omni's speech part gives empty audio on the NPU because Hexagon tiles a weight that a lookup also reads; keeping such weights flat fixes it, but the CPU stays faster for the speech part
+
+- **Finding:** With everything on the NPU, `/tts` returns an empty WAV (F154) because Hexagon's runtime repacking
+  (`ggml_hexagon_graph_repack`) tiles each matmul's weight in place, and the depthformer's codebook table
+  (`a.gen.code.embd.weight`) is also read by a `GET_ROWS`, through a reshaped view, that embeds the sampled codes. After
+  tiling, that lookup reads tiled bytes as rows, and the first frame samples the end-of-audio code. Every op passes
+  `test-backend-ops` alone on the NPU with the depthformer's shapes; `GGML_HEXAGON_RT_REPACK=0`, or `MUL_MAT` kept off
+  the NPU, makes it speak. The language model shares `token_embd` the same way, but upstream keeps it in a host buffer,
+  which is never tiled. A per-graph check misses it: `ARANGE` runs on the CPU, so the lookup and the matmul are in
+  different graph splits. A fix that marks such weights keep-flat on the tensor (unpacking one already tiled) and makes
+  `can_tile` refuse them, makes the NPU speak: 1.33-1.39 times real time,
+  first audio 0.13-0.19 s, against 1.66-1.73 times for the split (speech part on the CPU, F154). Skipping the repack
+  alone crashed the DSP, because the kernel was still chosen for a tiled weight.
+  Correction, 2026-11-17: Hexagon multiplies quantized weights only in tiled form, so a kept-flat weight's matmul is refused by the NPU and runs on the CPU: 992 of 994 `supports-op` answers say no for the codebook's logits matmul, and the depthformer's graph splits NPU → CPU → NPU on every pass. That hop is likely part of why the NPU path (1.33-1.39×) trails the split. The better fix teaches the NPU's `GET_ROWS` to read the tiled table, and the view to report its base's tiled mark, keeping the matmul on the NPU; not built..
+- **Evidence:** `research/ph/speech-output/` (`results-2026-11-16.md`; the fix is patch 0005), run
+  attended 2026-11-16 on the phone with device tools built at `ph-main` 5cbd4cd plus the fix; the bisection used
+  `GGML_HEXAGON_OPFILTER` and Hexagon's switches; `test-backend-ops` from a separate build with the shapes added.
+- **Means:** the empty audio is an upstream Hexagon bug, not an NPU limit; it is worth a fact sheet for the user to
+  report. The fix makes NPU-only speech correct but not faster, so for speed the split setup (D53's `encoderDevice` on
+  the CPU) stays the recommendation. Any model whose weight is shared by a lookup and a matmul in a device buffer
+  would hit the same bug. The fix is carried as patch 0005 (the user's choice): on the phone only
+  `a.gen.code.embd.weight` stays flat, the text model answers as before, and `check.sh --device`'s `device-speech`
+  step (4.3 s of audio) fails without it.
+- **Feeds:** D37, D53, D85; F154.
+
+### F154. LFM3-Omni-2B speaks on the phone at 1.7 times real time with the model on the NPU and its speech part on the CPU; long texts must be spoken a sentence at a time
+
+- **Finding:** Through upstream `llama-server`'s `/tts` on the phone, LFM3-Omni-2B (Q4_K_M, Q8_0 mmproj, 24 kHz mono)
+  produces no audio with everything on the NPU: each request returns an empty WAV at once with no error. With everything
+  on the CPU it speaks at 0.88-0.99 times real time, slower for longer texts, the first streamed audio after 0.45-1.7 s.
+  With the language model on the NPU and the mmproj's speech part (depthformer and codec) on the CPU it speaks at 1.7
+  times real time, the first streamed audio after 0.11-0.19 s. A long text (151 words) spoken in one request is garbled
+  or cut, and varies between runs (26 s, 44 s and 48 s of audio; 96 s when it never ended), while the same text spoken
+  sentence by sentence (8 requests, 15-24 words each) is clear, 53 s at 1.69 times real time, though the voice changes
+  slightly from sentence to sentence, with a new random seed per request or one fixed seed for all (both drift, user
+  listened). Speech output streams a chunk per 80 ms frame; a spoken reply in a chat exists only
+  through `/v1/realtime`. The Mac (Metal) speaks at 2.8 times real time. The user listened to every clip.
+- **Evidence:** `research/ph/speech-output/` (`tts-measure.sh`, `results-2026-11-16.md`), run attended 2026-11-16 with
+  the device tools built at `ph-main` b9ea4c7 (patches 0001-0004); the split setup is `-dev HTP0 -ngl 99
+  --no-mmproj-offload`. The SDK's raw request returns text and corrupts audio (F74), so the runs used `llama-server`.
+- **Means:** an interactive voice mode is feasible on this phone with the split setup, speaking a reply sentence by
+  sentence, which also starts the first sound sooner. The SDK already moves the encoder to another device (D53). It would
+  still need a byte-returning request (F74) and the realtime connection (F56); D37 keeps speech output out until the
+  user decides. The NPU's silent empty output is an upstream gap worth reporting.
+- **Feeds:** D37, D53, D65; F56, F74.
 
 ### F153. On the LFM3 family (hybrid with SWA layers), the prompt cache reuses neither the live state nor the latest checkpoint, because the SWA threshold rejects them
 
@@ -70,6 +116,13 @@ topic, and within a topic newest first. The index lists every ID.
   under the same rule (it reports n_swa 0, so its threshold is unchanged); an upstream issue and PR with the same fix are drafted, not posted. A repeated identical request
   now reuses its cache too (the transcription tests compare responses without the cached count). The phone saving is
   still to measure.
+- **On the phone (2026-11-16, LFM3-Omni-2B, NPU, `ph-main` 10b44ee):** the 4th text turn after 3 voice notes now
+  reuses 1,508 of 1,532 prompt tokens (1,007 before), processes 24 (525 before), and no longer re-encodes the last clip;
+  prompt time falls from 552 ms to 115 ms. First token: 522 ms against 824 ms (`AudioDeviceTest`). What remains is the
+  media path before the model runs: base64 and JSON (the bridge's base64 and body, llama-server's JSON parse and base64
+  decode) and audio decoding, 395 ms in this run against 234 ms for the same steps in F152's run; the phone was slower
+  across every step, likely warm. With the cache fixed, base64 and JSON are the largest remaining cost (about 200-310
+  ms), so D84's no-base64 patch is worth more than F152 measured.
 - **Feeds:** D84, F152; D65, D17; patch 0004 (`sdk/native/patches/README.md`).
 
 ### F152. Speech input on the phone: LFM3-Omni-2B transcribes exactly; audio costs 12.6 tokens a second; earlier voice notes slow later turns, mostly because the cache stops before the last clip
@@ -133,6 +186,14 @@ topic, and within a topic newest first. The index lists every ID.
   the NPU, `hub-resume`'s test must scroll the shade, and a journey that grants a permission must allow for phones that
   refuse it. Two sessions must never share the phone during a device check. All are carried to W9.
 - **Feeds:** D64, D75.
+
+### F149. A one-line Hexagon gate gives NPU prefill with MTP the same +61% as the head/tail split, and drifts less than upstream's own MTP on/off
+- **Finding:** At b12352 the Hexagon backend runs gated delta-net on its fast chunked HMX kernel only when K == 1 (`htp-kparams.cpp:565`), so with MTP (K = 4) prompts fall to the slow recurrent kernel (F7). ggml's contract says that when `n_tokens > K` only slot 0 (the final state) is guaranteed (`ggml.h:2423`), and CUDA's chunked kernel already relies on it (`gated_delta_net.cu:276`). Letting the Hexagon gate also accept `n_tokens > K` is one line in the backend, and the HMX kernel already writes the final state where slot 0 is. On the phone it is as fast as the head/tail split and changes nothing with MTP off. Its replies drift no more than upstream's own switch between its two kernels.
+- **Evidence:** [upstream-notes.md](../../research/ph/delta-net/upstream-notes.md) §8; OnePlus 13, Qwen3.5 4B Q4_K_M on `HTP0`, upstream llama-server at b12352 built three ways (no patch, the head/tail split, the gate), thermal status 0. Prefill of 2,071 tokens with MTP on, three rotating rounds: 406 t/s with no patch, 651 (+60%) with the split, 654 (+61%) with the gate; MTP off: 907 with no patch, 899 with the gate. Correctness, the 19 greedy requests of P0's test A (up to 8k tokens, as F8): no patch MTP off against on, 16/19 identical, chosen-token |Δlogprob| p95 0.041, max 0.32 (the reference); no patch against the gate, both MTP on, 15/19, p95 0.031, max 0.32; no patch MTP off against the gate MTP on, 17/19, max 0.10; the split repeats F8 (16/19, p95 0.037, max 0.39). Every divergence is at a near-tie (top-2 gap ≤ 0.20); MTP acceptance 0.62-0.66 in every run.
+- **Means:** the SDK's patch 0001 becomes the one-line gate (D80): backend-only, within ggml's contract, and the change to propose upstream; the split reintroduced the ubatch-dependent graph upstream removed in #32078. Not covered: whether MTP rollback snapshots stay valid when a draft's tail shares a batch longer than K (`llama-memory-recurrent.cpp`, `TAG_RECURRENT_ROLLBACK_SPLITS`), the question for upstream, and a `test-backend-ops` case with `n_tokens > K`. MTP still costs prefill (654 against 907 t/s), outside both patches; not investigated.
+- **Device contract (2026-11-16):** without MTP the gate is a no-op (K = 1), and the SDK's device contract then differed in 3 runs of 3 on `t2-14-image`: identical for about 80 tokens, then "the overall color palette" against "the color palette", once with the sides swapped. On an idle phone, upstream llama-server gave the same reply fresh and after the contract's earlier requests, with the prompt cache on or off, with delta-net on the CPU and with Hexagon's recurrent kernel only (`GGML_HEXAGON_GDN_SELECT=1`). A first probe that ran alongside another process on the NPU did flip with the earlier requests. So the NPU breaks this near-tie either way between runs, and the old split, which sends the last token of every batch to the recurrent kernel even without MTP, had moved it away from the edge (the contract passed in 2 runs of 2 with it). The device contract now passes a reply that splits at one near-tie (D80); with that, 76/76.
+- **Upstream replay (2026-11-16):** open PR #31669 replaces the K snapshots with replay, so every delta-net call is K = 1. On the phone, with it and `LLAMA_RS_REPLAY=1`, NPU prefill with MTP is 847 t/s against 396 with replay off (+114%) and 672 with the gate (+70%); MTP off is 911 (PR head `a18ecc4`, replay confirmed in the server log; an earlier head gave 832, 386, 653, 904). Its replies are as close to MTP off as snapshots' (17/19 identical, p95 0.031, max 0.10; acceptance 0.62 against 0.63) ([upstream-notes.md](../../research/ph/delta-net/upstream-notes.md)). So replay supersedes the gate once it is merged and on by default.
+- **Feeds:** D10, D80, F7, F8, F121.
 
 ### F148. On the phone, a cancelled 4B load returns in 0.4-1.8 s on the CPU and about 1 s on the NPU, against 6-11 s for a full load
 
@@ -1432,7 +1493,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   - CPU prefill: +18% and +38%
   - MTP off: unchanged
   - Logprob drift is no larger than upstream's own kernel switch (p95 0.038 vs 0.041).
-- **Evidence:** [session2.md](../../research/p0/results/session2.md) test A; patch [`sdk/native/patches/0001-delta-net-head-tail-split.patch`](../../sdk/native/patches/0001-delta-net-head-tail-split.patch)
+- **Evidence:** [session2.md](../../research/p0/results/session2.md) test A; patch [`research/ph/delta-net/delta-net-head-tail-split.patch`](../../research/ph/delta-net/delta-net-head-tail-split.patch) (the SDK's 0001 until F149)
 - **Means:** The patch ships in every build.
 - **Feeds:** D10 (ships), P1 Task 1, P2.
 
@@ -1509,10 +1570,13 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F155 | LFM3-Omni's speech part gives empty audio on the NPU because Hexagon tiles a weight a lookup also reads; patch 0005 keeps it flat; the CPU stays faster | D37, D53, D85, patch 0005 |
+| F154 | LFM3-Omni-2B speaks on the phone at 1.7× real time with the model on the NPU and its speech part on the CPU; long texts must be spoken a sentence at a time | D37, D53, D65, D85 |
 | F153 | On the LFM3 family (hybrid with SWA layers) the prompt cache reuses neither the live state nor the latest checkpoint; patch 0004 fixes it | D84, F152, patch 0004 |
 | F152 | Speech input on the phone: LFM3-Omni-2B transcribes exactly; audio costs 12.6 tokens a second; earlier voice notes slow later turns, mostly the cache stopping before the last clip | D65, D84, D76 |
 | F151 | Typed output on the phone: clean JSON with Think off and with a thinking budget; with no budget the model thinks for minutes | see F151 |
 | F150 | W5 on the phone: hub device steps and demo device tests pass; three failures are the phone, not the change | see F150 |
+| F149 | A one-line Hexagon gate (`K == 1 || n_tokens > K`): NPU prefill with MTP +61%, as the split; drifts less than upstream MTP on/off | D80 |
 | F148 | A cancelled 4B load returns in 0.4-1.8 s (CPU) and ~1 s (NPU) on the phone, vs 6-11 s for a full load; nothing left behind | D67 |
 | F147 | With no logger, init's native lines (backends loading) reach logcat as `llamabro` on the phone; all Info | D66 |
 | F146 | Recommended sampling is on the Hub only sometimes (4 of 6 open models, none for Qwen3.5, gated needs a token); fine-tunes share the base tag | D68 |

@@ -1,0 +1,72 @@
+From: ours (F155); upstream fact sheet in research/ph/speech-output/, unposted
+Subject: ggml-hexagon : keep a weight flat when an op other than a matmul reads it
+
+diff --git a/ggml/src/ggml-hexagon/ggml-hexagon.cpp b/ggml/src/ggml-hexagon/ggml-hexagon.cpp
+index 03da443..3999009 100644
+--- a/ggml/src/ggml-hexagon/ggml-hexagon.cpp
++++ b/ggml/src/ggml-hexagon/ggml-hexagon.cpp
+@@ -2428,7 +2428,41 @@ static void ggml_hexagon_tensor_repack(ggml_tensor * tensor, ggml_hexagon_sessio
+     ggml_hexagon_tensor_set_flags(tensor, HTP_TENSOR_TILED);
+ }
+ 
++static void ggml_hexagon_tensor_unpack(ggml_tensor * tensor, ggml_hexagon_session * sess) {
++    HEX_VERBOSE("ggml-hex: %s rt-unpack %s|size %zu\n", sess->c_name(), htp_format_tensor(tensor, HTP_OPFMT_TENSOR).c_str(), ggml_nbytes(tensor));
++    std::vector<uint8_t> raw(ggml_nbytes(tensor));
++    htp_unpack_tensor_tiled(raw.data(), tensor, 0, raw.size());
++    memcpy(tensor->data, raw.data(), raw.size());
++    ggml_hexagon_tensor_clear_flags(tensor, HTP_TENSOR_TILED);
++    sess->cached_uid = 0;
++}
++
++// a weight that an op other than a matmul reads, directly or through a view (e.g. a codebook table shared by
++// GET_ROWS and the logits MUL_MAT), stays flat: tiling it in place would hand that op the tiled layout. The op may
++// run in an earlier or later graph split than the matmul, so the mark is kept on the tensor (HTP_TENSOR_KEEP_FLAT),
++// and a weight tiled before such a read is unpacked back.
+ static void ggml_hexagon_graph_repack(const ggml_cgraph * graph, ggml_hexagon_session * sess) {
++    for (int i = 0; i < graph->n_nodes; ++i) {
++        const ggml_tensor * n = graph->nodes[i];
++        if (!ggml_hexagon_op_is_compute(n)) {
++            continue;
++        }
++        const bool mm = n->op == GGML_OP_MUL_MAT || n->op == GGML_OP_MUL_MAT_ID;
++        for (int j = 0; j < GGML_MAX_SRC; ++j) {
++            ggml_tensor * s = n->src[j];
++            if (s == nullptr || (mm && j == 0 && s->view_src == nullptr)) {
++                continue;
++            }
++            ggml_tensor * w = s->view_src ? s->view_src : s;
++            if (w->data == nullptr || !ggml_hexagon_tensor_will_tile(w)) {
++                continue;
++            }
++            if (ggml_hexagon_tensor_is_tiled(w)) {
++                ggml_hexagon_tensor_unpack(w, sess);
++            }
++            ggml_hexagon_tensor_set_flags(w, HTP_TENSOR_KEEP_FLAT);
++        }
++    }
+     for (int i = 0; i < graph->n_nodes; ++i) {
+         ggml_tensor * n = graph->nodes[i];
+         if (!ggml_hexagon_op_is_compute(n)) {
+diff --git a/ggml/src/ggml-hexagon/htp-common.h b/ggml/src/ggml-hexagon/htp-common.h
+index 4e9e544..eeb34df 100644
+--- a/ggml/src/ggml-hexagon/htp-common.h
++++ b/ggml/src/ggml-hexagon/htp-common.h
+@@ -40,6 +40,9 @@ extern int    opt_rt_repack;
+     if (opt_verbose) GGML_LOG_DEBUG(__VA_ARGS__)
+ #endif
+ 
++// host-only flag, never sent to the DSP: the weight is read flat by an op other than a matmul, so it is never tiled
++#define HTP_TENSOR_KEEP_FLAT (1U << 31)
++
+ static inline uint32_t ggml_hexagon_tensor_get_flags(const struct ggml_tensor * t) {
+     return (uint32_t) (uintptr_t) t->extra;
+ }
+@@ -61,7 +64,7 @@ static inline bool ggml_hexagon_tensor_is_tiled(const struct ggml_tensor * t) {
+ }
+ 
+ static inline bool ggml_hexagon_tensor_can_tile(const struct ggml_tensor * t) {
+-    if (opt_rt_repack == 0) {
++    if (opt_rt_repack == 0 || (ggml_hexagon_tensor_get_flags(t) & HTP_TENSOR_KEEP_FLAT)) {
+         return false;
+     }
+     if (t->buffer) {

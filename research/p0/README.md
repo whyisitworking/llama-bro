@@ -12,7 +12,7 @@ Does a different sampler order or prompt-free repetition penalty change quality 
   `-c 16384 -t 6 -tb 6`; CPU `-dev none -ngl 0`, NPU `-dev HTP0 -ngl 99` (34/34 layers on HTP0).
 - **Variants.** `U` is upstream `llama-server`; `H` is `harness/lb-spike.cpp`, which mirrors `server.cpp` `main()` and
   calls the route handlers directly (`--spike-requests FILE`, `--spike-out DIR`); `P` is `U` plus
-  `sdk/native/patches/0001-delta-net-head-tail-split.patch` (only `libllama.so` differs); `S` is `U` plus
+  `research/ph/delta-net/delta-net-head-tail-split.patch` (then the SDK's 0001; only `libllama.so` differs); `S` is `U` plus
   `patches/spike-B2-penalties-generated-only.patch` (penalties count generated tokens only; macOS only).
 - **Scripts.** `scripts/add-harness.sh` adds the harness to a build copy; `build-android.sh U|P|S` builds in the
   Snapdragon toolchain image; `build-macos.sh U|S` builds with Metal; `phone.sh` pushes builds and models to

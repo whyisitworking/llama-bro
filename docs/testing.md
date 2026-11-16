@@ -53,7 +53,8 @@ These need a phone on adb that is unlocked (the script checks `isKeyguardShowing
 | `device` | The core's native, UI and device-choice tests on the phone; the Hexagon and OpenCL backend AARs each make their device available alone, including DFlash against upstream's reply, `ContextSize.Auto` and the embedding and rerank tasks; the acceptance app per flavor (`full` runs every test on every model, and `VisionTest`, which asks the vision model on the NPU what a red and blue picture shows, with the encoder on the NPU and on the CPU (F120, F121, D53); `cpu`, `gpu` and `noskel` run device choice, a chat and stop; `noskel` carries a broken NPU skeleton and must fall back to the GPU with the reason); each flavor's minified (R8) release build loads a model, which checks the consumer keep rules (F28). The only tolerated failure is Llama 3.2 3B's tool loop, which fails on upstream too (F27); a flavor that did not run fails the step | the phone, the three models, the DFlash draft, the small test models | tens of minutes |
 | `hub-device` | The Hub's cache and download tests on the phone against the fake Hugging Face server, reached through `adb reverse` | the phone, Python 3 | minutes |
 | `hub-resume` | Kill and resume: the acceptance download app is killed (`kill -9`) and force-stopped mid-transfer of a 1.5 GiB file at 30 MiB/s and must resume with a `Range` request, verify both blobs against the corpus digests and leave no partial; the notification's byte count must rise (F92) | the phone, notification permission granted at install (`adb install -g`) | several minutes |
-| `device-contract` | The `contract` comparison again, on the phone's NPU: upstream `llama-server` and `lb-run` are both built in Qualcomm's Snapdragon image from the same tree and run with `-dev HTP0 -ngl 99`; passes only on "N/N identical". The script also prints the first replies, because two identical wrong answers would pass (F71) | Docker with the Snapdragon image, the phone, the model | tens of minutes |
+| `device-contract` | The `contract` comparison again, on the phone's NPU: upstream `llama-server` and `lb-run` are both built in Qualcomm's Snapdragon image from the same tree and run with `-dev HTP0 -ngl 99`; passes only on "N/N identical", where a streamed chat reply without tools that matches token for token up to one near-tie (top-2 gap at most 0.25) and splits there counts, since the NPU breaks such ties either way between runs (F149, D80). The script also prints the first replies, because two identical wrong answers would pass (F71) | Docker with the Snapdragon image, the phone, the model | tens of minutes |
+| `device-speech` | LFM3-Omni-2B speaks through upstream `llama-server`'s `/tts` with everything on the phone's NPU (the device tools `device-contract` builds); fails on an empty or near-empty WAV, as without patch 0005 (F155) | the phone, LFM3-Omni-2B and its mmproj (pushed once from `LB_TEST_MODELS_DIR`) | about a minute |
 
 Not covered by a script: CI, HWASan and generated API documentation (planned before release). The fake Hugging Face server (`sdk/scripts/hub-fake/fake_hub.py`) models refs, trees, a 302 to a second CDN host, `Range`, ETag changes, authentication and throttled transfer rates, so Hub tests are repeatable and offline; one real download from huggingface.co is run by hand per release (F93).
 
@@ -90,7 +91,7 @@ demo/scripts/check.sh --only ds,quality                 # a slice, by step name
 |---|---|
 | Nothing but the host | SDK: `build`, `native`, `hub-golden`, `contract`, `tools-ui`, `api`, `hub-api`, `quality`, `lint`, `jvm`, `e2e`, `aar`. Demo: `unit`, `lint`, `assemble`, `ds`, `quality` |
 | A device or an emulator (fake engine, no model) | Demo: `device`, `journey`, `monkey`, `coverage`, `map` |
-| The physical phone | SDK: `device`, `hub-device`, `hub-resume`, `device-contract` (a Qualcomm phone for the NPU steps). Demo: `perf`, `real`, and the journeys that need a photo picker (`sendAnImage`) |
+| The physical phone | SDK: `device`, `hub-device`, `hub-resume`, `device-contract`, `device-speech` (a Qualcomm phone for the NPU steps). Demo: `perf`, `real`, and the journeys that need a photo picker (`sendAnImage`) |
 
 ### Fake-engine journeys and the real-model run
 
@@ -167,6 +168,7 @@ SDK-side speed, memory and device measurements (prefill and decode rates per chi
 | C API host tests | `sdk/native/bridge/tests/` (built as `lb-tests`) |
 | Contract against upstream | `sdk/native/tests/contract/` (`run.sh`, the request set from `make-requests.py`, `compare.py`) |
 | Device contract on the NPU | `sdk/native/tests/device-contract/` |
+| Speech on the NPU | `sdk/native/tests/device-speech/` |
 | Hub goldens from upstream's code | `sdk/native/tests/hub-golden/`, `sdk/scripts/hub-fake/` |
 | `tools/ui` golden | `sdk/scripts/tools-ui/`, `sdk/llamabro/src/test/resources/tools-ui/` |
 | Kotlin unit tests | `src/test` of each module under `sdk/` |
