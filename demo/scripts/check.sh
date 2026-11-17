@@ -22,10 +22,15 @@
 #             the log, results and pictures are kept in demo/build/check/real
 #   map       every test the requirement map names exists and passed in the latest results (scripts/map_check.py)
 #
+# The fake hub listens on ports the OS picks (F159); --device first checks that no other session uses the device
+# (sdk/scripts/device-preflight.sh, F150), holds it until the end, and stops the demo app when the device steps end.
+#
 # usage: demo/scripts/check.sh [--device [--perf] [--real]] [--only step,step]
 set -uo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../sdk/scripts/ports.sh
+. "$root/sdk/scripts/ports.sh"
 logs="$root/demo/build/check"
 mkdir -p "$logs"
 
@@ -153,39 +158,20 @@ step_ds() {
     screens_have_no_numbers
 }
 
-wait_fake_hub() {
-    local server_pid="$1"
-    for _ in $(seq 1 120); do
-        kill -0 "$server_pid" >/dev/null 2>&1 || return 1
-        curl -sf http://127.0.0.1:18190/_log >/dev/null 2>&1 && return 0
-        sleep 0.5
-    done
-    return 1
-}
-
 # no test ever touches the phone's radios, and the real-model run needs the network: a run stops when airplane mode is on
 # (F117), instead of failing later in a way that looks like the app's fault
 radios_on() { [ "$(adb -s "$1" shell settings get global airplane_mode_on 2>/dev/null | tr -d '\r')" = "0" ]; }
 
-# the instrumented tests talk to the SDK's fake Hugging Face server (corpus demo/scripts/hub-corpus.json) through adb reverse
+# The instrumented tests talk to the SDK's fake Hugging Face server (corpus demo/scripts/hub-corpus.json) through adb
+# reverse, started by sdk/scripts/ports.sh's start_fake_hub on ports the OS picks (F159); the subshell's EXIT trap
+# removes the reverses and stops it.
 with_fake_hub() (
     local device="${DEMO_DEVICE:?set DEMO_DEVICE to the adb serial of the device or emulator}"
     adb -s "$device" get-state >/dev/null 2>&1 || { echo "the device $device is not connected"; return 1; }
     adb -s "$device" shell dumpsys window | grep -q "isKeyguardShowing=false" || { echo "the phone is locked: unlock it and run again"; return 1; }
     radios_on "$device" || { echo "airplane mode is on: switch it off and run again"; return 1; }
     export ANDROID_SERIAL="$device"
-    python3 "$root/sdk/scripts/hub-fake/fake_hub.py" --corpus "$root/demo/scripts/hub-corpus.json" \
-        --api-port 18190 --cdn-port 18191 > "$logs/hub-server.log" 2>&1 &
-    local server_pid=$!
-    cleanup_hub() {
-        adb reverse --remove tcp:18190 >/dev/null 2>&1 || true
-        adb reverse --remove tcp:18191 >/dev/null 2>&1 || true
-        kill "$server_pid" >/dev/null 2>&1 || true
-        wait "$server_pid" >/dev/null 2>&1 || true
-    }
-    trap cleanup_hub EXIT
-    wait_fake_hub "$server_pid" || { cat "$logs/hub-server.log"; return 1; }
-    adb reverse tcp:18190 tcp:18190 && adb reverse tcp:18191 tcp:18191 || return 1
+    start_fake_hub "$logs/hub-server.log" --corpus "$root/demo/scripts/hub-corpus.json" || return 1
     "$@"
 )
 
@@ -228,6 +214,13 @@ device_tests() {
     return $status
 }
 
+# skipped_tests DIR: how many tests of a kept run were skipped (an assumption that failed, as on a phone that refuses
+# the test a permission, F150)
+skipped_tests() {
+    cat "$1"/*.xml 2>/dev/null | grep -o '<testsuite [^>]*' | sed -n 's/.* skipped="\([0-9][0-9]*\)".*/\1/p' |
+        awk '{ n += $1 } END { print n + 0 }'
+}
+
 journey_tests() {
     # a fresh install each (the gradle run uninstalls at its end): the system asks about notifications once
     gradle :demo:app:connectedDebugAndroidTest "$(runner_arg class "$denied")" "$per_test_limit"
@@ -237,7 +230,14 @@ journey_tests() {
     gradle :demo:app:connectedDebugAndroidTest "$(runner_arg package "$journeys")" "$(runner_arg notClass "$denied")" "$per_test_limit"
     status=$?
     keep_coverage journeys || return 1
-    return $status
+    [ $status -eq 0 ] || return $status
+    # a journey this device can't drive is skipped, and says why: the step is partial, not a plain pass
+    local skips=$(( $(skipped_tests "$logs/results/denied") + $(skipped_tests "$logs/results/journeys") ))
+    if [ "$skips" -gt 0 ]; then
+        echo "$skips journey(s) skipped on this device (see the results in $logs/results)"
+        return 77
+    fi
+    return 0
 }
 
 monkey_tests() {
@@ -338,13 +338,43 @@ run lint     gradle :demo:app:lintDebug :demo:designsystem:lintDebug
 run assemble gradle :demo:app:assembleDebug :demo:app:assembleRelease :demo:designsystem:assembleDebugAndroidTest :demo:app:assembleDebugAndroidTest
 run ds       step_ds
 run quality  gradle qualityCheck
-[ $device -eq 1 ] && run device step_device
-[ $device -eq 1 ] && run journey step_journey
-[ $device -eq 1 ] && run monkey step_monkey
-[ $device -eq 1 ] && run coverage step_coverage
-[ $device -eq 1 ] && run map step_map
-[ $perf -eq 1 ] && run perf step_perf
-[ $real -eq 1 ] && run real step_real
+# the steps that use the device, under its lock; map only reads their results, so it runs after the lock is let go
+wants() { [ -z "$only" ] || [[ ",$only," == *",$1,"* ]]; }
+wants_device=0
+refused=0
+if [ $device -eq 1 ]; then
+    for s in device journey monkey coverage; do wants "$s" && wants_device=1; done
+    [ $perf -eq 1 ] && wants perf && wants_device=1
+    [ $real -eq 1 ] && wants real && wants_device=1
+fi
+# nothing of the demo is left running for the next session's pre-flight to find, and the lock goes, also on Ctrl-C
+let_device_go() {
+    local app
+    for app in com.suhel.llamabro.demo com.suhel.llamabro.demo.test com.suhel.llamabro.demo.benchmark; do
+        adb -s "${DEMO_DEVICE:-}" shell am force-stop "$app" > /dev/null 2>&1
+    done
+    rm -f "$device_lock"
+}
+if [ $wants_device -eq 1 ]; then
+    # one session per device (F150): refuse if another uses it, else hold its lock until the device steps end
+    printf '%-10s ' preflight
+    if device_lock="$(ANDROID_SERIAL="${DEMO_DEVICE:-}" bash "$root/sdk/scripts/device-preflight.sh" $$ 2> "$logs/preflight.log")"; then
+        trap let_device_go EXIT
+        echo PASS; cat "$logs/preflight.log"
+        run device step_device
+        run journey step_journey
+        run monkey step_monkey
+        run coverage step_coverage
+        [ $perf -eq 1 ] && run perf step_perf
+        [ $real -eq 1 ] && run real step_real
+        let_device_go
+        trap - EXIT
+    else
+        echo "FAIL: the device steps did not run"; sed 's/^/    /' "$logs/preflight.log"
+        results+=("FAIL preflight"); failed=1; refused=1
+    fi
+fi
+[ $device -eq 1 ] && [ $refused -eq 0 ] && run map step_map
 
 echo
 [ ${#results[@]} -gt 0 ] && printf '%s\n' ${results[@]+"${results[@]}"}

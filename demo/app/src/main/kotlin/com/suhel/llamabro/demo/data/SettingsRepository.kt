@@ -83,6 +83,8 @@ data class AppSettings(
     val pendingDownloads: Set<String> = emptySet(),
     /** The pending downloads the person paused: kept paused across a restart, not started with the queue. */
     val pausedDownloads: Set<String> = emptySet(),
+    /** The pending downloads Hugging Face refused for want of a token: saving one starts them, after a restart too. */
+    val downloadsNeedingToken: Set<String> = emptySet(),
     val keepLoaded: KeepLoaded = KeepLoaded.OneMinute,
     val chip: ChipChoice = ChipChoice.Automatic,
     val context: ContextChoice = ContextChoice.Automatic,
@@ -111,6 +113,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 seenFirstRun = p[SEEN_FIRST_RUN] ?: false,
                 pendingDownloads = p[PENDING_DOWNLOADS].orEmpty(),
                 pausedDownloads = p[PAUSED_DOWNLOADS].orEmpty(),
+                downloadsNeedingToken = p[DOWNLOADS_NEEDING_TOKEN].orEmpty(),
                 keepLoaded = KeepLoaded.entries.firstOrNull { it.name == p[KEEP_LOADED] } ?: KeepLoaded.OneMinute,
                 chip = ChipChoice.entries.firstOrNull { it.name == p[CHIP] } ?: ChipChoice.Automatic,
                 context = ContextChoice.entries.firstOrNull { it.name == p[CONTEXT] } ?: ContextChoice.Automatic,
@@ -202,12 +205,13 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         store.edit { it[PENDING_DOWNLOADS] = it[PENDING_DOWNLOADS].orEmpty() + modelKey }
     }
 
-    /** A download that ends, is cancelled or arrives is neither pending nor paused. */
+    /** A download that ends, is cancelled or arrives is neither pending nor paused, nor waiting for a token. */
     suspend fun removePendingDownloads(modelKeys: Collection<String>) {
         if (modelKeys.isEmpty()) return
         store.edit {
             it[PENDING_DOWNLOADS] = it[PENDING_DOWNLOADS].orEmpty() - modelKeys.toSet()
             it[PAUSED_DOWNLOADS] = it[PAUSED_DOWNLOADS].orEmpty() - modelKeys.toSet()
+            it[DOWNLOADS_NEEDING_TOKEN] = it[DOWNLOADS_NEEDING_TOKEN].orEmpty() - modelKeys.toSet()
         }
     }
 
@@ -218,10 +222,18 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         }
     }
 
+    suspend fun setDownloadNeedsToken(modelKey: String, needs: Boolean) {
+        store.edit {
+            val now = it[DOWNLOADS_NEEDING_TOKEN].orEmpty()
+            it[DOWNLOADS_NEEDING_TOKEN] = if (needs) now + modelKey else now - modelKey
+        }
+    }
+
     private companion object {
         const val SAMPLING_PREFIX = "sampling:"
         val PENDING_DOWNLOADS = stringSetPreferencesKey("pending_downloads")
         val PAUSED_DOWNLOADS = stringSetPreferencesKey("paused_downloads")
+        val DOWNLOADS_NEEDING_TOKEN = stringSetPreferencesKey("downloads_needing_token")
         val HEARING_MODELS = stringSetPreferencesKey("hearing_models")
         val KEEP_LOADED = stringPreferencesKey("keep_loaded")
         val CHIP = stringPreferencesKey("chip")

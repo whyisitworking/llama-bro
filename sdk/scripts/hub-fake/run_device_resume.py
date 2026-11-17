@@ -74,22 +74,22 @@ def reset_sample(package, apk):
     adb("install", "-g", str(apk))
 
 
-def run_case(mode, endpoint, package, oid, size, out, apk):
+def run_case(mode, endpoint, host_endpoint, package, oid, size, out, apk):
     blob_dir = "no_backup/llamabro/hub/models--test--big/blobs"
     partial = f"{blob_dir}/{oid}.downloadInProgress"
     threshold = (size * 30 + 99) // 100
-    reset_log(endpoint)
+    reset_log(host_endpoint)
     reset_sample(package, apk)
     start_sample(package, endpoint)
 
     def progressed():
-        gets = cdn_gets(endpoint, oid)
+        gets = cdn_gets(host_endpoint, oid)
         sent = sum(row["bytes"] for row in gets)
         written = app_stat(package, partial) or 0
         return (sent, written) if sent >= threshold and written >= threshold else None
 
     sent, written = wait_until(progressed, 180, f"30% of {mode} download")
-    before = len(cdn_gets(endpoint, oid))
+    before = len(cdn_gets(host_endpoint, oid))
     if mode == "kill-9":
         pids = adb("shell", "pidof", package).stdout.split()
         if not pids:
@@ -101,7 +101,7 @@ def run_case(mode, endpoint, package, oid, size, out, apk):
     start_sample(package, endpoint)
 
     def first_resumed():
-        gets = cdn_gets(endpoint, oid)
+        gets = cdn_gets(host_endpoint, oid)
         return gets[before] if len(gets) > before else None
 
     resumed = wait_until(first_resumed, 120, f"{mode} resumed CDN GET")
@@ -123,19 +123,22 @@ def run_case(mode, endpoint, package, oid, size, out, apk):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--endpoint", default="http://127.0.0.1:18190/")
+    parser.add_argument("--endpoint", default="http://127.0.0.1:18190/")  # the hub as the app on the phone sees it
+    # the same hub from this machine, when the adb reverse maps the phone's port to another one here (F159)
+    parser.add_argument("--host-endpoint")
     parser.add_argument("--package", default="com.suhel.llamabro.download")
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    tree = request_json(args.endpoint + "api/models/test/big/tree/" + "a" * 40 + "?recursive=true")
+    host_endpoint = args.host_endpoint or args.endpoint
+    tree = request_json(host_endpoint + "api/models/test/big/tree/" + "a" * 40 + "?recursive=true")
     files = [entry for entry in tree if entry.get("path") == "model-Q4_K_M.gguf"]
     if len(files) != 1:
         raise RuntimeError("test/big model missing from fake Hub")
     oid, size = files[0]["lfs"]["oid"], files[0]["size"]
     for mode in ("kill-9", "force-stop"):
-        run_case(mode, args.endpoint, args.package, oid, size, args.out, args.apk)
+        run_case(mode, args.endpoint, host_endpoint, args.package, oid, size, args.out, args.apk)
 
 
 if __name__ == "__main__":

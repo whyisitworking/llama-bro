@@ -2,6 +2,7 @@ package com.suhel.llamabro.demo.models
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.suhel.llamabro.demo.data.SettingsRepository
+import com.suhel.llamabro.hub.DownloadState
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.testing.FakeLlamaBroHub
 import kotlinx.coroutines.CoroutineScope
@@ -23,8 +24,8 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 
 /**
- * A model whose first file has arrived but whose image reader hasn't is not on the phone (D64): `hub.cached()` lists it,
- * yet loading it through `hub.model` would fetch the rest in the foreground, so the app neither lists nor loads it.
+ * A model whose first file has arrived but whose image reader hasn't is not on the phone (D64): loading it through
+ * `hub.model` would fetch the rest in the foreground, so the app neither lists nor loads it.
  */
 class InstalledTest {
     @get:Rule val folder = TemporaryFolder()
@@ -48,19 +49,16 @@ class InstalledTest {
     }
 
     /**
-     * The model file in the cache and the image reader missing, as a download stopped between the two leaves them. The
-     * hub takes a selection's files in no fixed order, so the state is made the same way every time: a complete
-     * download whose reader file is then taken out of the snapshot. Its path is read from the installed source (the
-     * core's file source names it; the fake hub's folder is private).
+     * The model file in the cache and the image reader not, as a download stopped between the two leaves them. The
+     * hub doesn't list it (D89), and the app mustn't either.
      */
     private fun halfDownloaded() =
         runBlocking {
-            hub.download(model).collect()
-            val reader =
-                Regex("mmproj=([^,)]+)").find(hub.source(model).toString())?.groupValues?.get(1)
-                    ?: error("the installed source names no image reader: ${hub.source(model)}")
-            assertTrue("the reader's file is taken out", File(reader).delete())
-            assertTrue("the hub's raw list has it", hub.cached().any { it.model == model })
+            fake.stopDownload(model, "mmproj-F16.gguf")
+            // half downloaded, not nothing: the model file's bytes are there
+            val state = hub.progress(model).value
+            assertTrue("$state", state is DownloadState.Partial && state.bytesDone >= MODEL_BYTES)
+            assertFalse("the hub's list leaves it out", hub.cached().any { it.model == model })
         }
 
     @Test fun aModelWithItsImageReaderMissingIsNotOnPhoneAndLoadingItMakesNoRequest() =

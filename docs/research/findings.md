@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the SDK v2 design document (decisions D*), the phase plans, and the experiment results in [`research/p0/results/`](../../research/p0/results/session1.md).
-> **Status:** living document, updated 2026-11-15 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F149)
+> **Status:** living document, updated 2026-11-17 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F164)
 
 A finding is something learned from a measurement or from reading upstream source. Every finding has a stable ID
 (`F<n>`, numbered in the order found, never reused). Other documents cite findings by ID, for example "per F10".
@@ -17,7 +17,112 @@ topic, and within a topic newest first. The index lists every ID.
 
 ---
 
-## PH: the headline API (F139–F155)
+## Voice mode (F163–F164)
+
+### F164. Since b12479 a load's staging buffer returns its pages on macOS as soon as it is freed, so the Mac's peak memory for the DFlash fit test fell 543 MiB; the projection did not move
+
+- **Finding:** At b12479 `dflash_fit_matches_load_rss` (Qwen3.5-4B with the DFlash draft, 4096 tokens, answered once) peaks at 5,149-5,153 MiB of footprint on a quiet Mac, nothing compressed, against 5,587-5,770 at b12352 (F160). Upstream's projection is unchanged, 5,793 MiB, so the ratio went from 1.00-1.04 to 1.125, past the test's bound of 1.12. The cause is one upstream commit, #31438 (`3e41ae69d`, `llama-model-loader.cpp`): the staging buffer that weights pass through on their way to a non-host buffer is now allocated from ggml's CPU buffer type, which on Apple uses `vm_allocate`, so freeing it gives its pages back at once. Before, it was a `std::vector`, whose freed pages stayed in the process's footprint, and the buffer holds the largest tensor (Qwen3.5-4B's token embedding is about 500 MiB). The projection never counted the buffer, so at b12352 it matched the peak only because that buffer's leftover pages filled the gap.
+- **Evidence:** `lb-tests` at b12479, `ctest -R dflash_fit_matches_load_rss -V`, three runs each: as pinned, 5,149-5,153 MiB peak footprint, 0 MiB compressed, ratio 1.124-1.125; the same build with only #31438 reverted (a temporary local patch, removed afterwards), 5,692 MiB in all three, ratio 1.018. The first failing run in the full check read 5,159 MiB with 1,120 MiB compressed, so host pressure (F160) was not the cause. 2026-11-17.
+- **Means:** an app on Apple hardware sees less peak memory during a load. On Android the CPU buffer type allocates with `posix_memalign`, and the change was not measured there. The test's upper bound goes from 1.12 to 1.20 (chosen 2026-11-17): F90's double-counted recurrent state (+754 MiB) would now read about 1.27, so the bound still catches it. The fit projection itself is upstream's and stays as it is.
+- **Feeds:** F58, F90, F160, D93; `dflash_fit_matches_load_rss`.
+
+### F163. The upgrade to b12479: the contract still holds on the Mac and the NPU, two patches needed porting to the server refactor, and the delta-net gate still pays (+67%)
+
+- **Finding:** At b12479 (`d92ea9bb1`, upstream master on 2026-11-17, 127 commits after b12352; upstream had not yet tagged it) the SDK matches upstream llama-server on every contract case on the Mac and on the phone's NPU, where all 76 cases are identical (no near-tie split this time, D80). The web client moved from `tools/ui` to `ui/apps/chat` and is now called Llama Chat. Its compaction code changed only its imports (`$lib/...` to `#lib/.../index.ts`), so the 400-case golden is identical apart from its source path. The hub's golden is unchanged. Patches 0001 and 0002 apply unchanged, and neither can be dropped: Hexagon's gate is still `K == 1` (`htp-kparams.cpp:567`), GDN replay (#31669) and the BF16 NEON path (#30432) are still open PRs, and `vec.cpp` still has no ARM BF16 dot product. Patches 0003 and 0004 no longer applied after upstream's server refactor (#32154, `server_slot_sched` with a prompt running hash). 0003 ports with no change in behaviour: the progress callback, the three load stages and the setter sit where they did. For 0004, the SWA threshold moved unchanged into `server_prompt::get_reuse` (`server-slot-sched.cpp:23`), still `n_swa > 0 ? pos_eval - n_swa + 2 : pos_eval`, so upstream still has the hybrid-SWA cache bug (F153). The port passes `get_reuse` the SWA window only when the memory can be partly removed, else 0, at its one caller; that is the same rule as before. With MTP on the NPU, the gate (0001) still makes prefill much faster: 381-394 t/s without it, 635-655 with it (means 388 and 648, +67%; F149 measured +61% at b12352). With MTP off it changes nothing (912 and 900 t/s).
+- **What changed for the SDK:** the build is named b12479 (`LB_LLAMA_BUILD`, the version tests, the hub's user agent, the demo's About row); llama.cpp itself is now version 1.0.0 (#32190), which does not reach `build_info`, still `b12479-d92ea9b`. `server.cpp`'s two functions the bridge copies, the backend loader it ports (`ggml-backend-reg.cpp`) and the audio file check (`mtmd-helper.cpp`) are unchanged. The old batch API (`llama_decode`, `llama_batch_init`) is deprecated in favour of `llama_batch_ext` (#32306, #32356); the bridge calls neither. Two DFlash variants, DFLASH2 and LiliCorr (#32016; a DFLASH2 model in #31904), have their own `--spec-type`; the SDK's `dflash` still selects `draft-dflash` and does not offer them. New and unused by the SDK: `server_context::set_video_decoder` (#32188) and `--tts-speaker-text` (#32330). The Mac's peak memory during a load fell (F164). Behaviour that reaches apps through llama-server, and that the contract therefore matches: empty stop strings are ignored (#32093); a `reasoning_effort` level the template rejects is answered with 400 (#32332); `/v1/messages` keeps `output_config.effort` (#32321); LFM2's tool-call grammar accepts undeclared tools (#32164); Gemma4 and Ministral-3 may call tools while thinking (#32232, #32271); the slot cache clears when the global LoRA config changes (#30367). Speed work the SDK gets with no change: grammar matching by left factoring (#29557, typed output, D63), less Jinja rendering overhead (#32023), and no O(n) cell scan per sequence removal (#32380). On the NPU: Hexagon buffer mapping (#32144), the flash-attention no-mask tail (#32243), new ops SSM_SCAN and TIMESTEP_EMBEDDING, IQ2_XXS and NVFP4. On the GPU: OpenCL fixes (q4_K mat-vec out-of-bounds read, f16 swiglu_oai, three flash-attention prefill defects, #32251, #32110) and Adreno A7 Q4_K, Q6_K and Q8_0 kernels. New speech models (VibeVoice-ASR, Higgs v3 STT, Zonos3-mini TTS, Fish Audio S2, YuE2-3B, MiniMax-Music3) are reachable only through llama-server's routes; the voice phase looks at them (D85).
+- **Evidence:** `sdk/scripts/check.sh` ALL PASS on the host (contract on Qwen3.5 4B with its projector, Llama 3.2 3B and upstream's audio test model) and with `--device` (OnePlus 13: device contract 76/76 identical on `HTP0`; acceptance full flavor 28 of 29, the 29th the tolerated F27; cpu, gpu and noskel flavors and the minified builds; hub on the phone); `demo/scripts/check.sh` ALL PASS on the host and with `--device` (journeys over the fake engine; three skipped for this phone's own reasons: a photo picker, and no microphone for tests, F150). The 0001 A/B: upstream llama-server built at `d92ea9bb1` with upstream's CMake (`research/b12352/build-at.sh`) with and without the patch, Qwen3.5 4B Q4_K_M on `HTP0`, the 2,071-token prompt of F121, MTP on (`--spec-draft-n-max 3`), three rounds in alternating order, thermal status 1 in every run (F149's were at 0). `git log 5676dfbe0..d92ea9bb1`, 2026-11-17.
+- **Means:** the pin moves to b12479 (D93) with the same four patches. Open from the release: whether F75's `GGML_OPENCL_COOPK_DP4A=0` is still needed after the OpenCL fixes, and whether OpenCL drafting still aborts (F80, F125); DFLASH2 and LiliCorr drafts; the speech models above and the speech patches on `voice/speech-npu` (D90), the voice phase's next step; whether #31438 lowers peak memory during a load on Android too (F164).
+- **Feeds:** D10, D52, D80, D91, D93, F121, F149, F153, F164.
+
+## PH: the headline API (F139–F162)
+
+### F162. With NPU polling on, Android's DSP library logs an error for every empty poll and drowns the app's log; upstream's Windows path, a no-block read, removes it at the same speed
+
+- **Finding:** `GGML_HEXAGON_OPPOLL=1` (`LlamaBroConfig.npuPolling`, on by default since D86) makes ggml-hexagon read the DSP queue with a zero timeout in a loop. On Android, `dspqueue_read` with a zero timeout returns "expired" and has Qualcomm's `libcdsprpc` log an error line (`dspqueue_cpu.c:1864 … wait_signal_locked … DSPQUEUE_SIGNAL_RESP_PACKET`) for every empty poll. An app loading LFM3-1.7B on the NPU wrote about 82,000 such lines in a few seconds, and the phone's log flow control (`LOGS OVER PROC QUOTA(300) … DROPPED`) then dropped the app's own lines too, so the minified acceptance build's "loaded" line never reached logcat and `check.sh --device` failed. Nothing is logged while the NPU is idle. Upstream's `htp-drv.cpp` already sends a zero-timeout read to `dspqueue_read_noblock`, which answers "would block" without logging, but only under `#ifdef _WIN32`. Doing the same on every platform (patch 0007) leaves one info line per queue, and the speech speed is unchanged.
+- **Evidence:** OnePlus 13, on the development branch. The acceptance app's full minified build, cold start on the NPU: 82,076 lines from the app in about 4 s, the "loaded" line dropped (2026-11-17, `check.sh --device`, step `device`). `device-speech` (LFM3-Omni-2B `/tts` on `HTP0`, polling on, 55 words, 19.84 s of audio), logcat cleared before each run: without the patch, 2.26 times real time with 2,900 error lines left in logcat after 10 quota drops; with patch 0007, 2.27 and 2.26 times real time with no error line and no drop (thermal status 1). F156's energy measurement included the logging, so polling's cost can only fall.
+- **Means:** patch 0007 carries upstream's Windows path to Android. `npuPolling` stays on by default (D86). Without the patch, an app with polling on loses its own logcat lines whenever the NPU works. A fact sheet for upstream is for the maintainer to post.
+- **Speed on a cool phone (2026-11-17, later):** the 2.26-2.27 above came straight after about 25 minutes of device gates (thermal status 0-1, but a warm phone). On branch `voice/speech-npu` (patches 0001-0007, polling on), with the phone cooled (NPU sensors 34-36 °C, status 0) and a minute between runs, `device-speech` gave 2.39, 2.37 and 2.38 times real time, the same as D86's 2.40. So patch 0007 costs nothing, and a warm phone loses about 5%.
+- **Feeds:** D86, F156; patch 0007.
+
+### F161. A quick Pause→Resume can't run two writers within one hub; two hubs reaching one cache through a link failed instead of waiting, since the JVM refuses a second lock on a file it already locks
+
+- **Finding:** `BlobDownloader` writes each blob under `Locks`: a coroutine mutex per lock-file path plus a kernel `FileChannel.lock`. A cancelled transfer keeps the lock until its write loop really exits, so a resumed download of the same blob waits for it, and within one hub there is never a second writer. The mutex was keyed by `absolutePath`, so two hub objects on one cache whose folders are spelled differently (a symlink, as `/data/data` is to `/data/user/0`) took different mutexes; the second `FileChannel.lock()` on the same file in the same JVM then threw `OverlappingFileLockException` rather than blocking, and the resumed download failed with `HubException.Network`. `LlamaBroHub.create` already gives one hub per canonical folder (D70), so an app reaches this only through two hubs built another way. The mutex is now keyed by the lock file's `fileKey()` (device and inode), exactly the key the JVM's lock table uses, with the canonical path where a file system has no key; the second hub then waits and resumes the same partial.
+- **Evidence:** `OneWriterTest.quickResumeWaitsForTheStoppedWriter` on the host JVM, 2026-11-17: a paused download at 1 MiB of 4 MiB at 0.5 MiB/s, a resume through a second hub on a symlinked alias of the cache, seen waiting on the lock, then the first cancelled. With the `absolutePath` key: `download failed`, caused by `OverlappingFileLockException`. After: complete, sha256 correct, at most one open writer.
+- **Means:** W5's note that a quick Resume can start a new worker while the old one still writes the same partial does not hold for the SDK's worker, since the hub serialises; the demo's own `awaitStopped` covers only its UI state. The identity key stays as cheap insurance (D89).
+- **Feeds:** D89, D44, D70.
+
+### F160. On macOS a process's peak RSS under-counts its memory when the host is short of it; the peak footprint holds steady, so the DFlash fit test measures that
+
+- **Finding:** `dflash_fit_matches_load_rss` compared the projection for Qwen3.5-4B with the DFlash draft at 4096 tokens (5,793 MiB) with the process's peak RSS (`ru_maxrss`). macOS compresses resident pages when the host runs short of memory, and compressed pages leave the resident set, so the peak RSS followed the host's state. It read 5,081-5,781 MiB in seven runs of one build on a 32 GB Mac with 23 GB of swap in use, 4,558-5,151 MiB while another process held 14 GiB, and it gave the 2026-11-15 failure (ratio 1.27 against the bound 1.18). The task's peak footprint (`TASK_VM_INFO` `ledger_phys_footprint_peak`) counts compressed pages. In the same quiet runs it read 5,587-5,770 MiB (ratio 1.00-1.04), and it read 5,770 under the 14 GiB load with a peak of 2,022 MiB of the process compressed (`compressed_peak`, the most compressed at any moment of the run). Twice under that load it fell to 5,189-5,251 (1.10-1.12), so heavy pressure can still lower it, likely through swap (not confirmed). The weights are read into memory, not mapped (`--load-mode none`, F58), so the footprint holds them. The host build has no Metal, so no GPU memory goes uncounted.
+- **Evidence:** `lb-tests` at `ph-main` 2359168 with this change, `ctest -R dflash_fit_matches_load_rss`, printing peak RSS, peak footprint and the amount compressed at the peak. Memory pressure came from a Python process holding 14 GiB of random bytes. The full native suite passed 78/78. 2026-11-17.
+- **Means:** the test measures the peak footprint on macOS (peak RSS on Linux), and its bound tightens from 0.90-1.18 to 0.95-1.12. Against the footprint, F90's double-counted recurrent state (+754 MiB) would read 1.13-1.17, which the old bound let through. When the test fails with a compressed peak above a tenth of the process, it says the host was short of memory. F90's 5,208 MiB peak was itself an under-count; its conclusion stands, and the projection is closer than F90 measured (within 4% of the footprint).
+- **Feeds:** F58, F90; `dflash_fit_matches_load_rss`.
+
+### F159. Fixed ports let concurrent SDK checks collide, and a port held by another process can answer a check's health poll; ports the OS picks remove both
+
+- **Finding:** `sdk/scripts/check.sh` used fixed ports on this machine: 18181 for the host contract (`LB_CONTRACT_PORT`), 18182 for its extra models, 18185 for its audio cases, 18183 for `e2e`, and 18190/18191 for the fake Hugging Face server. The device contract and device speech used the same port at both ends of their adb forward (18182, 18183). With two full checks running in two worktrees, the second `llama-server` cannot bind its port and exits. The step's health poll on the fixed port can then be answered by the other check's server, or by an adb forward another session left behind (F150), so requests reach a different build's server or the phone. Now every server on this machine listens on port 0 and the script reads the port back from that server's own output (`llama-server`'s "listening on", `fake_hub.py`'s first line). adb picks this machine's end of each forward (`adb forward tcp:0`). The ports on the phone stay fixed, which the one-session-per-phone pre-flight (`sdk/scripts/device-preflight.sh`) makes safe. Fixed ports remain available through `LB_CONTRACT_PORT`, `LB_E2E_PORT`, `LB_HUB_API_PORT`, `LB_HUB_CDN_PORT`, `LB_DEVICE_CONTRACT_PORT`/`LB_DEVICE_CONTRACT_HOST_PORT` and `LB_SPEECH_PORT`/`LB_SPEECH_HOST_PORT`.
+- **Evidence:** with another listener on 127.0.0.1:18181, the audio contract (`tests/contract/run.sh` with `audio.jsonl` on upstream's tiny LFM3-Omni) fails with `LB_CONTRACT_PORT=18181` (llama-server: "couldn't bind HTTP server socket … port: 18181") and passes 8/8 identical on the default port 0. With 18190 and 18191 held, check.sh's `start_fake_hub` got its own ports and answered on them; against a stub adb its reverses were `tcp:18190` → `tcp:<api>` and `tcp:<cdn>` → `tcp:<cdn>`. Upstream's port 0 support: `tools/server/server-http.cpp` (`bind_to_any_port`). The collision was seen 2026-11-15; this entry 2026-11-17.
+- **Means:** full SDK checks can run in several worktrees on one machine at once; the device steps still need the phone to themselves, and the pre-flight refuses when another session holds it (a live lock, a stray forward or reverse, a running server or test app). `demo/scripts/check.sh` still bound its fake hub to fixed ports and took no phone lock when this was written; its move to the same scheme is part of W9 step 4's demo work. **2026-11-17, later:** done: the demo's check uses ports the OS picks for its fake hub and the same pre-flight and phone lock.
+- **Feeds:** F150; `docs/testing.md` (SDK checks: ports, device pre-flight).
+
+### F158. Integer type bounds cost little in llama.cpp's grammar; an unsupported `pattern` is dropped silently
+
+- **Finding:** On the host (llama.cpp at `ph-main`'s submodule, LFM3-1.7B's vocabulary loaded vocab-only, no inference), schemas were measured with integers unbounded and bounded to their Kotlin type's range, through upstream's `json_schema_to_grammar` and grammar sampler. One `Int` field grows the GBNF from 190 to 2,289 bytes; a forecast (a string and four `Int`s) from 564 to 9,215 bytes (`Short` bounds 2,607, `Byte` 1,087); twelve `Int`s plus a list of `{x, y}` from 1,175 to 31,612 bytes. Conversion plus sampler build stays under 1 ms per request (0.06 → 0.73 ms for the largest; 1.4 ms in a noisier run). Checking a sampled token against the grammar, upstream's usual path, goes from about 1.8 µs to 3.3-3.8 µs per token; the full-vocabulary pass, run only when a sampled token is rejected, from 5.8-6.0 to 9.1-10.5 ms. A `Long`'s bounds are int64's limits, which upstream treats as unbounded (its integer rule already caps at 16 digits). Separately, upstream at this version turns an unsupported `pattern` into "any string" with only a log warning (an unanchored pattern, `\d`, `\w`, `\p{…}`, lookarounds, POSIX classes); only a malformed one (unbalanced parentheses) throws, which llama-server answers with 400 `invalid_request_error`.
+- **Evidence:** a harness linking the host `libllama-common` and `libllama` (`grammar_cost.cpp`, `run.py`, in the W9 session's scratchpad, not kept), bound and unbound documents tokenized and fed token by token; two runs, 2026-11-17, host only.
+- **Means:** bounding `Byte`, `Short` and `Int` by default costs a larger grammar but well under a millisecond per request and microseconds per token on the common path (D88). The phone was not measured; expect a few times the host cost, still small. `@LbPattern`'s failure mode is mostly silent, not an error at the first request; the docs say so.
+- **Feeds:** D88, D63, F143.
+
+### F157. Chat media sent as file:// instead of base64 halves a voice-note turn on the phone, with no llama.cpp change; a raw-buffer patch adds little
+
+- **Finding:** In a chat holding three voice notes (2.3 MB of WAV) on LFM3-Omni-2B on the NPU, a text turn takes
+  192-200 ms with today's base64 data URLs and 93-94 ms when the bridge writes `file://<path>` and llama-server reads
+  the file itself (`--media-path`); handing the bridge's buffer over directly (a research patch) gives 80-93 ms. The
+  server's prompt work is 40 ms in every case; most of the rest (~45 ms) is llama-server decoding each clip again per
+  turn to match its prompt cache, which neither variant changes.
+- **Evidence:** `research/ph/media-path/` (`media-ab.sh`, `results-2026-11-17.md`, `media-research.patch`), three
+  rounds, run attended 2026-11-17 through the C API (`lb-run`) on the development branch with the research switches; the
+  carried bridge (D87) gives 91-92 ms against 189-191 ms on the same build.
+- **Means:** D84's base64 costs ~100 ms per turn with voice notes in the history; `file://` removes it without a patch,
+  so upstream's way wins over a raw-buffer patch (no measurable gain). Carried (D87): path attachments linked into the
+  SDK's media folder and sent as `file://`; bytes and descriptors keep base64; a caller-written `file://` reaches only
+  that folder.
+- **Feeds:** D84, D87; F152, F153.
+
+### F156. Speech on the NPU alone reaches 2.4 times real time once the speech graph has no CPU op, the host thread polls and the unused text head is skipped; faster than the split
+
+- **Finding:** A per-stage timer on the phone (LFM3-Omni-2B `/tts`, 55 words, seed 42) splits each 80 ms frame into
+  the LM step, the depthformer (3 MaskGIT passes and a feedback pass), the codec and the server's text sample. Three
+  things decide the speed. (1) The depthformer's positions come from `ARANGE`, which the NPU does not support, so the
+  speech graph hops NPU → CPU → NPU in every pass; passing the positions in as an input, together with the graph fix
+  that reads each codebook's row from the 3-D table (no flattened view, so the table can stay tiled; F155), removes
+  every CPU op, and the depthformer drops from 30.3 to 15.8 ms per frame, faster than on the CPU (19.3). Keep-flat
+  (patch 0005) cannot get there, since its matmul runs on the CPU. (2) With the work on the NPU, the host thread
+  sleeps between submissions and its remaining work runs 3-4 times slower, likely from frequency scaling;
+  `GGML_HEXAGON_OPPOLL=1` (polling) restores it: 1.55 → 2.04 times real time. (3) Every audio frame computed the LM's
+  2048 × 128,000 text head and sampled a text token that the audio branch ignores; skipping both saves 4.1 ms per
+  frame with bit-identical audio. Together, with flash attention: 2.36-2.38 times real time, against 1.68 for the split
+  (1.83 with the head skipped). Hexagon's host-side preparation is small (0.56 ms per frame). Polling speeds text
+  generation by 4-7% (Qwen3.5-4B 15.7 → 16.3 tok/s, LFM3-Omni-2B 38.5 → 41.2).
+- **Evidence:** `research/ph/speech-output/stages-2026-11-17.md`, `tts-stages.sh` and the research build
+  `stages-research.patch` (every change behind an `LB_*` switch), run attended 2026-11-17 on the phone, cooled to
+  thermal 0 before each configuration; Mac CPU and Metal checks byte-identical.
+- **Means:** the fast way to speak on this phone is everything on the NPU, given three changes: the speech graph
+  without `ARANGE` and with the 3-D lookup (mtmd), the text head skipped in audio frames (llama and the server), and
+  polling. The maintainer listened (one text, seed 42): the NPU clip with flash attention sounds very slightly better than
+  without, and both slightly better than the split; one take each, so read it as no loss, not as a gain. Over
+  sustained speech on battery (about 210 s of audio each), polling draws 4.44 W against 3.50 W but finishes sooner,
+  so the energy per second of speech is the same (1.74 vs 1.73 J above idle); the NPU runs hotter while speaking
+  (90 vs 79 °C), and neither throttled. The split needs 2.28 J per second of speech, about 30% more. Polling helps by keeping
+  the host core from idling, not by waking sooner: checking with 50-1,000 µs naps between checks gives only 1.80-1.87
+  times (blocking 1.75, spinning 2.34), with ~6 waits per frame. Operating-system hints (ADPF) are the alternative and
+  need the app; the shell-launched server is unrestricted, while an app runs in `top-app` or `background`. Carried
+  (D86): patch 0005 (positions input, 3-D lookup), patch 0006 (no text head in speech-only frames) and
+  `LlamaBroConfig.npuPolling`, on by default (since D90 off by default again, and patches 0005-0006 moved to branch `voice/speech-npu`). On the phone with the real device tools (patches 0001-0006, polling, no
+  flash attention): 2.40 times real time, no unsupported op in the speech graph (`device-speech`; the tools before the
+  patches fail it on `ARANGE` and the CPU matmul). Flash attention stays off on auto for this graph: upstream sets
+  `flash_attn_auto = false` for LFM3's speech generator because CUDA lacks the head-dim-32 kernel
+  (`mtmd-model.cpp`); `-fa on` adds ~3% on the NPU. These are upstream-worthy facts for the maintainer to report.
+- **Feeds:** D37, D53, D85; F154, F155.
 
 ### F155. LFM3-Omni's speech part gives empty audio on the NPU because Hexagon tiles a weight that a lookup also reads; keeping such weights flat fixes it, but the CPU stays faster for the speech part
 
@@ -32,7 +137,11 @@ topic, and within a topic newest first. The index lists every ID.
   `can_tile` refuse them, makes the NPU speak: 1.33-1.39 times real time,
   first audio 0.13-0.19 s, against 1.66-1.73 times for the split (speech part on the CPU, F154). Skipping the repack
   alone crashed the DSP, because the kernel was still chosen for a tiled weight.
-  Correction, 2026-11-17: Hexagon multiplies quantized weights only in tiled form, so a kept-flat weight's matmul is refused by the NPU and runs on the CPU: 992 of 994 `supports-op` answers say no for the codebook's logits matmul, and the depthformer's graph splits NPU → CPU → NPU on every pass. That hop is likely part of why the NPU path (1.33-1.39×) trails the split. The better fix teaches the NPU's `GET_ROWS` to read the tiled table, and the view to report its base's tiled mark, keeping the matmul on the NPU; not built..
+  Correction, 2026-11-17: Hexagon multiplies quantized weights only in tiled form, so a kept-flat weight's matmul is
+  refused by the NPU and runs on the CPU: 992 of 994 `supports-op` answers say no for the codebook's logits matmul,
+  and the depthformer's graph splits NPU → CPU → NPU on every pass. That hop is likely part of why the NPU path
+  (1.33-1.39×) trails the split. The better fix teaches the NPU's `GET_ROWS` to read the tiled table, and the view to
+  report its base's tiled mark, keeping the matmul on the NPU; not built.
 - **Evidence:** `research/ph/speech-output/` (`results-2026-11-16.md`; the fix is patch 0005), run
   attended 2026-11-16 on the phone with device tools built on the development branch plus the fix; the bisection used
   `GGML_HEXAGON_OPFILTER` and Hexagon's switches; `test-backend-ops` from a separate build with the shapes added.
@@ -41,7 +150,8 @@ topic, and within a topic newest first. The index lists every ID.
   the CPU) stays the recommendation. Any model whose weight is shared by a lookup and a matmul in a device buffer
   would hit the same bug. The fix is carried as patch 0005 (the maintainer's choice): on the phone only
   `a.gen.code.embd.weight` stays flat, the text model answers as before, and `check.sh --device`'s `device-speech`
-  step (4.3 s of audio) fails without it.
+  step (4.3 s of audio) fails without it. Later replaced (D86): patch 0005 now removes the view, so keep-flat was dropped
+  and kept at `research/ph/speech-output/hexagon-keep-shared-weights-flat.patch`.
 - **Feeds:** D37, D53, D85; F154.
 
 ### F154. LFM3-Omni-2B speaks on the phone at 1.7 times real time with the model on the NPU and its speech part on the CPU; long texts must be spoken a sentence at a time
@@ -102,7 +212,7 @@ topic, and within a topic newest first. The index lists every ID.
   `_covers_last_voice_note` and `_covers_short_chat` (each turn caches the previous prompt but 4 tokens),
   `_reuses_live_state` (raw completions; the previous prompt and its reply are reused); and
   `hybrid_swa_cache_replies_equal_uncached` (which also asserts each cached turn covers the previous prompt but 8
-  tokens, so it exercises the new resume points; `LB_TEST_MODEL` points it at a real LFM3 GGUF for attended runs). The
+  tokens, so it exercises the new resume points; `LB_TEST_LFM3_MODEL` points it at a real LFM3 GGUF for attended runs). The
   tiny model's output barely depends on the history (another first message moves its top logprobs by 0.034 nat), so
   that last test catches a broken state only; the 2B and 1.7B comparisons are the stronger evidence.
 - **Means:** Without the patch, on LFM3 each turn pays for at least its predecessor's whole user message, and for the
@@ -1570,6 +1680,15 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F164 | Since b12479 a load's staging buffer gives its pages back on macOS (#31438): the DFlash fit test's Mac peak fell 543 MiB, projection unchanged; bound 1.12 → 1.20 | F58, F90, F160, D93 |
+| F163 | The upgrade to b12479: contract identical on the Mac and the NPU (76/76), 0003 and 0004 ported to the server refactor, the delta-net gate +67% | D10, D52, D80, D91, D93, F121, F149, F153, F164 |
+| F162 | NPU polling on Android logs an error per empty poll (82k lines, app's logcat dropped); a no-block read as upstream's Windows path removes it, same speed | D86, F156 |
+| F161 | One writer per blob already held within a hub; two hubs on one cache via a link failed (OverlappingFileLockException) until the lock mutex was keyed by the file's identity (fileKey) | D89, D44, D70 |
+| F160 | macOS peak RSS under-counts under memory pressure (1.27 failure); the peak footprint is steady, and the DFlash fit test now measures it with a 0.95-1.12 bound | F58, F90 |
+| F159 | Fixed check ports collide across worktrees and let another listener answer a health poll; every host server now takes a port the OS picks | F150 |
+| F158 | Integer type bounds: grammar up to ~27× (31 KB), <1 ms per request, ~2 µs/token more; an unsupported `pattern` silently becomes any string | D88, D63, F143 |
+| F157 | Chat media as file:// halves a voice-note turn (192-200 → 93-94 ms), no patch; raw buffers add little | D84, D87, F152, F153 |
+| F156 | Speech on the NPU alone reaches 2.4× real time: no CPU op in the speech graph (positions as input, 3-D lookup), polling, the unused text head skipped | D37, D53, D85, F155 |
 | F155 | LFM3-Omni's speech part gives empty audio on the NPU because Hexagon tiles a weight a lookup also reads; patch 0005 keeps it flat; the CPU stays faster | D37, D53, D85, patch 0005 |
 | F154 | LFM3-Omni-2B speaks on the phone at 1.7× real time with the model on the NPU and its speech part on the CPU; long texts must be spoken a sentence at a time | D37, D53, D65, D85 |
 | F153 | On the LFM3 family (hybrid with SWA layers) the prompt cache reuses neither the live state nor the latest checkpoint; patch 0004 fixes it | D84, F152, patch 0004 |

@@ -1,5 +1,7 @@
 package com.suhel.llamabro.hub.internal
 
+import com.suhel.llamabro.LogLevel
+import com.suhel.llamabro.Logger
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.hub.DraftRequest
 import com.suhel.llamabro.hub.HfModel
@@ -7,8 +9,10 @@ import com.suhel.llamabro.hub.HubException
 import com.suhel.llamabro.hub.HubFile
 import com.suhel.llamabro.hub.HubPlan
 import com.suhel.llamabro.hub.PlanOptions
+import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 
 /**
  * The copy of a selection that loads, read from disk only (D64). Upstream's offline read follows `refs/main`, but that
@@ -17,7 +21,12 @@ import java.nio.file.Files
  * per selection, written only when a download completes, and loads that. A cache from before the record (complete by
  * the refs rule and its plan record) is adopted as installed the first time it is read, so no one downloads again.
  */
-internal class LocalCopies(private val cacheDir: File, private val resolver: Resolver, storage: Storage) {
+internal class LocalCopies(
+    private val cacheDir: File,
+    private val resolver: Resolver,
+    storage: Storage,
+    private val logger: Logger? = null,
+) {
     private val lookup = CacheLookup(cacheDir)
     private val plans = PlanStore(cacheDir, storage)
     private val installed = PlanStore(cacheDir, storage, PlanStore.INSTALLED)
@@ -28,48 +37,72 @@ internal class LocalCopies(private val cacheDir: File, private val resolver: Res
     /**
      * A completed download is the copy that loads from now on. The copy it replaces is then reclaimed, so an update
      * doesn't double the storage: its snapshot entries and blobs go unless another record (any selection's plan or
-     * installed copy) still names them, or, for a blob, another snapshot entry links to it.
+     * installed copy) still names them, or, for a blob, another snapshot entry links to it. The download is complete
+     * either way: a reclaim that fails is logged and leaves the old files for a later update or [Cache.delete].
      */
-    fun install(plan: HubPlan, options: PlanOptions) {
+    suspend fun install(plan: HubPlan, options: PlanOptions) {
         val previous = installed.read(plan.model, options)
         installed.write(plan, options)
-        previous?.let { reclaim(plan.model, it) }
+        if (previous == null) return
+        try {
+            reclaim(plan.model, previous)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (
+            @Suppress("TooGenericExceptionCaught") e: Exception, // installed already: no failure here may undo that
+        ) {
+            logger?.log(LogLevel.Warn, "kept the replaced copy of ${plan.model}: $e")
+        }
     }
 
-    /** Removes what only [old] (now replaced) named: its snapshot entries, then the blobs nothing links or names. */
-    private fun reclaim(model: HfModel, old: PlanStore.Record) {
-        val remaining =
-            listOf(PlanStore.PLANS, PlanStore.INSTALLED).flatMap { folder ->
-                PlanStore.readEvery(cacheDir, folder).flatMap { (owner, record) ->
-                    record.files.map { file -> Named(file.repo ?: owner.repo, file.commit ?: record.commit, file) }
-                }
-            }
-        val namedEntries = remaining.map { Triple(it.repo, it.commit, it.file.path) }.toSet()
-        val namedOids = remaining.mapNotNull { named -> named.file.oid?.let { named.repo to it } }.toSet()
-        val blobs = mutableSetOf<Pair<String, File>>()
+    /**
+     * Removes what only [old] (now replaced) named: its snapshot entries, then the blobs nothing links or names. Each
+     * file is decided under its blob's download lock from the records as they are then: a download of another selection
+     * that reuses the blob has either written its plan and linked it by then, so it stays, or finds it gone and fetches
+     * it again; it never links a blob that is then removed.
+     */
+    private suspend fun reclaim(model: HfModel, old: PlanStore.Record) {
+        HubTestHooks.onPhase?.invoke("reclaim")
         for (file in old.files) {
             val repo = file.repo ?: model.repo
             val commit = file.commit ?: old.commit
-            if (Triple(repo, commit, file.path) !in namedEntries) blobs += removeEntry(repo, commit, file)
-        }
-        for ((repo, blob) in blobs) {
-            if ((repo to blob.name) !in namedOids &&
-                !linkedFromSnapshots(repo, blob)
-            ) {
-                Files.deleteIfExists(blob.toPath())
+            val repoDir = File(cacheDir, repoFolder(repo))
+            val entry = File(repoDir, "snapshots/$commit/${file.path}")
+            val blob = linkedBlob(entry, File(repoDir, "blobs")) ?: file.oid?.let { File(repoDir, "blobs/$it") }
+            if (blob?.isFile == true) {
+                Locks.withFileLock(File(cacheDir, ".locks/${repoFolder(repo)}/${blob.name}.lock")) {
+                    reclaimFile(repo, commit, file, blob)
+                }
+            } else {
+                // No blob to remove (a degraded copy holds its bytes in the entry): nothing to wait for, and a blob
+                // another selection commits meanwhile is left alone
+                reclaimFile(repo, commit, file, null)
             }
         }
     }
 
-    /** Deletes [file]'s snapshot entry and returns the blobs it may have held: the one it links to, and its oid's. */
-    private fun removeEntry(repo: String, commit: String, file: PlanStore.FileRecord): List<Pair<String, File>> {
+    /** Removes [file]'s entry unless a record names it, then [blob] unless a record names it or an entry links it. */
+    private fun reclaimFile(repo: String, commit: String, file: PlanStore.FileRecord, blob: File?) {
+        val remaining =
+            listOf(PlanStore.PLANS, PlanStore.INSTALLED).flatMap { folder ->
+                PlanStore.readEvery(cacheDir, folder).flatMap { (owner, record) ->
+                    record.files.map { named -> Named(named.repo ?: owner.repo, named.commit ?: record.commit, named) }
+                }
+            }
+        HubTestHooks.onPhase?.invoke("reclaimRead")
+        if (remaining.any { it.repo == repo && it.commit == commit && it.file.path == file.path }) return
+        removeEntry(repo, commit, file)
+        if (blob == null) return
+        val named = remaining.any { it.repo == repo && it.file.oid == blob.name }
+        if (!named && !linkedFromSnapshots(repo, blob)) Files.deleteIfExists(blob.toPath())
+    }
+
+    /** Deletes [file]'s snapshot entry, and its folders that are left empty. */
+    private fun removeEntry(repo: String, commit: String, file: PlanStore.FileRecord) {
         val repoDir = File(cacheDir, repoFolder(repo))
         val entry = File(repoDir, "snapshots/$commit/${file.path}")
-        val held =
-            listOfNotNull(linkedBlob(entry, File(repoDir, "blobs")), file.oid?.let { File(repoDir, "blobs/$it") })
         Files.deleteIfExists(entry.toPath())
         removeEmptyParents(entry.parentFile, File(repoDir, "snapshots"))
-        return held.map { repo to it }
     }
 
     /** Whether any snapshot entry of [repo] still links to [blob]. */
@@ -81,15 +114,22 @@ internal class LocalCopies(private val cacheDir: File, private val resolver: Res
     /** A record's file with the repo and commit whose snapshot holds it. */
     private class Named(val repo: String, val commit: String, val file: PlanStore.FileRecord)
 
-    /** The blob in [blobs] that [entry] links to, or null when it is no link into them (a degraded copy). */
+    /**
+     * The blob in [blobs] that [entry] links to, or null when it is no link into them (a degraded copy) or a delete
+     * removed it since it was listed.
+     */
     private fun linkedBlob(entry: File, blobs: File): File? {
         val link = entry.toPath()
         if (!Files.isSymbolicLink(link)) return null
         val target =
-            link.parent
-                .resolve(Files.readSymbolicLink(link))
-                .toAbsolutePath()
-                .normalize()
+            try {
+                link.parent
+                    .resolve(Files.readSymbolicLink(link))
+                    .toAbsolutePath()
+                    .normalize()
+            } catch (_: NoSuchFileException) {
+                return null
+            }
         return target.toFile().takeIf { target.startsWith(blobs.toPath().toAbsolutePath().normalize()) }
     }
 
@@ -158,6 +198,24 @@ internal class LocalCopies(private val cacheDir: File, private val resolver: Res
 
     /** Today's upstream rule: the snapshot `refs/main` names, checked against the plan record when there is one. */
     private fun legacySource(model: HfModel, options: PlanOptions): ModelSource {
+        installed.write(model, options, legacyRecord(model, options))
+        return requireNotNull(installedSource(model, options)) { "adopted copy of $model is incomplete" }
+    }
+
+    /**
+     * Whether [source] would load [model] from disk now, by the same rules, with nothing written: the installed copy
+     * is complete, or one by the refs rule would be adopted.
+     */
+    fun loads(model: HfModel, options: PlanOptions): Boolean =
+        installedPaths(model, options) != null ||
+            try {
+                pathsOf(model, legacyRecord(model, options)) != null
+            } catch (_: HubException.NotFound) {
+                false
+            }
+
+    /** What [legacySource] adopts: the refs rule's selection, checked against the plan record when there is one. */
+    private fun legacyRecord(model: HfModel, options: PlanOptions): PlanStore.Record {
         val listing =
             resolver.cachedListing(model.repo)
                 ?: throw HubException.NotFound("model is not cached: $model", emptyList())
@@ -195,8 +253,7 @@ internal class LocalCopies(private val cacheDir: File, private val resolver: Res
             val (repo, commit, file) = draftFile(draft, model, selected, listing)
             files += local(file, HubFile.Role.Draft, repo, commit)
         }
-        installed.write(model, options, PlanStore.Record(listing.commit, files))
-        return requireNotNull(installedSource(model, options)) { "adopted copy of $model is incomplete" }
+        return PlanStore.Record(listing.commit, files)
     }
 
     /** The oid a snapshot entry links to, which names its blob; null in a degraded (copied) cache. */

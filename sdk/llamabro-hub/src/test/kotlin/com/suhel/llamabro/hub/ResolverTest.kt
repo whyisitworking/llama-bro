@@ -19,13 +19,14 @@ import org.junit.Test
 import java.io.File
 import java.nio.file.Files
 
+/** The resolution a download makes and records (upstream's `-hf`): it plans through [recordedPlan]. */
 internal class ResolverTest {
     @Before fun reset() = hub.reset()
 
     @Test fun refsPickMainAndWriteWithoutNewline() =
         runBlocking {
             val cache = Files.createTempDirectory("hub-resolve-").toFile()
-            val plan = instance(cache).plan(HfModel("test/choice"))
+            val plan = instance(cache).recordedPlan(HfModel("test/choice"))
             assertEquals("a".repeat(40), plan.commit)
             assertEquals(listOf("model-Q4_K_M.gguf", "mmproj-model-Q8_0.gguf"), plan.files.map { it.path })
             assertEquals("a".repeat(40), File(cache, "models--test--choice/refs/main").readText())
@@ -36,14 +37,14 @@ internal class ResolverTest {
         runBlocking {
             val cache = Files.createTempDirectory("hub-offline-").toFile()
             val client = instance(cache)
-            client.plan(HfModel("test/choice"))
+            client.recordedPlan(HfModel("test/choice"))
             File(cache, "models--test--choice/snapshots/${"a".repeat(40)}/model-Q4_K_M.gguf")
                 .apply {
                     parentFile!!.mkdirs()
                     writeText("gguf")
                 }
             hub.control("[{\"kind\":\"status\",\"host\":\"api\",\"match\":\"refs\",\"status\":503}]")
-            val plan = client.plan(HfModel("test/choice"))
+            val plan = client.recordedPlan(HfModel("test/choice"))
             assertTrue(plan.offline)
             assertEquals("model-Q4_K_M.gguf", plan.files.single().path)
         }
@@ -51,7 +52,7 @@ internal class ResolverTest {
     @Test fun unknownRepoFailsWithNotFound() =
         runBlocking {
             try {
-                instance(Files.createTempDirectory("hub-missing-").toFile()).plan(HfModel("test/absent"))
+                instance(Files.createTempDirectory("hub-missing-").toFile()).recordedPlan(HfModel("test/absent"))
                 fail("missing repo should fail")
             } catch (e: HubException.NotFound) {
                 assertEquals(emptyList<String>(), e.available)
@@ -61,7 +62,7 @@ internal class ResolverTest {
     @Test fun dflashFromSameRepoAndPlanFile() =
         runBlocking {
             val cache = Files.createTempDirectory("hub-dflash-").toFile()
-            val plan = instance(cache).plan(HfModel("test/choice:Q8_0")) { draft = DraftRequest.dflash() }
+            val plan = instance(cache).recordedPlan(HfModel("test/choice:Q8_0")) { draft = DraftRequest.dflash() }
             assertEquals(
                 listOf("model-Q8_0.gguf", "mmproj-model-Q8_0.gguf", "dflash-model-Q8_0.gguf"),
                 plan.files.map { it.path },
@@ -78,7 +79,7 @@ internal class ResolverTest {
     @Test fun refsFirstValidWhenNoMain() =
         runBlocking {
             val cache = Files.createTempDirectory("hub-branch-").toFile()
-            val plan = instance(cache).plan(HfModel("test/branch"))
+            val plan = instance(cache).recordedPlan(HfModel("test/branch"))
             assertEquals("model-Q4_K_M.gguf", plan.files.single().path)
             assertEquals("a".repeat(40), File(cache, "models--test--branch/refs/feature").readText())
             assertFalse(File(cache, "models--test--branch/refs/main").exists())
@@ -87,14 +88,14 @@ internal class ResolverTest {
     @Test fun treeSkipsEscapesAndDirectories() =
         runBlocking {
             val cache = Files.createTempDirectory("hub-escape-").toFile()
-            val plan = instance(cache).plan(HfModel("test/escape"))
+            val plan = instance(cache).recordedPlan(HfModel("test/escape"))
             assertEquals(listOf("model-Q4_K_M.gguf"), plan.files.map { it.path })
             assertFalse(File(cache, "evil.gguf").exists())
         }
 
     @Test fun lfsOidPreferredAndSizesFromTree() =
         runBlocking {
-            val plan = instance(Files.createTempDirectory("hub-lfs-").toFile()).plan(HfModel("test/choice"))
+            val plan = instance(Files.createTempDirectory("hub-lfs-").toFile()).recordedPlan(HfModel("test/choice"))
             assertEquals(listOf(4096L, 4096L), plan.files.map { it.sizeBytes })
             assertEquals(8192L, plan.bytesTotal)
             assertEquals(8192L, plan.bytesToDownload)
@@ -111,7 +112,7 @@ internal class ResolverTest {
         runBlocking {
             hub.control("[{\"kind\":\"status\",\"host\":\"api\",\"match\":\"refs\",\"status\":503}]")
             try {
-                instance(Files.createTempDirectory("hub-503-").toFile()).plan(HfModel("test/choice"))
+                instance(Files.createTempDirectory("hub-503-").toFile()).recordedPlan(HfModel("test/choice"))
                 fail("server error should surface with no cache")
             } catch (e: HubException.Network) {
                 assertTrue(e.retryable)
@@ -122,7 +123,7 @@ internal class ResolverTest {
         runBlocking {
             val cache = Files.createTempDirectory("hub-gated-").toFile()
             try {
-                instance(cache).plan(HfModel("test/gated"))
+                instance(cache).recordedPlan(HfModel("test/gated"))
                 fail("gated repo should require credentials")
             } catch (e: HubException.Unauthorized) {
                 assertEquals(401, e.httpStatus)
@@ -137,7 +138,7 @@ internal class ResolverTest {
             assertEquals(
                 "model-Q4_K_M.gguf",
                 authorized
-                    .plan(HfModel("test/gated"))
+                    .recordedPlan(HfModel("test/gated"))
                     .files
                     .single()
                     .path,
@@ -148,13 +149,13 @@ internal class ResolverTest {
         runBlocking {
             val client = instance(Files.createTempDirectory("hub-not-found-").toFile())
             try {
-                client.plan(HfModel("test/choice:IQ1_S"))
+                client.recordedPlan(HfModel("test/choice:IQ1_S"))
                 fail("missing tag should fail")
             } catch (e: HubException.NotFound) {
                 assertTrue(e.available.contains("model-Q4_K_M.gguf"))
             }
             try {
-                client.plan(HfModel("test/flat")) { draft = DraftRequest.dflash() }
+                client.recordedPlan(HfModel("test/flat")) { draft = DraftRequest.dflash() }
                 fail("missing DFlash sidecar should fail")
             } catch (e: HubException.NotFound) {
                 assertTrue(e.message!!.contains("no dflash- file"))
@@ -163,7 +164,7 @@ internal class ResolverTest {
 
     @Test fun presetIniIgnoredWithNote() =
         runBlocking {
-            val plan = instance(Files.createTempDirectory("hub-preset-").toFile()).plan(HfModel("test/preset"))
+            val plan = instance(Files.createTempDirectory("hub-preset-").toFile()).recordedPlan(HfModel("test/preset"))
             assertEquals("model-Q4_K_M.gguf", plan.files.first().path)
             assertTrue(plan.notes.single().contains("preset.ini ignored"))
         }
@@ -171,11 +172,12 @@ internal class ResolverTest {
     @Test fun draftFromOtherRepoSidecarAndFullModel() =
         runBlocking {
             val client = instance(Files.createTempDirectory("hub-draft-other-").toFile())
-            val sidecar = client.plan(HfModel("test/flat")) { draft = DraftRequest.dflash(HfModel("test/draft")) }
+            val sidecar =
+                client.recordedPlan(HfModel("test/flat")) { draft = DraftRequest.dflash(HfModel("test/draft")) }
             assertEquals("dflash-model-Q8_0.gguf", sidecar.files.last().path)
             assertEquals(HubFile.Role.Draft, sidecar.files.last().role)
             val full =
-                client.plan(HfModel("test/flat")) {
+                client.recordedPlan(HfModel("test/flat")) {
                     draft = DraftRequest.dflash(HfModel("test/draftfull:Q8_0"))
                 }
             assertEquals("small-Q8_0.gguf", full.files.last().path)
@@ -188,7 +190,7 @@ internal class ResolverTest {
             val client = instance(cache)
             val model = HfModel("test/flat")
             val draft = DraftRequest.dflash(HfModel("test/draft"))
-            client.plan(model) { this.draft = draft }
+            client.recordedPlan(model) { this.draft = draft }
             File(cache, "models--test--draft/snapshots/${"a".repeat(40)}/dflash-model-Q8_0.gguf")
                 .apply {
                     parentFile!!.mkdirs()
@@ -197,7 +199,7 @@ internal class ResolverTest {
             hub.control(
                 "[{\"kind\":\"status\",\"host\":\"api\",\"match\":\"refs\",\"path\":\"/api/models/test/draft/refs\",\"status\":503}]",
             )
-            val plan = client.plan(model) { this.draft = draft }
+            val plan = client.recordedPlan(model) { this.draft = draft }
             assertTrue(plan.offline)
             assertEquals("dflash-model-Q8_0.gguf", plan.files.last().path)
         }
@@ -205,7 +207,7 @@ internal class ResolverTest {
     @Test fun planFileContainsChosenFilesAndOptions() =
         runBlocking {
             val cache = Files.createTempDirectory("hub-plan-file-").toFile()
-            val plan = instance(cache).plan(HfModel("test/choice:Q8_0")) { mmproj = false }
+            val plan = instance(cache).recordedPlan(HfModel("test/choice:Q8_0")) { mmproj = false }
             assertEquals(1, plan.files.size)
             val stored = File(cache, ".llamabro/plans").listFiles().orEmpty().single()
             val json =
@@ -233,33 +235,33 @@ internal class ResolverTest {
             val client = instance(cache)
             hub.control("[{\"kind\":\"status\",\"host\":\"api\",\"match\":\"refs\",\"status\":200,\"body\":[]}]")
             try {
-                client.plan(HfModel("test/choice"))
+                client.recordedPlan(HfModel("test/choice"))
                 fail("refs of the wrong shape should fail with no cache")
             } catch (e: HubException.Network) {
                 assertTrue(e.retryable)
             }
-            client.plan(HfModel("test/choice"))
+            client.recordedPlan(HfModel("test/choice"))
             File(cache, "models--test--choice/snapshots/${"a".repeat(40)}/model-Q4_K_M.gguf")
                 .apply {
                     parentFile!!.mkdirs()
                     writeText("gguf")
                 }
             hub.control("[{\"kind\":\"status\",\"host\":\"api\",\"match\":\"tree\",\"status\":200,\"body\":{}}]")
-            assertTrue(client.plan(HfModel("test/choice")).offline)
+            assertTrue(client.recordedPlan(HfModel("test/choice")).offline)
         }
 
     @Test fun emptyOnlineListingFallsBackToCache() =
         runBlocking {
             val cache = Files.createTempDirectory("hub-empty-tree-").toFile()
             val client = instance(cache)
-            client.plan(HfModel("test/choice"))
+            client.recordedPlan(HfModel("test/choice"))
             File(cache, "models--test--choice/snapshots/${"a".repeat(40)}/model-Q4_K_M.gguf")
                 .apply {
                     parentFile!!.mkdirs()
                     writeText("gguf")
                 }
             hub.control("[{\"kind\":\"status\",\"host\":\"api\",\"match\":\"tree\",\"status\":200,\"body\":[]}]")
-            val plan = client.plan(HfModel("test/choice"))
+            val plan = client.recordedPlan(HfModel("test/choice"))
             assertTrue(plan.offline)
             assertEquals("model-Q4_K_M.gguf", plan.files.single().path)
         }
@@ -271,7 +273,7 @@ internal class ResolverTest {
                     "\"size\":1,\"lfs\":{\"size\":1}}]"
             hub.control("[{\"kind\":\"status\",\"host\":\"api\",\"match\":\"tree\",\"status\":200,\"body\":$body}]")
             try {
-                instance(Files.createTempDirectory("hub-lfs-no-oid-").toFile()).plan(HfModel("test/choice"))
+                instance(Files.createTempDirectory("hub-lfs-no-oid-").toFile()).recordedPlan(HfModel("test/choice"))
                 fail("an LFS entry without its oid can't be verified")
             } catch (e: HubException.NotFound) {
                 assertEquals(emptyList<String>(), e.available)
@@ -282,7 +284,9 @@ internal class ResolverTest {
         runBlocking {
             val client = instance(Files.createTempDirectory("hub-missing-file-").toFile())
             try {
-                client.plan(HfModel("test/flat")) { draft = DraftRequest.dflash(HfModel("test/draft#missing.gguf")) }
+                client.recordedPlan(HfModel("test/flat")) {
+                    draft = DraftRequest.dflash(HfModel("test/draft#missing.gguf"))
+                }
                 fail("a named draft file that isn't in the repo must not fall back to the repo's dflash- file")
             } catch (e: HubException.NotFound) {
                 assertTrue(e.message!!.contains("test/draft"))
@@ -303,7 +307,7 @@ internal class ResolverTest {
                 writeText("gguf")
             }
             hub.control("[{\"kind\":\"status\",\"host\":\"api\",\"match\":\"refs\",\"status\":503}]")
-            val plan = instance(cache).plan(HfModel("test/choice"))
+            val plan = instance(cache).recordedPlan(HfModel("test/choice"))
             assertTrue(plan.offline)
             assertEquals("a".repeat(40), plan.commit)
         }

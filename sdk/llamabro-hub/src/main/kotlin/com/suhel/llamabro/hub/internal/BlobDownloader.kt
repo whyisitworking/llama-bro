@@ -4,7 +4,6 @@ import com.suhel.llamabro.LogLevel
 import com.suhel.llamabro.Logger
 import com.suhel.llamabro.hub.HubException
 import com.suhel.llamabro.hub.HubFile
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -36,12 +35,20 @@ internal class BlobDownloader(
             val repo = repoFolder(file.sourceRepo)
             val root = File(cacheDir, repo)
             val snapshot = File(root, "snapshots/${file.sourceCommit}/${file.path}")
-            if (snapshot.isFile) return@withContext
-            val oid = file.oid ?: throw HubException.NotFound("offline file missing: ${file.path}", emptyList())
+            val oid =
+                file.oid
+                    ?: if (snapshot.isFile) {
+                        return@withContext
+                    } else {
+                        throw HubException.NotFound("offline file missing: ${file.path}", emptyList())
+                    }
+            // A degraded entry holds its own bytes, with no blob to wait for. A linked one is checked under the lock
+            // only: an update's reclaim and a delete decide under it whether its blob goes (LocalCopies, Cache).
+            if (snapshot.isFile && !Files.isSymbolicLink(snapshot.toPath())) return@withContext
             val blob = File(root, "blobs/$oid")
             val lockFile = File(cacheDir, ".locks/$repo/$oid.lock")
-            Locks.withBlobLock(lockFile) {
-                if (snapshot.isFile) return@withBlobLock
+            Locks.withFileLock(lockFile) {
+                if (snapshot.isFile) return@withFileLock
                 if (!blob.isFile) fetch(file, blob, progress)
                 finish(blob, snapshot)
             }
@@ -68,20 +75,20 @@ internal class BlobDownloader(
                     attemptOnce()
                     return
                 } catch (e: Exception) {
-                    if (e.endsTheDownload()) throw e
-                    lastError = if (e is IOException) failureOf(e) else e
+                    // A stop closes the connection under a blocked read, which fails as an IOException: it is the stop.
+                    coroutineContext.ensureActive()
+                    // Only a network failure that may pass gets another try. Cancelled, wrong bytes, a refusal (a 4xx),
+                    // or a bug (a parse error) would end the same way again.
+                    lastError =
+                        when {
+                            e is IOException -> failureOf(e)
+                            e is HubException.Network && e.retryable -> e
+                            else -> throw e
+                        }
                 }
             }
             throw lastError ?: HubException.Network("download failed: ${file.path}", null, true)
         }
-
-        /** Cancelled, wrong bytes, or a refusal that another try can't change. */
-        private fun Exception.endsTheDownload() =
-            this is CancellationException ||
-                this is HubException.IntegrityMismatch ||
-                this is HubException.Unauthorized ||
-                this is HubException.RateLimited ||
-                this is HubException.NotFound
 
         private fun failureOf(e: IOException): HubException {
             val message = e.message.orEmpty()
@@ -162,8 +169,10 @@ internal class BlobDownloader(
         /** Why this answer to a (resumed) request can't be used, or null when it can. */
         private suspend fun rejection(response: Response, start: Long): HubException? {
             if (start > 0 && response.status != 206) {
-                if (response.status == 416 || response.status == 200) discardPartial()
-                return statusError(response, file.path)
+                if (response.status != 416 && response.status != 200) return statusError(response, file.path)
+                // The server won't resume this partial: it went, and a try from the first byte can work.
+                discardPartial()
+                return HubException.Network("HTTP ${response.status} resuming ${file.path}; restarting", null, true)
             }
             return if (response.status == 200 || response.status == 206) null else statusError(response, file.path)
         }

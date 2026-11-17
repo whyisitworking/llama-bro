@@ -29,6 +29,11 @@ class ShellViewModel(
     private val zone: ZoneId = ZoneId.systemDefault(),
     /** Keeps the drawer's search across process death. */
     savedState: SavedStateHandle,
+    /**
+     * Deletes a chat; null deletes it here. The app's runs on its own scope, so the delete outlives this view model,
+     * and stops a reply streaming into it first (ChatEngine.delete, D87).
+     */
+    private val deleteChat: ((Long) -> Unit)? = null,
 ) : ViewModel() {
     val layout: StateFlow<AppLayout?> =
         settings.settings
@@ -80,7 +85,8 @@ class ShellViewModel(
     }
 
     fun delete(id: Long) {
-        viewModelScope.launch { chatRepository.delete(id) }
+        val delete = deleteChat
+        if (delete != null) delete(id) else viewModelScope.launch { chatRepository.delete(id) }
     }
 
     fun now(): Long = clock()

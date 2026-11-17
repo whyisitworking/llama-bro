@@ -114,7 +114,7 @@ internal class HttpTransport(
             useCaches = false
             connectTimeout = connectTimeoutMs
             readTimeout = readTimeoutMs
-            setRequestProperty("User-Agent", "llamabro-hub/0.0.0-dev (llama.cpp b12352)")
+            setRequestProperty("User-Agent", "llamabro-hub/0.0.0-dev (llama.cpp b12479)")
             setRequestProperty("Accept-Encoding", "identity")
             if (rangeHeader != null) setRequestProperty("Range", rangeHeader)
             for ((name, value) in headers) {

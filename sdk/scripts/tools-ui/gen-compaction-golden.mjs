@@ -1,7 +1,7 @@
-// Golden outputs of llama.cpp's own tools/ui compaction code (src/lib/utils/compaction.ts) for 400 seeded random
-// message lists. CompactionGoldenTest replays every case through the Kotlin port; regenerate after a llama.cpp
-// upgrade and a diff shows exactly what upstream changed.
-//   TOOLS_UI_LIB=<llama.cpp>/tools/ui/src/lib node --experimental-transform-types gen-compaction-golden.mjs > golden.json
+// Golden outputs of llama.cpp's own Llama Chat compaction code (ui/apps/chat/src/lib/utils/compaction.ts) for 400
+// seeded random message lists. CompactionGoldenTest replays every case through the Kotlin port; regenerate after a
+// llama.cpp upgrade and a diff shows exactly what upstream changed.
+//   TOOLS_UI_LIB=<llama.cpp>/ui/apps/chat/src/lib node --experimental-transform-types gen-compaction-golden.mjs > golden.json
 import { register } from 'node:module';
 
 register('./hooks.mjs', import.meta.url);
@@ -56,7 +56,7 @@ for (let c = 0; c < 400; c++) {
 }
 
 process.stdout.write(JSON.stringify({
-    source: 'llama.cpp tools/ui/src/lib/utils/compaction.ts',
+    source: 'llama.cpp ui/apps/chat/src/lib/utils/compaction.ts',
     contextTemplate: COMPACTION.CONTEXT_TEMPLATE,
     cases,
 }, null, 1) + '\n');

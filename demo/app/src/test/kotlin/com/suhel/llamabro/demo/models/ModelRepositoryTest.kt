@@ -6,8 +6,10 @@ import com.suhel.llamabro.demo.chat.LoadConfig
 import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.models.TestHub.Refusal
+import com.suhel.llamabro.hub.CachedModel
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -30,6 +33,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 class ModelRepositoryTest {
     @get:Rule val folder = TemporaryFolder()
@@ -59,9 +63,20 @@ class ModelRepositoryTest {
     private fun repository(
         host: ModelHost? = null,
         lastUsed: Flow<Map<String, Long>> = flowOf(emptyMap()),
+        installed: suspend () -> List<CachedModel> = { hub.installed() },
     ): ModelRepository {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined).also(scopes::add)
-        return ModelRepository(hub, settings, scheduler, scope, host, lastUsed)
+        return ModelRepository(hub, settings, scheduler, scope, host, lastUsed, installed)
+    }
+
+    /** A model nobody downloads: pausing it is a step that leaves a trace ([settle]). */
+    private val bystander = HfModel.parse("someone/Bystander-GGUF:Q4_K_M")
+
+    /** Returns once every step asked before it has run: steps run one at a time, in the order asked. */
+    private fun ModelRepository.settle() {
+        val before = scheduler.cancelled.count { it == bystander }
+        pause(bystander)
+        runBlocking { withTimeout(5_000) { while (scheduler.cancelled.count { it == bystander } == before) delay(10) } }
     }
 
     /** A host over the fake engine that loads the hub's installed copies, as the app's does. */
@@ -171,9 +186,16 @@ class ModelRepositoryTest {
             testHub.install(swift)
             val host = host()
             host.use(swift, LoadConfig())
+            // read as the host turns idle, on the thread that makes it so: the files must still be there then
+            val onPhoneWhenIdle = CompletableDeferred<Boolean>()
+            val watch =
+                CoroutineScope(Dispatchers.Unconfined).also(scopes::add).launch {
+                    host.state.first { it is HostState.Idle }
+                    onPhoneWhenIdle.complete(testHub.onPhone(swift))
+                }
+            assertFalse("loaded before the remove", watch.isCompleted)
             repository(host).remove(swift)
-            // the host let the model go before its files went: it is idle, and nothing of the model is on the phone
-            assertTrue(host.state.value is HostState.Idle)
+            assertTrue("released before its files went", withTimeout(5_000) { onPhoneWhenIdle.await() })
             assertFalse(testHub.onPhone(swift))
         }
 
@@ -389,16 +411,17 @@ class ModelRepositoryTest {
         runBlocking<Unit> {
             // a cancel takes a moment to be recorded; Resume is tapped meanwhile, and the paused run's end arrives
             // after the resumed run has started
-            scheduler.cancelMillis = 200
+            val recorded = CompletableDeferred<Unit>()
+            scheduler.cancelGate = recorded
             val repo = repository()
             repo.get(swift)
             scheduler.awaitEnqueued(swift)
             repo.pause(swift)
             repo.get(swift)
+            recorded.complete(Unit)
             scheduler.awaitEnqueued(swift, swift)
-            delay(400)
             repo.get(other)
-            delay(300)
+            repo.settle()
             assertEquals("the resumed run still runs, so Some-Model waits", listOf(swift, swift), scheduler.enqueued)
             assertEquals(listOf(swift), scheduler.running)
         }
@@ -434,10 +457,11 @@ class ModelRepositoryTest {
             repo.get(swift)
             scheduler.awaitEnqueued(swift)
             repo.get(other)
-            repo.downloadingIs(listOf(other, swift).sortedBy { it.toString() })
+            repo.settle()
+            assertEquals("Some-Model waits for the 0.8B", listOf(swift), scheduler.enqueued)
             repo.pause(swift)
             scheduler.awaitEnqueued(swift, other)
-            assertEquals(listOf(swift), scheduler.cancelled)
+            assertEquals(listOf(bystander, swift), scheduler.cancelled)
         }
 
     @Test fun aModelAlreadyOnThePhoneIsNotListedAsDownloading() =
@@ -503,5 +527,66 @@ class ModelRepositoryTest {
                     .map { it.key }
                     .toSet(),
             )
+        }
+
+    @Test fun theCacheIsScannedOncePerChangeWhoeverCollects() =
+        runBlocking {
+            testHub.install(swift)
+            val scans = AtomicInteger()
+            val repo = repository(installed = { hub.installed().also { scans.incrementAndGet() } })
+            val readers = List(3) { async { repo.library.first() } }
+            readers.forEach { assertEquals(listOf(swift), it.await().map { row -> row.key }) }
+            assertEquals(1, scans.get())
+            testHub.install(other)
+            repo.changed()
+            assertEquals(
+                setOf(swift, other),
+                repo.library
+                    .first()
+                    .map { it.key }
+                    .toSet(),
+            )
+            // one new scan for the library, plus `changed`'s own look at which downloads finished
+            withTimeout(5_000) { while (scans.get() < 3) delay(10) }
+            delay(100)
+            assertEquals(3, scans.get())
+        }
+
+    @Test fun aTokenSavedAfterARestartStartsTheDownloadRefusedForWantOfOne() =
+        runBlocking<Unit> {
+            val repo = repository()
+            repo.get(swift)
+            scheduler.awaitEnqueued(swift)
+            testHub.refuse(swift, Refusal.Unauthorized)
+            repo.stateBecomes(swift) { it is DownloadStatus.Failed }
+            scheduler.endWork(swift) // the worker fails for good
+            withTimeout(5_000) { settings.settings.first { swift.toString() in it.downloadsNeedingToken } }
+            // the next launch: a new hub no longer knows why it stopped, and the row reads paused
+            val restarted = TestHub()
+            scheduler.enqueued.clear()
+            val next =
+                ModelRepository(
+                    restarted.hub,
+                    settings,
+                    scheduler,
+                    CoroutineScope(SupervisorJob() + Dispatchers.Unconfined).also(scopes::add),
+                )
+            next.settle()
+            assertEquals("nothing starts unasked (D64)", emptyList<HfModel>(), scheduler.enqueued)
+            next.tokenSaved()
+            scheduler.awaitEnqueued(swift)
+            restarted.close()
+        }
+
+    @Test fun aCancelThatCantStopTheWorkKeepsTheFiles() =
+        runBlocking {
+            testHub.install(swift)
+            val repo = repository()
+            scheduler.cancelFailure = IllegalStateException("WorkManager's database is gone")
+            repo.remove(swift)
+            assertTrue("the work may still be writing, so its files stay", testHub.onPhone(swift))
+            assertEquals(listOf(swift), repo.library.first().map { it.key })
+            repo.remove(swift) // the next try goes through
+            assertFalse(testHub.onPhone(swift))
         }
 }

@@ -11,7 +11,9 @@
 #
 # Needs: scripts/build-device-tools.sh, a phone on adb (ANDROID_SERIAL), and on it the model (and mmproj for the image
 # request) in $LB_DEVICE_MODEL_DIR. Env: LB_DEVICE_MODEL (file name, default Qwen3.5-4B-Q4_K_M.gguf),
-# LB_DEVICE_MMPROJ (default mmproj-F16.gguf, left out if missing), LB_DEVICE_DEV (default HTP0).
+# LB_DEVICE_MMPROJ (default mmproj-F16.gguf, left out if missing), LB_DEVICE_DEV (default HTP0),
+# LB_DEVICE_CONTRACT_PORT (the server's port on the phone, default 18182), LB_DEVICE_CONTRACT_HOST_PORT (this machine's
+# end of the adb forward, default 0: adb picks a free one, so concurrent checks never collide, F159).
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -22,7 +24,8 @@ models="${LB_DEVICE_MODEL_DIR:-/data/local/tmp/lb-spike/models}"
 model="$models/${LB_DEVICE_MODEL:-Qwen3.5-4B-Q4_K_M.gguf}"
 dev="${LB_DEVICE_DEV:-HTP0}"
 remote=/data/local/tmp/lb-contract
-port="${LB_CONTRACT_PORT:-18182}"
+port="${LB_DEVICE_CONTRACT_PORT:-18182}"   # on the phone; the forward's host end is picked below
+host_port="${LB_DEVICE_CONTRACT_HOST_PORT:-0}"
 out="$native/build/device-contract"
 requests="$out/requests.jsonl"
 
@@ -74,20 +77,23 @@ env="cd $remote && LD_LIBRARY_PATH=$remote/bin"  # ggml-hexagon finds the skelet
 # upstream: the host contract's flags plus the device (design §8)
 cool
 # the cleanup first, so that any later failure still stops the server and removes the forward
-trap 'adb shell pkill -x llama-server 2>/dev/null || true; adb forward --remove tcp:'$port' 2>/dev/null || true' EXIT
+trap 'adb shell pkill -x llama-server 2>/dev/null || true
+    [ "$host_port" = 0 ] || adb forward --remove "tcp:$host_port" 2>/dev/null || true' EXIT
 # the adb shell itself runs in the background here: one started in the background on the phone keeps adb waiting
 adb shell "$env exec bin/llama-server -m '$model' ${mmproj:+--mmproj '$mmproj'} -c 8192 -np 1 --cache-ram 1024 \
     --ctx-checkpoints 8 --load-mode none --fit off -b 512 -ub 512 -dev $dev -ngl 99 -lv 4 \
     --host 127.0.0.1 --port $port > llama-server.log 2>&1" < /dev/null > /dev/null 2>&1 &
-adb forward tcp:$port tcp:$port >/dev/null
+# with tcp:0 adb prints the host port it picked
+forwarded="$(adb forward "tcp:$host_port" "tcp:$port" | tr -d '\r')" || { echo "FAIL: adb forward"; exit 1; }
+[ "$host_port" != 0 ] || host_port="$forwarded"
 for i in $(seq 1 180); do
-    curl -sf "http://127.0.0.1:$port/health" >/dev/null 2>&1 && break
+    curl -sf "http://127.0.0.1:$host_port/health" >/dev/null 2>&1 && break
     # from the 5th second: the backgrounded adb shell may not have started the server yet
     [ "$i" -lt 5 ] || adb shell pidof llama-server >/dev/null || { adb pull -q $remote/llama-server.log "$out/"; echo "FAIL: llama-server exited (see $out/llama-server.log)"; exit 1; }
     [ "$i" = 180 ] && { echo "FAIL: llama-server not ready"; exit 1; }
     sleep 1
 done
-python3 "$contract/http-run.py" --url "http://127.0.0.1:$port" --requests "$requests" --out "$out/upstream"
+python3 "$contract/http-run.py" --url "http://127.0.0.1:$host_port" --requests "$requests" --out "$out/upstream"
 adb shell pkill -x llama-server || true
 adb pull -q "$remote/llama-server.log" "$out/" >/dev/null
 

@@ -13,6 +13,10 @@
 // its bytes or descriptor when the call returns. The request's thread owns the buffers: a transcription's audio moves
 // into server_http_req::files, which upstream's handler reads as a multipart upload; for other routes each placeholder
 // becomes a base64 data URL in the body. The buffers live no longer than the req, which ends before the terminal event.
+// With a media_dir (llama-server's media root), a chat's or embedding's path attachment is not read: the bridge checks
+// its first bytes, links it into that directory under a random name and writes file://<name>, so llama-server reads the
+// file itself (F157: ~100 ms less per turn with three voice notes). The link lives until the terminal event, so the file
+// must too. A caller-written file:// reaches only that directory.
 #include "model.h"
 #include "upstream.h"
 
@@ -24,6 +28,7 @@
 #include <cstring>
 #include <functional>
 #include <iterator>
+#include <random>
 #include <stdexcept>
 #include <vector>
 
@@ -51,11 +56,13 @@ struct attachment {
     std::string name;
     std::string mime;
     std::string filename;  // a path's base name, as an upload would carry it
+    std::string link;      // its name in the media root when linked (sent as file://), else empty
     raw_buffer data;
 
     attachment() { g_live_attachments++; }
     attachment(attachment && o) noexcept
-        : name(std::move(o.name)), mime(std::move(o.mime)), filename(std::move(o.filename)), data(std::move(o.data)) {
+        : name(std::move(o.name)), mime(std::move(o.mime)), filename(std::move(o.filename)), link(std::move(o.link)),
+          data(std::move(o.data)) {
         g_live_attachments++;
     }
     attachment(const attachment &) = delete;
@@ -129,7 +136,7 @@ bool read_path(const char * path, raw_buffer & out, std::string & err) {
     return e == 0;
 }
 
-// WAV, MP3 or FLAC by their first bytes: the formats llama.cpp decodes (b12352 tools/mtmd/mtmd-helper.cpp
+// WAV, MP3 or FLAC by their first bytes: the formats llama.cpp decodes (b12479 tools/mtmd/mtmd-helper.cpp
 // audio_helpers::is_audio_file); anything else it would try as an image. One addition, as Kotlin's Media.isAudio: an
 // MPEG sync word must also be layer I-III, since an ADTS AAC header has the sync word with layer bits 00, passes
 // upstream's check, then fails to decode.
@@ -141,6 +148,65 @@ bool is_audio_file(const char * buf, size_t len) {
                                       ((unsigned char) buf[1] & 0x06) != 0));
     const bool is_flac = memcmp(buf, "fLaC", 4) == 0;
     return is_wav || is_mp3 || is_flac;
+}
+
+// The links a request made in the media root, removed when it ends (or never starts)
+struct media_links {
+    std::vector<std::string> paths;
+    media_links() = default;
+    media_links(media_links && o) noexcept : paths(std::move(o.paths)) {}
+    media_links(const media_links &) = delete;
+    media_links & operator=(const media_links &) = delete;
+    media_links & operator=(media_links &&) = delete;
+    ~media_links() { remove(); }
+    void remove() {
+        for (const auto & p : paths) unlink(p.c_str());
+        paths.clear();
+    }
+};
+
+// The first n bytes of a file, enough for is_audio_file
+bool read_head(const char * path, raw_buffer & out, size_t n, std::string & err) {
+    const int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        err = std::string("cannot open ") + path + ": " + std::strerror(errno);
+        return false;
+    }
+    out.resize(n);
+    ssize_t got;
+    do {
+        got = read(fd, out.data(), n);
+    } while (got < 0 && errno == EINTR);
+    const int e = errno;
+    close(fd);
+    if (got < 0) {
+        err = std::string("cannot read ") + path + ": " + std::strerror(e);
+        return false;
+    }
+    out.resize((size_t) got);
+    return true;
+}
+
+// Links path into media_root under a random name with path's extension; returns the name, or empty if it can't
+std::string link_into(const std::string & media_root, const char * path) {
+    char * abs = realpath(path, nullptr);
+    if (!abs) return "";
+    const std::string target(abs);
+    std::free(abs);
+    static std::atomic<uint64_t> counter{0};
+    std::random_device rd;
+    char name[64];
+    const char * dot = std::strrchr(path, '.');
+    const char * slash = std::strrchr(path, '/');
+    std::string ext = dot && (!slash || dot > slash) ? std::string(dot) : std::string(".bin");
+    if (ext.size() > 8 || ext.find_first_of(":*?\"<>|/\\ ") != std::string::npos) ext = ".bin";
+    // 128 random bits (D87: a caller-written file:// reaches only media_root, whose names can't be guessed), plus a
+    // counter so two links never collide
+    std::snprintf(name, sizeof(name), "%08x%08x%08x%08x%016llx", rd(), rd(), rd(), rd(),
+                  (unsigned long long) counter.fetch_add(1));
+    const std::string file = std::string(name) + ext;
+    if (symlink(target.c_str(), (media_root + file).c_str()) != 0) return "";
+    return file;
 }
 
 std::string data_url(const attachment & a) {
@@ -168,7 +234,7 @@ bool fill_field(json & part, const char * holder, const char * field, const std:
     const std::string name = s.substr(std::strlen(kPlaceholder));
     for (const auto & a : atts) {
         if (a.name == name) {
-            obj[field] = data_url(a);
+            obj[field] = a.link.empty() ? data_url(a) : "file://" + a.link;
             return true;
         }
     }
@@ -231,7 +297,7 @@ void release(lb_request * r) {
 
 void run_request(lb_model * m, lb_request * r, server_http_context::handler_t handler,
                  std::map<std::string, std::string> params, std::string query, std::string path, std::string body,
-                 std::vector<attachment> atts, std::string att_error) {
+                 std::vector<attachment> atts, std::string att_error, media_links links) {
     bool cancelled = false;
     {
         // the attachments become what upstream's handler reads: the upload's files for a transcription, data URLs in
@@ -282,6 +348,7 @@ void run_request(lb_model * m, lb_request * r, server_http_context::handler_t ha
         res->on_complete();
         res.reset();
         atts.clear();  // with req's files, freed at the end of this scope: before the terminal event
+        links.remove();
     }
 
     r->cb(r->user, cancelled ? LB_EVENT_CANCELLED : LB_EVENT_DONE, 0, nullptr, 0);
@@ -336,6 +403,10 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
     }
     std::vector<attachment> read;
     std::string att_error;
+    media_links links;
+    // a chat's or embedding's path attachment is linked into the media root instead of read, when there is one
+    const std::string route = std::string("/") + endpoint;
+    const bool link_paths = !m->params.media_path.empty() && (takes_chat_messages(route) || takes_embedding_content(route));
     try {
         read.reserve(n_atts);
         for (size_t i = 0; i < n_atts && att_error.empty(); i++) {
@@ -347,7 +418,15 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
             if (a.path) {
                 const char * slash = std::strrchr(a.path, '/');
                 b.filename = slash ? slash + 1 : a.path;
-                if (!read_path(a.path, b.data, err)) att_error = "attachment \"" + b.name + "\": " + err;
+                if (link_paths && read_head(a.path, b.data, 16, err)) {
+                    b.link = link_into(m->params.media_path, a.path);
+                    if (!b.link.empty()) links.paths.push_back(m->params.media_path + b.link);
+                }
+                if (!err.empty()) {
+                    att_error = "attachment \"" + b.name + "\": " + err;
+                } else if (b.link.empty() && !read_path(a.path, b.data, err)) {
+                    att_error = "attachment \"" + b.name + "\": " + err;
+                }
             } else if (a.fd >= 0) {
                 if (const int e = read_fd(a.fd, b.data)) att_error = "attachment \"" + b.name + "\": " + fd_error(a.fd, e);
             } else {
@@ -396,7 +475,7 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
     try {
         std::thread(run_request, m, r, it->second, std::move(params), std::move(query),
                     std::string("/") + endpoint, std::string(body ? body : "", body ? body_len : 0),
-                    std::move(read), std::move(att_error)).detach();
+                    std::move(read), std::move(att_error), std::move(links)).detach();
     } catch (...) {
         std::lock_guard<std::mutex> lk(m->mtx);
         m->requests.erase(r);

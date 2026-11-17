@@ -65,6 +65,8 @@ android {
 dependencies {
     // public API only: this app must compile without internal access (P1 T12)
     implementation(project(":llamabro"))
+    // the minified release build decodes a typed value at start, so R8 runs over llamabro-typed (F28, D88)
+    implementation(project(":llamabro-typed"))
     "gpuImplementation"(project(":llamabro-opencl"))
     "fullImplementation"(project(":llamabro-hexagon"))
     "fullImplementation"(project(":llamabro-opencl"))
@@ -76,6 +78,4 @@ dependencies {
 
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.runner)
-    // typed output on the phone (TypedDeviceTest, D63)
-    androidTestImplementation(project(":llamabro-typed"))
 }

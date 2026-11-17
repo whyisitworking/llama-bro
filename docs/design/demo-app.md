@@ -128,9 +128,11 @@ How a model picks its words starts from what its makers recommend and can be cha
 - **Layers.** A suggested model starts from its card's values, which the catalog carries, per mode where the card
   differs (Qwen3.5 recommends other values when it thinks). Any other model starts from the hub's recommended sampling
   (D79): the GGUF file's own values, which are what llama.cpp applies at load, else the base model's
-  `generation_config.json`; one set for both modes, shown as the model's default. The lookup runs in the background
-  and never holds a turn: until it answers nothing is sent and the file's own values apply (F17), and one that fails is
-  not tried again for five minutes. Settings
+  `generation_config.json`; one set for both modes, shown as the model's default. A chat starts the lookup once its
+  model is on the phone, not before: for a model not on the phone it would read the file's header over the network
+  (D64). It runs in the background and never holds a turn: until it answers nothing is sent and the file's own values
+  apply (F17). One that fails, or an answer given offline (the file's values alone, the base model not reachable), is
+  asked again after five minutes; an answer given online is kept. Settings
   › Sampling lists the models on the phone ("Model defaults", "2 values changed"); a model's page shows "Model default",
   "Changed" or "llama.cpp default" under each value, a Thinking / Not thinking switch when its card has two sets, and
   **Reset to the model's defaults** once something changed. A change applies in both modes. In a chat, the model sheet's
@@ -170,7 +172,7 @@ A catalog entry is keyed by repository and quantisation, but its name applies to
   phone (`hub.source` reads it from disk); a model whose image reader is still arriving stays under Downloading.
 - Progress shows on the row it was started from (a thin bar, percentage and time left), in the library under Downloading (megabytes done of total, speed, time left, Pause and cancel), in the chat's top bar beside the model's name, and as a notification outside the app. Cancel deletes the partial; Pause keeps it.
 - The estimated time on a button is the size divided by 8 MB/s, rounded up to minutes ("about 3 min", "under a minute"); the real download measured about 10 MB/s on Wi-Fi (F93).
-- A failed download becomes a plain line with an action (section 9); saving a token restarts the downloads refused for want of one.
+- A failed download becomes a plain line with an action (section 9); saving a token restarts the downloads refused for want of one, also after the app was restarted (the refusal is remembered).
 
 ## 7. Fit labels and Think levels
 

@@ -142,4 +142,40 @@ class ModelDiscoveryTest {
             assertFalse(e.offline)
         }
     }
+
+    @Test fun boundariesOfThePlainLine() {
+        assertEquals("Tiny and quick, for everyday questions", SearchRows.plainLine("Foo-1.4B", "x"))
+        assertEquals("Balanced, a good all-rounder", SearchRows.plainLine("Foo-1.5B", "x"))
+        assertEquals("Balanced, a good all-rounder", SearchRows.plainLine("Foo-4.9b", "x"))
+        assertEquals("Smarter, but heavy for a phone", SearchRows.plainLine("Foo-5B", "x"))
+        assertEquals("Needs a computer, not a phone", SearchRows.plainLine("Foo-10B", "x"))
+        assertEquals("Needs a computer, not a phone", SearchRows.plainLine("Qwen3-30B-A3B", "x"))
+        assertEquals("A model from x", SearchRows.plainLine("Foo", "x"))
+    }
+
+    @Test fun displayNameKeepsCasingAndSpacesTheSeparators() {
+        assertEquals("Qwen3 30B A3B", SearchRows.displayName("Qwen3-30B-A3B"))
+        assertEquals("TinyLlama 1.1B Chat v1.0", SearchRows.displayName("TinyLlama-1.1B-Chat-v1.0"))
+        assertEquals("Phi 4 mini", SearchRows.displayName("phi_4-mini"))
+    }
+
+    @Test fun emptyResultsAreEmptyNotError() = assertEquals(emptyList<SearchModel>(), search("zzzzzz"))
+
+    @Test fun aMergedRowKeepsTheCatalogsRowEvenWhenAnotherIsMoreDownloaded() {
+        val deep = Catalog.suggested.first { it.sees }
+        val known =
+            SearchModel(
+                groupKey = "x",
+                displayName = deep.realName,
+                repo = deep.key.repo,
+                author = "unsloth",
+                downloads = 10,
+                sees = true,
+                line = deep.line,
+                catalog = deep,
+            )
+        val busier = known.copy(displayName = "X", repo = "someone/X-GGUF", downloads = 100, line = "?", catalog = null)
+        val row = SearchRows.merge(listOf(busier, known)).single()
+        assertEquals(known.copy(downloads = 110), row)
+    }
 }

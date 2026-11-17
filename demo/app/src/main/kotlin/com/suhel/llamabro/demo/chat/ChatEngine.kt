@@ -45,7 +45,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -55,6 +57,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.ContinuationInterceptor
 
 /**
@@ -318,10 +321,9 @@ class ChatEngine(
      */
     suspend fun releaseModelIfIdle(): Boolean = host.release { activeTurns.value > 0 }
 
-    private suspend fun newConversation(loaded: Model, history: List<Message>): Conversation {
-        val s = settings.settings.first()
-        return loaded.conversation(Instructions.system(s.instructionsAbout, s.instructionsStyle), history)
-    }
+    /** The system prompt from Settings › Instructions as it is now, or null when there are none. */
+    private suspend fun systemPrompt(): String? =
+        settings.settings.first().let { Instructions.system(it.instructionsAbout, it.instructionsStyle) }
 
     /** A turn at [level]: sampling from the chat, the model and the card, and the reply's length limit (D60). */
     private suspend fun turnOptions(id: Long, key: HfModel, level: ThinkLevel?, continues: Boolean): TurnOptions {
@@ -349,6 +351,17 @@ class ChatEngine(
      * limit on how long a reply may run in the background (D59).
      */
     fun stopAllReplies() = open.forEach { it.stop() }
+
+    /**
+     * Deletes [chatId] from outside its screen (the drawer), on the app's scope so leaving the screen doesn't stop it:
+     * a reply streaming into it is stopped first, and no other held message of it is answered after, since a reply
+     * reads the chat's pictures and recordings from their files until it ends (D87).
+     */
+    fun delete(chatId: Long): Job =
+        scope.launch {
+            open.filter { it.chatId.value == chatId }.forEach { it.stopAndWait(forDelete = true) }
+            chats.delete(chatId)
+        }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     inner class ChatHandle internal constructor(initialChatId: Long) {
@@ -447,6 +460,13 @@ class ChatEngine(
          */
         private var conversationModel: Model? = null
 
+        /**
+         * The system prompt [conversation] was made with. Settings › Instructions opens over the chat, which stays
+         * open: a turn that finds the setting changed since rebuilds the conversation, so the new instructions apply at
+         * once.
+         */
+        private var conversationSystem: String? = null
+
         init {
             hs.launch {
                 modelKey.value = initialModelKey()
@@ -454,6 +474,16 @@ class ChatEngine(
             }
             // a model that arrives (a download finishes) answers what was held
             hs.launch { library.collect { if (it != null) pump() } }
+            // the hub's values for a model the catalog lacks are looked up once the chat's model is on the phone, so
+            // its first reply has them as the later ones do; never before, since the lookup would then read the file's
+            // header over the network (D64); it runs in the background and never holds a turn
+            hs.launch {
+                combine(modelKey.filterNotNull(), library.filterNotNull()) { key, lib ->
+                    key.takeIf { lib.any { it.key == key } }
+                }.filterNotNull()
+                    .distinctUntilChanged()
+                    .collect { card(it) }
+            }
         }
 
         // ---- the user's actions -------------------------------------------------------------------------
@@ -465,7 +495,8 @@ class ChatEngine(
          * as soon as its model is on the phone.
          */
         suspend fun send(text: String, images: List<String> = emptyList(), voice: NewVoice? = null): Boolean {
-            if (_busy.value) return false
+            // a chat deleted from the drawer takes nothing more: its rows would point at a chat that is gone
+            if (_busy.value || deleting) return false
             if (text.isBlank() && images.isEmpty() && voice == null) return false
             val key = modelKey.value ?: initialModelKey()?.also { modelKey.value = it } ?: return false
             val names = images.take(MAX_IMAGES)
@@ -503,6 +534,7 @@ class ChatEngine(
         fun regenerate(position: Int) {
             hs.launch {
                 stopAndWait()
+                if (deleting) return@launch
                 _limit.value = null
                 val id = _chatId.value.takeIf { it != 0L } ?: return@launch
                 // the user's message first: with none before this reply there is nothing to ask again
@@ -524,6 +556,7 @@ class ChatEngine(
             if (text.isBlank()) return
             hs.launch {
                 stopAndWait()
+                if (deleting) return@launch
                 _limit.value = null
                 val id = _chatId.value.takeIf { it != 0L } ?: return@launch
                 val before = messages.value
@@ -552,6 +585,7 @@ class ChatEngine(
         fun switchModel(key: HfModel) {
             hs.launch {
                 stopAndWait()
+                if (deleting) return@launch
                 // an empty chat has no model to switch from: choosing one just sets it, with no divider
                 val switching = isSwitch(messages.value)
                 val id = ensureChat() ?: return@launch
@@ -571,37 +605,37 @@ class ChatEngine(
             if (_think.value != null) _think.value = level
         }
 
-        /** Deletes the chat; a reply still streaming into it is stopped first. */
-        fun delete() {
-            scope.launch(confined) {
-                stopAndWait()
-                _chatId.value.takeIf { it != 0L }?.let { chats.delete(it) }
-            }
-        }
-
-        /** Instructions changed in Settings: the next turn rebuilds the conversation with the new system prompt. */
-        fun instructionsChanged() {
-            hs.launch { invalidate() }
-        }
-
         // ---- the engine ----------------------------------------------------------------------------------
 
         private fun invalidate() {
             conversation = null
             conversationKey = null
             conversationModel = null
+            conversationSystem = null
         }
 
-        private suspend fun stopAndWait() {
-            running?.cancel()
-            running?.join()
-        }
+        /**
+         * Stops the turn and waits for it to end; on this handle's thread, so the engine may call it too. [forDelete]
+         * also ends the answering of held messages for good ([deleting]), before the turn is cancelled.
+         */
+        internal suspend fun stopAndWait(forDelete: Boolean = false) =
+            withContext(confined) {
+                if (forDelete) deleting = true
+                running?.cancel()
+                running?.join()
+            }
+
+        /**
+         * The chat is being deleted: [pump] answers nothing more, and the person's actions are refused. Written on
+         * [confined] only; volatile because [send] reads it from the screen's thread.
+         */
+        @Volatile private var deleting = false
 
         /** Answers every held user message in order, once, as soon as its model is on the phone. */
         private fun pump() {
             hs.launch {
                 turn.withLock {
-                    while (true) {
+                    while (!deleting) {
                         val id = _chatId.value.takeIf { it != 0L } ?: return@withLock
                         val key = modelKey.value ?: return@withLock
                         val lib = library.value ?: return@withLock
@@ -616,6 +650,8 @@ class ChatEngine(
                         // before the load starts, so a Stop while the model wakes ends the turn (the message
                         // stays held, no reply row is made), and an edit, a regenerate or a switch waits for
                         // the load as it waits for a reply
+                        // the chat may have started going while its rows were read
+                        if (deleting) return@withLock
                         var replied = false
                         val job = hs.launch { answer(id, key, held) { replied = true } }
                         running = job
@@ -641,20 +677,7 @@ class ChatEngine(
                 val hears = loaded.info.supportsAudio
                 rememberHearing(settings, key, hears)
                 val rows = chats.messages(id).first()
-                var convo = conversation.takeIf { conversationKey == key && conversationModel === loaded }
-                if (convo == null) {
-                    // what the model has seen: answered rows before this question, and replies; other held questions
-                    // wait their turn
-                    val seen =
-                        rows.filter {
-                            it.id != user.id && it.state != MessageState.Held &&
-                                (it.position < user.position || it.kind == MessageKind.Assistant)
-                        }
-                    convo = newConversation(loaded, History.forModel(seen, hears = hears))
-                    conversation = convo
-                    conversationKey = key
-                    conversationModel = loaded
-                }
+                val convo = conversationFor(loaded, key, rows, user, hears)
                 val replyId =
                     chats.append(
                         id,
@@ -693,6 +716,36 @@ class ChatEngine(
         }
 
         /**
+         * The conversation for [user]'s turn: the one kept from the last turn while the model, its load and the system
+         * prompt are the same, else a new one from [rows].
+         */
+        private suspend fun conversationFor(
+            loaded: Model,
+            key: HfModel,
+            rows: List<StoredMessage>,
+            user: StoredMessage,
+            hears: Boolean,
+        ): Conversation {
+            val system = systemPrompt()
+            conversation
+                ?.takeIf { conversationKey == key && conversationModel === loaded && conversationSystem == system }
+                ?.let { return it }
+            // what the model has seen: answered rows before this question, and replies; other held questions wait
+            // their turn
+            val seen =
+                rows.filter {
+                    it.id != user.id && it.state != MessageState.Held &&
+                        (it.position < user.position || it.kind == MessageKind.Assistant)
+                }
+            return loaded.conversation(system, History.forModel(seen, hears = hears)).also {
+                conversation = it
+                conversationKey = key
+                conversationModel = loaded
+                conversationSystem = system
+            }
+        }
+
+        /**
          * Continues the cut reply at [position] (D60): the chat's last row, cut at its length limit, written by the
          * chat's model. The model reads the chat with that reply as its last message and goes on writing it, its
          * thinking or its answer; the new words join the same row, which may be cut again and continued again.
@@ -700,6 +753,7 @@ class ChatEngine(
         fun continueReply(position: Int) {
             hs.launch {
                 turn.withLock {
+                    if (deleting) return@withLock
                     val id = _chatId.value.takeIf { it != 0L } ?: return@withLock
                     val key = modelKey.value ?: return@withLock
                     val rows = chats.messages(id).first()
@@ -737,7 +791,7 @@ class ChatEngine(
                         Message.Assistant(content = reply.text, reasoning = reply.reasoning)
                 // a one-off: kept, this conversation would hold the reply twice once the next message is sent
                 invalidate()
-                val convo = newConversation(loaded, history)
+                val convo = loaded.conversation(systemPrompt(), history)
                 chats.update(reply.id, MessageChange(state = MessageState.Streaming))
                 val draft =
                     ReplyDraft(

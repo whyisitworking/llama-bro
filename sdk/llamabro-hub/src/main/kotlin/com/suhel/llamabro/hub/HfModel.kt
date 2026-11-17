@@ -8,7 +8,10 @@ import java.nio.file.Paths
 public class HfModel private constructor(
     /** Repository in `owner/name` form. */
     public val repo: String,
-    /** Requested quantization tag, or null for the default choice. */
+    /**
+     * Requested quantization tag in upper case, or null for the default choice. `-hf` matches a tag case-insensitively
+     * (download.cpp's find_best_model and common_download_remove), so `q4_k_m` and `Q4_K_M` are one selection.
+     */
     public val tag: String?,
     /** Exact repository-relative file, or null for automatic choice. */
     public val file: String?,
@@ -22,7 +25,10 @@ public class HfModel private constructor(
     override fun hashCode(): Int = 31 * (31 * repo.hashCode() + (tag?.hashCode() ?: 0)) + (file?.hashCode() ?: 0)
 
     public companion object {
-        /** Parses a Hub reference; invalid repository and file paths throw [IllegalArgumentException]. */
+        /**
+         * Parses a Hub reference, upper-casing its tag; invalid repository and file paths throw
+         * [IllegalArgumentException].
+         */
         @JvmStatic
         public fun parse(ref: String): HfModel {
             val repoAndTag = ref.substringBefore('#')
@@ -30,7 +36,7 @@ public class HfModel private constructor(
             val (repo, tag) = splitRepoTag(repoAndTag)
             val file = rawFile.takeIf { it.isNotEmpty() }
             if (file != null) require(isValidSubpath(Paths.get("/cache"), file)) { "invalid HF file path: $file" }
-            return HfModel(repo, tag.takeIf { it.isNotEmpty() }, file)
+            return HfModel(repo, tag.takeIf { it.isNotEmpty() }?.uppercase(), file)
         }
 
         /** Parses a Hub reference. */

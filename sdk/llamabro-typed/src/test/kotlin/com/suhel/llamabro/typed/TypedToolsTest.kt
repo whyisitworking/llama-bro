@@ -40,6 +40,12 @@ class TypedToolsTest {
     data class NoArgs(val verbose: Boolean = false)
 
     @Serializable
+    data class Stop(val name: String, val minutes: Int = 5)
+
+    @Serializable
+    data class Route(val from: String, val to: String, val stop: Stop? = null)
+
+    @Serializable
     data class Days(val days: Int) {
         init {
             require(days in 1..7) { "days must be 1-7" }
@@ -398,22 +404,75 @@ class TypedToolsTest {
         }
 
     @Test
-    fun missingFieldStillSendsKotlinxReason() =
+    fun missingFieldSaysWhichField() =
         runTest {
             val fake =
                 FakeLlamaBro {
                     reply { toolCall("plan", "{}") }
+                    reply { toolCall("route", "{}") }
+                    reply { toolCall("route", """{"from":"A","to":"B","stop":{}}""") }
                     reply { content("Sorry.") }
                 }
             val plan = tool<Days, String>("plan", "Plans a trip") { "planned ${it.days} days" }
+            val route = tool<Route, String>("route", "Plans a route") { "ok" }
             fake
                 .model()
-                .conversation { tool(plan) }
+                .conversation {
+                    tool(plan)
+                    tool(route)
+                }.send("go")
+                .toList()
+            assertEquals("Error: invalid arguments: missing field 'days'", toolResultSent(fake, 1))
+            assertEquals("Error: invalid arguments: missing fields 'from', 'to'", toolResultSent(fake, 2))
+            assertEquals("Error: invalid arguments: missing field 'name' at \$.stop", toolResultSent(fake, 3))
+        }
+
+    @Serializable
+    data class Teen(val age: Int) {
+        init {
+            check(age in 13..19) { "a teen is 13 to 19" }
+        }
+    }
+
+    @Test
+    fun failingCheckInInitSendsInvalidArguments() =
+        runTest {
+            val fake =
+                FakeLlamaBro {
+                    reply { toolCall("teen", """{"age":30}""") }
+                    reply { content("Sorry.") }
+                }
+            val teen = tool<Teen, String>("teen", "Greets a teen") { "hi" }
+            val events =
+                fake
+                    .model()
+                    .conversation { tool(teen) }
+                    .send("go")
+                    .toList()
+            assertEquals("Error: invalid arguments", toolResultSent(fake, 1))
+            val error = events.filterIsInstance<ChatEvent.ToolResult>().first().error
+            assertTrue("$error", error is IllegalStateException)
+        }
+
+    @Serializable
+    data class Report(val city: String, val sky: String = "clear", val alerts: List<String> = emptyList())
+
+    @Test
+    fun resultKeepsFieldsAtTheirDefault() =
+        runTest {
+            // the model reads the whole result: a field equal to its default is still sent (D88)
+            val fake =
+                FakeLlamaBro {
+                    reply { toolCall("report", """{"city":"Paris"}""") }
+                    reply { content("Clear.") }
+                }
+            val report = tool<City, Report>("report", "Weather report") { Report(it.city) }
+            fake
+                .model()
+                .conversation { tool(report) }
                 .send("go")
                 .toList()
-            val sent = toolResultSent(fake, 1)
-            assertTrue(sent, sent.startsWith("Error: invalid arguments: "))
-            assertTrue(sent, sent.contains("days"))
+            assertEquals("""{"city":"Paris","sky":"clear","alerts":[]}""", toolResultSent(fake, 1))
         }
 
     @Test

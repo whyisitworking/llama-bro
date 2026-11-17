@@ -3,8 +3,10 @@ package com.suhel.llamabro
 import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Process
 import com.suhel.llamabro.internal.BackendDiscovery
 import com.suhel.llamabro.internal.BackendInstaller
+import com.suhel.llamabro.internal.BackendOptions
 import com.suhel.llamabro.internal.Engine
 import com.suhel.llamabro.internal.JniEngine
 import com.suhel.llamabro.internal.LlamaBroRuntime
@@ -110,9 +112,10 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
                         app.noBackupFilesDir,
                         null,
                         config,
-                        discoverBackends = { manifestBackends(app) },
+                        discoverBackends = { manifestBackends(app, BackendOptions(config.npuPolling)) },
                         memorySnapshot = { memorySnapshot(app) },
                         defaultLogger = LogcatLogger("llamabro"),
+                        processId = Process.myPid(),
                     ),
                 )
             }
@@ -194,7 +197,7 @@ public class DeviceInfo internal constructor(
 }
 
 /** The backend artifacts announced in [app]'s merged manifest (D24): one `PackageManager` call, no classpath scan. */
-private fun manifestBackends(app: Context): BackendDiscovery.Result {
+private fun manifestBackends(app: Context, options: BackendOptions): BackendDiscovery.Result {
     @Suppress("DEPRECATION") // the flags overload needs API 33
     val bundle =
         app.packageManager.getApplicationInfo(app.packageName, PackageManager.GET_META_DATA).metaData
@@ -203,7 +206,7 @@ private fun manifestBackends(app: Context): BackendDiscovery.Result {
     @Suppress("DEPRECATION") // Bundle.get(String) is the only untyped getter
     val metaData = bundle.keySet().associateWith { bundle.get(it) }
     return BackendDiscovery.discover(metaData) { className ->
-        (Class.forName(className).getDeclaredConstructor().newInstance() as BackendInstaller).install(app)
+        (Class.forName(className).getDeclaredConstructor().newInstance() as BackendInstaller).install(app, options)
     }
 }
 

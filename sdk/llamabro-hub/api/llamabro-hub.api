@@ -115,6 +115,7 @@ public final class com/suhel/llamabro/hub/HubException$IntegrityMismatch : com/s
 
 public final class com/suhel/llamabro/hub/HubException$Network : com/suhel/llamabro/hub/HubException {
 	public fun getRetryable ()Z
+	public final fun getUnreachable ()Z
 }
 
 public final class com/suhel/llamabro/hub/HubException$NotFound : com/suhel/llamabro/hub/HubException {

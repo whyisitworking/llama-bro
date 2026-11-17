@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -102,15 +103,16 @@ public class Conversation internal constructor(
      *
      * [attachments] are pictures and clips the model must be able to read ([com.suhel.llamabro.ModelInfo]'s
      * `supportsVision` and `supportsAudio`); otherwise, or for a missing file or audio that isn't WAV, MP3 or FLAC (by
-     * MIME type, and by its first bytes for a file or bytes), the flow fails with [LlamaBroException.InvalidRequest]
-     * and nothing is appended. A descriptor is read into bytes when the message is appended, off the caller's thread;
-     * the app may close it once the message is in [messages] (D84).
+     * MIME type, and by its first bytes for a file, a descriptor or bytes), the flow fails with
+     * [LlamaBroException.InvalidRequest] and nothing is appended. A descriptor is read into bytes, and those checked,
+     * before the message is appended, off the caller's thread; the app may close it once the message is in [messages]
+     * (D84).
      *
      * Media that passes those checks can still fail the first request: a picture llama.cpp can't decode (HEIC, WebP),
-     * a descriptor's clip that isn't WAV, MP3 or FLAC, or a file that went away. Then, before any token or tool call
-     * arrives, the flow fails with [LlamaBroException.InvalidRequest] and the message is removed again, so the chat
-     * stays usable; it is removed only while it is still the last message. Any other failure (a text-only send that
-     * hits `ContextExceeded`, say) keeps the message, so [resume] can send it again.
+     * or a file that went away. Then, before any token or tool call arrives, the flow fails with
+     * [LlamaBroException.InvalidRequest] and the message is removed again, so the chat stays usable; it is removed only
+     * while it is still the last message. Any other failure (a text-only send that hits `ContextExceeded`, say) keeps
+     * the message, so [resume] can send it again.
      * @param options changes the [Builder.defaults] for this send's requests only (every turn of its tool loop).
      */
     public fun send(
@@ -151,23 +153,7 @@ public class Conversation internal constructor(
         text: String,
         vararg attachments: Content,
         options: RequestOptions.Builder.() -> Unit = {},
-    ): Typed<String> {
-        var done: ChatEvent.Done? = null
-        send(text, *attachments, options = options).collect { if (it is ChatEvent.Done) done = it }
-        val history = _messages.value
-        // this send's last reply: after its user message, so an older reply never counts
-        val reply =
-            history
-                .subList(history.indexOfLast { it is Message.User } + 1, history.size)
-                .lastOrNull { it is Message.Assistant } as Message.Assistant?
-        val content = reply?.content.orEmpty()
-        val reason = done?.reason ?: FinishReason.Stop
-        return if (reason in INCOMPLETE) {
-            Typed.Incomplete(reason, content)
-        } else {
-            Typed.Value(content, content, reply?.reasoning)
-        }
-    }
+    ): Typed<String> = collectReply(send(text, *attachments, options = options))
 
     /**
      * Sends the current history again: after `ContextExceeded` (and a compaction), a turn limit, or pending tool
@@ -632,8 +618,10 @@ public class Conversation internal constructor(
      * message does; any other exception sends a generic text, so a token or personal data in it stays out of the
      * prompt and the saved chat (D62). The arguments are parsed inside the try block, so ones that don't parse
      * become `Error: invalid arguments: …`. Cancelling the flow cancels the handler; closing the model cancels it
-     * too and fails the flow with ModelClosed. Exceptions are sorted inside the scope, so the app gets the
-     * handler's own instance, not a copy made by coroutines' stack-trace recovery when it leaves the scope.
+     * too and fails the flow with ModelClosed. A cancellation while the turn is still active is the handler's own
+     * (its `withTimeout`), so it is a tool failure, not a silent end of the turn. A JVM `Error` (out of memory, a
+     * stack overflow) is not the tool's answer and ends the turn. Exceptions are sorted inside the scope, so the app
+     * gets the handler's own instance, not a copy made by coroutines' stack-trace recovery when it leaves the scope.
      */
     private suspend fun runTool(handler: suspend (ToolCall) -> String, call: ToolCall): ToolOutcome =
         coroutineScope {
@@ -645,7 +633,8 @@ public class Conversation internal constructor(
             try {
                 ToolOutcome.Result(handler(call))
             } catch (e: CancellationException) {
-                throw e
+                if (!isActive) throw e
+                ToolOutcome.Result("Error: the tool failed", e)
             } catch (e: LlamaBroException.ModelClosed) {
                 throw e
             } catch (e: LbToolAbort) {
@@ -653,7 +642,7 @@ public class Conversation internal constructor(
             } catch (e: LbToolError) {
                 // the cause is for the app (the original exception of a tool that explains itself), never the model
                 ToolOutcome.Result("Error: ${e.message.orEmpty()}", e.cause)
-            } catch (e: Throwable) {
+            } catch (e: Exception) {
                 ToolOutcome.Result("Error: the tool failed", e)
             } finally {
                 watcher.cancel()
@@ -753,18 +742,42 @@ public class Conversation internal constructor(
             }
         }
     }
+}
 
-    private companion object {
-        /** The reasons [ask] reports as [Typed.Incomplete]: the turn ended without a final answer. */
-        val INCOMPLETE =
-            setOf(
-                FinishReason.Length,
-                FinishReason.TurnLimit,
-                FinishReason.ToolCallsPending,
-                FinishReason.ToolAborted,
-            )
+/**
+ * [Conversation.regenerate], collected, as [Conversation.ask] is `send` collected: the new reply as [Typed.Value], or
+ * [Typed.Incomplete] for the reasons `ask` gives. Engine failures still throw.
+ * @throws IllegalStateException if there is no user message, or a compaction follows it (as `regenerate`).
+ */
+public suspend fun Conversation.askAgain(options: RequestOptions.Builder.() -> Unit = {}): Typed<String> =
+    collectReply(regenerate(options))
+
+/** [flow] collected: this turn's last reply, after its user message, so an older reply never counts. */
+private suspend fun Conversation.collectReply(flow: Flow<ChatEvent>): Typed<String> {
+    var done: ChatEvent.Done? = null
+    flow.collect { if (it is ChatEvent.Done) done = it }
+    val history = messages.value
+    val reply =
+        history
+            .subList(history.indexOfLast { it is Message.User } + 1, history.size)
+            .lastOrNull { it is Message.Assistant } as Message.Assistant?
+    val content = reply?.content.orEmpty()
+    val reason = done?.reason ?: FinishReason.Stop
+    return if (reason in INCOMPLETE) {
+        Typed.Incomplete(reason, content)
+    } else {
+        Typed.Value(content, content, reply?.reasoning)
     }
 }
+
+/** The reasons `ask` reports as [Typed.Incomplete]: the turn ended without a final answer. */
+private val INCOMPLETE =
+    setOf(
+        FinishReason.Length,
+        FinishReason.TurnLimit,
+        FinishReason.ToolCallsPending,
+        FinishReason.ToolAborted,
+    )
 
 /**
  * Adds the result of a pending tool call (after `Done(ToolCallsPending)`); then call [Conversation.resume].

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# stub adb for the preflight test: answers from STUB_* variables, logs every call
+echo "adb $*" >> "${STUB_LOG:-/dev/null}"
+[ "$1" = -s ] && shift 2
+case "$*" in
+    get-serialno) printf '%s\r\n' "${STUB_SERIAL-PHONE1}" ;;
+    get-state) printf 'device\r\n' ;;
+    "forward --list") printf '%b' "${STUB_FORWARDS:-}" ;;
+    "reverse --list") printf '%b' "${STUB_REVERSES:-}" ;;
+    "shell ps -A -o NAME") printf 'NAME\r\ninit\r\nsystem_server\r\n%b' "${STUB_PS:-}" ;;
+    *) [ -n "${STUB_ACCEPT_ALL:-}" ] && exit 0; echo "stub adb: unexpected: $*" >&2; exit 1 ;;
+esac

@@ -2,7 +2,7 @@
 
 How the SDK reached its current shape, phase by phase. Each section states the question the phase had to answer, what was built, the key results with numbers, where the work changed course and why, and what stayed open. Findings are cited as F<n> ([findings](./findings.md)) and decisions as D<n> ([decisions](../decisions.md); the overall structure is in [architecture](../architecture.md)). The experiments themselves (scripts, method and raw results) are in [`research/`](../../research/README.md); how the result of each change is verified is in [../testing.md](../testing.md).
 
-All phone measurements were made on one test phone: a OnePlus 13 (Snapdragon 8 Elite, Hexagon v79, Adreno 830, Android 16, 15.5 GB of RAM). The reference for every comparison is upstream llama.cpp at the pinned build (b12052 until 2026-11-13, b12352 since, D52), with the same flags. Where upstream and the SDK differ, upstream wins unless a measured test says otherwise (D10, D18). Dates are 2026.
+All phone measurements were made on one test phone: a OnePlus 13 (Snapdragon 8 Elite, Hexagon v79, Adreno 830, Android 16, 15.5 GB of RAM). The reference for every comparison is upstream llama.cpp at the pinned build (b12052 until 2026-11-13, b12352 until 2026-11-17 (D52), b12479 since (D93)), with the same flags. Where upstream and the SDK differ, upstream wins unless a measured test says otherwise (D10, D18). Dates are 2026.
 
 ## Summary of the phases
 
@@ -16,6 +16,8 @@ All phone measurements were made on one test phone: a OnePlus 13 (Snapdragon 8 E
 | P3 Hub | 11-07 to 11-09 | Can downloads resume, verify and be fitted before they start? | Yes, verified on a fake and on the real Hub (D39 to D45) |
 | PD Demo app | 11-09 to 11-13 | Does the SDK carry a real chat app end to end? | Yes, with two known defects (F113, F119) |
 | After PD | 11-13 | Why do the phone's models not see pictures, and is the newer llama.cpp worth taking? | The NPU computed some image encoders wrongly at b12052 (F120); b12352 fixes it, keeps the contract and the patch's gain (F121) |
+| PH Headline API | 11-15 to 11-17 | Can typed output, typed tools, an agent loop, loading by name, embeddings and speech each take a few lines, within what llama-server does? | Yes (D61 to D89); a text turn after three voice notes over a third faster (F153, F157), speech on the NPU alone at 2.4x real time; an interactive voice mode is the next phase (D85) |
+| Voice mode | 11-17 to | Can apps hold a spoken conversation through llama-server's own speech routes? | In progress; step 1 moved llama.cpp to b12479 with the contract identical and the same four patches (D93, F163) |
 
 ## Working method
 
@@ -299,6 +301,69 @@ Two SDK additions: a `Conversation` from stored messages, because an app that ke
 
 **Retests and the CPU encoder (F125, F126, F127).** Drafting still aborts the GPU at b12352 and Vulkan's fixes are not upstream yet (F125). The slow BF16 encoder on the phone's CPU was a missing ARM path in ggml-cpu, not the upgrade: `-ffp-model=fast` hid it but changed every CPU result for no gain on text (F126), so the SDK carries upstream's open fix, PR #30432, as a patch until it merges: 16.5 s to 3.1 s (F127, D55).
 
+## PH: the headline API
+
+**The question.** Can the SDK offer what a phone app most wants from a local model, in a few lines each, while staying within what llama-server itself does (D61 to D70)? Those things are: typed replies and typed tools, an agent loop, loading a model by its Hugging Face name, search, embeddings, rerank, and speech in. The work ran in nine workstreams on `ph-main`, W4 and W8, each reviewed when it finished.
+
+**Logs, entry points and cancelling (W1 to W3).**
+- *Logs from the first call (W1).* An app's logger is attached before native init, and with no logger the native lines go to logcat under `llamabro` (D66; F144, F147).
+- *Entry points (W2).* `LlamaBro.create` and `LlamaBroHub.create` replace the singletons, for DI containers. Two calls with an equal config give the same object, and a different config is refused before any native call. A fake hub serves tests (D70).
+- *Cancelling a load (W3).* Cancelling a load now aborts the weight reading, through patch 0003 (D67, F145). On the phone, a cancelled 4B load returns in 0.4-1.8 s on the CPU and about 1 s on the NPU, against 6-11 s for a full load, and the next load works (F148).
+
+**The agent loop (W4).** The model answers its own mistakes, as in upstream's tools/ui (F139 to F141, D62):
+- An unknown tool or invalid arguments go back to the model as an error.
+- Only an `LbToolError`'s message reaches the model; any other exception's text stays out of the prompt and the saved chat.
+- Blocking tools run off the caller's thread.
+- A tool marked for approval pauses the turn until the app calls `approve` or `deny`.
+
+**The hub (W5).** `loadModel(hub.model("org/repo"))` goes from a name to a loaded model in one call, through an open `ModelSource` (D64, D75). A complete copy on the phone loads with no request at all. Other parts:
+- Search groups re-uploads of one model (D68).
+- Recommended sampling comes from the file and from the base model's card, labelled by source (F146, D79).
+- Background downloads moved to `llamabro-hub-work`.
+- The demo took all of it over.
+
+On the phone, the hub's device steps and the demo's device tests passed. Three failures came from the phone rather than the change: a notification below the visible part of the shade, an NPU near-tie, and a refused permission (F150).
+
+**Typed output and typed tools (W6).** These live in `llamabro-typed`, with a KSP processor (D61, D63, D71, D81 to D83):
+- `generate<T>` and `ask<T>` return a `Typed<T>`: a `Value`, an `Incomplete` reply, or `Invalid`. The JSON schema is derived from kotlinx.serialization and enforced by llama-server's grammar (F142, F143).
+- An annotated toolbox becomes typed tools at build time, with build errors where reflection would fail at run time.
+
+On the phone, with Think off or with a thinking budget, typed replies come back clean. With Think on and no budget, the model thinks as if chatting and may run out before it writes the JSON, because llama-server applies the grammar only after the thinking (F151).
+
+**Embeddings, rerank and speech in (W7).** These are typed calls in core, and `Content.Audio` sends a voice note into a chat (D65, D84). Media reaches the model from a file, a descriptor or bytes. On the phone, LFM3-Omni-2B transcribes a 30 s clip word for word in 3.4 s, and audio costs 12.6 tokens a second (F152). Each earlier voice note made later turns slower, mostly because the prompt cache stopped just before the last clip.
+
+**The demo (W8 and the side branches).** The demo moved to a neutral palette, near-black on AMOLED, with the llama icon (D69). It also gained, from the side branches:
+- A chip choice (D72) and markdown (D74).
+- Context and reply length settings (D78).
+- Voice messages (D76).
+
+**Closing the phase (W9).**
+- *The cache stop (F153, patch 0004).* On the LFM3 family's hybrid memory, llama-server's SWA rule rejected the live state and the newest checkpoint, so every turn re-encoded the last voice note. Patch 0004 fixes it: the 4th turn after three voice notes went from 824 to 522 ms. A fact sheet for upstream is in [`research/ph/cache-stop/`](../../research/ph/cache-stop/).
+- *Speech out (F154 to F156, D85, D86).*
+  - With the model on the NPU and its speech part on the CPU, LFM3-Omni-2B spoke at 1.7 times real time through `/tts`. The NPU alone gave empty audio.
+  - The cause was Hexagon tiling a codebook table that a lookup also reads (F155). Two more problems slowed the NPU: an op the NPU lacks (ARANGE) sent each depthformer pass to the CPU and back, and the text head ran in every audio frame.
+  - Patches 0005 (no CPU op in the speech graph) and 0006 (skip the text head), with the NPU's polling on, give 2.4 times real time on the NPU alone (F156). Polling costs no measurable energy per spoken second, so it is on by default and `LlamaBroConfig.npuPolling` turns it off (D86).
+  - The voice drifts between sentences with a random seed and with a fixed one alike. An interactive voice mode is its own phase after PH (D85).
+- *Media without base64 (F157, D87).* A chat's path attachments reach llama-server as `file://` links in the SDK's media folder, which halves a turn with three voice notes on the phone (189-191 to 91-92 ms). No llama.cpp change was needed; a raw-buffer patch measured no better.
+- *The delta-net patch (F149, D80).* Patch 0001 became a one-line Hexagon gate that gives the same +61% NPU prefill with MTP. Upstream's replay PR (#31669) gives more and supersedes the gate once merged.
+- *Upstream.* Master was 109 commits ahead. The upgrade opens the voice-mode phase rather than this one ([review](../../research/ph/upstream/review-2026-11-17.md)).
+- *The carried review items.* The workstream reviews had left about forty smaller items, all done in the closing step:
+  - **Typed output.** Integer fields carry their type's range by default, which costs under a millisecond per request (F158). `askAgain` and `valueOrNull` were added, typed tool results keep their default fields, and the KSP processor refuses parameter types it can't write (D88). An unsupported `@LbPattern` turned out to be dropped silently by llama.cpp rather than failing the request, and the docs now say so.
+  - **The hub.** `cached()` lists only selections that load, two deletes of one model at once are safe, a failed reclaim no longer fails a download, and files arrive in the plan's order (D89). A Pause→Resume never had two writers within one hub (F161). `FakeLlamaBroHub.stopDownload` reproduces a stopped download.
+  - **The checks.** Every server a check starts takes a port the OS picks, so checks in several worktrees run at once (F159). A device pre-flight with an atomic phone lock refuses a phone something else is using (F150). The DFlash fit test measures the peak footprint, which macOS's memory compression doesn't hide (F160).
+  - **The demo.** Deleting a chat stops its reply before its media goes (D87). A load reads only the disk. The smaller items from the hub workstream's review (W5) were fixed, and its lost tests restored.
+
+## Voice mode: the llama.cpp upgrade
+
+The voice-mode phase (D85) opened by moving llama.cpp from b12352 to upstream master of 2026-11-17, b12479 (D93), 127
+commits later, at the maintainer's request for the newest build. Upstream had refactored llama-server (`server_slot_sched`)
+and moved its web client to `ui/apps/chat`. Two patches ported without a change in behaviour (0003, 0004; upstream still
+has the hybrid-SWA cache bug), two applied as they were, and none could be dropped. The contract was identical on the
+Mac and on the phone's NPU, and the delta-net gate still made NPU prefill with MTP 67% faster (F163). One host test
+moved for a reason worth knowing: upstream now gives a load's staging buffer back to macOS at once, which lowered the
+Mac's peak memory by about one tensor (543 MiB), shown by rebuilding with that single commit reverted (F164). Open: the
+OpenCL items F75, F80 and F125, and rebasing the speech patches from `voice/speech-npu`, the phase's next step.
+
 ## Open items
 
 - **The models do not see an attached picture on the phone (F119).** The suggested vision models answer as if no picture were attached. Next steps: send the same file through the acceptance app and the host test with the phone's models, try the CPU backend, read the native log (it does not reach logcat), then check the image's MIME type. No test yet asserts that a model names the colours of a known picture. **Resolved 2026-11-13 (F120, F121, D53):** ggml-hexagon computes some image encoders wrongly, upstream llama-server included. The encoder had followed the model onto the NPU since P2 T6, and no test read what a reply said. b12352 fixes the encoder (F121); it follows the model again, apps can move it (D53), and every image test asserts the colours.
@@ -316,3 +381,9 @@ Two SDK additions: a `Conversation` from stored messages, because an app that ke
   4. *Audio input* for speech-capable models, through the same multimodal path as pictures.
   5. *LoRA adapters switched at runtime* (llama-server's `/lora-adapters`): one base model, several tasks, no reload.
   The suggested lead is 1 and 2. The full usability review, which ranks these with the memory check (done, D57) and loading by a Hugging Face name, is [sdk-review.md](sdk-review.md), with a proposed phase for them (PH) and one for the release (PR). What the SDK already has also counts toward the headline: the Hexagon NPU, MTP drafting, pictures with a choice of encoder device, fit estimates and resumable downloads from the hub.
+- **Open at the end of PH (2026-11-17).**
+  - *An interactive voice mode* is the next phase (D85). It starts with the llama.cpp upgrade (109 commits ahead, four patches to port, D90; [review](../../research/ph/upstream/review-2026-11-17.md)); done 2026-11-17, see the voice mode section. It continues with a byte-returning raw request (F74), `/v1/realtime` on an in-memory connection (F56), and a way to hold the voice steady across sentences (F154).
+  - *Upstream reports for the user to post:* the hybrid-SWA cache stop ([`research/ph/cache-stop/`](../../research/ph/cache-stop/), patch 0004) and Hexagon's tiled weight read by a lookup ([`research/ph/speech-output/upstream-issue-hexagon.md`](../../research/ph/speech-output/upstream-issue-hexagon.md), patch 0005).
+  - *Not measured on the phone:* integer bounds' grammar cost (F158, host only) and ADPF hints as an alternative to polling (D86).
+  - *Known and tolerated:* Llama 3.2 3B repeats a tool call until the turn limit (F27), as upstream does.
+  - *The W9 step 5 review* (rulings in D90-D92): polling went back to off and the speech-output patches (0005-0007) moved to branch `voice/speech-npu` for the voice phase (D90); the small bugs it found were fixed; the structural refactors (splitting `Conversation` and the demo's chat engine, one record model in the hub, API questions) and the release work (CI, publishing, licences) are a cleanup phase after the llama.cpp upgrade. `Auto` stays open on chips nobody has verified (D92).

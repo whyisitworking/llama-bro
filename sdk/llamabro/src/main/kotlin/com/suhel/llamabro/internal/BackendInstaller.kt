@@ -16,8 +16,12 @@ public interface BackendInstaller {
      * backend failed, with the exception as the reason; it doesn't stop the runtime. The class needs a public
      * no-argument constructor (kept from R8 by the core's consumer rules).
      */
-    public fun install(context: Context): BackendLibraries
+    public fun install(context: Context, options: BackendOptions): BackendLibraries
 }
+
+/** The app's settings an installer may need, from the first [com.suhel.llamabro.LlamaBroConfig]. */
+@InternalLlamaBroApi
+public class BackendOptions(public val npuPolling: Boolean)
 
 /** What [BackendInstaller.install] returns: libraries loaded by file name, after [env] is set. */
 @InternalLlamaBroApi

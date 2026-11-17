@@ -51,8 +51,12 @@ class ChatViewModel(private val llama: LlamaBro, private val path: String) : Vie
 
 - `messages`: the history; `reply`: the assistant message while it streams, null otherwise.
 - `isBusy`, and `contextUsage` (tokens used of the context).
-- `ask(text)` returns a `Typed<String>`: `Typed.Value` (the text and the reasoning), or `Typed.Incomplete` if the reply was cut off or ended without a final answer.
-- `regenerate()`, `endReasoning()` (stop thinking now), `toJson()` and `model.restoreConversation(json)`.
+- `ask(text)` returns a `Typed<String>`: `Typed.Value` (the text and the reasoning), or `Typed.Incomplete` with its
+  `reason`: `Length` (cut at the output limit), `TurnLimit`, `ToolCallsPending` (continue with `resume()`, after
+  `addToolResult` for tools without a handler) or `ToolAborted` (a tool threw `LbToolAbort`). `valueOrNull()` gives the
+  value or null.
+- `regenerate()` (and `askAgain()`, the same collected as `ask` is), `endReasoning()` (stop thinking now), `toJson()`
+  and `model.restoreConversation(json)`.
 
 The demo chat app ([demo](../demo)) is this, with a full UI; its `ChatEngine` is the part that talks to `Conversation`.
 
@@ -163,10 +167,11 @@ Pictures are decoded by llama.cpp's stb_image: JPEG, PNG, BMP and GIF (its first
 PIC and PNM. HEIC, the iPhone's and many Android cameras' format, is not supported, and neither is WebP (upstream
 decodes it only through an `ffmpeg` binary, which an Android app doesn't have): ask the photo picker or camera for
 JPEG, or convert first (`Bitmap.compress`). Another audio format (by MIME type, and by the first bytes of a file or
-bytes), a missing file, an unreadable descriptor, or a picture or clip for a model that can't see or hear it throws
-`InvalidRequest` naming the problem, before anything is added to the chat. Media only llama.cpp can judge (a HEIC or
-WebP picture, a descriptor's clip in another format) fails the send's first request with `InvalidRequest`; then the
-message is taken out of the chat again, so the next send works. Any other failure keeps the message, for `resume()`. `transcribe(source, language,
+bytes, and of a descriptor's, which is read before its message is added), a missing file, an unreadable descriptor, or
+a picture or clip for a model that can't see or hear it throws `InvalidRequest` naming the problem, before anything is
+added to the chat. A picture only llama.cpp can judge (HEIC or WebP) fails the send's first request with
+`InvalidRequest`; then the message is taken out of the chat again, so the next send works. Any other failure keeps the
+message, for `resume()`. `transcribe(source, language,
 prompt, options)` returns `Typed.Value(text)`, or `Typed.Incomplete(Length, textSoFar)` when cut at `maxTokens`;
 `prompt` is upstream's (words to expect, or an instruction in place of the model's own), and `options`' sampling
 applies. Speech output and live transcription are not part of the SDK.
@@ -214,11 +219,18 @@ implementation("io.github.whyisitworking:llamabro-typed")
 
 `typedSchema<T>()` writes a `@Serializable` class's JSON Schema, the one llama.cpp's grammar holds a reply to.
 Properties keep their declaration order, which is the order the model writes them in, required ones first: declare a
-reasoning field before the answer. A property with a default is optional. Add `@LbDescription`, `@LbRange` (integers),
-`@LbLength` and `@LbPattern` (strings) and `@LbItems` (lists); decimals take no bounds, since the grammar ignores them.
-llama.cpp supports a subset of regex and rejects the rest when it builds the grammar, so a bad `@LbPattern` fails the
-first request, and in a conversation with typed tools every request in it, since the tools are sent with each one. A
-test against a real model catches it; `assertTypedSchema` can't check the pattern.
+reasoning field before the answer. A property with a default is optional. An integer is held to its Kotlin type's
+range (`Byte`, `Short`, `Int` and the unsigned types; a `Long` is unbounded), so the model can't write a number that
+doesn't decode (D88). Add `@LbDescription`, `@LbRange` (integers, intersected with the type's range), `@LbLength` and
+`@LbPattern` (strings) and `@LbItems` (lists); decimals take no bounds, since the grammar ignores them.
+
+`@LbPattern` is sent as written, and llama.cpp turns only a subset of regex into grammar (F158). A pattern must be
+anchored (`^…$`) and use literal characters, `.`, classes such as `[a-z]`, groups, `|` and repetition. Anything else
+(an unanchored pattern, `\d`, `\w`, `\p{…}`, lookarounds, POSIX classes) is dropped: the field takes any string, and
+only llama.cpp's log says so. A malformed pattern (unbalanced parentheses) fails the request with `InvalidRequest`; for
+a typed tool's arguments that is every request in the conversation, since the tools are sent with each one.
+`assertTypedSchema` can't check a pattern: write `[0-9]` for `\d`, and test against a real model.
+
 A sealed subclass needs a short `@SerialName`. Call `assertTypedSchema<T>()` in a unit test to find what the schema
 refuses (a recursive type, open polymorphism, a contextual serializer, a free-form `JsonElement`, a non-`String`
 map key) before release.
@@ -241,9 +253,10 @@ the reasoning would only justify it.
 when (val r = chat.ask<Review>("Review: the battery lasts two days, but the screen scratches easily.")) {
     is Typed.Value -> show(r.value)           // r.json is the model's JSON, r.reasoning its thinking (Think on)
     is Typed.Incomplete -> retry(r.reason)    // cut at the output limit (Length), with r.json so far
-    is Typed.Invalid -> report(r.cause)       // the JSON didn't decode: a number past Int, a failing init check
+    is Typed.Invalid -> report(r.cause)       // the JSON didn't decode: a failing require or check in init
 }
-val review = model.generate<Review>(text, system = "You review products.")
+val again = chat.askAgain<Review>()          // the last reply again, held to the same schema
+val review = model.generate<Review>(text, system = "You review products.").valueOrNull()
 ```
 
 The schema is checked before any request, so a type without one throws `IllegalArgumentException` at once; so do
@@ -254,7 +267,9 @@ thinking, so the model thinks without knowing the format: it reasons as if reply
 turn Think off or set a thinking budget (`reasoning { budgetTokens = 256 }`), and phrase the prompt as the task
 ("Extract the person from: …"); a reasoning field in the class gives the model room to think inside the JSON. A typed turn keeps the conversation's tools in the prompt but cannot call them, and stores the JSON as
 the assistant message, so later turns see what the model wrote. Pass `serializer =` and `json =` to use a
-`KSerializer` or a `Json` of your own; the schema and the decoding both follow that `Json`.
+`KSerializer` or a `Json` of your own; the schema and the decoding both follow that `Json`. `askAgain<T>()` replaces the
+last reply as `regenerate()` does, under the same schema; a plain `regenerate()` after a typed `ask` sends no schema,
+since a call's options are its own (D88).
 
 A typed tool takes a `@Serializable` arguments class and returns a value. Its parameters' schema is the arguments
 class's `typedSchema`, so the same annotations describe and bound them. The handler is a suspending lambda that
@@ -277,11 +292,13 @@ val chat = model.conversation { toolbox(toolboxOf(forecast, sendEmail)) }
 
 Inside `conversation { }`, `tool<A, R>(name, description) { … }` makes the tool and registers it in one step.
 
-A `String` result is sent as is (a null `String?` as `null`), `Unit` or `Unit?` as `Done`, anything else as JSON;
-the model sees no schema for a result, so say what it means in the description. Arguments that don't decode send
+A `String` result is sent as is (a null `String?` as `null`), `Unit` or `Unit?` as `Done`, anything else as JSON with
+every field, also those at their default (D88); the model sees no schema for a result, so say what it means in the
+description. Arguments that don't decode send
 `Error: invalid arguments: <reason>` and the loop goes on, so the model can retry, but only kotlinx-serialization's own
-decode errors (a missing field, bad JSON, a custom serializer's `SerializationException`) give their reason. Anything else thrown while decoding, such as a `require`
-in the arguments class, sends `Error: invalid arguments` and reaches the app as `ChatEvent.ToolResult.error`. An app
+decode errors (`missing field 'days'`, bad JSON, a custom serializer's `SerializationException`) give their reason.
+Anything else thrown while decoding, such as a `require` or `check` in the arguments class, sends
+`Error: invalid arguments` and reaches the app as `ChatEvent.ToolResult.error`. An app
 that wants to explain throws `LbToolError` from its validation, and its message is what the model reads:
 `init { if (days !in 1..7) throw LbToolError("days must be 1-7") }` sends `Error: days must be 1-7`, so write it for
 the model and keep secrets out of it. What the handler throws is handled as for a raw tool. `tool(…)` throws
@@ -307,8 +324,11 @@ dependencies {
 
 Mark the class `@LbToolbox` and each tool `@LbTool("description")`. A method takes one `@Serializable` arguments class
 (where real defaults apply), or parameters that each carry `@LbToolParam` (a nullable `= null` is optional); an
-`LbToolCallContext` parameter gets the call and stays out of the schema. Bounds (`@LbRange`, `@LbLength`, `@LbPattern`,
-`@LbItems`) and defaults other than `null` need the arguments class. The name is the method's in snake_case
+`LbToolCallContext` parameter gets the call and stays out of the schema. A separate parameter's type must be one
+kotlinx.serialization writes (a primitive, `String`, an enum, a `@Serializable` class, a built-in collection of them),
+or carry a type-use `@Serializable(with = …)`, which the generated class keeps; `@SerialName` can't go on a parameter
+(Kotlin allows it on properties only), so a JSON name other than the parameter's needs the arguments class. Bounds
+(`@LbRange`, `@LbLength`, `@LbPattern`, `@LbItems`) and defaults other than `null` need the arguments class too. The name is the method's in snake_case
 unless `@LbTool(name = …)` gives one, after the toolbox's `prefix`. A `suspend` method runs where the loop calls it;
 any other runs on `Dispatchers.IO`, so a blocking call is safe.
 
@@ -344,8 +364,12 @@ The `@LbTool` methods of `@LbToolbox` supertypes are included, each once; an ove
 be annotated again. Each misuse is a build error naming the fix: a blank description, a name that doesn't match
 `^[a-zA-Z0-9_-]{1,64}$` with its prefix, two tools with one name, an annotated override, a default other than `= null`
 on a separate parameter, a parameter without `@LbToolParam` beside annotated ones or a lone one that isn't a
-`@Serializable` class, `@LbTool` outside an `@LbToolbox`, a sealed subclass without a short `@SerialName` in the
-arguments, and a result that isn't a `String`, `Unit`, a primitive, a `List` or `@Serializable`.
+`@Serializable` class, a separate parameter of a type kotlinx.serialization can't write, `@LbTool` outside an
+`@LbToolbox`, a sealed subclass without a short `@SerialName` in the arguments, and a result that isn't a `String`,
+`Unit`, a primitive, a `List` or `@Serializable`. The build doesn't check the schema itself: what `typedSchema` refuses
+in an arguments class (a recursive type, a `JsonElement`, an annotation on the wrong type) throws
+`IllegalArgumentException` when `asToolbox()` runs, so call `asToolbox()` (or `assertTypedSchema` on each arguments
+class) in a unit test.
 
 ## Errors
 
@@ -406,7 +430,10 @@ fakeHub.offline = true                       // HubException.Network from here o
 
 A repo that isn't declared is `NotFound`, a `gated` one `Unauthorized`; `rateLimit(…)`, `offline` and `freeBytes` give
 `RateLimited`, `Network` and `InsufficientStorage`. Declaring a repo again publishes a new commit, which `hasUpdate`
-reports, and `requests` lists every request the hub made.
+reports, and `requests` lists every request the hub made. `stopDownload(model, "mmproj-F16.gguf")` leaves a download
+as a Pause leaves it on the phone: the files before that one in the cache, that one half received, nothing installed;
+`cached()` leaves it out, `source` throws `NotFound`, and a `download` resumes it. A copy installed before stays listed
+and stays the one that loads. Pass `repo =` for a draft from another repo.
 
 ## Loading
 
@@ -444,6 +471,11 @@ object LlamaBroModule {
         LlamaBro.create(context, LlamaBroConfig { logLevel = LogLevel.Info })
 }
 ```
+
+The config also holds `npuPolling`, off by default as in upstream: `LlamaBroConfig { npuPolling = true }` has the NPU
+backend poll for the NPU's results instead of sleeping, which keeps the waiting CPU core awake. Chat on the NPU runs 4-7%
+faster, but the chip runs hotter while busy, and on Android the DSP library logs an error for every empty poll, which
+floods logcat and drops your app's own lines (F162) until a later release carries the fix (D90).
 
 The SDK has no DI dependency; without a container, call `LlamaBro.create(context)` where you need it. Keep the config
 on your `Application` or in the DI graph and pass it from every entry point, workers and job services included: a
@@ -673,6 +705,9 @@ implementation("io.github.whyisitworking:llamabro-opencl")    // the GPU on Adre
 
 By default (`DevicePolicy.Auto`) a model loads on the NPU, else the GPU, else the CPU, skipping any that fails.
 `model.loadReport` says where it runs and why the others weren't used; `llama.backends()` lists what loaded.
+Only one phone is verified so far: a OnePlus 13 (Snapdragon 8 Elite, Hexagon v79, Adreno 830). On a chip you haven't
+tested, a backend that gives wrong output or crashes is not caught by the fallback, so test your target phones or
+choose `Prefer` or `Only(DeviceKind.Cpu)` for them (D92).
 
 ```kotlin
 llama.loadModel(ModelSource.file(path)) {

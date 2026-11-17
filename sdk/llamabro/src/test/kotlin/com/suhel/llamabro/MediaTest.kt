@@ -381,7 +381,7 @@ class MediaTest {
         }
 
     @Test
-    fun aDescriptorClipTheBridgeRefusesIsRemoved() =
+    fun aClipTheBridgeRefusesLeavesTheChatAsItWas() =
         runTest {
             val (engine, model) = setup()
             engine.model.onRequest = { r ->
@@ -403,6 +403,33 @@ class MediaTest {
                 }.exceptionOrNull()
             assertTrue("$error", error is LlamaBroException.InvalidRequest)
             assertTrue(chat.messages.value.isEmpty())
+        }
+
+    @Test
+    fun aMediaErrorOnALaterToolLoopTurnKeepsTheMessage() =
+        runTest {
+            val (engine, model) = setup()
+            var chats = 0
+            engine.model.onRequest = { r ->
+                if (chats++ == 0) {
+                    Replies.toolCalls(Triple("c1", "look", "{}")).forEach { r.chunk(it) }
+                } else {
+                    r.chunk(UNDECODABLE, status = 500)
+                }
+                r.done()
+            }
+            val chat = model.conversation { tool("look", "Looks again", """{"type":"object"}""") { "nothing new" } }
+            val error =
+                runCatching {
+                    chat.send("What is this?", Content.Image(MediaSource.file(CAT.path), "image/heic")).toList()
+                }.exceptionOrNull()
+            assertTrue("$error", error is LlamaBroException.InvalidRequest)
+            // the second turn failed: the user message is no longer last, so the rollback leaves the turn's history
+            val history = chat.messages.value
+            assertEquals(3, history.size)
+            assertTrue(history[0] is Message.User)
+            assertTrue(history[1] is Message.Assistant)
+            assertTrue(history[2] is Message.ToolResult)
         }
 
     @Test

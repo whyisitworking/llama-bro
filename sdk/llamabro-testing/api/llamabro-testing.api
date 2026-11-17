@@ -1,0 +1,45 @@
+public final class com/suhel/llamabro/testing/FakeLlamaBro {
+	public static final field CUT_WITHOUT_LIMIT Ljava/lang/String;
+	public static final field LOAD_FAILED_STATUS I
+	public static final field LOAD_STEPS I
+	public fun <init> ()V
+	public fun <init> (Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun contextExceeded (II)V
+	public final fun embeddings ([[F)V
+	public final fun error (ILjava/lang/String;Ljava/lang/String;)V
+	public final fun failLoad (Lcom/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason;Ljava/lang/String;I)V
+	public static synthetic fun failLoad$default (Lcom/suhel/llamabro/testing/FakeLlamaBro;Lcom/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason;Ljava/lang/String;IILjava/lang/Object;)V
+	public final fun getChatAttachments ()Ljava/util/List;
+	public final fun getChatRequests ()Ljava/util/List;
+	public final fun getContextSize ()I
+	public final fun getEmbedRequests ()Ljava/util/List;
+	public final fun getLlamaBro ()Lcom/suhel/llamabro/LlamaBro;
+	public final fun getLoadMillis ()J
+	public final fun getOpenModels ()I
+	public final fun getRerankRequests ()Ljava/util/List;
+	public final fun getSupportsAudio ()Z
+	public final fun getSupportsVision ()Z
+	public final fun getTranscribeRequests ()Ljava/util/List;
+	public final fun inputTooLong (II)V
+	public static synthetic fun inputTooLong$default (Lcom/suhel/llamabro/testing/FakeLlamaBro;IIILjava/lang/Object;)V
+	public final fun ranking ([F)V
+	public final fun reply (Lkotlin/jvm/functions/Function1;)V
+	public final fun setContextSize (I)V
+	public final fun setLoadMillis (J)V
+	public final fun setSupportsAudio (Z)V
+	public final fun setSupportsVision (Z)V
+	public final fun transcript (Ljava/lang/String;Z)V
+	public static synthetic fun transcript$default (Lcom/suhel/llamabro/testing/FakeLlamaBro;Ljava/lang/String;ZILjava/lang/Object;)V
+}
+
+public final class com/suhel/llamabro/testing/FakeLlamaBro$Reply {
+	public final fun content (Ljava/lang/String;)V
+	public final fun finishLength ()V
+	public final fun reasoning (Ljava/lang/String;)V
+	public final fun timings (III)V
+	public static synthetic fun timings$default (Lcom/suhel/llamabro/testing/FakeLlamaBro$Reply;IIIILjava/lang/Object;)V
+	public final fun toolCall (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun toolCall$default (Lcom/suhel/llamabro/testing/FakeLlamaBro$Reply;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+}
+

@@ -49,8 +49,9 @@ it with `./gradlew -p sdk :<module>:apiDump`, committing the `.api` file with th
 3. Re-port any patch that no longer applies, then re-measure it on the phone; a patch that no longer wins is dropped.
 4. Diff the upstream files the SDK ports or copies (each cites its source file and build in a comment) and port the
    changes.
-5. `sdk/scripts/check.sh` and `--device`. A failing contract, `tools/ui` or hub golden is the list of upstream changes to
-   review (F31); accept a new golden only once the SDK's port matches it.
+5. `sdk/scripts/check.sh` and `--device`. A failing contract, `tools/ui` (Llama Chat, `ui/apps/chat` since b12479) or
+   hub golden is the list of upstream changes to review (F31); accept a new golden only once the SDK's port matches it.
+   A host memory bound that moves is checked against the one upstream commit that moved it (F164).
 6. Record a finding for the upgrade (what changed for the SDK, what was re-measured) and a decision for the new pin.
 
 ## Principles

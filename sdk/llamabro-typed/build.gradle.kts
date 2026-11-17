@@ -21,6 +21,7 @@ android {
 
     defaultConfig {
         minSdk = 29
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     compileOptions {
@@ -37,8 +38,6 @@ android {
 
 kotlin {
     explicitApi()
-    // typed tools register through core's raw registration seam (InternalLlamaBroApi, D61)
-    compilerOptions { optIn.add("com.suhel.llamabro.InternalLlamaBroApi") }
 }
 
 dependencies {

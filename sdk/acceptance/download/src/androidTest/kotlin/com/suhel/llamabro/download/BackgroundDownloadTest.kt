@@ -41,11 +41,9 @@ class BackgroundDownloadTest {
     }
 
     private fun checkNotificationProgress(device: UiDevice) {
-        device.openNotification()
-        assertTrue(
-            "Downloads notification never appeared",
-            device.wait(Until.hasObject(By.text("Downloads")), 30_000),
-        )
+        device.executeShellCommand("cmd statusbar expand-notifications")
+        device.waitForIdle()
+        assertTrue("the download's notification never appeared", scrollShadeTo(device, "/1536 MB", 30_000))
 
         fun megabytes(): Int? =
             device
@@ -72,5 +70,31 @@ class BackgroundDownloadTest {
         }
         assertTrue("notification did not advance from $first MB to $second MB", second != null && second > first!!)
         device.pressBack()
+    }
+
+    /**
+     * Waits up to [timeoutMillis] for [text] in the open shade, scrolling it up when the text isn't in view: the quiet
+     * notification sits below the visible part of the shade on a phone with many notifications (F150). The shade is
+     * expanded again before each swipe, since a swipe at the end of the list closes it on some phones.
+     */
+    private fun scrollShadeTo(device: UiDevice, text: String, timeoutMillis: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMillis
+        var swipes = 0
+        while (System.currentTimeMillis() < deadline) {
+            if (device.wait(Until.hasObject(By.textContains(text)), 1_000)) return true
+            if (swipes < MAX_SHADE_SWIPES) {
+                device.executeShellCommand("cmd statusbar expand-notifications")
+                device.waitForIdle()
+                val x = device.displayWidth / 2
+                device.swipe(x, device.displayHeight * 3 / 4, x, device.displayHeight / 4, SWIPE_STEPS)
+                swipes++
+            }
+        }
+        return false
+    }
+
+    private companion object {
+        const val MAX_SHADE_SWIPES = 6
+        const val SWIPE_STEPS = 20
     }
 }

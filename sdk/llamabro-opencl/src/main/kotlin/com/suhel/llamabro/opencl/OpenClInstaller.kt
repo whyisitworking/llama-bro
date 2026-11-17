@@ -3,12 +3,13 @@ package com.suhel.llamabro.opencl
 import android.content.Context
 import com.suhel.llamabro.internal.BackendInstaller
 import com.suhel.llamabro.internal.BackendLibraries
+import com.suhel.llamabro.internal.BackendOptions
 
 /**
  * Called by the core when the runtime starts (BackendDiscovery, through this module's manifest). Nothing to install.
  */
 internal class OpenClInstaller : BackendInstaller {
-    override fun install(context: Context): BackendLibraries =
+    override fun install(context: Context, options: BackendOptions): BackendLibraries =
         BackendLibraries(listOf("libllamabro-ggml-opencl.so"), ENV)
 
     internal companion object {

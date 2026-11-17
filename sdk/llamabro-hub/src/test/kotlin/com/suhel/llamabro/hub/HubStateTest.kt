@@ -26,7 +26,7 @@ internal class HubStateTest {
             val cache = Files.createTempDirectory("hub-state-partial-").toFile()
             val ref = HfModel("test/progress:Q4_K_M")
             val first = instance(cache)
-            val plan = first.plan(ref)
+            val plan = first.recordedPlan(ref)
             val model = plan.files.single { it.role == HubFile.Role.Model }
             val mmproj = plan.files.single { it.role == HubFile.Role.Mmproj }
             val partial = File(cache, "${repoFolder(ref.repo)}/blobs/${model.oid}.downloadInProgress")

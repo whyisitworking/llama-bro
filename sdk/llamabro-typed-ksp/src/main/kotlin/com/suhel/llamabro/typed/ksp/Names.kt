@@ -7,6 +7,7 @@ import com.google.devtools.ksp.symbol.KSDeclaration
 import com.google.devtools.ksp.symbol.KSType
 import com.google.devtools.ksp.symbol.KSTypeAlias
 import com.google.devtools.ksp.symbol.KSTypeArgument
+import com.google.devtools.ksp.symbol.KSTypeReference
 import com.google.devtools.ksp.symbol.Variance
 
 // The annotations and types are read by their fully qualified names: llamabro-typed is an Android library, which a
@@ -64,20 +65,56 @@ internal fun looksQualified(name: String): Boolean {
     return parts.size > 1 && parts.all { part -> part.isNotEmpty() && part.all { it.isLetterOrDigit() || it == '_' } }
 }
 
-/** The type as Kotlin source, every class fully qualified, so generated code needs no imports. */
-internal fun KSType.render(): String {
+/**
+ * The type as Kotlin source, every class fully qualified, so generated code needs no imports. With
+ * [serialAnnotations], its type arguments keep their type-use `@Serializable(with = …)` ([renderSerialized]).
+ */
+internal fun KSType.render(serialAnnotations: Boolean = false): String {
     val name = declaration.qualifiedName?.asString()?.let(::qualified) ?: id(declaration.simpleName.asString())
-    val args = if (arguments.isEmpty()) "" else arguments.joinToString(", ", "<", ">") { it.render() }
+    val args =
+        if (arguments.isEmpty()) "" else arguments.joinToString(", ", "<", ">") { it.render(serialAnnotations) }
     return name + args + if (isMarkedNullable) "?" else ""
 }
 
-private fun KSTypeArgument.render(): String =
-    when (variance) {
+/**
+ * The type as [render] writes it, keeping each type-use `@Serializable(with = …)`, at any depth, so a generated
+ * property serializes as the app's parameter would.
+ */
+internal fun KSTypeReference.renderSerialized(): String {
+    val resolved = resolve()
+    return serializerAnnotation(annotations + resolved.annotations) + resolved.render(serialAnnotations = true)
+}
+
+private fun KSTypeArgument.render(serialAnnotations: Boolean): String {
+    val reference = type ?: return "*"
+    val resolved = reference.resolve()
+    // a type argument's annotations may sit on its reference rather than on the resolved type
+    val serializer =
+        if (serialAnnotations) serializerAnnotation(reference.annotations + annotations + resolved.annotations) else ""
+    val rendered = serializer + resolved.render(serialAnnotations)
+    return when (variance) {
         Variance.STAR -> "*"
-        Variance.COVARIANT -> "out " + type!!.resolve().render()
-        Variance.CONTRAVARIANT -> "in " + type!!.resolve().render()
-        Variance.INVARIANT -> type!!.resolve().render()
+        Variance.COVARIANT -> "out $rendered"
+        Variance.CONTRAVARIANT -> "in $rendered"
+        Variance.INVARIANT -> rendered
     }
+}
+
+/** A type-use `@Serializable(with = X::class)` among [annotations] as source with a trailing space, or "". */
+internal fun serializerAnnotation(annotations: Sequence<KSAnnotation>): String {
+    val serializable = annotations.firstOrNull { it.fqnOf() == SERIALIZABLE } ?: return ""
+    val with = serializable.arg("with") as? KSType ?: return ""
+    val serializer = with.declaration.qualifiedName?.asString() ?: return ""
+    // `with`'s default is KSerializer itself: the annotation then picks nothing
+    if (serializer == "kotlinx.serialization.KSerializer") return ""
+    return "@${qualified(SERIALIZABLE)}(with = ${qualified(serializer)}::class) "
+}
+
+internal fun KSAnnotation.fqnOf(): String? =
+    annotationType
+        .resolve()
+        .declaration.qualifiedName
+        ?.asString()
 
 /** A name as Kotlin source: backticked when it is a keyword or not a plain identifier. */
 internal fun id(name: String): String = if (name in KEYWORDS || !PLAIN.matches(name)) "`$name`" else name

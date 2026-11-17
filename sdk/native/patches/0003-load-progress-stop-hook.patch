@@ -2,10 +2,10 @@ From: ours (F145, D67); upstream PR drafted in research/ph/load-cancel/upstream-
 Subject: server : let the embedder stop a model load through the load progress callback
 
 diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
-index a6059ab..76ca6d2 100644
+index 6a57aa8..72e7ade 100644
 --- a/tools/server/server-context.cpp
 +++ b/tools/server/server-context.cpp
-@@ -1051,6 +1051,7 @@ public:
+@@ -1056,6 +1056,7 @@ public:
      server_chat_params chat_params;
  
      server_state_callback_t callback_state = [](server_state, json) -> void {};
@@ -13,7 +13,7 @@ index a6059ab..76ca6d2 100644
  
      server_context_impl() {
          mtmd_helper_log_set(common_log_default_callback, nullptr);
-@@ -1179,6 +1180,10 @@ private:
+@@ -1183,6 +1184,10 @@ private:
      static bool load_progress_callback(float progress, void * user_data) {
          auto * d = static_cast<load_progress_data *>(user_data);
          GGML_ASSERT(d);
@@ -24,7 +24,7 @@ index a6059ab..76ca6d2 100644
          // always emit the first and final sample; throttle the rest to one per 200ms
          {
              auto & t_last = d->t_last_load_progress_ms;
-@@ -5332,6 +5337,10 @@ void server_context::set_state_callback(server_state_callback_t callback) {
+@@ -5227,6 +5232,10 @@ void server_context::set_state_callback(server_state_callback_t callback) {
      impl->callback_state = std::move(callback);
  }
  
@@ -32,14 +32,14 @@ index a6059ab..76ca6d2 100644
 +    impl->callback_load_abort = std::move(callback);
 +}
 +
- //
- // server_routes
- //
+ void server_context::set_video_decoder(const mtmd_helper_video_decoder * decoder) {
+     impl->init_opt.video_params.decoder = decoder;
+ }
 diff --git a/tools/server/server-context.h b/tools/server/server-context.h
-index 4b145cb..5964ab6 100644
+index 2c91d53..a3b4cd8 100644
 --- a/tools/server/server-context.h
 +++ b/tools/server/server-context.h
-@@ -60,6 +60,7 @@ struct server_context_meta {
+@@ -61,6 +61,7 @@ struct server_context_meta {
  };
  
  using server_state_callback_t = std::function<void(server_state, json /* payload */)>;
@@ -47,15 +47,15 @@ index 4b145cb..5964ab6 100644
  
  struct server_context {
      std::unique_ptr<server_context_impl> impl;
-@@ -90,6 +91,11 @@ struct server_context {
- 
+@@ -92,6 +93,11 @@ struct server_context {
      // note: must be set before load_model() is called
      void set_state_callback(server_state_callback_t callback);
-+
+ 
 +    // optional: polled while the text, draft and multimodal models load; returning true stops the load,
 +    // and load_model() then returns false
 +    // note: must be set before load_model() is called
 +    void set_load_abort_callback(server_load_abort_callback_t callback);
- };
- 
- 
++
+     // decode video with a custom decoder instead of ffmpeg, the decoder must outlive the server
+     // note: must be set before load_model() is called
+     void set_video_decoder(const mtmd_helper_video_decoder * decoder);

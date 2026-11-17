@@ -84,7 +84,7 @@ internal class FakeEngine : Engine {
     var loadError: (String) -> String? = { null }
 
     override fun load(configJson: String, onProgress: (Float) -> Boolean): EngineModel {
-        loadConfigs += configJson
+        synchronized(loadConfigs) { loadConfigs += configJson }
         loadError(configJson)?.let { throw NativeError(5, it) }
         for (p in progress) {
             if (!onProgress(p)) {

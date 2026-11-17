@@ -5,6 +5,7 @@ import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.FinishReason
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.conversation.ContextUsage
+import com.suhel.llamabro.conversation.askAgain
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.toList
@@ -81,6 +82,44 @@ class ConversationTest {
                 Typed.Incomplete(FinishReason.Length, "Par"),
                 model.conversation().ask("Capital of France?"),
             )
+        }
+
+    @Test
+    fun askAgainReplacesTheLastReplyAndReturnsIt() =
+        runTest {
+            val (engine, model) = setup()
+            engine.model.script(Replies.text("Lyon"), Replies.text("Paris", reasoning = "the capital"))
+            val chat = model.conversation()
+            chat.ask("Capital of France?")
+            assertEquals(Typed.Value("Paris", "Paris", "the capital"), chat.askAgain { sampling { seed = 3 } })
+            assertEquals(listOf("Capital of France?", "Paris"), chat.messages.value.map { it.text() })
+            val (first, again) = engine.model.chatBodies
+            assertEquals(messagesOf(first), messagesOf(again))
+            assertEquals("3", (Json.parseToJsonElement(again) as JsonObject)["seed"].toString())
+        }
+
+    @Test
+    fun askAgainCutAtLengthIsIncomplete() =
+        runTest {
+            val (engine, model) = setup()
+            engine.model.script(Replies.text("Paris"), Replies.text("Par", finish = "length"))
+            val chat = model.conversation()
+            chat.ask("Capital of France?")
+            assertEquals(Typed.Incomplete(FinishReason.Length, "Par"), chat.askAgain())
+        }
+
+    @Test
+    fun valueOrNullIsTheValueOnlyForAValue() {
+        assertEquals("Paris", Typed.Value("Paris", "Paris", null).valueOrNull())
+        assertEquals(null, Typed.Incomplete(FinishReason.Length, "Par").valueOrNull())
+        assertEquals(null, Typed.Invalid("{", IllegalArgumentException("bad")).valueOrNull())
+    }
+
+    private fun Message.text(): String? =
+        when (this) {
+            is Message.User -> (content.first() as Content.Text).text
+            is Message.Assistant -> content
+            else -> null
         }
 
     @Test

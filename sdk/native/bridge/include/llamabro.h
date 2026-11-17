@@ -32,7 +32,7 @@ typedef bool (*lb_progress_cb)(void * user, float progress);
 // Called on the request's own thread.
 typedef void (*lb_request_cb)(void * user, lb_event event, int http_status, const char * data, size_t len);
 
-const char * lb_version(void);                                         // "llamabro <ver> llama.cpp b12352"
+const char * lb_version(void);                                         // "llamabro <ver> llama.cpp b12479"
 void lb_string_free(char * s);                                         // frees every char* this API returns
 
 // config: {"backend_dir": "<dir>", "log_level": "warn", "backends": [...]}, all optional. The CPU backend is loaded by
@@ -94,7 +94,10 @@ lb_status lb_model_request(lb_model * model, const char * endpoint, const char *
 
 // A file sent beside a request (D84): exactly one of path, fd (>= 0) or data (len bytes) is set; set path NULL,
 // fd -1 and data NULL for the others. Every attachment is read before lb_model_request_with returns, so the caller
-// may release its data and close its fd as soon as the call returns; the bridge never closes fd. A descriptor is
+// may release its data and close its fd as soon as the call returns; the bridge never closes fd. One exception: with a
+// media_dir in the model config, a path attachment on the chat-like and embeddings routes is checked (its first bytes)
+// but not read; the bridge links it into media_dir under a random name and writes file://<name>, and llama-server reads
+// it while the request runs (F157), so the file must stay until the terminal event, when the link is removed. A descriptor is
 // read whole from offset 0 with pread (its file offset unchanged), or with read when it can't seek (a pipe).
 //   transcriptions: name is the form field, "file" for the audio (F55); body is the form's other fields as a JSON
 //     object of strings ({"language": "en", "temperature": "0"}), as upstream reads form data.

@@ -351,8 +351,8 @@ fun TokenContent(
     }
 }
 
-/** The pinned llama.cpp build (design: the submodule at b12352). */
-private const val LLAMA_CPP_BUILD = "b12352"
+/** The pinned llama.cpp build (design: the submodule at b12479). */
+private const val LLAMA_CPP_BUILD = "b12479"
 
 @Composable
 fun AboutScreen(onBack: () -> Unit) {

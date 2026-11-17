@@ -106,7 +106,7 @@ const char * device_type_name(enum ggml_backend_dev_type t) {
     return "unknown";
 }
 
-// Port of ggml_backend_load_best (ggml/src/ggml-backend-reg.cpp, b12352; unchanged since b12052) that opens the CPU variants by file name
+// Port of ggml_backend_load_best (ggml/src/ggml-backend-reg.cpp, b12479; unchanged since b12052) that opens the CPU variants by file name
 // instead of listing a directory: Android can dlopen a library by name straight from an uncompressed APK, so apps
 // don't need extracted native libraries (findings F25). Each variant reports how well it fits this CPU through
 // ggml_backend_score; the best one is loaded.

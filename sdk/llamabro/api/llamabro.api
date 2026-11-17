@@ -271,6 +271,7 @@ public final class com/suhel/llamabro/LlamaBroConfig {
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getLogLevel ()Lcom/suhel/llamabro/LogLevel;
 	public final fun getLogger ()Lcom/suhel/llamabro/Logger;
+	public final fun getNpuPolling ()Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -278,8 +279,10 @@ public final class com/suhel/llamabro/LlamaBroConfig {
 public final class com/suhel/llamabro/LlamaBroConfig$Builder {
 	public final fun getLogLevel ()Lcom/suhel/llamabro/LogLevel;
 	public final fun getLogger ()Lcom/suhel/llamabro/Logger;
+	public final fun getNpuPolling ()Z
 	public final fun setLogLevel (Lcom/suhel/llamabro/LogLevel;)V
 	public final fun setLogger (Lcom/suhel/llamabro/Logger;)V
+	public final fun setNpuPolling (Z)V
 }
 
 public final class com/suhel/llamabro/LlamaBroConfig$Companion {
@@ -700,6 +703,10 @@ public final class com/suhel/llamabro/Typed$Value : com/suhel/llamabro/Typed {
 	public final fun getValue ()Ljava/lang/Object;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/TypedKt {
+	public static final fun valueOrNull (Lcom/suhel/llamabro/Typed;)Ljava/lang/Object;
 }
 
 public abstract interface class com/suhel/llamabro/chat/ChatEvent {
@@ -1309,6 +1316,8 @@ public final class com/suhel/llamabro/conversation/Conversation$Builder {
 
 public final class com/suhel/llamabro/conversation/ConversationKt {
 	public static final fun addToolResult (Lcom/suhel/llamabro/conversation/Conversation;Ljava/lang/String;Ljava/lang/String;)V
+	public static final fun askAgain (Lcom/suhel/llamabro/conversation/Conversation;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun askAgain$default (Lcom/suhel/llamabro/conversation/Conversation;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
 public final class com/suhel/llamabro/conversation/JsonArgs {
@@ -1344,7 +1353,7 @@ public class com/suhel/llamabro/conversation/LbToolError : java/lang/Exception {
 }
 
 public abstract interface class com/suhel/llamabro/internal/BackendInstaller {
-	public abstract fun install (Landroid/content/Context;)Lcom/suhel/llamabro/internal/BackendLibraries;
+	public abstract fun install (Landroid/content/Context;Lcom/suhel/llamabro/internal/BackendOptions;)Lcom/suhel/llamabro/internal/BackendLibraries;
 }
 
 public final class com/suhel/llamabro/internal/BackendLibraries {
@@ -1352,6 +1361,11 @@ public final class com/suhel/llamabro/internal/BackendLibraries {
 	public synthetic fun <init> (Ljava/util/List;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getEnv ()Ljava/util/Map;
 	public final fun getFiles ()Ljava/util/List;
+}
+
+public final class com/suhel/llamabro/internal/BackendOptions {
+	public fun <init> (Z)V
+	public final fun getNpuPolling ()Z
 }
 
 public abstract interface class com/suhel/llamabro/internal/Engine {

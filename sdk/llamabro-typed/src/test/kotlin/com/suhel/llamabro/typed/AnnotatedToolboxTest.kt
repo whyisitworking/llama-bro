@@ -8,7 +8,12 @@ import com.suhel.llamabro.conversation
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -19,6 +24,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 
 /** What an app would inject into its toolbox. */
 class Notes(val texts: Map<String, String>)
@@ -61,6 +67,22 @@ class Assistant(private val notes: Notes) {
 
     @LbTool("Says which call this is")
     suspend fun whoAmI(call: LbToolCallContext): String = "${call.callId} ${call.toolName}"
+
+    @LbTool("The weekday of a date")
+    suspend fun weekday(
+        @LbToolParam on:
+            @Serializable(with = IsoDate::class)
+            LocalDate,
+    ): String = on.dayOfWeek.name
+}
+
+/** A date as ISO text, for a separate parameter that names its serializer (D88). */
+object IsoDate : KSerializer<LocalDate> {
+    override val descriptor = PrimitiveSerialDescriptor("IsoDate", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: LocalDate) = encoder.encodeString(value.toString())
+
+    override fun deserialize(decoder: Decoder): LocalDate = LocalDate.parse(decoder.decodeString())
 }
 
 class AnnotatedToolboxTest {
@@ -98,7 +120,7 @@ class AnnotatedToolboxTest {
                 .toList()
             val tools = body(fake.chatRequests[0])["tools"]!!.jsonArray.map { it.jsonObject["function"]!!.jsonObject }
             assertEquals(
-                listOf("get_forecast", "read_note", "search", "send_email", "who_am_i"),
+                listOf("get_forecast", "read_note", "search", "send_email", "who_am_i", "weekday"),
                 tools.map { it["name"]!!.jsonPrimitive.content },
             )
             val forecast = tools[0]["parameters"]!!.jsonObject
@@ -112,6 +134,14 @@ class AnnotatedToolboxTest {
             assertEquals(listOf("city"), forecast["required"]!!.jsonArray.map { it.jsonPrimitive.content })
             val whoAmI = tools[4]["parameters"]!!.jsonObject
             assertTrue(whoAmI.toString(), whoAmI["properties"]?.jsonObject.isNullOrEmpty())
+            val weekday = tools[5]["parameters"]!!.jsonObject
+            assertEquals("""{"type":"string"}""", weekday["properties"]!!.jsonObject["on"].toString())
+        }
+
+    @Test
+    fun separateParamKeepsItsSerializer() =
+        runTest {
+            assertEquals("TUESDAY", callThroughLoop("weekday", """{"on":"2026-11-17"}"""))
         }
 
     @Test

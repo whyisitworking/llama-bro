@@ -236,15 +236,45 @@ class ShellTest {
                 ).performTextReplacement("CV for the design role")
             compose.onNodeWithText("Save").performClick()
         }
-        compose.waitUntilAtLeastOneExists(hasText("CV for the design role"), 10_000)
+        // the new title is in the rename field before it is in the drawer: wait for the field to go and the drawer's
+        // row to read it, or the long press lands on the closing sheet and no Delete ever shows (it flaked so once)
+        val renamedRow = hasText("CV for the design role") and hasAnyAncestor(hasTestTag("drawer"))
+        val renameField = hasSetTextAction() and hasText("CV for the design role")
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(renameField).fetchSemanticsNodes().isEmpty() &&
+                compose.onAllNodes(renamedRow).fetchSemanticsNodes().size == 1
+        }
         whileItMoves {
-            compose.onNodeWithText("CV for the design role").performTouchInput { longClick() }
+            compose.onNode(renamedRow).performTouchInput { longClick() }
             compose.waitUntilAtLeastOneExists(hasText("Delete"), 10_000)
         }
         compose.onNodeWithText("Delete").performClick()
         compose.waitUntil(
             10_000,
         ) { compose.onAllNodes(hasText("CV for the design role")).fetchSemanticsNodes().isEmpty() }
+    }
+
+    @Test fun deletingTheOpenChatOpensANewOne() {
+        seedChat("Trip plan", last = "three days in Lisbon")
+        waitForShell()
+        openDrawer()
+        compose.onNodeWithText("Trip plan").performClick()
+        compose.waitUntilAtLeastOneExists(hasText("three days in Lisbon"), 10_000)
+        compose.waitUntilAtLeastOneExists(hasText("Qwen3.5 0.8B", substring = true), 10_000)
+        openDrawer()
+        whileItMoves {
+            compose
+                .onNode(hasText("Trip plan") and hasAnyAncestor(hasTestTag("drawer")))
+                .performTouchInput { longClick() }
+            compose.waitUntilAtLeastOneExists(hasText("Delete"), 10_000)
+        }
+        compose.onNodeWithText("Delete").performClick()
+        // the deleted chat's screen kept its model's name in the header; a new chat in a fresh app has no model yet,
+        // so the name goes only once the screen is a new chat
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText("Qwen3.5 0.8B", substring = true)).fetchSemanticsNodes().isEmpty() &&
+                compose.onAllNodes(hasText("three days in Lisbon")).fetchSemanticsNodes().isEmpty()
+        }
     }
 
     @Test fun switchingLayoutKeepsTheOpenChat() {

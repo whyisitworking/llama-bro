@@ -3,6 +3,7 @@ package com.suhel.llamabro.hub.internal
 import com.suhel.llamabro.hub.CachedModel
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubFile
+import com.suhel.llamabro.hub.PlanOptions
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -10,38 +11,49 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
 /** Local cache enumeration and upstream-compatible removal. No network requests. */
-internal class Cache(private val cacheDir: File, private val resolver: Resolver) {
+internal class Cache(private val cacheDir: File, private val resolver: Resolver, private val copies: LocalCopies) {
     /**
      * The installed copies (D64), then what the refs view adds for a cache from before the installed record. The refs
      * view alone follows `refs/main`, which an online plan or a cancelled update moves off a complete copy, so it would
-     * drop a model that still loads.
+     * drop a model that still loads. Only complete selections are listed: a stopped download leaves its model file
+     * linked before its projector or its other split parts arrive, and that copy doesn't load.
      */
-    fun list(): List<CachedModel> =
-        (installedCopies() + refsView())
+    fun list(): List<CachedModel> {
+        val records =
+            listOf(PlanStore.PLANS, PlanStore.INSTALLED).associateWith { PlanStore.readEvery(cacheDir, it) }
+        return (installedCopies(records.getValue(PlanStore.INSTALLED)) + refsView(records.values.flatten()))
             .distinctBy { it.model.toString() }
             .sortedBy { it.model.toString() }
+    }
 
-    /** Each installed record whose model files are all on disk, named `repo:TAG` as the refs view names it. */
-    private fun installedCopies(): List<CachedModel> =
-        PlanStore.readEvery(cacheDir, PlanStore.INSTALLED).mapNotNull { (model, record) ->
+    /** Each installed record whose files are all on disk, named `repo:TAG` as the refs view names it. */
+    private fun installedCopies(installed: List<Pair<HfModel, PlanStore.Record>>): List<CachedModel> =
+        installed.mapNotNull { (model, record) ->
             val parts = record.files.filter { it.role == HubFile.Role.Model }
-            val onDisk =
-                parts.isNotEmpty() &&
-                    parts.all { file ->
-                        val folder = repoFolder(file.repo ?: model.repo)
-                        val path = File(cacheDir, "$folder/snapshots/${file.commit ?: record.commit}/${file.path}")
-                        path.isFile && path.length() == file.size
-                    }
-            if (!onDisk) return@mapNotNull null
+            if (parts.isEmpty() || !onDisk(model, record)) return@mapNotNull null
             val tag = splitInfo(parts.first().path).tag
             CachedModel(if (tag.isEmpty()) model else HfModel("${model.repo}:$tag"), parts.sumOf { it.size })
         }
 
-    /** Upstream's view: each tag in the snapshot `refs/main` names. */
-    private fun refsView(): List<CachedModel> =
+    /** Whether every file [record] names is in its snapshot at its recorded size. */
+    private fun onDisk(model: HfModel, record: PlanStore.Record): Boolean =
+        record.files.all { file ->
+            val folder = repoFolder(file.repo ?: model.repo)
+            val path = File(cacheDir, "$folder/snapshots/${file.commit ?: record.commit}/${file.path}")
+            path.isFile && path.length() == file.size
+        }
+
+    /**
+     * Upstream's view: each tag in the snapshot `refs/main` names whose split parts are all there. A tag the SDK holds
+     * a plan or installed record of is listed only when one of those records is complete or the tag's default
+     * selection loads from disk as `source` would load it, since the snapshot alone can't tell a stopped download from
+     * a copy made without a projector (D89).
+     */
+    private fun refsView(records: List<Pair<HfModel, PlanStore.Record>>): List<CachedModel> =
         cacheDir
             .listFiles()
             .orEmpty()
@@ -56,17 +68,31 @@ internal class Cache(private val cacheDir: File, private val resolver: Resolver)
                         val info = splitInfo(file.path)
                         info.tag.takeIf { info.index == 1 && it.isNotEmpty() && !nameIsSidecar(info.prefix) }
                     }.distinct()
-                    .map { tag ->
+                    .mapNotNull { tag ->
                         val primary =
                             files.first { file ->
                                 val info = splitInfo(file.path)
                                 info.index == 1 && info.tag == tag && !nameIsSidecar(info.prefix)
                             }
-                        CachedModel(HfModel("$repo:$tag"), splitFiles(files, primary).sumOf { it.sizeBytes })
+                        val parts = splitFiles(files, primary)
+                        val count = splitInfo(primary.path).count
+                        val ofTag = records.filter { (model, record) -> model.repo == repo && tagOf(record) == tag }
+                        val complete =
+                            (count <= 1 || parts.size == count) &&
+                                (
+                                    ofTag.isEmpty() ||
+                                        ofTag.any { (model, record) -> onDisk(model, record) } ||
+                                        copies.loads(HfModel("$repo:$tag"), PlanOptions())
+                                )
+                        CachedModel(HfModel("$repo:$tag"), parts.sumOf { it.sizeBytes }).takeIf { complete }
                     }
             }.toList()
 
-    fun delete(model: HfModel): Boolean {
+    /** The tag of [record]'s model file, as the refs view reads it from a snapshot. */
+    private fun tagOf(record: PlanStore.Record): String? =
+        record.files.firstOrNull { it.role == HubFile.Role.Model }?.let { splitInfo(it.path).tag }
+
+    suspend fun delete(model: HfModel): Boolean {
         val repoDir = File(cacheDir, repoFolder(model.repo))
         val tag = model.tag?.uppercase()
         val removed =
@@ -90,17 +116,21 @@ internal class Cache(private val cacheDir: File, private val resolver: Resolver)
                 }
             }
         val (plansRemoved, partials) = removePlans(model)
-        // A removed selection's unfinished downloads go too, unless another selection still plans them.
+        // A removed selection's unfinished downloads go too, unless another selection still plans them. Each under its
+        // blob's lock, so a download in another process finishes or lets go of it first.
         var partialsRemoved = false
         for (oid in partials) {
-            partialsRemoved =
-                File(repoDir, "blobs/$oid.downloadInProgress").delete() || partialsRemoved
+            val removedPartial =
+                Locks.withFileLock(File(cacheDir, ".locks/${repoDir.name}/$oid.lock")) {
+                    File(repoDir, "blobs/$oid.downloadInProgress").delete()
+                }
+            partialsRemoved = removedPartial || partialsRemoved
         }
         return removed || plansRemoved || partialsRemoved
     }
 
     /** Removes the snapshot entries [select] picks in each snapshot, then the blobs no entry links any more. */
-    private fun removeEntries(repoDir: File, select: (List<RepoFile>) -> Set<String>): Boolean {
+    private suspend fun removeEntries(repoDir: File, select: (List<RepoFile>) -> Set<String>): Boolean {
         val snapshots = File(repoDir, "snapshots")
         if (!snapshots.isDirectory) return false
         val toRemove = mutableListOf<Path>()
@@ -125,7 +155,7 @@ internal class Cache(private val cacheDir: File, private val resolver: Resolver)
                 if (isValidSubpath(snapshot.toPath(), relative)) RepoFile(relative, sizeBytes = file.length()) else null
             }.toList()
 
-    private fun removeTag(repoDir: File, tag: String): Boolean {
+    private suspend fun removeTag(repoDir: File, tag: String): Boolean {
         val snapshots = File(repoDir, "snapshots")
         if (!snapshots.isDirectory) return false
         val toRemove = mutableListOf<Path>()
@@ -184,28 +214,41 @@ internal class Cache(private val cacheDir: File, private val resolver: Resolver)
         return removeAndCollect(repoDir, snapshots, toRemove)
     }
 
-    private fun removeAndCollect(repoDir: File, snapshots: File, toRemove: List<Path>): Boolean {
+    /**
+     * Removes [toRemove], then each blob they linked that no entry links any more. Each blob is checked again and
+     * removed under its download lock, so a download of another tag that links it meanwhile keeps it, and one that
+     * comes after finds it gone and fetches it again.
+     */
+    private suspend fun removeAndCollect(repoDir: File, snapshots: File, toRemove: List<Path>): Boolean {
         if (toRemove.isEmpty()) return false
         val blobs = File(repoDir, "blobs").toPath().toAbsolutePath().normalize()
         val removedBlobTargets = toRemove.mapNotNull { path -> blobTarget(path, blobs) }.toSet()
         for (path in toRemove) Files.deleteIfExists(path)
-        val remainingBlobTargets =
-            snapshots
-                .walkTopDown()
-                .filter { Files.isSymbolicLink(it.toPath()) }
-                .mapNotNull { blobTarget(it.toPath(), blobs) }
-                .toSet()
-        for (blob in removedBlobTargets - remainingBlobTargets) Files.deleteIfExists(blob)
+        HubTestHooks.onPhase?.invoke("deleteEntries")
+        for (blob in removedBlobTargets) {
+            Locks.withFileLock(File(cacheDir, ".locks/${repoDir.name}/${blob.fileName}.lock")) {
+                val linked =
+                    snapshots
+                        .walkTopDown()
+                        .any { Files.isSymbolicLink(it.toPath()) && blobTarget(it.toPath(), blobs) == blob }
+                if (!linked) Files.deleteIfExists(blob)
+            }
+        }
         return true
     }
 
+    /** The blob [link] points to, or null: no link, or one a download's reclaim removed since it was listed. */
     private fun blobTarget(link: Path, blobs: Path): Path? {
         if (!Files.isSymbolicLink(link)) return null
         val target =
-            link.parent
-                .resolve(Files.readSymbolicLink(link))
-                .toAbsolutePath()
-                .normalize()
+            try {
+                link.parent
+                    .resolve(Files.readSymbolicLink(link))
+                    .toAbsolutePath()
+                    .normalize()
+            } catch (_: NoSuchFileException) {
+                return null
+            }
         return target.takeIf { it.startsWith(blobs) }
     }
 

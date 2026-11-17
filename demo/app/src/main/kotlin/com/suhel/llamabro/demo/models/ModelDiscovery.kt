@@ -6,7 +6,6 @@ import com.suhel.llamabro.hub.HubException
 import com.suhel.llamabro.hub.HubFile
 import com.suhel.llamabro.hub.LlamaBroHub
 import com.suhel.llamabro.hub.SearchResult
-import java.io.IOException
 
 /**
  * A model as a search row: the SDK's grouped result (D68) with the app's name, line and catalog entry. [groupKey] is
@@ -24,7 +23,7 @@ data class SearchModel(
 )
 
 /** The phone couldn't reach Hugging Face at all, as opposed to Hugging Face answering badly. */
-val HubException.offline: Boolean get() = this is HubException.Network && cause is IOException
+val HubException.offline: Boolean get() = this is HubException.Network && unreachable
 
 /**
  * Finding models through the SDK's hub (D68): search, a repo's files, the SDK's memory projection of one file set, and
@@ -105,14 +104,15 @@ object SearchRows {
     /**
      * One row per name, most downloaded first. The SDK groups only uploads tagged as quantized from one original
      * (D68); results it leaves apart can still share a name, and a row's key is its name, as a suggestion's is (a
-     * download started from either shows on both), so a list never holds two rows with one key.
+     * download started from either shows on both), so a list never holds two rows with one key. The row the catalog
+     * knows stands for the name, as in [of], else the most downloaded one.
      */
     fun merge(rows: List<SearchModel>): List<SearchModel> =
         rows
             .groupBy { it.groupKey }
             .values
             .map { same ->
-                val first = same.maxBy { it.downloads }
+                val first = same.firstOrNull { it.catalog != null } ?: same.maxBy { it.downloads }
                 first.copy(
                     downloads = same.sumOf { it.downloads },
                     sees = first.catalog?.sees ?: same.any { it.sees },

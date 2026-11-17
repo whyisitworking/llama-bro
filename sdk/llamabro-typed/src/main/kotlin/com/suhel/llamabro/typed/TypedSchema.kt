@@ -30,12 +30,15 @@ import kotlin.reflect.KClass
  * Properties keep their declaration order, which is the order the model writes them in, required ones first (F143):
  * declare a reasoning field before the answer. A property with a default is optional; objects are closed; a nullable
  * type is `anyOf` with `null`; enums use their serial names; a sealed class is an `anyOf` of its subclasses' objects,
- * each opening with the discriminator as a `const`; `Map<String, V>` is an object of `V`s; an unsigned integer is
- * bounded to its type's range. [LbDescription], [LbRange], [LbLength], [LbPattern] and [LbItems] add their keywords.
+ * each opening with the discriminator as a `const`; `Map<String, V>` is an object of `V`s. An integer is bounded to
+ * its Kotlin type's range (`Byte`, `Short`, `Int` and the unsigned types; a `Long`'s range is the grammar's own), so
+ * the model can't write a number that doesn't decode (D88, F158). [LbDescription], [LbRange], [LbLength], [LbPattern]
+ * and [LbItems] add their keywords.
  *
- * @throws IllegalArgumentException naming the field's path for what a schema can't hold: a recursive type, open
- *   polymorphism, a contextual serializer, a map key that isn't a `String`, a sealed subclass without `@SerialName`,
- *   or an annotation on a type it doesn't bound.
+ * @throws IllegalArgumentException naming the field's path for what a schema can't hold: a recursive type (also one
+ *   that nests itself through its type arguments, as `Node<T>` holding a `Node<List<T>>` does), open polymorphism, a
+ *   contextual serializer, a map key that isn't a `String`, a sealed subclass without `@SerialName`, or an annotation
+ *   on a type it doesn't bound.
  */
 public fun <T> typedSchema(serializer: KSerializer<T>, json: Json = Json): String =
     SchemaWriter(json).schema(serializer.descriptor, ROOT, emptyList(), emptyList()).toString()
@@ -46,15 +49,18 @@ public inline fun <reified T> typedSchema(json: Json = Json): String =
 
 /**
  * Throws [IllegalArgumentException] if [T] has no schema, so an app's unit tests find what a typed call would refuse
- * at its first use. It can't check an `@LbPattern`: llama.cpp rejects the regex it doesn't support when it builds the
- * grammar, so a bad pattern fails the first request, and in a conversation with typed tools every request, since the
- * tools go with each one. Only a test against a real model catches it.
+ * at its first use (for a toolbox's arguments, when `asToolbox()` runs). It can't check an `@LbPattern`: llama.cpp
+ * drops a pattern outside its subset, so the field takes any string, and fails the request on a malformed one (see
+ * [LbPattern]). Only a test against a real model catches either.
  */
 public inline fun <reified T> assertTypedSchema(json: Json = Json) {
     typedSchema<T>(json)
 }
 
 private const val ROOT = "$"
+
+/** How often one class may be open on one path, to stop polymorphic recursion; `Box<Box<String>>` opens it twice. */
+private const val MAX_SAME_CLASS_DEPTH = 8
 
 private class SchemaWriter(private val json: Json) {
     init {
@@ -145,14 +151,15 @@ private class SchemaWriter(private val json: Json) {
         }
         // a description on the value class itself carries to its value, unless the property has its own
         val own = annotations.description() != null
-        val carried = if (own) annotations else annotations + descriptor.annotations.descriptions()
+        val carried = if (own) annotations else annotations + descriptor.annotations.descriptionAnnotations()
         if (descriptor.serialName !in UNSIGNED_MAX) {
             return schema(descriptor.getElementDescriptor(0), path, carried, stack)
         }
-        // the signed twin's own clamp would cut an unsigned bound (a UByte's 200 to a Byte's 127), so the range is
-        // applied here, to the unsigned range
+        // the signed twin's bounds would cut an unsigned value (a UByte's 200 to a Byte's 127), so they are dropped
+        // and the range is applied here, to the unsigned range
         val range = carried.find<LbRange>()
-        val value = schema(descriptor.getElementDescriptor(0), path, carried.filter { it !is LbRange }, stack)
+        val signed = schema(descriptor.getElementDescriptor(0), path, carried.filter { it !is LbRange }, stack)
+        val value = JsonObject(signed.filterKeys { it != "minimum" && it != "maximum" })
         val bounded = if (range == null) value else withRange(value, range, path)
         return unsigned(bounded, descriptor.serialName, UNSIGNED_MAX[descriptor.serialName], path)
     }
@@ -181,18 +188,21 @@ private class SchemaWriter(private val json: Json) {
         return JsonObject(out)
     }
 
-    private fun writeRange(out: MutableMap<String, JsonElement>, range: LbRange, kind: PrimitiveKind, path: String) {
-        require(range.min <= range.max) { refusal(path, "@LbRange's min ${range.min} is above its max ${range.max}") }
-        // an Int field's `max = 10_000_000_000` would otherwise ask the model for a value that can't decode; only a
-        // bound the annotation set is clamped, a default bound stays unwritten
-        val (typeMin, typeMax) = signedBounds(kind)
-        val min = if (range.min == Long.MIN_VALUE) null else maxOf(range.min, typeMin)
-        val max = if (range.max == Long.MAX_VALUE) null else minOf(range.max, typeMax)
-        require((min ?: typeMin) <= (max ?: typeMax)) {
-            refusal(path, "@LbRange leaves no value ${signedName(kind)} can hold")
+    /**
+     * The type's range intersected with the [range] the annotation sets: without it the model may write a number past
+     * an `Int`, which only fails when decoded (D88). A `Long`'s range is llama.cpp's unbounded integer, so a `Long`
+     * gets only the bounds the annotation sets (F158).
+     */
+    private fun writeRange(out: MutableMap<String, JsonElement>, range: LbRange?, kind: PrimitiveKind, path: String) {
+        range?.let {
+            require(it.min <= it.max) { refusal(path, "@LbRange's min ${it.min} is above its max ${it.max}") }
         }
-        min?.let { out["minimum"] = JsonPrimitive(it) }
-        max?.let { out["maximum"] = JsonPrimitive(it) }
+        val (typeMin, typeMax) = signedBounds(kind)
+        val min = maxOf(range?.min ?: Long.MIN_VALUE, typeMin)
+        val max = minOf(range?.max ?: Long.MAX_VALUE, typeMax)
+        require(min <= max) { refusal(path, "@LbRange leaves no value ${signedName(kind)} can hold") }
+        if (min != Long.MIN_VALUE) out["minimum"] = JsonPrimitive(min)
+        if (max != Long.MAX_VALUE) out["maximum"] = JsonPrimitive(max)
     }
 
     private fun signedName(kind: PrimitiveKind) =
@@ -228,7 +238,7 @@ private class SchemaWriter(private val json: Json) {
                 checkAnnotations(path, annotations, "an integer", LbRange::class)
                 out["type"] = str("integer")
                 out.describe(description)
-                annotations.find<LbRange>()?.let { writeRange(out, it, kind, path) }
+                writeRange(out, annotations.find<LbRange>(), kind, path)
             }
 
             PrimitiveKind.FLOAT, PrimitiveKind.DOUBLE -> {
@@ -325,6 +335,15 @@ private class SchemaWriter(private val json: Json) {
     ): JsonObject {
         require(descriptor !in stack) {
             refusal(path, "${descriptor.serialName} is recursive, and a schema of it would never end")
+        }
+        // a class holding itself with other type arguments (`Node<T>` holding a `Node<List<T>>`) is a new descriptor
+        // at every level, so the check above never fires; no real schema opens one class this often on one path
+        require(stack.count { it.serialName == descriptor.serialName } < MAX_SAME_CLASS_DEPTH) {
+            refusal(
+                path,
+                "${descriptor.serialName} holds itself through its type arguments (as Node<T> holding a " +
+                    "Node<List<T>> does), so a schema of it would never end",
+            )
         }
         val inner = stack + descriptor
         val properties = LinkedHashMap<String, JsonElement>()
@@ -447,7 +466,7 @@ private val JSON_TREE_TYPES =
         .map { "kotlinx.serialization.json.$it" }
         .toSet()
 
-private fun List<Annotation>.descriptions(): List<Annotation> = filterIsInstance<LbDescription>()
+private fun List<Annotation>.descriptionAnnotations(): List<Annotation> = filterIsInstance<LbDescription>()
 
 private fun List<Annotation>.description(): String? = filterIsInstance<LbDescription>().firstOrNull()?.text
 

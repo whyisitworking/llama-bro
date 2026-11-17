@@ -2,6 +2,9 @@ package com.suhel.llamabro
 
 import com.suhel.llamabro.internal.LlamaBroRuntime
 import com.suhel.llamabro.internal.MemoryBudget
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -13,6 +16,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /** P2 T7: `ContextSize.Auto` fitted to Android's available memory (D33, F66). */
 class ContextFitTest {
@@ -68,6 +74,40 @@ class ContextFitTest {
             llama.loadModel(ModelSource.file("/b.gguf")).close()
             // the budget is read once the memory stopped rising: 6 GiB, not the 2 GiB right after the close
             assertEquals(6L * 1024 - 1024 - 1024 - 512, budgetIn(e.loadConfigs.last()))
+        }
+
+    @Test
+    fun twoLoadsAtOnceEachFitToTheMemoryTheOtherLeft() =
+        runBlocking {
+            // A2: without one load at a time, both read 8 GiB free before either holds its 3 GiB, and both fit to it
+            val loaded = AtomicInteger()
+            val reads = CountDownLatch(2)
+            val e =
+                FakeEngine().apply {
+                    progress = listOf(0.5f)
+                    // the first load holds on until the other load has read the memory too, or a while if it can't
+                    onStep = { reads.await(LOAD_OVERLAP_MILLIS, TimeUnit.MILLISECONDS) }
+                    makeModel = { FakeModel().also { loaded.incrementAndGet() } }
+                }
+            val llama =
+                LlamaBro(
+                    LlamaBroRuntime(
+                        e,
+                        tempDir(),
+                        null,
+                        LlamaBroConfig.Default,
+                        memorySnapshot = {
+                            reads.countDown()
+                            MemoryBudget.Snapshot(8 * gib - loaded.get() * 3 * gib, gib)
+                        },
+                    ),
+                )
+            listOf("/a.gguf", "/b.gguf")
+                .map { path -> async(Dispatchers.Default) { llama.loadModel(ModelSource.file(path)) } }
+                .awaitAll()
+                .forEach { it.close() }
+            val budgets = synchronized(e.loadConfigs) { e.loadConfigs.map { budgetIn(it) } }
+            assertEquals(listOf(8L * 1024 - 2560, 5L * 1024 - 2560), budgets.sortedByDescending { it })
         }
 
     @Test
@@ -257,3 +297,5 @@ class ContextFitTest {
         assertFalse(noInfo.contextReason.isBlank())
     }
 }
+
+private const val LOAD_OVERLAP_MILLIS = 500L

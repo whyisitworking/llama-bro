@@ -5,8 +5,9 @@
 #   hub-golden     upstream model-resolution self-test and recorded golden cases
 #   contract       the C API vs upstream llama-server, same build, same flags, per model (run.sh); audio on
 #                  upstream's audio test model with a clip spoken at check time (make-test-clip.sh)
-#   tools-ui       llama.cpp's own tools/ui compaction code regenerated in node; must equal the committed golden
-#   api            core and llamabro-typed release public APIs equal their reviewed dumps (D26)
+#   tools-ui       llama.cpp's own Llama Chat compaction code (ui/apps/chat; tools/ui before b12479) regenerated in
+#                  node; must equal the committed golden
+#   api            core, llamabro-typed and llamabro-testing release public APIs equal their reviewed dumps (D26)
 #   hub-api        Hub, hub-work and hub-testing release public APIs equal their dumps (sdk/llamabro-hub*/api/*.api)
 #   quality        ktlint and detekt on every Kotlin module (the root build's qualityCheck; detekt's baselines list what predates it)
 #   lint           Android lint on all SDK libraries, warnings as errors
@@ -21,8 +22,6 @@
 #   device         (--device) phone tests: native, UI, acceptance per model and per acceptance-app flavor (cpu, gpu, full,
 #                  noskel), and each flavor's minified (R8) build
 #   device-contract (--device) the C API vs upstream llama-server on the phone's NPU (tests/device-contract/run.sh)
-#   device-speech (--device) LFM3-Omni-2B speaks through upstream /tts with everything on the NPU (patch 0005, F155;
-#                  tests/device-speech/run.sh, after device-contract, which builds the device tools)
 #   hub-device    (--device) Hub cache and fake download tests on the phone
 #   hub-resume    (--device) acceptance-app kill/force-stop resume and notification checks on the phone
 #
@@ -34,11 +33,17 @@
 #        LB_VISION_MODEL, LB_VISION_MMPROJ a small vision model and its projector in the same filesDir, for VisionTest on
 #        the NPU (default: Qwen3.5 0.8B Q4_K_M and its BF16 projector, the demo's files; F120),
 #        LB_TEST_MODELS_DIR upstream's small test models for embeddings, rerank, LoRA and audio (fetch-test-models.sh)
+# ports: every server on this machine listens on a port the OS picks, so checks in several worktrees run at once
+#        (F159); fixed ones: LB_CONTRACT_PORT (the extra models use +1, audio +4), LB_E2E_PORT, LB_HUB_API_PORT,
+#        LB_HUB_CDN_PORT; on the phone's side see tests/device-contract/run.sh.
+# --device first checks that no other session uses the phone (device-preflight.sh, F150) and holds it until the end.
 set -uo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 sdk="$root/sdk"
 native="$sdk/native"
+# shellcheck source=ports.sh
+. "$sdk/scripts/ports.sh"
 logs="$native/build/check"
 mkdir -p "$logs"
 
@@ -144,27 +149,36 @@ step_contract() {
     for m in "${extra[@]}"; do
         [ -n "$m" ] || continue
         echo "=== contract: $m"
-        LB_TEST_MODEL="$m" LB_TEST_MMPROJ="" LB_CONTRACT_PORT=18182 bash "$native/tests/contract/run.sh" || return 1
+        LB_TEST_MODEL="$m" LB_TEST_MMPROJ="" LB_CONTRACT_PORT="$(contract_port 1)" \
+            bash "$native/tests/contract/run.sh" || return 1
     done
     # audio: the clip through upstream's multipart upload and through attachments (F55, D84), on upstream's audio test model
     echo "=== contract: audio on $(basename "$omni")"
     LB_TEST_MODEL="$omni" LB_TEST_MMPROJ="$omni_mmproj" LB_CONTRACT_REQUESTS="$native/tests/contract/audio.jsonl" \
-        LB_CONTRACT_PORT="$(( ${LB_CONTRACT_PORT:-18181} + 4 ))" bash "$native/tests/contract/run.sh"
+        LB_CONTRACT_PORT="$(contract_port 4)" bash "$native/tests/contract/run.sh"
+}
+
+contract_port() {  # contract_port OFFSET: LB_CONTRACT_PORT + OFFSET when it is set, else 0 (a free one)
+    if [ "${LB_CONTRACT_PORT:-0}" = 0 ]; then echo 0; else echo $((LB_CONTRACT_PORT + $1)); fi
 }
 
 step_tools_ui() {
     local fresh="$logs/compaction-golden.json"
-    TOOLS_UI_LIB="$native/third_party/llama.cpp/tools/ui/src/lib" \
+    TOOLS_UI_LIB="$native/third_party/llama.cpp/ui/apps/chat/src/lib" \
         node --experimental-transform-types --no-warnings "$sdk/scripts/tools-ui/gen-compaction-golden.mjs" > "$fresh" || return 1
     # a difference means upstream's compaction changed: review it, port it, then copy the new golden in
     diff -u "$sdk/llamabro/src/test/resources/tools-ui/compaction-golden.json" "$fresh"
 }
 
 step_e2e() {
-    local port=18183 pid status
+    local port pid status
     "$native/build/host/bin/llama-server" -m "$model" ${mmproj:+--mmproj "$mmproj"} -c 8192 -np 1 --cache-ram 1024 \
-        --ctx-checkpoints 8 --load-mode none --fit off -b 512 -ub 512 --host 127.0.0.1 --port $port > "$logs/e2e-llama-server.log" 2>&1 &
+        --ctx-checkpoints 8 --load-mode none --fit off -b 512 -ub 512 --host 127.0.0.1 --port "${LB_E2E_PORT:-0}" \
+        > "$logs/e2e-llama-server.log" 2>&1 &
     pid=$!
+    port="$(server_port "$logs/e2e-llama-server.log" $pid)" ||
+        { echo "llama-server exited or never listened"; tail -20 "$logs/e2e-llama-server.log"
+          kill $pid 2> /dev/null; wait $pid 2> /dev/null; return 1; }
     for _ in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" > /dev/null && break; sleep 1; done
     # HostEmbeddingTest: typed embed and rerank on upstream's test models (D65); HostAudioTest: speech input through
     # the public API (D84); neither needs a server
@@ -295,34 +309,10 @@ PY
     echo "acceptance: $verdict"
 }
 
-wait_fake_hub() {
-    local server_pid="$1" ready=0
-    for _ in $(seq 1 240); do
-        kill -0 "$server_pid" >/dev/null 2>&1 || return 1
-        if curl -sf http://127.0.0.1:18190/_log >/dev/null 2>&1; then ready=1; break; fi
-        sleep 0.5
-    done
-    [ "$ready" -eq 1 ]
-}
-
 step_hub_device() (
     bash "$sdk/scripts/hub-fake/make-device-corpus.sh" "$logs/corpus-device.json" "$model" "$mmproj" || return 1
-    local server_pid
-    python3 "$sdk/scripts/hub-fake/fake_hub.py" \
-        --corpus "$sdk/scripts/hub-fake/corpus-golden.json" \
-        --corpus "$logs/corpus-device.json" \
-        --api-port 18190 --cdn-port 18191 > "$logs/hub-device-server.log" 2>&1 &
-    server_pid=$!
-    cleanup_hub_device() {
-        adb reverse --remove tcp:18190 >/dev/null 2>&1 || true
-        adb reverse --remove tcp:18191 >/dev/null 2>&1 || true
-        kill "$server_pid" >/dev/null 2>&1 || true
-        wait "$server_pid" >/dev/null 2>&1 || true
-    }
-    trap cleanup_hub_device EXIT
-    wait_fake_hub "$server_pid" || { cat "$logs/hub-device-server.log"; return 1; }
-    adb reverse tcp:18190 tcp:18190 || return 1
-    adb reverse tcp:18191 tcp:18191 || return 1
+    start_fake_hub "$logs/hub-device-server.log" \
+        --corpus "$sdk/scripts/hub-fake/corpus-golden.json" --corpus "$logs/corpus-device.json" || return 1
     local hub_files=/sdcard/Android/data/com.suhel.llamabro.hub.test/files file name
     adb shell "mkdir -p $hub_files" || return 1
     for file in "$model" "$mmproj"; do
@@ -339,30 +329,21 @@ step_hub_device() (
 
 step_hub_resume() (
     bash "$sdk/scripts/hub-fake/make-device-corpus.sh" "$logs/corpus-device.json" "$model" "$mmproj" || return 1
-    local server_pid
-    python3 "$sdk/scripts/hub-fake/fake_hub.py" \
-        --corpus "$logs/corpus-device.json" --api-port 18190 --cdn-port 18191 \
-        --rate-mib-s 30 > "$logs/hub-resume-server.log" 2>&1 &
-    server_pid=$!
-    cleanup_hub_resume() {
-        adb reverse --remove tcp:18190 >/dev/null 2>&1 || true
-        adb reverse --remove tcp:18191 >/dev/null 2>&1 || true
-        kill "$server_pid" >/dev/null 2>&1 || true
-        wait "$server_pid" >/dev/null 2>&1 || true
-    }
-    trap cleanup_hub_resume EXIT
-    wait_fake_hub "$server_pid" || { cat "$logs/hub-resume-server.log"; return 1; }
-    adb reverse tcp:18190 tcp:18190 || return 1
-    adb reverse tcp:18191 tcp:18191 || return 1
+    start_fake_hub "$logs/hub-resume-server.log" --corpus "$logs/corpus-device.json" --rate-mib-s 30 || return 1
     gradle :acceptance:download:installDebug || return 1
     python3 "$sdk/scripts/hub-fake/run_device_resume.py" --out "$logs/hub-resume" \
+        --host-endpoint "http://127.0.0.1:$hub_api/" \
         --apk "$sdk/acceptance/download/build/outputs/apk/debug/download-debug.apk" || return 1
     # fresh install with the notification permission granted (-g): the UI test reads the notification,
     # and Gradle's own reinstall keeps the grant
     adb uninstall com.suhel.llamabro.download || return 1
     adb install -g "$sdk/acceptance/download/build/outputs/apk/debug/download-debug.apk" || return 1
+    local status=0
     gradle :acceptance:download:connectedDebugAndroidTest \
-        -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
+        -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true || status=1
+    # the app stays cached after its run, and the next check's pre-flight refuses a phone with a Llama Bro app running
+    adb shell am force-stop com.suhel.llamabro.download
+    return $status
 )
 
 step_device_contract() {
@@ -386,7 +367,7 @@ run native   ctest --test-dir "$native/build/host" --output-on-failure
 run hub-golden step_hub_golden
 run contract step_contract
 run tools-ui step_tools_ui
-run api      gradle :llamabro:apiCheck :llamabro-typed:apiCheck
+run api      gradle :llamabro:apiCheck :llamabro-typed:apiCheck :llamabro-testing:apiCheck
 run hub-api  gradle :llamabro-hub:apiCheck :llamabro-hub-work:apiCheck :llamabro-hub-testing:apiCheck
 run quality  step_quality
 run lint     gradle :llamabro:lintRelease :llamabro-testing:lintRelease :llamabro-hexagon:lintRelease :llamabro-opencl:lintRelease :llamabro-hub:lintRelease \
@@ -394,11 +375,26 @@ run lint     gradle :llamabro:lintRelease :llamabro-testing:lintRelease :llamabr
 run jvm      step_jvm
 run e2e      step_e2e
 run aar      step_aar
-[ $device -eq 1 ] && run device step_device
-[ $device -eq 1 ] && run hub-device step_hub_device
-[ $device -eq 1 ] && run hub-resume step_hub_resume
-[ $device -eq 1 ] && run device-contract step_device_contract
-[ $device -eq 1 ] && run device-speech bash "$native/tests/device-speech/run.sh"
+device_steps=device,hub-device,hub-resume,device-contract
+wants_device=0
+if [ $device -eq 1 ]; then
+    for s in ${device_steps//,/ }; do [ -z "$only" ] || [[ ",$only," == *",$s,"* ]] && wants_device=1; done
+fi
+if [ $wants_device -eq 1 ]; then
+    # one session per phone (F150): refuse if another uses it, else hold its lock until this script ends
+    printf '%-10s ' preflight
+    if device_lock="$(bash "$sdk/scripts/device-preflight.sh" $$ 2> "$logs/preflight.log")"; then
+        trap 'rm -f "$device_lock"' EXIT
+        echo PASS; cat "$logs/preflight.log"
+        run device step_device
+        run hub-device step_hub_device
+        run hub-resume step_hub_resume
+        run device-contract step_device_contract
+    else
+        echo "FAIL: the phone steps did not run"; sed 's/^/    /' "$logs/preflight.log"
+        results+=("FAIL preflight"); failed=1
+    fi
+fi
 
 echo
 printf '%s\n' "${results[@]}"

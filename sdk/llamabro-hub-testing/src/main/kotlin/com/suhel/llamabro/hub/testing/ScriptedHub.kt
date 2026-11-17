@@ -4,6 +4,7 @@ import com.suhel.llamabro.chat.Sampling
 import com.suhel.llamabro.hub.internal.Response
 import com.suhel.llamabro.hub.internal.Storage
 import com.suhel.llamabro.hub.internal.Transport
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.serialization.json.JsonArray
@@ -55,6 +56,7 @@ internal class ScriptedHub(endpoint: String) : Transport {
     private var commits = 0
     private var rateLimited = 0
     private var retryAfter: Long? = null
+    private val stops = mutableMapOf<String, CompletableDeferred<Unit>>()
 
     @Volatile var downloadMillis: Long = 0
 
@@ -68,6 +70,17 @@ internal class ScriptedHub(endpoint: String) : Transport {
             val commit = Commit("%040x".format(order), order, repo, repo.files.toList())
             repos.getOrPut(id) { mutableListOf() } += commit
         }
+    }
+
+    /**
+     * Makes the next download of [path] in [repo] stop halfway: its body sends the first half, completes the returned
+     * signal, then holds until the request is cancelled. [clearStop] drops a stop that was never reached.
+     */
+    fun stopAt(repo: String, path: String): CompletableDeferred<Unit> =
+        CompletableDeferred<Unit>().also { reached -> synchronized(lock) { stops["$repo/$path"] = reached } }
+
+    fun clearStop(repo: String, path: String) {
+        synchronized(lock) { stops.remove("$repo/$path") }
     }
 
     fun rateLimit(retryAfterSeconds: Long?, times: Int) {
@@ -174,7 +187,13 @@ internal class ScriptedHub(endpoint: String) : Transport {
         val end = minOf(range.last ?: (size - 1), size - 1)
         val slice = file.bytes.copyOfRange(start.toInt(), (end + 1).toInt())
         // a header read (bounded) answers at once; a download is paced so its progress can be seen
-        val body = if (range.last == null) Paced(slice, downloadMillis, job) else slice.inputStream()
+        val stop = if (range.last == null) stops.remove("${path[0]}/${path[1]}/$name") else null
+        val body =
+            when {
+                stop != null -> Stopping(slice, job, stop)
+                range.last == null -> Paced(slice, downloadMillis, job)
+                else -> slice.inputStream()
+            }
         val headers = head + length(slice.size.toLong())
         return if (range.first == null) {
             Response(HTTP_OK, headers, url, body) {}
@@ -329,6 +348,41 @@ private class Paced(private val bytes: ByteArray, private val millis: Long, priv
         const val BYTE_MASK = 0xff
         const val SLICE_MILLIS = 5L
         const val NANOS_PER_MILLI = 1_000_000L
+    }
+}
+
+/**
+ * A download body that sends the first half of [bytes], completes [reached], then holds as a stalled connection does
+ * until [job] (the request's caller) is cancelled, and fails then: what a Pause leaves is a half partial file.
+ */
+private class Stopping(
+    private val bytes: ByteArray,
+    private val job: Job?,
+    private val reached: CompletableDeferred<Unit>,
+) : InputStream() {
+    private val half = bytes.size / 2
+    private var position = 0
+
+    override fun read(): Int {
+        val one = ByteArray(1)
+        return if (read(one, 0, 1) < 0) -1 else one[0].toInt() and BYTE_MASK
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (position < half) {
+            val count = minOf(length, half - position)
+            System.arraycopy(bytes, position, buffer, offset, count)
+            position += count
+            return count
+        }
+        reached.complete(Unit)
+        while (job?.isCancelled == false) Thread.sleep(SLICE_MILLIS)
+        throw IOException("FakeLlamaBroHub stopped this download")
+    }
+
+    private companion object {
+        const val BYTE_MASK = 0xff
+        const val SLICE_MILLIS = 5L
     }
 }
 

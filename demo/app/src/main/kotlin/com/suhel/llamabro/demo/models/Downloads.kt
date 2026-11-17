@@ -1,5 +1,6 @@
 package com.suhel.llamabro.demo.models
 
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.await
 import com.suhel.llamabro.DeviceKind
@@ -152,37 +153,44 @@ class WorkDownloadScheduler(private val manager: Lazy<WorkManager>) : DownloadSc
     }
 
     override suspend fun cancel(model: HfModel) {
-        // awaited: WorkManager keeps work that is still running (KEEP), so a Resume enqueued before the cancel is
-        // recorded would be dropped, and the cancelled run's end would read as the new run's
+        // awaited, so a Resume's enqueue after this cancel doesn't rest on WorkManager running both on its one serial
+        // executor (it does today) to see the work cancelled rather than keep it (KEEP); the cancelled run's late end
+        // is told from the new run's by ModelRepository's Run, not by this
         manager.value.cancelDownload(model).await()
     }
 
     override suspend fun isScheduled(model: HfModel): Boolean = infos(model).first().any { !it.state.isFinished }
 
-    override fun ends(model: HfModel): Flow<Unit> =
-        flow {
-            var live = false
-            infos(model).collect { infos ->
-                if (infos.any { !it.state.isFinished }) {
-                    live = true
-                } else if (live && infos.isNotEmpty()) {
-                    live = false
-                    emit(Unit)
-                }
-            }
-        }
+    override fun ends(model: HfModel): Flow<Unit> = workEnds(infos(model))
 
     private fun infos(model: HfModel) = manager.value.getWorkInfosForUniqueWorkFlow(downloadWorkName(model))
 }
+
+/**
+ * [DownloadScheduler.ends] over one unique work's states as WorkManager emits them: an end once every entry is
+ * finished after one was seen queued or running. A retry goes back to queued, so it is not an end, and an entry that
+ * had already finished before the first emission (an old run kept under the name) is not one either.
+ */
+internal fun workEnds(infos: Flow<List<WorkInfo>>): Flow<Unit> =
+    flow {
+        var live = false
+        infos.collect { infos ->
+            if (infos.any { !it.state.isFinished }) {
+                live = true
+            } else if (live && infos.isNotEmpty()) {
+                live = false
+                emit(Unit)
+            }
+        }
+    }
 
 /** A load was asked for a model that is not on the phone; the app downloads only when the person says Get (D64). */
 class NotOnPhone(val model: HfModel) : Exception("$model is not on the phone")
 
 /**
- * Whether every file of [model] is on the phone, read from disk only. `hub.cached()` alone is not enough: it also lists
- * a model whose first file has arrived while its image reader or later split parts are still missing, and `hub.model`
- * would fetch those in the foreground. `hub.source` reads the installed copy and fails with `NotFound` for such a
- * model.
+ * Whether every file of [model] is on the phone, read from disk only: `hub.source` reads the installed copy and fails
+ * with `NotFound` when there is none. `hub.cached()` lists the same models since D89; the check stays the one a load
+ * makes ([installedModel]).
  */
 suspend fun LlamaBroHub.isInstalled(model: HfModel): Boolean =
     try {
@@ -196,12 +204,14 @@ suspend fun LlamaBroHub.isInstalled(model: HfModel): Boolean =
 suspend fun LlamaBroHub.installed(): List<CachedModel> = cached().filter { isInstalled(it.model) }
 
 /**
- * [model]'s installed copy, as `hub.model` gives it to `llama.loadModel` (D64): a complete copy loads with no network
- * request. `hub.model` downloads what is missing, so a model not wholly on the phone (deleted since the library was
- * read, or still arriving) fails here with [NotOnPhone] instead: the app never starts a download the person didn't
- * ask for.
+ * [model]'s installed copy as local files (D64): `hub.source`, which reads the disk only, so a load never starts a
+ * download the person didn't ask for. `hub.model` would fetch what is missing, and a check before it would leave a
+ * window for a delete between the two. A model not wholly on the phone (deleted since the library was read, or still
+ * arriving) fails with [NotOnPhone].
  */
-suspend fun LlamaBroHub.installedModel(model: HfModel): ModelSource {
-    if (!isInstalled(model)) throw NotOnPhone(model)
-    return model(model)
-}
+suspend fun LlamaBroHub.installedModel(model: HfModel): ModelSource =
+    try {
+        source(model)
+    } catch (_: HubException.NotFound) {
+        throw NotOnPhone(model)
+    }

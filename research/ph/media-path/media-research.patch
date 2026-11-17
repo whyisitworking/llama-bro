@@ -1,0 +1,100 @@
+diff --git a/bridge/src/request.cpp b/bridge/src/request.cpp
+index 1d830c9..3b17d5b 100644
+--- a/bridge/src/request.cpp
++++ b/bridge/src/request.cpp
+@@ -20,6 +20,7 @@
+ 
+ #include <atomic>
+ #include <cerrno>
++#include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
+ #include <functional>
+@@ -51,11 +52,13 @@ struct attachment {
+     std::string name;
+     std::string mime;
+     std::string filename;  // a path's base name, as an upload would carry it
++    std::string path;      // research (W9 step 3): the file's path, for LB_MEDIA=file
+     raw_buffer data;
+ 
+     attachment() { g_live_attachments++; }
+     attachment(attachment && o) noexcept
+-        : name(std::move(o.name)), mime(std::move(o.mime)), filename(std::move(o.filename)), data(std::move(o.data)) {
++        : name(std::move(o.name)), mime(std::move(o.mime)), filename(std::move(o.filename)), path(std::move(o.path)),
++          data(std::move(o.data)) {
+         g_live_attachments++;
+     }
+     attachment(const attachment &) = delete;
+@@ -166,9 +169,20 @@ bool fill_field(json & part, const char * holder, const char * field, const std:
+     const std::string s = obj.at(field).get<std::string>();
+     if (s.rfind(kPlaceholder, 0) != 0) return false;
+     const std::string name = s.substr(std::strlen(kPlaceholder));
++    // research (W9 step 3): LB_MEDIA=file sends a path attachment as file:// (llama-server reads it, --media-path /),
++    // LB_MEDIA=raw sends the buffer's address (llama-server copies it, research patch); unset, base64 as today
++    static const char * lb_media = std::getenv("LB_MEDIA");
+     for (const auto & a : atts) {
+         if (a.name == name) {
+-            obj[field] = data_url(a);
++            if (lb_media && std::string(lb_media) == "file" && !a.path.empty()) {
++                obj[field] = "file://" + a.path.substr(a.path[0] == '/' ? 1 : 0);
++            } else if (lb_media && std::string(lb_media) == "raw") {
++                char buf[64];
++                std::snprintf(buf, sizeof(buf), "raw://%llx:%zu", (unsigned long long) (uintptr_t) a.data.data(), a.data.size());
++                obj[field] = buf;
++            } else {
++                obj[field] = data_url(a);
++            }
+             return true;
+         }
+     }
+@@ -243,7 +257,8 @@ void run_request(lb_model * m, lb_request * r, server_http_context::handler_t ha
+             if (!transcription) {
+                 if (takes_chat_messages(path)) write_placeholders(body, atts, false);
+                 if (takes_embedding_content(path)) write_placeholders(body, atts, true);
+-                atts.clear();  // in the body now, or not wanted by this route
++                // research (W9 step 3): LB_MEDIA=raw hands llama-server these buffers' addresses, so they live on
++                if (!(std::getenv("LB_MEDIA") && std::string(std::getenv("LB_MEDIA")) == "raw")) atts.clear();
+             }
+             return nullptr;
+         };
+@@ -347,6 +362,7 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char
+             if (a.path) {
+                 const char * slash = std::strrchr(a.path, '/');
+                 b.filename = slash ? slash + 1 : a.path;
++                b.path = a.path;
+                 if (!read_path(a.path, b.data, err)) att_error = "attachment \"" + b.name + "\": " + err;
+             } else if (a.fd >= 0) {
+                 if (const int e = read_fd(a.fd, b.data)) att_error = "attachment \"" + b.name + "\": " + fd_error(a.fd, e);
+diff --git a/bridge/src/config.cpp b/bridge/src/config.cpp
+index 0f210a2..6880d3c 100644
+--- a/bridge/src/config.cpp
++++ b/bridge/src/config.cpp
+@@ -82,6 +82,9 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string &
+         bool is_dflash = false;
+         // phone defaults (design §8, D17); keys below override them
+         apply_flag(ctx, "--parallel", "1");
++        if (const char * m = std::getenv("LB_MEDIA"); m && std::string(m) == "file") {
++            apply_flag(ctx, "--media-path", "/");  // research (W9 step 3)
++        }
+         apply_flag(ctx, "--cache-ram", "1024");
+         apply_flag(ctx, "--ctx-checkpoints", "8");
+         apply_flag(ctx, "--batch-size", "512");
+diff --git a/build/llama.cpp/tools/server/server-common.cpp b/build/llama.cpp/tools/server/server-common.cpp
+index 0013c09..c416624 100644
+--- a/build/llama.cpp/tools/server/server-common.cpp
++++ b/build/llama.cpp/tools/server/server-common.cpp
+@@ -1291,6 +1291,14 @@ void handle_media(
+             throw std::runtime_error("Failed to download image");
+         }
+ 
++    } else if (string_starts_with(url, "raw://") && std::getenv("LB_MEDIA")) {
++        // research (W9 step 3): an in-process caller's buffer, "raw://<hex address>:<length>", copied once
++        const auto colon = url.find(':', 6);
++        const uintptr_t addr = (uintptr_t) std::stoull(url.substr(6, colon - 6), nullptr, 16);
++        const size_t    len  = (size_t) std::stoull(url.substr(colon + 1));
++        const auto *    p    = (const unsigned char *) addr;
++        out_files.push_back(raw_buffer(p, p + len));
++
+     } else if (string_starts_with(url, "file://")) {
+         if (media_path.empty()) {
+             throw std::invalid_argument("file:// URLs are not allowed unless --media-path is specified");

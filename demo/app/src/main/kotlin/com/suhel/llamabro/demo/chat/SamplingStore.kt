@@ -6,6 +6,7 @@ import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.attempt
 import com.suhel.llamabro.hub.HfModel
+import com.suhel.llamabro.hub.HubException
 import com.suhel.llamabro.hub.LlamaBroHub
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,12 +34,12 @@ import java.util.concurrent.ConcurrentHashMap
 class SamplingStore(
     private val settings: SettingsRepository,
     private val chats: ChatRepository,
-    private val recommended: suspend (HfModel) -> CardSampling? = { null },
+    private val recommended: suspend (HfModel) -> HubCard = { HubCard(null) },
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
 ) {
-    /** The hub's answers so far, by model, kept for the process; a model not here has none yet. */
-    private val answers = MutableStateFlow<Map<HfModel, Lookup>>(emptyMap())
+    /** The hub's answers so far, by model; a model not here has none yet. */
+    private val answers = MutableStateFlow<Map<HfModel, HubCard>>(emptyMap())
 
     /** When each model's last lookup started: one in flight or failed recently is not started again. */
     private val tries = ConcurrentHashMap<HfModel, Long>()
@@ -79,9 +80,8 @@ class SamplingStore(
      */
     fun card(key: HfModel): CardSampling? {
         Catalog.byRepo(key.repo)?.let { return it.sampling }
-        answers.value[key]?.let { return it.card }
         lookUp(key)
-        return null
+        return answers.value[key]?.card
     }
 
     private fun cardOf(key: HfModel): Flow<CardSampling?> =
@@ -92,11 +92,12 @@ class SamplingStore(
                 .onStart { lookUp(key) }
 
     /**
-     * Starts [key]'s lookup unless it has answered, one is under way, or one failed or timed out in the last
-     * [RETRY_MILLIS] (a phone on Wi-Fi with no route would otherwise ask again on every turn).
+     * Starts [key]'s lookup unless it has a [HubCard.final] answer, one is under way, or one started in the last
+     * [RETRY_MILLIS] (a phone on Wi-Fi with no route would otherwise ask again on every turn). An answer given
+     * offline is used meanwhile and asked again later, so a file with no values gets the base model's once online.
      */
     private fun lookUp(key: HfModel) {
-        if (answers.value.containsKey(key)) return
+        if (answers.value[key]?.final == true) return
         val now = clock()
         var start = false
         tries.compute(key) { _, last ->
@@ -104,13 +105,10 @@ class SamplingStore(
         }
         if (!start) return
         scope.launch {
-            val answer = withTimeoutOrNull(LOOKUP_MILLIS) { attempt { Lookup(recommended(key)) } }
+            val answer = withTimeoutOrNull(LOOKUP_MILLIS) { attempt { recommended(key) } }
             if (answer != null) answers.update { it + (key to answer) }
         }
     }
-
-    /** A lookup that answered, [card] null when the hub has no values for the model. */
-    private class Lookup(val card: CardSampling?)
 
     private companion object {
         /** How long a lookup may take before it counts as failed. */
@@ -123,11 +121,31 @@ class SamplingStore(
 }
 
 /**
- * The hub's recommended sampling for [model] as a card the layers read (D60), or null when the hub has none. The
- * catalog's models never get here: their cards state what their makers recommend (F136).
+ * A lookup's answer: [card] null when the hub has no values for the model. [final] is false for an answer given
+ * offline, from the file alone, which is used and asked again later ([SamplingStore]).
  */
-suspend fun LlamaBroHub.recommendedCard(model: HfModel): CardSampling? =
-    recommendedSampling(model).let { recommendedCard(it.fromFile, it.fromBaseModel) }
+class HubCard(val card: CardSampling?, val final: Boolean = true)
+
+/**
+ * The hub's recommended sampling for [model] as a card the layers read (D60). The catalog's models never get here:
+ * their cards state what their makers recommend (F136). Offline, the hub answers from the file alone with no base
+ * model, as it answers for a repo that names none; only then does a look at the repo's files tell the two apart.
+ */
+suspend fun LlamaBroHub.recommendedCard(model: HfModel): HubCard {
+    val recommended = recommendedSampling(model)
+    val card = recommendedCard(recommended.fromFile, recommended.fromBaseModel)
+    return HubCard(card, final = recommended.baseModel != null || !offline(model))
+}
+
+/**
+ * Whether the Hub can't be reached for [model]'s repo now: `files` answers from the cache then, or fails unreachable.
+ */
+private suspend fun LlamaBroHub.offline(model: HfModel): Boolean =
+    try {
+        files(model.repo).offline
+    } catch (e: HubException.Network) {
+        e.unreachable
+    }
 
 /**
  * One card from the hub's two sources (D79). The file's values win, falling back to the base model's: the file's are
