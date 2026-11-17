@@ -13,6 +13,7 @@ import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.models.installedModel
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -115,6 +116,44 @@ class ChatEngineSamplingTest {
                 ?: throw AssertionError("the turn waited for the lookup")
             // nothing the hub didn't say is sent, so the file's own values apply (F17)
             assertFalse(request(0).containsKey("temperature"))
+        }
+
+    @Test fun openingAChatOnAModelTheCatalogLacksStartsTheHubsLookup() =
+        runBlocking {
+            // looked up as the chat opens, not at its first turn, so the first reply can have the hub's values too
+            val thing = HfModel.parse("someone/Thing-GGUF:Q4_K_M")
+            val asked = CompletableDeferred<HfModel>()
+            val engine =
+                ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope, card = {
+                    asked.complete(it)
+                    null
+                })
+            settings.setLastModel(thing.toString())
+            testHub.install(thing)
+            models.changed()
+            engine.open(0)
+            assertEquals(thing, withTimeoutOrNull(5_000) { asked.await() })
+            assertEquals("no turn yet", 0, fake.chatRequests.size)
+        }
+
+    @Test fun aChatOnAModelNotOnThePhoneLooksNothingUpUntilItArrives() =
+        runBlocking {
+            // the lookup reads the file's header, which for a model not on the phone is a network request (D64)
+            val thing = HfModel.parse("someone/Thing-GGUF:Q4_K_M")
+            val asked = CompletableDeferred<HfModel>()
+            val engine =
+                ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope, card = {
+                    asked.complete(it)
+                    null
+                })
+            settings.setLastModel(thing.toString())
+            val chat = engine.open(0)
+            until("the model is known") { chat.current.value == thing }
+            delay(300)
+            assertFalse("asked before the model was on the phone", asked.isCompleted)
+            testHub.install(thing)
+            models.changed()
+            assertEquals(thing, withTimeoutOrNull(5_000) { asked.await() })
         }
 
     @Test fun aChatsOwnValueGoesOverTheModelsAndTheCards() =

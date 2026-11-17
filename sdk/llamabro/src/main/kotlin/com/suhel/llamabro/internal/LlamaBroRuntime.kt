@@ -53,6 +53,7 @@ import kotlinx.serialization.json.long
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import java.io.File
+import kotlin.random.Random
 
 /**
  * The process-wide runtime (design §5): initialises the native runtime on first use, off the caller's thread
@@ -70,8 +71,18 @@ internal class LlamaBroRuntime(
     private val memorySnapshot: () -> MemoryBudget.Snapshot? = { null },
     /** Where lines go when the app's [LlamaBroConfig.logger] is null (logcat on Android, D66). */
     private val defaultLogger: Logger? = null,
+    /** This process's id (`Process.myPid()`), which names its media folder. */
+    private val processId: Int = 0,
+    /** Whether a process runs: an app sees `/proc/<pid>` of its own processes, which are all that use the folder. */
+    private val processAlive: (Int) -> Boolean = { File("/proc/$it").exists() },
 ) {
     private val initLock = Mutex()
+
+    /**
+     * One load at a time, from reading the free memory to the model existing: two loads at once would both fit
+     * `ContextSize.Auto` to the same free memory, and together take about twice it.
+     */
+    private val loadLock = Mutex()
 
     /** How each model reads its attachments (D84). */
     private val mediaIo = MediaIo(engine::readFd, ioDispatcher)
@@ -102,6 +113,8 @@ internal class LlamaBroRuntime(
         // Android discards (D66, F144). A second runtime with a mismatched config therefore swaps the process-wide
         // listener before native init returns status 2; W2's create() refuses such a config in Kotlin first (D70).
         attachLogger()
+        sweepMediaFolders(mediaRoot, mediaDir, processId, processAlive)
+        mediaDir.mkdirs()
         val discovered = discoverBackends()
         discovered.failed.forEach { log(LogLevel.Warn, "backend ${it.name} not loaded: ${it.error}") }
         val error =
@@ -154,6 +167,17 @@ internal class LlamaBroRuntime(
 
     /** `noBackupFilesDir/llamabro/slots/` (design §8). */
     val slotsDir: File get() = File(noBackupDir, "llamabro/slots")
+
+    /** `noBackupFilesDir/llamabro/media/`, shared by every process of the app. */
+    private val mediaRoot: File get() = File(noBackupDir, "llamabro/media")
+
+    /**
+     * `media/<pid>-<random>/`: llama-server's media root, where the bridge links a request's path attachments while it
+     * runs (D87, F157). One per process, since another process of the app may be running requests from its own; the
+     * random part tells this process from an ended one that had the same pid.
+     */
+    private val mediaDir: File =
+        File(mediaRoot, "$processId-${Random.nextLong().toULong().toString(HEX).padStart(HEX_TOKEN_LENGTH, '0')}")
 
     suspend fun devices(): List<DeviceInfo> {
         ensureInit()
@@ -231,16 +255,18 @@ internal class LlamaBroRuntime(
                     } else {
                         source
                     }
-                // a model being closed still holds its weights and KV cache until its native close returns
-                synchronized(closing) { closing.toList() }.awaitAll()
-                awaitMemorySettled()
-                val backends = withContext(ioDispatcher) { nativeBackends() } + discoveryFailures
-                loadOnFirstDevice(
-                    local,
-                    builder,
-                    DeviceResolver.plan(builder.devicePolicy, backends),
-                    backends,
-                ) { p -> progress?.trySend(LoadProgress.Loading(p)) }
+                loadLock.withLock {
+                    // a model being closed still holds its weights and KV cache until its native close returns
+                    synchronized(closing) { closing.toList() }.awaitAll()
+                    awaitMemorySettled()
+                    val backends = withContext(ioDispatcher) { nativeBackends() } + discoveryFailures
+                    loadOnFirstDevice(
+                        local,
+                        builder,
+                        DeviceResolver.plan(builder.devicePolicy, backends),
+                        backends,
+                    ) { p -> progress?.trySend(LoadProgress.Loading(p)) }
+                }
             } finally {
                 progress?.close()
             }
@@ -285,7 +311,8 @@ internal class LlamaBroRuntime(
                         )
                     }
             slotsDir.mkdirs()
-            val configJson = builder.toJson(source, slotsDir.path + "/", candidate.devices, budgetFor(source, builder))
+            val configJson =
+                builder.loadJson(slotsDir, mediaDir, source, candidate.devices, budgetFor(source, builder))
             val result =
                 try {
                     Json.parseToJsonElement(engine.fitEstimate(configJson)) as JsonObject
@@ -423,9 +450,10 @@ internal class LlamaBroRuntime(
         // the second load would start on a cancelled caller's behalf and stop only at its first tick (D67)
         caller.ensureActive()
         val smallest =
-            builder.toJson(
+            builder.loadJson(
+                slotsDir,
+                mediaDir,
                 source,
-                slotsDir.path + "/",
                 candidate.devices,
                 null,
                 encoder?.let { DeviceResolver.encoderConfig(it, candidate) },
@@ -500,9 +528,10 @@ internal class LlamaBroRuntime(
                 slotsDir.mkdirs()
                 val budget = budgetFor(source, builder)
                 val configJson =
-                    builder.toJson(
+                    builder.loadJson(
+                        slotsDir,
+                        mediaDir,
                         source,
-                        slotsDir.path + "/",
                         candidate.devices,
                         budget,
                         encoder?.let { DeviceResolver.encoderConfig(it, candidate) },
@@ -670,6 +699,8 @@ internal class LlamaBroRuntime(
 }
 
 private const val BYTES_PER_MIB = 1024L * 1024L
+private const val HEX = 16
+private const val HEX_TOKEN_LENGTH = 16
 private const val NANOS_PER_MILLI = 1_000_000L
 private const val SETTLE_WINDOW_NANOS = 3_000L * NANOS_PER_MILLI
 private const val SETTLE_MAX_MILLIS = 2_000L
@@ -684,3 +715,27 @@ private fun requireLocal(local: ModelSource, by: String) {
         )
     }
 }
+
+/**
+ * Removes the links a crash left in [root]: the folders of processes that ended (a dead pid, or [pid] from an earlier
+ * process), and anything else that isn't a process's folder. [own] and a running process's folder are left alone.
+ */
+private fun sweepMediaFolders(root: File, own: File, pid: Int, alive: (Int) -> Boolean) {
+    root.listFiles()?.forEach { f ->
+        val owner = f.name.substringBefore('-').toIntOrNull()
+        val ended = owner == null || !f.isDirectory || owner == pid || !alive(owner)
+        if (f != own && ended) f.deleteRecursively()
+    }
+}
+
+/** [ModelConfig.toJson] with the runtime's slot and media folders (design §8, D87). */
+private fun ModelConfig.loadJson(
+    slotsDir: File,
+    mediaDir: File,
+    source: ModelSource,
+    devices: List<String>,
+    memoryBudgetMib: Long?,
+    mmprojDevice: String? = null,
+    smallestContext: Boolean = false,
+): String =
+    toJson(source, slotsDir.path + "/", devices, memoryBudgetMib, mmprojDevice, smallestContext, mediaDir.path + "/")

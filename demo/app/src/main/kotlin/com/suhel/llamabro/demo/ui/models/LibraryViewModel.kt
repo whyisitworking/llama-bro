@@ -2,6 +2,7 @@ package com.suhel.llamabro.demo.ui.models
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.LibraryModel
@@ -69,10 +70,24 @@ class LibraryViewModel(
         _pendingRemove.value = null
     }
 
+    private val _problem = MutableStateFlow<String?>(null)
+
+    /**
+     * A remove or a cancel that couldn't stop the download's work: nothing was deleted, and this line says so, so the
+     * tap isn't lost. Closed with its ✕, or replaced by the next one.
+     */
+    val problem: StateFlow<String?> = _problem.asStateFlow()
+
+    fun dismissProblem() {
+        _problem.value = null
+    }
+
     fun confirmRemove() {
         val model = _pendingRemove.value ?: return
         _pendingRemove.value = null
-        viewModelScope.launch { models.remove(model.key) }
+        viewModelScope.launch {
+            if (!models.remove(model.key)) _problem.value = "Couldn't remove ${model.name}. Try again."
+        }
     }
 
     fun state(key: HfModel): StateFlow<DownloadStatus> = models.state(key)
@@ -81,7 +96,15 @@ class LibraryViewModel(
 
     fun resume(key: HfModel) = models.get(key)
 
-    fun cancel(key: HfModel) = models.cancel(key)
+    fun cancel(key: HfModel) {
+        val cancelled = models.cancel(key)
+        viewModelScope.launch {
+            if (!cancelled.await()) {
+                _problem.value =
+                    "Couldn't cancel the download of ${Catalog.nameOf(key)}. Try again."
+            }
+        }
+    }
 
     private companion object {
         const val STOP_TIMEOUT = 5_000L

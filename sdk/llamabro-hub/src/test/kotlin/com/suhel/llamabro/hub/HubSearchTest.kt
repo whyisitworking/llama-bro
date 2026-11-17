@@ -300,6 +300,26 @@ internal class HubSearchTest {
             )
         }
 
+    @Test fun aCachedHeaderWithNoSamplingIsNotReadAgainFromTheHub() =
+        runBlocking {
+            val transport = ScriptedTransport()
+            transport.model("ggml-org/Plain-GGUF", "Plain-Q4_K_M.gguf", base = null)
+            val cache = Files.createTempDirectory("hub-search-plain-").toFile()
+            val client = hub(transport, cache)
+            client.download(HfModel("ggml-org/Plain-GGUF")).toList()
+            transport.requests.clear()
+            transport.attempts = 0
+
+            val recommended = client.recommendedSampling(HfModel("ggml-org/Plain-GGUF"))
+
+            assertNull(recommended.fromFile)
+            assertEquals(
+                "the file on disk was read and holds no values; the same file on the Hub holds none either",
+                listOf("${ENDPOINT}api/models/ggml-org/Plain-GGUF"),
+                transport.requests,
+            )
+        }
+
     @Test fun offlineACachedModelStillGivesTheFilesValues() =
         runBlocking {
             for (options in listOf<PlanOptions.() -> Unit>({}, { mmproj = false })) {
@@ -320,8 +340,8 @@ internal class HubSearchTest {
                 val cache = Files.createTempDirectory("hub-search-offline-").toFile()
                 val client = hub(transport, cache)
                 client.download(HfModel("ggml-org/Cached-GGUF"), options).toList()
-                // An online plan moves refs/main to a newer commit the phone doesn't hold: only the installed record,
-                // whatever its options, still names the copy on disk (D64).
+                // A started update moves refs/main to a newer commit the phone doesn't hold: only the installed
+                // record, whatever its options, still names the copy on disk (D64).
                 transport.json(
                     "${ENDPOINT}api/models/ggml-org/Cached-GGUF/refs",
                     """{"branches":[{"name":"main","targetCommit":"$NEWER"}]}""",
@@ -330,7 +350,7 @@ internal class HubSearchTest {
                     "${ENDPOINT}api/models/ggml-org/Cached-GGUF/tree/$NEWER?recursive=true",
                     tree(listOf("Cached-Q4_K_M.gguf" to gguf(emptyMap()))),
                 )
-                client.plan(HfModel("ggml-org/Cached-GGUF"), options)
+                client.recordedPlan(HfModel("ggml-org/Cached-GGUF"), options)
                 transport.requests.clear()
                 transport.attempts = 0
                 transport.failWith = HubException.Network("offline", IOException("no route"), true)
@@ -447,12 +467,22 @@ internal class HubSearchTest {
 
     @Test fun anUnreadableOrCorruptLocalHeaderFallsBackToTheHub() =
         runBlocking {
-            // Unreadable (a FileNotFoundException, as a file removed mid-call), or a header that doesn't parse; either
-            // way at the recorded size, so the copy still counts as installed.
+            // A directory where the file was: nothing is installed any more, so there is no local header to read. Then a
+            // header that doesn't parse, and one that ends early, both at the recorded size, so the copy still counts as
+            // installed and the local read fails. No read permission is used: a root run ignores it.
             val spoilers =
                 listOf<(File) -> Unit>(
-                    { it.setReadable(false) },
+                    { blob ->
+                        Files.delete(blob.toPath())
+                        File(blob, "not-a-gguf").apply { parentFile!!.mkdirs() }.writeText("x")
+                    },
                     { RandomAccessFile(it, "rw").use { raf -> raf.write("XXXX".toByteArray()) } },
+                    { blob ->
+                        RandomAccessFile(blob, "rw").use { raf ->
+                            raf.seek(GGUF_METADATA_COUNT_OFFSET)
+                            raf.write(ByteArray(Long.SIZE_BYTES) { if (it == 2) 1 else 0 }) // 65,536 pairs
+                        }
+                    },
                 )
             for (spoil in spoilers) {
                 val transport = ScriptedTransport()
@@ -471,7 +501,6 @@ internal class HubSearchTest {
 
                 assertEquals("the Hub's copy of the header", LFM_SAMPLING, recommended.fromFile)
                 assertTrue(transport.requests.toString(), transport.requests.any { "/resolve/" in it })
-                blob.setReadable(true)
             }
         }
 
@@ -594,6 +623,9 @@ internal class HubSearchTest {
 
     private companion object {
         const val ENDPOINT = "https://hub.test/"
+
+        /** After the magic, the version and the tensor count. */
+        const val GGUF_METADATA_COUNT_OFFSET = 16L
         val COMMIT = "c".repeat(40)
         val NEWER = "d".repeat(40)
         val TOKEN = "hf_" + "a".repeat(34)

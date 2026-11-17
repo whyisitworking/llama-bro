@@ -5,6 +5,7 @@ import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.Limits
 import com.suhel.llamabro.demo.chat.Take
 import com.suhel.llamabro.demo.chat.VoiceRecorder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +28,7 @@ class VoiceComposer(
     /** The photos in the bar, which go with the voice message; [onSent] gets the ones that went. */
     private val photos: () -> List<String>,
     private val onSent: (photos: List<String>) -> Unit,
-    /** A plain line when the microphone can't be opened. */
+    /** A plain line when the microphone can't be opened or a voice message can't be sent. */
     private val problem: (String) -> Unit,
 ) {
     /** The recording under way or waiting. */
@@ -74,6 +75,12 @@ class VoiceComposer(
                     recorder.clear()
                     onSent(sent)
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (ignored: Exception) {
+                // as the typed send: the database refused the message (its chat went meanwhile), so the recording
+                // stays in the bar and the bar says so, rather than the app crashing
+                problem("That message couldn't be sent.")
             } finally {
                 sending.unlock()
             }

@@ -4,8 +4,10 @@ import com.suhel.llamabro.DownloadPhase
 import com.suhel.llamabro.LoadProgress
 import com.suhel.llamabro.chat.Sampling
 import com.suhel.llamabro.hub.DownloadState
+import com.suhel.llamabro.hub.DraftRequest
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubException
+import com.suhel.llamabro.hub.PlanOptions
 import com.suhel.llamabro.hub.SearchSort
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.flow.collect
@@ -25,6 +27,76 @@ import org.junit.Test
 class FakeLlamaBroHubTest {
     private val qwen = "unsloth/Qwen3-4B-GGUF"
     private val model = HfModel("$qwen:Q4_K_M")
+
+    @Test
+    fun aDownloadStoppedAtAFileLeavesTheFilesBeforeItThenResumes() =
+        runBlocking {
+            val vision = HfModel("someone/Seer-GGUF:Q4_K_M")
+            FakeLlamaBroHub {
+                repo(vision.repo) {
+                    gguf("Seer-Q4_K_M.gguf")
+                    gguf("mmproj-F16.gguf")
+                }
+            }.use { fake ->
+                fake.stopDownload(vision, "mmproj-F16.gguf")
+
+                val state = withTimeout(5_000) { fake.hub.progress(vision).first { it != DownloadState.Absent } }
+                assertTrue("the model file and half the projector: $state", state is DownloadState.Partial)
+                assertEquals("not listed", emptyList<HfModel>(), fake.hub.cached().map { it.model })
+                try {
+                    fake.hub.source(vision)
+                    fail("a stopped download is not installed")
+                } catch (expected: HubException.NotFound) {
+                    assertTrue(expected.message.orEmpty(), expected.message.orEmpty().isNotEmpty())
+                }
+
+                val before = fake.requests.size
+                fake.hub.download(vision).collect()
+                val fetched = fake.requests.drop(before).filter { it.startsWith("GET") && "/resolve/" in it }
+                assertEquals("only the rest of the projector: $fetched", 1, fetched.size)
+                assertTrue(fetched.single(), fetched.single().contains("mmproj-F16.gguf bytes="))
+                assertEquals(listOf(vision), fake.hub.cached().map { it.model })
+            }
+        }
+
+    @Test
+    fun aDraftFromAnotherRepoNamedLikeTheModelStopsAloneThenResumes() =
+        runBlocking {
+            val seer = HfModel("someone/Seer-GGUF:Q4_K_M")
+            val withDraft: PlanOptions.() -> Unit = { draft = DraftRequest.dflash(HfModel("someone/Seer-Draft-GGUF")) }
+            FakeLlamaBroHub {
+                repo(seer.repo) { gguf("Seer-Q4_K_M.gguf") }
+                repo("someone/Seer-Draft-GGUF") { gguf("Seer-Q4_K_M.gguf") }
+            }.use { fake ->
+                fake.stopDownload(seer, "Seer-Q4_K_M.gguf", repo = "someone/Seer-Draft-GGUF", configure = withDraft)
+
+                val before = fake.requests.size
+                fake.hub.download(seer, withDraft).collect()
+                val fetched = fake.requests.drop(before).filter { it.startsWith("GET") && "/resolve/" in it }
+                assertEquals("only the rest of the draft: $fetched", 1, fetched.size)
+                assertTrue(fetched.single(), "Seer-Draft-GGUF" in fetched.single() && " bytes=" in fetched.single())
+            }
+        }
+
+    @Test
+    fun stoppingAtAFileTheDownloadDoesNotFetchIsRefused() =
+        runBlocking {
+            FakeLlamaBroHub { repo(qwen) { gguf("Qwen3-4B-Q4_K_M.gguf") } }.use { fake ->
+                try {
+                    fake.stopDownload(model, "mmproj-F16.gguf")
+                    fail("the plan has no such file")
+                } catch (expected: IllegalArgumentException) {
+                    assertTrue(expected.message.orEmpty(), "mmproj-F16.gguf" in expected.message.orEmpty())
+                }
+                fake.hub.download(model).collect()
+                try {
+                    fake.stopDownload(model, "Qwen3-4B-Q4_K_M.gguf")
+                    fail("the file is in the cache already")
+                } catch (expected: IllegalArgumentException) {
+                    assertTrue(expected.message.orEmpty(), "Qwen3-4B-Q4_K_M.gguf" in expected.message.orEmpty())
+                }
+            }
+        }
 
     @Test
     fun scriptedSearchIsReturned() =

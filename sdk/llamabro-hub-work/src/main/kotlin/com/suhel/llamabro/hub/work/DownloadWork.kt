@@ -45,7 +45,12 @@ public fun WorkManager.enqueueDownload(
         downloadRequest(model, mmproj, draft, constraints),
     )
 
-/** What [enqueueDownload] waits for unless the app passes its own: any network connection. */
+/**
+ * What [enqueueDownload] waits for unless the app passes its own: any network connection. Public so an app can add to
+ * the default rather than restate it, for example
+ * `Constraints.Builder(defaultDownloadConstraints()).setRequiresStorageNotLow(true).build()`; a later version that
+ * changes the default reaches those apps too.
+ */
 public fun defaultDownloadConstraints(): Constraints =
     Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 

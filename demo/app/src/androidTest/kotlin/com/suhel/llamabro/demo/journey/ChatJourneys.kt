@@ -171,6 +171,8 @@ class ChatJourneys : Journey() {
         val llama = Catalog.suggested.first { !it.sees }.key
         onPhone(swift, llama)
         robot.addPhotoToGallery()
+        // the fake takes pictures only for a model that sees, as a real one does; set before each load (W7)
+        world.engine.supportsVision = true
         world.engine.reply { content("A blue picture.") }
         see("What's on your mind?")
 
@@ -184,6 +186,7 @@ class ChatJourneys : Journey() {
         shot("2-answered")
 
         // a model that cannot see: the picture is kept, and one plain line says why
+        world.engine.supportsVision = false
         openSwitcher()
         tap(Catalog.nameOf(llama))
         see("Switched to ${Catalog.nameOf(llama)}")

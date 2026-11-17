@@ -50,8 +50,8 @@ class TypedSchemaTest {
     fun primitivesAndStrings() {
         assertSchema(
             obj(
-                """"flag":{"type":"boolean"},"byte":{"type":"integer"},"short":{"type":"integer"},""" +
-                    """"int":{"type":"integer"},"long":{"type":"integer"},"float":{"type":"number"},""" +
+                """"flag":{"type":"boolean"},"byte":$BYTE,"short":$SHORT,""" +
+                    """"int":$INT,"long":{"type":"integer"},"float":{"type":"number"},""" +
                     """"double":{"type":"number"},"char":{"type":"string","minLength":1,"maxLength":1},""" +
                     """"text":{"type":"string"},"id":{"type":"string"}""",
                 "flag",
@@ -92,7 +92,7 @@ class TypedSchemaTest {
         assertSchema(
             obj(
                 """"note":{"anyOf":[{"type":"string"},{"type":"null"}]},""" +
-                    """"count":{"anyOf":[{"type":"integer"},{"type":"null"}]}""",
+                    """"count":{"anyOf":[$INT,{"type":"null"}]}""",
                 "note",
             ),
             typedSchema<WithNullable>(),
@@ -104,7 +104,7 @@ class TypedSchemaTest {
         assertSchema(
             obj(
                 """"note":{"anyOf":[{"type":"string"},{"type":"null"}]},""" +
-                    """"count":{"anyOf":[{"type":"integer"},{"type":"null"}]}""",
+                    """"count":{"anyOf":[$INT,{"type":"null"}]}""",
             ),
             typedSchema<WithNullable>(Json { explicitNulls = false }),
         )
@@ -116,7 +116,7 @@ class TypedSchemaTest {
     @Test
     fun defaultMakesAFieldOptional() {
         assertSchema(
-            obj(""""name":{"type":"string"},"size":{"type":"integer"},"tag":{"type":"string"}""", "name", "tag"),
+            obj(""""name":{"type":"string"},"size":$INT,"tag":{"type":"string"}""", "name", "tag"),
             typedSchema<WithDefaults>(),
         )
     }
@@ -138,7 +138,7 @@ class TypedSchemaTest {
         assertSchema(
             obj(
                 """"zeta":{"type":"string"},"alpha":{"type":"string"},"reasoning":{"type":"string"},""" +
-                    """"answer":{"type":"integer"}""",
+                    """"answer":$INT""",
                 "zeta",
                 "alpha",
                 "reasoning",
@@ -177,7 +177,7 @@ class TypedSchemaTest {
         assertSchema(
             obj(
                 """"items":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":5},""" +
-                    """"tags":{"type":"array","items":{"type":"integer"}}""",
+                    """"tags":{"type":"array","items":$INT}""",
                 "items",
                 "tags",
             ),
@@ -191,7 +191,7 @@ class TypedSchemaTest {
     @Test
     fun mapOfStringIsAdditionalProperties() {
         assertSchema(
-            obj(""""scores":{"type":"object","additionalProperties":{"type":"integer"}}""", "scores"),
+            obj(""""scores":{"type":"object","additionalProperties":$INT}""", "scores"),
             typedSchema<Scores>(),
         )
     }
@@ -256,7 +256,7 @@ class TypedSchemaTest {
                 """"code":{"type":"string","maxLength":10},""" +
                 """"extras":{"type":"array","items":{"type":"string"},"maxItems":3},""" +
                 """"note":{"anyOf":[{"type":"string","description":"When"},{"type":"null"}]},""" +
-                """"plain":{"type":"integer"}},""" +
+                """"plain":$INT},""" +
                 """"required":["guests","nights","name","code","extras","note","plain"],"additionalProperties":false}""",
             typedSchema<Booking>(),
         )
@@ -350,9 +350,39 @@ class TypedSchemaTest {
     @Test
     fun rangeOnASignedTypeIsClampedToItsRange() {
         val props = Json.parseToJsonElement(typedSchema<BigInt>()).jsonObject["properties"]!!.jsonObject
+        assertEquals("-2147483648", props["n"]!!.jsonObject["minimum"].toString())
         assertEquals("2147483647", props["n"]!!.jsonObject["maximum"].toString())
         assertEquals("1", props["small"]!!.jsonObject["minimum"].toString())
         assertEquals("5", props["small"]!!.jsonObject["maximum"].toString())
+    }
+
+    @Serializable
+    data class SignedFields(
+        val byte: Byte,
+        val short: Short,
+        val int: Int,
+        val long: Long,
+        @LbRange(min = 1) val atLeastOne: Int,
+        @LbRange(max = 9) val atMostNine: Short,
+    )
+
+    @Test
+    fun integerFieldsCarryTheirTypesBounds() {
+        // a Long's bounds are the grammar's own unbounded integer, so none is written (F158)
+        assertSchema(
+            obj(
+                """"byte":$BYTE,"short":$SHORT,"int":$INT,"long":{"type":"integer"},""" +
+                    """"atLeastOne":{"type":"integer","minimum":1,"maximum":2147483647},""" +
+                    """"atMostNine":{"type":"integer","minimum":-32768,"maximum":9}""",
+                "byte",
+                "short",
+                "int",
+                "long",
+                "atLeastOne",
+                "atMostNine",
+            ),
+            typedSchema<SignedFields>(),
+        )
     }
 
     @Serializable
@@ -398,8 +428,8 @@ class TypedSchemaTest {
     fun namingStrategyAndSerialNameApply() {
         assertSchema(
             obj(
-                """"first_name":{"type":"string"},"years":{"type":"integer"},""" +
-                    """"nested":${obj(""""inner_value":{"type":"integer"}""", "inner_value")}""",
+                """"first_name":{"type":"string"},"years":$INT,""" +
+                    """"nested":${obj(""""inner_value":$INT""", "inner_value")}""",
                 "first_name",
                 "years",
                 "nested",
@@ -495,7 +525,7 @@ class TypedSchemaTest {
     @Test
     fun nestedGenericsAreNotRecursion() {
         val box = obj(""""value":${obj(""""value":{"type":"string"}""", "value")}""", "value")
-        val inner = obj(""""first":{"type":"integer"},"second":{"type":"integer"}""", "first", "second")
+        val inner = obj(""""first":$INT,"second":$INT""", "first", "second")
         val pair = obj(""""first":{"type":"string"},"second":$inner""", "first", "second")
         assertSchema(obj(""""box":$box,"pair":$pair""", "box", "pair"), typedSchema<Nested>())
     }
@@ -507,6 +537,19 @@ class TypedSchemaTest {
     fun genericRecursionIsRefused() {
         val e = assertThrows(IllegalArgumentException::class.java) { typedSchema<Tree<String>>() }
         assertTrue(e.message, e.message!!.contains("\$.children[]"))
+    }
+
+    @Serializable
+    data class Twisted<T>(val value: T, val deeper: Twisted<List<T>>? = null)
+
+    @Test
+    fun polymorphicRecursionIsRefused() {
+        // each level is a new type (Twisted<Int>, Twisted<List<Int>>, …), so no descriptor repeats: without a
+        // limit the schema would never end
+        val e = assertThrows(IllegalArgumentException::class.java) { typedSchema<Twisted<Int>>() }
+        assertTrue(e.message, e.message!!.contains("\$.deeper"))
+        assertTrue(e.message, e.message!!.contains("Twisted"))
+        assertTrue(e.message, e.message!!.contains("type arguments"))
     }
 
     @Serializable
@@ -613,6 +656,12 @@ class TypedSchemaTest {
                 typedSchema<Clash>(Json { namingStrategy = JsonNamingStrategy.SnakeCase })
             }
         assertTrue(e.message, e.message!!.contains("naming strategy"))
+    }
+
+    private companion object {
+        const val BYTE = """{"type":"integer","minimum":-128,"maximum":127}"""
+        const val SHORT = """{"type":"integer","minimum":-32768,"maximum":32767}"""
+        const val INT = """{"type":"integer","minimum":-2147483648,"maximum":2147483647}"""
     }
 
     private fun assertSchema(expected: String, actual: String) {

@@ -8,6 +8,7 @@ import com.suhel.llamabro.conversation.LbToolAbort
 import com.suhel.llamabro.conversation.LbToolError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.collect
@@ -104,6 +105,45 @@ class AgentLoopTest {
             val result = events.filterIsInstance<ChatEvent.ToolResult>().single()
             assertEquals("Error: city not found", result.result)
             assertSame(cause, result.error)
+        }
+
+    @Test
+    fun aToolsOwnTimeoutIsAToolFailureAndTheTurnGoesOn() =
+        runTest {
+            // A3: withTimeout inside the handler throws a CancellationException while the turn is still active
+            val (engine, model) = setup()
+            engine.model.script(Replies.toolCalls(call("c1")), Replies.text("sorry"))
+            val chat =
+                model.conversation {
+                    tool("get_weather", "w", schema) { withTimeout(10) { awaitCancellation() } }
+                }
+            val events = chat.send("x").toList()
+            assertEquals(
+                """{"role":"tool","tool_call_id":"c1","content":"Error: the tool failed"}""",
+                messagesOf(engine.model.chatBodies[1]).last(),
+            )
+            val result = events.filterIsInstance<ChatEvent.ToolResult>().single()
+            assertTrue(result.error is TimeoutCancellationException)
+            assertEquals(FinishReason.Stop, (events.last() as ChatEvent.Done).reason)
+        }
+
+    @Test
+    fun anErrorFromAToolIsNotAToolFailure() =
+        runTest {
+            // A3: a JVM Error (out of memory, a stack overflow) is not the tool's answer: it ends the turn
+            val (engine, model) = setup()
+            engine.model.script(Replies.toolCalls(call("c1")), Replies.text("sorry"))
+            val chat = model.conversation { tool("get_weather", "w", schema) { throw StackOverflowError("deep") } }
+            val thrown =
+                try {
+                    chat.send("x").collect()
+                    null
+                } catch (e: StackOverflowError) {
+                    e
+                }
+            // a copy (coroutines' stack-trace recovery), so the message identifies it
+            assertEquals("deep", thrown?.message)
+            assertEquals(1, engine.model.chatBodies.size)
         }
 
     @Test

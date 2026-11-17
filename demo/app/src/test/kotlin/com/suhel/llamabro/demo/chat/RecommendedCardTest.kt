@@ -14,11 +14,13 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -37,7 +39,7 @@ class RecommendedCardTest {
 
     private var now = 0L
 
-    private fun store(recommended: suspend (HfModel) -> CardSampling?): SamplingStore {
+    private fun store(recommended: suspend (HfModel) -> HubCard): SamplingStore {
         val settings =
             SettingsRepository(
                 PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "s.preferences_pb") },
@@ -99,6 +101,20 @@ class RecommendedCardTest {
             }
         }
 
+    @Test fun onlyAnAnswerGivenOfflineIsAskedAgain() =
+        runBlocking {
+            FakeLlamaBroHub {
+                // no base model named: online, that is the final answer; offline, it can't be told apart
+                repo("someone/Plain-GGUF") { gguf("Plain-Q4_K_M.gguf", sampling = Sampling { temperature = 0.6f }) }
+            }.use { fake ->
+                val model = HfModel.parse("someone/Plain-GGUF:Q4_K_M")
+                fake.hub.download(model).collect()
+                assertTrue("online, a repo with no base model is settled", fake.hub.recommendedCard(model).final)
+                fake.offline = true
+                assertFalse("offline, asked again later", fake.hub.recommendedCard(model).final)
+            }
+        }
+
     private val other = HfModel.parse("someone/Thing-GGUF:Q4_K_M")
     private val thing = CardSampling(Knobs.of(Knob.Temperature to 0.7f))
 
@@ -108,7 +124,7 @@ class RecommendedCardTest {
             val store =
                 store {
                     asked.incrementAndGet()
-                    null
+                    HubCard(null)
                 }
             val swift = HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M")
             assertEquals(Catalog.byKey(swift)?.sampling, store.card(swift))
@@ -157,9 +173,30 @@ class RecommendedCardTest {
             withTimeout(5_000) { while (asked.get() < 2) delay(10) }
         }
 
+    @Test fun anOfflineAnswerServesNowAndIsAskedAgainLater() =
+        runBlocking {
+            // offline: the file's values, and no base model read; online later: the base model's too
+            val fileOnly = CardSampling(Knobs.of(Knob.TopK to 40f))
+            val asked = AtomicInteger()
+            val store =
+                store {
+                    if (asked.incrementAndGet() == 1) HubCard(fileOnly, final = false) else HubCard(thing)
+                }
+            store.card(other)
+            withTimeout(5_000) { while (store.card(other) == null) delay(10) }
+            assertEquals(fileOnly, store.card(other))
+            assertEquals("not asked again at once", 1, asked.get())
+            now += 5 * 60_000L
+            withTimeout(5_000) { while (store.card(other) != thing) delay(10) }
+            now += 5 * 60_000L
+            store.card(other)
+            delay(100)
+            assertEquals("a final answer is kept", 2, asked.get())
+        }
+
     @Test fun theAnswerServesTheTurnsAfterIt() =
         runBlocking {
-            val store = store { thing }
+            val store = store { HubCard(thing) }
             assertNull("the first turn goes without", store.card(other))
             withTimeout(5_000) { while (store.card(other) == null) delay(10) }
             assertEquals(thing, store.card(other))

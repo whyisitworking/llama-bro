@@ -9,9 +9,11 @@ import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.LlamaBroHub
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,6 +61,8 @@ class ModelRepository(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val host: ModelHost? = null,
     lastUsed: Flow<Map<String, Long>> = flowOf(emptyMap()),
+    /** The models wholly on the phone; a test counts the scans here. */
+    private val installed: suspend () -> List<CachedModel> = { hub.installed() },
 ) {
     private val changes = MutableStateFlow(0)
 
@@ -70,7 +74,7 @@ class ModelRepository(
      */
     private val scan: StateFlow<Scan?> =
         changes
-            .map { version -> Scan(version, hub.installed()) }
+            .map { version -> Scan(version, installed()) }
             .stateIn(scope, SharingStarted.Eagerly, null)
 
     val library: Flow<List<LibraryModel>> =
@@ -123,16 +127,18 @@ class ModelRepository(
         steps.trySend(block)
     }
 
-    private suspend fun stepAndWait(block: suspend () -> Unit) {
-        val done = CompletableDeferred<Unit>()
+    /** Runs [block] as a step and waits for it; false when it failed, which leaves the queue as it was. */
+    private suspend fun stepAndWait(block: suspend () -> Unit): Boolean {
+        val done = CompletableDeferred<Boolean>()
         steps.send {
             try {
                 block()
+                done.complete(true)
             } finally {
-                done.complete(Unit)
+                done.complete(false)
             }
         }
-        done.await()
+        return done.await()
     }
 
     /**
@@ -144,6 +150,7 @@ class ModelRepository(
             if (!hub.isInstalled(model)) {
                 settings.addPendingDownload(model.toString())
                 settings.setDownloadPaused(model.toString(), false)
+                settings.setDownloadNeedsToken(model.toString(), false)
                 when (active.value?.model) {
                     null, model -> start(model)
 
@@ -176,9 +183,17 @@ class ModelRepository(
      */
     private suspend fun ended(run: Run, completed: Boolean) {
         if (active.value != run) return
-        if (!completed && !hub.isInstalled(run.model)) settings.setDownloadPaused(run.model.toString(), true)
+        if (!completed && !hub.isInstalled(run.model)) {
+            val key = run.model.toString()
+            settings.setDownloadPaused(key, true)
+            // the hub keeps why only in this process: a token saved after a restart must still find it refused
+            if (refusedForToken(run.model)) settings.setDownloadNeedsToken(key, true)
+        }
         finish(run.model)
     }
+
+    private fun refusedForToken(model: HfModel): Boolean =
+        (DownloadStatus.of(hub.progress(model).value) as? DownloadStatus.Failed)?.failure?.kind == Kind.Unauthorized
 
     /**
      * The queue as the last process left it: of the pending downloads not paused and not yet on the phone, the one
@@ -209,16 +224,17 @@ class ModelRepository(
         if (active.value == null) waiting.removeFirstOrNull()?.let(::start)
     }
 
-    /** A token was saved: the downloads Hugging Face refused for want of one start again. */
+    /**
+     * A token was saved: the downloads Hugging Face refused for want of one start again, whether refused in this
+     * process or recorded as refused before a restart.
+     */
     fun tokenSaved() {
         scope.launch {
-            val refused =
-                settings.settings
-                    .first()
-                    .pendingDownloads
-                    .mapNotNull { runCatching { HfModel.parse(it) }.getOrNull() }
-                    .filter { (state(it).value as? DownloadStatus.Failed)?.failure?.kind == Kind.Unauthorized }
-            refused.forEach(::get)
+            val saved = settings.settings.first()
+            saved.pendingDownloads
+                .mapNotNull { runCatching { HfModel.parse(it) }.getOrNull() }
+                .filter { it.toString() in saved.downloadsNeedingToken || refusedForToken(it) }
+                .forEach(::get)
         }
     }
 
@@ -234,35 +250,46 @@ class ModelRepository(
         }
     }
 
-    /** Stops the work and deletes what had arrived. */
-    fun cancel(model: HfModel) {
-        scope.launch {
+    /**
+     * Stops the work and deletes what had arrived, on the repository's scope. False when the work couldn't be told to
+     * stop: it may still be writing, so its files stay, and so does the row; the screen says so.
+     */
+    fun cancel(model: HfModel): Deferred<Boolean> =
+        scope.async {
+            val stopped =
+                stepAndWait {
+                    scheduler.cancel(model)
+                    finish(model)
+                }
+            if (stopped) {
+                awaitStopped(model)
+                delete(model)
+                settings.removePendingDownloads(listOf(model.toString()))
+                changed()
+            }
+            stopped
+        }
+
+    /**
+     * Deletes a model from the phone: closes it first when it is in memory (`ModelHost.close`), and unpins it as the
+     * default. Deleting a model a reply is streaming from waits for that reply to end. False, as for [cancel], when
+     * its download's work couldn't be told to stop: nothing is deleted and the model stays listed.
+     */
+    suspend fun remove(model: HfModel): Boolean {
+        val stopped =
             stepAndWait {
                 scheduler.cancel(model)
                 finish(model)
             }
+        if (stopped) {
+            host?.close(model)
             awaitStopped(model)
+            if (settings.settings.first().defaultModel == model.toString()) settings.pinDefault(null)
             delete(model)
             settings.removePendingDownloads(listOf(model.toString()))
             changed()
         }
-    }
-
-    /**
-     * Deletes a model from the phone: closes it first when it is in memory (`ModelHost.close`), and unpins it as the
-     * default. Deleting a model a reply is streaming from waits for that reply to end.
-     */
-    suspend fun remove(model: HfModel) {
-        stepAndWait {
-            scheduler.cancel(model)
-            finish(model)
-        }
-        host?.close(model)
-        awaitStopped(model)
-        if (settings.settings.first().defaultModel == model.toString()) settings.pinDefault(null)
-        delete(model)
-        settings.removePendingDownloads(listOf(model.toString()))
-        changed()
+        return stopped
     }
 
     /** One mapped state per model for the life of the repository; the hub's own state flows live that long too. */
@@ -313,7 +340,7 @@ class ModelRepository(
     internal fun changed() {
         changes.update { it + 1 }
         scope.launch {
-            val onPhone = hub.installed().map { it.model.toString() }.toSet()
+            val onPhone = installed().map { it.model.toString() }.toSet()
             val finished =
                 settings.settings
                     .first()

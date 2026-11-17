@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
+import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
@@ -24,6 +25,19 @@ class Robot {
     private val packageName = instrumentation.targetContext.packageName
 
     fun allowNotifications() = answer("permission_allow_button")
+
+    /**
+     * Grants [permission] as a person who allowed it would have, through the shell; false on a phone whose system
+     * refuses the shell that grant (F150). A journey then takes the refused path, or assumes the grant and is skipped.
+     */
+    fun grant(permission: String): Boolean {
+        try {
+            instrumentation.uiAutomation.grantRuntimePermission(packageName, permission)
+        } catch (refused: SecurityException) {
+            Log.w(TAG, "the system refused to grant $permission: ${refused.message}")
+        }
+        return instrumentation.targetContext.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+    }
 
     /**
      * Answers yes when the system asks. It asks once per install: a journey that follows another finds the question
@@ -207,5 +221,6 @@ class Robot {
         const val JPEG_QUALITY = 90
         const val POLL = 200L
         const val PERMISSION_UI = "com.android.permissioncontroller"
+        const val TAG = "Robot"
     }
 }

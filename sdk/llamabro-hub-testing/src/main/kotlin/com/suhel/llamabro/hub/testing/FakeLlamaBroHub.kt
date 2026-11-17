@@ -1,8 +1,18 @@
 package com.suhel.llamabro.hub.testing
 
 import com.suhel.llamabro.chat.Sampling
+import com.suhel.llamabro.hub.DownloadState
+import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubConfig
+import com.suhel.llamabro.hub.HubException
+import com.suhel.llamabro.hub.HubFile
 import com.suhel.llamabro.hub.LlamaBroHub
+import com.suhel.llamabro.hub.PlanOptions
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import java.io.Closeable
 import java.io.File
 import java.nio.file.Files
@@ -110,6 +120,62 @@ public class FakeLlamaBroHub(script: FakeLlamaBroHub.() -> Unit = {}) : Closeabl
             "a repo id is owner/name, was $id"
         }
         scripted.publish(id, Repo().apply(block))
+    }
+
+    /**
+     * Leaves [model]'s download as a stopped one leaves it on the phone (a Pause, or the app killed): the files the
+     * plan takes before [path] (a file of its plan, which takes them in order: model parts, image encoder, draft) in
+     * the cache, [path] half received, the ones after it not there; its plan recorded and no copy installed. So
+     * `hub.cached()` leaves it out, `hub.source` throws `HubException.NotFound`, `hub.progress` reads
+     * `DownloadState.Partial`, and a `download` resumes it, fetching only the rest. A copy installed before stays the
+     * one that loads, and stays listed. [repo] is the repo [path] comes from: the model's, or for a draft from another
+     * repo ([PlanOptions.draft]'s `from`), that one.
+     *
+     * @throws IllegalArgumentException if [path] is not a file the download would fetch from [repo] (not in the plan,
+     * or in the cache already), or is too small to stop halfway (under 2 bytes).
+     */
+    public suspend fun stopDownload(
+        model: HfModel,
+        path: String,
+        repo: String = model.repo,
+        configure: PlanOptions.() -> Unit = {},
+    ) {
+        val pending = hub.plan(model, configure).files.filterNot { it.cached }
+        // a file of another repo can only be the draft; in the model's own repo, the draft is a dflash- file beside it
+        val named = pending.filter { it.path == path }
+        val file =
+            if (repo == model.repo) {
+                named.firstOrNull { it.role != HubFile.Role.Draft } ?: named.firstOrNull()
+            } else {
+                named.firstOrNull { it.role == HubFile.Role.Draft }
+            }
+        requireNotNull(file) {
+            "$model's download fetches ${pending.map { it.path }.ifEmpty { "nothing" }}, not $repo/$path"
+        }
+        require(file.sizeBytes >= 2) { "$repo/$path is ${file.sizeBytes} bytes: too small to stop halfway" }
+        val reached = scripted.stopAt(repo, path)
+        try {
+            coroutineScope {
+                val download =
+                    launch {
+                        try {
+                            hub.download(model, configure).collect()
+                            reached.completeExceptionally(IllegalStateException("$model downloaded without $path"))
+                        } catch (failed: HubException) {
+                            reached.completeExceptionally(failed)
+                        }
+                    }
+                try {
+                    reached.await()
+                } finally {
+                    download.cancelAndJoin()
+                }
+            }
+        } finally {
+            scripted.clearStop(repo, path)
+        }
+        // the hub reads the stopped state from disk once the transfer has let go; wait for it, so progress reads it
+        hub.progress(model, configure).first { it !is DownloadState.Downloading }
     }
 
     /** Answers the next [times] requests with HTTP 429: `HubException.RateLimited` with [retryAfterSeconds]. */

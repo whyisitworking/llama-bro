@@ -251,7 +251,10 @@ class ChatViewModel(
 
     private val _problem = MutableStateFlow<String?>(null)
 
-    /** A plain line above the bar when a picked photo can't be used; the next successful pick or send clears it. */
+    /**
+     * A plain line above the bar when a picked photo can't be used or a message couldn't be stored; the next successful
+     * pick or send clears it.
+     */
     val problem: StateFlow<String?> = _problem
 
     /** Everything the screen draws apart from the reply being written and the message bar, derived in one place. */
@@ -359,6 +362,11 @@ class ChatViewModel(
                     updateDraft { if (it.text == d.text && it.attachments == d.attachments) ComposerDraft() else it }
                     _problem.value = null
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (ignored: Exception) {
+                // the database refused the message (its chat went meanwhile): the draft stays, and the bar says so
+                _problem.value = "That message couldn't be sent."
             } finally {
                 sending.unlock()
             }

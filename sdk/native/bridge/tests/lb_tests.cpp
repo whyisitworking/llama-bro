@@ -30,6 +30,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <iterator>
+#ifdef __APPLE__
+#include <mach/mach.h>
+#endif
 
 #include "base64.hpp"
 
@@ -212,7 +215,7 @@ static void log_callback_can_reenter() {
 }
 
 static void version_names_build() {
-    LB_CHECK(std::strstr(lb_version(), "b12352") != nullptr);
+    LB_CHECK(std::strstr(lb_version(), "b12479") != nullptr);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -244,8 +247,8 @@ static void props_build_info_names_llama_build() {
     lb_model * model = load_test_model({{"n_ctx", 512}});
     const std::string build_info = model_info(model).at("props").value("build_info", "");
     std::fprintf(stderr, "build_info: %s\n", build_info.c_str());
-    LB_CHECK(build_info.find("b12352") != std::string::npos);
-    LB_CHECK(build_info.find("5676dfb") != std::string::npos);
+    LB_CHECK(build_info.find("b12479") != std::string::npos);
+    LB_CHECK(build_info.find("d92ea9b") != std::string::npos);
     lb_model_free(model);
 }
 
@@ -1095,9 +1098,41 @@ static void fit_counts_the_draft() {
                  (long long) draft_report.at("draft_mib_min").get<int64_t>());
 }
 
-// The projection against a real load (review of P3, F90): the process's peak resident set after loading Qwen3.5 and
-// the DFlash draft at 4096 tokens and answering once. Measured 5,793 projected vs 5,208 MiB peak (1.11; F90's lb-run
-// run peaked at 5,576); the target's recurrent state counted twice would give about 1.26. Runs alone in its process.
+// The process's peak memory in MiB, and the peak compressed: the most of it the host's compressor ever held at once
+// (task_vm_info's compressed_peak, a lifetime peak, not the amount at the footprint's peak). On macOS the footprint
+// ledger's peak, not ru_maxrss: macOS compresses resident pages when the host is short of memory, and they leave the
+// resident set but stay in the footprint, so the peak RSS drifted from 5,081 to 5,781 MiB between runs and fell to
+// 4,558 under pressure (F160). The weights are read into memory, not mapped (F58), so the footprint holds them. Linux
+// has no compressor by default; its peak RSS stays.
+struct peak_memory {
+    double mib;
+    double compressed_mib;
+};
+
+static peak_memory measure_peak_memory() {
+    rusage usage{};
+    LB_CHECK(getrusage(RUSAGE_SELF, &usage) == 0);
+#ifdef __APPLE__
+    constexpr double MiB = 1024.0 * 1024.0;
+    task_vm_info_data_t info{};
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    LB_CHECK(task_info(mach_task_self(), TASK_VM_INFO, (task_info_t) &info, &count) == KERN_SUCCESS);
+    LB_CHECK(count >= TASK_VM_INFO_REV3_COUNT);  // the revision that added ledger_phys_footprint_peak
+    std::fprintf(stderr, "peak RSS %.0f MiB, peak footprint %.0f MiB, peak compressed %.0f MiB\n",
+                 (double) usage.ru_maxrss / MiB, (double) info.ledger_phys_footprint_peak / MiB,
+                 (double) info.compressed_peak / MiB);
+    return {(double) info.ledger_phys_footprint_peak / MiB, (double) info.compressed_peak / MiB};
+#else
+    return {(double) usage.ru_maxrss / 1024.0, 0.0};  // KiB on Linux
+#endif
+}
+
+// The projection against a real load (review of P3, F90): the process's peak memory after loading Qwen3.5 and
+// the DFlash draft at 4096 tokens and answering once. Measured 5,793 projected vs 5,587-5,770 MiB peak footprint
+// at b12352 (1.00-1.04, F160; F90's lb-run run peaked at 5,576 RSS). Since b12479 the load's staging buffer gives
+// its pages back on Apple as soon as it is freed, so the peak is 5,150 MiB (1.125, F164). The target's recurrent
+// state counted twice (+754 MiB) would give about 1.27, above the bound. Under heavy host pressure the footprint
+// can still drop (F160). Runs alone in its process.
 static void dflash_fit_matches_load_rss() {
     init_runtime();
     std::string err;
@@ -1114,15 +1149,15 @@ static void dflash_fit_matches_load_rss() {
     lb_request * req = start(model, "chat", chat_body("Say hello in five words.", 16, false), c);
     c.wait_terminal();
     LB_CHECK(c.terminal == LB_EVENT_DONE);
-    rusage usage{};
-    LB_CHECK(getrusage(RUSAGE_SELF, &usage) == 0);
-#ifdef __APPLE__
-    const double peak = (double) usage.ru_maxrss / (1024.0 * 1024.0);  // bytes on macOS
-#else
-    const double peak = (double) usage.ru_maxrss / 1024.0;             // KiB on Linux
-#endif
-    std::fprintf(stderr, "dflash fit: projected %.0f MiB, peak RSS %.0f MiB, ratio %.3f\n", projected, peak, projected / peak);
-    LB_CHECK(projected >= peak * 0.90 && projected <= peak * 1.18);
+    const peak_memory peak = measure_peak_memory();
+    const double ratio = projected / peak.mib;
+    std::fprintf(stderr, "dflash fit: projected %.0f MiB, peak %.0f MiB, ratio %.3f\n", projected, peak.mib, ratio);
+    if ((ratio < 0.95 || ratio > 1.20) && peak.compressed_mib > peak.mib / 10) {
+        std::fprintf(stderr, "the host was short of memory: a peak of %.0f MiB of this process compressed, which can "
+                             "hide pages from the footprint too (F160); run it again on a quiet machine\n",
+                     peak.compressed_mib);
+    }
+    LB_CHECK(ratio >= 0.95 && ratio <= 1.20);
     lb_request_free(req);
     lb_model_free(model);
 }
@@ -1615,34 +1650,57 @@ static void transcription_path_fd_bytes_same_text() {
 }
 
 // a request's attachment buffers are freed by its end, whether it ran, was cancelled or its model was freed
+// A cancel that lands mid-decode frees the request's attachments before its terminal event. Each request streams a long
+// reply (ignore_eos), and the test cancels only once chunks arrive, so the cancel, not the reply's end, ends it: the
+// terminal event must be CANCELLED. A transcription holds its upload until the end; a chat's bytes are already in the
+// body by the first chunk.
 static void attachment_buffers_freed_on_cancel() {
     lb_model * m = load_omni();
     const std::string clip = test_clip();
     const std::vector<uint8_t> bytes = file_bytes(clip);
+    auto long_transcription = [] {
+        json form = transcription_form();
+        form["stream"] = "true";
+        form["max_tokens"] = "1024";
+        form["ignore_eos"] = true;
+        return form;
+    };
     LB_CHECK(lb_attachments_live() == 0);
     for (const char * endpoint : {"transcriptions", "chat"}) {
         const bool chat = std::strcmp(endpoint, "chat") == 0;
+        json body = long_transcription();
+        if (chat) {
+            body = audio_chat("lb-attachment:0");
+            body["stream"] = true;
+            body["max_tokens"] = 1024;
+            body["ignore_eos"] = true;
+        }
         collector c;
         lb_request * req = nullptr;
-        const json body = chat ? audio_chat("lb-attachment:0") : transcription_form();
         LB_CHECK(start_with(m, endpoint, body, {att_bytes(chat ? "0" : "file", "audio/wav", bytes)}, c, &req) == LB_OK);
-        // read and held by the request; a chat's may already be in the body, freed
-        if (chat) {
-            LB_CHECK(lb_attachments_live() <= 1);
-        } else {
-            LB_CHECK(lb_attachments_live() == 1);
+        c.wait_chunks(4);
+        {
+            std::lock_guard<std::mutex> lk(c.mtx);
+            LB_CHECK(c.n_terminal == 0);  // still decoding: the cancel below is what ends it
         }
+        LB_CHECK(lb_attachments_live() == (chat ? 0 : 1));
         lb_request_cancel(req);
         c.wait_terminal();
+        LB_CHECK(c.terminal == LB_EVENT_CANCELLED && c.n_terminal == 1);
         LB_CHECK(lb_attachments_live() == 0);
         lb_request_free(req);
     }
-    // freeing the model cancels the request; it ends with its buffers freed
+    // freeing the model cancels a transcription in flight; it ends cancelled, with its buffers freed
     collector c;
     lb_request * req = nullptr;
-    LB_CHECK(start_with(m, "transcriptions", transcription_form(), {att_path("file", "audio/wav", clip)}, c, &req) == LB_OK);
+    LB_CHECK(start_with(m, "transcriptions", long_transcription(), {att_path("file", "audio/wav", clip)}, c, &req) == LB_OK);
+    c.wait_chunks(4);
+    LB_CHECK(lb_attachments_live() == 1);
     lb_model_free(m);
-    LB_CHECK(c.n_terminal == 1);
+    {
+        std::lock_guard<std::mutex> lk(c.mtx);
+        LB_CHECK(c.n_terminal == 1 && c.terminal == LB_EVENT_CANCELLED);
+    }
     LB_CHECK(lb_attachments_live() == 0);
     lb_request_free(req);
 }
@@ -1818,12 +1876,13 @@ static void check_cache_covers_previous_prompt(lb_model * m, const std::function
     }
 }
 
-// LB_TEST_MODEL (a real LFM3 GGUF, with LB_TEST_MMPROJ if it has an encoder) replaces the tiny model, for attended runs
+// LB_TEST_LFM3_MODEL (a real LFM3 GGUF, with LB_TEST_LFM3_MMPROJ if it has an encoder) replaces the tiny model, for
+// attended runs; not LB_TEST_MODEL, which check.sh always sets to the main model for the other tests
 static lb_model * load_omni_long() {
-    const std::string own = env_or("LB_TEST_MODEL", "");
+    const std::string own = env_or("LB_TEST_LFM3_MODEL", "");
     if (!own.empty()) {
         json cfg = {{"n_ctx", 8192}};
-        const std::string proj = env_or("LB_TEST_MMPROJ", "");
+        const std::string proj = env_or("LB_TEST_LFM3_MMPROJ", "");
         if (!proj.empty()) {
             cfg["mmproj_path"] = proj;
         }
@@ -1950,6 +2009,112 @@ static void hybrid_swa_cache_replies_equal_uncached() {
     lb_model_free(m);
 }
 
+// D84 amended (F157): with media_dir, a path attachment reaches llama-server as file:// through a link the bridge makes in
+// that directory for the request's lifetime, instead of a base64 data URL. A caller-written file:// reaches only that
+// directory, where the links have unguessable names.
+static std::string make_media_dir() {
+    char t[] = "/tmp/lb-media-XXXXXX";
+    const char * d = mkdtemp(t);
+    LB_CHECK(d != nullptr);
+    return d;
+}
+
+static size_t dir_entries(const std::string & dir) {
+    size_t n = 0;
+    for (const auto & e : std::filesystem::directory_iterator(dir)) {
+        (void) e;
+        n++;
+    }
+    return n;
+}
+
+static lb_model * load_omni_media(const std::string & dir) {
+    return load_at(upstream_test_model("tinyLFM3-Omni-for-testing-Q2_K.gguf"),
+                   {{"mmproj_path", upstream_test_model("mmproj-tinyLFM3-Omni-for-testing-Q2_K.gguf")}, {"n_ctx", 2048},
+                    {"media_dir", dir}});
+}
+
+static void media_dir_path_attachment_same_reply_as_bytes() {
+    const std::string dir = make_media_dir();
+    lb_model * m = load_omni_media(dir);
+    const std::string clip = test_clip();
+    const auto by_path = call_with(m, "chat", audio_chat("lb-attachment:0"), {att_path("0", "audio/wav", clip)});
+    const auto by_bytes = call_with(m, "chat", audio_chat("lb-attachment:0"), {att_bytes("0", "audio/wav", file_bytes(clip))});
+    LB_CHECK(by_path.first == 200 && by_bytes.first == 200);
+    LB_CHECK(by_path.second["choices"][0]["message"]["content"] == by_bytes.second["choices"][0]["message"]["content"]);
+    LB_CHECK(dir_entries(dir) == 0);
+    lb_model_free(m);
+    std::filesystem::remove_all(dir);
+}
+
+static void media_dir_link_lives_until_the_request_ends() {
+    const std::string dir = make_media_dir();
+    lb_model * m = load_omni_media(dir);
+    const std::string clip = test_clip();
+    json body = audio_chat("lb-attachment:0");
+    body["stream"] = true;
+    body["max_tokens"] = 32;
+    {
+        collector c;
+        lb_request * req = nullptr;
+        LB_CHECK(start_with(m, "chat", body, {att_path("0", "audio/wav", clip)}, c, &req) == LB_OK);
+        c.wait_chunks(1);
+        LB_CHECK(dir_entries(dir) == 1);  // the link, while llama-server may still read it
+        // 128 random bits and a 64-bit counter, in hex (D87)
+        for (const auto & e : std::filesystem::directory_iterator(dir)) {
+            LB_CHECK(e.path().filename().string().size() == 32 + 16 + std::string(".wav").size());
+        }
+        c.wait_terminal();
+        LB_CHECK(dir_entries(dir) == 0);
+        lb_request_free(req);
+    }
+    {
+        collector c;
+        lb_request * req = nullptr;
+        LB_CHECK(start_with(m, "chat", body, {att_path("0", "audio/wav", clip)}, c, &req) == LB_OK);
+        lb_request_cancel(req);
+        c.wait_terminal();
+        LB_CHECK(dir_entries(dir) == 0);
+        lb_request_free(req);
+    }
+    lb_model_free(m);
+    std::filesystem::remove_all(dir);
+}
+
+static void media_dir_caller_file_url_reaches_only_the_media_dir() {
+    const std::string dir = make_media_dir();
+    lb_model * m = load_omni_media(dir);
+    const std::string clip = std::filesystem::absolute(test_clip()).string();
+    check_400(call_with(m, "chat", audio_chat("file://" + clip), {}), "file does not exist");
+    check_400(call_with(m, "chat", audio_chat("file://../" + std::filesystem::path(clip).filename().string()), {}),
+              "file path is not allowed");
+    lb_model_free(m);
+    std::filesystem::remove_all(dir);
+}
+
+// F156: on the CPU, /tts with a fixed seed gives the WAV upstream's graph gives, byte for byte. The hash was recorded
+// from the build with patches 0001-0004 only, so it guards the carried patches against changing speech; the speech
+// patches on branch voice/speech-npu (D90) must keep it too.
+static void omni_tts_same_audio_as_upstream() {
+    lb_model * m = load_omni();
+    collector c;
+    lb_request * req = nullptr;
+    const std::string b = json{{"input", "The weather in Paris is cloudy."}, {"seed", 42}, {"response_format", "wav"}}.dump();
+    LB_CHECK(lb_model_request(m, "tts", nullptr, b.data(), b.size(), collector::cb, &c, &req) == LB_OK);
+    c.wait_terminal();
+    LB_CHECK(c.terminal == LB_EVENT_DONE);
+    lb_request_free(req);
+    std::string wav;
+    for (const auto & ch : c.chunks) wav += ch;
+    LB_CHECK(!c.statuses.empty() && c.statuses.front() == 200);
+    LB_CHECK(wav.size() > 44 && wav.compare(0, 4, "RIFF") == 0);
+    uint64_t h = 1469598103934665603ull;
+    for (unsigned char ch : wav) { h ^= ch; h *= 1099511628211ull; }
+    std::fprintf(stderr, "tts: %zu bytes, fnv1a %016llx\n", wav.size(), (unsigned long long) h);
+    LB_CHECK(h == 0x8208b204b9c01943ull);
+    lb_model_free(m);
+}
+
 int main(int argc, char ** argv) {
     const std::map<std::string, std::function<void()>> tests = {
         {"runtime_init_twice_same_config_ok", runtime_init_twice_same_config_ok},
@@ -2027,6 +2192,10 @@ int main(int argc, char ** argv) {
         {"hybrid_swa_cache_covers_short_chat", hybrid_swa_cache_covers_short_chat},
         {"hybrid_swa_cache_reuses_live_state", hybrid_swa_cache_reuses_live_state},
         {"hybrid_swa_cache_replies_equal_uncached", hybrid_swa_cache_replies_equal_uncached},
+        {"omni_tts_same_audio_as_upstream", omni_tts_same_audio_as_upstream},
+        {"media_dir_path_attachment_same_reply_as_bytes", media_dir_path_attachment_same_reply_as_bytes},
+        {"media_dir_link_lives_until_the_request_ends", media_dir_link_lives_until_the_request_ends},
+        {"media_dir_caller_file_url_reaches_only_the_media_dir", media_dir_caller_file_url_reaches_only_the_media_dir},
     };
     if (argc < 2 || !tests.count(argv[1])) {
         std::fprintf(stderr, "usage: lb-tests <test>\n");

@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(LB_LLAMA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/build/llama.cpp" CACHE PATH "Patched llama.cpp copy (prepare-llama.sh)")
 # not a cache entry: a build directory made before an upgrade must not keep the old name
-set(LB_LLAMA_BUILD "b12352")
+set(LB_LLAMA_BUILD "b12479")
 set(LB_VERSION "0.1.0" CACHE STRING "llamabro version")
 option(LB_BUILD_TESTS "Build host tests, lb-run and llama-server" OFF)
 # On by default for Android packaging; host builds keep upstream's names, so the contract test's llama-server
@@ -266,6 +266,10 @@ if(LB_BUILD_TESTS)
         hybrid_swa_cache_covers_short_chat
         hybrid_swa_cache_reuses_live_state
         hybrid_swa_cache_replies_equal_uncached
+        omni_tts_same_audio_as_upstream
+        media_dir_path_attachment_same_reply_as_bytes
+        media_dir_link_lives_until_the_request_ends
+        media_dir_caller_file_url_reaches_only_the_media_dir
     )
     foreach(name ${LB_TESTS})
         add_test(NAME ${name} COMMAND lb-tests ${name})
@@ -275,6 +279,12 @@ if(LB_BUILD_TESTS)
         endif()
         if(DEFINED ENV{LB_TEST_DFLASH})
             set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "LB_TEST_DFLASH=$ENV{LB_TEST_DFLASH}")
+        endif()
+        if(DEFINED ENV{LB_TEST_LFM3_MODEL})
+            set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "LB_TEST_LFM3_MODEL=$ENV{LB_TEST_LFM3_MODEL}")
+        endif()
+        if(DEFINED ENV{LB_TEST_LFM3_MMPROJ})
+            set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "LB_TEST_LFM3_MMPROJ=$ENV{LB_TEST_LFM3_MMPROJ}")
         endif()
         if(DEFINED ENV{LB_TEST_MODELS_DIR})
             set_property(TEST ${name} APPEND PROPERTY ENVIRONMENT "LB_TEST_MODELS_DIR=$ENV{LB_TEST_MODELS_DIR}")

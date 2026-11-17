@@ -1,5 +1,5 @@
 {
- "source": "llama.cpp tools/ui/src/lib/utils/compaction.ts",
+ "source": "llama.cpp ui/apps/chat/src/lib/utils/compaction.ts",
  "contextTemplate": "This conversation was compacted. Summary of the earlier exchange:\n\n{{SUMMARY}}",
  "cases": [
   {

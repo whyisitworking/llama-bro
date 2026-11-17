@@ -143,4 +143,26 @@ class LibraryViewModelTest {
 
     private fun <T> withTimeoutBlocking(block: suspend () -> T): T =
         kotlinx.coroutines.runBlocking { withTimeout(5_000) { block() } }
+
+    @Test fun aRemoveThatCantStopTheWorkSaysSo() {
+        testHub.install(swift)
+        val vm = viewModel()
+        val row = runBlocking { withTimeout(5_000) { vm.rows.first { it?.isNotEmpty() == true } } }!!.single()
+        scheduler.cancelFailure = IllegalStateException("WorkManager's database is gone")
+        vm.askRemove(row)
+        vm.confirmRemove()
+        val line = runBlocking { withTimeout(5_000) { vm.problem.first { it != null } } }
+        assertEquals("Couldn't remove ${row.name}. Try again.", line)
+        assertTrue("nothing was deleted", testHub.onPhone(swift))
+        vm.dismissProblem()
+        assertNull(vm.problem.value)
+    }
+
+    @Test fun aCancelThatCantStopTheWorkSaysSo() {
+        val vm = viewModel()
+        scheduler.cancelFailure = IllegalStateException("WorkManager's database is gone")
+        vm.cancel(deep)
+        val line = runBlocking { withTimeout(5_000) { vm.problem.first { it != null } } }
+        assertEquals("Couldn't cancel the download of Qwen3.5 4B. Try again.", line)
+    }
 }

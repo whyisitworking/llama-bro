@@ -1,5 +1,6 @@
 package com.suhel.llamabro
 
+import com.suhel.llamabro.internal.LlamaBroRuntime
 import com.suhel.llamabro.internal.MtpPolicy
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -29,8 +30,51 @@ class ModelConfigTest {
             val slots = cfg["slot_save_path"]!!.jsonPrimitive.content
             assertTrue(slots, slots.endsWith("llamabro/slots/"))
             assertTrue(File(slots).isDirectory)
+            // path attachments reach llama-server as file:// links made here (D84, F157)
+            // in this process's own folder (A7), named by its pid and a random token
+            val media = cfg["media_dir"]!!.jsonPrimitive.content
+            assertTrue(media, Regex(".*/llamabro/media/\\d+-[0-9a-f]{16}/").matches(media))
+            assertTrue(File(media).isDirectory)
             assertFalse(cfg.containsKey("mmproj_path"))
             assertFalse(cfg.containsKey("speculative"))
+        }
+
+    @Test
+    fun startSweepsOnlyTheMediaFoldersOfProcessesThatEnded() =
+        runTest {
+            // A7: every process of the app shares noBackupFilesDir; a start must not delete a live process's links
+            val media = File(tempDir(), "llamabro/media")
+
+            fun file(path: String) = File(media, path).apply { parentFile!!.mkdirs() }.apply { writeText("link") }
+            val live = file("111-00000000000000aa/a.wav")
+            val ended = file("222-00000000000000bb/b.wav")
+            val earlierWithOurPid = file("7-00000000000000cc/c.wav") // our pid, reused: that process ended
+            val oldLayout = file("0123456789abcdef.wav")
+            val engine = FakeEngine()
+            LlamaBro(
+                LlamaBroRuntime(
+                    engine,
+                    media.parentFile!!.parentFile!!,
+                    "/backends",
+                    LlamaBroConfig.Default,
+                    processId = 7,
+                    processAlive = { it == 111 || it == 7 },
+                ),
+            ).loadModel(ModelSource.file("/m.gguf"))
+            assertTrue(live.exists())
+            assertFalse(ended.parentFile!!.exists())
+            assertFalse(earlierWithOurPid.parentFile!!.exists())
+            assertFalse(oldLayout.exists())
+            val own =
+                File(
+                    Json
+                        .parseToJsonElement(engine.loadConfigs.single())
+                        .jsonObject["media_dir"]!!
+                        .jsonPrimitive.content,
+                )
+            assertTrue(own.isDirectory)
+            assertTrue(own.name, own.name.startsWith("7-"))
+            assertEquals(setOf("111-00000000000000aa", own.name), media.list()!!.toSet())
         }
 
     @Test

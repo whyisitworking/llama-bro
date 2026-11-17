@@ -15,6 +15,7 @@ import com.suhel.llamabro.hub.internal.Cache
 import com.suhel.llamabro.hub.internal.CacheLookup
 import com.suhel.llamabro.hub.internal.HttpTransport
 import com.suhel.llamabro.hub.internal.LocalCopies
+import com.suhel.llamabro.hub.internal.Locks
 import com.suhel.llamabro.hub.internal.NetworkFailures
 import com.suhel.llamabro.hub.internal.PlanStore
 import com.suhel.llamabro.hub.internal.ProgressMeter
@@ -31,13 +32,12 @@ import com.suhel.llamabro.hub.internal.repoFolder
 import com.suhel.llamabro.hub.internal.resolvePlan
 import com.suhel.llamabro.hub.internal.splitInfo
 import com.suhel.llamabro.internal.LogcatLogger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
@@ -49,8 +49,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -59,6 +57,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 /** Resolves and caches Hugging Face models under an app-private directory. */
@@ -75,6 +74,10 @@ public class LlamaBroHub internal constructor(
     internal val parallelDownloads: Int = 1,
     defaultLogger: Logger? = null,
 ) {
+    init {
+        require(parallelDownloads >= 1) { "parallelDownloads must be at least 1, was $parallelDownloads" }
+    }
+
     // D66/F144: the app's logger wins; with none, lines go to the default (logcat `llamabro-hub` from create).
     private val logger: Logger? = config.effectiveLogger(defaultLogger)
     private val degradedSymlinks = AtomicBoolean(false)
@@ -94,9 +97,13 @@ public class LlamaBroHub internal constructor(
                 },
         )
     private val selections = ConcurrentHashMap<String, Pair<HfModel, PlanOptions>>()
+
+    // The models a delete is removing now, one entry per running delete: a download of one of them fails fast.
+    private val deleting = mutableListOf<HfModel>()
     private val plans: PlanStore = PlanStore(cacheDir, storage)
     private val lookup = CacheLookup(cacheDir)
-    private val copies = LocalCopies(cacheDir, Resolver(config.endpoint, cacheDir, transport, storage), storage)
+    private val copies =
+        LocalCopies(cacheDir, Resolver(config.endpoint, cacheDir, transport, storage), storage, logger)
     private val searches = HubSearch(config.endpoint, cacheDir, logger)
 
     internal suspend fun operationTransport(): Transport =
@@ -209,12 +216,17 @@ public class LlamaBroHub internal constructor(
             val token = config.token?.invoke()
             val transport = transportFor(token, config, this@LlamaBroHub.transport, logger)
             val local = copies.installedModelFile(model)?.let { file -> localSampling(searches, file, logger) }
+            // a header read from disk with no values is the answer: the same file on the Hub holds none either, and
+            // asking again would fail offline for a model that is on the phone
             val fromFile =
-                local?.sampling
-                    ?: unlessGated(token, model, logger) {
+                if (local != null) {
+                    local.sampling
+                } else {
+                    unlessGated(token, model, logger) {
                         val plan = planInternal(model, PlanOptions(), transport, record = false)
                         searches.fromRemoteFile(transport, plan)
                     }
+                }
             try {
                 val base = unlessGated(token, model, logger) { searches.baseModelOf(transport, model.repo) }
                 RecommendedSampling(fromFile, base?.let { searches.fromBaseModel(transport, it) }, base)
@@ -227,9 +239,17 @@ public class LlamaBroHub internal constructor(
             }
         }
 
-    /** Resolves [model] online, falling back to the cache when the Hub is unavailable. */
+    /**
+     * Resolves [model] online, falling back to the cache only when the Hub can't be reached: a look that changes
+     * nothing on the phone (no ref moves, no record is written), so what [progress], [cached] and [source] report
+     * stays as it was. Only [download] records a selection.
+     *
+     * @throws HubException.Unauthorized, [HubException.RateLimited] or [HubException.NotFound] when the Hub refuses,
+     * and [HubException.Network] when it answers with an error (a 5xx, a malformed answer), or can't be reached and the
+     * cache holds no match.
+     */
     public suspend fun plan(model: HfModel, configure: PlanOptions.() -> Unit = {}): HubPlan =
-        planInternal(model, PlanOptions().apply(configure), operationTransport())
+        planInternal(model, PlanOptions().apply(configure), operationTransport(), record = false)
 
     /**
      * With [record] false the plan is a look only: no ref or plan record moves, and a refusal is thrown rather than
@@ -328,6 +348,10 @@ public class LlamaBroHub internal constructor(
      * Shares one transfer per selection; collecting again after cancellation resumes partials. When it completes, its
      * files become the installed copy that [model] and [source] load (D64), and the files only the replaced copy used
      * (an older commit's) are removed; files another selection or tag still uses stay.
+     *
+     * Fails with a [HubException]: [HubException.Network] for a connection or I/O failure (retryable). A [delete] of
+     * the model while it runs stops it and ends the flow with a [HubException.Network] that is not retryable, so a
+     * background worker doesn't fetch the deleted model again. Any other exception is a bug, passed through as it is.
      */
     public fun download(model: HfModel, configure: PlanOptions.() -> Unit = {}): Flow<DownloadProgress> {
         val options = PlanOptions().apply(configure)
@@ -351,8 +375,11 @@ public class LlamaBroHub internal constructor(
                         DownloadState.Downloading(update)
                     }
             }.catch { error ->
-                // Only the transfer's own failures: a collector's exceptions pass through untouched.
-                if (error is HubException) state.value = DownloadState.Failed(error)
+                // Only the transfer's own failures: a collector's exceptions pass through untouched. A delete sets the
+                // state from disk itself, whenever this collector gets here.
+                if (error is HubException && error.cause !is DeletedWhileDownloading) {
+                    state.value = DownloadState.Failed(error)
+                }
                 throw error
             }
     }
@@ -440,6 +467,9 @@ public class LlamaBroHub internal constructor(
     }
 
     private suspend fun transfer(model: HfModel, options: PlanOptions, emit: suspend (DownloadProgress) -> Unit) {
+        // A delete gates the model, then stops the transfers it finds; this one ran only after its transfer was
+        // there to find. So either the delete stopped it, or it sees the gate here.
+        synchronized(deleting) { deleting.firstOrNull { deletes(it, model, options) } }?.let { throw stoppedBy(it) }
         val meter = ProgressMeter(config.progressInterval, emit)
         meter.update(DownloadPhase.Resolving, 0, 0, null, 0, 0)
         val requestTransport = operationTransport()
@@ -465,7 +495,11 @@ public class LlamaBroHub internal constructor(
         }
     }
 
-    /** Every file of [plan], [parallelDownloads] at a time, reporting through [meter] as bytes arrive. */
+    /**
+     * Every file of [plan], [parallelDownloads] at a time, taken in the plan's order (model parts, image encoder,
+     * draft), reporting through [meter] as bytes arrive. With one at a time, a download stopped partway holds a prefix
+     * of the plan, and its progress counts the files up in order.
+     */
     private suspend fun downloadFiles(
         plan: HubPlan,
         requestTransport: Transport,
@@ -483,49 +517,74 @@ public class LlamaBroHub internal constructor(
                 openOutput,
                 createSymlink,
             )
-        val permits = Semaphore(parallelDownloads)
+        val next = AtomicInteger()
         coroutineScope {
-            plan.files
-                .mapIndexed { index, file ->
-                    async(Dispatchers.IO) {
-                        permits.withPermit {
-                            downloader.download(file) { delta, verifying ->
-                                val phase = if (verifying) DownloadPhase.Verifying else DownloadPhase.Downloading
-                                meter.update(
-                                    phase,
-                                    done.addAndGet(delta),
-                                    plan.bytesTotal,
-                                    file.path,
-                                    index + 1,
-                                    plan.files.size,
-                                )
-                            }
+            repeat(minOf(parallelDownloads, plan.files.size)) {
+                launch(Dispatchers.IO) {
+                    while (true) {
+                        val index = next.getAndIncrement()
+                        val file = plan.files.getOrNull(index) ?: break
+                        downloader.download(file) { delta, verifying ->
+                            val phase = if (verifying) DownloadPhase.Verifying else DownloadPhase.Downloading
+                            meter.update(
+                                phase,
+                                done.addAndGet(delta),
+                                plan.bytesTotal,
+                                file.path,
+                                index + 1,
+                                plan.files.size,
+                            )
                         }
-                    }
-                }.awaitAll()
-        }
-    }
-
-    /** Lists quantized models already present in the local cache, without a network request. */
-    public suspend fun cached(): List<CachedModel> =
-        withContext(Dispatchers.IO) {
-            Cache(cacheDir, Resolver(config.endpoint, cacheDir, transport, storage)).list()
-        }
-
-    /** Removes [model] from the local cache while keeping files selected by other tags. */
-    public suspend fun delete(model: HfModel): Boolean =
-        withContext(Dispatchers.IO) {
-            val removed = Cache(cacheDir, Resolver(config.endpoint, cacheDir, transport, storage)).delete(model)
-            if (removed) {
-                for ((key, selection) in selections) {
-                    val (selected, options) = selection
-                    if (selected.repo == model.repo || options.draft?.from?.repo == model.repo) {
-                        stateLoads[key]?.cancelAndJoin()
-                        states[key]?.value = diskState(selected, options)
                     }
                 }
             }
-            removed
+        }
+    }
+
+    /**
+     * Lists the models in the local cache that load from it, without a network request: complete selections only, so a
+     * stopped download (its projector or a split part missing) is left out (D89).
+     */
+    public suspend fun cached(): List<CachedModel> =
+        withContext(Dispatchers.IO) {
+            Cache(cacheDir, Resolver(config.endpoint, cacheDir, transport, storage), copies).list()
+        }
+
+    /**
+     * Removes [model] from the local cache while keeping files selected by other tags. Deletes of one repository run
+     * one at a time, in this process and across processes: of two at once for one model, the second finds it gone and
+     * returns false.
+     *
+     * A [download] in this process of what it removes is stopped first, and waited for: one of the repo for a bare
+     * repo, of the same tag for a tag, of the same file for a file (as the model or as its draft). Its flow ends with a
+     * [HubException.Network] that is not retryable, and the model stays deleted. A download of it that starts while
+     * the delete runs fails at once the same way, before it plans or fetches anything.
+     */
+    public suspend fun delete(model: HfModel): Boolean =
+        withContext(Dispatchers.IO) {
+            // Gated before the stop: a download that joins after it fails fast, so none runs while files go.
+            synchronized(deleting) { deleting += model }
+            try {
+                transfers.cancel(stoppedBy(model)) { key ->
+                    selections[key]?.let { (selected, options) -> deletes(model, selected, options) } == true
+                }
+                val removed =
+                    Locks.withFileLock(File(cacheDir, ".locks/${repoFolder(model.repo)}/delete.lock")) {
+                        Cache(cacheDir, Resolver(config.endpoint, cacheDir, transport, storage), copies).delete(model)
+                    }
+                if (removed) {
+                    for ((key, selection) in selections) {
+                        val (selected, options) = selection
+                        if (selected.repo == model.repo || options.draft?.from?.repo == model.repo) {
+                            stateLoads[key]?.cancelAndJoin()
+                            states[key]?.value = diskState(selected, options)
+                        }
+                    }
+                }
+                removed
+            } finally {
+                synchronized(deleting) { deleting -= model }
+            }
         }
 
     /**
@@ -628,6 +687,28 @@ public class LlamaBroHub internal constructor(
 }
 
 private fun HubConfig.effectiveLogger(default: Logger?): Logger? = logger ?: default
+
+/**
+ * Whether deleting [deleted] removes what a download of [selected] with [options] fetches, as the model or as its
+ * draft, matched as the cache's removal matches records.
+ */
+private fun deletes(deleted: HfModel, selected: HfModel, options: PlanOptions): Boolean =
+    deletes(deleted, selected) || options.draft?.from?.let { deletes(deleted, it) } == true
+
+private fun deletes(deleted: HfModel, selected: HfModel): Boolean =
+    selected.repo == deleted.repo &&
+        when {
+            deleted.file != null -> selected.file == deleted.file
+            deleted.tag != null -> selected.file == null && selected.tag == deleted.tag
+            else -> true
+        }
+
+/** The failure a download of what a delete removes ends with: not retryable, so no worker fetches it again. */
+private fun stoppedBy(deleted: HfModel): HubException =
+    HubException.Network("download stopped: $deleted was deleted", DeletedWhileDownloading(deleted), retryable = false)
+
+/** The cause of the failure [LlamaBroHub.delete] ends a running download with. */
+private class DeletedWhileDownloading(model: HfModel) : CancellationException("$model was deleted")
 
 private fun notesFor(listing: RepoListing): List<String> =
     if (listing.files.any { it.path == "preset.ini" }) {

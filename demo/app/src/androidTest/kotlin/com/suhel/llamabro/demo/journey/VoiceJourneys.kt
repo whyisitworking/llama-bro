@@ -1,8 +1,8 @@
 package com.suhel.llamabro.demo.journey
 
 import android.Manifest
-import androidx.test.platform.app.InstrumentationRegistry
 import com.suhel.llamabro.demo.models.Catalog
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -13,12 +13,14 @@ import org.junit.Test
 class VoiceJourneys : Journey() {
     private val swift = Catalog.picks[0].key
 
-    /** A test can't answer the system's permission dialog: the microphone is granted first. */
+    /**
+     * A test can't answer the system's permission dialog: the microphone is granted first. A phone whose system refuses
+     * the shell that grant (F150) can't record here, so these journeys are skipped there, and say why.
+     */
     @Before fun allowMicrophone() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        instrumentation.uiAutomation.grantRuntimePermission(
-            instrumentation.targetContext.packageName,
-            Manifest.permission.RECORD_AUDIO,
+        assumeTrue(
+            "this phone refuses to grant the microphone to the test (F150): no recording to drive",
+            Robot().grant(Manifest.permission.RECORD_AUDIO),
         )
     }
 

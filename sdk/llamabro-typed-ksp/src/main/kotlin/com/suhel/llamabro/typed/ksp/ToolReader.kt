@@ -139,18 +139,41 @@ internal class ToolReader(private val logger: KSPLogger) {
         return if (unannotated.isEmpty() && fields.all { it != null }) ToolArgs.Fields(fields.filterNotNull()) else null
     }
 
-    /** A separate parameter: optional only as nullable `= null` (D61). */
+    /**
+     * A separate parameter: optional only as nullable `= null` (D61), and of a type kotlinx.serialization can write,
+     * so the arguments class the processor writes compiles. Its type keeps a type-use `@Serializable(with = …)`.
+     */
     private fun field(p: KSValueParameter): Field? {
         val name = p.name?.asString() ?: return null
         val type = p.type.resolve()
         val optional = p.hasDefault
-        val problem = if (optional) defaultProblem(name, type.isMarkedNullable, writtenDefault(p)) else null
+        val defaultProblem = if (optional) defaultProblem(name, type.isMarkedNullable, writtenDefault(p)) else null
+        val problem =
+            when {
+                defaultProblem != null -> {
+                    defaultProblem
+                }
+
+                serial.runtimeChosen(type, p.type.annotations) -> {
+                    "parameter $name has type ${type.render()}: a schema can't hold a contextual or open-polymorphic " +
+                        "type; use @Serializable(with = …)"
+                }
+
+                !serial.serializable(type, p.type.annotations) -> {
+                    "parameter $name has type ${type.render()}, which kotlinx.serialization can't serialize: make it " +
+                        "@Serializable, give the type @Serializable(with = …), or take one @Serializable arguments class"
+                }
+
+                else -> {
+                    null
+                }
+            }
         if (problem != null) {
             error(problem, p)
             return null
         }
         val description = p.annotation(LB_TOOL_PARAM)?.arg("description") as? String ?: ""
-        return Field(name, type.render(), description, optional)
+        return Field(name, p.type.renderSerialized(), description, optional)
     }
 
     private fun argumentTypes(f: KSFunctionDeclaration) = f.parameters.filterNot(::isContext).map { it.type.resolve() }

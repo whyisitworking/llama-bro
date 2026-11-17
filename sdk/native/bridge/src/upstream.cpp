@@ -1,4 +1,4 @@
-// Copied word for word from tools/server/server.cpp:64 (b12352), where both functions are static.
+// Copied word for word from tools/server/server.cpp:64 (b12479; unchanged since b12352), where both functions are static.
 // Same copies as the P0 harness research/p0/harness/lb-spike.cpp.
 #include "upstream.h"
 
@@ -42,7 +42,7 @@ server_http_context::handler_t ex_wrapper(server_http_context::handler_t func) {
     };
 }
 
-// From tools/server/server.cpp:118 (b12352), for role SERVER_ROLE_INSTANCE. The --connect
+// From tools/server/server.cpp:118 (b12479; unchanged since b12352), for role SERVER_ROLE_INSTANCE. The --connect
 // branch is replaced by a refusal: server_connect lives in llama-server-impl, which we don't link.
 bool server_prepare_params(common_params & params) {
     {

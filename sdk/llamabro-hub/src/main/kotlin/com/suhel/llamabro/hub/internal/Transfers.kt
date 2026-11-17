@@ -18,13 +18,14 @@ import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.IOException
 
 /** Shares one active transfer for each plan key among its collectors. */
 internal class Transfers(private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)) {
     private sealed interface Terminal {
         data object Complete : Terminal
 
-        class Failed(val error: HubException) : Terminal
+        class Failed(val error: Throwable) : Terminal
     }
 
     private class Snapshot(val progress: DownloadProgress? = null, val terminal: Terminal? = null)
@@ -33,6 +34,12 @@ internal class Transfers(private val scope: CoroutineScope = CoroutineScope(Supe
         val state = MutableStateFlow(Snapshot())
         var collectors: Int = 0
         lateinit var job: Job
+
+        /**
+         * Set by [cancel] before it stops the job: how the transfer ends, whatever the stop makes it throw on the way
+         * (a read that fails as the connection closes is an IOException, a retryable failure).
+         */
+        @Volatile var stoppedWith: HubException? = null
     }
 
     private val lock = Any()
@@ -75,7 +82,7 @@ internal class Transfers(private val scope: CoroutineScope = CoroutineScope(Supe
         } catch (cancelled: CancellationException) {
             // Cancelled from inside (a timeout in the app's token provider, say) while the job still runs: that is a
             // failure every collector must see, or they all wait forever.
-            if (currentCoroutineContext().isActive) {
+            if (currentCoroutineContext().isActive || entry.stoppedWith != null) {
                 val error =
                     HubException.Network(
                         "download cancelled: ${cancelled.message}",
@@ -89,12 +96,38 @@ internal class Transfers(private val scope: CoroutineScope = CoroutineScope(Supe
             throw cancelled
         } catch (error: HubException) {
             finish(key, entry, Terminal.Failed(error))
+        } catch (error: IOException) {
+            finish(key, entry, Terminal.Failed(HubException.Network("download failed: ${error.message}", error, true)))
         } catch (error: Exception) {
-            finish(key, entry, Terminal.Failed(HubException.Network("download failed", error, retryable = true)))
+            // A bug (a parse error, a broken invariant) reaches the collectors as it is: as a retryable network failure
+            // a background worker would retry it for minutes.
+            finish(key, entry, Terminal.Failed(error))
         } catch (error: Throwable) {
             // An Error still ends every collector before it reaches the scope's handler.
             finish(key, entry, Terminal.Failed(HubException.Network("download failed", error, retryable = false)))
             throw error
+        }
+    }
+
+    /**
+     * Stops each transfer whose key [matches] and waits until it has let go of its files, then ends its collectors with
+     * [error]. A later [join] of the key starts a fresh transfer.
+     */
+    suspend fun cancel(error: HubException, matches: (String) -> Boolean) {
+        val stopped =
+            synchronized(lock) {
+                val keys = active.keys.filter(matches)
+                keys.map { active.remove(it)!! }
+            }
+        for (entry in stopped) entry.stoppedWith = error
+        // Out of the map, an entry must still reach its end, or its collectors wait forever.
+        withContext(NonCancellable) {
+            for (entry in stopped) {
+                entry.job.cancelAndJoin()
+                if (entry.state.value.terminal == null) {
+                    entry.state.value = Snapshot(entry.state.value.progress, Terminal.Failed(error))
+                }
+            }
         }
     }
 
@@ -117,7 +150,8 @@ internal class Transfers(private val scope: CoroutineScope = CoroutineScope(Supe
     /** A finished transfer leaves the map, so a later collector starts a fresh one. */
     private fun finish(key: String, entry: Entry, terminal: Terminal) {
         forget(key, entry)
-        entry.state.value = Snapshot(entry.state.value.progress, terminal)
+        val end = entry.stoppedWith?.let { Terminal.Failed(it) } ?: terminal
+        entry.state.value = Snapshot(entry.state.value.progress, end)
     }
 
     private fun forget(key: String, entry: Entry) {

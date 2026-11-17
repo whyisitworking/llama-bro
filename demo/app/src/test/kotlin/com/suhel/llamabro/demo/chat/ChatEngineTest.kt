@@ -331,7 +331,6 @@ class ChatEngineTest {
             chat.send("first", emptyList())
             until("answered") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
             settings.setInstructions("a pilot", "long answers")
-            chat.instructionsChanged()
             chat.send("second", emptyList())
             until("answered again") { rows(chat).let { r -> r.size == 4 && r[3].state == MessageState.Done } }
             val second = fake.chatRequests.last()
@@ -583,7 +582,6 @@ class ChatEngineTest {
             chat.send("a", emptyList())
             until("first") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
             settings.setInstructions("a pilot", "")
-            chat.instructionsChanged()
             chat.send("b", emptyList())
             until("second") { rows(chat).let { r -> r.size == 4 && r[3].state == MessageState.Done } }
             assertTrue(fake.chatRequests.last().contains("About me: a pilot"))
@@ -664,8 +662,8 @@ class ChatEngineTest {
             chat.send("go", emptyList())
             until("streaming") { chat.streaming.value?.text == "slow" }
             val id = chat.chatId.value
-            chat.delete()
-            until("gone") { chats.modelKey(id) == null }
+            engine.delete(id).join()
+            assertNull(chats.modelKey(id))
             until("idle") { !chat.busy.value }
         }
 

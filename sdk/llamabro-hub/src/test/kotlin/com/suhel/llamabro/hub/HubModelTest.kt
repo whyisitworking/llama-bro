@@ -3,6 +3,7 @@ package com.suhel.llamabro.hub
 import com.suhel.llamabro.DownloadPhase
 import com.suhel.llamabro.DownloadProgress
 import com.suhel.llamabro.hub.internal.HttpTransport
+import com.suhel.llamabro.hub.internal.HubTestHooks
 import com.suhel.llamabro.hub.internal.JvmStorage
 import com.suhel.llamabro.hub.internal.Response
 import com.suhel.llamabro.hub.internal.Transport
@@ -33,7 +34,10 @@ import java.nio.ByteOrder
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.thread
 
 /** `hub.model()` as core sees it: a [com.suhel.llamabro.RemoteModelSource] (D64, D75). */
 internal class HubModelTest {
@@ -157,7 +161,8 @@ internal class HubModelTest {
             FakeHub(updateRepo(commit = "b".repeat(40), seed = 51)).use { newer ->
                 val requests = RecordingTransport(HttpTransport(newer.apiUrl, null, null))
                 val client = instance(cache, requests, newer.apiUrl)
-                assertEquals("b".repeat(40), client.plan(ref).commit) // moves refs/main and the plan record
+                // a started update: refs/main and the plan record move
+                assertEquals("b".repeat(40), client.recordedPlan(ref).commit)
                 requests.urls.clear()
                 assertTrue(
                     client
@@ -242,7 +247,7 @@ internal class HubModelTest {
             installed.deleteRecursively()
             FakeHub(updateRepo(commit = "b".repeat(40), seed = 51)).use { newer ->
                 val client = instance(cache, endpoint = newer.apiUrl)
-                client.plan(ref) // adopts the old copy before its listing moves refs/main
+                client.recordedPlan(ref) // a started update adopts the old copy before its listing moves refs/main
                 assertTrue(
                     client
                         .model(ref)
@@ -295,6 +300,31 @@ internal class HubModelTest {
             }
         }
 
+    @Test fun planIsALookThatChangesNothingOnThePhone() =
+        runBlocking {
+            val ref = HfModel("test/update")
+            val fresh = Files.createTempDirectory("hub-model-plan-fresh-").toFile()
+            instance(fresh).plan(ref)
+            assertFalse("no plan record for a model never downloaded", File(fresh, ".llamabro").exists())
+            assertFalse(File(fresh, "${repoFolder(ref.repo)}/refs/main").exists())
+
+            val cache = Files.createTempDirectory("hub-model-plan-look-").toFile()
+            instance(cache).model(ref).fetch {}
+
+            fun onDisk() = cache.walkTopDown().filter { it.isFile }.associate { it.path to it.readText() }
+            val before = onDisk()
+            FakeHub(updateRepo(commit = "b".repeat(40), seed = 51, size = 4 shl 20)).use { newer ->
+                val client = instance(cache, endpoint = newer.apiUrl)
+                val cached = client.cached().map { it.model.toString() to it.sizeBytes }
+                assertEquals("b".repeat(40), client.plan(ref).commit)
+                assertEquals("refs/main and every record as they were", before, onDisk())
+                assertEquals(cached, client.cached().map { it.model.toString() to it.sizeBytes })
+                val restarted = instance(cache, endpoint = newer.apiUrl)
+                restarted.awaitDiskState(ref)
+                assertEquals(DownloadState.Complete, restarted.progress(ref).value)
+            }
+        }
+
     @Test fun cachedStillListsTheInstalledCopyAfterAPlanOrACancelledUpdate() =
         runBlocking {
             val ref = HfModel("test/update")
@@ -304,7 +334,7 @@ internal class HubModelTest {
             assertEquals(listed, instance(planned).cached().map { it.model.toString() })
             FakeHub(updateRepo(commit = "b".repeat(40), seed = 51)).use { newer ->
                 val client = instance(planned, endpoint = newer.apiUrl)
-                client.plan(ref) // moves refs/main to a commit the phone doesn't hold
+                client.recordedPlan(ref) // a started update moves refs/main to a commit the phone doesn't hold
                 val cached = client.cached()
                 assertEquals("still installed, still loads (D64)", listed, cached.map { it.model.toString() })
                 assertEquals(1L shl 16, cached.single().sizeBytes)
@@ -365,6 +395,71 @@ internal class HubModelTest {
             }
         }
 
+    @Test fun aReclaimThatFailsStillCompletesTheUpdate() =
+        runBlocking {
+            val ref = HfModel("test/update")
+            val cache = Files.createTempDirectory("hub-model-reclaim-fails-").toFile()
+            instance(cache).model(ref).fetch {}
+            // the old entry turned into a directory with something in it: removing it throws
+            val oldEntry = File(cache, "${repoFolder("test/update")}/snapshots/${"a".repeat(40)}/model-Q4_K_M.gguf")
+            Files.delete(oldEntry.toPath())
+            File(oldEntry, "kept").apply { parentFile!!.mkdirs() }.writeText("x")
+            FakeHub(updateRepo(commit = "b".repeat(40), seed = 51)).use { newer ->
+                val client = instance(cache, endpoint = newer.apiUrl)
+                assertEquals(
+                    DownloadPhase.Complete,
+                    client
+                        .download(ref)
+                        .toList()
+                        .last()
+                        .phase,
+                )
+                assertTrue("the new copy is the one that loads", client.source(ref).toString().contains("b".repeat(40)))
+            }
+        }
+
+    /**
+     * Another selection of the old commit downloads while the update reclaims, after the reclaim has read the records
+     * (so they don't name it yet) and while it holds the blob's lock. That download must wait on the lock, not take the
+     * entry it saw before the reclaim removed it: it fetches the blob again and loads.
+     */
+    @Test fun aSelectionDownloadedWhileAnUpdateReclaimsStillLoads() =
+        runBlocking {
+            val ref = HfModel("test/update")
+            val sameFile = HfModel("test/update#model-Q4_K_M.gguf")
+            val cache = Files.createTempDirectory("hub-model-reclaim-race-").toFile()
+            instance(cache).model(ref).fetch {}
+            val waitingOrDone = CountDownLatch(1)
+            var competitor: Thread? = null
+            HubTestHooks.onPhase = { phase ->
+                when {
+                    phase == "lockWait" -> {
+                        waitingOrDone.countDown()
+                    }
+
+                    phase == "reclaimRead" && competitor == null -> {
+                        competitor =
+                            thread {
+                                runBlocking { instance(cache).download(sameFile).toList() }
+                                waitingOrDone.countDown()
+                            }
+                        assertTrue("the download reached the lock", waitingOrDone.await(10, TimeUnit.SECONDS))
+                    }
+                }
+            }
+            try {
+                FakeHub(updateRepo(commit = "b".repeat(40), seed = 51)).use { newer ->
+                    instance(cache, endpoint = newer.apiUrl).download(ref).toList()
+                }
+                competitor?.join(15_000)
+            } finally {
+                HubTestHooks.onPhase = null
+            }
+            assertTrue("the reclaim read the records with the other download under way", competitor != null)
+            val loads = instance(cache).source(sameFile).toString()
+            assertTrue(loads, loads.contains("a".repeat(40)) && File(pathOf(loads)).isFile)
+        }
+
     private fun blobsOf(cache: File): Set<String> =
         File(cache, "${repoFolder("test/update")}/blobs")
             .listFiles()
@@ -382,6 +477,40 @@ internal class HubModelTest {
             instance(cache).model(ref).fetch {}
             val offline = "http://127.0.0.1:1/"
             assertFalse(instance(cache, HttpTransport(offline, null, null), offline).hasUpdate(ref))
+        }
+
+    @Test fun filesArriveInThePlansOrder() =
+        runBlocking {
+            val ref = HfModel("test/headers:Q4_K_M")
+            val options: PlanOptions.() -> Unit = { draft = DraftRequest.dflash() }
+            repeat(PLAN_ORDER_ROUNDS) {
+                val cache = Files.createTempDirectory("hub-model-order-").toFile()
+                val client = instance(cache)
+                hub.reset()
+                client.download(ref, options).toList()
+                val fetched =
+                    hub
+                        .log()
+                        .map { it.jsonObject }
+                        .filter { it.getValue("host").jsonPrimitive.content == "cdn" }
+                        .filter { it.getValue("method").jsonPrimitive.content == "GET" }
+                        .map {
+                            it
+                                .getValue("path")
+                                .jsonPrimitive.content
+                                .substringAfterLast('/')
+                        }
+                // the CDN serves blobs by oid; the model and its draft here are one blob, fetched once
+                assertEquals(
+                    client
+                        .plan(ref, options)
+                        .files
+                        .map { it.oid }
+                        .distinct(),
+                    fetched,
+                )
+                cache.deleteRecursively()
+            }
         }
 
     @Test fun withHeadersFetchesOnlyHeadersAndCleansUp() =
@@ -467,6 +596,7 @@ internal class HubModelTest {
 
     private companion object {
         const val MMPROJ_BYTES = 1L shl 20
+        const val PLAN_ORDER_ROUNDS = 5
         const val HEADER_RANGE = "bytes=0-8388607"
 
         lateinit var hub: FakeHub

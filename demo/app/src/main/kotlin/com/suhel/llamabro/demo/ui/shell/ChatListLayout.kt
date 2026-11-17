@@ -43,10 +43,15 @@ val ChatListTabs =
 
 /**
  * The Chat list layout's home, stateful: the chats and the search text come from [viewModel], and the long-press
- * sheets are its own. Typing in the search recomposes only the list.
+ * sheets are its own; [onDelete] deletes a chat. Typing in the search recomposes only the list.
  */
 @Composable
-fun ChatListHome(viewModel: ShellViewModel, onOpenChat: (Long) -> Unit, onNewChat: () -> Unit) {
+fun ChatListHome(
+    viewModel: ShellViewModel,
+    onOpenChat: (Long) -> Unit,
+    onNewChat: () -> Unit,
+    onDelete: (Long) -> Unit,
+) {
     val chats by viewModel.chats.collectAsStateWithLifecycle()
     val search by viewModel.searchText.collectAsStateWithLifecycle()
     var pressed by remember { mutableStateOf<ChatSummary?>(null) }
@@ -64,7 +69,7 @@ fun ChatListHome(viewModel: ShellViewModel, onOpenChat: (Long) -> Unit, onNewCha
         onNewChat,
         onLongPress = { pressed = it },
     )
-    ChatActionsSheets(pressed, { pressed = null }, viewModel::rename, viewModel::delete)
+    ChatActionsSheets(pressed, { pressed = null }, viewModel::rename, onDelete)
 }
 
 /**

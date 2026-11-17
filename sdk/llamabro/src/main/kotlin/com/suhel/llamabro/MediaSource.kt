@@ -14,7 +14,11 @@ import android.os.ParcelFileDescriptor
 public sealed class MediaSource {
     // regular classes, not data classes: a field can be added later without a binary break
 
-    /** A file the native side opens and reads on each request that sends it; it must stay there. */
+    /**
+     * A file the native side opens and reads on each request that sends it; it must stay there until the reply ends. In
+     * a chat, llama-server reads it while the request runs, through a link in the SDK's media folder rather than a
+     * base64 copy (D84, F157: about 100 ms less per turn with three voice notes).
+     */
     public class File internal constructor(public val path: String) : MediaSource() {
         override fun equals(other: Any?): Boolean = other is File && other.path == path
 

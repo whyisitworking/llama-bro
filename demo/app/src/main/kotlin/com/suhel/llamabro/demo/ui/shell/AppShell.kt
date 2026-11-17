@@ -107,7 +107,13 @@ fun AppShell(
 ) {
     val shell =
         viewModel {
-            ShellViewModel(container.chats, container.settings, container.models, savedState = createSavedStateHandle())
+            ShellViewModel(
+                container.chats,
+                container.settings,
+                container.models,
+                savedState = createSavedStateHandle(),
+                deleteChat = { container.engine.delete(it) },
+            )
         }
     val settings =
         viewModel {
@@ -187,6 +193,12 @@ private fun Shell(
                 if (current == AppLayout.Sidebar) popUpTo(Routes.CHAT_PATTERN) { inclusive = true }
             }
         }
+        // the chat on screen, deleted, gives way to a new one: its screen would otherwise go on writing to a chat
+        // that is gone
+        val deleteChat = { id: Long ->
+            shell.delete(id)
+            if (id == currentChat) openChat(Routes.NEW_CHAT_ID)
+        }
         when (current) {
             AppLayout.Sidebar -> {
                 DemoDrawer(
@@ -212,6 +224,7 @@ private fun Shell(
                                 drawerOpen = false
                                 go(Routes.SETTINGS)
                             },
+                            onDelete = deleteChat,
                         )
                     },
                 ) {
@@ -224,6 +237,7 @@ private fun Shell(
                         settings,
                         chatScreen,
                         openChat,
+                        deleteChat,
                         { entryId, id -> resolved = entryId to id },
                         { drawerOpen = true },
                     )
@@ -235,7 +249,18 @@ private fun Shell(
                     Box(
                         Modifier.weight(1f),
                     ) {
-                        Graph(container, nav, start, current, shell, settings, chatScreen, openChat, { _, _ -> }) {}
+                        Graph(
+                            container,
+                            nav,
+                            start,
+                            current,
+                            shell,
+                            settings,
+                            chatScreen,
+                            openChat,
+                            deleteChat,
+                            { _, _ -> },
+                        ) {}
                     }
                     val tab =
                         when (route) {
@@ -265,6 +290,7 @@ private fun Graph(
     settings: SettingsViewModel,
     chatScreen: @Composable (Long, ChatChrome) -> Unit,
     openChat: (Long) -> Unit,
+    deleteChat: (Long) -> Unit,
     onChatResolved: (entryId: String, chatId: Long) -> Unit,
     openDrawer: () -> Unit,
 ) {
@@ -295,7 +321,9 @@ private fun Graph(
                     },
                 ),
         ) { entry -> GetModelsRoute(container, entry.arguments?.getString(Routes.QUERY_ARG).orEmpty(), back) }
-        composable(Routes.CHATS) { ChatListHome(shell, openChat, onNewChat = { openChat(Routes.NEW_CHAT_ID) }) }
+        composable(Routes.CHATS) {
+            ChatListHome(shell, openChat, onNewChat = { openChat(Routes.NEW_CHAT_ID) }, onDelete = deleteChat)
+        }
         composable(
             Routes.CHAT_PATTERN,
             arguments = listOf(navArgument(Routes.CHAT_ARG) { type = NavType.LongType }),

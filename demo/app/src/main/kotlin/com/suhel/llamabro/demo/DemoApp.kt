@@ -4,9 +4,11 @@ import android.app.Application
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.util.Log
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
 import androidx.work.ListenableWorker
+import androidx.work.WorkManager
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import com.suhel.llamabro.LlamaBroConfig
@@ -16,6 +18,7 @@ import com.suhel.llamabro.demo.chat.BackgroundRelease
 import com.suhel.llamabro.demo.chat.ReplyKeeper
 import com.suhel.llamabro.hub.HubConfig
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /** Open so the test application can supply its own container (androidTest `TestDemoApp`). */
 open class DemoApp :
@@ -36,8 +39,21 @@ open class DemoApp :
     protected open fun onStartup() {
         ContainerFactory.onStart(this)
         container.recoverInterrupted()
+        forgetOldDownloads()
         ProcessLifecycleOwner.get().lifecycle.addObserver(release)
         ProcessLifecycleOwner.get().lifecycle.addObserver(replyKeeper)
+    }
+
+    /**
+     * What builds from before the SDK's download worker (D75) left behind: their `downloads` channel, which system
+     * settings would list as a second "Downloads" beside the SDK's, and work queued for their worker class, which is
+     * gone, so WorkManager would fail it once. The files it fetched stay, and the model shows as paused until Resume.
+     */
+    private fun forgetOldDownloads() {
+        NotificationManagerCompat.from(this).deleteNotificationChannel(OLD_DOWNLOAD_CHANNEL)
+        // WorkManager tags every request with its worker's class name; its first use opens its database, off the main
+        // thread
+        container.appScope.launch { WorkManager.getInstance(this@DemoApp).cancelAllWorkByTag(OLD_DOWNLOAD_WORKER) }
     }
 
     /** A reply under way as the app leaves the screen keeps the app alive until it ends (D59). */
@@ -109,4 +125,9 @@ open class DemoApp :
             LogLevel.Warn -> Log.WARN
             LogLevel.Error -> Log.ERROR
         }
+
+    private companion object {
+        const val OLD_DOWNLOAD_CHANNEL = "downloads"
+        const val OLD_DOWNLOAD_WORKER = "com.suhel.llamabro.demo.models.DownloadWorker"
+    }
 }

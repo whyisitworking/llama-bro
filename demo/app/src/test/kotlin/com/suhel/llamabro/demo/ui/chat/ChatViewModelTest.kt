@@ -221,6 +221,19 @@ class ChatViewModelTest {
             assertEquals("Hi there", (vm.rows.value.first() as UserItem).text)
         }
 
+    @Test fun aSendThatFailsKeepsTheDraftAndSaysSoInsteadOfCrashing() =
+        runBlocking {
+            // the chat's rows go behind the handle's back: the database refuses the message (a foreign key)
+            val id = chats.createChat(swift.toString())
+            val vm = viewModel(chatId = id)
+            chats.delete(id)
+            vm.onText("Hi there")
+            vm.send()
+            until("the line") { vm.problem.value != null }
+            assertEquals("That message couldn't be sent.", vm.problem.value)
+            assertEquals("Hi there", vm.composer.value.text)
+        }
+
     @Test fun typingReachesTheBarInTheSameCall() =
         runBlocking {
             val vm = viewModel()

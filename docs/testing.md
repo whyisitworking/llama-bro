@@ -25,6 +25,8 @@ sdk/scripts/check.sh --only contract,jvm      # a slice, by step name
 
 Environment: `LB_TEST_MODEL` (default `~/Downloads/Qwen3.5-4B-Q4_K_M.gguf`), `LB_TEST_MMPROJ` (default `~/Downloads/mmproj-F16.gguf`; the image cases are left out when it is missing), `LB_TEST_DFLASH` (default `~/llamabro-models/Qwen3.5-4B-DFlash-Q8_0.gguf`), `LB_CONTRACT_MODELS` (extra GGUFs for the contract, comma separated; Llama 3.2 3B when present), `LB_DEVICE_MODELS` (file names in the acceptance app's files directory; default Qwen3.5 4B, Gemma 3 4B and Llama 3.2 3B), `LB_VISION_MODEL` and `LB_VISION_MMPROJ` (a small vision model and its projector in the same directory, for `VisionTest` on the NPU; default `Qwen3.5-0.8B-Q4_K_M.gguf` and `mmproj-Qwen3.5-0.8B-BF16.gguf`: the demo's files from `unsloth/Qwen3.5-0.8B-GGUF`, with the projector renamed from the repo's `mmproj-BF16.gguf`), `LB_TEST_MODELS_DIR` (the small embedding, rerank, LoRA and audio models; fetch them once with `sdk/scripts/fetch-test-models.sh`, about 265 MB). The audio tests' clip is spoken at check time by macOS `say` (`sdk/scripts/make-test-clip.sh`, 16 kHz mono WAV in `sdk/native/build/check/clip.wav`, passed as `LB_TEST_CLIP`); no audio is committed.
 
+Ports: every server the script starts on this machine (`llama-server` for `contract` and `e2e`, the fake Hugging Face server for `hub-device` and `hub-resume`) listens on a port the OS picks, and the device steps' `adb forward` ends on this machine are picked by adb, so full checks in several worktrees run at once (F159). `LB_CONTRACT_PORT`, `LB_E2E_PORT`, `LB_HUB_API_PORT` and `LB_HUB_CDN_PORT` fix them; the ports on the phone's side are fixed per phone (`LB_DEVICE_CONTRACT_PORT`, `LB_SPEECH_PORT`, and 18190 where the apps look for the hub), which the pre-flight below makes safe.
+
 Durations below are approximate and depend on the machine, the cached builds and the phone's thermal state.
 
 ### Host steps
@@ -32,11 +34,11 @@ Durations below are approximate and depend on the machine, the cached builds and
 | Step | What it proves | Needs | Time |
 |---|---|---|---|
 | `build` | `prepare-llama.sh` applies every patch in `sdk/native/patches/` to a build copy and leaves the submodule untouched; the host CMake build of the bridge, `lb-run` and the test tools succeeds | the llama.cpp submodule, CMake, a C++ toolchain | minutes cold, seconds warm |
-| `native` | The C API's host tests (`ctest`, upstream's own server tests for embeddings, rerank and LoRA on its small models included) | the test models | under a minute |
+| `native` | The C API's host tests (`ctest`, upstream's own server tests for embeddings, rerank and LoRA on its small models included; the DFlash fit projection against a real load's peak memory footprint, which on macOS counts compressed pages, F90, F160) | the test models | under a minute |
 | `hub-golden` | The Hub's resolver and cache match upstream's: its model-resolution self-test and recorded real repo listings, the GGUF header offsets of three real models, and the cache tree upstream writes from the same fake server, replayed through the Kotlin Hub (`CacheGoldenTest`, which must not be skipped) | Python 3, the three models in `~/Downloads` | a few minutes |
 | `contract` | The C API answers exactly like upstream `llama-server` built from the same tree with the same flags: about 75 requests (chat, multi-turn, thinking on and off, tool calls, JSON schema, one image, sampling fields, completions, `/props`, `/metrics` names, cache counters across turns, a cancel and the request after it, error bodies), compared on reply text and counters. Runs once per model (Qwen3.5 4B, then each extra model), then the audio cases (`audio.jsonl`) on upstream's audio test model: the clip through upstream's multipart `/v1/audio/transcriptions` and a data URL in chat, against the bridge's attachments by path, descriptor and bytes (F55, D84) | the model, the mmproj, a free port | minutes per model |
-| `tools-ui` | llama.cpp's own `tools/ui` compaction code, regenerated in node, equals the committed golden of 400 seeded message lists; the Kotlin replay of the golden is part of `jvm` | node | seconds |
-| `api` | The core's public API equals its reviewed dump (`sdk/llamabro/api/llamabro.api`). An intended change is reviewed with `./gradlew -p sdk :llamabro:apiDump` and committed with the code | Gradle | seconds |
+| `tools-ui` | llama.cpp's own `tools/ui` compaction code (Llama Chat, `ui/apps/chat` since b12479), regenerated in node, equals the committed golden of 400 seeded message lists; the Kotlin replay of the golden is part of `jvm` | node | seconds |
+| `api` | The public APIs of the core, `llamabro-typed` and `llamabro-testing` equal their reviewed dumps (`sdk/<module>/api/<module>.api`). An intended change is reviewed with `./gradlew -p sdk :<module>:apiDump` and committed with the code | Gradle | seconds |
 | `hub-api` | The same for `llamabro-hub`, `llamabro-hub-work` and `llamabro-hub-testing` | Gradle | seconds |
 | `quality` | ktlint and detekt over every Kotlin module (the root build's `qualityCheck`); detekt baselines list what predates the rule | Gradle | about a minute |
 | `lint` | Android lint on every SDK library, warnings as errors | Gradle | minutes |
@@ -48,13 +50,14 @@ Durations below are approximate and depend on the machine, the cached builds and
 
 These need a phone on adb that is unlocked (the script checks `isKeyguardShowing`). A Qualcomm phone with the Hexagon NPU is needed for the NPU steps.
 
+Before the first of them, `preflight` (`sdk/scripts/device-preflight.sh`) refuses to run them while another session uses the phone: another check holding the phone's lock (`/tmp/llamabro-device-<serial>.lock`, or `LB_DEVICE_LOCK_DIR`), an `adb forward` or `adb reverse` to the phone, or a `llama-server`, `lb-run` or `com.suhel.llamabro*` process on it (F150). Its message names what it found and how to clear leftovers; the check holds the lock (a symlink, taken atomically) until it ends. `bash sdk/scripts/tests/device-preflight-test.sh` checks it against a stub adb, with no phone.
+
 | Step | What it proves | Needs | Time |
 |---|---|---|---|
 | `device` | The core's native, UI and device-choice tests on the phone; the Hexagon and OpenCL backend AARs each make their device available alone, including DFlash against upstream's reply, `ContextSize.Auto` and the embedding and rerank tasks; the acceptance app per flavor (`full` runs every test on every model, and `VisionTest`, which asks the vision model on the NPU what a red and blue picture shows, with the encoder on the NPU and on the CPU (F120, F121, D53); `cpu`, `gpu` and `noskel` run device choice, a chat and stop; `noskel` carries a broken NPU skeleton and must fall back to the GPU with the reason); each flavor's minified (R8) release build loads a model, which checks the consumer keep rules (F28). The only tolerated failure is Llama 3.2 3B's tool loop, which fails on upstream too (F27); a flavor that did not run fails the step | the phone, the three models, the DFlash draft, the small test models | tens of minutes |
 | `hub-device` | The Hub's cache and download tests on the phone against the fake Hugging Face server, reached through `adb reverse` | the phone, Python 3 | minutes |
 | `hub-resume` | Kill and resume: the acceptance download app is killed (`kill -9`) and force-stopped mid-transfer of a 1.5 GiB file at 30 MiB/s and must resume with a `Range` request, verify both blobs against the corpus digests and leave no partial; the notification's byte count must rise (F92) | the phone, notification permission granted at install (`adb install -g`) | several minutes |
 | `device-contract` | The `contract` comparison again, on the phone's NPU: upstream `llama-server` and `lb-run` are both built in Qualcomm's Snapdragon image from the same tree and run with `-dev HTP0 -ngl 99`; passes only on "N/N identical", where a streamed chat reply without tools that matches token for token up to one near-tie (top-2 gap at most 0.25) and splits there counts, since the NPU breaks such ties either way between runs (F149, D80). The script also prints the first replies, because two identical wrong answers would pass (F71) | Docker with the Snapdragon image, the phone, the model | tens of minutes |
-| `device-speech` | LFM3-Omni-2B speaks through upstream `llama-server`'s `/tts` with everything on the phone's NPU (the device tools `device-contract` builds); fails on an empty or near-empty WAV, as without patch 0005 (F155) | the phone, LFM3-Omni-2B and its mmproj (pushed once from `LB_TEST_MODELS_DIR`) | about a minute |
 
 Not covered by a script: CI, HWASan and generated API documentation (planned before release). The fake Hugging Face server (`sdk/scripts/hub-fake/fake_hub.py`) models refs, trees, a 302 to a second CDN host, `Range`, ETag changes, authentication and throttled transfer rates, so Hub tests are repeatable and offline; one real download from huggingface.co is run by hand per release (F93).
 
@@ -91,15 +94,16 @@ demo/scripts/check.sh --only ds,quality                 # a slice, by step name
 |---|---|
 | Nothing but the host | SDK: `build`, `native`, `hub-golden`, `contract`, `tools-ui`, `api`, `hub-api`, `quality`, `lint`, `jvm`, `e2e`, `aar`. Demo: `unit`, `lint`, `assemble`, `ds`, `quality` |
 | A device or an emulator (fake engine, no model) | Demo: `device`, `journey`, `monkey`, `coverage`, `map` |
-| The physical phone | SDK: `device`, `hub-device`, `hub-resume`, `device-contract`, `device-speech` (a Qualcomm phone for the NPU steps). Demo: `perf`, `real`, and the journeys that need a photo picker (`sendAnImage`) |
+| The physical phone | SDK: `device`, `hub-device`, `hub-resume`, `device-contract` (a Qualcomm phone for the NPU steps). Demo: `perf`, `real`, and the journeys that need a photo picker (`sendAnImage`) |
 
 ### Fake-engine journeys and the real-model run
 
 The journeys exercise everything the app does except the model. The app's container is built over `FakeLlamaBro` (the
 engine seam in `llamabro-testing`) and `FakeLlamaBroHub` (`llamabro-hub-testing`, D70, D75), the real hub over a
 scripted Hugging Face, whose downloads a scripted worker moves step by step; the journeys about WorkManager itself use
-the real hub and the SDK's worker over a fake Hugging Face server on the host, reached through `adb reverse` ports 18190
-and 18191 (corpus: `demo/scripts/hub-corpus.json`). The fake engine scripts replies, reasoning, per-token delays, and
+the real hub and the SDK's worker over a fake Hugging Face server on the host, listening on ports the OS picks and
+reached through `adb reverse` (port 18190 on the phone, where the app looks; F159; corpus: `demo/scripts/hub-corpus.json`).
+The device steps run after the same pre-flight and phone lock as the SDK's (`sdk/scripts/device-preflight.sh`, F150). The fake engine scripts replies, reasoning, per-token delays, and
 the native load failures `file_not_found`, `insufficient_memory` and `other` through the SDK's own error path (F106).
 The journeys therefore run on an emulator with no model, and they assert structure: a reply exists, the thought fold
 exists, the divider exists.
@@ -168,7 +172,6 @@ SDK-side speed, memory and device measurements (prefill and decode rates per chi
 | C API host tests | `sdk/native/bridge/tests/` (built as `lb-tests`) |
 | Contract against upstream | `sdk/native/tests/contract/` (`run.sh`, the request set from `make-requests.py`, `compare.py`) |
 | Device contract on the NPU | `sdk/native/tests/device-contract/` |
-| Speech on the NPU | `sdk/native/tests/device-speech/` |
 | Hub goldens from upstream's code | `sdk/native/tests/hub-golden/`, `sdk/scripts/hub-fake/` |
 | `tools/ui` golden | `sdk/scripts/tools-ui/`, `sdk/llamabro/src/test/resources/tools-ui/` |
 | Kotlin unit tests | `src/test` of each module under `sdk/` |

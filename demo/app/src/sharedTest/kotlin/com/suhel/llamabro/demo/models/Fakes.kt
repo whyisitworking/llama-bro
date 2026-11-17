@@ -6,6 +6,7 @@ import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubException
 import com.suhel.llamabro.hub.LlamaBroHub
 import com.suhel.llamabro.hub.testing.FakeLlamaBroHub
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -270,12 +271,25 @@ class FakeScheduler : DownloadScheduler {
         onEnqueue(model)
     }
 
-    /** How long a cancel takes to be recorded, as WorkManager's does; `cancel` returns once it is. */
-    var cancelMillis = 0L
+    /**
+     * Holds the next cancel until the test completes it, as WorkManager takes a moment to record one; `cancel` returns
+     * once it is recorded. Used once.
+     */
+    var cancelGate: CompletableDeferred<Unit>? = null
+
+    /** What the next cancel throws, as a WorkManager operation that failed would. Used once. */
+    var cancelFailure: Exception? = null
 
     override suspend fun cancel(model: HfModel) {
         cancelled += model
-        delay(cancelMillis)
+        cancelFailure?.let {
+            cancelFailure = null
+            throw it
+        }
+        cancelGate?.let {
+            cancelGate = null
+            it.await()
+        }
         work.update { if (model in it) it + (model to false) else it }
     }
 

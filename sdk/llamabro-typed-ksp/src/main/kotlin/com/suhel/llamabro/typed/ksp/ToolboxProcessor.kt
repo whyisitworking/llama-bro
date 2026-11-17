@@ -24,7 +24,7 @@ internal class ToolboxProcessor(private val codeGenerator: CodeGenerator, privat
     private val reader = ToolReader(logger)
 
     /** The toolbox each generated file belongs to, by package and file name, so two can't claim one name. */
-    private val files = mutableMapOf<String, String>()
+    private val fileOwners = mutableMapOf<String, String>()
 
     /** Each method read once, so a tool reached from several toolboxes reports its errors once. */
     private val read = mutableMapOf<String, ToolSpec?>()
@@ -82,9 +82,9 @@ internal class ToolboxProcessor(private val codeGenerator: CodeGenerator, privat
                 visibility = visibility,
                 prefix = prefix,
             ).write(specs)
-        val files = types.mapNotNull { it.containingFile }.distinct().toTypedArray()
+        val sources = types.mapNotNull { it.containingFile }.distinct().toTypedArray()
         codeGenerator
-            .createNewFile(Dependencies(false, *files), box.packageName.asString(), "${stem}_LbToolbox")
+            .createNewFile(Dependencies(false, *sources), box.packageName.asString(), "${stem}_LbToolbox")
             .bufferedWriter()
             .use { it.write(source) }
     }
@@ -92,7 +92,7 @@ internal class ToolboxProcessor(private val codeGenerator: CodeGenerator, privat
     /** Whether `<stem>_LbToolbox.kt` is still free: `Outer.Tools` and a class `Outer_Tools` would share it. */
     private fun fileNameFree(box: KSClassDeclaration, stem: String): Boolean {
         val file = "${box.packageName.asString()}.${stem}_LbToolbox"
-        val owner = files.getOrPut(file) { box.fqn() }
+        val owner = fileOwners.getOrPut(file) { box.fqn() }
         if (owner == box.fqn()) return true
         logger.error(
             "@LbToolbox ${box.fqn()} and $owner would both generate ${stem}_LbToolbox.kt: rename one of them",

@@ -1,0 +1,429 @@
+diff --git a/ggml/src/ggml-hexagon/ggml-hexagon.cpp b/ggml/src/ggml-hexagon/ggml-hexagon.cpp
+index 3999009..95a6d91 100644
+--- a/ggml/src/ggml-hexagon/ggml-hexagon.cpp
++++ b/ggml/src/ggml-hexagon/ggml-hexagon.cpp
+@@ -3,6 +3,7 @@
+ #include <assert.h>
+ #include <inttypes.h>
+ #include <stdio.h>
++#include <unistd.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <time.h>
+@@ -153,6 +154,8 @@ int    opt_opfusion  = 1;    // enable/disable op fusion
+ int    opt_rt_repack = 1;    // runtime repacking: 0 = disabled, 1 = all tileable weights (default)
+ 
+ static std::regex* opt_opfilter = NULL; // regex of ops to not claim
++// LB research counters for the response waits
++static int64_t lb_hex_wait_us = 0, lb_hex_reads = 0, lb_hex_empty_reads = 0;
+ 
+ static const char * status_to_str(uint32_t status) {
+     switch (status) {
+@@ -1718,6 +1721,8 @@ void ggml_hexagon_session::flush_pending(bool all) {
+         }
+     }
+ 
++    // LB research: LB_POLL_SLEEP_US=N polls without blocking and sleeps N us between empty checks
++    static const int lb_poll_sleep = getenv("LB_POLL_SLEEP_US") ? atoi(getenv("LB_POLL_SLEEP_US")) : -1;
+     while (this->batch_rsp_seq < this->batch_req_seq) {
+         struct htp_opbatch_rsp rsp;
+         uint32_t               rsp_size;
+@@ -1727,12 +1732,19 @@ void ggml_hexagon_session::flush_pending(bool all) {
+         uint32_t               n_dbufs;
+ 
+         // Read response packet from queue
+-        const uint32_t timeo = opt_oppoll ? 0 : DSPQUEUE_TIMEOUT;
++        const uint32_t timeo = (opt_oppoll || lb_poll_sleep >= 0) ? 0 : DSPQUEUE_TIMEOUT;
+ 
++        const int64_t lb_w0 = ggml_time_us();
+         int err = dspqueue_read(this->queue, &flags, 1, &n_dbufs, &dbuf, sizeof(rsp), &rsp_size, (uint8_t *) &rsp, timeo);
++        lb_hex_wait_us += ggml_time_us() - lb_w0;
+         if (err == AEE_EEXPIRED || err == AEE_EWOULDBLOCK) {
++            if (lb_poll_sleep > 0) {
++                usleep(lb_poll_sleep);
++            }
++            lb_hex_empty_reads++;
+             continue;
+         }
++        lb_hex_reads++;
+ 
+         if (err != 0) {
+             GGML_ABORT("ggml-hex: dspqueue_read failed: 0x%08x\n", (unsigned) err);
+@@ -2442,7 +2454,8 @@ static void ggml_hexagon_tensor_unpack(ggml_tensor * tensor, ggml_hexagon_sessio
+ // run in an earlier or later graph split than the matmul, so the mark is kept on the tensor (HTP_TENSOR_KEEP_FLAT),
+ // and a weight tiled before such a read is unpacked back.
+ static void ggml_hexagon_graph_repack(const ggml_cgraph * graph, ggml_hexagon_session * sess) {
+-    for (int i = 0; i < graph->n_nodes; ++i) {
++    static const bool lb_keep_flat = getenv("LB_KEEP_FLAT") != nullptr;
++    for (int i = 0; lb_keep_flat && i < graph->n_nodes; ++i) {
+         const ggml_tensor * n = graph->nodes[i];
+         if (!ggml_hexagon_op_is_compute(n)) {
+             continue;
+@@ -2486,9 +2499,27 @@ static ggml_status ggml_backend_hexagon_graph_compute(ggml_backend_t backend, gg
+     const std::vector<htp_opnode> * nodes_ptr = nullptr;
+     std::vector<htp_opnode> computed_nodes;
+ 
++    static int64_t lb_prep_us = 0, lb_enq_us = 0, lb_n = 0, lb_miss = 0, lb_nodes = 0, lb_big_prep_us = 0, lb_big_miss = 0, lb_big_n = 0;
++    static const bool lb_tt = getenv("LB_TTIME") != nullptr;
++    // LB research: LB_HEX_CACHE=N keeps the prepared ops of the last N graphs by uid (upstream keeps one)
++    static const int lb_cache_n = getenv("LB_HEX_CACHE") ? atoi(getenv("LB_HEX_CACHE")) : 0;
++    static std::unordered_map<uint64_t, std::vector<htp_opnode>> lb_cache;
++    static std::deque<uint64_t> lb_order;
++    const int64_t lb_t0 = ggml_time_us();
++    const bool lb_big = graph->n_nodes > 500;
+     bool cache_hit = (graph->uid != 0 && sess->cached_uid == graph->uid);
++    if (!cache_hit && lb_cache_n > 0 && graph->uid != 0) {
++        auto it = lb_cache.find(graph->uid);
++        if (it != lb_cache.end()) {
++            cache_hit = true;
++            sess->cached_uid = 0;
++            nodes_ptr = &it->second;
++        }
++    }
++    if (!cache_hit) { lb_miss++; if (lb_big) lb_big_miss++; }
++    lb_n++; lb_nodes += graph->n_nodes; if (lb_big) lb_big_n++;
+     if (cache_hit) {
+-        nodes_ptr = &sess->cached_nodes;
++        if (nodes_ptr == nullptr) nodes_ptr = &sess->cached_nodes;
+     } else {
+         ggml_hexagon_graph_repack(graph, sess);
+ 
+@@ -2513,7 +2544,16 @@ static ggml_status ggml_backend_hexagon_graph_compute(ggml_backend_t backend, gg
+             computed_nodes.push_back(std::move(node));
+         }
+ 
+-        if (graph->uid != 0) {
++        if (graph->uid != 0 && lb_cache_n > 0) {
++            auto & slot = lb_cache[graph->uid];
++            slot = std::move(computed_nodes);
++            nodes_ptr = &slot;
++            lb_order.push_back(graph->uid);
++            while ((int) lb_order.size() > lb_cache_n) {
++                lb_cache.erase(lb_order.front());
++                lb_order.pop_front();
++            }
++        } else if (graph->uid != 0) {
+             sess->cached_uid   = graph->uid;
+             sess->cached_nodes = std::move(computed_nodes);
+             nodes_ptr = &sess->cached_nodes;
+@@ -2522,9 +2562,18 @@ static ggml_status ggml_backend_hexagon_graph_compute(ggml_backend_t backend, gg
+         }
+     }
+ 
++    const int64_t lb_t1 = ggml_time_us();
+     for (const auto & node : *nodes_ptr) {
+         sess->enqueue_op(node);
+     }
++    const int64_t lb_t2 = ggml_time_us();
++    lb_prep_us += lb_t1 - lb_t0; lb_enq_us += lb_t2 - lb_t1; if (lb_big) lb_big_prep_us += lb_t1 - lb_t0;
++    if (lb_tt && lb_n % 250 == 0) {
++        fprintf(stderr, "LBHEX graphs %lld misses %lld (big %lld/%lld) nodes %lld host-prep %.1f ms (big graphs %.1f ms) enqueue %.1f ms; responses %lld, empty reads %lld, in dspqueue_read %.1f ms (cumulative)\n",
++            (long long) lb_n, (long long) lb_miss, (long long) lb_big_miss, (long long) lb_big_n, (long long) lb_nodes,
++            lb_prep_us / 1000.0, lb_big_prep_us / 1000.0, lb_enq_us / 1000.0,
++            (long long) lb_hex_reads, (long long) lb_hex_empty_reads, lb_hex_wait_us / 1000.0);
++    }
+ 
+     if (sess->last_error > HTP_STATUS_OK) {
+         return GGML_STATUS_FAILED;
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 3cee72d..9f1d0f6 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -4436,6 +4436,11 @@ void llm_graph_context::build_logits() const {
+     if (cparams.embeddings && pooling_type != LLAMA_POOLING_TYPE_NONE) {
+         res->t_logits = nullptr;
+     }
++    // LB research: an embeddings context (TTS audio frames) may skip the text head
++    static const bool lb_no_head = getenv("LB_NO_HEAD") != nullptr;
++    if (lb_no_head && cparams.embeddings) {
++        res->t_logits = nullptr;
++    }
+ 
+     // the models declare t_logits without expanding it, so the LM head is computed only when it is expanded here
+     if (res->t_logits != nullptr) {
+diff --git a/tools/mtmd/models/lfm3a-gen.cpp b/tools/mtmd/models/lfm3a-gen.cpp
+index f5aedac..95f3786 100644
+--- a/tools/mtmd/models/lfm3a-gen.cpp
++++ b/tools/mtmd/models/lfm3a-gen.cpp
+@@ -1,4 +1,5 @@
+ #include "models.h"
++#include <cstdlib>
+ 
+ #include <cmath>
+ 
+@@ -142,14 +143,32 @@ ggml_tensor * mtmd_graph_lfm3a_gen::build_gen_code() {
+     ggml_tensor * cur = ggml_add(ctx0, build_mm(model.gen_code_proj_in_w, h_state), model.gen_code_proj_in_b);
+     cur = ggml_reshape_2d(ctx0, cur, n_embd, n_cb);
+ 
+-    ggml_tensor * tok = ggml_get_rows(ctx0, ggml_reshape_2d(ctx0, embd_w, n_embd, n_vocab * n_cb), inp_codes);
++    // LB research: LB_GR3D reads each codebook's row from its own table (3-D get_rows on the weight itself)
++    ggml_tensor * tok = nullptr;
++    if (getenv("LB_GR3D")) {
++        ggml_tensor * inp_codes_cb = ggml_new_tensor_2d(ctx0, GGML_TYPE_I32, 1, n_cb);
++        ggml_set_name(inp_codes_cb, "inp_codes_cb");
++        ggml_set_input(inp_codes_cb);
++        tok = ggml_get_rows(ctx0, embd_w, inp_codes_cb); // [n_embd, 1, n_cb]
++        tok = ggml_reshape_2d(ctx0, tok, n_embd, n_cb);
++    } else {
++        tok = ggml_get_rows(ctx0, ggml_reshape_2d(ctx0, embd_w, n_embd, n_vocab * n_cb), inp_codes);
++    }
+     tok = ggml_mul(ctx0, tok, inp_mask);
+     ggml_tensor * msk = ggml_mul(ctx0, ggml_repeat(ctx0, model.gen_code_mask_embd, cur), ggml_scale_bias(ctx0, inp_mask, -1.0f, 1.0f));
+     cur = ggml_add(ctx0, cur, ggml_add(ctx0, tok, msk));
+     cb(cur, "depth_inp", -1);
+ 
+     // bidirectional: no mask, no state
+-    ggml_tensor * inp_pos = ggml_cast(ctx0, ggml_arange(ctx0, 0.0f, (float) n_cb, 1.0f), GGML_TYPE_I32);
++    // LB research: LB_POS_INPUT passes the positions in, so no ARANGE (unsupported on Hexagon) splits the graph
++    ggml_tensor * inp_pos = nullptr;
++    if (getenv("LB_POS_INPUT")) {
++        inp_pos = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, n_cb);
++        ggml_set_name(inp_pos, "inp_pos_cb");
++        ggml_set_input(inp_pos);
++    } else {
++        inp_pos = ggml_cast(ctx0, ggml_arange(ctx0, 0.0f, (float) n_cb, 1.0f), GGML_TYPE_I32);
++    }
+     for (int il = 0; il < n_layer; il++) {
+         const auto & layer = model.layers[il];
+         cur = build_lfm_layer(cur, layer, eps, il, [&](ggml_tensor * x) {
+diff --git a/tools/mtmd/mtmd-helper-gen.cpp b/tools/mtmd/mtmd-helper-gen.cpp
+index 73e7e1b..e672a69 100644
+--- a/tools/mtmd/mtmd-helper-gen.cpp
++++ b/tools/mtmd/mtmd-helper-gen.cpp
+@@ -14,6 +14,31 @@
+ #include <string>
+ #include <unordered_map>
+ #include <vector>
++#include <cstdio>
++#include <cstdlib>
++
++// LB research timing (research build only, never for ph-main)
++extern "C" __attribute__((visibility("default"))) void lb_ttime_add(int slot, int64_t us);
++extern "C" __attribute__((visibility("default"))) void lb_ttime_dump(const char * tag);
++static int64_t lb_tt[32];
++static int64_t lb_tn[32];
++void lb_ttime_add(int s, int64_t us) { lb_tt[s] += us; lb_tn[s]++; }
++void lb_ttime_dump(const char * tag) {
++    static const char * names[32] = {
++        "frames", "srv_step_gen", "srv_text_sample", "srv_output", "h_sample_frame", "h_decode_wav", "h_lm_decode",
++        "enc_build", "enc_alloc", "enc_inputs", "enc_compute", "enc_readout", "h_code_sampling", "enc_calls",
++        "h_process_calls", "srv_request", "hex_prep", "srv_prompt" };
++    const double nf = lb_tn[0] > 0 ? (double) lb_tn[0] : 1.0;
++    fprintf(stderr, "LBTT %s frames=%lld\n", tag, (long long) lb_tn[0]);
++    for (int i = 1; i < 32; i++) {
++        if (lb_tn[i] == 0) continue;
++        fprintf(stderr, "LBTT %-16s total %8.1f ms  calls %6lld  per-frame %7.3f ms\n", names[i] ? names[i] : "?",
++                lb_tt[i] / 1000.0, (long long) lb_tn[i], lb_tt[i] / 1000.0 / nf);
++    }
++    for (int i = 0; i < 32; i++) { lb_tt[i] = 0; lb_tn[i] = 0; }
++}
++#define LB_T0() const int64_t lb_t0_ = ggml_time_us()
++#define LB_TADD(slot, t0) lb_ttime_add(slot, ggml_time_us() - (t0))
+ 
+ #ifdef MTMD_INTERNAL_HEADER
+ #error "mtmd-helper is a public library outside of mtmd. it must not include internal headers"
+@@ -1388,9 +1413,12 @@ public:
+             std::vector<int32_t> codes;
+             const float * fb = nullptr;
+             bool is_eos = false;
++            lb_ttime_add(0, 0);
++            const int64_t lb_ts = ggml_time_us();
+             if (!sample_frame(h_state_in, codes, &fb, &is_eos)) {
+                 return 1;
+             }
++            LB_TADD(4, lb_ts);
+             if (is_eos) {
+                 if (!continuing) {
+                     // TTS: the end of audio ends the generation
+@@ -1405,17 +1433,26 @@ public:
+                 mode = MODE_TEXT;
+             } else {
+                 hist.insert(hist.end(), codes.begin(), codes.end());
++                const int64_t lb_tw = ggml_time_us();
+                 if (!decode_wav(codes.data(), codes.size())) {
+                     return 1;
+                 }
++                LB_TADD(5, lb_tw);
+             }
+             decode_embd_batch batch_embd(const_cast<float *>(fb), 1, 1, n_embd);
+             batch_embd.set_position_normal(pos, seq_id);
+             batch_embd.logits[0] = 1;
++            const int64_t lb_tl = ggml_time_us();
+             if (llama_process(lctx, LLAMA_PROCESS_TYPE_DECODE, batch_embd.render(lctx, 0, 1)) != 0) {
+                 LOG_ERR("mtmd_helper_gen_audio: decode failed\n");
+                 return 1;
+             }
++            {
++                // force completion so the timer covers the compute, as the next read would anyway
++                const float * lb_h = llama_get_embeddings_ith(lctx, -1);
++                (void) lb_h;
++            }
++            LB_TADD(6, lb_tl);
+             pos++;
+         }
+ 
+@@ -1514,10 +1551,12 @@ private:
+ 
+         int k = 0;
+         for (int n_pick : schedule) {
++            const int64_t lb_tp = ggml_time_us();
+             if (mtmd_gen_audio_process(mctx, gen_state.get(), &inp, &out) != 0 || out.n_feats == 0 || out.n_feats % n_cb != 0) {
+                 LOG_ERR("mtmd_helper_gen_audio: depthformer pass failed\n");
+                 return false;
+             }
++            LB_TADD(14, lb_tp);
+             const size_t n_vocab = out.n_feats / n_cb;
+             logits.assign(out.feats, out.feats + out.n_feats);
+             for (int j = 0; j < n_pick; j++, k++) {
+@@ -1540,7 +1579,10 @@ private:
+         }
+ 
+         // all codes known: only the feedback embedding
+-        if (mtmd_gen_audio_process(mctx, gen_state.get(), &inp, &out) != 0) {
++        const int64_t lb_tf = ggml_time_us();
++        const int lb_rf = mtmd_gen_audio_process(mctx, gen_state.get(), &inp, &out);
++        LB_TADD(14, lb_tf);
++        if (lb_rf != 0) {
+             LOG_ERR("mtmd_helper_gen_audio: codebook embedding failed\n");
+             return false;
+         }
+diff --git a/tools/mtmd/mtmd-subcontext.cpp b/tools/mtmd/mtmd-subcontext.cpp
+index 7f13b7f..7da6ae1 100644
+--- a/tools/mtmd/mtmd-subcontext.cpp
++++ b/tools/mtmd/mtmd-subcontext.cpp
+@@ -1,4 +1,5 @@
+ #include "mtmd-subcontext.h"
++extern "C" void lb_ttime_add(int slot, int64_t us);
+ #include "mtmd-graph.h"
+ #include "models/models.h"
+ #include "mtmd-audio.h"
+@@ -550,8 +551,10 @@ bool mtmd_subcontext::encode(mtmd_subctx_encode_params * params) {
+     }
+ 
+     // build the inference graph
++    int64_t lb_t = ggml_time_us();
+     ggml_backend_sched_reset(backends.sched.get());
+     ggml_cgraph * gf = mtmd_get_graph_builder(this, imgs, params)->build();
++    lb_ttime_add(7, ggml_time_us() - lb_t); lb_t = ggml_time_us();
+ 
+     // the last node is the embedding tensor, code2wav has no out_embd
+     // read it before scheduling: backends may reorder the nodes of graphs with several outputs (Metal)
+@@ -561,6 +564,7 @@ bool mtmd_subcontext::encode(mtmd_subctx_encode_params * params) {
+         LOG_ERR("%s: failed to allocate compute graph\n", __func__);
+         return false;
+     }
++    lb_ttime_add(8, ggml_time_us() - lb_t); lb_t = ggml_time_us();
+ 
+     // set inputs
+     const auto & hparams = model.hparams;
+@@ -1715,6 +1719,18 @@ bool mtmd_subcontext::encode(mtmd_subctx_encode_params * params) {
+                         } else {
+                             mask[i] = 1.0f;
+                         }
++                    }
++                    if (ggml_graph_get_tensor(gf, "inp_codes_cb") != nullptr) {
++                        set_input_i32("inp_codes_cb", codes);
++                    }
++                    if (ggml_graph_get_tensor(gf, "inp_pos_cb") != nullptr) {
++                        std::vector<int32_t> pos_cb(n_cb);
++                        for (int64_t i = 0; i < n_cb; i++) {
++                            pos_cb[i] = (int32_t) i;
++                        }
++                        set_input_i32("inp_pos_cb", pos_cb);
++                    }
++                    for (int64_t i = 0; i < n_cb; i++) {
+                         codes[i] += (int32_t) (i * n_vocab);
+                     }
+                     set_input_i32("inp_codes", codes);
+@@ -2273,11 +2289,14 @@ bool mtmd_subcontext::encode(mtmd_subctx_encode_params * params) {
+ 
+     mtmd_backend_cpu_set_n_threads(backends.backend_cpu, params->n_threads);
+ 
++    lb_ttime_add(9, ggml_time_us() - lb_t); lb_t = ggml_time_us();
+     auto status = ggml_backend_sched_graph_compute(backends.sched.get(), gf);
+     if (status != GGML_STATUS_SUCCESS) {
+         LOG_ERR("%s: ggml_backend_sched_graph_compute failed with error %d\n", __func__, status);
+         return false;
+     }
++    lb_ttime_add(10, ggml_time_us() - lb_t); lb_t = ggml_time_us();
++    struct lb_readout_timer { int64_t t; ~lb_readout_timer() { lb_ttime_add(11, ggml_time_us() - t); } } lb_rt{lb_t};
+ 
+     if (embeddings != nullptr) {
+         // sanity check (assuming that all images in batch have the same number of tokens, so we only check the first one)
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index c62e422..0b1ca87 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -1,4 +1,6 @@
+ #include "server-context.h"
++extern "C" void lb_ttime_add(int slot, int64_t us);
++extern "C" void lb_ttime_dump(const char * tag);
+ #include <atomic>
+ #include <thread>
+ #include "base64.hpp"
+@@ -3707,6 +3709,8 @@ private:
+     }
+ 
+     void process_tts_slots() {
++        static const bool lb_no_head = getenv("LB_NO_HEAD") != nullptr;
++        static int64_t lb_gen_t0 = 0;
+         iterate(slots, [&](server_slot & slot) {
+             if (!slot.is_processing() || slot.task->type != SERVER_TASK_TYPE_TTS) {
+                 return;
+@@ -3715,14 +3719,19 @@ private:
+             llama_set_embeddings(ctx_tgt, true);
+ 
+             if (slot.state == SLOT_STATE_PROCESSING_PROMPT) {
++                const int64_t lb_tp = ggml_time_us();
+                 const int32_t ret = slot.tts.ctx.step_prompt(llama_n_batch(ctx_tgt));
++                lb_ttime_add(17, ggml_time_us() - lb_tp);
+                 if (ret < 0) {
+                     send_error(slot, "TTS prompt processing failed", ERROR_TYPE_SERVER);
+                     slot.release();
+                 } else if (ret == 0) {
+                     // done prompt, do sample and save h_state_prompt
+-                    slot.tts.sampled = common_sampler_sample(slot.smpl.get(), ctx_tgt, -1);
+-                    common_sampler_accept(slot.smpl.get(), slot.tts.sampled, true);
++                    if (!(lb_no_head && !slot.tts.ctx.next_is_text())) {
++                        slot.tts.sampled = common_sampler_sample(slot.smpl.get(), ctx_tgt, -1);
++                        common_sampler_accept(slot.smpl.get(), slot.tts.sampled, true);
++                    }
++                    lb_gen_t0 = ggml_time_us();
+                     const float * h_embd = llama_get_embeddings_ith(ctx_tgt, -1);
+                     slot.tts.h_state_prompt.assign(h_embd, h_embd + llama_model_n_embd(model_tgt));
+                     slot.tts.h_state = slot.tts.h_state_prompt.data();
+@@ -3742,13 +3751,20 @@ private:
+                 } else {
+                     send_tts_result(slot, sample_rate, data, data_len, true);
+                 }
++                lb_ttime_add(15, ggml_time_us() - lb_gen_t0);
++                if (getenv("LB_TTIME")) {
++                    lb_ttime_dump(lb_no_head ? "no-head" : "head");
++                }
+                 slot.release();
+                 return;
+             }
+ 
+             const float * h_state_next = nullptr;
+             bool          stop         = false;
+-            if (slot.tts.ctx.step_gen(slot.tts.sampled, slot.tts.h_state, &h_state_next, &stop) != 0) {
++            const int64_t lb_tg = ggml_time_us();
++            const int lb_rg = slot.tts.ctx.step_gen(slot.tts.sampled, slot.tts.h_state, &h_state_next, &stop);
++            lb_ttime_add(1, ggml_time_us() - lb_tg);
++            if (lb_rg != 0) {
+                 send_error(slot, "TTS generation failed", ERROR_TYPE_SERVER);
+                 slot.release();
+                 return;
+@@ -3762,9 +3778,11 @@ private:
+             slot.tts.n_decoded++;
+             slot.tts.stop = stop;
+ 
+-            if (!stop) {
++            if (!stop && !(lb_no_head && !slot.tts.ctx.next_is_text())) {
++                const int64_t lb_ts = ggml_time_us();
+                 slot.tts.sampled = common_sampler_sample(slot.smpl.get(), ctx_tgt, -1);
+                 common_sampler_accept(slot.smpl.get(), slot.tts.sampled, true);
++                lb_ttime_add(2, ggml_time_us() - lb_ts);
+             }
+ 
+             if (slot.task->params.stream) {

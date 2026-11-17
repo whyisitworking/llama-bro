@@ -4,6 +4,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -37,6 +38,27 @@ class CreateTest {
             }
         assertSame(first, second)
         assertEquals(1, builds)
+    }
+
+    @Test
+    fun npuPollingIsOffByDefaultAndPartOfTheConfig() {
+        assertFalse(LlamaBroConfig.Default.npuPolling)
+        val on = LlamaBroConfig { npuPolling = true }
+        assertTrue(on.npuPolling)
+        assertNotEquals(LlamaBroConfig.Default, on)
+        assertEquals(LlamaBroConfig { npuPolling = true }, on)
+        assertTrue(on.toString().contains("npuPolling=true"))
+        assertTrue(on.copy { logLevel = LogLevel.Info }.let { it.npuPolling && it.logLevel == LogLevel.Info })
+    }
+
+    @Test
+    fun createWithADifferentNpuPollingThrows() {
+        LlamaBro.create(LlamaBroConfig.Default) { testLlamaBro() }
+        val error =
+            assertThrows(LlamaBroException.InvalidRequest::class.java) {
+                LlamaBro.create(LlamaBroConfig { npuPolling = true }) { testLlamaBro() }
+            }
+        assertTrue(error.message!!.contains("npuPolling=true"))
     }
 
     @Test

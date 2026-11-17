@@ -3,6 +3,7 @@ package com.suhel.llamabro.demo.chat
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.demo.models.DownloadFailure
 import com.suhel.llamabro.demo.models.DownloadStatus
+import com.suhel.llamabro.demo.models.NotOnPhone
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -134,6 +135,9 @@ object Limits {
                 error.reason == LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory -> insufficientMemory(name)
 
             error is LlamaBroException.ContextExceeded -> contextExceeded(name)
+
+            // deleted between the library read and the load: Try again would fail the same way
+            error is NotOnPhone -> modelGone(name)
 
             else -> null
         }

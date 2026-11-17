@@ -42,3 +42,6 @@ public sealed interface Typed<out T> {
         override fun toString(): String = "Invalid(json=$json, cause=$cause)"
     }
 }
+
+/** The value of a [Typed.Value]; null for [Typed.Incomplete] and [Typed.Invalid], whose reasons it drops. */
+public fun <T> Typed<T>.valueOrNull(): T? = (this as? Typed.Value<T>)?.value

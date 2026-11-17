@@ -26,7 +26,7 @@ import com.suhel.llamabro.demo.designsystem.components.drawerWidth
 
 /**
  * The Sidebar layout's drawer, stateful: it reads the groups and the model count from [viewModel] and owns the
- * long-press sheets. Long-press a chat for Rename and Delete.
+ * long-press sheets. Long-press a chat for Rename and Delete; [onDelete] deletes it.
  */
 @Composable
 fun SidebarDrawer(
@@ -36,6 +36,7 @@ fun SidebarDrawer(
     onOpenChat: (Long) -> Unit,
     onModels: () -> Unit,
     onSettings: () -> Unit,
+    onDelete: (Long) -> Unit,
 ) {
     val groups by viewModel.groups.collectAsStateWithLifecycle()
     val modelCount by viewModel.modelCount.collectAsStateWithLifecycle()
@@ -44,7 +45,7 @@ fun SidebarDrawer(
         pressed =
             it
     })
-    ChatActionsSheets(pressed, { pressed = null }, viewModel::rename, viewModel::delete)
+    ChatActionsSheets(pressed, { pressed = null }, viewModel::rename, onDelete)
 }
 
 /**

@@ -13,7 +13,17 @@ internal class HfModelTest {
         assertNull(HfModel.parse("org/repo").tag)
         assertEquals("Q4_K_M", HfModel.parse("org/repo:Q4_K_M").tag)
         assertEquals("dir/f.gguf", HfModel.parse("org/repo#dir/f.gguf").file)
-        assertEquals("b", HfModel.parse("org/repo:a:b").tag)
+        assertEquals("B", HfModel.parse("org/repo:a:b").tag)
+    }
+
+    @Test fun tagIsUpperCasedAsUpstreamMatchesIt() {
+        // download.cpp matches a quant tag case-insensitively, so two spellings are one selection, one record, one work
+        val lower = HfModel.parse("org/repo:q4_k_m")
+        assertEquals(HfModel.parse("org/repo:Q4_K_M"), lower)
+        assertEquals(HfModel.parse("org/repo:Q4_K_M").hashCode(), lower.hashCode())
+        assertEquals("org/repo:Q4_K_M", lower.toString())
+        assertEquals("Q4_K_M", lower.tag)
+        assertEquals("org/repo#dir/f-q4_k_m.gguf", HfModel.parse("org/repo#dir/f-q4_k_m.gguf").toString())
     }
 
     @Test fun malformedReferencesHaveUpstreamMessage() {

@@ -155,6 +155,9 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string & 
                 apply_flag(ctx, "--ctx-checkpoints", int_of(key, v));
             } else if (key == "slot_save_path") {
                 apply_flag(ctx, "--slot-save-path", str_of(key, v));
+            } else if (key == "media_dir") {
+                // llama-server's media root: path attachments reach it as file:// links (request.cpp, D84, F157)
+                apply_flag(ctx, "--media-path", str_of(key, v));
             } else if (key == "kv_cache_type") {
                 // one type for K and V, as Ollama's OLLAMA_KV_CACHE_TYPE; upstream's handler validates the name
                 apply_flag(ctx, "--cache-type-k", str_of(key, v));

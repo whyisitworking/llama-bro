@@ -7,7 +7,9 @@ import com.suhel.llamabro.chat.FinishReason
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.chat.ResponseFormat
 import com.suhel.llamabro.conversation
+import com.suhel.llamabro.conversation.askAgain
 import com.suhel.llamabro.testing.FakeLlamaBro
+import com.suhel.llamabro.valueOrNull
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -30,6 +32,13 @@ class TypedOutputTest {
     data class Adult(val age: Int) {
         init {
             require(age >= 18) { "an adult is 18 or older" }
+        }
+    }
+
+    @Serializable
+    data class Teen(val age: Int) {
+        init {
+            check(age in 13..19) { "a teen is 13 to 19" }
         }
     }
 
@@ -100,6 +109,102 @@ class TypedOutputTest {
             assertTrue("$typed", typed is Typed.Invalid && typed.json == """{"age":12}""")
             assertEquals("an adult is 18 or older", (typed as Typed.Invalid).cause.message)
         }
+
+    @Test
+    fun failingCheckInInitIsInvalidToo() =
+        runTest {
+            // check() throws IllegalStateException, not IllegalArgumentException: still a value that didn't decode
+            val fake = FakeLlamaBro { reply { content("""{"age":30}""") } }
+            val typed = fake.model().conversation().ask<Teen>("An adult")
+            assertTrue("$typed", typed is Typed.Invalid && typed.json == """{"age":30}""")
+            assertTrue("$typed", (typed as Typed.Invalid).cause is IllegalStateException)
+        }
+
+    @Test
+    fun askAgainRegeneratesUnderTheSchemaAndDecodes() =
+        runTest {
+            val fake =
+                FakeLlamaBro {
+                    reply { content("""{"name":"Bob","age":3}""") }
+                    reply { content("""{"name":"Bob","age":30}""") }
+                }
+            val chat = fake.model().conversation()
+            chat.ask<Person>("Bob, 30")
+            val again = chat.askAgain<Person> { sampling { seed = 7 } }
+            assertEquals(Typed.Value(Person("Bob", 30), """{"name":"Bob","age":30}""", null), again)
+            // the last reply was replaced, and the new request asked for the same schema
+            assertEquals(2, chat.messages.value.size)
+            val request = body(fake.chatRequests[1])
+            assertEquals(Json.parseToJsonElement(typedSchema<Person>()), request.schema())
+            assertEquals("7", request["seed"].toString())
+            assertEquals(body(fake.chatRequests[0])["messages"], request["messages"])
+        }
+
+    @Test
+    fun askAgainEndingOnAPendingToolIsIncomplete() =
+        runTest {
+            val fake =
+                FakeLlamaBro {
+                    reply { content("""{"name":"Bob","age":30}""") }
+                    reply { toolCall("lookup", """{"q":"Bob"}""", id = "c1") }
+                }
+            // a tool without a handler: a call to it waits for the app's result
+            val chat = fake.model().conversation { tool("lookup", "Looks a person up", """{"type":"object"}""") }
+            chat.ask<Person>("Bob, 30")
+            val again = chat.askAgain<Person>()
+            assertTrue("$again", again is Typed.Incomplete)
+            assertEquals(FinishReason.ToolCallsPending, (again as Typed.Incomplete).reason)
+        }
+
+    @Test
+    fun bothAskAgainsResolveWithBothImported() =
+        runTest {
+            // this file imports core's askAgain and the typed one: no type argument picks core's, plain text
+            val fake =
+                FakeLlamaBro {
+                    reply { content("""{"name":"Bob","age":3}""") }
+                    reply { content("Bob is thirty.") }
+                    reply { content("""{"name":"Bob","age":30}""") }
+                }
+            val chat = fake.model().conversation()
+            chat.ask<Person>("Bob, 30")
+            val plain: Typed<String> = chat.askAgain()
+            assertEquals("Bob is thirty.", plain.valueOrNull())
+            assertEquals(null, body(fake.chatRequests[1])["response_format"])
+            val typed: Typed<Person> = chat.askAgain<Person>()
+            assertEquals(Person("Bob", 30), typed.valueOrNull())
+            assertEquals(Json.parseToJsonElement(typedSchema<Person>()), body(fake.chatRequests[2]).schema())
+        }
+
+    @Test
+    fun askAgainRefusesAResponseFormatInOptions() =
+        runTest {
+            val fake = FakeLlamaBro { reply { content("""{"name":"Bob","age":30}""") } }
+            val chat = fake.model().conversation()
+            chat.ask<Person>("Bob, 30")
+            try {
+                chat.askAgain<Person> { responseFormat = ResponseFormat.JsonObject }
+                fail("expected IllegalArgumentException")
+            } catch (e: IllegalArgumentException) {
+                assertTrue("${e.message}", e.message!!.contains("responseFormat"))
+            }
+            assertEquals(1, fake.chatRequests.size)
+        }
+
+    @Test
+    fun valueOrNullReadsATypedResult() =
+        runTest {
+            val fake =
+                FakeLlamaBro {
+                    reply { content("""{"name":"Bob","age":30}""") }
+                    reply { content("""{"age":12}""") }
+                }
+            val chat = fake.model().conversation()
+            assertEquals(Person("Bob", 30), chat.ask<Person>("Bob, 30").valueOrNull())
+            assertEquals(null, chat.ask<Adult>("A child").valueOrNull())
+        }
+
+    private fun JsonObject.schema() = this["response_format"]!!.jsonObject["json_schema"]!!.jsonObject["schema"]
 
     @Test
     fun schemaErrorThrowsBeforeAnyRequest() =

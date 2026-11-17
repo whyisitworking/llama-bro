@@ -8,14 +8,18 @@
 #        LB_TEST_MODEL, and LB_TEST_MMPROJ for the image requests. Requests: make-requests.py.
 #        LB_CONTRACT_REQUESTS picks another requests file (audio.jsonl: with LB_TEST_CLIP, a WAV clip, put where a
 #        request says "@clip"; check.sh runs it on upstream's audio test model).
+#        LB_CONTRACT_PORT the server's port (default 0: the OS picks a free one, so concurrent checks never
+#        collide, F159).
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 native="$(cd "$here/../.." && pwd)"
+# shellcheck source=../../../scripts/ports.sh
+. "$native/../scripts/ports.sh"
 bin="$native/build/host/bin"
 model="${LB_TEST_MODEL:?set LB_TEST_MODEL to a GGUF file}"
 mmproj="${LB_TEST_MMPROJ:-}"   # optional: without it, requests that need images are left out
-port="${LB_CONTRACT_PORT:-18181}"
+port="${LB_CONTRACT_PORT:-0}"
 out="$native/build/host/contract"
 requests="$out/requests.jsonl"
 source_requests="${LB_CONTRACT_REQUESTS:-$here/requests.jsonl}"
@@ -43,6 +47,8 @@ echo "$(wc -l < "$requests" | tr -d ' ') requests$( [ -n "$mmproj" ] || echo ", 
 server_pid=$!
 trap 'kill $server_pid 2>/dev/null || true; wait $server_pid 2>/dev/null || true' EXIT
 
+port="$(server_port "$out/llama-server.log" $server_pid)" ||
+    { echo "FAIL: llama-server exited or never listened (see $out/llama-server.log)"; exit 1; }
 for _ in $(seq 1 120); do
     curl -sf "http://127.0.0.1:$port/health" >/dev/null 2>&1 && break
     kill -0 $server_pid 2>/dev/null || { echo "FAIL: llama-server exited (see $out/llama-server.log)"; exit 1; }

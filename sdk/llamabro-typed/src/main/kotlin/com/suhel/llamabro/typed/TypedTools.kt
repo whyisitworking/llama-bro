@@ -1,10 +1,16 @@
+// typed tools register through core's raw registration seam, toolForCall (D61)
+@file:OptIn(InternalLlamaBroApi::class, ExperimentalSerializationApi::class)
+
 package com.suhel.llamabro.typed
 
+import com.suhel.llamabro.InternalLlamaBroApi
 import com.suhel.llamabro.chat.Tool
 import com.suhel.llamabro.chat.ToolCall
 import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.conversation.LbToolError
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.MissingFieldException
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -18,7 +24,7 @@ public class LbToolCallContext(public val callId: String, public val toolName: S
 /**
  * A tool with typed arguments and result (D61), made by [tool] and registered with [Conversation.Builder.tool] or in
  * a [Toolbox]. The arguments' JSON Schema, sent to the model, comes from [argsSerializer] through [typedSchema] with
- * [json], which also decodes the arguments and encodes the result.
+ * [json], which also decodes the arguments and encodes the result, every field included (D88).
  */
 public class TypedTool<A, R> internal constructor(
     public val name: String,
@@ -30,6 +36,9 @@ public class TypedTool<A, R> internal constructor(
     public val handler: suspend LbToolCallContext.(A) -> R,
 ) {
     internal val schema: String
+
+    /** [json], writing fields at their default too: the model reads the result and can't know a class's defaults. */
+    private val resultJson = Json(json) { encodeDefaults = true }
 
     init {
         require(NAME.matches(name)) { "tool name '$name' must match ${NAME.pattern}" }
@@ -65,7 +74,7 @@ public class TypedTool<A, R> internal constructor(
         return when (resultSerializer.descriptor.serialName.removeSuffix("?")) {
             "kotlin.String" -> (result as String?) ?: "null"
             "kotlin.Unit" -> DONE
-            else -> json.encodeToString(resultSerializer, result)
+            else -> resultJson.encodeToString(resultSerializer, result)
         }
     }
 }
@@ -86,8 +95,24 @@ private fun decodeFailure(e: Exception): Exception =
     }
 
 // kotlinx appends a "JSON input: ..." excerpt and advice for the developer on later lines; the model gets the first
-// line, as core's JsonArgs does
-private fun reason(e: SerializationException): String =
+// line, as core's JsonArgs does. A missing field's message names the Kotlin class, which says nothing to the model, so
+// it is told only which field, and where when not at the top.
+private fun reason(e: SerializationException): String = if (e is MissingFieldException) missing(e) else firstLine(e)
+
+private fun missing(e: MissingFieldException): String {
+    val names = e.missingFields.joinToString(", ") { "'$it'" }
+    val path =
+        e.message
+            ?.substringAfter(" at path: ", "")
+            ?.lineSequence()
+            ?.first()
+            ?.trim()
+            .orEmpty()
+    val where = if (path.isEmpty() || path == "$") "" else " at $path"
+    return (if (e.missingFields.size == 1) "missing field " else "missing fields ") + names + where
+}
+
+private fun firstLine(e: SerializationException): String =
     e.message
         ?.substringBefore("JSON input")
         ?.lineSequence()
@@ -102,13 +127,14 @@ private fun reason(e: SerializationException): String =
  * sends `Error: <message>`, an `LbToolAbort` ends the turn, any other exception sends `Error: the tool failed`.
  *
  * @param args the arguments' serializer; their schema must be an object. Arguments that don't decode send
- *   `Error: invalid arguments: <reason>` and the loop goes on, the reason being kotlinx-serialization's (a missing
- *   field, bad JSON, a custom serializer's own `SerializationException`). Any other exception thrown while decoding,
- *   such as a `require` in the arguments class's `init`, sends `Error: invalid arguments` without its message (D62),
+ *   `Error: invalid arguments: <reason>` and the loop goes on, the reason being kotlinx-serialization's (`missing
+ *   field 'days'`, bad JSON, a custom serializer's own `SerializationException`). Any other exception thrown while
+ *   decoding, such as a `require` or `check` in the arguments class's `init`, sends `Error: invalid arguments` without
+ *   its message (D62),
  *   and is the cause of the `LbToolError`. To explain to the model, throw an [LbToolError] from the `init`: its
  *   message is sent.
- * @param result the result's serializer: a `String` is sent as is, `Unit` as `Done` (D81), anything else as JSON.
- *   A `String?` sends `null` when null; a `Unit?` sends `Done`.
+ * @param result the result's serializer: a `String` is sent as is, `Unit` as `Done` (D81), anything else as JSON
+ *   with every field, also those at their default (D88). A `String?` sends `null` when null; a `Unit?` sends `Done`.
  *   No schema for the result reaches the model (F139), so say what it means in [description].
  * @param requiresApproval a call pauses the turn until `approve` or `deny` (D62).
  * @param json decodes the arguments and encodes the result; its settings shape the schema too.

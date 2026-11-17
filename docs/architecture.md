@@ -38,9 +38,9 @@ The SDK adds two kinds of things on top of llama-server:
 
 ### 1.2 The baseline is upstream
 
-The baseline for every behaviour and default is upstream llama.cpp at the pinned build `b12352`: llama-server (`tools/server`) and its web client (`tools/ui`). A behaviour or default that differs from upstream must win an A/B test on a device against the upstream behaviour. Ideas are judged by measured results, not by where they came from (D10, D18). Examples of where upstream won: the sampler order and penalty behaviour (D18, F12-F15), and the sleep mode, which the SDK keeps off because a failed reload aborts the process.
+The baseline for every behaviour and default is upstream llama.cpp at the pinned build `b12479` (D93): llama-server (`tools/server`) and its web client, Llama Chat (`ui/apps/chat`; `tools/ui` before b12479, and still called `tools/ui` in this document). A behaviour or default that differs from upstream must win an A/B test on a device against the upstream behaviour. Ideas are judged by measured results, not by where they came from (D10, D18). Examples of where upstream won: the sampler order and penalty behaviour (D18, F12-F15), and the sleep mode, which the SDK keeps off because a failed reload aborts the process.
 
-The SDK deviates from upstream in a small number of places, each justified by a measurement:
+The SDK deviates from upstream in these places, each justified by a measurement or a decision:
 
 | Deviation | Reason |
 |---|---|
@@ -48,7 +48,12 @@ The SDK deviates from upstream in a small number of places, each justified by a 
 | Weights loaded without mmap (`--load-mode none`) | One resident copy of the weights instead of two (D30, F58-F60) |
 | A memory-based `ContextSize.Auto` | Upstream's fit misjudges a phone (D33, F66) |
 | No OpenMP on the CPU path | Same speed, smaller AAR (D38, F77) |
-| Two patches ([register](../sdk/native/patches/README.md)): `delta-net-head-tail-split`, and upstream PR #30432 (a NEON path for BF16 dot products) until it merges | Faster prompt processing for hybrid models, identical output (D10, F7, F8, F121); a 5x faster BF16 image encoder on the phone's CPU (D55, F127) |
+| Four patches ([register](../sdk/native/patches/README.md)): 0001 a one-line Hexagon gate for delta-net with MTP (D80), 0002 upstream PR #30432 (a NEON path for BF16 dot products) until it merges (D55), 0003 a load that can be stopped (D67), 0004 the prompt cache's SWA rule on hybrid memory (D91) | Faster prompt processing for hybrid models with MTP, drifting no more than upstream's own switch (F149); a 5x faster BF16 image encoder on the phone's CPU (F127); a cancelled load returns in about a second (F148); voice-note chats on the LFM3 family reuse their cache (F153) |
+| A failed tool's exception text stays out of the prompt unless it is an `LbToolError` | The exception may hold private data (D62, D83) |
+| What is on the phone loads with no network request; `cached()` lists only selections that load | A load never downloads unasked (D64, D89) |
+| One file at a time per download, in the plan's order | One transfer is about 2.1x faster than four on a phone (D44, F89, D89) |
+| Chat media from a file reaches llama-server as a `file://` link in the process's media folder | About 100 ms less per turn with three voice notes (D87, F157) |
+| The memory check warns rather than refuses by default | The fit's estimate errs on a phone; the app decides (D57) |
 | SHA-256 on every download | Upstream never verifies (D40, F83) |
 
 ### 1.3 In-process, one runtime
@@ -74,8 +79,9 @@ The engine runs in the application's process (D5). There is no local HTTP server
  +--------------------------+                                       v
  | native/                  |                              llamabro.loadModel(...)
  |  C API (llamabro.h)      |
- |  C++ bridge              |        test-only:  llamabro-testing (FakeLlamaBro)
- |  llama.cpp b12352        |
+ |  C++ bridge              |        also: llamabro-typed (+ -ksp), llamabro-hub-work
+ |                          |        test-only: llamabro-testing, llamabro-hub-testing
+ |  llama.cpp b12479        |
  +--------------------------+
 ```
 
@@ -102,7 +108,7 @@ An application depends on the core, plus optional backend and hub artifacts:
 
 ```kotlin
 dependencies {
-    implementation(platform("io.github.whyisitworking:llamabro-bom:1.0.0"))
+    implementation(platform("io.github.whyisitworking:llamabro-bom:1.0.0"))  // planned with publishing; not built yet
     implementation("io.github.whyisitworking:llamabro")             // CPU, always works
     runtimeOnly("io.github.whyisitworking:llamabro-hexagon")        // optional: Snapdragon NPU
     runtimeOnly("io.github.whyisitworking:llamabro-opencl")         // optional: Adreno GPU
@@ -183,7 +189,7 @@ The alternative, a custom pipeline over `libllama`, would give full control but 
 ## 4. Request path
 
 ```
- Kotlin                               native                                 llama.cpp b12352
+ Kotlin                               native                                 llama.cpp b12479
  ------                               ------                                 ----------------
  model.chat(request)
    |  ChatRequest -> JSON body
@@ -225,7 +231,7 @@ The C API in [`llamabro.h`](../sdk/native/bridge/include/llamabro.h) is a stable
 | `lb_request_cancel(req)` / `lb_request_free(req)` | Cancel a request and release its handle |
 | `lb_model_free(model)` | Cancel in-flight requests, stop the loop, join the thread |
 
-A single generic request function means any llama-server feature that has no Kotlin type yet is still reachable with raw JSON (section 5.5). Pictures and clips travel beside the JSON (D84): Kotlin writes a placeholder (`lb-attachment:<n>`) as a part's `image_url.url` or `input_audio.data` and passes each file as an `lb_attachment` (a path or a descriptor, read natively, or bytes, copied across JNI once); the bridge reads them in the call and writes the base64 data URL llama-server takes into the body (chat's `messages[].content[]` parts on the chat-completion routes, and the `{"content": [...]}` entries of an embeddings input), so neither llama-server's code nor the Java heap holds a base64 copy. A transcription's file goes into the request's files as upstream's multipart upload would. Because the files are read inside the native call, a request with attachments starts on the IO dispatcher.
+A single generic request function means any llama-server feature that has no Kotlin type yet is still reachable with raw JSON (section 5.5). Pictures and clips travel beside the JSON (D84): Kotlin writes a placeholder (`lb-attachment:<n>`) as a part's `image_url.url` or `input_audio.data` and passes each file as an `lb_attachment` (a path or a descriptor, read natively, or bytes, copied across JNI once); the bridge reads them in the call and writes the base64 data URL llama-server takes into the body (chat's `messages[].content[]` parts on the chat-completion routes, and the `{"content": [...]}` entries of an embeddings input), so neither llama-server's code nor the Java heap holds a base64 copy. A path attachment on those routes isn't read at all: the bridge checks its first bytes, links it under a random 128-bit name into the process's media folder (`noBackupFilesDir/llamabro/media/<pid>-<random>/`, llama-server's `--media-path`; one per process, since the app's processes share `noBackupFilesDir`, and at start the runtime removes only the folders of processes that ended) and writes `file://<name>`, so llama-server reads the file while the request runs, and the link is removed when it ends (D87, F157: a turn with three voice notes 195 → 94 ms). A caller-written `file://` reaches only that folder. Bytes and descriptors keep base64. A transcription's file goes into the request's files as upstream's multipart upload would. Because the files are read inside the native call, a request with attachments starts on the IO dispatcher.
 
 ### 4.2 Streaming and cancellation
 
@@ -267,7 +273,7 @@ The three levels share one engine. A beginner uses `Conversation` and still reac
 
 `LlamaBro` is the process runtime. Its members (D6, D24, D42):
 
-- `LlamaBro.create(context, config)`: the first call creates the process's runtime; a later call with an equal config returns the same object, and a different config throws `InvalidRequest` before anything is built (D70). A `LlamaBroConfig` holds the log level and logger, compared by reference, so create it once (in a DI singleton scope, say). With no logger the core logs to logcat as `llamabro` (D66). This works the same in a fresh process started by a job or worker only if that worker passes the same config: keep the config on the `Application` or in the DI graph and pass it from workers, or `create(context)` throws `InvalidRequest` against a UI process's config, or runs with a different logger in a fresh one.
+- `LlamaBro.create(context, config)`: the first call creates the process's runtime; a later call with an equal config returns the same object, and a different config throws `InvalidRequest` before anything is built (D70). A `LlamaBroConfig` holds the log level, the logger and `npuPolling` (the NPU backend polls for its results; off by default, as upstream, D90), the logger compared by reference, so create it once (in a DI singleton scope, say). With no logger the core logs to logcat as `llamabro` (D66). This works the same in a fresh process started by a job or worker only if that worker passes the same config: keep the config on the `Application` or in the DI graph and pass it from workers, or `create(context)` throws `InvalidRequest` against a UI process's config, or runs with a different logger in a fresh one.
 - `loadModel(source, configure)`: a `suspend` function that returns a `Model`.
 - `estimateFit(source, configure)`: a `FitEstimate` for a model and configuration without loading it (section 9.4).
 - `memoryBudgetBytes(configure)`: the budget `ContextSize.Auto` would use now, before side files, for labelling models in a list without planning each one.
@@ -340,9 +346,9 @@ Typed output and typed tools live in their own module, `llamabro-typed` (package
 - A property with a default is optional (and, with `explicitNulls = false`, a nullable one); every other property is required. Objects are closed (`"additionalProperties": false`).
 - A nullable type is `{"anyOf":[X,{"type":"null"}]}`, with the property's keywords inside `X`. Enums are their serial names; an inline value class is its underlying type; a `Char` is a one-character string.
 - A sealed class is an `anyOf` of its subclasses' objects, in the serialization plugin's order, each opening with the discriminator as a required `{"const":"<serial name>"}`; an `object` subclass holds only the discriminator. `Map<String, V>` is an object with `additionalProperties: V`.
-- Annotations (`@SerialInfo`): `@LbDescription` writes `description` (on a property or a class); `@LbRange` on integers writes `minimum`/`maximum`, `@LbLength` and `@LbPattern` on strings `minLength`/`maxLength` and `pattern`, `@LbItems` on lists `minItems`/`maxItems`. A bound left at its default is not written. A `@LbRange` is intersected with the range of `Byte`, `Short`, `Int` and the unsigned types, and refused when nothing is left. `@LbPattern` is sent as written: llama.cpp supports a subset of regex and rejects the rest when it builds the grammar, so a bad pattern fails the first request, and in a conversation with typed tools every request, since the tools go with each one; a test against a real model catches it, `assertTypedSchema` cannot. Decimals take no bounds: the grammar ignores them (F143).
+- Annotations (`@SerialInfo`): `@LbDescription` writes `description` (on a property or a class); `@LbRange` on integers writes `minimum`/`maximum`, `@LbLength` and `@LbPattern` on strings `minLength`/`maxLength` and `pattern`, `@LbItems` on lists `minItems`/`maxItems`. A `@LbLength` or `@LbItems` bound left at its default is not written. Every `Byte`, `Short`, `Int` and unsigned field carries its type's range by default, intersected with any `@LbRange` and refused when nothing is left; a `Long` gets only its annotation's bounds, since int64's limits are upstream's "unbounded" (D88; the grammar grows, at under a millisecond per request, F158). `@LbPattern` is sent as written: llama.cpp supports a subset of regex and, at this version, turns a pattern it can't handle (unanchored, `\d`, `\w`, `\p{…}`, lookarounds, POSIX classes) into any string with only a log warning; only a malformed one (unbalanced parentheses) fails the request, as `InvalidRequest`, and in a conversation with typed tools every request, since the tools go with each one (F158). Anchor a pattern with `^…$` and use plain classes; `assertTypedSchema` cannot check it. Decimals take no bounds: the grammar ignores them (F143).
 - Refused with an `IllegalArgumentException` naming the field's path (`$.items[].name`): a recursive type (a class inside itself with the same type arguments; `Box<Box<String>>` is fine), open polymorphism, a contextual serializer, free-form JSON (`JsonElement`, `JsonObject`, `JsonArray`, `JsonPrimitive`), a sealed serializer not laid out as the plugin's, a non-`String` map key, a bound on a type it does not apply to, and a sealed subclass whose serial name is a qualified class name (no `@SerialName`; the model would have to write the full name, and a rename would break stored replies). `assertTypedSchema<T>()` lets an app's tests find these before release.
-- Typed tools (D61): `tool<A, R>(name, description) { args -> … }` builds a `TypedTool` whose parameters' schema is `typedSchema` of `A`, refused unless it is an object, with the name checked against `^[a-zA-Z0-9_-]{1,64}$` and the description non-blank. `Conversation.Builder.tool(typedTool)` and `toolbox(Toolbox)` register it through core's `toolForCall` (`@InternalLlamaBroApi`), whose handler takes the whole `ToolCall`; core's raw `tool(… handler: (JsonArgs) -> String)` adapts to the same registry entry, so the agent loop (section 6) runs both alike. The typed handler decodes `argumentsJson` with the tool's `Json` (blank is `{}`; a kotlinx decode error is `LbToolError("invalid arguments: <reason>")`; any other exception while decoding, such as an arguments class's `require`, is `LbToolError("invalid arguments")` with it as the cause (which reaches the app as `ToolResult.error`), and an `LbToolError` thrown from an `init` passes through with its message, D62), runs with an `LbToolCallContext` (call id, tool name, raw arguments) as its receiver, and sends a `String` as is, `Unit` as `Done` (D81) and anything else as JSON.
+- Typed tools (D61): `tool<A, R>(name, description) { args -> … }` builds a `TypedTool` whose parameters' schema is `typedSchema` of `A`, refused unless it is an object, with the name checked against `^[a-zA-Z0-9_-]{1,64}$` and the description non-blank. `Conversation.Builder.tool(typedTool)` and `toolbox(Toolbox)` register it through core's `toolForCall` (`@InternalLlamaBroApi`), whose handler takes the whole `ToolCall`; core's raw `tool(… handler: (JsonArgs) -> String)` adapts to the same registry entry, so the agent loop (section 6) runs both alike. The typed handler decodes `argumentsJson` with the tool's `Json` (blank is `{}`; a kotlinx decode error is `LbToolError("invalid arguments: <reason>")`; any other exception while decoding, such as an arguments class's `require`, is `LbToolError("invalid arguments")` with it as the cause (which reaches the app as `ToolResult.error`), and an `LbToolError` thrown from an `init` passes through with its message, D62), runs with an `LbToolCallContext` (call id, tool name, raw arguments) as its receiver, and sends a `String` as is, `Unit` as `Done` (D81) and anything else as JSON with every field, defaults included (`encodeDefaults`, D88).
 - Annotated toolboxes (D61): `llamabro-typed` declares `@LbToolbox(prefix)` (class, interface or object), `@LbTool(description, name, requiresApproval)` and `@LbToolParam(description)`, all with binary retention. `llamabro-typed-ksp`, a JVM module that reads them by fully qualified name and writes code with a small writer of its own (no KotlinPoet), writes `X_LbToolbox.kt` for each toolbox `X`: `fun X.asToolbox(json: Json = Json): Toolbox`, with `X`'s visibility, built from `tool(…)`, so the runtime checks still run. It covers the `@LbTool` methods of `X` and of its `@LbToolbox` supertypes, each declaration once; the name is the method's in snake_case or `@LbTool.name`, after the prefix as written. A method takes one `@Serializable` class (used as is) or parameters that each carry `@LbToolParam`, for which the processor writes a private `@Serializable` class, `X_LbArgs_<tool>`, with `@LbDescription` from each parameter's text and `= null` for a nullable `= null` parameter (bounds such as `@LbRange` target properties, so they need the arguments class, as other defaults do); an `LbToolCallContext` parameter receives the call's context and stays out of the schema. A method that does not suspend is called inside `withContext(Dispatchers.IO)`. Each misuse is a `KSPLogger.error` on its symbol: a blank description, a name failing the pattern with its prefix, two tools with one name, an override annotated again, a separate parameter's default other than `= null` (read from the source, comments left out, since KSP gives no default expressions; a default it can't read, as on a supertype from a library, is an error too), a parameter without `@LbToolParam` beside annotated ones or a lone non-`@Serializable` one, `@LbTool` outside an `@LbToolbox`, a sealed subclass reached from the arguments whose serial name is missing or dotted (as the runtime schema refuses it), and a result other than `String`, `Unit`, a primitive, a `List` or a `@Serializable` class. kctfork tests each error and the generated code on snippets (D81); `AnnotatedToolboxTest` runs a toolbox the real processor wrote through the loop with `FakeLlamaBro`.
 
 ---
@@ -359,7 +365,7 @@ Typed output and typed tools live in their own module, `llamabro-typed` (package
 - `contextUsage: StateFlow<ContextUsage>`, derived from timings (prompt, cached and predicted tokens)
 - `pendingApproval: StateFlow<ToolCall?>`, the call waiting for `approve` or `deny` (section 6.2)
 
-Operations: `send(text) { options }`, `ask(text, vararg attachments)` (returns `Typed<String>`: `Value(value, json, reasoning)`, or `Incomplete(reason, json)` for `Length`, `TurnLimit`, `ToolCallsPending` and `ToolAborted`, F41, D63; engine failures still throw), `resume()`, `approve(callId)`, `deny(callId, reason)`, `regenerate()`, `endReasoning()`, `toJson()` and `Model.restoreConversation(json)`. A conversation can also start from the application's own stored messages (F96). A descriptor in a message is read once into bytes when the message is added (D84), off the caller's thread, so later turns and `toJson` use the bytes; one in a starting `history` is read once by the first request or by `toJson`, and a closed descriptor, a missing file or a clip file in another format is `InvalidRequest` before the message is added. When a send's first request fails with `InvalidRequest` caused by its media (the bridge's attachment errors, or the decoder's) before any token or tool call, the message is removed again, atomically and only while it is still the last one, so the chat isn't wedged by media that fails every request; any other failure keeps it for `resume()`. `toJson` saves a file source as its path and bytes as base64, in save format version 3 (audio parts and paths); version 2 saves, with inline image data, and version 1 saves still load. Per-conversation `defaults { ... }` apply to every request, and per-send options apply to one (F38).
+Operations: `send(text) { options }`, `ask(text, vararg attachments)` (returns `Typed<String>`: `Value(value, json, reasoning)`, or `Incomplete(reason, json)` for `Length`, `TurnLimit`, `ToolCallsPending` and `ToolAborted`, F41, D63; `valueOrNull()` gives the value or null, D88; engine failures still throw), `resume()`, `approve(callId)`, `deny(callId, reason)`, `regenerate()`, `askAgain()` (`regenerate` collected into a `Typed<String>`, as `ask` is `send` collected; `llamabro-typed`'s `askAgain<T>()` regenerates under the same schema, D88), `endReasoning()`, `toJson()` and `Model.restoreConversation(json)`. A conversation can also start from the application's own stored messages (F96). A descriptor in a message is read once into bytes when the message is added (D84), off the caller's thread, so later turns and `toJson` use the bytes; one in a starting `history` is read once by the first request or by `toJson`, and a closed descriptor, a missing file or a clip file in another format is `InvalidRequest` before the message is added. When a send's first request fails with `InvalidRequest` caused by its media (the bridge's attachment errors, or the decoder's) before any token or tool call, the message is removed again, atomically and only while it is still the last one, so the chat isn't wedged by media that fails every request; any other failure keeps it for `resume()`. `toJson` saves a file source as its path and bytes as base64, in save format version 3 (audio parts and paths); version 2 saves, with inline image data, and version 1 saves still load. Per-conversation `defaults { ... }` apply to every request, and per-send options apply to one (F38).
 
 Only one operation runs at a time. A second operation fails with `Busy` when its flow is collected, not when it is created.
 
@@ -393,7 +399,7 @@ Errors (D62, F140). Upstream's loop sends every exception's text to the model. H
 | The model called a name that is not registered | `Error: Unknown tool: <name>` | null |
 | The arguments do not parse, are not a JSON object, or `JsonArgs` has no such argument or a mistyped argument or list item (the accessors throw `LbToolError("invalid arguments: …")`) | `Error: invalid arguments: <reason>`, for example `Error: invalid arguments: missing string argument: city` | the parse exception (`JsonArgs` throws with a cause), otherwise null |
 | The handler throws `LbToolError(message)` | `Error: <message>` | its `cause`, or null |
-| A typed tool's arguments fail kotlinx's decoding (a missing field, bad JSON, a custom serializer's `SerializationException`) | `Error: invalid arguments: <reason>` | the `SerializationException` |
+| A typed tool's arguments fail kotlinx's decoding (a missing field, bad JSON, a custom serializer's `SerializationException`) | `Error: invalid arguments: <reason>` (a missing field reads `missing field 'x'`, D88) | the `SerializationException` |
 | A typed tool's arguments throw any other exception while decoding (a `require` in `init`) | `Error: invalid arguments` | that exception |
 | A typed tool's arguments class throws `LbToolError` from `init` | `Error: <message>` | its `cause`, or null |
 | The handler throws any other exception | `Error: the tool failed` | the exception |
@@ -515,6 +521,7 @@ Key rules (D24, D33):
 - A backend that is absent, failed to load, or has no device is recorded as skipped with its reason.
 - A load that fails for lack of memory ends the fallback instead of trying the next device. Every device shares the phone's RAM, so another device cannot fix it, although projections differ by device by up to about 260 MiB (F80).
 - Failures a policy cannot catch, such as a process abort inside a vendor driver, are avoided by keeping the affected backend out of the release (Vulkan, D31).
+- Only one phone is verified: a OnePlus 13 (Snapdragon 8 Elite, Hexagon v79, Adreno 830). `Auto` still tries the NPU and the GPU on every Snapdragon (D92), so on a chip nobody has tested a backend that computes wrong output or aborts is not caught; an app that hasn't tested a chip can choose `Prefer` or `Only(Cpu)`.
 
 ### 8.3 LoadReport
 
@@ -610,7 +617,7 @@ Measured behaviour that shaped the defaults:
 - **MTP** is the opt-in for structured output on the NPU (F67, F68).
 - EAGLE-3 and DSpark are not supported: they lost everywhere with the checkpoints that exist (D36).
 
-Every mode is checked for identical greedy output against the same model without speculation. The `delta-net-head-tail-split` patch makes MTP's prompt processing faster for hybrid models by sending the prompt's head through the fast single-snapshot kernel and only the last K tokens through the snapshot path (D10, F7, F8). `loadReport.speculative` and `speculativeReason` explain what was chosen.
+Every mode is checked for identical greedy output against the same model without speculation. Patch 0001 makes MTP's prompt processing faster for hybrid models on the NPU: Hexagon's fast chunked delta-net kernel also takes batches longer than K, where ggml's contract promises only the final state, as CUDA's kernel already does (D80, F149; it replaced the earlier head/tail split). `loadReport.speculative` and `speculativeReason` explain what was chosen.
 
 ---
 
@@ -629,7 +636,7 @@ The hub therefore schedules nothing and touches no notifications; the optional `
 
 1. **A cold `Flow` with cooperative cancellation.** `hub.download(ref)` runs unchanged inside a `CoroutineWorker`, a `JobService` scope, a `Service` scope or a `ViewModel`.
 2. **Idempotent, with all state on disk.** The cache directory is the state: partial files and their validators. Calling `download` again resumes, and finished verified blobs are skipped. There is no database.
-3. **One transfer per selection, one writer per blob.** In one process, collectors of the same selection share one transfer, and the last to leave cancels it. Across processes, a kernel lock per blob stops two writers, and a dead process's lock is released by the kernel.
+3. **One transfer per selection, one writer per blob.** In one process, collectors of the same selection share one transfer, and the last to leave cancels it. Each blob is written under a lock: a mutex keyed by the lock file's identity (device and inode, as the JVM's own lock table keys it; the canonical path where there is none) in the process, and a kernel lock across processes, which the kernel releases when a process dies. So a download resumed while a stopped one still lets go of the partial (a quick Pause then Resume) waits for it, then resumes the same partial.
 4. **Progress anyone can watch.** `hub.progress(ref)` is a `StateFlow<DownloadState>` shared by the whole process, so the UI and a notification see the same numbers. When nothing is running, the state is read from disk (`Absent`, `Partial`, `Complete`) on `Dispatchers.IO`, so calling it on the main thread does no I/O (F91).
 5. **Errors that say whether a retry helps** (section 12.5).
 
@@ -661,7 +668,8 @@ that leaves the endpoint's origin is not followed. A result groups the repos tag
 a fine-tune, merge or adapter names the same base under another tag and stays its own result (F146). Grouping is per
 page, so an endless list merges pages by result id. `files(repo)` lists the newest commit through the resolver's look (it moves no ref) and gives each model GGUF
 once, split parts summed, with an `HfModel` naming that file, and whether an `mmproj` is there; sizes, not a fit
-verdict. `recommendedSampling(ref)` returns both sources, labelled, each null when absent (D79): `fromFile`, the GGUF
+verdict. `plan(ref)` is a look too: it moves no ref and writes no record, and falls back to the cache only when the
+Hub can't be reached; only `download` records a selection. `recommendedSampling(ref)` returns both sources, labelled, each null when absent (D79): `fromFile`, the GGUF
 header's `general.sampling.*` (what loads by default, F17), read from disk when the model is on the phone, else through
 the header fetch into a stub removed when it returns; and `fromBaseModel`, the base model's `generation_config.json`
 (`temperature`, `top_p`, `top_k`, `min_p`, `repetition_penalty` as the repeat penalty, `presence_penalty`;
@@ -677,14 +685,26 @@ throws.
 
 **The installed copy, a deliberate deviation from upstream (D64).** Upstream's `-hf` re-reads `main` on every start and
 downloads what changed (F82), and its offline read follows `refs/main`. But `refs/main` records the newest commit the
-cache has seen, not the copy on the phone: an online `hub.plan(ref)` or a cancelled update moves it, and a refs-only
+cache has seen, not the copy on the phone: a started update moves it, whether it was cancelled or failed (`hub.plan(ref)` is a look and moves nothing), and a refs-only
 read would then download the newer commit inside a load, or fail offline beside a complete older snapshot. So the hub
 keeps an installed record per model and options (`.llamabro/installed/`), written only when a download completes, and
 `hub.model`, `hub.source` and `hub.progress` follow it. A newer copy replaces it only when its download completes:
 `hasUpdate` compares the newest commit with it (an online look that moves nothing, and throws on a refusal or a rate
 limit rather than answering "no update"), and `download` fetches it. With no installed record, the refs rule applies as
 before; a copy complete by that rule (from a cache written before the record) is adopted as installed when first read,
-or before an online plan moves `refs/main`, so no one downloads again. `hub.delete` removes the record with the files.
+or before a download's plan moves `refs/main`, so no one downloads again. `hub.delete` removes the record with the files;
+deletes of one repository run one at a time, so of two at once for one model the second returns false; a delete first stops this process's running
+downloads of what it removes (the repo, the tag or the file, as the model or its draft) and waits for them, ending
+their flows with a `Network` error that is not retryable so no worker fetches the model again (a download of it
+that starts while the delete runs fails at once with the same error); partial files are
+removed under their blob's lock; and a delete
+removes each blob under its download lock, so a download of another tag that links it meanwhile keeps it. When a download
+replaces an installed copy, the files only the old copy named are removed, each decided under its blob's lock from the
+records as they are then, so a download of another selection reusing a blob keeps it; a removal that fails is logged
+and the download still completes. `hub.cached()` lists only complete selections: the installed copies with every file
+on disk, then the tags of `refs/main`'s snapshot with all their split parts, and, for a tag the hub holds a plan or
+installed record of, only when one of those records is complete or its default selection loads as `hub.source` would
+load it, since the snapshot alone can't tell a stopped download from a copy made without its projector.
 
 `HfModel` is a class and converts to a plain string, so it fits in a WorkManager `Data` or an Intent extra. `HubConfig` sets the endpoint, a token provider, the cache directory, the progress interval and a logger. `create` returns the same hub for the same cache folder and an equal config, throws `IllegalStateException` for a different config on that folder, and lets hubs on different folders coexist; the logger and token provider compare by reference, so create the config once (a DI singleton scope does that).
 
@@ -718,13 +738,13 @@ The default `cacheDir` is `noBackupFilesDir/llamabro/hub` (D16). Auto Backup wou
 - **Verification (D40, D47).** Each LFS file is hashed with SHA-256 while it is written, and non-LFS files use the git SHA-1. A file enters the cache only when the digest matches the repository's value; otherwise the partial is deleted and the download fails with `IntegrityMismatch`. A resumed partial's existing bytes are hashed again first (phase `Verifying`, about 0.75 s per GB on the test phone, F89); a complete partial whose digest already matches is renamed with no request.
 - **Durability.** Writes go to `{oid}.downloadInProgress`, are synced, and are renamed atomically. Each call makes up to three attempts, with 2 s and then 4 s waits.
 - **Storage.** Free space is checked up front with `StorageManager.getAllocatableBytes` and reserved with `allocateBytes`. Running out of space keeps the partial.
-- **Concurrency.** Files download one at a time by default (D44, F89, F91).
+- **Concurrency.** Files download one at a time by default (D44, F89, F91), in the plan's order: model parts, image encoder, draft. A download stopped partway holds a prefix of its plan.
 
-Deviations from `-hf`, beyond hashing (D44): `delete(tag)` removes the tag's files from every snapshot of the repository, with blobs removed only when no snapshot links them; and a tree entry without a digest is skipped.
+Deviations from `-hf`, beyond hashing (D44): `delete(tag)` removes the tag's files from every snapshot of the repository, with blobs removed only when no snapshot links them; and a tree entry without a digest is skipped. A tag is matched case-insensitively, as `-hf` does (`common/download.cpp` `find_best_model`, `common_download_remove`); `HfModel` upper-cases it, so the two spellings are one selection, one record and one work name. `cached()` lists only selections that load: a tag with a split part missing, or one whose plan or installed records are all incomplete while its default selection wouldn't load either, is left out, where upstream's `common_list_cached_models` lists every tag with a first part (`common/download.cpp:1048`). A load must never download unasked (D64), and a stopped download links its first files before the rest arrive. Files download one at a time by default, in the plan's order, where upstream starts them all at once with `std::async` (`common/download.cpp:888`): a stopped download then holds a prefix of its plan, the same each time (D89).
 
 ### 12.5 Errors
 
-`HubException` is sealed: `Network(retryable)`, `Unauthorized` (a gated repository: a token or an accepted licence is needed), `NotFound`, `RateLimited(retryAfterSeconds)`, `InsufficientStorage(neededBytes, availableBytes)` and `IntegrityMismatch`. An application's worker maps `retryable` to a retry. Being offline with the model not cached is a retryable `Network` error (F94).
+`HubException` is sealed: `Network(retryable)`, `Unauthorized` (a gated repository: a token or an accepted licence is needed), `NotFound`, `RateLimited(retryAfterSeconds)`, `InsufficientStorage(neededBytes, availableBytes)` and `IntegrityMismatch`. An application's worker maps `retryable` to a retry. A download retries only network and I/O failures that may pass (a retryable `Network`); a refusal (a 4xx) fails at once, and any other exception is a bug and passes through unchanged. Being offline with the model not cached is a retryable `Network` error (F94).
 
 ### 12.6 HTTP and redirects
 

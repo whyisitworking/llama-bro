@@ -349,6 +349,163 @@ class ToolboxProcessorTest {
     }
 
     @Test
+    fun separateParamsKeepTheirSerializerChoice() {
+        // a parameter can't carry @SerialName (Kotlin allows it on properties and classes only); a type-use
+        // @Serializable(with = …) is honoured on the generated property, at any depth
+        val result =
+            compile(
+                """
+                object AsText : kotlinx.serialization.KSerializer<java.util.Date> {
+                    override val descriptor = kotlinx.serialization.descriptors.PrimitiveSerialDescriptor(
+                        "AsText", kotlinx.serialization.descriptors.PrimitiveKind.STRING,
+                    )
+                    override fun serialize(encoder: kotlinx.serialization.encoding.Encoder, value: java.util.Date) =
+                        encoder.encodeString(value.toString())
+                    override fun deserialize(decoder: kotlinx.serialization.encoding.Decoder) = java.util.Date()
+                }
+                @LbToolbox class Tools {
+                    @LbTool("Remind")
+                    fun remind(
+                        @LbToolParam at: @Serializable(with = AsText::class) java.util.Date,
+                        @LbToolParam also: List<@Serializable(with = AsText::class) java.util.Date>? = null,
+                    ): String = ""
+                }
+                """,
+            )
+        assertSuccess(result)
+        val source = generated(result, "Tools_LbToolbox.kt")
+        assertTrue(
+            source,
+            "val at: @kotlinx.serialization.Serializable(with = app.AsText::class) java.util.Date," in source,
+        )
+        assertTrue(
+            source,
+            "val also: kotlin.collections.List<@kotlinx.serialization.Serializable(with = app.AsText::class) " +
+                "java.util.Date>? = null," in source,
+        )
+    }
+
+    @Test
+    fun separateParamThatCantBeSerializedIsAnError() {
+        assertError(
+            """
+            class City(val name: String)
+            @LbToolbox class Tools { @LbTool("Forecast") fun forecast(@LbToolParam city: City): String = "" }
+            """,
+            "parameter city has type app.City, which kotlinx.serialization can't serialize",
+        )
+        assertError(
+            """
+            @LbToolbox class Tools {
+                @LbTool("Remind") fun remind(@LbToolParam at: List<java.util.Date>): String = ""
+            }
+            """,
+            "parameter at has type kotlin.collections.List<java.util.Date>",
+        )
+    }
+
+    @Test
+    fun contextualParamIsAnError() =
+        assertError(
+            """
+            @LbToolbox class Tools {
+                @LbTool("Remind") fun remind(@LbToolParam at: @kotlinx.serialization.Contextual java.util.Date): String = ""
+            }
+            """,
+            "parameter at has type java.util.Date: a schema can't hold a contextual or open-polymorphic type; " +
+                "use @Serializable(with = …)",
+        )
+
+    @Test
+    fun polymorphicParamIsAnErrorAtAnyDepth() =
+        assertError(
+            """
+            interface Shape
+            @LbToolbox class Tools {
+                @LbTool("Draws") fun draw(@LbToolParam shapes: List<@kotlinx.serialization.Polymorphic Shape>): String = ""
+            }
+            """,
+            "a schema can't hold a contextual or open-polymorphic type",
+        )
+
+    @Test
+    fun openPolymorphicParamIsAnError() {
+        assertError(
+            """
+            @Serializable abstract class Shape
+            @LbToolbox class Tools { @LbTool("Draws") fun f(@LbToolParam s: Shape): String = "" }
+            """,
+            "parameter s has type app.Shape: a schema can't hold a contextual or open-polymorphic type",
+        )
+        assertError(
+            """
+            interface Shape
+            @LbToolbox class Tools { @LbTool("Draws") fun f(@LbToolParam s: List<Shape>): String = "" }
+            """,
+            "a schema can't hold a contextual or open-polymorphic type",
+        )
+    }
+
+    @Test
+    fun typeUseSerializableWithoutAWithPicksNothing() {
+        // it picks no serializer, so a type that has none of its own is refused rather than failing to compile
+        assertError(
+            """
+            @LbToolbox class Tools {
+                @LbTool("Remind") fun remind(@LbToolParam at: @Serializable java.util.Date): String = ""
+            }
+            """,
+            "parameter at has type java.util.Date, which kotlinx.serialization can't serialize",
+        )
+        // on a type that is serializable by itself it changes nothing, and the generated class compiles
+        val result =
+            compile(
+                """
+                @Serializable data class Place(val name: String)
+                @LbToolbox class Tools { @LbTool("Go") fun go(@LbToolParam to: @Serializable Place): String = "" }
+                """,
+            )
+        assertSuccess(result)
+        assertTrue("val to: app.Place," in generated(result, "Tools_LbToolbox.kt"))
+    }
+
+    @Test
+    fun builtInInstantIsAccepted() {
+        val result =
+            compile(
+                """
+                @LbToolbox class Tools {
+                    @LbTool("Remind") fun remind(@LbToolParam at: kotlin.time.Instant): String = ""
+                }
+                """,
+            )
+        assertSuccess(result)
+        assertTrue("val at: kotlin.time.Instant," in generated(result, "Tools_LbToolbox.kt"))
+    }
+
+    @Test
+    fun separateParamsOfSerializableTypesAreAccepted() {
+        val result =
+            compile(
+                """
+                @Serializable data class Place(val name: String)
+                enum class Scale { C, F }
+                @LbToolbox class Tools {
+                    @LbTool("Forecast")
+                    fun forecast(
+                        @LbToolParam place: Place,
+                        @LbToolParam unit: Scale,
+                        @LbToolParam days: UInt,
+                        @LbToolParam tags: Map<String, List<Set<Long>>>,
+                        @LbToolParam pair: Pair<String, Int>? = null,
+                    ): String = ""
+                }
+                """,
+            )
+        assertSuccess(result)
+    }
+
+    @Test
     fun contextParamLeftOutOfArgs() {
         val result =
             compile(

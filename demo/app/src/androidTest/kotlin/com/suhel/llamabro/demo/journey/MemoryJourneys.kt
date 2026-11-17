@@ -19,7 +19,9 @@ import com.suhel.llamabro.demo.chat.HostState
 import com.suhel.llamabro.demo.chat.ReplyKeeper
 import com.suhel.llamabro.demo.data.ChipChoice
 import com.suhel.llamabro.demo.models.Catalog
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -120,11 +122,9 @@ class MemoryJourneys : Journey() {
     }
 
     @Test fun aReplyGoesOnInTheBackgroundUnderANotification() {
-        // as a person who allowed notifications when the first download asked
-        instrumentation.uiAutomation.grantRuntimePermission(
-            instrumentation.targetContext.packageName,
-            Manifest.permission.POST_NOTIFICATIONS,
-        )
+        // as a person who allowed notifications when the first download asked; on a phone that refuses the shell
+        // the grant (F150), as one who didn't: the reply still goes on, with no notification to show for it
+        val notifies = robot.grant(Manifest.permission.POST_NOTIFICATIONS)
         // the test app skips the app's own start-up, so the journey registers the observer the app registers
         keeper = ReplyKeeper(instrumentation.targetContext) { app.container.engine.replying.value }
         instrumentation.runOnMainSync { ProcessLifecycleOwner.get().lifecycle.addObserver(keeper!!) }
@@ -136,16 +136,27 @@ class MemoryJourneys : Journey() {
         seeTag("typing")
 
         robot.pressHome()
-        robot.openNotificationShade()
-        assertTrue("the shade shows the reply being written", robot.shadeShows("Writing a reply"))
+        if (notifies) {
+            robot.openNotificationShade()
+            assertTrue("the shade shows the reply being written", robot.shadeShows("Writing a reply"))
+        }
         // the reply ends: the service goes with it
         world.holdReplies.value = false
-        val device = UiDevice.getInstance(instrumentation)
-        assertTrue(
-            "the notification leaves when the reply ends",
-            device.wait(Until.gone(By.textContains("Writing a reply")), WAIT),
-        )
-        robot.collapseNotificationShade()
+        if (notifies) {
+            val device = UiDevice.getInstance(instrumentation)
+            assertTrue(
+                "the notification leaves when the reply ends",
+                device.wait(Until.gone(By.textContains("Writing a reply")), WAIT),
+            )
+            robot.collapseNotificationShade()
+        } else {
+            runBlocking {
+                withTimeout(WAIT) {
+                    app.container.engine.replying
+                        .first { !it }
+                }
+            }
+        }
         robot.relaunch()
         see("Written while you were away")
     }

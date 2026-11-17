@@ -1,6 +1,7 @@
 package com.suhel.llamabro.typed.ksp
 
 import com.google.devtools.ksp.symbol.ClassKind
+import com.google.devtools.ksp.symbol.KSAnnotation
 import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
 import com.google.devtools.ksp.symbol.KSNode
@@ -91,6 +92,46 @@ internal class SerialChecks(private val report: (String, KSNode) -> Unit) {
         }
     }
 
+    /**
+     * Whether kotlinx.serialization writes [type] with no serializers module, as the arguments class the processor
+     * writes needs: a primitive, an unsigned number, a `String`, an enum, a `@Serializable` class, a built-in
+     * collection, `Pair` or `Triple` of such types, or a type given a serializer by a type-use
+     * `@Serializable(with = …)` ([annotations], or the type's own). A type-use `@Serializable` with no `with` picks no
+     * serializer (the arguments class leaves it out), so the type must be serializable by itself.
+     */
+    fun serializable(type: KSType, annotations: Sequence<KSAnnotation> = emptySequence()): Boolean {
+        if (serializerAnnotation(annotations + type.annotations).isNotEmpty()) return true
+        val decl = type.classDeclaration() ?: return false
+        val own = decl.fqn() in BUILT_IN || decl.classKind == ClassKind.ENUM_CLASS || decl.has(SERIALIZABLE)
+        return own &&
+            type.arguments.all { argument ->
+                val reference = argument.type ?: return@all false
+                serializable(reference.resolve(), reference.annotations + argument.annotations)
+            }
+    }
+
+    /**
+     * Whether [type] or a type argument at any depth has its serializer chosen at runtime, so the schema converter
+     * can't describe it: one marked `@Contextual` or `@Polymorphic` (which the arguments class the processor writes
+     * doesn't copy, so it wouldn't compile either), or an open-polymorphic one with no annotation at all, an interface
+     * or a `@Serializable` abstract class that isn't sealed. A type given `@Serializable(with = …)` is not.
+     */
+    fun runtimeChosen(type: KSType, annotations: Sequence<KSAnnotation> = emptySequence()): Boolean =
+        (annotations + type.annotations).any { it.fqnOf() in RUNTIME_CHOSEN } ||
+            (serializerAnnotation(annotations + type.annotations).isEmpty() && openPolymorphic(type)) ||
+            type.arguments.any { argument ->
+                val reference = argument.type ?: return@any false
+                runtimeChosen(reference.resolve(), reference.annotations + argument.annotations)
+            }
+
+    private fun openPolymorphic(type: KSType): Boolean {
+        val decl = type.classDeclaration() ?: return false
+        // the built-in collections are interfaces too, with serializers of their own
+        if (decl.isSealed() || decl.fqn() in BUILT_IN) return false
+        return decl.classKind == ClassKind.INTERFACE ||
+            (decl.classKind == ClassKind.CLASS && Modifier.ABSTRACT in decl.modifiers && decl.has(SERIALIZABLE))
+    }
+
     /** One `@Serializable` class, the whole arguments object: not nullable, sealed, abstract or an interface. */
     fun argumentsObject(type: KSType): Boolean {
         val decl = type.classDeclaration() ?: return false
@@ -106,6 +147,57 @@ internal class SerialChecks(private val report: (String, KSNode) -> Unit) {
             setOf("String", "Unit", "Int", "Long", "Short", "Byte", "Double", "Float", "Boolean", "Char")
                 .map { "kotlin.$it" }
                 .toSet()
+
+        /**
+         * What kotlinx.serialization serializes with no annotation, [SIMPLE] included: its `initBuiltins()` at the
+         * pinned version (1.10.0; `Nothing` left out, as no argument has it) and the collections the plugin knows.
+         */
+        val BUILT_IN =
+            SIMPLE +
+                listOf(
+                    "UByte",
+                    "UShort",
+                    "UInt",
+                    "ULong",
+                    "UByteArray",
+                    "UShortArray",
+                    "UIntArray",
+                    "ULongArray",
+                    "Pair",
+                    "Triple",
+                    "Array",
+                    "time.Duration",
+                    "time.Instant",
+                    "uuid.Uuid",
+                ).map { "kotlin.$it" } +
+                listOf(
+                    "Boolean",
+                    "Byte",
+                    "Short",
+                    "Char",
+                    "Int",
+                    "Long",
+                    "Float",
+                    "Double",
+                ).map { "kotlin.${it}Array" } +
+                listOf(
+                    "List",
+                    "MutableList",
+                    "ArrayList",
+                    "Collection",
+                    "Set",
+                    "MutableSet",
+                    "HashSet",
+                    "LinkedHashSet",
+                    "Map",
+                    "MutableMap",
+                    "HashMap",
+                    "LinkedHashMap",
+                    "Map.Entry",
+                ).map { "kotlin.collections.$it" }
+
+        /** Type-use annotations whose serializer is found only at runtime, in a serializers module. */
+        val RUNTIME_CHOSEN = setOf("kotlinx.serialization.Contextual", "kotlinx.serialization.Polymorphic")
     }
 }
 

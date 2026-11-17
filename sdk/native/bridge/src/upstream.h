@@ -1,4 +1,4 @@
-// Copies of static helpers from llama.cpp b12352 tools/server/server.cpp, which server-context doesn't export.
+// Copies of static helpers from llama.cpp b12479 tools/server/server.cpp, which server-context doesn't export.
 #pragma once
 
 #include "server-http.h"

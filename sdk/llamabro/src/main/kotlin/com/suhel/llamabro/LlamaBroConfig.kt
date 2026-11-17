@@ -16,28 +16,38 @@ public class LlamaBroConfig internal constructor(
      * no off switch, so pass a logger that drops lines for silence.
      */
     public val logger: Logger?,
+    /**
+     * Whether the NPU backend (`llamabro-hexagon`) polls for the NPU's results instead of sleeping until they arrive
+     * (upstream's `GGML_HEXAGON_OPPOLL`). Off by default, as upstream (D90). On, the waiting CPU core never idles, so
+     * chat runs 4-7% faster but the chip runs hotter while busy (findings F156); and on Android each empty poll has
+     * the DSP library log an error, tens of thousands of lines a second, which floods logcat and drops the app's own
+     * lines (F162) until the voice phase carries the no-block poll. Read once, when the backends start.
+     */
+    public val npuPolling: Boolean,
 ) {
     public fun copy(configure: Builder.() -> Unit): LlamaBroConfig = Builder(this).apply(configure).build()
 
     override fun equals(other: Any?): Boolean =
-        other is LlamaBroConfig && other.logLevel == logLevel && other.logger == logger
+        other is LlamaBroConfig && other.logLevel == logLevel && other.logger == logger &&
+            other.npuPolling == npuPolling
 
-    override fun hashCode(): Int = 31 * logLevel.hashCode() + (logger?.hashCode() ?: 0)
+    override fun hashCode(): Int = (31 * logLevel.hashCode() + (logger?.hashCode() ?: 0)) * 31 + npuPolling.hashCode()
 
-    override fun toString(): String = "LlamaBroConfig(logLevel=$logLevel, logger=$logger)"
+    override fun toString(): String = "LlamaBroConfig(logLevel=$logLevel, logger=$logger, npuPolling=$npuPolling)"
 
     /** Mutable scope of `LlamaBroConfig { }` and [copy]. */
     public class Builder internal constructor(from: LlamaBroConfig) {
         public var logLevel: LogLevel = from.logLevel
         public var logger: Logger? = from.logger
+        public var npuPolling: Boolean = from.npuPolling
 
-        internal fun build(): LlamaBroConfig = LlamaBroConfig(logLevel, logger)
+        internal fun build(): LlamaBroConfig = LlamaBroConfig(logLevel, logger, npuPolling)
     }
 
     public companion object {
-        /** Warnings and errors, to the default sink. */
+        /** Warnings and errors, to the default sink; the NPU doesn't poll. */
         @JvmField
-        public val Default: LlamaBroConfig = LlamaBroConfig(LogLevel.Warn, null)
+        public val Default: LlamaBroConfig = LlamaBroConfig(LogLevel.Warn, null, npuPolling = false)
     }
 }
 

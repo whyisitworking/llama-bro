@@ -52,7 +52,7 @@ curl -s -o out.wav -H 'Content-Type: application/json' \
 
 Mark a weight that any op other than a matmul's `src[0]` reads, directly or through a view, as keep-flat on the
 tensor (a host-only flag); unpack it if already tiled (`htp_unpack_tensor_tiled`); make `ggml_hexagon_tensor_can_tile`
-refuse it, so `kparams` (`will_tile`) also picks the flat kernel. Only skipping the repack crashed the DSP
+refuse it. Note: Hexagon multiplies quantized weights only tiled, so that matmul then falls back to the CPU (the graph splits NPU → CPU → NPU); correct, not fast. A tiled-aware `GET_ROWS` (and views that carry their base's tiled flag) would be the better upstream fix. Only skipping the repack crashed the DSP
 (`dspqueue_read failed: 0x2e`), because the kernel was still chosen for a tiled weight. With the fix: only
 `a.gen.code.embd.weight` stays flat, the text model is unchanged, and `/tts` speaks on HTP at 1.33-1.39× real time.
 Our patch: `sdk/native/patches/0005-hexagon-keep-shared-weights-flat.patch`.

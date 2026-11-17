@@ -14,10 +14,10 @@ import kotlinx.serialization.SerialInfo
 public annotation class LbDescription(val text: String)
 
 /**
- * Bounds an integer property: the schema's `minimum` and `maximum`, which llama.cpp's grammar enforces. A bound left at
- * its default is not written. The range is intersected with the field type's range (`Int`, `Byte`, the unsigned
- * types…) and refused, with the field's path, when nothing is left. Decimals have no bounds, since the grammar ignores
- * them (F143).
+ * Bounds an integer property: the schema's `minimum` and `maximum`, which llama.cpp's grammar enforces. The range is
+ * intersected with the field type's range (`Int`, `Byte`, the unsigned types…), which is written even without this
+ * annotation (D88), and refused, with the field's path, when nothing is left; a `Long` has only the bounds set here.
+ * Decimals have no bounds, since the grammar ignores them (F143).
  */
 @SerialInfo
 @Target(AnnotationTarget.PROPERTY)
@@ -32,10 +32,12 @@ public annotation class LbRange(val min: Long = Long.MIN_VALUE, val max: Long = 
 public annotation class LbLength(val min: Int = 0, val max: Int = Int.MAX_VALUE)
 
 /**
- * Holds a string property to a regular expression: the schema's `pattern`, in llama.cpp's grammar's subset.
- * llama.cpp rejects the rest of regex when it builds the grammar, so a bad pattern fails the first request, and in a
- * conversation with typed tools every request in it, since the tools are sent with each one. A test against a real
- * model catches it; [assertTypedSchema] can't check the pattern.
+ * Holds a string property to a regular expression: the schema's `pattern`, in llama.cpp's grammar's subset (F158): an
+ * anchored pattern (`^…$`) of literal characters, `.`, classes such as `[a-z]`, groups, `|` and repetition. llama.cpp
+ * drops any other pattern (unanchored, `\d`, `\w`, `\p{…}`, lookarounds, POSIX classes) with only a log warning, so
+ * the field takes any string; a malformed one (unbalanced parentheses) fails the request with `InvalidRequest`, and
+ * in a conversation with typed tools every request in it, since the tools are sent with each one. [assertTypedSchema]
+ * can't check the pattern; a test against a real model does.
  */
 @SerialInfo
 @Target(AnnotationTarget.PROPERTY)

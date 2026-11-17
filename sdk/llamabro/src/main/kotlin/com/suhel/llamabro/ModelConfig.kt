@@ -137,6 +137,8 @@ public class ModelConfig internal constructor() {
         mmprojDevice: String? = null,
         /** Load at the smallest context with no budget: the memory check said no, and the app chose to be warned. */
         smallestContext: Boolean = false,
+        /** llama-server's media root: path attachments reach it as `file://` links made there (D84, F157). */
+        mediaDir: String? = null,
     ): String =
         buildJsonObject {
             validateSource(source)
@@ -146,6 +148,7 @@ public class ModelConfig internal constructor() {
             putSource(source)
             putContext(memoryBudgetMib, smallestContext)
             putBatching(slotSavePath)
+            mediaDir?.let { put("media_dir", it) }
             putTask()
             putLoraAdapters()
             putSpeculative()

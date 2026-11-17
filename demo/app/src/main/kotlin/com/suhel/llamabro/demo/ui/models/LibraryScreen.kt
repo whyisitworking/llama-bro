@@ -23,6 +23,7 @@ import com.suhel.llamabro.demo.designsystem.components.Gap
 import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.IconAction
 import com.suhel.llamabro.demo.designsystem.components.LibraryRow
+import com.suhel.llamabro.demo.designsystem.components.LimitLine
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.Screen
 import com.suhel.llamabro.demo.designsystem.components.Section
@@ -61,12 +62,15 @@ fun LibraryRoute(container: AppContainer, onBack: () -> Unit, onGetMore: () -> U
     val storage by viewModel.storage.collectAsStateWithLifecycle()
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
     val pendingRemove by viewModel.pendingRemove.collectAsStateWithLifecycle()
+    val problem by viewModel.problem.collectAsStateWithLifecycle()
 
     LibraryScreen(
         storage = storage,
         models = models,
         downloads = downloads,
         pendingRemove = pendingRemove,
+        problem = problem,
+        onDismissProblem = viewModel::dismissProblem,
         lastUsed = viewModel::lastUsed,
         onAskRemove = viewModel::askRemove,
         onConfirmRemove = viewModel::confirmRemove,
@@ -98,6 +102,9 @@ fun LibraryScreen(
     onGetMore: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** A remove or a cancel that didn't happen, said in one line the person can close. */
+    problem: String? = null,
+    onDismissProblem: () -> Unit = {},
     downloadItem: @Composable (HfModel) -> Unit,
 ) {
     Screen(
@@ -107,6 +114,9 @@ fun LibraryScreen(
         modifier = modifier.testTag("library").statusBarsPadding(),
     ) {
         if (models == null) return@Screen
+        if (problem != null) {
+            LimitLine(problem, null, {}, Modifier.testTag("library_problem"), onDismiss = onDismissProblem)
+        }
         if (storage != null) StorageSummary(storage)
         if (models.isEmpty() && downloads.isEmpty()) EmptyLibrary()
         if (models.isNotEmpty()) {

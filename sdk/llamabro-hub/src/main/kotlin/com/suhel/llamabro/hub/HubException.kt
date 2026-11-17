@@ -14,7 +14,7 @@ public sealed class HubException(message: String, cause: Throwable?) : Exception
              * No route to the Hub (a connection or read that failed, or the cache standing in for it), as opposed to an
              * HTTP answer the Hub gave: a 5xx, malformed JSON. Only this is "offline" to a look such as `hasUpdate`.
              */
-            internal var unreachable: Boolean = cause is IOException
+            public var unreachable: Boolean = cause is IOException
                 private set
 
             internal constructor(message: String, cause: Throwable?, retryable: Boolean, unreachable: Boolean) :
