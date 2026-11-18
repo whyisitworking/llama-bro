@@ -11,10 +11,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
-import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.demo.models.Catalog
-import com.suhel.llamabro.demo.models.HubEstimate
 import com.suhel.llamabro.demo.models.RepoFile
 import com.suhel.llamabro.hub.HfModel
 import org.junit.Assert.assertEquals
@@ -124,10 +122,6 @@ class ChatJourneys : Journey() {
         val usual = RepoFile("Qwen3.5-0.8B-Q4_K_M.gguf", "Q4_K_M", 532_517_120)
         val best = RepoFile("Qwen3.5-0.8B-Q8_0.gguf", "Q8_0", 875_000_000)
         world.discovery.repoFiles[swift.repo] = listOf(smaller, usual, best)
-        for (file in listOf(smaller, usual, best)) {
-            world.discovery.estimates[HfModel.parse("${swift.repo}:${file.quant}")] =
-                HubEstimate(file.bytes, 0, true, 32_768, file.bytes + 300_000_000, DeviceKind.Npu)
-        }
         world.engine.failLoad(LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory, times = LOAD_ATTEMPTS)
         askFirstQuestion()
         see("Qwen3.5 0.8B needs more memory than this phone has free right now.", substring = true)

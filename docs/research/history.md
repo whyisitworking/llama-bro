@@ -17,7 +17,7 @@ All phone measurements were made on one test phone: a OnePlus 13 (Snapdragon 8 E
 | PD Demo app | 11-09 to 11-13 | Does the SDK carry a real chat app end to end? | Yes, with two known defects (F113, F119) |
 | After PD | 11-13 | Why do the phone's models not see pictures, and is the newer llama.cpp worth taking? | The NPU computed some image encoders wrongly at b12052 (F120); b12352 fixes it, keeps the contract and the patch's gain (F121) |
 | PH Headline API | 11-15 to 11-17 | Can typed output, typed tools, an agent loop, loading by name, embeddings and speech each take a few lines, within what llama-server does? | Yes (D61 to D89); a text turn after three voice notes over a third faster (F153, F157), speech on the NPU alone at 2.4x real time; an interactive voice mode is the next phase (D85) |
-| Voice mode | 11-17 to | Can apps hold a spoken conversation through llama-server's own speech routes? | In progress; step 1 moved llama.cpp to b12479 with the contract identical and the same four patches (D93, F163) |
+| Voice mode | 11-17 to | Can apps hold a spoken conversation through llama-server's own speech routes? | In progress; step 1 moved llama.cpp to b12479 with the contract identical and the same four patches (D93, F163); step 2 brought back the speech patches, 0006 re-cut on upstream's output flags, speech on the NPU 2.3-2.4 times real time (D94, F165) |
 
 ## Working method
 
@@ -363,6 +363,27 @@ Mac and on the phone's NPU, and the delta-net gate still made NPU prefill with M
 moved for a reason worth knowing: upstream now gives a load's staging buffer back to macOS at once, which lowered the
 Mac's peak memory by about one tensor (543 MiB), shown by rebuilding with that single commit reverted (F164). Open: the
 OpenCL items F75, F80 and F125, and rebasing the speech patches from `voice/speech-npu`, the phase's next step.
+
+The speech patches came back next (2026-11-18): 0005 and 0007 applied as they were, and 0006 needed one hunk moved,
+because upstream's speech helper now decodes a sampled token with `decode(sampled)` on `llama_batch_ext` (#32356). The
+user then chose to re-cut 0006 on upstream's new per-entry output flags, which upstream still treats as one: an output
+that asks for embeddings only now leaves the LM head out, so the patch needs no API of its own (D94). Same audio byte for
+byte, and the same 4.5 ms saved per frame on the phone's NPU as the old version; speech on the NPU runs 2.3-2.4
+times real time. The SDK's device gate passes in full; the demo's passes with the same three journeys skipped as at the
+upgrade, and its monkey step passes on the emulator (F165).
+
+The voice mode was then planned with the maintainer (D95): LFM3-Omni-2B through upstream's own `/v1/realtime` conversation on
+an in-memory connection, in the SDK and the demo, with captions. Its first check, a long spoken reply in one realtime
+session, showed that the session setup decides everything: without an instruction to answer, the captioned mode spoke
+noise for five minutes, and without a voice and language the model spoke another language. With all three, the reply
+kept one voice from start to end, at 1.6 times real time on the phone's NPU (F166), which settles D85's question about
+the voice drifting.
+
+The noise the maintainer heard in that first check then got its own investigation. It was not the prompt or our patches:
+about 1.6% of captioned replies lose their place after the text ends and never sample the end of audio, in plain
+upstream too, and upstream's loop matches Liquid's reference. 600 seeded replies on the Mac gave a guard, 3 s of
+near-silence or too much audio for the text, which stopped every failure and no clean reply, also on 200 fresh seeds;
+it ships as patch 0008 in the speech helper (D96, F167).
 
 ## Open items
 

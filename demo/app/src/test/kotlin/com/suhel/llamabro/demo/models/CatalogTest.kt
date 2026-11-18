@@ -12,9 +12,9 @@ class CatalogTest {
         assertEquals(listOf("Qwen3.5 0.8B", "Gemma 3 4B", "Qwen3.5 4B"), Catalog.picks.map { it.realName })
     }
 
-    @Test fun suggestionsAreTheFiveInOrder() {
+    @Test fun suggestionsAreTheSixInOrder() {
         assertEquals(
-            listOf("Qwen3.5 0.8B", "Gemma 3 4B", "Qwen3.5 4B", "Llama 3.2 3B", "Qwen3.5 9B"),
+            listOf("Qwen3.5 0.8B", "Gemma 3 4B", "Qwen3.5 4B", "Llama 3.2 3B", "Qwen3.5 9B", "LFM3 Omni 2B"),
             Catalog.suggested.map { it.realName },
         )
     }
@@ -38,13 +38,14 @@ class CatalogTest {
     @Test fun factsMatchTheSpec() {
         val byName = Catalog.suggested.associateBy { it.realName }
         assertEquals(setOf("Qwen3.5 0.8B", "Qwen3.5 4B", "Qwen3.5 9B"), byName.filterValues { it.thinks }.keys)
-        assertEquals(setOf("Llama 3.2 3B"), byName.filterValues { !it.sees }.keys)
+        assertEquals(setOf("Llama 3.2 3B", "LFM3 Omni 2B"), byName.filterValues { !it.sees }.keys)
+        assertEquals(setOf("LFM3 Omni 2B"), byName.filterValues { it.talks }.keys)
         assertTrue(Catalog.suggested.all { it.about.isNotBlank() && it.maker.isNotBlank() })
     }
 
     @Test fun sizesEqualPinMd() {
         val rows = File(repoRoot(), "demo/catalog/pin.md").readLines().filter { it.startsWith("| `") }
-        assertEquals(5, rows.size)
+        assertEquals(6, rows.size)
         for (row in rows) {
             val cells = row.split('|').map { it.trim() }
             val key = cells[1].trim('`')

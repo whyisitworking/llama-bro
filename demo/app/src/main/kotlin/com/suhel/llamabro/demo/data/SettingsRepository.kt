@@ -89,6 +89,10 @@ data class AppSettings(
     val chip: ChipChoice = ChipChoice.Automatic,
     val context: ContextChoice = ContextChoice.Automatic,
     val replyLength: ReplyLength = ReplyLength.Automatic,
+    /** Voice mode's voice (Settings › Voice, D100): its name, or null for the model's first. */
+    val voice: String? = null,
+    /** Voice mode captions what the person says (D99, D100); it then loads the model with two slots. */
+    val captionYou: Boolean = true,
 )
 
 /** The model a new chat starts with: the pinned one, else the one used last (demo design §4.2). */
@@ -118,6 +122,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 chip = ChipChoice.entries.firstOrNull { it.name == p[CHIP] } ?: ChipChoice.Automatic,
                 context = ContextChoice.entries.firstOrNull { it.name == p[CONTEXT] } ?: ContextChoice.Automatic,
                 replyLength = ReplyLength.entries.firstOrNull { it.name == p[REPLY_LENGTH] } ?: ReplyLength.Automatic,
+                voice = p[VOICE],
+                captionYou = p[CAPTION_YOU] ?: true,
             )
         }
 
@@ -197,6 +203,43 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         }
     }
 
+    suspend fun setVoice(voice: String?) {
+        store.edit { if (voice == null) it.remove(VOICE) else it[VOICE] = voice }
+    }
+
+    suspend fun setCaptionYou(caption: Boolean) {
+        store.edit { it[CAPTION_YOU] = caption }
+    }
+
+    /**
+     * The models (by key) that spoke on their last load, with their voices (`ModelInfo.voices`), so a chat shows the
+     * voice-mode button before its model is loaded again and Settings › Voice can list the voices (D100), as for
+     * hearing.
+     */
+    val talkingModels: Flow<Map<String, List<String>>> =
+        store.data.map { p ->
+            p[TALKING_MODELS].orEmpty().associate { entry ->
+                entry.substringBefore(VOICES_AFTER) to
+                    entry.substringAfter(VOICES_AFTER, "").split(VOICE_SEPARATOR).filter { it.isNotEmpty() }
+            }
+        }
+
+    /** Records the voices [modelKey] spoke with when it loaded; none means it doesn't talk. */
+    suspend fun setVoices(modelKey: String, voices: List<String>) {
+        store.edit {
+            val now = it[TALKING_MODELS].orEmpty()
+            val others = now.filterNot { e -> e.substringBefore(VOICES_AFTER) == modelKey }.toSet()
+            val next =
+                if (voices.isEmpty()) {
+                    others
+                } else {
+                    others +
+                        (modelKey + VOICES_AFTER + voices.joinToString(VOICE_SEPARATOR))
+                }
+            if (next != now) it[TALKING_MODELS] = next
+        }
+    }
+
     suspend fun markFirstRunSeen() {
         store.edit { it[SEEN_FIRST_RUN] = true }
     }
@@ -235,6 +278,13 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val PAUSED_DOWNLOADS = stringSetPreferencesKey("paused_downloads")
         val DOWNLOADS_NEEDING_TOKEN = stringSetPreferencesKey("downloads_needing_token")
         val HEARING_MODELS = stringSetPreferencesKey("hearing_models")
+        val TALKING_MODELS = stringSetPreferencesKey("talking_models")
+        val VOICE = stringPreferencesKey("voice")
+        val CAPTION_YOU = booleanPreferencesKey("caption_you")
+
+        /** A talking model's entry: its key, a tab, then its voices separated by commas. */
+        const val VOICES_AFTER = "\t"
+        const val VOICE_SEPARATOR = ","
         val KEEP_LOADED = stringPreferencesKey("keep_loaded")
         val CHIP = stringPreferencesKey("chip")
         val CONTEXT = stringPreferencesKey("context")

@@ -1,0 +1,297 @@
+From: ours (F156); upstream fact sheet in research/ph/speech-output/, unposted
+Subject: llama, server : an output that asks for embeddings only skips the LM head; speech-only frames do
+
+diff --git a/include/llama.h b/include/llama.h
+index 7122143..4f37ebd 100644
+--- a/include/llama.h
++++ b/include/llama.h
+@@ -1073,14 +1073,13 @@ extern "C" {
+     LLAMA_API bool llama_batch_ext_set_embd_state_row(struct llama_batch_ext * batch, int32_t idx, int32_t row);
+ 
+     // Set if output embeddings should be available for the token at index idx in the batch
+-    // Note: for now, this is equivalent to setting the output logits
++    // A decode whose outputs all ask for embeddings only skips the LM head; llama_get_logits_ith() then fails
+     LLAMA_API bool llama_batch_ext_set_output_embd(
+                                 struct llama_batch_ext * batch,
+                                                int32_t  idx,
+                                                   bool  value);
+ 
+-    // Set output logits for the token at index idx in the batch
+-    // Note: for now, this is equivalent to setting the output embd
++    // Set output logits for the token at index idx in the batch (its embeddings are available too)
+     LLAMA_API bool llama_batch_ext_set_output_logits(
+                                 struct llama_batch_ext * batch,
+                                                int32_t  idx,
+diff --git a/src/llama-batch.cpp b/src/llama-batch.cpp
+index 7fce662..fd8fe56 100644
+--- a/src/llama-batch.cpp
++++ b/src/llama-batch.cpp
+@@ -239,6 +239,7 @@ bool llama_batch_allocr::init(
+         output.resize(n_tok, 0);
+         for (int32_t i = 0; i < n_tok; ++i) {
+             output[i] = batch_inp.tokens[i].output ? 1 : 0;
++            n_outputs_logits += batch_inp.tokens[i].output && batch_inp.tokens[i].output_logits;
+         }
+ 
+         if (output_all) {
+@@ -249,6 +250,7 @@ bool llama_batch_allocr::init(
+             if (warn) {
+                 LLAMA_LOG_WARN("%s: embeddings required but some input tokens were not marked as outputs -> overriding\n", __func__);
+                 std::fill(output.begin(), output.end(), 1);
++                n_outputs_logits = n_tok;
+             }
+         }
+     }
+@@ -597,6 +599,10 @@ uint32_t llama_batch_allocr::get_n_outputs() const {
+     return n_outputs;
+ }
+ 
++uint32_t llama_batch_allocr::get_n_outputs_logits() const {
++    return n_outputs_logits;
++}
++
+ uint32_t llama_batch_allocr::get_n_used() const {
+     return n_used;
+ }
+@@ -871,6 +877,7 @@ llama_ubatch llama_batch_allocr::split_seq(uint32_t n_ubatch) {
+ 
+ void llama_batch_allocr::clear() {
+     n_outputs = 0;
++    n_outputs_logits = 0;
+ 
+     batch = {};
+ 
+@@ -1414,11 +1421,21 @@ bool llama_batch_ext::set_token_pos(int32_t idx, const llama_pos * pos_in) {
+     return true;
+ }
+ 
+-bool llama_batch_ext::set_output(int32_t idx, bool output_last) {
++bool llama_batch_ext::set_output_embd(int32_t idx, bool value) {
++    if (idx < 0 || idx >= (int32_t) tokens.size()) {
++        return false;
++    }
++    tokens[idx].output_embd = value;
++    tokens[idx].output      = tokens[idx].output_embd || tokens[idx].output_logits;
++    return true;
++}
++
++bool llama_batch_ext::set_output_logits(int32_t idx, bool value) {
+     if (idx < 0 || idx >= (int32_t) tokens.size()) {
+         return false;
+     }
+-    tokens[idx].output = output_last;
++    tokens[idx].output_logits = value;
++    tokens[idx].output        = tokens[idx].output_embd || tokens[idx].output_logits;
+     return true;
+ }
+ 
+@@ -1502,11 +1519,11 @@ bool llama_batch_ext_set_embd_state_row(llama_batch_ext * batch, int32_t idx, in
+ }
+ 
+ bool llama_batch_ext_set_output_embd(llama_batch_ext * batch, int32_t idx, bool value) {
+-    return batch->set_output(idx, value);
++    return batch->set_output_embd(idx, value);
+ }
+ 
+ bool llama_batch_ext_set_output_logits(llama_batch_ext * batch, int32_t idx, bool value) {
+-    return batch->set_output(idx, value);
++    return batch->set_output_logits(idx, value);
+ }
+ 
+ bool llama_batch_ext_set_decision_order(llama_batch_ext * batch, int32_t idx, llama_decision_order order) {
+@@ -1586,6 +1603,7 @@ void llama_batch_compat::init(llama_batch_ext & dst, const llama_batch & batch_i
+         t.output = batch_inp.logits
+             ? (batch_inp.logits[i] != 0)
+             : (i == batch_inp.n_tokens - 1);
++        t.output_logits = t.output;
+ 
+         batch_ext->tokens.push_back(t);
+     }
+diff --git a/src/llama-batch.h b/src/llama-batch.h
+index d166628..b28e5ef 100644
+--- a/src/llama-batch.h
++++ b/src/llama-batch.h
+@@ -119,7 +119,9 @@ struct llama_batch_ext {
+         size_t       state_off = 0; // index offset in the state array
+         int32_t      embd_row = -1; // row of ctx_other's layer input device buffer used as embd, -1 if none
+         int32_t      state_row = -1; // row of ctx_state_src's h_nextn device buffer used as state, -1 if none
+-        bool         output = false; // TODO: have dedicated output flags
++        bool         output = false; // output_embd || output_logits
++        bool         output_embd   = false; // see llama_batch_ext_set_output_embd()
++        bool         output_logits = false; // see llama_batch_ext_set_output_logits()
+         int32_t      decision_order = 0; // see llama_batch_ext_set_decision_order()
+         std::unordered_set<llama_seq_id> seq_ids;
+         std::array<llama_pos, GGML_MROPE_SECTIONS> pos = {0, 0, 0, 0};
+@@ -153,7 +155,8 @@ struct llama_batch_ext {
+     bool set_token_embd_row(int32_t idx, int32_t row);
+     bool set_token_state_row(int32_t idx, int32_t row);
+     bool set_token_pos(int32_t idx, const llama_pos * pos_in);
+-    bool set_output(int32_t idx, bool output_last);
++    bool set_output_embd  (int32_t idx, bool value);
++    bool set_output_logits(int32_t idx, bool value);
+     bool set_decision_order(int32_t idx, int32_t order);
+ };
+ 
+@@ -172,6 +175,7 @@ public:
+ 
+     uint32_t get_n_tokens()  const;
+     uint32_t get_n_outputs() const;
++    uint32_t get_n_outputs_logits() const; // outputs that asked for logits
+     uint32_t get_n_used()    const;
+ 
+     // the array of output indices in the order they were encountered during the ubatch splitting
+@@ -225,6 +229,7 @@ private:
+     uint32_t n_embd_state;
+     uint32_t n_seq_max;
+     uint32_t n_outputs;
++    uint32_t n_outputs_logits;
+ 
+     std::vector<llama_token>    token_vec;    // owned token IDs built from llama_batch_ext
+     std::vector<float>          embd_vec;     // owned embeddings built from llama_batch_ext
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 969989a..6dc1841 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -204,6 +204,7 @@ llama_context::llama_context(
+     cparams.yarn_beta_slow          = params.yarn_beta_slow   >= 0.0f ? params.yarn_beta_slow   : hparams.yarn_beta_slow;
+     cparams.embeddings              = params.embeddings;
+     cparams.embeddings_nextn        = false;
++    cparams.logits                  = true;
+     cparams.embeddings_nextn_masked = false;
+     cparams.offload_kqv             = params.offload_kqv;
+     cparams.no_perf                 = params.no_perf;
+@@ -1134,6 +1135,9 @@ float * llama_context::get_logits_ith(int32_t i) {
+         if (logits.data == nullptr) {
+             throw std::runtime_error("no logits");
+         }
++        if (!cparams.logits) {
++            throw std::runtime_error("the batch asked for embeddings only (llama_batch_ext_set_output_embd)");
++        }
+ 
+         const int64_t j = output_resolve_row(i);
+         return logits.data + j*model.vocab.n_tokens();
+@@ -2215,6 +2219,9 @@ int llama_context::decode(const llama_batch_ext & batch_inp) {
+     const uint32_t n_tokens_all  = balloc->get_n_tokens();
+     const uint32_t n_outputs_all = balloc->get_n_outputs();
+ 
++    // skip the LM head when every output asked for embeddings only; backend samplers read the logits
++    cparams.logits = n_outputs_all == 0 || balloc->get_n_outputs_logits() > 0 || has_samplers;
++
+     if (output_all) {
+         // require that all tokens are output
+         if (n_outputs_all != n_tokens_all) {
+@@ -3044,7 +3051,8 @@ ggml_cgraph * llama_context::graph_reserve(
+ 
+     auto * res = gf_res_reserve.get();
+ 
+-    const auto gparams = graph_params(res, ubatch, mctx, ctx_type_to_graph_type(cparams.ctx_type));
++    auto gparams = graph_params(res, ubatch, mctx, ctx_type_to_graph_type(cparams.ctx_type));
++    gparams.cparams.logits = true; // reserve for the worst case, with the LM head
+ 
+     res->reset();
+ 
+@@ -4277,7 +4285,7 @@ void llama_context::opt_epoch_iter(
+                 return;
+             }
+             batch.set_token_pos(idx, &pos);
+-            batch.set_output(idx, true);
++            batch.set_output_logits(idx, true);
+         }
+ 
+         if (!balloc->init(batch, model.vocab, true)) {
+diff --git a/src/llama-cparams.h b/src/llama-cparams.h
+index 52c85bd..936c0d7 100644
+--- a/src/llama-cparams.h
++++ b/src/llama-cparams.h
+@@ -35,6 +35,7 @@ struct llama_cparams {
+     bool embeddings;
+     bool embeddings_nextn;        // also extract the hidden state before the final output norm
+     bool embeddings_nextn_masked; // extract for only rows where batch.logits != 0
++    bool logits;                  // the graph has the LM head; off for a decode whose outputs ask for embeddings only
+     bool causal_attn;
+     bool offload_kqv;
+     bool flash_attn;
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 01354c3..7777d26 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -4385,6 +4385,14 @@ void llm_graph_context::build_logits() const {
+         res->t_logits = nullptr;
+     }
+ 
++    // every output of the batch asked for embeddings only (llama_batch_ext_set_output_embd)
++    if (!cparams.logits && res->t_logits != nullptr) {
++        res->t_logits = nullptr;
++        if (res->t_embd != nullptr) {
++            ggml_build_forward_expand(gf, res->t_embd);
++        }
++    }
++
+     // the models declare t_logits without expanding it, so the LM head is computed only when it is expanded here
+     if (res->t_logits != nullptr) {
+         ggml_build_forward_expand(gf, res->t_logits);
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index 2d8c657..2ef6c85 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -905,6 +905,7 @@ struct llm_graph_params {
+             cparams.embeddings              == other.cparams.embeddings              &&
+             cparams.embeddings_nextn        == other.cparams.embeddings_nextn        &&
+             cparams.embeddings_nextn_masked == other.cparams.embeddings_nextn_masked &&
++            cparams.logits                  == other.cparams.logits                  &&
+             cparams.causal_attn             == other.cparams.causal_attn             &&
+             layer_inp_dev == other.layer_inp_dev &&
+             layer_inp_src == other.layer_inp_src &&
+diff --git a/tools/mtmd/mtmd-helper-gen.cpp b/tools/mtmd/mtmd-helper-gen.cpp
+index 6a83ece..053603f 100644
+--- a/tools/mtmd/mtmd-helper-gen.cpp
++++ b/tools/mtmd/mtmd-helper-gen.cpp
+@@ -1423,10 +1423,17 @@ public:
+                     return 1;
+                 }
+             }
++            // speech alone (TTS): the next step reads only the hidden state, so the frame asks for embeddings only and
++            // the LM head is skipped; a continuing response may switch to text after this frame and samples its logits
++            const bool want_logits = continuing || mode != MODE_AUDIO;
+             decode_embd_batch batch_embd(const_cast<float *>(fb), 1, 1, n_embd);
+             batch_embd.set_position_normal(pos, seq_id);
+-            batch_embd.logits[0] = 1;
+-            if (llama_process(lctx, LLAMA_PROCESS_TYPE_DECODE, batch_embd.render(lctx, 0, 1)) != 0) {
++            batch_embd.logits[0] = want_logits;
++            llama_batch_ext * frame = batch_embd.render(lctx, 0, 1);
++            if (!want_logits) {
++                llama_batch_ext_set_output_embd(frame, 0, true);
++            }
++            if (llama_process(lctx, LLAMA_PROCESS_TYPE_DECODE, frame) != 0) {
+                 LOG_ERR("mtmd_helper_gen_audio: decode failed\n");
+                 return 1;
+             }
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 1ff2c16..ad62c0d 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -3645,9 +3645,12 @@ private:
+                     send_error(slot, "TTS prompt processing failed", ERROR_TYPE_SERVER);
+                     slot.release();
+                 } else if (ret == 0) {
+-                    // done prompt, do sample and save h_state_prompt
+-                    slot.tts.sampled = common_sampler_sample(slot.smpl.get(), ctx_tgt, -1);
+-                    common_sampler_accept(slot.smpl.get(), slot.tts.sampled, true);
++                    // done prompt, do sample and save h_state_prompt; an audio step reads no token (as realtime's
++                    // sample_next), and its frames ask for embeddings only, without the LM head
++                    if (slot.tts.ctx.next_is_text()) {
++                        slot.tts.sampled = common_sampler_sample(slot.smpl.get(), ctx_tgt, -1);
++                        common_sampler_accept(slot.smpl.get(), slot.tts.sampled, true);
++                    }
+                     const float * h_embd = llama_get_embeddings_ith(ctx_tgt, -1);
+                     slot.tts.h_state_prompt.assign(h_embd, h_embd + llama_model_n_embd(model_tgt));
+                     slot.tts.h_state = slot.tts.h_state_prompt.data();
+@@ -3687,7 +3690,7 @@ private:
+             slot.tts.n_decoded++;
+             slot.tts.stop = stop;
+ 
+-            if (!stop) {
++            if (!stop && slot.tts.ctx.next_is_text()) {
+                 slot.tts.sampled = common_sampler_sample(slot.smpl.get(), ctx_tgt, -1);
+                 common_sampler_accept(slot.smpl.get(), slot.tts.sampled, true);
+             }

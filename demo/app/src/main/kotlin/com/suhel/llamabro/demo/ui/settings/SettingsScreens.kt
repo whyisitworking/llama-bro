@@ -112,6 +112,14 @@ fun SettingsHome(onBack: () -> Unit, onOpen: (String) -> Unit, routes: SettingsR
                 }
                 row {
                     ListRow(
+                        "Voice",
+                        subtitle = "How a model that talks sounds",
+                        chevron = true,
+                        onClick = { onOpen(routes.voice) },
+                    )
+                }
+                row {
+                    ListRow(
                         "Memory",
                         subtitle = "The model in memory, and when it's freed",
                         chevron = true,
@@ -153,6 +161,7 @@ data class SettingsRoutes(
     val memory: String,
     val sampling: String,
     val about: String,
+    val voice: String,
 )
 
 @Composable

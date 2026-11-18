@@ -42,7 +42,7 @@ PY
 echo "$(wc -l < "$requests" | tr -d ' ') requests$( [ -n "$mmproj" ] || echo ", without the image ones (no LB_TEST_MMPROJ)")"
 
 # upstream: the same values the C API config below produces (phone defaults, design §8)
-"$bin/llama-server" -m "$model" ${mmproj:+--mmproj "$mmproj"} -c 8192 -np 1 --cache-ram 1024 --ctx-checkpoints 8 --load-mode none --fit off \
+"$bin/llama-server" -m "$model" ${mmproj:+--mmproj "$mmproj"} -c 8192 -np 1 --cache-ram 1024 --ctx-checkpoints 8 --load-mode none --fit off --seed 42 \
     -b 512 -ub 512 --host 127.0.0.1 --port "$port" > "$out/llama-server.log" 2>&1 &
 server_pid=$!
 trap 'kill $server_pid 2>/dev/null || true; wait $server_pid 2>/dev/null || true' EXIT
@@ -58,7 +58,7 @@ done
 python3 "$here/http-run.py" --url "http://127.0.0.1:$port" --requests "$requests" --out "$out/upstream"
 kill $server_pid; wait $server_pid 2>/dev/null || true
 
-config="$(python3 -c 'import json,sys; c={"model_path": sys.argv[1], "n_ctx": 8192}; sys.argv[2] and c.update(mmproj_path=sys.argv[2]); print(json.dumps(c))' "$model" "$mmproj")"
+config="$(python3 -c 'import json,sys; c={"model_path": sys.argv[1], "n_ctx": 8192, "seed": 42}; sys.argv[2] and c.update(mmproj_path=sys.argv[2]); print(json.dumps(c))' "$model" "$mmproj")"
 "$bin/lb-run" "$config" "$requests" "$out/lb" 2> "$out/lb-run.log"
 
 result="$(python3 "$here/compare.py" "$out/upstream" "$out/lb" "$requests" || true)"

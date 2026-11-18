@@ -140,6 +140,19 @@ class SettingsViewModel(
 
     fun setReplyLength(length: ReplyLength) = viewModelScope.launch { settings.setReplyLength(length) }.let { }
 
+    /**
+     * Voice mode's voices (D100): those of the models that spoke on their last load, in the order first met; empty
+     * until a model that talks has loaded.
+     */
+    val voices: StateFlow<List<String>> =
+        settings.talkingModels
+            .map { models -> models.values.flatten().distinct() }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), emptyList())
+
+    fun setVoice(voice: String) = viewModelScope.launch { settings.setVoice(voice) }.let { }
+
+    fun setCaptionYou(caption: Boolean) = viewModelScope.launch { settings.setCaptionYou(caption) }.let { }
+
     // a counter, not a value: every write asks the store again, so what is shown is what is stored
     private val tokenWrites = MutableStateFlow(0)
 

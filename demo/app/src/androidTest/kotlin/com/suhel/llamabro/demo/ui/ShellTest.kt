@@ -20,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
@@ -135,11 +136,13 @@ class ShellTest {
             "Default model" to "Last used",
             "Hugging Face token" to "Paste your token",
             "Sampling" to "Models on this phone",
+            "Voice" to "Caption what you say",
             "Memory" to "After you leave the app",
             "About" to "Licences",
         )) {
             compose.waitUntilAtLeastOneExists(hasText(row), 10_000)
-            compose.onNodeWithText(row).performClick()
+            // the home is taller than a small screen: scroll to the row first
+            compose.onNodeWithText(row).performScrollTo().performClick()
             compose.waitUntilAtLeastOneExists(hasText(title, ignoreCase = true), 10_000)
             compose.onNodeWithContentDescription("Back").performClick()
         }
@@ -333,7 +336,7 @@ class ShellTest {
         waitForShell()
         compose.waitUntilAtLeastOneExists(hasText("Settings"), 10_000)
         compose.onNodeWithText("Settings").performClick()
-        compose.onNodeWithText("About").performClick()
+        compose.onNodeWithText("About").performScrollTo().performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("about"), 10_000)
         for (text in listOf("Version", "MIT licence", "Source Serif 4", "SIL Open Font Licence 1.1")) {
             compose.onNodeWithText(text).assertIsDisplayed()

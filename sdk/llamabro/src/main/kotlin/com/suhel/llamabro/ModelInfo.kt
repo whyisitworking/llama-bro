@@ -1,6 +1,7 @@
 package com.suhel.llamabro
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -31,9 +32,19 @@ public class ModelInfo internal constructor(
     public val supportsAudio: Boolean,
     /** The GGUF has a multi-token-prediction head ([Speculative.Mtp]). */
     public val hasMtp: Boolean,
+    /**
+     * The voices the model speaks with (llama-server's `voices` in `/props`), e.g. `["female", "male"]`; empty for a
+     * model that doesn't speak. A voice session takes one as `VoiceConfig.voice` (D100).
+     */
+    public val voices: List<String>,
     public val templateCaps: Map<String, Boolean>,
     public val metadata: Map<String, String>,
+    /** llama-server's `total_slots`: the requests it serves at once (`ModelConfig.parallelSlots`). */
+    internal val totalSlots: Int = 1,
 ) {
+    /** The model speaks: it has [voices], so a voice session can answer in speech (D100). */
+    public val supportsSpeech: Boolean get() = voices.isNotEmpty()
+
     override fun equals(other: Any?): Boolean = other is ModelInfo && parts() == other.parts()
 
     override fun hashCode(): Int = parts().hashCode()
@@ -41,7 +52,7 @@ public class ModelInfo internal constructor(
     override fun toString(): String =
         "ModelInfo(contextSize=$contextSize, trainedContextSize=$trainedContextSize, parameterCount=$parameterCount, " +
             "sizeBytes=$sizeBytes, description=$description, supportsVision=$supportsVision, " +
-            "supportsAudio=$supportsAudio, " +
+            "supportsAudio=$supportsAudio, voices=$voices, " +
             "hasMtp=$hasMtp, templateCaps=$templateCaps, metadata=${metadata.size} keys)"
 
     private fun parts() =
@@ -54,6 +65,7 @@ public class ModelInfo internal constructor(
             chatTemplate,
             supportsVision,
             supportsAudio,
+            voices,
             hasMtp,
             templateCaps,
             metadata,
@@ -79,6 +91,7 @@ public class ModelInfo internal constructor(
                 chatTemplate = (props["chat_template"] as? JsonPrimitive)?.content,
                 supportsVision = (modalities["vision"] as? JsonPrimitive)?.booleanOrNull ?: false,
                 supportsAudio = (modalities["audio"] as? JsonPrimitive)?.booleanOrNull ?: false,
+                voices = (props["voices"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.content },
                 hasMtp = arch != null && (metadata["$arch.nextn_predict_layers"]?.toIntOrNull() ?: 0) > 0,
                 templateCaps =
                     (props["chat_template_caps"] as? JsonObject)
@@ -86,6 +99,7 @@ public class ModelInfo internal constructor(
                         .mapNotNull { (k, v) -> (v as? JsonPrimitive)?.booleanOrNull?.let { k to it } }
                         .toMap(),
                 metadata = metadata,
+                totalSlots = (props["total_slots"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 1,
             )
         }
     }

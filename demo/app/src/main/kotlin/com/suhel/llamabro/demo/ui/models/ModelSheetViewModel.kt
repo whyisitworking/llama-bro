@@ -7,19 +7,14 @@ import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.FitView
 import com.suhel.llamabro.demo.models.Fits
 import com.suhel.llamabro.demo.models.Format
-import com.suhel.llamabro.demo.models.HubEstimate
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.RepoFile
 import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.models.Sizes
-import com.suhel.llamabro.demo.models.attempt
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubException
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,8 +27,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
 
 enum class SheetMode { Basic, Advanced }
@@ -50,35 +43,31 @@ sealed interface SheetState {
 }
 
 /**
- * What the sheet shows of one file: how it runs here ([fit], quick first and then real), the download's size
+ * What the sheet shows of one file: how it runs here ([fit], from the file and its encoder, D101), the download's size
  * ([totalBytes], the file and its image reader) and the reader's own size ([readerBytes], 0 for none).
  */
 @Immutable
-data class FileFit(val fit: FitView, val totalBytes: Long, val readerBytes: Long, val memoryBytes: Long?)
+data class FileFit(val fit: FitView, val totalBytes: Long, val readerBytes: Long)
 
 /**
  * A model's sheet (demo design §4.3). The inputs are the user's: the mode, the file picked, "Retry". Everything shown
  * is derived from them: the file list ([state]), the file that counts as selected ([selected], Recommended unless the
  * user chose another, and always one of the three sizes in Basic), the button's words ([button]) and the image reader
- * ([imageReaderBytes]). Each file's fit ([fit]) is its own flow: quick at once, real when the SDK has projected it,
- * asked only when a row is first shown, a few at a time, and cancelled with the sheet.
+ * ([imageReaderBytes]). Each file's fit ([fit]) is its own flow, made from file sizes alone (D101) when a row is first
+ * shown, so a row recomposes alone when its fit arrives.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ModelSheetViewModel(
     val row: ModelRow,
     private val files: suspend (String) -> List<RepoFile>,
-    private val estimate: suspend (HfModel) -> HubEstimate,
     private val facts: suspend () -> DeviceFacts,
     private val models: ModelRepository,
-    parallelism: Int = 3,
     /** The size the sheet starts on instead of Recommended ("Smaller size" opens it on Smaller). */
     private val startTier: SizeTier? = null,
 ) : ViewModel() {
     private val modeInput = MutableStateFlow(SheetMode.Basic)
     private val pickInput = MutableStateFlow<RepoFile?>(null)
     private val retryInput = MutableStateFlow(0)
-    private val slots = Semaphore(parallelism)
-    private val estimates = ConcurrentHashMap<String, Deferred<HubEstimate?>>()
     private val fits = ConcurrentHashMap<String, StateFlow<FileFit?>>()
 
     val mode: StateFlow<SheetMode> = modeInput.asStateFlow()
@@ -98,7 +87,7 @@ class ModelSheetViewModel(
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
 
     /**
-     * The image reader's size once known (a real estimate, or the catalog's own figure); null for a model without one.
+     * The image reader's size (the catalog's own figure, else the hub's listing); null for a model without one.
      */
     val imageReaderBytes: StateFlow<Long?> =
         state
@@ -143,15 +132,10 @@ class ModelSheetViewModel(
         retryInput.update { it + 1 }
     }
 
-    /** The fit flow of [file]: the quick estimate first, the real one when the SDK has projected it. */
+    /** The fit flow of [file]: null until the phone's facts are read, then the fit from its sizes. */
     fun fit(file: RepoFile): StateFlow<FileFit?> =
         fits.getOrPut(file.path) {
-            flow {
-                emit(quick(file))
-                realEstimate(
-                    file,
-                ).await()?.let { emit(FileFit(Fits.real(it), it.totalBytes, it.mmprojBytes, it.memoryBytes)) }
-            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
+            flow { emit(fitOf(file)) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
         }
 
     /** Starts the download of the selected file; returns its key (the row shows its progress), or null when none. */
@@ -180,18 +164,11 @@ class ModelSheetViewModel(
             )
         }
 
-    private suspend fun quick(file: RepoFile): FileFit {
-        val reader = row.catalog?.mmprojBytes ?: 0L
-        return FileFit(Fits.quick(file.bytes + reader, file.bytes, facts()), file.bytes + reader, reader, null)
+    private suspend fun fitOf(file: RepoFile): FileFit {
+        // the catalog's figure for a model it knows, else the encoder the hub would fetch with this quant
+        val reader = row.catalog?.mmprojBytes ?: file.encoderBytes
+        return FileFit(Fits.quick(file.bytes + reader, file.bytes, facts()), file.bytes + reader, reader)
     }
-
-    /** One projection per file for the life of the sheet, started when a row first asks and kept if it scrolls away. */
-    private fun realEstimate(file: RepoFile): Deferred<HubEstimate?> =
-        estimates.getOrPut(file.path) {
-            viewModelScope.async(start = CoroutineStart.LAZY) {
-                attempt { slots.withPermit { estimate(HfModel.parse("${row.repo}:${file.quant}")) } }
-            }
-        }
 
     private companion object {
         const val STOP_TIMEOUT = 5_000L

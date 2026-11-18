@@ -24,7 +24,12 @@ The SDK hub's rule (`sdk/llamabro-hub/.../internal/FileChoice.kt`, a port of lla
 | `unsloth/gemma-3-4b-it-qat-GGUF:Q4_K_M` | `165f274ab15d1c7c8fa8ba7336e64666f4d4151c` | `gemma-3-4b-it-qat-Q4_K_M.gguf` | 2,489,894,016 | `mmproj-BF16.gguf` | 851,251,456 |
 | `unsloth/Qwen3.5-4B-GGUF:Q4_K_M` | `e87f176479d0855a907a41277aca2f8ee7a09523` | `Qwen3.5-4B-Q4_K_M.gguf` | 2,740,937,888 | `mmproj-BF16.gguf` | 675,569,344 |
 | `unsloth/Llama-3.2-3B-Instruct-GGUF:Q4_K_M` | `e7d0997e49c9cb00d88b4c1a6a16aa894b0bbc31` | `Llama-3.2-3B-Instruct-Q4_K_M.gguf` | 2,019,377,600 | none | 0 |
+| `ggml-org/LFM3-Omni-2B-GGUF:Q4_K_M` | `0b6888cd0b7ac8962cb8b125f0bf087c3178de5f` | `LFM3-Omni-2B-Q4_K_M.gguf` | 1,099,630,048 | `mmproj-LFM3-Omni-2B-Q8_0.gguf` | 506,842,432 |
 | `unsloth/Qwen3.5-9B-GGUF:Q4_K_M` | `3885219b6810b007914f3a7950a8d1b469d598a5` | `Qwen3.5-9B-Q4_K_M.gguf` | 5,680,522,464 | `mmproj-BF16.gguf` | 921,705,024 |
+
+LFM3 Omni 2B (voice mode, D100) was read the same way on 2026-11-18: its tree has `mmproj-LFM3-Omni-2B-BF16.gguf` and
+`-Q8_0.gguf`, so the projector rule gives **`-Q8_0`** (4 bits from the tag's 4, against 12 for BF16); the sizes equal the
+files F166 and F170 ran on the phone.
 
 Swift's sizes equal F93's (532,517,120 and 207,346,528). None of the repos is gated.
 

@@ -18,11 +18,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
-import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.MainActivity
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.FakeScheduler
-import com.suhel.llamabro.demo.models.HubEstimate
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.testing.FakeDiscovery
 import com.suhel.llamabro.demo.testing.ScreenshotRule
@@ -50,7 +48,7 @@ class FirstRunTest {
     private val fake = FakeLlamaBro()
     private val hub = TestHub()
     private val scheduler = FakeScheduler()
-    private val discovery = FakeDiscovery(hub, fake.llamaBro)
+    private val discovery = FakeDiscovery(hub)
     private val app =
         TestAppRule(
             config = {
@@ -166,19 +164,11 @@ class FirstRunTest {
         shots.capture("pick_sheet")
     }
 
-    @Test fun pickSheetFitIsQuickWhenOffline() {
-        // no estimate for Qwen3.5 0.8B: it fails as an offline phone does, so the weights' size is shown
+    @Test fun pickSheetMemoryIsTheModelAndItsEncoder() {
+        // Qwen3.5 0.8B's weights and its image encoder, from the catalog's sizes, with no network (D101)
         waitForFirstRun()
         compose.onNodeWithText("Qwen3.5 0.8B").performClick()
         waitFor("Uses about 0.7 GB")
-    }
-
-    @Test fun pickSheetFitIsRealWhenOnline() {
-        discovery.estimates[swift.key] =
-            HubEstimate(532_517_120, 207_346_528, true, 32_768, 900_000_000, DeviceKind.Npu)
-        waitForFirstRun()
-        compose.onNodeWithText("Qwen3.5 0.8B").performClick()
-        waitFor("Uses about 0.9 GB") // the SDK's projection replaced the quick figure
     }
 
     @Test fun getOpensTheChatAndHoldsAMessage() {

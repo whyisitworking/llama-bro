@@ -62,6 +62,7 @@ import com.suhel.llamabro.demo.ui.settings.SettingsHome
 import com.suhel.llamabro.demo.ui.settings.SettingsRoutes
 import com.suhel.llamabro.demo.ui.settings.SettingsViewModel
 import com.suhel.llamabro.demo.ui.settings.TokenScreen
+import com.suhel.llamabro.demo.ui.settings.VoiceScreen
 import com.suhel.llamabro.hub.HfModel
 
 /**
@@ -91,6 +92,7 @@ private val settingsRoutes =
         memory = Routes.MEMORY,
         sampling = Routes.SAMPLING,
         about = Routes.ABOUT,
+        voice = Routes.VOICE,
     )
 
 /**
@@ -352,6 +354,7 @@ private fun Graph(
         composable(Routes.DEFAULT_MODEL) { DefaultModelScreen(settings, back) }
         composable(Routes.TOKEN) { TokenScreen(settings, back) }
         composable(Routes.MEMORY) { MemoryScreen(settings, back) }
+        composable(Routes.VOICE) { VoiceScreen(settings, back) }
         composable(Routes.SAMPLING) {
             SamplingModelsScreen(settings, back) { key ->
                 nav.navigate(Routes.samplingModel(key.toString())) { launchSingleTop = true }

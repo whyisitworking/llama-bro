@@ -2,7 +2,6 @@ package com.suhel.llamabro.demo.models
 
 import androidx.tracing.trace
 import com.suhel.llamabro.DeviceKind
-import com.suhel.llamabro.FitEstimate
 import kotlin.math.roundToInt
 
 enum class FitLabel { RunsGreat, RunsWell, SlowHere, TooBig }
@@ -10,7 +9,7 @@ enum class FitLabel { RunsGreat, RunsWell, SlowHere, TooBig }
 /** How much conversation fits: at least 16,384 tokens, at least 4,096, fewer than 4,096, or the model doesn't fit. */
 enum class ContextRoom { Large, Normal, Small, None }
 
-/** demo design §7.1. Pure functions; the app reads the budget and the chip from the SDK once per screen. */
+/** demo design §7.1, D101. Pure functions; the app reads the budget and the chip from the SDK once per screen. */
 object Fit {
     private const val GIB = 1L shl 30
     private const val LARGE_CONTEXT_TOKENS = 16_384
@@ -23,19 +22,7 @@ object Fit {
     /** A token is about three quarters of a word. */
     const val WORDS_PER_TOKEN = 0.75
 
-    /** The real room, from the SDK's estimate (the model sheet). */
-    fun roomFromEstimate(e: FitEstimate): ContextRoom = roomFromEstimate(e.fits, e.contextTokens)
-
-    /** [roomFromEstimate] on the two values it reads; `FitEstimate` has no public constructor, so tests use this. */
-    fun roomFromEstimate(fits: Boolean?, contextTokens: Int?): ContextRoom =
-        when {
-            fits == false -> ContextRoom.None
-            contextTokens != null && contextTokens >= LARGE_CONTEXT_TOKENS -> ContextRoom.Large
-            contextTokens != null && contextTokens >= NORMAL_CONTEXT_TOKENS -> ContextRoom.Normal
-            else -> ContextRoom.Small
-        }
-
-    /** The quick room for lists: the headroom left in [budgetBytes] after [fileBytes] (model plus projector). */
+    /** The room: the headroom left in [budgetBytes] after [fileBytes] (the model plus its encoder, D101). */
     fun roomFromSize(fileBytes: Long, budgetBytes: Long): ContextRoom {
         val headroom = budgetBytes - fileBytes
         return when {

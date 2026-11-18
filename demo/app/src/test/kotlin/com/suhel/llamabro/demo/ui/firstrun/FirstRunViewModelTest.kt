@@ -11,13 +11,11 @@ import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.FitLabel
-import com.suhel.llamabro.demo.models.HubEstimate
+import com.suhel.llamabro.demo.models.Fits
 import com.suhel.llamabro.demo.models.ModelRepository
-import com.suhel.llamabro.demo.models.ScriptedEstimates
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.ui.keepAlive
 import com.suhel.llamabro.demo.ui.shutDown
-import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -30,7 +28,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -46,9 +43,6 @@ class FirstRunViewModelTest {
     @get:Rule val folder = TemporaryFolder()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val testHub = TestHub()
-
-    /** The SDK's projection, as the test sets it. */
-    private val hub = ScriptedEstimates()
     private val dao = FakeChatDao()
     private val chats = ChatRepository(dao, ImageStore(File("/tmp/none")), { 1_000L })
     private val settings by lazy {
@@ -77,25 +71,20 @@ class FirstRunViewModelTest {
         testHub.close()
     }
 
-    private fun viewModel(
-        hour: Int = 9,
-        estimate: suspend (HfModel) -> HubEstimate = {
-            hub.estimate(it)
-        },
-    ) = FirstRunViewModel(
-        facts = { phone },
-        estimate = estimate,
-        chats = chats,
-        settings = settings,
-        models = models,
-        clock = {
-            LocalDateTime
-                .of(2026, 11, 10, hour, 30)
-                .toInstant(ZoneOffset.UTC)
-                .toEpochMilli()
-        },
-        zone = ZoneOffset.UTC,
-    ).also(viewModels::add)
+    private fun viewModel(hour: Int = 9) =
+        FirstRunViewModel(
+            facts = { phone },
+            chats = chats,
+            settings = settings,
+            models = models,
+            clock = {
+                LocalDateTime
+                    .of(2026, 11, 10, hour, 30)
+                    .toInstant(ZoneOffset.UTC)
+                    .toEpochMilli()
+            },
+            zone = ZoneOffset.UTC,
+        ).also(viewModels::add)
 
     @Test fun greetingFollowsTheClock() {
         assertEquals("Hello", viewModel(hour = 4).greeting)
@@ -109,12 +98,12 @@ class FirstRunViewModelTest {
         assertEquals("Hello", viewModel(hour = 0).greeting)
     }
 
-    @Test fun picksAreTintedWithoutNetwork() {
-        // the hub throws on any call: the picks must still have a label, from the sizes the app ships with
-        val vm = viewModel(estimate = { throw AssertionError("a pick's tint must not need the network") })
+    @Test fun picksAreTintedFromTheirShippedSizes() {
+        // the view model has no network seam: a pick's label comes from the sizes the app ships with (D101)
+        val vm = viewModel()
         val picks = vm.picks.keepAlive(collectors).value!!
         assertEquals(listOf("Qwen3.5 0.8B", "Gemma 3 4B", "Qwen3.5 4B"), picks.map { it.entry.realName })
-        assertTrue(picks.none { it.fit.real })
+        assertTrue(picks.all { it.fit == Fits.quick(it.entry, phone) })
         assertEquals(FitLabel.RunsGreat, picks.first { it.entry.realName == "Qwen3.5 0.8B" }.fit.label)
         assertEquals(listOf("0.7 GB", "3.3 GB", "3.4 GB"), picks.map { it.sizeText })
     }
@@ -123,7 +112,6 @@ class FirstRunViewModelTest {
         val small =
             FirstRunViewModel(
                 facts = { DeviceFacts(budgetBytes = 3L shl 30, chip = DeviceKind.Cpu) },
-                estimate = { throw AssertionError() },
                 chats = chats,
                 settings = settings,
                 models = models,
@@ -137,26 +125,15 @@ class FirstRunViewModelTest {
         assertEquals(FitLabel.TooBig, labels["Qwen3.5 4B"])
     }
 
-    @Test fun theSheetStartsQuickAndBecomesRealWhenOnline() {
+    @Test fun theSheetShowsTheCardsFitAndTheModelWithItsEncoder() {
         val swift = Catalog.picks.first()
-        hub.estimates[swift.key] = HubEstimate(532_517_120, 207_346_528, true, 32_768, 900_000_000, DeviceKind.Npu)
         val vm = viewModel()
         vm.sheet.keepAlive(collectors)
         vm.open(swift)
         val sheet = vm.sheet.value!!
-        assertTrue("an estimate is available: the sheet shows the real fit", sheet.fit.real)
-        assertEquals("Uses about 0.9 GB", sheet.memoryText)
+        assertEquals("the card's fit, from the shipped sizes", Fits.quick(swift, phone), sheet.fit)
+        assertEquals("Uses about 0.7 GB", sheet.memoryText) // 0.53 GB of weights and a 0.21 GB encoder
         assertEquals("0.7 GB · about 2 min", sheet.downloadText)
-    }
-
-    @Test fun theSheetKeepsTheQuickFitOffline() {
-        val swift = Catalog.picks.first()
-        val vm = viewModel() // the fake hub has no estimate: it fails as an offline phone does
-        vm.sheet.keepAlive(collectors)
-        vm.open(swift)
-        val sheet = vm.sheet.value!!
-        assertFalse(sheet.fit.real)
-        assertEquals("Uses about 0.7 GB", sheet.memoryText)
         vm.close()
         assertNull(vm.sheet.value)
     }

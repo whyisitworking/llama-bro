@@ -104,7 +104,7 @@ class GetModelsViewModelTest {
             val state = vm.state.value as GetModelsState.Suggestions
             assertEquals(
                 // a model is called by its own name everywhere
-                listOf("Qwen3.5 0.8B", "Gemma 3 4B", "Qwen3.5 4B", "Llama 3.2 3B", "Qwen3.5 9B"),
+                listOf("Qwen3.5 0.8B", "Gemma 3 4B", "Qwen3.5 4B", "Llama 3.2 3B", "Qwen3.5 9B", "LFM3 Omni 2B"),
                 state.rows.map { it.name },
             )
             assertNull(state.offlineLine)
@@ -156,7 +156,7 @@ class GetModelsViewModelTest {
             advanceTimeBy(351)
             runCurrent()
             val state = vm.state.value as GetModelsState.Suggestions
-            assertEquals(5, state.rows.size)
+            assertEquals(6, state.rows.size)
             assertEquals(GetModelsViewModel.OFFLINE_LINE, state.offlineLine)
         }
 
@@ -220,7 +220,7 @@ class GetModelsViewModelTest {
             val secondFit = vm.fit(second).keepAlive(backgroundScope)
             runCurrent()
             assertNull(firstFit.value)
-            gate.complete(FitView(FitLabel.RunsWell, 12, real = false))
+            gate.complete(FitView(FitLabel.RunsWell, 12))
             runCurrent()
             assertEquals(FitLabel.RunsWell, firstFit.value?.label)
             assertEquals("each row has its own flow", false, firstFit === secondFit)

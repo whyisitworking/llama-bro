@@ -17,6 +17,10 @@
 // its first bytes, links it into that directory under a random name and writes file://<name>, so llama-server reads the
 // file itself (F157: ~100 ms less per turn with three voice notes). The link lives until the terminal event, so the file
 // must too. A caller-written file:// reaches only that directory.
+//
+// Realtime (D97): the "realtime" endpoint runs upstream's /v1/realtime WebSocket handler (server-context.cpp
+// ws_realtime) on the request's thread with an in-memory connection: lb_request_send queues a client event, which the
+// handler reads as a text message; each message it sends is one CHUNK. A cancel is the client closing the socket.
 #include "model.h"
 #include "upstream.h"
 
@@ -24,6 +28,9 @@
 
 #include <atomic>
 #include <cerrno>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
@@ -42,12 +49,28 @@ struct lb_request {
     std::function<bool()> should_stop; // server_http_req keeps a reference to this
     lb_request_cb cb = nullptr;
     void * user = nullptr;
+
+    // realtime only: the client's events, read by upstream's handler through mem_conn
+    bool realtime = false;
+    std::mutex rt_mtx;
+    std::condition_variable rt_cv;
+    std::deque<std::string> inbox;
+    bool rt_closed = false;     // the connection is closed, by either side
+    bool server_ended = false;  // the handler closed it first: DONE, even if a cancel follows
+    std::mutex cb_mtx;       // the handler sends from two threads (its reader and its result loop)
+
+    void request_stop() {
+        stop.store(true);
+        std::lock_guard<std::mutex> lk(rt_mtx);
+        rt_cv.notify_all();
+    }
 };
 
 namespace {
 
 constexpr const char * kPlaceholder = "lb-attachment:";
 constexpr const char * kTranscriptions = "transcriptions";
+constexpr const char * kRealtime = "realtime";
 
 std::atomic<int> g_live_attachments{0};
 
@@ -362,12 +385,76 @@ void run_request(lb_model * m, lb_request * r, server_http_context::handler_t ha
     release(r);
 }
 
+// The WebSocket upstream's realtime handler talks to, in memory: read() takes what lb_request_send queued, send() is
+// one CHUNK. Closed by either side: a cancel (the client) or the handler's close() (the server).
+class mem_conn final : public server_http_context::ws_conn {
+public:
+    explicit mem_conn(lb_request * r) : r_(r) {}
+
+    int read(std::string & msg) override {
+        std::unique_lock<std::mutex> lk(r_->rt_mtx);
+        r_->rt_cv.wait(lk, [this] { return !r_->inbox.empty() || r_->stop.load() || r_->rt_closed; });
+        if (r_->stop.load() || r_->rt_closed) return 0;
+        msg = std::move(r_->inbox.front());
+        r_->inbox.pop_front();
+        return 1;
+    }
+    bool send(const std::string & msg) override {
+        std::lock_guard<std::mutex> lk(r_->cb_mtx);
+        if (!is_open()) return false;  // nothing reaches the caller after a cancel
+        r_->cb(r_->user, LB_EVENT_CHUNK, 200, msg.data(), msg.size());
+        return true;
+    }
+    bool send_binary(const std::string & msg) override { return send(msg); }
+    bool is_open() const override {
+        std::lock_guard<std::mutex> lk(r_->rt_mtx);
+        return !r_->stop.load() && !r_->rt_closed;
+    }
+    void close() override {
+        std::lock_guard<std::mutex> lk(r_->rt_mtx);
+        if (!r_->rt_closed && !r_->stop.load()) r_->server_ended = true;
+        r_->rt_closed = true;
+        r_->rt_cv.notify_all();
+    }
+
+private:
+    lb_request * r_;
+};
+
+void run_realtime(lb_model * m, lb_request * r, server_http_context::ws_handler_t handler,
+                  std::map<std::string, std::string> params, std::string query) {
+    {
+        mem_conn conn(r);
+        // req must outlive the handler, as an HTTP worker's does
+        const server_http_req req{ std::move(params), {}, "/v1/realtime", std::move(query), {}, {}, r->should_stop };
+        try {
+            handler(req, conn);  // returns once the conversation has ended, its threads joined
+        } catch (const std::exception & e) {
+            SRV_ERR("llamabro: realtime failed: %s\n", e.what());
+        }
+        conn.close();
+    }
+    bool cancelled;
+    {
+        std::lock_guard<std::mutex> lk(r->rt_mtx);
+        cancelled = !r->server_ended;  // a cancel closed it before the handler did
+    }
+    r->cb(r->user, cancelled ? LB_EVENT_CANCELLED : LB_EVENT_DONE, 0, nullptr, 0);
+
+    {
+        std::lock_guard<std::mutex> lk(m->mtx);
+        m->requests.erase(r);
+        m->cv.notify_all();
+    }
+    release(r);
+}
+
 }  // namespace
 
 void lb_model_cancel_all_requests(lb_model * m) {
     std::unique_lock<std::mutex> lk(m->mtx);
     m->closing = true;
-    for (lb_request * r : m->requests) r->stop.store(true);
+    for (lb_request * r : m->requests) r->request_stop();
     m->cv.wait(lk, [m] { return m->requests.empty(); });
 }
 
@@ -387,8 +474,14 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
     if (out) *out = nullptr;
     if (!m || !endpoint || !cb || !out || (n_atts > 0 && !atts)) return LB_ERR_INVALID_ARG;
 
+    const bool realtime = std::strcmp(endpoint, kRealtime) == 0;
     const auto it = m->endpoints.find(endpoint);
-    if (it == m->endpoints.end()) return LB_ERR_INVALID_ARG;
+    if (realtime) {
+        // a WebSocket: no body or attachments, the client's events come through lb_request_send
+        if (body_len > 0 || n_atts > 0 || !m->routes || !m->routes->ws_realtime) return LB_ERR_INVALID_ARG;
+    } else if (it == m->endpoints.end()) {
+        return LB_ERR_INVALID_ARG;
+    }
     const bool transcription = std::strcmp(endpoint, kTranscriptions) == 0;
 
     // the caller's mistakes first, then every read, all before this returns (the caller may release its sources)
@@ -462,6 +555,7 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
     auto * r = new lb_request();
     r->cb = cb;
     r->user = user;
+    r->realtime = realtime;
     r->should_stop = [r]() { return r->stop.load(); };
 
     {
@@ -473,9 +567,13 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
         m->requests.insert(r);
     }
     try {
-        std::thread(run_request, m, r, it->second, std::move(params), std::move(query),
-                    std::string("/") + endpoint, std::string(body ? body : "", body ? body_len : 0),
-                    std::move(read), std::move(att_error), std::move(links)).detach();
+        if (realtime) {
+            std::thread(run_realtime, m, r, m->routes->ws_realtime, std::move(params), std::move(query)).detach();
+        } else {
+            std::thread(run_request, m, r, it->second, std::move(params), std::move(query),
+                        std::string("/") + endpoint, std::string(body ? body : "", body ? body_len : 0),
+                        std::move(read), std::move(att_error), std::move(links)).detach();
+        }
     } catch (...) {
         std::lock_guard<std::mutex> lk(m->mtx);
         m->requests.erase(r);
@@ -488,7 +586,16 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
 }
 
 void lb_request_cancel(lb_request * r) {
-    if (r) r->stop.store(true);
+    if (r) r->request_stop();
+}
+
+lb_status lb_request_send(lb_request * r, const char * msg, size_t len) {
+    if (!r || !r->realtime || (!msg && len > 0)) return LB_ERR_INVALID_ARG;
+    std::lock_guard<std::mutex> lk(r->rt_mtx);
+    if (r->stop.load() || r->rt_closed) return LB_ERR_CANCELLED;
+    r->inbox.emplace_back(msg ? msg : "", len);
+    r->rt_cv.notify_all();
+    return LB_OK;
 }
 
 void lb_request_free(lb_request * r) {

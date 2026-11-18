@@ -19,7 +19,9 @@ import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.chat.ModelMemory
 import com.suhel.llamabro.demo.chat.SampleSource
 import com.suhel.llamabro.demo.chat.SamplingStore
+import com.suhel.llamabro.demo.chat.SpeechOutput
 import com.suhel.llamabro.demo.chat.Streamer
+import com.suhel.llamabro.demo.chat.TrackSpeech
 import com.suhel.llamabro.demo.chat.recommendedCard
 import com.suhel.llamabro.demo.data.AudioStore
 import com.suhel.llamabro.demo.data.ChatRepository
@@ -84,6 +86,16 @@ class AppContainer(
      * (D76); the phone tests give scripted samples.
      */
     @SuppressLint("MissingPermission") val microphone: () -> SampleSource = { Microphone(app) },
+    /**
+     * Voice mode's microphone (D100): the voice call's source, whose echo cancellation keeps the reply out of it;
+     * opened only after the chat screen has the permission. The phone tests give scripted samples.
+     */
+    @SuppressLint("MissingPermission")
+    val voiceMicrophone: () -> SampleSource = {
+        Microphone(app, android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+    },
+    /** Where voice mode speaks a reply, at its sample rate (D100); the phone tests play nothing. */
+    val speech: (rate: Int) -> SpeechOutput = { TrackSpeech(app, it) },
 ) {
     /** The app's own scope: work that outlives a screen or a view model runs here, never in an ad-hoc scope. */
     val appScope: CoroutineScope get() = scope
@@ -140,9 +152,9 @@ class AppContainer(
      */
     val sampling: SamplingStore by lazy { SamplingStore(settings, chats, { hub.recommendedCard(it) }, scope) }
 
-    /** The SDK's search, a repo's files and the fit projection; the phone tests pass a fake in [discoveryOverride]. */
+    /** The SDK's search, a repo's files and a model's fit; the phone tests pass a fake in [discoveryOverride]. */
     val discovery: ModelDiscovery =
-        discoveryOverride ?: ModelDiscovery(hub, llamaBro) { deviceFacts() }
+        discoveryOverride ?: ModelDiscovery(hub) { deviceFacts() }
 
     /**
      * Creates the SDK's download worker on this container's hub (D75), so a download runs with the app's token and
@@ -153,8 +165,8 @@ class AppContainer(
     @Volatile private var facts: DeviceFacts? = null
 
     /**
-     * The memory budget and chips, read from the SDK the first time a screen asks; the chip estimates use is the one
-     * chosen in Settings › Memory when this phone has it (D72).
+     * The memory budget (half the phone's RAM, D101) and chips, read from the SDK the first time a screen asks; the
+     * chip fits use is the one chosen in Settings › Memory when this phone has it (D72).
      */
     suspend fun deviceFacts(): DeviceFacts =
         (facts ?: DeviceFacts.read(llamaBro).also { facts = it }).preferring(

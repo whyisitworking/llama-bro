@@ -26,7 +26,6 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
-import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.designsystem.testing.LocalRecompositionCounter
 import com.suhel.llamabro.demo.designsystem.testing.RecompositionCounter
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
@@ -34,7 +33,6 @@ import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.Format
-import com.suhel.llamabro.demo.models.HubEstimate
 import com.suhel.llamabro.demo.models.RepoFile
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.testing.FakeDiscovery
@@ -68,7 +66,7 @@ class ModelsTest {
     private val hub = TestHub()
     private val scheduler = FakeScheduler()
     private val engine = FakeLlamaBro()
-    private val discovery = FakeDiscovery(hub, engine.llamaBro)
+    private val discovery = FakeDiscovery(hub)
     private val app =
         TestAppRule(
             config = {
@@ -88,7 +86,9 @@ class ModelsTest {
     private val q3 = RepoFile("Qwen3.5-4B-Q3_K_M.gguf", "Q3_K_M", 1_900_000_000)
     private val q4 = RepoFile("Qwen3.5-4B-Q4_K_M.gguf", "Q4_K_M", 2_740_937_888)
     private val q8 = RepoFile("Qwen3.5-4B-Q8_0.gguf", "Q8_0", 4_500_000_000)
-    private val bf16 = RepoFile("Qwen3.5-4B-BF16.gguf", "BF16", 8_400_000_000)
+
+    // alone it leaves the fake phone's 8 GiB a little room; with the encoder the hub fetches with it, none (D101)
+    private val bf16 = RepoFile("Qwen3.5-4B-BF16.gguf", "BF16", 8_400_000_000, encoderBytes = 675_569_344)
 
     @After fun closeHub() = hub.close()
 
@@ -103,23 +103,8 @@ class ModelsTest {
         listVision()
     }
 
-    private fun fitFor(file: RepoFile, repo: String, fits: Boolean = true) =
-        discovery.estimates.put(
-            HfModel.parse("$repo:${file.quant}"),
-            HubEstimate(
-                file.bytes,
-                0,
-                fits,
-                if (fits) 32_768 else null,
-                file.bytes + 300_000_000,
-                DeviceKind.Npu,
-            ),
-        )
-
     private fun seedRepo(repo: String = "bartowski/phi-4-mini-GGUF") {
         discovery.repoFiles[repo] = listOf(q3, q4, q8, bf16)
-        for (f in listOf(q3, q4, q8)) fitFor(f, repo)
-        fitFor(bf16, repo, fits = false)
     }
 
     private fun showGetModels(
@@ -187,12 +172,12 @@ class ModelsTest {
 
     // ---- Get models ----
 
-    @Test fun getModelsShowsFiveSuggestions() {
+    @Test fun getModelsShowsSixSuggestions() {
         showGetModels()
         compose.onNodeWithText("SUGGESTED FOR THIS PHONE").assertIsDisplayed()
-        compose.onAllNodesWithTag("model_row").assertCountEquals(5)
+        compose.onAllNodesWithTag("model_row").assertCountEquals(6)
         // every model is called by its own name
-        for (name in listOf("Qwen3.5 0.8B", "Gemma 3 4B", "Qwen3.5 4B", "Llama 3.2 3B", "Qwen3.5 9B")) {
+        for (name in listOf("Qwen3.5 0.8B", "Gemma 3 4B", "Qwen3.5 4B", "Llama 3.2 3B", "Qwen3.5 9B", "LFM3 Omni 2B")) {
             compose.onNodeWithText(name).assertIsDisplayed()
         }
         shots.capture("suggestions")
@@ -301,7 +286,7 @@ class ModelsTest {
         assertTrue("sizes share one x: $sizes", sizes.distinct().size == 1)
     }
 
-    @Test fun anEstimateThatDoesNotFitTintsTooBig() {
+    @Test fun aFileTooBigWithItsEncoderTintsTooBig() {
         openPhi()
         compose.onNodeWithText("Advanced").performClick()
         waitFor("Too big")
@@ -354,7 +339,7 @@ class ModelsTest {
         assertTrue("the downloading row did", (counter.counts["model-phi-4-mini"] ?: 0) > 0)
     }
 
-    @Test fun aLateEstimateRecomposesOnlyItsRow() {
+    @Test fun aLateFitRecomposesOnlyItsRow() {
         listBoth()
         discovery.repoFiles["bartowski/phi-4-mini-GGUF"] = listOf(q3, q4, q8)
         discovery.repoFiles["someone/llava-7b-GGUF"] = listOf(q3, q4, q8)
@@ -371,7 +356,7 @@ class ModelsTest {
         compose.waitUntil(10_000) { (counter.counts["model-llava-7b"] ?: 0) >= 1 }
         compose.waitForIdle()
         assertEquals(
-            "the row whose estimate was waiting did not touch the other",
+            "the row whose fit was waiting did not touch the other",
             0,
             counter.counts["model-phi-4-mini"] ?: 0,
         )

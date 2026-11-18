@@ -3,7 +3,6 @@ package com.suhel.llamabro.demo.models
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.hub.HubException
 import com.suhel.llamabro.hub.testing.FakeLlamaBroHub
-import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -25,7 +24,7 @@ class ModelDiscoveryTest {
                 gguf("Qwen3.5-4B-UD-Q4_K_XL.gguf")
                 gguf("Q8_0/Qwen3.5-4B-Q8_0-00001-of-00002.gguf", sizeBytes = 4096)
                 gguf("Q8_0/Qwen3.5-4B-Q8_0-00002-of-00002.gguf", sizeBytes = 4096)
-                gguf("mmproj-F16.gguf")
+                gguf("mmproj-F16.gguf", sizeBytes = ENCODER_BYTES)
             }
             repo("bartowski/Qwen_Qwen3.5-4B-GGUF") {
                 baseModel = "Qwen/Qwen3.5-4B"
@@ -61,7 +60,7 @@ class ModelDiscoveryTest {
             }
         }
     private val discovery =
-        ModelDiscovery(fake.hub, FakeLlamaBro().llamaBro) { DeviceFacts(8L shl 30, DeviceKind.Npu) }
+        ModelDiscovery(fake.hub) { DeviceFacts(8L shl 30, DeviceKind.Npu) }
 
     @After fun close() = fake.close()
 
@@ -122,6 +121,26 @@ class ModelDiscoveryTest {
         assertEquals("Q4_K_M", Sizes.tiers(files)[SizeTier.Recommended]?.quant)
     }
 
+    @Test fun aFileCarriesTheEncoderTheHubFetchesWithIt() {
+        val withReader = runBlocking { discovery.files("unsloth/Qwen3.5-4B-GGUF") }
+        assertEquals(ENCODER_BYTES.toLong(), withReader.single { it.quant == "Q4_K_M" }.encoderBytes)
+        val without = runBlocking { discovery.files("someone/Tiny-0.5B-GGUF") }
+        assertEquals(0L, without.single().encoderBytes)
+    }
+
+    @Test fun aQuickFitCountsTheRecommendedFilesEncoder() {
+        val phone = DeviceFacts(8L shl 30, DeviceKind.Npu)
+        // alone the file leaves room in 8 GiB; with its encoder, none (D101)
+        val big = RepoFile("Big-Q4_K_M.gguf", "Q4_K_M", 8_000_000_000, encoderBytes = 900_000_000)
+        val sized =
+            object : ModelDiscovery(fake.hub, { phone }) {
+                override suspend fun files(repo: String): List<RepoFile> = listOf(big)
+            }
+        val fit = runBlocking { sized.quickFit("someone/Big-GGUF", catalog = null) }
+        assertEquals(Fits.quick(8_900_000_000, 8_000_000_000, phone), fit)
+        assertEquals(FitLabel.TooBig, fit?.label)
+    }
+
     @Test fun anOfflineSearchSaysSo() {
         fake.offline = true
         try {
@@ -179,3 +198,5 @@ class ModelDiscoveryTest {
         assertEquals(known.copy(downloads = 110), row)
     }
 }
+
+private const val ENCODER_BYTES = 2048

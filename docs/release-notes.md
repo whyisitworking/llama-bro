@@ -6,8 +6,26 @@ What changed for apps, newest first. Decisions are cited as `D<n>` ([decisions](
 
 ## Voice mode phase (unreleased, since 2026-11-17)
 
-Built on llama.cpp b12479 (upstream master of 2026-11-17, D93) with the same four carried patches. No change to the
-SDK's API. The SDK matches the new llama-server on every contract case, on the Mac and on the phone's NPU (F163).
+Built on llama.cpp b12479 (upstream master of 2026-11-17, tagged by upstream since; D93) with eight carried patches:
+PH's four, the three speech patches back from the voice branch (0005-0007, D90) and a guard for LFM3 speech (0008, D96). The C API gains a realtime session (D97), and Kotlin a voice session over it (D98). The SDK
+matches the new llama-server on every contract case, on the Mac and on the phone's NPU (F163).
+
+### New
+
+- **A realtime voice session in the C API** (D95, D97): `lb_model_request(model, "realtime", …)` runs upstream's
+  `/v1/realtime` conversation in memory, with no port; `lb_request_send` sends the client's events. Its events equal
+  llama-server's over a WebSocket (F168). The model config takes `seed`.
+- **The encoder each quantisation brings** (D101): `Quantization.encoderBytes` in `hub.files` is the image or audio
+  encoder the Hub fetches with it, chosen as it downloads, from the listing alone.
+- **A voice session in Kotlin** (D95, D98): `model.voiceSession { voice = …; language = …; instructions = … }`
+  returns a `VoiceSession`: `append` the microphone's 16-bit PCM, `commit()` each turn, and collect `events` for the
+  reply's text (captions) and speech (16-bit PCM for `AudioTrack`), its end, and refused events; `cancelReply` and
+  `close` stop it. Other realtime events come as `VoiceEvent.Other`, and `sendRaw` sends any client event. The SDK sets
+  nothing in the session for the app: LFM3-Omni needs a voice, a language and an instruction to answer (F166). With
+  `transcribeUser { }` on a model loaded with two slots, each turn's words arrive as `VoiceEvent.UserTranscript` while
+  the reply is made (D99; upstream sends none, F169). `ModelInfo.voices` (and `supportsSpeech`) lists the voices a model speaks with, empty when it doesn't speak (D100). `ModelConfig.seed` sets the sampling seed. `FakeLlamaBro.voiceReply`
+  scripts replies for app tests. On the phone's NPU a reply's first audio comes 0.3 s after the commit, it
+  speaks at 1.65 times real time, and a cancel stops it within 80 ms (F170); patch 0008 holds there too (F171).
 
 ### Changed, from upstream llama-server
 
@@ -22,8 +40,25 @@ SDK's API. The SDK matches the new llama-server on every contract case, on the M
 - **Typed output and tools** compile and match their grammars faster (upstream's left factoring), and chat templates
   render with less overhead.
 - **NPU prefill with MTP** keeps patch 0001's gain at the new build: +67% (F163).
+- **Speech output on the NPU alone** works through `/tts` (`rawRequest`): patch 0005 keeps LFM3-Omni's speech
+  depthformer whole on the NPU and patch 0006 skips the text head on audio frames, now through upstream's own embeddings-only
+  output flag (D86, D94, F155, F156, F165). Before them, the NPU gave empty audio. On the phone at b12479, 2.3-2.4 times real
+  time; the head skip alone saves 4.5 ms of each 80 ms frame.
 - **On Apple hardware** a model load's peak memory is lower by about the size of the largest tensor (F164); Android was
   not measured.
+
+### Fixed
+
+- **Two fit estimates at once could crash the app** (F172): upstream's fit measurement swaps llama.cpp's process-wide
+  log callback while it runs, so `estimateFit` calls on several threads, or one during a load with automatic context,
+  crashed. The bridge now measures one at a time.
+
+- **`npuPolling` no longer floods logcat.** Patch 0007 polls the NPU's queue without blocking on Android too, so the DSP
+  library logs no error per empty poll and your app's own lines are no longer dropped (F162). Polling stays off by
+  default (D90).
+- **LFM3-Omni speech that never ends.** About one captioned reply in sixty lost its place after its text and played
+  minutes of noise; patch 0008 ends it within seconds of the speech going wrong, and clean replies are unchanged (D96,
+  F167).
 
 ### Fixed, from upstream
 

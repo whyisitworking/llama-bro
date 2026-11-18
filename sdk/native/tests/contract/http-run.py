@@ -104,6 +104,119 @@ def any_slot_busy(host, port):
     return any(s.get("is_processing", False) for s in slots)
 
 
+# realtime (D97): /v1/realtime over a real WebSocket, the steps lb-run runs through lb_request_send
+def ws_connect(host, port, path):
+    import socket
+    s = socket.create_connection((host, port))
+    key = base64.b64encode(os.urandom(16)).decode()
+    s.sendall((f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+               f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
+    head = b""
+    while b"\r\n\r\n" not in head:
+        head += s.recv(1)
+    if b" 101 " not in head.split(b"\r\n")[0]:
+        raise RuntimeError(f"handshake failed: {head!r}")
+    return s
+
+
+def ws_send(s, text):
+    import struct
+    data, mask = text.encode(), os.urandom(4)
+    n = len(data)
+    hdr = bytes([0x81]) + (bytes([0x80 | n]) if n < 126 else
+                           bytes([0x80 | 126]) + struct.pack(">H", n) if n < 65536 else
+                           bytes([0x80 | 127]) + struct.pack(">Q", n))
+    s.sendall(hdr + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+
+
+def ws_close(s):
+    s.sendall(bytes([0x88, 0x80]) + os.urandom(4))
+
+
+def ws_recv(s):
+    """The next text message, or None once the server closed."""
+    import struct
+
+    def exact(n):
+        buf = b""
+        while len(buf) < n:
+            chunk = s.recv(n - len(buf))
+            if not chunk:
+                raise EOFError
+            buf += chunk
+        return buf
+    msg = b""
+    while True:
+        b0, b1 = exact(2)
+        op, n = b0 & 0x0F, b1 & 0x7F
+        if n == 126:
+            n = struct.unpack(">H", exact(2))[0]
+        elif n == 127:
+            n = struct.unpack(">Q", exact(8))[0]
+        payload = exact(n)
+        if op == 0x8:
+            return None
+        if op in (0x9, 0xA):
+            continue
+        msg += payload
+        if b0 & 0x80:
+            return msg.decode()
+
+
+def wav_pcm(path):
+    import wave
+    with wave.open(path) as w:
+        return w.readframes(w.getnframes()), w.getframerate()
+
+
+def run_realtime(host, port, spec, out):
+    t0 = now_us()
+    s = ws_connect(host, port, "/v1/realtime")
+    events, cond = [], threading.Condition()
+
+    def reader():
+        try:
+            while (msg := ws_recv(s)) is not None:
+                t = now_us()
+                with cond:
+                    out.write(json.dumps({"t_us": t - t0, "data": msg}) + "\n")
+                    events.append(msg)
+                    cond.notify_all()
+        except (EOFError, OSError):
+            pass
+        with cond:
+            events.append(None)
+            cond.notify_all()
+    th = threading.Thread(target=reader, daemon=True)
+    th.start()
+    seen = 0
+    for step in spec["steps"]:
+        if "send" in step:
+            ws_send(s, json.dumps(step["send"]))
+        elif "append_clip" in step:
+            pcm, rate = wav_pcm(step["append_clip"])
+            chunk = rate * 2 * step.get("chunk_ms", 100) // 1000
+            for at in range(0, len(pcm), chunk):
+                ws_send(s, json.dumps({"type": "input_audio_buffer.append",
+                                       "audio": base64.b64encode(pcm[at:at + chunk]).decode()}))
+        elif "wait" in step:
+            with cond:
+                def found():
+                    nonlocal seen
+                    while seen < len(events):
+                        e = events[seen]
+                        seen += 1
+                        if e is None or json.loads(e).get("type") == step["wait"]:
+                            return True
+                    return False
+                if not cond.wait_for(found, timeout=300):
+                    raise RuntimeError(f"no {step['wait']} event")
+    ws_close(s)
+    th.join(timeout=60)
+    s.close()
+    return len([e for e in events if e is not None]), now_us() - t0
+
+
 def run(url, requests_path, out_dir):
     u = urllib.parse.urlparse(url)
     host, port = u.hostname, u.port
@@ -115,6 +228,13 @@ def run(url, requests_path, out_dir):
                 continue
             spec = json.loads(line)
             rid, endpoint = spec["id"], spec["endpoint"]
+            if endpoint == "realtime":
+                with open(os.path.join(out_dir, f"{rid}.jsonl"), "w") as out:
+                    n, t = run_realtime(host, port, spec, out)
+                summary.write(json.dumps({"id": rid, "endpoint": endpoint, "status": 200, "n_chunks": n,
+                                          "t_returned_us": t}) + "\n")
+                summary.flush()
+                continue
             cancel_ms = spec.get("cancel_after_ms", 0)
             cancel_chunks = spec.get("cancel_after_chunks", 0)
             method, path = PATHS[endpoint]

@@ -66,7 +66,7 @@ fun ColumnScope.PickSheetContent(state: PickSheetState, onGet: () -> Unit) {
     )
 }
 
-/** "Runs great on this phone · about 59 words a second": tinted by the fit, real when the SDK has projected it. */
+/** "Runs great on this phone · about 59 words a second": tinted by the fit. */
 @Composable
 private fun PickFitLine(fit: FitView) {
     val tint = fit.label.tint()
@@ -100,10 +100,10 @@ private fun PickFacts(entry: CatalogEntry, state: PickSheetState) {
     }
 }
 
-private fun previewState(entry: CatalogEntry, label: FitLabel, wordsPerSecond: Int, real: Boolean) =
+private fun previewState(entry: CatalogEntry, label: FitLabel, wordsPerSecond: Int) =
     PickSheetState(
         entry = entry,
-        fit = FitView(label, wordsPerSecond, real),
+        fit = FitView(label, wordsPerSecond),
         memoryText = "Uses about 0.9 GB",
         downloadText = "0.7 GB · about 2 min",
     )
@@ -111,10 +111,10 @@ private fun previewState(entry: CatalogEntry, label: FitLabel, wordsPerSecond: I
 internal class PickSheetStates : PreviewParameterProvider<PickSheetState> {
     override val values =
         sequenceOf(
-            previewState(Catalog.picks[0], FitLabel.RunsGreat, 59, real = true),
-            previewState(Catalog.picks[1], FitLabel.RunsWell, 10, real = false),
-            previewState(Catalog.picks[2], FitLabel.SlowHere, 7, real = true),
-            previewState(Catalog.picks[2], FitLabel.TooBig, 0, real = true),
+            previewState(Catalog.picks[0], FitLabel.RunsGreat, 59),
+            previewState(Catalog.picks[1], FitLabel.RunsWell, 10),
+            previewState(Catalog.picks[2], FitLabel.SlowHere, 7),
+            previewState(Catalog.picks[2], FitLabel.TooBig, 0),
         )
 }
 

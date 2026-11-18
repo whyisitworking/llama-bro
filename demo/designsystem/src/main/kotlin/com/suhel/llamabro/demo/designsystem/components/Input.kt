@@ -160,17 +160,29 @@ data class ComposerState(
     val hasAttachment: Boolean = false,
     val canRecord: Boolean = false,
     val recording: RecordingState? = null,
+    val canTalk: Boolean = false,
 ) {
     /** Send can act: there is something to send (text or a photo), or a reply is coming and the button is stop. */
     val canAct: Boolean get() = busy || text.isNotBlank() || hasAttachment
 
     /** The mic shows: the model hears, nothing is typed, no reply is coming and nothing is being recorded. */
     val showsMic: Boolean get() = canRecord && recording == null && !busy && text.isEmpty()
+
+    /**
+     * The voice-mode button shows in send's place (D100): the model speaks, and there is nothing to send, no reply is
+     * coming and nothing is being recorded.
+     */
+    val showsTalk: Boolean get() = canTalk && recording == null && !busy && text.isEmpty() && !hasAttachment
 }
 
 /** What the message bar's voice controls do (D76): start recording, throw the recording away, or send it. */
 @Immutable
-data class VoiceActions(val onRecord: () -> Unit, val onDiscard: () -> Unit, val onSend: () -> Unit) {
+data class VoiceActions(
+    val onRecord: () -> Unit,
+    val onDiscard: () -> Unit,
+    val onSend: () -> Unit,
+    val onTalk: () -> Unit = {},
+) {
     companion object {
         val None = VoiceActions({}, {}, {})
     }
@@ -266,29 +278,52 @@ fun Composer(
                     }
                 }
             }
-            when {
-                recording != null -> {
-                    BarIconButton(onClick = voice.onSend) {
-                        BarCircle(colors.sendAccent) {
-                            Icon(
-                                DemoIcons.Send,
-                                contentDescription = stringResource(R.string.ds_send_recording),
-                                tint = colors.onSendAccent,
-                                modifier = Modifier.size(DemoSize.barGlyph),
-                            )
-                        }
-                    }
-                }
+            BarEnd(state, voice, onSend, onStop)
+        }
+    }
+}
 
-                state.showsMic && !state.hasAttachment -> {
-                    BarButton(DemoIcons.Mic, stringResource(R.string.ds_record), voice.onRecord)
-                }
-
-                else -> {
-                    if (state.showsMic) BarButton(DemoIcons.Mic, stringResource(R.string.ds_record), voice.onRecord)
-                    SendButton(state, onSend, onStop)
+/** The bar's end: send the recording, the voice-mode button (D100), the mic alone (D76), or the mic and send. */
+@Composable
+private fun BarEnd(state: ComposerState, voice: VoiceActions, onSend: () -> Unit, onStop: () -> Unit) {
+    val colors = LocalDemoColors.current
+    val recording = state.recording
+    when {
+        recording != null -> {
+            BarIconButton(onClick = voice.onSend) {
+                BarCircle(colors.sendAccent) {
+                    Icon(
+                        DemoIcons.Send,
+                        contentDescription = stringResource(R.string.ds_send_recording),
+                        tint = colors.onSendAccent,
+                        modifier = Modifier.size(DemoSize.barGlyph),
+                    )
                 }
             }
+        }
+
+        state.showsTalk -> {
+            // a model that talks: the voice-message mic just before the voice-mode button (D100)
+            if (state.showsMic) BarButton(DemoIcons.Mic, stringResource(R.string.ds_record), voice.onRecord)
+            BarIconButton(onClick = voice.onTalk) {
+                BarCircle(colors.sendAccent) {
+                    Icon(
+                        DemoIcons.VoiceMode,
+                        contentDescription = stringResource(R.string.ds_voice_mode),
+                        tint = colors.onSendAccent,
+                        modifier = Modifier.size(DemoSize.barGlyph),
+                    )
+                }
+            }
+        }
+
+        state.showsMic && !state.hasAttachment -> {
+            BarButton(DemoIcons.Mic, stringResource(R.string.ds_record), voice.onRecord)
+        }
+
+        else -> {
+            if (state.showsMic) BarButton(DemoIcons.Mic, stringResource(R.string.ds_record), voice.onRecord)
+            SendButton(state, onSend, onStop)
         }
     }
 }

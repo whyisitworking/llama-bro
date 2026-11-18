@@ -473,6 +473,7 @@ public final class com/suhel/llamabro/ModelConfig {
 	public final fun getMicroBatchSize ()I
 	public final fun getParallelSlots ()I
 	public final fun getRamCacheMib ()I
+	public final fun getSeed ()Ljava/lang/Integer;
 	public final fun getSpeculative ()Lcom/suhel/llamabro/Speculative;
 	public final fun getTask ()Lcom/suhel/llamabro/ModelTask;
 	public final fun getThreads ()Ljava/lang/Integer;
@@ -489,6 +490,7 @@ public final class com/suhel/llamabro/ModelConfig {
 	public final fun setMicroBatchSize (I)V
 	public final fun setParallelSlots (I)V
 	public final fun setRamCacheMib (I)V
+	public final fun setSeed (Ljava/lang/Integer;)V
 	public final fun setSpeculative (Lcom/suhel/llamabro/Speculative;)V
 	public final fun setTask (Lcom/suhel/llamabro/ModelTask;)V
 	public final fun setThreads (Ljava/lang/Integer;)V
@@ -504,9 +506,11 @@ public final class com/suhel/llamabro/ModelInfo {
 	public final fun getParameterCount ()J
 	public final fun getSizeBytes ()J
 	public final fun getSupportsAudio ()Z
+	public final fun getSupportsSpeech ()Z
 	public final fun getSupportsVision ()Z
 	public final fun getTemplateCaps ()Ljava/util/Map;
 	public final fun getTrainedContextSize ()I
+	public final fun getVoices ()Ljava/util/List;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -707,6 +711,11 @@ public final class com/suhel/llamabro/Typed$Value : com/suhel/llamabro/Typed {
 
 public final class com/suhel/llamabro/TypedKt {
 	public static final fun valueOrNull (Lcom/suhel/llamabro/Typed;)Ljava/lang/Object;
+}
+
+public final class com/suhel/llamabro/VoiceKt {
+	public static final fun voiceSession (Lcom/suhel/llamabro/Model;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun voiceSession$default (Lcom/suhel/llamabro/Model;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
 public abstract interface class com/suhel/llamabro/chat/ChatEvent {
@@ -1410,6 +1419,12 @@ public final class com/suhel/llamabro/internal/EngineAttachment$Path : com/suhel
 	public final fun getPath ()Ljava/lang/String;
 }
 
+public final class com/suhel/llamabro/internal/EngineKt {
+	public static final field SEND_CLOSED I
+	public static final field SEND_NOT_REALTIME I
+	public static final field SEND_OK I
+}
+
 public abstract interface class com/suhel/llamabro/internal/EngineModel {
 	public abstract fun close ()V
 	public abstract fun getInfoJson ()Ljava/lang/String;
@@ -1419,6 +1434,11 @@ public abstract interface class com/suhel/llamabro/internal/EngineModel {
 public abstract interface class com/suhel/llamabro/internal/EngineRequest {
 	public abstract fun cancel ()V
 	public abstract fun free ()V
+	public fun send ([B)I
+}
+
+public final class com/suhel/llamabro/internal/EngineRequest$DefaultImpls {
+	public static fun send (Lcom/suhel/llamabro/internal/EngineRequest;[B)I
 }
 
 public final class com/suhel/llamabro/internal/LogcatLogger : com/suhel/llamabro/Logger {
@@ -1442,5 +1462,165 @@ public abstract interface class com/suhel/llamabro/internal/RequestSink {
 	public abstract fun onCancelled ()V
 	public abstract fun onChunk (I[B)V
 	public abstract fun onDone ()V
+}
+
+public final class com/suhel/llamabro/voice/OutputModality : java/lang/Enum {
+	public static final field Audio Lcom/suhel/llamabro/voice/OutputModality;
+	public static final field Text Lcom/suhel/llamabro/voice/OutputModality;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/suhel/llamabro/voice/OutputModality;
+	public static fun values ()[Lcom/suhel/llamabro/voice/OutputModality;
+}
+
+public final class com/suhel/llamabro/voice/UserTranscription {
+	public static final field Companion Lcom/suhel/llamabro/voice/UserTranscription$Companion;
+	public static final field Default Lcom/suhel/llamabro/voice/UserTranscription;
+	public final fun copy (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/voice/UserTranscription;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLanguage ()Ljava/lang/String;
+	public final fun getPrompt ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/voice/UserTranscription$Builder {
+	public final fun getLanguage ()Ljava/lang/String;
+	public final fun getPrompt ()Ljava/lang/String;
+	public final fun setLanguage (Ljava/lang/String;)V
+	public final fun setPrompt (Ljava/lang/String;)V
+}
+
+public final class com/suhel/llamabro/voice/UserTranscription$Companion {
+}
+
+public final class com/suhel/llamabro/voice/VoiceConfig {
+	public static final field Companion Lcom/suhel/llamabro/voice/VoiceConfig$Companion;
+	public static final field Default Lcom/suhel/llamabro/voice/VoiceConfig;
+	public final fun copy (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/voice/VoiceConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExtra ()Ljava/lang/String;
+	public final fun getInputSampleRate ()Ljava/lang/Integer;
+	public final fun getInstructions ()Ljava/lang/String;
+	public final fun getLanguage ()Ljava/lang/String;
+	public final fun getMaxOutputTokens ()Ljava/lang/Integer;
+	public final fun getOutputModalities ()Ljava/util/Set;
+	public final fun getUserTranscription ()Lcom/suhel/llamabro/voice/UserTranscription;
+	public final fun getVoice ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/voice/VoiceConfig$Builder {
+	public final fun getExtra ()Ljava/lang/String;
+	public final fun getInputSampleRate ()Ljava/lang/Integer;
+	public final fun getInstructions ()Ljava/lang/String;
+	public final fun getLanguage ()Ljava/lang/String;
+	public final fun getMaxOutputTokens ()Ljava/lang/Integer;
+	public final fun getOutputModalities ()Ljava/util/Set;
+	public final fun getUserTranscription ()Lcom/suhel/llamabro/voice/UserTranscription;
+	public final fun getVoice ()Ljava/lang/String;
+	public final fun setExtra (Ljava/lang/String;)V
+	public final fun setInputSampleRate (Ljava/lang/Integer;)V
+	public final fun setInstructions (Ljava/lang/String;)V
+	public final fun setLanguage (Ljava/lang/String;)V
+	public final fun setMaxOutputTokens (Ljava/lang/Integer;)V
+	public final fun setOutputModalities (Ljava/util/Set;)V
+	public final fun setUserTranscription (Lcom/suhel/llamabro/voice/UserTranscription;)V
+	public final fun setVoice (Ljava/lang/String;)V
+	public final fun transcribeUser (Lkotlin/jvm/functions/Function1;)V
+	public static synthetic fun transcribeUser$default (Lcom/suhel/llamabro/voice/VoiceConfig$Builder;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+}
+
+public final class com/suhel/llamabro/voice/VoiceConfig$Companion {
+}
+
+public final class com/suhel/llamabro/voice/VoiceConfigKt {
+	public static final fun VoiceConfig (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/voice/VoiceConfig;
+}
+
+public abstract interface class com/suhel/llamabro/voice/VoiceEvent {
+}
+
+public final class com/suhel/llamabro/voice/VoiceEvent$Error : com/suhel/llamabro/voice/VoiceEvent {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMessage ()Ljava/lang/String;
+	public final fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/voice/VoiceEvent$Other : com/suhel/llamabro/voice/VoiceEvent {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getJson ()Ljava/lang/String;
+	public final fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/voice/VoiceEvent$ReplyAudio : com/suhel/llamabro/voice/VoiceEvent {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPcm ()[S
+	public final fun getReplyId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/voice/VoiceEvent$ReplyDone : com/suhel/llamabro/voice/VoiceEvent {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCancelled ()Z
+	public final fun getOutputTokens ()Ljava/lang/Integer;
+	public final fun getReplyId ()Ljava/lang/String;
+	public final fun getText ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/voice/VoiceEvent$ReplyStarted : com/suhel/llamabro/voice/VoiceEvent {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReplyId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/voice/VoiceEvent$ReplyText : com/suhel/llamabro/voice/VoiceEvent {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDelta ()Ljava/lang/String;
+	public final fun getReplyId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/voice/VoiceEvent$TurnCommitted : com/suhel/llamabro/voice/VoiceEvent {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getItemId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/voice/VoiceEvent$UserTranscript : com/suhel/llamabro/voice/VoiceEvent {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getItemId ()Ljava/lang/String;
+	public final fun getText ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/voice/VoiceSession : java/lang/AutoCloseable {
+	public final fun append ([SII)Z
+	public static synthetic fun append$default (Lcom/suhel/llamabro/voice/VoiceSession;[SIIILjava/lang/Object;)Z
+	public final fun cancelReply ()Z
+	public fun close ()V
+	public final fun commit (Z)Z
+	public static synthetic fun commit$default (Lcom/suhel/llamabro/voice/VoiceSession;ZILjava/lang/Object;)Z
+	public final fun getEvents ()Lkotlinx/coroutines/flow/Flow;
+	public final fun getId ()Ljava/lang/String;
+	public final fun getInputSampleRate ()I
+	public final fun getLanguage ()Ljava/lang/String;
+	public final fun getOutputSampleRate ()Ljava/lang/Integer;
+	public final fun getVoice ()Ljava/lang/String;
+	public final fun respond ()Z
+	public final fun sendRaw (Ljava/lang/String;)Z
+	public final fun sendText (Ljava/lang/String;Z)Z
+	public static synthetic fun sendText$default (Lcom/suhel/llamabro/voice/VoiceSession;Ljava/lang/String;ZILjava/lang/Object;)Z
 }
 

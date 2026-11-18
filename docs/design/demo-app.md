@@ -28,19 +28,20 @@ It has to work for two kinds of person: someone who has never heard of a model o
 - Custom instructions applied to every chat, a default model, an optional Hugging Face token for gated models, and storage management.
 - A choice of chip in Settings › Memory (Automatic, NPU, GPU or CPU), with where the model actually runs and why when that isn't the chip chosen (D72).
 - Two layouts, Sidebar and Chat list, and light, dark and system themes, both themes first-class.
+- Voice mode for a model that talks (D95, D100): a spoken conversation, hold to talk, with captions, saved as an ordinary chat (section 4.8).
 - Plain limit lines with one action each: not enough memory, context full, missing model, a failed or gated download.
 
-**Not in the app:** dictation (speech turned into text) and text to speech (D37, D76), web search, tools or agents, side-by-side model comparison, accounts, cloud sync, exporting chats, and maintained lists such as "new this week" or "most loved".
+**Not in the app:** dictation (speech turned into text) and text to speech outside voice mode (D37, D76, D100), web search, tools or agents, side-by-side model comparison, accounts, cloud sync, exporting chats, and maintained lists such as "new this week" or "most loved".
 
 **Failures regardless of function:** a design language that feels lifeless and corporate, cheesy, juvenile, or like a meditation app (each was tried and rejected, section 12), and exposed machinery that a newcomer must understand before chatting.
 
 ## 3. Constraints and architecture
 
-- The app uses only the SDK's public API (`LlamaBro`, `Conversation`, `estimateFit`, `llamabro-hub`). A need the SDK lacks is first a finding and then an SDK change, never a workaround: the two that arose were starting a `Conversation` from stored messages (F96) and reading the memory budget for fit labels (F97).
+- The app uses only the SDK's public API (`LlamaBro`, `Conversation`, `llamabro-hub`). A need the SDK lacks is first a finding and then an SDK change, never a workaround: the two that arose were starting a `Conversation` from stored messages (F96) and reading the memory budget for fit labels (F97).
 - Search is the SDK's (D68, replacing D42's rule): `hub.search` finds GGUF models, grouping a model's quantized uploads
   under its original, and `hub.files` lists a repository's quantisations with their sizes. The app names the rows
-  (section 5), merges results that share a name into one row, and makes its own fit verdict from
-  `llama.estimateFit(hub.model(…))` (section 7.1); the SDK makes none.
+  (section 5), merges results that share a name into one row, and makes its own fit verdict from the files' sizes and
+  the phone's total RAM (section 7.1, D101); the SDK makes none.
 - A model loads by its name, `llama.loadModel(hub.model(key))`, whose installed copy loads with no network (D64). The
   app never starts a download the person didn't ask for: it loads only what the library lists, and a load of a model
   deleted meanwhile fails rather than fetching it.
@@ -85,7 +86,7 @@ Thinking folds, code, images, edit, regenerate, share, copy and the model divide
 
 ### 4.3 Finding models and the library
 
-- **Get models** is a search bar over Hugging Face and one fixed list, **Suggested for this phone**, hardcoded: Qwen3.5 0.8B, Gemma 3 4B, Qwen3.5 4B, Llama 3.2 3B and Qwen3.5 9B, in that order, each with a fit word and a plain line. Queries under two characters show the suggestions instead; a longer query is debounced by 350 ms.
+- **Get models** is a search bar over Hugging Face and one fixed list, **Suggested for this phone**, hardcoded: Qwen3.5 0.8B, Gemma 3 4B, Qwen3.5 4B, Llama 3.2 3B, Qwen3.5 9B and LFM3 Omni 2B, in that order, each with a fit word and a plain line. Queries under two characters show the suggestions instead; a longer query is debounced by 350 ms.
 - **Results** are models, not repositories: uploads of the same model collapse into one row, represented by the repository with the most downloads. A row shows the fit word, a plain line, "Thinks" (known only for the suggested models) and "Sees images" (from the pipeline tag), and the download count.
 - **The model sheet** shows the name, then repository and maker, a short description, and a Basic and Advanced switch:
   - **Basic:** three sizes in plain words with no quantisation names: **Smaller** ("a little less sharp"), **Recommended** (preselected, "the best balance") and **Best quality** ("near-original, slower"), each with size and fit. Recommended is Q4_K_M where it exists, else UD-Q4_K_XL, else the largest Q4; Smaller is the largest file under 75% of Recommended; Best quality is Q8_0, else Q6_K, else the largest. A tier with no matching file is hidden.
@@ -106,7 +107,7 @@ Thinking folds, code, images, edit, regenerate, share, copy and the model divide
 
 ### 4.5 Settings
 
-Appearance (Layout with previews; Theme: System, Light, Dark), Custom instructions, Default model, a Hugging Face token (optional, for gated models; a masked field that is never suggested or corrected), Sampling (section 4.7), Memory (section 4.6), Storage (the library) and About (versions and licences). Settings, About and Storage are grouped cards (section 8).
+Appearance (Layout with previews; Theme: System, Light, Dark), Custom instructions, Default model, a Hugging Face token (optional, for gated models; a masked field that is never suggested or corrected), Sampling (section 4.7), Voice (section 4.8), Memory (section 4.6), Storage (the library) and About (versions and licences). Settings, About and Storage are grouped cards (section 8).
 
 ### 4.6 The model's memory
 
@@ -142,19 +143,32 @@ How a model picks its words starts from what its makers recommend and can be cha
   applies. A chat with no message yet has no row: its values would have nothing to belong to.
 - **The length limit.** Every reply has one unless the person removes it, its thinking and answer together. Settings › Sampling › **Reply length** sets it for every model and chat, with no per-chat override (D78): **Automatic** (the default: about 2,000 tokens for the answer plus the Think level's budget, table in section 7.2), **Short** (1,024 tokens) or **Long** (8,192), which replace the level's total and leave its thinking budget as it is (so a Short reply at Balanced or Deep can stop while it still thinks), or **No limit** ("Until the model stops or the context is full": no `max_tokens` is sent). Note under the group: "For every model and chat. A reply that reaches its length stops, and Continue goes on, unless the chat has filled the context." A small model that loops ends at the limit instead of running until Stop (F113); No limit gives that guard up on purpose. The reply is kept, "Stopped at the length limit.", and **Continue** sends the chat with that reply last, so llama-server goes on writing it, from inside its thinking if it was cut there (F137). It can be cut and continued again. A reply that ends because the chat filled the context (prompt and reply reach the loaded context) has no room to continue: it ends failed with "This chat is longer than {model} can hold." and **Start a new chat**, keeping what it wrote.
 
+### 4.8 Voice mode
+
+A spoken conversation with a model that talks (D95, D100), drawn in [mockups/voice-mode.html](mockups/voice-mode.html). The previous context of the chat is not given to the spoken conversation: upstream's realtime conversation takes the person's text but not the model's earlier replies, so each time voice mode opens (and after leaving the screen), the model starts the conversation afresh, while the chat keeps every turn. A chat that already has messages says so quietly above the words: "Voice starts fresh: it doesn't see the messages above." The typed chat afterwards sees every voice turn, since it is rebuilt from the stored messages. The voice mode holds the model as a reply does, so it is never freed under a conversation; leaving the screen lets it go.
+
+- **Getting there.** For a model that speaks, an empty message bar puts the voice button (Material's `graphic_eq`) in Send's slot, filled with the send indigo, and the voice-message mic (D76) sits just before it. Typing turns the slot back into Send. The app learns that a model speaks from `ModelInfo.voices` when it loads and remembers that for its next load, as it does for hearing.
+- **The voice view.** Full screen over the chat. A top bar with a close at the start and the model's name and voice centred (`titleSmall` over `bodySmall`). The orb at the voice view's size in the upper middle, with one muted `label` line under it: "Tap or hold to talk", "Listening", "Thinking" or "Speaking". Under that, the person's last words in muted `bodyMedium`, then the reply's caption in `voiceCaption`, its older lines muted and fading at the top. At the bottom, the talk button (an 80 dp tonal circle with the mic glyph), centred, and while the model speaks a 48 dp tonal Stop at its start. A hint under the controls says how to talk now: "Tap to start, or hold while you talk", "Tap to send", "Release to send" or "Talk to interrupt".
+- **Talking.** Tap or hold: a tap starts a turn that the next tap sends ("Tap to send"), and a press held past 400 ms (Material's long-press timeout) sends on release ("Release to send"). The button fills with the send indigo while it listens. Pressing it while the model speaks stops the reply and listens ("Talk to interrupt"). There is no hands-free mode: upstream's realtime conversation has no turn detection at b12479 (`turn_detection` is always null), and the maintainer chose not to add one by a patch or in the app (2026-11-19). Stop ends the reply. Close ends voice mode and returns to the chat.
+- **The orb in each state.** Ready: still. Listening: it swells with the voice's level and a hairline ring spreads from it. Thinking (about 0.3 s, F170): a soft highlight turns inside it. Speaking: it moves with the reply's speech. With animations off it holds still in every state, and the state line carries the meaning.
+- **What is saved.** Each turn is an ordinary message: the person's as a voice bubble (D76) with its caption under it in muted `bodyMedium` when captions are on, the reply as its text with a speaker action among its actions that replays its speech. The chat goes on by typing.
+- **Settings.** Settings › Voice: the voice, from the model's list (the first by default), and captions of the person's words (on by default; they load the model with two slots, D99). The spoken language follows the phone's when the model has it, else English. The built-in answering instruction comes first, the custom instructions after it (F166).
+- **Leaving.** Home, a call or the lock stops recording and playback as Stop does and closes the session; the view is ready to talk again on return. Playback goes to the speaker or the connected headset; the mic uses the voice-communication source, with the phone's echo cancellation.
+
 ## 5. Model naming
 
 A model has one name, its own, on every surface that names it: first run, Get models, the model sheet, the switcher, Default model, the library, the chat's top bar, the dividers and the notifications ("Qwen3.5 0.8B", "Gemma 3 4B", "Qwen3.5 4B"). The plain line under a name says what it is for ("Tiny and quick, for everyday questions"). Another file of the same repository in another size keeps the name; its size says which. The library lists one entry per downloaded file. Decided (2026-11-12, D50).
 
 The suggested models, with the plain line shown under each (the catalog also pins file sizes and a maker):
 
-| Model | Plain line | Thinks | Sees images |
-|---|---|---|---|
-| Qwen3.5 0.8B | Tiny and quick, for everyday questions | yes | yes |
-| Gemma 3 4B | A careful writer, good with tone | no | yes |
-| Qwen3.5 4B | Thinks things through before answering | yes | yes |
-| Llama 3.2 3B | Meta's all-rounder, friendly and fast | no | no |
-| Qwen3.5 9B | Smarter, but heavy for this phone | yes | yes |
+| Model | Plain line | Thinks | Sees images | Talks |
+|---|---|---|---|---|
+| Qwen3.5 0.8B | Tiny and quick, for everyday questions | yes | yes | no |
+| Gemma 3 4B | A careful writer, good with tone | no | yes | no |
+| Qwen3.5 4B | Thinks things through before answering | yes | yes | no |
+| Llama 3.2 3B | Meta's all-rounder, friendly and fast | no | no | no |
+| Qwen3.5 9B | Smarter, but heavy for this phone | yes | yes | no |
+| LFM3 Omni 2B | Talks with you: a voice conversation on the phone | no | no | yes |
 
 A catalog entry is keyed by repository and quantisation, but its name applies to every upload of that repository, so a size the picker recommends instead of the catalog's own file is not listed under a second name (F112). Search rows that are not in the catalog take their name from the repository and a plain line from the parameter count in the name: under 1.5B "Tiny and quick, for everyday questions", under 5B "Balanced, a good all-rounder", under 10B "Smarter, but heavy for a phone", otherwise "Needs a computer, not a phone", and "A model from <author>" when the size is unknown.
 
@@ -180,8 +194,8 @@ A catalog entry is keyed by repository and quantisation, but its name applies to
 
 Every model, size and file is shown with one fit word, coloured, never a card tint.
 
-- **Memory** comes from the SDK. The model sheet asks the Hub's `estimateFit` for each size, which reads only the GGUF headers (F88). A list cannot afford that per row, so lists use a quick estimate from the file's size (model plus image reader) against the SDK's memory budget, and the sheet replaces it with the real one. The suggestions and first-run picks ship with their sizes, so the first screen needs no network.
-- **Context room:** large at 16,384 tokens or more, normal at 4,096 or more, small below that, none when it does not fit. From the quick estimate: headroom of at least 1.5 GiB is large, at least 0.5 GiB normal, anything above zero small.
+- **Memory** is a formula, the same everywhere: lists, the model sheet for every size and quant, the first-run picks and their sheet (D101). A model may use half the phone's total RAM, read once from the SDK's CPU device (`devices()`, its `memoryTotal`); against that budget the app sets the model file plus its encoder (mmproj), what is downloaded and later held in memory. Nothing reads free memory and nothing reads GGUF headers over the network, so a model's label doesn't move between two looks. The encoder's size comes from the catalog for a model it knows and otherwise from the Hub's listing (`Quantization.encoderBytes`, the encoder the Hub fetches with that quant). The suggestions and first-run picks ship with their sizes, so the first screen needs no network.
+- **Context room** is the headroom left in the budget after the model and its encoder: at least 1.5 GiB is large, at least 0.5 GiB normal, anything above zero small, none when they do not fit.
 - **Speed** cannot be measured before a download. Decoding is memory-bound, so tokens per second is about a constant per chip divided by the model's size in bytes, with constants taken from measurements on the test phone: 42e9 for the NPU, 26e9 for the GPU, 30e9 for the CPU (F67, F78, F27).
 - **Words:** **Runs great** (large room and at least 20 tokens a second), **Runs well**, **Slow here** (small room or under 8 tokens a second), **Too big** (does not fit).
 
@@ -224,6 +238,7 @@ Material 3 roles, a screen naming a role and never a size. Each role carries siz
 | `bodySmall` | 12 / 16 | Regular | Sans | a reply's meta line, a card's facts, captions |
 | `label` | 14 / 20 | Medium | Sans | a button's or chip's text |
 | `labelSmall` | 12 / 16 | Medium | Sans | an upper-case section label, a badge |
+| `voiceCaption` | 22 / 28 | Regular | Sans | the reply's caption in voice mode, read at arm's length (D100) |
 
 The serif is for the two hero roles only (the first-run greeting and the empty-chat line, and a model sheet's title); every screen title, row and label is sans. There is no role below 12 sp. Body text is 16 sp.
 

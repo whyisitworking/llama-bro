@@ -26,10 +26,10 @@ internal object ModelsPreviewData {
             catalog = null,
         )
 
-    val great = FitView(FitLabel.RunsGreat, 59, real = false)
-    val well = FitView(FitLabel.RunsWell, 8, real = true)
-    val slow = FitView(FitLabel.SlowHere, 4, real = true)
-    val tooBig = FitView(FitLabel.TooBig, 0, real = true)
+    val great = FitView(FitLabel.RunsGreat, 59)
+    val well = FitView(FitLabel.RunsWell, 8)
+    val slow = FitView(FitLabel.SlowHere, 4)
+    val tooBig = FitView(FitLabel.TooBig, 0)
 
     val downloading = DownloadStatus.Downloading(310_000_000, 740_000_000, 9_800_000, 44)
     val paused = DownloadStatus.Partial(310_000_000, 740_000_000)
@@ -42,10 +42,10 @@ internal object ModelsPreviewData {
 
     fun fitOf(file: RepoFile): FileFit? =
         when (file.quant) {
-            "Q3_K_M" -> FileFit(great, file.bytes + 675_569_344, 675_569_344, null)
-            "Q4_K_M" -> FileFit(well, file.bytes + 675_569_344, 675_569_344, null)
-            "Q8_0" -> FileFit(slow, file.bytes + 675_569_344, 675_569_344, null)
-            "BF16" -> FileFit(tooBig, file.bytes + 675_569_344, 675_569_344, null)
+            "Q3_K_M" -> FileFit(great, file.bytes + 675_569_344, 675_569_344)
+            "Q4_K_M" -> FileFit(well, file.bytes + 675_569_344, 675_569_344)
+            "Q8_0" -> FileFit(slow, file.bytes + 675_569_344, 675_569_344)
+            "BF16" -> FileFit(tooBig, file.bytes + 675_569_344, 675_569_344)
             else -> null
         }
 }

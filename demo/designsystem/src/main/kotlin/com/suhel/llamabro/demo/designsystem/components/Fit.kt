@@ -36,7 +36,7 @@ fun FitText(label: String, tint: CardTint, modifier: Modifier = Modifier) {
  * A model as a card, the same anatomy wherever one is offered (first run, Get models): the [name] in `title` with how
  * it runs here ([fit] in its tint's ink) at the end of the same line; the plain [line] under it in muted `bodyMedium`;
  * then, quietly, [facts] in `bodySmall` (size, "Thinks", "Sees images", "On this phone", downloads); and an optional
- * [footer] a block below (a download's progress). [fit] null leaves the card plain until an estimate arrives.
+ * [footer] a block below (a download's progress). [fit] null leaves the card plain until the fit arrives.
  */
 @Composable
 fun ModelCard(

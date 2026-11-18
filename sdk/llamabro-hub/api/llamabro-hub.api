@@ -203,6 +203,7 @@ public final class com/suhel/llamabro/hub/PlanOptions {
 }
 
 public final class com/suhel/llamabro/hub/Quantization {
+	public final fun getEncoderBytes ()J
 	public final fun getModel ()Lcom/suhel/llamabro/hub/HfModel;
 	public final fun getName ()Ljava/lang/String;
 	public final fun getParts ()I

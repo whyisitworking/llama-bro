@@ -7,6 +7,7 @@ import com.suhel.llamabro.hub.internal.GgufHeader
 import com.suhel.llamabro.hub.internal.HeaderFetch
 import com.suhel.llamabro.hub.internal.Resolver
 import com.suhel.llamabro.hub.internal.Transport
+import com.suhel.llamabro.hub.internal.findBestSibling
 import com.suhel.llamabro.hub.internal.isModelGguf
 import com.suhel.llamabro.hub.internal.isValidRepoId
 import com.suhel.llamabro.hub.internal.splitInfo
@@ -149,8 +150,14 @@ public class Quantization internal constructor(
     public val parts: Int,
     /** This exact file as a reference for [LlamaBroHub.model], which fetches every part and the image encoder. */
     public val model: HfModel,
+    /**
+     * Bytes of the image or audio encoder (the `mmproj` file) [LlamaBroHub.model] fetches with this quantisation, by
+     * the same choice it makes when it downloads (llama.cpp's `-hf` rule); 0 when the repo has none. From the listing
+     * alone: no file is read (D101).
+     */
+    public val encoderBytes: Long,
 ) {
-    override fun toString(): String = "$name ($sizeBytes bytes, $parts part(s))"
+    override fun toString(): String = "$name ($sizeBytes bytes, $parts part(s), encoder $encoderBytes bytes)"
 }
 
 /**
@@ -246,6 +253,7 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
                         sizeBytes = parts.sumOf { it.sizeBytes },
                         parts = parts.size,
                         model = HfModel("$repo#${first.path}"),
+                        encoderBytes = findBestSibling(listing.files, first.path, "mmproj", split.tag)?.sizeBytes ?: 0L,
                     )
                 }
         val encoder = ggufs.any { it.path.substringAfterLast('/').contains("mmproj") }

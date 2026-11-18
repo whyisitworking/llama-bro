@@ -19,9 +19,9 @@ public class LlamaBroConfig internal constructor(
     /**
      * Whether the NPU backend (`llamabro-hexagon`) polls for the NPU's results instead of sleeping until they arrive
      * (upstream's `GGML_HEXAGON_OPPOLL`). Off by default, as upstream (D90). On, the waiting CPU core never idles, so
-     * chat runs 4-7% faster but the chip runs hotter while busy (findings F156); and on Android each empty poll has
-     * the DSP library log an error, tens of thousands of lines a second, which floods logcat and drops the app's own
-     * lines (F162) until the voice phase carries the no-block poll. Read once, when the backends start.
+     * chat runs 4-7% faster and speech about 30% faster, but the chip runs hotter while busy (findings F156). Each
+     * empty poll reads the queue without blocking (patch 0007), so the DSP library no longer floods logcat (F162).
+     * Read once, when the backends start.
      */
     public val npuPolling: Boolean,
 ) {

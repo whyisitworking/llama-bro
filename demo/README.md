@@ -12,6 +12,8 @@ integration tests of the public API.
 - Chat with streaming replies, markdown and code blocks, a thought fold ("Thought for 8 s"), think levels (Off, Quick,
   Balanced, Deep), image input for models that can see, edit and regenerate, share and copy, and a divider when the
   model is switched mid-chat.
+- Voice mode for a model that talks (LFM3 Omni 2B): hold to talk, a spoken reply with captions, and each turn kept in
+  the chat as a captioned voice message and a reply that plays again (D100).
 - Two layouts: Sidebar (a drawer of chats) and Chat list (messaging style); light, dark and system themes.
 - Plain error lines with one action each: not enough memory, context full, missing model, a gated model needing a token.
 

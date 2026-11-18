@@ -55,10 +55,11 @@ fun ModelRowItem(
     )
 }
 
-/** "Thinks", "Sees images", "On this phone" and the download count, quietly, on one line; null when none. */
+/** "Thinks", "Sees images", "Talks", "On this phone" and the download count, quietly, on one line; null when none. */
 private fun facts(row: ModelRow, onPhone: Boolean): String? =
     listOfNotNull(
         "Thinks".takeIf { row.thinks },
+        "Talks".takeIf { row.catalog?.talks == true },
         "Sees images".takeIf { row.sees },
         "On this phone".takeIf { onPhone },
         row.downloads?.let { "↓ ${Format.downloads(it)}" },

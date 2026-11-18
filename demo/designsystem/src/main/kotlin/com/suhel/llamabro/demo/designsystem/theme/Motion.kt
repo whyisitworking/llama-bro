@@ -37,6 +37,9 @@ object DemoMotion {
     const val SWAP_MILLIS = 200
     const val SWEEP_MILLIS = 1_400
 
+    /** Voice mode's thinking: the orb's highlight turns once in this time (D100). */
+    const val ORB_TURN_MILLIS = 2_400
+
     /** One wave across the three typing dots, each a fifth of the cycle after the one before. */
     const val DOTS_MILLIS = 1_200
     const val DOTS_STAGGER = 0.2f

@@ -27,7 +27,7 @@ import com.suhel.llamabro.hub.HfModel
 @Composable
 internal fun SettingsHomePreview() {
     PreviewFrame {
-        SettingsHome(onBack = {}, onOpen = {}, routes = SettingsRoutes("a", "b", "c", "d", "e", "f", "g", "h"))
+        SettingsHome(onBack = {}, onOpen = {}, routes = SettingsRoutes("a", "b", "c", "d", "e", "f", "g", "h", "i"))
     }
 }
 
@@ -235,4 +235,21 @@ internal fun SamplingModelPreview(
 ) {
     val layers = SamplingLayers(Catalog.byRepo(p.repo)?.sampling, p.own)
     PreviewFrame { SamplingModelContent(p.model, layers, onChange = { _, _ -> }, onReset = {}, onBack = {}) }
+}
+
+internal class VoiceSettingsStates : PreviewParameterProvider<VoiceSettingsState> {
+    override val values =
+        sequenceOf(
+            VoiceSettingsState(listOf("female", "male"), voice = null, captionYou = true),
+            VoiceSettingsState(listOf("female", "male"), voice = "male", captionYou = false),
+            VoiceSettingsState(emptyList(), voice = null, captionYou = true),
+        )
+}
+
+@DemoScreenPreviews
+@Composable
+internal fun VoiceSettingsPreview(
+    @PreviewParameter(VoiceSettingsStates::class) state: VoiceSettingsState,
+) {
+    PreviewFrame { VoiceContent(state, onVoice = {}, onCaption = {}, onBack = {}) }
 }

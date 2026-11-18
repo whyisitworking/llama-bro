@@ -242,6 +242,7 @@ if(LB_BUILD_TESTS)
         fit_counts_the_draft
         dflash_fit_matches_load_rss
         fit_estimate_matches_load
+        fit_estimates_at_once_all_answer
         fit_estimate_on_stub_equals_real
         load_features_parsed
         embeddings_mean_pooling
@@ -267,6 +268,9 @@ if(LB_BUILD_TESTS)
         hybrid_swa_cache_reuses_live_state
         hybrid_swa_cache_replies_equal_uncached
         omni_tts_same_audio_as_upstream
+        realtime_turn_in_memory
+        realtime_misuse_refused
+        realtime_model_free_closes_session
         media_dir_path_attachment_same_reply_as_bytes
         media_dir_link_lives_until_the_request_ends
         media_dir_caller_file_url_reaches_only_the_media_dir

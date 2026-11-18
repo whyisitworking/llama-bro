@@ -16,12 +16,15 @@
 #                  build errors and generated code on snippets compiled by kctfork (D81)
 #   e2e            Kotlin + JNI + native on this machine vs upstream llama-server (HostNativeTest), load cancel;
 #                  typed output on the same model, Think off and on (HostTypedTest); speech input from a file, a
-#                  descriptor and bytes on upstream's audio test model (HostAudioTest)
+#                  descriptor and bytes on upstream's audio test model (HostAudioTest); a voice session over the
+#                  in-memory /v1/realtime on the same model (HostVoiceTest)
 #   aar            release AAR: libraries, names, exports, 16 KB alignment (check-aar.sh); hub, hub-work and typed carry
 #                  no native code, and hub-work's manifest declares the dataSync foreground service
 #   device         (--device) phone tests: native, UI, acceptance per model and per acceptance-app flavor (cpu, gpu, full,
 #                  noskel), and each flavor's minified (R8) build
 #   device-contract (--device) the C API vs upstream llama-server on the phone's NPU (tests/device-contract/run.sh)
+#   device-speech (--device) LFM3-Omni-2B speaks through upstream /tts with everything on the NPU (patch 0005, F155;
+#                  tests/device-speech/run.sh, after device-contract, which builds the device tools)
 #   hub-device    (--device) Hub cache and fake download tests on the phone
 #   hub-resume    (--device) acceptance-app kill/force-stop resume and notification checks on the phone
 #
@@ -35,7 +38,7 @@
 #        LB_TEST_MODELS_DIR upstream's small test models for embeddings, rerank, LoRA and audio (fetch-test-models.sh)
 # ports: every server on this machine listens on a port the OS picks, so checks in several worktrees run at once
 #        (F159); fixed ones: LB_CONTRACT_PORT (the extra models use +1, audio +4), LB_E2E_PORT, LB_HUB_API_PORT,
-#        LB_HUB_CDN_PORT; on the phone's side see tests/device-contract/run.sh.
+#        LB_HUB_CDN_PORT; on the phone's side see tests/device-contract/run.sh and tests/device-speech/run.sh.
 # --device first checks that no other session uses the phone (device-preflight.sh, F150) and holds it until the end.
 set -uo pipefail
 
@@ -181,9 +184,10 @@ step_e2e() {
           kill $pid 2> /dev/null; wait $pid 2> /dev/null; return 1; }
     for _ in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" > /dev/null && break; sleep 1; done
     # HostEmbeddingTest: typed embed and rerank on upstream's test models (D65); HostAudioTest: speech input through
-    # the public API (D84); neither needs a server
+    # the public API (D84); HostVoiceTest: the voice session (D95, D97); none needs a server
     gradle :llamabro:testDebugUnitTest --tests 'com.suhel.llamabro.HostNative*' \
-        --tests 'com.suhel.llamabro.HostEmbeddingTest' --tests 'com.suhel.llamabro.HostAudioTest' --rerun-tasks -i \
+        --tests 'com.suhel.llamabro.HostEmbeddingTest' --tests 'com.suhel.llamabro.HostAudioTest' \
+        --tests 'com.suhel.llamabro.HostVoiceTest' --rerun-tasks -i \
         -Pllamabro.host.lib="$native/build/host/bin" -Pllamabro.host.server="http://127.0.0.1:$port" \
         -Pllamabro.host.model="$model" ${mmproj:+-Pllamabro.host.mmproj="$mmproj"} \
         -Pllamabro.host.models="$LB_TEST_MODELS_DIR" -Pllamabro.host.clip="$LB_TEST_CLIP"
@@ -194,7 +198,7 @@ step_e2e() {
         -Pllamabro.host.lib="$native/build/host/bin" -Pllamabro.host.model="$model" || status=1
     local t
     for t in HostNativeTest HostNativeLogTest HostNativeFailedInitTest HostNativeLoadCancelTest HostNativeAttachmentTest \
-        HostEmbeddingTest HostAudioTest; do
+        HostEmbeddingTest HostAudioTest HostVoiceTest; do
         grep -q 'skipped="0"' "$sdk/llamabro/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.$t.xml" || { echo "$t was skipped or has no result"; return 1; }
     done
     grep -q 'skipped="0"' "$sdk/llamabro-typed/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.typed.HostTypedTest.xml" || { echo "HostTypedTest was skipped or has no result"; return 1; }
@@ -375,7 +379,7 @@ run lint     gradle :llamabro:lintRelease :llamabro-testing:lintRelease :llamabr
 run jvm      step_jvm
 run e2e      step_e2e
 run aar      step_aar
-device_steps=device,hub-device,hub-resume,device-contract
+device_steps=device,hub-device,hub-resume,device-contract,device-speech
 wants_device=0
 if [ $device -eq 1 ]; then
     for s in ${device_steps//,/ }; do [ -z "$only" ] || [[ ",$only," == *",$s,"* ]] && wants_device=1; done
@@ -390,6 +394,7 @@ if [ $wants_device -eq 1 ]; then
         run hub-device step_hub_device
         run hub-resume step_hub_resume
         run device-contract step_device_contract
+        run device-speech bash "$native/tests/device-speech/run.sh"
     else
         echo "FAIL: the phone steps did not run"; sed 's/^/    /' "$logs/preflight.log"
         results+=("FAIL preflight"); failed=1

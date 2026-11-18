@@ -38,7 +38,7 @@ class SheetStoresTest {
     @Test fun aSheetKeepsItsViewModelAcrossARotationAndLosesItWhenClosed() {
         val stores = SheetStores()
         val first = stores.probe("sheet:unsloth/Qwen3.5-0.8B-GGUF")
-        // a rotation composes the sheet again over the same entry's stores: the same view model, estimates and all
+        // a rotation composes the sheet again over the same entry's stores: the same view model, fits and all
         assertSame(first, stores.probe("sheet:unsloth/Qwen3.5-0.8B-GGUF"))
         assertFalse(first.cleared)
         stores.clear("sheet:unsloth/Qwen3.5-0.8B-GGUF") // dismissed

@@ -25,7 +25,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.io.Closeable
-import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -223,22 +222,6 @@ class TestHub : Closeable {
         /** A download that moves in steps a test can stop between. */
         const val STEP_MILLIS = 400L
         const val WAIT_MILLIS = 10_000L
-    }
-}
-
-/**
- * The SDK's projection as a test sets it, for the view models' `estimate` seam ([ModelDiscovery.estimate] in the app):
- * a model without one fails, as on an offline phone.
- */
-class ScriptedEstimates {
-    val estimates = ConcurrentHashMap<HfModel, HubEstimate>()
-
-    /** Runs before every `estimate`: a test delays or counts here. */
-    var onEstimate: suspend (HfModel) -> Unit = {}
-
-    suspend fun estimate(model: HfModel): HubEstimate {
-        onEstimate(model)
-        return estimates[model] ?: throw IOException("offline")
     }
 }
 

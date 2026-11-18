@@ -3,7 +3,7 @@ package com.suhel.llamabro.demo.models
 import kotlinx.coroutines.CancellationException
 
 /**
- * Runs [block]; a failure becomes null so a flow can carry on with what it already has (a quick estimate, no tint),
+ * Runs [block]; a failure becomes null so a flow can carry on with what it already has (no tint),
  * but cancellation is never swallowed, unlike `runCatching`.
  */
 internal suspend inline fun <T> attempt(block: () -> T): T? =

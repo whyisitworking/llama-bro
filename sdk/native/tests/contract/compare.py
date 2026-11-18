@@ -149,6 +149,21 @@ def all_events(path):
     return out
 
 
+# compare="realtime" (D97): every server event of a /v1/realtime session, without the random ids
+# (server-realtime.cpp: event_id, the session's, items', responses' and calls' ids)
+REALTIME_IDS = {"event_id", "id", "item_id", "response_id", "previous_item_id", "call_id"}
+
+
+def realtime_events(path):
+    def walk(obj):
+        if isinstance(obj, dict):
+            return {k: "<id>" if k in REALTIME_IDS and isinstance(v, str) else walk(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [walk(v) for v in obj]
+        return obj
+    return [walk(json.loads(json.loads(line)["data"])) for line in open(path)]
+
+
 def tokens_only(msg):
     """The rebuilt reply with the logprob values dropped and only the chosen tokens kept."""
     return dict(msg, logprobs=[e.get("token") for e in msg["logprobs"]])
@@ -190,6 +205,8 @@ def main(a, b, requests=None, tie_gap=None):
             continue
         if spec.get("compare") == "metrics_names":
             na, nb = metric_names(pa), metric_names(pb)
+        elif spec.get("compare") == "realtime":
+            na, nb = realtime_events(pa), realtime_events(pb)
         elif spec.get("compare") == "events":
             na, nb = all_events(pa), all_events(pb)
         else:

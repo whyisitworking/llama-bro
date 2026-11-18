@@ -4,9 +4,10 @@ enum class SizeTier { Smaller, Recommended, Best }
 
 /**
  * One model file in a repo: [quant] is the tag in its name as the hub names it (`Q4_K_M`, `Q4_K_XL`, `BF16`), [bytes]
- * all its shards. The hub's tag drops Unsloth's `UD-` prefix (upstream's tag rule), so `UD-` is optional below.
+ * all its shards, [encoderBytes] the encoder (mmproj) the hub fetches with it, 0 for none. The hub's tag drops
+ * Unsloth's `UD-` prefix (upstream's tag rule), so `UD-` is optional below.
  */
-data class RepoFile(val path: String, val quant: String, val bytes: Long)
+data class RepoFile(val path: String, val quant: String, val bytes: Long, val encoderBytes: Long = 0)
 
 /** The three sizes the sheet's Basic view offers. */
 object Sizes {

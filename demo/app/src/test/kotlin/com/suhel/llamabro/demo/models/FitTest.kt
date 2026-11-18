@@ -22,16 +22,6 @@ class FitTest {
         assertEquals(FitLabel.TooBig, quick(20.0))
     }
 
-    @Test fun roomFromEstimateValues() {
-        assertEquals(ContextRoom.None, Fit.roomFromEstimate(fits = false, contextTokens = 32768))
-        assertEquals(ContextRoom.None, Fit.roomFromEstimate(fits = false, contextTokens = null))
-        assertEquals(ContextRoom.Large, Fit.roomFromEstimate(fits = true, contextTokens = 16384))
-        assertEquals(ContextRoom.Normal, Fit.roomFromEstimate(fits = true, contextTokens = 8192))
-        assertEquals(ContextRoom.Normal, Fit.roomFromEstimate(fits = true, contextTokens = 4096))
-        assertEquals(ContextRoom.Small, Fit.roomFromEstimate(fits = true, contextTokens = 2048))
-        assertEquals(ContextRoom.Small, Fit.roomFromEstimate(fits = true, contextTokens = 4095))
-    }
-
     @Test fun roomFromSizeBoundaries() {
         val file = 3 * gib
         assertEquals(ContextRoom.Large, Fit.roomFromSize(file, file + gib + gib / 2))

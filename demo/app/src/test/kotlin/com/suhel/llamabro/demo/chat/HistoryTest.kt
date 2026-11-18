@@ -109,6 +109,19 @@ class HistoryTest {
         assertTrue(history.filterIsInstance<Message.User>().all { u -> u.content.none { it is Content.Audio } })
     }
 
+    @Test fun aCaptionedVoiceTurnGoesAsAudioToAModelThatHearsAndAsItsCaptionToOneThatCant() {
+        // voice mode keeps a turn's caption as the voice message's text (D100): never sent beside its audio
+        val captioned = voiceRow(0, "a.wav").copy(text = "Tell me a story.")
+        val heard = History.forModel(listOf(captioned), hears = true).single() as Message.User
+        assertEquals(1, heard.content.filterIsInstance<Content.Audio>().size)
+        assertTrue(heard.content.none { it is Content.Text })
+        val rows = listOf(captioned, row(1, MessageKind.Assistant, "Once upon a time."), voiceRow(2, "b.wav"))
+        assertEquals(
+            listOf("U:Tell me a story.", "A:Once upon a time.", "U:${History.VOICE_PLACEHOLDER}"),
+            texts(History.forModel(rows, hears = false)),
+        )
+    }
+
     @Test fun theNewMessageIsBuiltTheSameWay() {
         val heard = History.userMessage(voiceRow(0, "a.wav"), hears = true) as Message.User
         assertEquals(1, heard.content.filterIsInstance<Content.Audio>().size)

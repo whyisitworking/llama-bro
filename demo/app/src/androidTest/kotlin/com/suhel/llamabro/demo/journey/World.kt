@@ -1,11 +1,9 @@
 package com.suhel.llamabro.demo.journey
 
-import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.chat.sdkStream
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.CatalogEntry
 import com.suhel.llamabro.demo.models.DownloadScheduler
-import com.suhel.llamabro.demo.models.HubEstimate
 import com.suhel.llamabro.demo.models.RepoFile
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.testing.FakeDiscovery
@@ -31,31 +29,22 @@ class World(private val realDownloads: Boolean = false) : Closeable {
     val engine = FakeLlamaBro()
     val hub = TestHub()
     val downloads = ScriptedDownloads(hub)
-    val discovery = FakeDiscovery(hub, engine.llamaBro)
+    val discovery = FakeDiscovery(hub)
 
     /** While true, a reply waits before it starts (the model "reads the prompt"): the turn is under way, no text yet. */
     val holdReplies = MutableStateFlow(false)
 
     init {
-        // the catalog's models are online: each repo lists its file, and the SDK's estimate says it fits
+        // the catalog's models are online: each repo lists its file
         for (entry in Catalog.suggested) stock(entry)
     }
 
-    /** Puts [entry]'s repo on the fake Hugging Face, and says its estimate fits this phone. */
-    fun stock(entry: CatalogEntry, fits: Boolean = true) {
+    /** Puts [entry]'s repo on the fake Hugging Face, its one file at the catalog's size. */
+    fun stock(entry: CatalogEntry) {
         val quant = entry.key.toString().substringAfter(':')
         hub.publish(entry.key)
         discovery.repoFiles[entry.key.repo] =
             listOf(RepoFile("${entry.realName.replace(' ', '-')}-$quant.gguf", quant, entry.modelBytes))
-        discovery.estimates[entry.key] =
-            HubEstimate(
-                entry.modelBytes,
-                entry.mmprojBytes,
-                fits,
-                if (fits) CONTEXT_TOKENS else null,
-                entry.modelBytes + entry.mmprojBytes + WORKING_MEMORY,
-                DeviceKind.Npu,
-            )
     }
 
     /**
@@ -76,9 +65,6 @@ class World(private val realDownloads: Boolean = false) : Closeable {
 
     override fun close() = hub.close()
 }
-
-private const val CONTEXT_TOKENS = 32_768
-private const val WORKING_MEMORY = 300_000_000L
 
 /**
  * The download worker, scripted over the fake hub: `get` starts a download that stands still until [advance] moves it

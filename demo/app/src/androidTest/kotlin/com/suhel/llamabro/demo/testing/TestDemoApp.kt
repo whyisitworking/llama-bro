@@ -80,6 +80,8 @@ class TestDemoApp : DemoApp() {
             tokenStore = TokenStore(this, File(filesDir, c.tokenFileName)),
             images = ImageStore(File(filesDir, c.imagesDirName)),
             microphone = c.microphone,
+            voiceMicrophone = c.voiceMicrophone,
+            speech = c.speech,
         )
 
     private fun deleteFiles(c: TestConfig) {

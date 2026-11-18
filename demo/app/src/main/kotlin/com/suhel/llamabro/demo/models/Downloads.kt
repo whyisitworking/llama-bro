@@ -3,7 +3,6 @@ package com.suhel.llamabro.demo.models
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.await
-import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.hub.CachedModel
 import com.suhel.llamabro.hub.DownloadState
@@ -105,24 +104,6 @@ data class DownloadFailure(
                 }
             }
     }
-}
-
-/**
- * What the model sheet and the first-run picks read of one model file set, as plain values: the sizes of the model and
- * its image reader, and the SDK's memory projection. `HubPlan` and `FitEstimate` have no public constructors, so a
- * preview or a view model test could not build them; [ModelDiscovery.estimate] converts. [memoryBytes] is the
- * projection at the smallest context (the weights plus a little room); [chip] is the device it was projected for.
- */
-data class HubEstimate(
-    val modelBytes: Long,
-    val mmprojBytes: Long,
-    val fits: Boolean?,
-    val contextTokens: Int?,
-    val memoryBytes: Long,
-    val chip: DeviceKind,
-) {
-    /** What the download fetches. */
-    val totalBytes: Long get() = modelBytes + mmprojBytes
 }
 
 /** Starts and stops a model's download, and says when its work runs and when it ends. */

@@ -170,6 +170,39 @@ internal class HubSearchTest {
             assertEquals(1, files.quantizations[0].parts)
         }
 
+    @Test fun eachQuantisationNamesTheEncoderItWouldFetch() =
+        runBlocking {
+            // LFM3 Omni's repo (D101): a Q8_0 and a BF16 encoder; the -hf rule takes the one nearest the model's bits
+            val transport = ScriptedTransport()
+            transport.listing(
+                "ggml-org/LFM3-Omni-2B-GGUF",
+                listOf(
+                    "LFM3-Omni-2B-Q4_K_M.gguf" to 1_099L,
+                    "LFM3-Omni-2B-Q8_0.gguf" to 1_846L,
+                    "LFM3-Omni-2B-BF16.gguf" to 3_466L,
+                    "mmproj-LFM3-Omni-2B-BF16.gguf" to 949L,
+                    "mmproj-LFM3-Omni-2B-Q8_0.gguf" to 506L,
+                ),
+            )
+            val files = hub(transport).files("ggml-org/LFM3-Omni-2B-GGUF")
+            assertEquals(
+                mapOf("Q4_K_M" to 506L, "Q8_0" to 506L, "BF16" to 949L),
+                files.quantizations.associate { it.name to it.encoderBytes },
+            )
+            transport.listing(
+                "unsloth/Llama-3.2-3B-Instruct-GGUF",
+                listOf("Llama-3.2-3B-Instruct-Q4_K_M.gguf" to 2_019L),
+            )
+            assertEquals(
+                0L,
+                hub(transport)
+                    .files("unsloth/Llama-3.2-3B-Instruct-GGUF")
+                    .quantizations
+                    .single()
+                    .encoderBytes,
+            )
+        }
+
     @Test fun generationConfigMapsToSampling() =
         runBlocking {
             val transport = ScriptedTransport()

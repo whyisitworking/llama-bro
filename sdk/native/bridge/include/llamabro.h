@@ -84,7 +84,12 @@ char * lb_model_info(lb_model * model);
 //   systemone (/v1/systemone), tokenize, detokenize, apply_template (/apply-template),
 //   props (GET /props), props_set (POST /props), models (/v1/models), health, slots (GET /slots),
 //   slots_action (POST /slots/:id_slot), metrics, lora_adapters (GET), lora_adapters_set (POST /lora-adapters).
-// Left out: /v1/realtime (a WebSocket), and the routes that are the HTTP layer's or the router's (/cors-proxy, /tools,
+//   realtime (/v1/realtime, D97): a WebSocket conversation in memory. No body or attachments; params as the
+//     socket's query (e.g. {"intent":"transcription"}). Each message the server sends (an OpenAI-realtime event, JSON)
+//     is one CHUNK with status 200; the client's events go in with lb_request_send. The callback runs on the server's
+//     two conversation threads, one call at a time. DONE when the server ends the conversation; lb_request_cancel is
+//     the client closing the socket (CANCELLED).
+// Left out: the routes that are the HTTP layer's or the router's (/cors-proxy, /tools,
 //   /models/load, /v1/stream and /v1/streams/lookup, the GCP compat routes).
 // params_json: path/query params as a flat JSON object (e.g. {"id_slot":"0","action":"save"}), or NULL.
 // lb_model_request_with below is the same call with attachments; this one sends none.
@@ -130,6 +135,10 @@ lb_status lb_model_request_with(lb_model * model, const char * endpoint, const c
                                 const char * body, size_t body_len, const lb_attachment * atts, size_t n_atts,
                                 lb_request_cb cb, void * user, lb_request ** out);
 void lb_request_cancel(lb_request * req);      // idempotent; the terminal event follows soon after
+// Realtime only: one client event (a WebSocket text message, e.g. {"type":"input_audio_buffer.append",...}), copied
+// and queued in order. LB_ERR_INVALID_ARG for another endpoint's request; LB_ERR_CANCELLED once the conversation has
+// closed (cancelled, or ended by the server). May be called from inside the callback.
+lb_status lb_request_send(lb_request * req, const char * msg, size_t len);
 void lb_request_free(lb_request * req);        // never blocks; may be called from inside the callback
 void lb_model_free(lb_model * model);          // cancels in-flight requests, waits for their terminal
                                                // events, stops the loop, joins the worker thread

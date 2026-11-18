@@ -5,6 +5,7 @@ import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.demo.chat.SampleSource
+import com.suhel.llamabro.demo.chat.SpeechOutput
 import com.suhel.llamabro.demo.chat.Streamer
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.models.DownloadScheduler
@@ -35,6 +36,10 @@ data class TestConfig(
     val asksForNotifications: Boolean = false,
     /** Tests never record the room: a voice message's samples come from a script (D76). */
     val microphone: () -> SampleSource = { ScriptedVoice() },
+    /** Voice mode's microphone (D100): the same scripted voice. */
+    val voiceMicrophone: () -> SampleSource = { ScriptedVoice() },
+    /** Voice mode plays nothing in tests: the reply's speech is counted, not heard. */
+    val speech: (rate: Int) -> SpeechOutput = { SilentSpeech() },
 ) {
     companion object {
         fun fresh(
@@ -62,6 +67,19 @@ data class TestConfig(
             )
         }
     }
+}
+
+/** Plays nothing, at once: voice mode's speaker in the phone tests (D100). */
+class SilentSpeech : SpeechOutput {
+    override fun write(pcm: ShortArray) = Unit
+
+    override val level: Float = 0f
+
+    override suspend fun drain() = Unit
+
+    override fun stop() = Unit
+
+    override fun close() = Unit
 }
 
 /** A steady voice for [blocks] reads of 50 ms, then the end, as a microphone taken by a call ends (D76). */

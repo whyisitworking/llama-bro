@@ -131,14 +131,16 @@ internal fun missingOrDownloading(name: String, status: DownloadStatus): ChatMod
     }
 
 /**
- * The chat's model as the composer sees it. Loaded, the model says whether it sees and hears; otherwise the catalog
- * says whether it sees, and [heard] (the models that heard on their last load) whether it hears (D76).
+ * The chat's model as the composer sees it. Loaded, the model says whether it sees, hears and talks; otherwise the
+ * catalog says whether it sees, [heard] (the models that heard on their last load) whether it hears (D76), and
+ * [talking] (those that spoke on their last load) whether it talks (D100).
  */
 internal fun readyOrWaking(
     key: HfModel,
     name: String,
     hostState: HostState,
     heard: Set<String> = emptySet(),
+    talking: Set<String> = emptySet(),
 ): ChatModelState =
     when {
         hostState is HostState.Waking && hostState.key == key -> {
@@ -151,6 +153,7 @@ internal fun readyOrWaking(
                 hostState.model.info.supportsVision,
                 Thinking.canThink(hostState.model.info, Catalog.byKey(key)),
                 hears = hostState.model.info.supportsAudio,
+                talks = hostState.model.info.supportsAudio && hostState.model.info.supportsSpeech,
             )
         }
 
@@ -160,6 +163,7 @@ internal fun readyOrWaking(
                 Catalog.byKey(key)?.sees ?: false,
                 Catalog.byKey(key)?.thinks ?: false,
                 hears = key.toString() in heard,
+                talks = key.toString() in talking,
             )
         }
     }
@@ -188,12 +192,23 @@ private suspend fun rememberHearing(settings: SettingsRepository, key: HfModel, 
     if (known != hears) settings.setHears(key.toString(), hears)
 }
 
+/**
+ * Records what the model heard and spoke with on this load (D76, D100): the mic and the voice-mode button show before
+ * its next load, and Settings › Voice lists its voices.
+ */
+internal suspend fun rememberSenses(settings: SettingsRepository, key: HfModel, info: ModelInfo) {
+    rememberHearing(settings, key, info.supportsAudio)
+    val voices = if (info.supportsAudio) info.voices else emptyList()
+    if (settings.talkingModels.first()[key.toString()].orEmpty() != voices) settings.setVoices(key.toString(), voices)
+}
+
 /** What the chat's model state is derived from. */
 private data class ModelInputs(
     val key: HfModel?,
     val library: List<LibraryModel>?,
     val host: HostState,
     val heard: Set<String>,
+    val talking: Set<String>,
 )
 
 /** The reply being written right now. It is not in [ChatHandle.messages] until the row changes state. */
@@ -206,6 +221,20 @@ data class StreamingReply(
     val thinking: Boolean,
 )
 
+/** The chat voice mode talks in (D100): its id, its model and the model's name. */
+data class VoiceChat(val chatId: Long, val key: HfModel, val name: String)
+
+/** Voice mode's hold on the loaded [model] (D100): [release] it once, when the conversation ends. */
+class VoiceHold(val model: Model, private val onRelease: () -> Unit) {
+    private val released =
+        java.util.concurrent.atomic
+            .AtomicBoolean(false)
+
+    fun release() {
+        if (released.compareAndSet(false, true)) onRelease()
+    }
+}
+
 /** What the chat knows about its model, for the header, the composer and the held-message note. */
 sealed interface ChatModelState {
     data class Downloading(val status: DownloadStatus?) : ChatModelState
@@ -213,9 +242,14 @@ sealed interface ChatModelState {
     /** The model is loading; [progress] is how far, 0 to 1, once the SDK has said. */
     data class Waking(val progress: Float? = null) : ChatModelState
 
-    /** [hears]: the model takes voice messages (D76). */
-    data class Ready(val name: String, val sees: Boolean, val canThink: Boolean, val hears: Boolean = false) :
-        ChatModelState
+    /** [hears]: the model takes voice messages (D76); [talks]: it holds a spoken conversation, voice mode (D100). */
+    data class Ready(
+        val name: String,
+        val sees: Boolean,
+        val canThink: Boolean,
+        val hears: Boolean = false,
+        val talks: Boolean = false,
+    ) : ChatModelState
 
     data class Missing(val name: String) : ChatModelState
 
@@ -273,8 +307,17 @@ class ChatEngine(
      * loaded model into every turn, so a turn on a model already loaded doesn't say it again. The turn releases the
      * lease when it ends: until then the model stays open, and another chat's load of another model waits for it.
      */
-    private suspend fun load(key: HfModel, name: String, limit: MutableStateFlow<Limit?>): ModelHost.Lease? {
-        val chosen = settings.settings.first().loadConfig
+    private suspend fun load(
+        key: HfModel,
+        name: String,
+        limit: MutableStateFlow<Limit?>,
+        slots: Int = 1,
+    ): ModelHost.Lease? {
+        val chosen =
+            settings.settings
+                .first()
+                .loadConfig
+                .copy(slots = slots)
         val lease =
             try {
                 // this turn is counted: another one may be streaming from the model, so a chip or context changed
@@ -313,6 +356,27 @@ class ChatEngine(
         if (noted?.get() === loaded) return false
         noted = java.lang.ref.WeakReference(loaded)
         return true
+    }
+
+    /**
+     * A lease on [key]'s model (shown as [name]) for voice mode (D100), loaded with [slots] (two while it captions what
+     * the person says, D99), or null when it didn't load: [limit] then says why. The conversation counts as a turn
+     * until [VoiceHold.release]: the model isn't freed under it, and the app stays alive while it runs (D59).
+     */
+    suspend fun holdForVoice(key: HfModel, name: String, slots: Int, limit: MutableStateFlow<Limit?>): VoiceHold? {
+        activeTurns.update { it + 1 }
+        var lease: ModelHost.Lease? = null
+        try {
+            lease = load(key, name, limit, slots)
+            lease?.let { rememberSenses(settings, key, it.model.info) }
+        } finally {
+            if (lease == null) activeTurns.update { it - 1 }
+        }
+        val held = lease ?: return null
+        return VoiceHold(held.model) {
+            held.release()
+            activeTurns.update { it - 1 }
+        }
     }
 
     /**
@@ -427,7 +491,8 @@ class ChatEngine(
                 library,
                 host.state,
                 settings.hearingModels,
-            ) { key, lib, hostState, heard -> ModelInputs(key, lib, hostState, heard) }
+                settings.talkingModels,
+            ) { key, lib, hostState, heard, talking -> ModelInputs(key, lib, hostState, heard, talking.keys) }
                 .flatMapLatest { inputs ->
                     val key = inputs.key
                     val lib = inputs.library
@@ -441,7 +506,9 @@ class ChatEngine(
                                 kotlinx.coroutines.flow.flow { status.collect { emit(missingOrDownloading(name, it)) } }
                             }
                         } else {
-                            kotlinx.coroutines.flow.flowOf(readyOrWaking(key, name, hostState, inputs.heard))
+                            kotlinx.coroutines.flow.flowOf(
+                                readyOrWaking(key, name, hostState, inputs.heard, inputs.talking),
+                            )
                         }
                     }
                 }.stateIn(hs, SharingStarted.Eagerly, ChatModelState.Waking())
@@ -675,7 +742,7 @@ class ChatEngine(
                 val loaded = held.model
                 syncThink(loaded.info)
                 val hears = loaded.info.supportsAudio
-                rememberHearing(settings, key, hears)
+                rememberSenses(settings, key, loaded.info)
                 val rows = chats.messages(id).first()
                 val convo = conversationFor(loaded, key, rows, user, hears)
                 val replyId =
@@ -882,6 +949,16 @@ class ChatEngine(
             val id = _chatId.value
             val stored = if (id != 0L) chats.modelKey(id) else settings.settings.first().modelForNewChat()
             return stored?.let { runCatching { HfModel.parse(it) }.getOrNull() }
+        }
+
+        /**
+         * Voice mode's chat (D100): this one, created now if it is new, with its model and the model's name; null when
+         * no model is known yet.
+         */
+        suspend fun voiceChat(): VoiceChat? {
+            val id = ensureChat() ?: return null
+            val key = modelKey.value ?: return null
+            return VoiceChat(id, key, displayName(key))
         }
 
         /** Creates the chat on the first message; null when no model is known yet. */

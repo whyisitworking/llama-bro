@@ -1,0 +1,329 @@
+package com.suhel.llamabro.demo.chat
+
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import com.suhel.llamabro.demo.data.AudioStore
+import com.suhel.llamabro.demo.data.ChatRepository
+import com.suhel.llamabro.demo.data.ImageStore
+import com.suhel.llamabro.demo.data.MessageKind
+import com.suhel.llamabro.demo.data.MessageState
+import com.suhel.llamabro.demo.data.SettingsRepository
+import com.suhel.llamabro.demo.data.StoredMessage
+import com.suhel.llamabro.demo.designsystem.components.VoicePhase
+import com.suhel.llamabro.demo.models.FakeScheduler
+import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.TestHub
+import com.suhel.llamabro.demo.models.installedModel
+import com.suhel.llamabro.hub.HfModel
+import com.suhel.llamabro.testing.FakeLlamaBro
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import org.junit.rules.Timeout
+import java.io.File
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
+
+/** Voice mode's conversation (D100) on FakeLlamaBro's voice session, with a scripted microphone and speaker. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class VoiceConversationTest {
+    @get:Rule val folder = TemporaryFolder()
+
+    @get:Rule val timeout: Timeout = Timeout.seconds(60)
+    private val opened = mutableListOf<VoiceConversation>()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val omni = HfModel.parse("ggml-org/LFM3-Omni-2B-GGUF:Q4_K_M")
+
+    private val fake =
+        FakeLlamaBro().apply {
+            supportsAudio = true
+            voices = listOf("female", "male")
+        }
+    private val testHub = TestHub()
+    private val settings by lazy {
+        SettingsRepository(
+            PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "settings.preferences_pb") },
+        )
+    }
+
+    // no folder yet, as on a phone where nothing was recorded before voice mode
+    private val audio by lazy { AudioStore(File(folder.root, "audio")) }
+    private val chats by lazy {
+        ChatRepository(FakeChatDao(), ImageStore(File(folder.root, "images")), System::currentTimeMillis, audio)
+    }
+    private val host by lazy { ModelHost(fake.llamaBro, { testHub.hub.installedModel(it) }, scope) }
+    private val models by lazy { ModelRepository(testHub.hub, settings, FakeScheduler(), scope, host) }
+    private val engine by lazy { ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope) }
+
+    private val mic = ScriptedMic()
+    private val speaker = ScriptedSpeaker()
+    private var micFails = false
+    private var language: Locale = Locale.ENGLISH
+
+    @After fun stop() {
+        opened.forEach { it.close() }
+        runBlocking { withTimeoutOrNull(5_000) { host.release() } }
+        scope.cancel()
+        testHub.close()
+    }
+
+    private suspend fun until(what: String, condition: suspend () -> Boolean) {
+        withTimeoutOrNull(10_000) { while (!condition()) delay(10) } ?: throw AssertionError("timed out: $what")
+    }
+
+    private suspend fun conversation(): Pair<Long, VoiceConversation> {
+        testHub.install(omni)
+        models.changed()
+        val chatId = chats.createChat(omni.toString())
+        val voice =
+            VoiceConversation(
+                chatId,
+                omni,
+                "LFM3 Omni 2B",
+                { slots, limit -> engine.holdForVoice(omni, "LFM3 Omni 2B", slots, limit) },
+                settings,
+                chats,
+                audio,
+                microphone = {
+                    check(!micFails) { "the microphone could not be opened" }
+                    mic.also { it.reopen() }
+                },
+                speech = { speaker },
+                scope = scope,
+                dispatcher = Dispatchers.Default.limitedParallelism(1),
+                locale = { language },
+            )
+        opened += voice
+        return chatId to voice
+    }
+
+    private suspend fun rows(chatId: Long): List<StoredMessage> = chats.messages(chatId).first()
+
+    /** Holds the talk button for about half a second of speech. */
+    private suspend fun say(voice: VoiceConversation) {
+        mic.reads.set(0)
+        voice.talkStart()
+        until("the microphone is heard") { mic.reads.get() >= 10 }
+        voice.talkEnd()
+    }
+
+    private fun sentTypes() = fake.voiceEvents.map { it.substringAfter("\"type\":\"").substringBefore('"') }
+
+    @Test fun aSpokenTurnIsSavedWithItsCaptionAndTheSpokenReply() =
+        runBlocking {
+            fake.transcript("Tell me a story.")
+            fake.voiceReply {
+                text("Once upon ")
+                audio(ShortArray(2_400) { 1_000 })
+                text("a time.")
+                audio(ShortArray(2_400) { -1_000 })
+            }
+            val (chatId, voice) = conversation()
+            voice.open()
+            until("the session opened") { voice.ui.value.voice == "female" }
+            say(voice)
+            until("the reply is saved") { rows(chatId).size == 2 }
+            until("the caption is saved") { rows(chatId)[0].text.isNotEmpty() }
+            until("back to ready") { voice.ui.value.phase == VoicePhase.Ready }
+
+            val (user, reply) = rows(chatId)
+            assertEquals(MessageKind.User, user.kind)
+            assertEquals("Tell me a story.", user.text)
+            assertTrue(user.voice!!.file.length() > 44)
+            assertEquals(MessageKind.Assistant, reply.kind)
+            assertEquals("Once upon a time.", reply.text)
+            assertEquals(MessageState.Done, reply.state)
+            assertEquals(200L, reply.voice?.millis) // 4,800 samples at 24 kHz
+            assertEquals(4_800, speaker.played.get())
+            assertEquals("Tell me a story.", voice.ui.value.userWords)
+            assertEquals("Once upon a time.", voice.ui.value.caption)
+
+            val setup = fake.voiceEvents.first()
+            assertTrue(setup, setup.contains(""""voice":"female","language":"en""""))
+            assertTrue(setup, setup.contains(VoiceConversation.INSTRUCTION.substringBefore("'")))
+            assertTrue(setup, setup.contains(""""max_output_tokens":1024"""))
+            assertEquals(listOf("input_audio_buffer.commit", "response.create"), sentTypes().takeLast(2))
+            voice.close()
+        }
+
+    @Test fun withoutCaptionsTheModelLoadsWithOneSlotAndTheTurnHasNoText() =
+        runBlocking {
+            settings.setCaptionYou(false)
+            fake.voiceReply { text("Hi.") }
+            val (chatId, voice) = conversation()
+            say(voice)
+            until("the reply is saved") { rows(chatId).size == 2 }
+            assertEquals("", rows(chatId)[0].text)
+            assertNull(rows(chatId)[1].voice)
+            assertEquals(1, (host.state.value as HostState.Ready).config.slots)
+            voice.close()
+        }
+
+    @Test fun aTapIsNotATurn() =
+        runBlocking {
+            val (chatId, voice) = conversation()
+            voice.open()
+            until("open") { voice.ui.value.voice != null }
+            voice.talkStart()
+            voice.talkEnd()
+            delay(200)
+            assertTrue(rows(chatId).isEmpty())
+            assertTrue("input_audio_buffer.commit" !in sentTypes())
+            assertEquals(VoicePhase.Ready, voice.ui.value.phase)
+            voice.close()
+        }
+
+    @Test fun aReleaseWhileTheModelLoadsEndsTheTurnRatherThanLeavingTheMicrophoneOn() =
+        runBlocking {
+            fake.loadMillis = 400
+            val (chatId, voice) = conversation()
+            voice.talkStart()
+            voice.talkEnd()
+            until("the model is held and the turn is over") {
+                System.err.println(
+                    "replying=${engine.replying.value} closed=${mic.closedOnce} reads=${mic.reads.get()} " +
+                        "ui=${voice.ui.value} limit=${voice.limit.value} host=${host.state.value}",
+                )
+                engine.replying.value && mic.closedOnce
+            }
+            delay(200)
+            assertEquals(VoicePhase.Ready, voice.ui.value.phase)
+            assertTrue(rows(chatId).isEmpty())
+            voice.close()
+        }
+
+    @Test fun stopEndsThePlaybackAndPressingTalkInterrupts() =
+        runBlocking {
+            fake.transcript("One.")
+            fake.voiceReply { audio(ShortArray(4_800)) }
+            speaker.holdDrain = CompletableDeferred()
+            val (chatId, voice) = conversation()
+            say(voice)
+            until("speaking") { voice.ui.value.phase == VoicePhase.Speaking }
+            voice.stop()
+            until("ready") { voice.ui.value.phase == VoicePhase.Ready }
+            assertTrue(speaker.stops.get() > 0)
+            until("the reply is kept") { rows(chatId).size == 2 }
+            voice.close()
+        }
+
+    @Test fun pausingLetsTheModelGoAndTheNextTalkOpensAgain() =
+        runBlocking {
+            fake.transcript("First.")
+            fake.voiceReply { text("A.") }
+            fake.transcript("Second.")
+            fake.voiceReply { text("B.") }
+            val (chatId, voice) = conversation()
+            say(voice)
+            until("the first reply") { rows(chatId).size == 2 }
+            voice.pause()
+            until("the model is free to go") { !engine.replying.value }
+            say(voice)
+            until("the second reply") { rows(chatId).size == 4 }
+            assertEquals(2, sentTypes().count { it == "session.update" })
+            assertEquals(listOf("First.", "A.", "Second.", "B."), rows(chatId).map { it.text })
+            voice.close()
+        }
+
+    @Test fun theChosenVoiceIsUsedWhenTheModelHasIt() =
+        runBlocking {
+            settings.setVoice("male")
+            language = Locale.FRENCH
+            val (_, voice) = conversation()
+            voice.open()
+            until("open") { voice.ui.value.voice == "male" }
+            assertTrue(fake.voiceEvents.first().contains(""""voice":"male","language":"fr""""))
+            voice.close()
+        }
+
+    @Test fun aVoiceTheModelLacksFallsBackToItsFirst() =
+        runBlocking {
+            settings.setVoice("robot")
+            val (_, voice) = conversation()
+            voice.open()
+            until("open") { voice.ui.value.voice == "female" }
+            voice.close()
+        }
+
+    @Test fun aRefusedMicrophoneSaysSo() =
+        runBlocking {
+            micFails = true
+            val (_, voice) = conversation()
+            voice.talkStart()
+            until("the line") { voice.limit.value != null }
+            assertEquals(Limits.microphone(), voice.limit.value)
+            assertEquals(VoicePhase.Ready, voice.ui.value.phase)
+            voice.close()
+        }
+
+    @Test fun theSpokenLanguageIsThePhonesWhenUpstreamNamesIt() {
+        assertEquals("fr", VoiceConversation.spokenLanguage(Locale.FRANCE))
+        assertEquals("ja", VoiceConversation.spokenLanguage(Locale.JAPAN))
+        assertEquals("en", VoiceConversation.spokenLanguage(Locale.forLanguageTag("hi-IN")))
+    }
+
+    /** A microphone giving a quiet tone in 50 ms blocks until it is closed. */
+    private class ScriptedMic : SampleSource {
+        override val rate = 16_000
+        val reads = AtomicInteger()
+
+        @Volatile private var closed = false
+
+        fun reopen() {
+            closed = false
+        }
+
+        override fun read(buffer: ShortArray): Int {
+            if (closed) return -1
+            Thread.sleep(5)
+            reads.incrementAndGet()
+            buffer.fill(500)
+            return buffer.size
+        }
+
+        @Volatile var closedOnce = false
+
+        override fun close() {
+            closed = true
+            closedOnce = true
+        }
+    }
+
+    /** A speaker that counts what it plays; [holdDrain] keeps a reply "playing" until completed. */
+    private class ScriptedSpeaker : SpeechOutput {
+        val played = AtomicInteger()
+        val stops = AtomicInteger()
+
+        @Volatile var holdDrain: CompletableDeferred<Unit>? = null
+
+        override fun write(pcm: ShortArray) {
+            played.addAndGet(pcm.size)
+        }
+
+        override val level: Float = 0.5f
+
+        override suspend fun drain() {
+            holdDrain?.await()
+        }
+
+        override fun stop() {
+            stops.incrementAndGet()
+            holdDrain?.complete(Unit)
+        }
+
+        override fun close() = Unit
+    }
+}

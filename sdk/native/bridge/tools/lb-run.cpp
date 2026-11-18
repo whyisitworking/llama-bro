@@ -10,6 +10,10 @@
 //   REQUESTS.jsonl: {"id": "...", "endpoint": "chat", "body": {...}} per line (research/p0 format), plus
 //     "attachments": [{"name", "mime", "path", "via": "path" | "fd" | "bytes"}] sent with lb_model_request_with:
 //     the file by its path, an open descriptor (closed once the call returns) or its bytes (D84).
+//   endpoint "realtime" (D97): "steps" instead of a body, run in order, then the session is closed (lb_request_cancel):
+//     {"send": EVENT} sends a client event; {"wait": "TYPE"} waits for the next server event of that type;
+//     {"append_clip": PATH, "chunk_ms": N} sends the WAV's PCM16 as input_audio_buffer.append events of N ms.
+//     Each server event is one line of OUT/<id>.jsonl, as http-run.py writes them from a WebSocket.
 #include "llamabro.h"
 #include "lb_common.h"
 
@@ -17,6 +21,7 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iterator>
 #include <mutex>
@@ -43,6 +48,7 @@ struct run_state {
     bool done = false;
     bool cancelled = false;
     int cancel_after = 0;
+    std::vector<std::string> events;  // realtime: the server's events, in order
 };
 
 void on_event(void * user, lb_event ev, int status, const char * data, size_t len) {
@@ -58,6 +64,7 @@ void on_event(void * user, lb_event ev, int status, const char * data, size_t le
         line["t_us"] = t - s->t0;
         line["data"] = std::string(data, len);
         *s->out << line.dump() << "\n";
+        s->events.emplace_back(data, len);
     } else {
         s->done = true;
         s->cancelled = ev == LB_EVENT_CANCELLED;
@@ -69,6 +76,73 @@ std::string exe_dir(const char * argv0) {
     const std::string p(argv0);
     const size_t slash = p.find_last_of('/');
     return slash == std::string::npos ? "." : p.substr(0, slash);
+}
+
+std::string base64_of(const std::string & in) {
+    static const char * abc = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    out.reserve((in.size() + 2) / 3 * 4);
+    for (size_t i = 0; i < in.size(); i += 3) {
+        const uint32_t n = (uint8_t) in[i] << 16 | (i + 1 < in.size() ? (uint8_t) in[i + 1] << 8 : 0) |
+                           (i + 2 < in.size() ? (uint8_t) in[i + 2] : 0);
+        out += abc[n >> 18 & 63];
+        out += abc[n >> 12 & 63];
+        out += i + 1 < in.size() ? abc[n >> 6 & 63] : '=';
+        out += i + 2 < in.size() ? abc[n & 63] : '=';
+    }
+    return out;
+}
+
+// the PCM16 samples of a WAV file (its "data" chunk) and its sample rate
+bool wav_pcm(const std::string & path, std::string & pcm, int & rate) {
+    std::ifstream f(path, std::ios::binary);
+    const std::string all((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    if (all.size() < 12 || all.compare(0, 4, "RIFF") != 0 || all.compare(8, 4, "WAVE") != 0) return false;
+    auto u32 = [&](size_t at) { uint32_t v; std::memcpy(&v, all.data() + at, 4); return v; };
+    for (size_t at = 12; at + 8 <= all.size();) {
+        const std::string id = all.substr(at, 4);
+        const size_t n = u32(at + 4);
+        if (id == "fmt " && at + 16 <= all.size()) rate = (int) u32(at + 12);
+        if (id == "data") {
+            pcm = all.substr(at + 8, std::min(n, all.size() - at - 8));
+            return true;
+        }
+        at += 8 + n + (n & 1);
+    }
+    return false;
+}
+
+// runs a realtime spec's steps on an open session; false (with a message) when a step fails
+bool run_steps(lb_request * req, run_state & s, const json & steps, std::string & error) {
+    size_t seen = 0;  // server events already matched by a wait
+    for (const auto & step : steps) {
+        if (step.contains("send")) {
+            const std::string msg = step.at("send").dump();
+            if (lb_request_send(req, msg.data(), msg.size()) != LB_OK) { error = "send failed"; return false; }
+        } else if (step.contains("append_clip")) {
+            std::string pcm;
+            int rate = 0;
+            if (!wav_pcm(step.at("append_clip").get<std::string>(), pcm, rate)) { error = "not a WAV file"; return false; }
+            const size_t chunk = (size_t) rate * 2 * step.value("chunk_ms", 100) / 1000;
+            for (size_t at = 0; at < pcm.size(); at += chunk) {
+                const std::string msg = json{{"type", "input_audio_buffer.append"},
+                                             {"audio", base64_of(pcm.substr(at, chunk))}}.dump();
+                if (lb_request_send(req, msg.data(), msg.size()) != LB_OK) { error = "send failed"; return false; }
+            }
+        } else if (step.contains("wait")) {
+            const std::string type = step.at("wait").get<std::string>();
+            std::unique_lock<std::mutex> lk(s.mtx);
+            bool found = false;
+            const bool ok = s.cv.wait_for(lk, std::chrono::seconds(300), [&] {
+                for (; seen < s.events.size() && !found; seen++) {
+                    found = json::parse(s.events[seen]).value("type", "") == type;
+                }
+                return found || s.done;
+            });
+            if (!ok || !found) { error = "no " + type + " event"; return false; }
+        }
+    }
+    return true;
 }
 
 }  // namespace
@@ -157,6 +231,14 @@ int main(int argc, char ** argv) {
             std::fprintf(stderr, "%s: lb_model_request failed\n", id.c_str());
             rc = 1;
             continue;
+        }
+        if (endpoint == "realtime") {
+            std::string error;
+            if (!run_steps(req, s, spec.at("steps"), error)) {
+                std::fprintf(stderr, "%s: %s\n", id.c_str(), error.c_str());
+                rc = 1;
+            }
+            lb_request_cancel(req);  // the client closes the socket
         }
         {
             std::unique_lock<std::mutex> lk(s.mtx);

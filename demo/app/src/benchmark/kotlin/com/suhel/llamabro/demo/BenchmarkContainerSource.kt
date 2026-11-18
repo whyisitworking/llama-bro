@@ -32,7 +32,7 @@ class BenchmarkContainerSource : ContainerSource {
             scheduler = NoDownloads,
             databaseName = "benchmark.db",
             settingsName = "benchmark-settings",
-            discoveryOverride = BenchmarkDiscovery(hub.hub, fake.llamaBro),
+            discoveryOverride = BenchmarkDiscovery(hub.hub),
             asksForNotifications = false,
             streamer = { _, _, _, _ -> stream() },
         )

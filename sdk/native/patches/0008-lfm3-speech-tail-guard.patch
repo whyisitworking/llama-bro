@@ -1,0 +1,106 @@
+From: ours (F167); measured on 600 realtime replies, nothing posted
+Subject: mtmd : LFM3 speech that runs past its text ends the response
+
+diff --git a/tools/mtmd/mtmd-helper-gen.cpp b/tools/mtmd/mtmd-helper-gen.cpp
+index 053603f..59e2de1 100644
+--- a/tools/mtmd/mtmd-helper-gen.cpp
++++ b/tools/mtmd/mtmd-helper-gen.cpp
+@@ -1270,6 +1270,11 @@ public:
+         slots_left = 0;
+         speaking = false;
+         text_done = false;
++        n_text_said = 0;
++        n_speech_frames = 0;
++        n_tail_quiet = 0;
++        end_speech = false;
++        speech_cut = false;
+         prompt_tokens.clear();
+         prompt_pos = 0;
+         hist.clear();
+@@ -1394,6 +1399,8 @@ public:
+             } else if (sampled == tok_text_end) {
+                 text_done = true;
+                 speaking  = true;
++            } else {
++                n_text_said++;
+             }
+             if (!decode(sampled)) {
+                 return 1;
+@@ -1406,8 +1413,8 @@ public:
+                 return 1;
+             }
+             if (is_eos) {
+-                if (!continuing) {
+-                    // TTS: the end of audio ends the generation
++                if (!continuing || speech_cut) {
++                    // TTS: the end of audio ends the generation; so does a cut speech, whose text has ended
+                     *out_stop    = true;
+                     *h_state_out = nullptr;
+                     return 0;
+@@ -1419,9 +1426,13 @@ public:
+                 mode = MODE_TEXT;
+             } else {
+                 hist.insert(hist.end(), codes.begin(), codes.end());
++                const size_t n_pcm = audio_pcm.size();
+                 if (!decode_wav(codes.data(), codes.size())) {
+                     return 1;
+                 }
++                if (interleaving) {
++                    watch_speech(audio_pcm.data() + n_pcm, audio_pcm.size() - n_pcm);
++                }
+             }
+             // speech alone (TTS): the next step reads only the hidden state, so the frame asks for embeddings only and
+             // the LM head is skipped; a continuing response may switch to text after this frame and samples its logits
+@@ -1551,7 +1562,9 @@ private:
+ 
+         // the last code of every codebook ends the audio
+         const int32_t eos = (int32_t) (logits.size() / n_cb) - 1;
+-        *is_eos = std::find(codes.begin(), codes.end(), eos) != codes.end();
++        *is_eos = end_speech || std::find(codes.begin(), codes.end(), eos) != codes.end();
++        speech_cut = end_speech;
++        end_speech = false;
+         if (*is_eos) {
+             codes.assign(n_cb, eos);
+             if (!continuing) {
+@@ -1676,6 +1689,41 @@ private:
+     bool     speaking   = false; // interleaving: the current block is audio
+     bool     text_done  = false; // interleaving: <|text_end|> was emitted, audio until the end-of-audio frame
+ 
++    // After <|text_end|> an interleaved response speaks the rest of its text with audio alone, until the model samples
++    // the end-of-audio code. In about 1.6% of responses it never does: past the text it loses its place and speaks
++    // near-silence with bursts of noise until the context is full (F167). Clean responses use at most 0.37 s of audio
++    // per text token and never fall quiet for 3 s, so once the text has ended, speech past 5 frames (0.4 s) per text
++    // token plus 1 s, or 3 s of near-silence, ends the response with an end-of-audio frame: its text is complete, and
++    // left to go on, the model reopens interleaving and loops.
++    static constexpr int   speech_frames_per_token = 5;      // 80 ms frames
++    static constexpr int   speech_extra_frames     = 13;     // about 1 s
++    static constexpr int   tail_quiet_frames       = 38;     // about 3 s
++    static constexpr float tail_quiet_rms          = 0.004f; // full scale 1.0
++    int  n_text_said     = 0;     // text tokens of the interleaved response
++    int  n_speech_frames = 0;     // its audio frames
++    int  n_tail_quiet    = 0;     // consecutive near-silent frames after <|text_end|>
++    bool end_speech      = false; // the next frame is the end-of-audio frame
++    bool speech_cut      = false; // this frame is it: the response ends with it
++
++    void watch_speech(const float * pcm, size_t n) {
++        n_speech_frames++;
++        if (!text_done) {
++            return;
++        }
++        double sum = 0.0;
++        for (size_t i = 0; i < n; i++) {
++            sum += (double) pcm[i] * pcm[i];
++        }
++        const bool quiet = n == 0 || std::sqrt(sum / (double) n) < tail_quiet_rms;
++        n_tail_quiet = quiet ? n_tail_quiet + 1 : 0;
++        if (n_tail_quiet >= tail_quiet_frames ||
++            n_speech_frames > n_text_said * speech_frames_per_token + speech_extra_frames) {
++            LOG_WRN("mtmd_helper_gen_audio: the speech runs past its text (%d frames for %d text tokens, %d quiet), "
++                    "ending the audio\n", n_speech_frames, n_text_said, n_tail_quiet);
++            end_speech = true;
++        }
++    }
++
+     llama_seq_id seq_id = 0;
+     int pos = 0;
+     std::vector<llama_token> prompt_tokens;

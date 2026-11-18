@@ -56,7 +56,7 @@ private fun picks(vararg labels: FitLabel) =
     Catalog.picks.zip(labels.toList()).map { (entry, label) ->
         PickCard(
             entry,
-            FitView(label, 10, real = false),
+            FitView(label, 10),
             "${"%.1f".format((entry.modelBytes + entry.mmprojBytes) / 1e9)} GB",
         )
     }

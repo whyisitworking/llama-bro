@@ -16,6 +16,7 @@ object Routes {
     const val DEFAULT_MODEL = "settings/default_model"
     const val TOKEN = "settings/token"
     const val MEMORY = "settings/memory"
+    const val VOICE = "settings/voice"
     const val SAMPLING = "settings/sampling"
 
     /** One model's values; the key is URL-encoded, as it holds a slash and a colon. */

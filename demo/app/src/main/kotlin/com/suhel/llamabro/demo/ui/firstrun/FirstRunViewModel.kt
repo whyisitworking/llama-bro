@@ -11,10 +11,7 @@ import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.FitView
 import com.suhel.llamabro.demo.models.Fits
 import com.suhel.llamabro.demo.models.Format
-import com.suhel.llamabro.demo.models.HubEstimate
 import com.suhel.llamabro.demo.models.ModelRepository
-import com.suhel.llamabro.demo.models.attempt
-import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -51,8 +48,8 @@ object Greetings {
 data class PickCard(val entry: CatalogEntry, val fit: FitView, val sizeText: String)
 
 /**
- * A pick opened in its sheet: the fit starts as the quick one and becomes the real one when the SDK's projection
- * arrives (online); [memoryText] and [downloadText] are the third and fourth fact.
+ * A pick opened in its sheet: the fit from its shipped sizes, the same as its card's (D101); [memoryText] and
+ * [downloadText] are the third and fourth fact.
  */
 @Immutable
 data class PickSheetState(val entry: CatalogEntry, val fit: FitView, val memoryText: String, val downloadText: String)
@@ -65,7 +62,6 @@ data class PickSheetState(val entry: CatalogEntry, val fit: FitView, val memoryT
 @OptIn(ExperimentalCoroutinesApi::class)
 class FirstRunViewModel(
     private val facts: suspend () -> DeviceFacts,
-    private val estimate: suspend (HfModel) -> HubEstimate,
     private val chats: ChatRepository,
     private val settings: SettingsRepository,
     private val models: ModelRepository,
@@ -91,7 +87,7 @@ class FirstRunViewModel(
 
     private val opened = MutableStateFlow<CatalogEntry?>(null)
 
-    /** The open pick's sheet: quick at once, real when the estimate arrives; stops estimating when the sheet closes. */
+    /** The open pick's sheet, from the model's shipped sizes and the phone's facts; null while none is open. */
     val sheet: StateFlow<PickSheetState?> =
         opened
             .flatMapLatest { entry ->
@@ -111,12 +107,6 @@ class FirstRunViewModel(
             val total = entry.modelBytes + entry.mmprojBytes
             val download = "${Format.sizeInGb(total)} · ${Format.downloadTime(total)}"
             emit(PickSheetState(entry, Fits.quick(entry, facts()), memory(total), download))
-            // offline or unreachable: the quick fit stays
-            attempt {
-                estimate(
-                    entry.key,
-                )
-            }?.let { emit(PickSheetState(entry, Fits.real(it), memory(it.memoryBytes), download)) }
         }
 
     private val chatEvents = Channel<Long>(Channel.BUFFERED)
