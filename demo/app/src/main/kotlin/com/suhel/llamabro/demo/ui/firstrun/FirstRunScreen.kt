@@ -71,7 +71,6 @@ fun FirstRunRoute(container: AppContainer, onOpenChat: (Long) -> Unit, onSearch:
         viewModel {
             FirstRunViewModel(
                 facts = container::deviceFacts,
-                estimate = container.discovery::estimate,
                 chats = container.chats,
                 settings = container.settings,
                 models = container.models,

@@ -16,6 +16,8 @@ import com.suhel.llamabro.demo.chat.Limits
 import com.suhel.llamabro.demo.chat.Markdown
 import com.suhel.llamabro.demo.chat.StreamingReply
 import com.suhel.llamabro.demo.chat.Take
+import com.suhel.llamabro.demo.chat.VoiceChat
+import com.suhel.llamabro.demo.chat.VoiceConversation
 import com.suhel.llamabro.demo.chat.VoicePlayer
 import com.suhel.llamabro.demo.chat.VoiceRecorder
 import com.suhel.llamabro.demo.data.MessageKind
@@ -89,6 +91,8 @@ class ChatViewModel(
     private val recorder: VoiceRecorder? = null,
     /** Plays the chat's voice messages (D76). */
     val player: VoicePlayer = VoicePlayer.None,
+    /** Starts voice mode in a chat (D100); null where there is no microphone (most tests). */
+    voiceModeStart: ((VoiceChat) -> VoiceConversation)? = null,
 ) : ViewModel() {
     private val parsed = HashMap<Long, Pair<String, MarkdownBlocks>>()
 
@@ -205,6 +209,17 @@ class ChatViewModel(
                 (it as? ChatModelState.Ready)?.hears ?: false
             }.stateIn(viewModelScope, eager, false)
 
+    /** Whether the model holds a spoken conversation (D100): the voice-mode button shows only then. */
+    val talks: StateFlow<Boolean> =
+        handle.model
+            .map {
+                (it as? ChatModelState.Ready)?.talks ?: false
+            }.stateIn(viewModelScope, eager, false)
+
+    /** Voice mode (D100): the full-screen view over the chat while it is open. */
+    val voiceMode =
+        VoiceModeHolder(viewModelScope, voiceModeStart, handle::voiceChat) { handle.messages.value.isNotEmpty() }
+
     /** The note the person closed; the line leaves it out (the engine's own limit is left as it is). */
     val notes = ClosedNotes()
 
@@ -291,6 +306,7 @@ class ChatViewModel(
 
     /** Whether the model hears, and the voice message being recorded, copied for the bar (D76). */
     private val hearsNow = mutableStateOf(false)
+    private val talksNow = mutableStateOf(false)
     private val take = mutableStateOf<Take?>(null)
 
     /** What the design system's message bar draws, derived synchronously from the draft (no Think bulb: null). */
@@ -306,12 +322,14 @@ class ChatViewModel(
                 hasAttachment = d.attachments.isNotEmpty(),
                 canRecord = voice != null && hearsNow.value && d.editing == null,
                 recording = take.value?.let(::recordingState),
+                canTalk = voiceMode.available && talksNow.value && d.editing == null,
             )
         }
 
     init {
         viewModelScope.launch { combine(handle.think, handle.busy, ::Pair).collect { barFlags.value = it } }
         viewModelScope.launch { hears.collect { hearsNow.value = it } }
+        viewModelScope.launch { talks.collect { talksNow.value = it } }
         voice?.let { v -> viewModelScope.launch { v.take.collect { take.value = it } } }
         // a new chat's id, once its first message made it: the restored screen reopens it instead of a blank chat
         viewModelScope.launch { handle.chatId.collect { if (it != 0L) savedState[CHAT_ID_KEY] = it } }
@@ -482,6 +500,7 @@ class ChatViewModel(
         // the chat is gone: its engine handle ends, and pictures attached to a draft nobody sent are deleted, with a
         // recording nobody sent
         val left = draft.value.attachments
+        voiceMode.close()
         handle.close()
         player.release()
         if (left.isNotEmpty()) background.launch { discardImages(left) }

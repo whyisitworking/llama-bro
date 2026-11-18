@@ -73,6 +73,12 @@ object DemoType {
     val label = sans(FontWeight.Medium, size = 14, line = 20, tracking = 0.1)
     val labelSmall = sans(FontWeight.Medium, size = 12, line = 16, tracking = 0.5)
 
+    /**
+     * The reply's caption in voice mode (D100): [screenTitle]'s size in Regular, a long caption read at arm's length
+     * without the weight of a title. Chosen; Material has no role for live captions.
+     */
+    val voiceCaption = sans(FontWeight.Normal, size = 22, line = 28, tracking = 0.0)
+
     /** A reply's thoughts when opened: [bodyMedium] in italics. */
     val thought = bodyMedium.copy(fontStyle = FontStyle.Italic)
 

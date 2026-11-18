@@ -48,7 +48,7 @@ The SDK deviates from upstream in these places, each justified by a measurement 
 | Weights loaded without mmap (`--load-mode none`) | One resident copy of the weights instead of two (D30, F58-F60) |
 | A memory-based `ContextSize.Auto` | Upstream's fit misjudges a phone (D33, F66) |
 | No OpenMP on the CPU path | Same speed, smaller AAR (D38, F77) |
-| Four patches ([register](../sdk/native/patches/README.md)): 0001 a one-line Hexagon gate for delta-net with MTP (D80), 0002 upstream PR #30432 (a NEON path for BF16 dot products) until it merges (D55), 0003 a load that can be stopped (D67), 0004 the prompt cache's SWA rule on hybrid memory (D91) | Faster prompt processing for hybrid models with MTP, drifting no more than upstream's own switch (F149); a 5x faster BF16 image encoder on the phone's CPU (F127); a cancelled load returns in about a second (F148); voice-note chats on the LFM3 family reuse their cache (F153) |
+| Eight patches ([register](../sdk/native/patches/README.md)): 0001 a one-line Hexagon gate for delta-net with MTP (D80), 0002 upstream PR #30432 (a NEON path for BF16 dot products) until it merges (D55), 0003 a load that can be stopped (D67), 0004 the prompt cache's SWA rule on hybrid memory (D91), 0005 LFM3-Omni's speech depthformer with no CPU op on the NPU, 0006 no text head on speech-only frames (D86), 0007 Hexagon's no-block poll on Android (D86, D90), 0008 an end for LFM3 speech that runs past its text (D96) | Faster prompt processing for hybrid models with MTP, drifting no more than upstream's own switch (F149); a 5x faster BF16 image encoder on the phone's CPU (F127); a cancelled load returns in about a second (F148); voice-note chats on the LFM3 family reuse their cache (F153); speech output on the NPU alone (F155, F156); polling without flooding logcat (F162); captioned speech that never ends is stopped (F167) |
 | A failed tool's exception text stays out of the prompt unless it is an `LbToolError` | The exception may hold private data (D62, D83) |
 | What is on the phone loads with no network request; `cached()` lists only selections that load | A load never downloads unasked (D64, D89) |
 | One file at a time per download, in the plan's order | One transfer is about 2.1x faster than four on a phone (D44, F89, D89) |
@@ -237,6 +237,8 @@ A single generic request function means any llama-server feature that has no Kot
 
 A request produces `LB_EVENT_CHUNK` callbacks with server-sent-event payloads, then one terminal event, `LB_EVENT_DONE` or `LB_EVENT_CANCELLED`. On the Kotlin side `SseParser` splits the stream, and `ChatStreamDecoder` turns the OpenAI-shaped deltas into `ChatEvent` values.
 
+A realtime request (D97) is a conversation rather than a response: each chunk is one server event, passed to Kotlin as it comes, and the client's events go the other way through `lb_request_send` (JNI `requestSend`). Events sent before the native handle exists wait in Kotlin and go first, in order. Closing the `VoiceSession` cancels its request, which is the client hanging up.
+
 Cancelling the collecting coroutine sets the request's `should_stop`. llama-server applies it between `n_batch` passes, which is why the default batch size is 512: stopping during a long prompt frees the slot in about 0.4 s instead of 2.0-2.6 s on the NPU, with equal prefill speed (D17, F9). A request notices a cancel at its next result or within about one second at the latest (F23).
 
 ---
@@ -287,11 +289,12 @@ The three levels share one engine. A beginner uses `Conversation` and still reac
 
 `Model` exposes:
 
-- `info` (`ModelInfo`): context size, trained context size, parameter count, size, description, chat template, vision and audio support, whether the model has an MTP head, template capabilities and GGUF metadata.
+- `info` (`ModelInfo`): context size, trained context size, parameter count, size, description, chat template, vision and audio support, the voices it speaks with (`voices`, `supportsSpeech`, D100), whether the model has an MTP head, template capabilities and GGUF metadata.
 - `loadReport` (`LoadReport`): which device and backend were chosen, every attempt, the context size and why, and the speculative mode and why (section 8.3).
 - `chat(request)`, `conversation(...)`, `restoreConversation(json)` and `rawRequest(endpoint, json)`.
 - `embed(text)`, `embed(texts)` and `embed(vararg content)`, which return `FloatArray`s with a `Normalization` that mirrors upstream's `embd_normalize` (`None`, `MaxAbsInt16`, `Taxicab`, `Euclidean` by default, `PNorm(p)`), and `rerank(query, documents, topN)`, which returns `Ranked(index, score)` best first (D65). They read the `embeddings` route as base64 and the `rerank` route. Each checks the model's `task` first and throws `InvalidRequest` naming the task to load with, before any request. `embed(vararg content)` sends pictures and clips as chat does, placeholders with the files beside the request, which the bridge fills in the embeddings body's content parts (D84); a clip gets chat's `supportsAudio` and format checks.
 - `transcribe(source, language, prompt, options)`, which returns `Typed<String>`: `Value(text)`, or `Incomplete(Length, textSoFar)` when the reply is as long as `maxTokens`, since upstream's transcription response has no finish reason (D84). It checks the task and `info.supportsAudio` first.
+- `voiceSession { … }`, a spoken conversation through upstream's `/v1/realtime` in memory (D95, D97, D98): it suspends until the server has taken the setup (`VoiceConfig`: voice, language, instructions, output modalities, a reply cap, the input rate, `extra`; nothing set for the app) and returns a `VoiceSession` with `append(ShortArray)`, `commit(respond = true)`, `respond`, `sendText`, `cancelReply`, `sendRaw`, `close` and a hot `events` flow of `VoiceEvent`s: the turn committed, the reply's start, its text (the captions) and speech (16-bit PCM at `outputSampleRate`), its end, refused events, and every other event as `Other`. Upstream sends no transcript of the user's words in a conversation (F169); with `transcribeUser { }` the session transcribes each committed turn on a second slot while the reply is made and sends `UserTranscript` after the turn's `TurnCommitted` (D99, F170; the model needs `parallelSlots = 2`). It checks the task, `info.supportsAudio` and, for captions, the slots first.
 - `close()`, which returns at once and frees the model in the background, and `closeAndJoin()`, which waits for the memory to be released. Freed memory returns to the system on Android (F49).
 
 `ModelConfig` is configured in the `loadModel` block:
@@ -302,6 +305,7 @@ The three levels share one engine. A beginner uses `Conversation` and still reac
 | `speculative` | `Auto` | `Auto`, `Off`, `Mtp`, `Ngram` or `DFlash` (section 11) |
 | `devicePolicy` | `Auto` | `Auto`, `Prefer(kind)` or `Only(kind)` (section 8) |
 | `threads` | unset | CPU threads |
+| `seed` | unset | Sampling seed of requests that set none (`--seed`); a voice session's replies have no seed of their own (F168) |
 | `batchSize`, `microBatchSize` | 512, 512 | Logical and physical batch sizes (D17) |
 | `parallelSlots` | 1 | Concurrent sequences (D17) |
 | `ramCacheMib` | 1024 | Prompt cache across conversations (D17) |
@@ -336,7 +340,7 @@ Public types that will grow are immutable classes built through a builder or DSL
 
 ### 5.7 Typed and raw coverage
 
-Chat, embeddings (pooled vectors), rerank (text documents) and transcription are typed (D65, D84). The other routes are reachable through `rawRequest`, with the request and response exactly as llama-server documents them (F53): completion, per-token embeddings (`EmbeddingsNative`), tokenize, token counting, slots and the Responses and Anthropic message formats. Transcription is not reachable through `rawRequest`, which carries no file (`Endpoint.Transcriptions` names the route; `transcribe` sends it), and realtime audio, a WebSocket upstream, is not built. Typed calls for the other routes are planned; the raw level remains the escape hatch.
+Chat, embeddings (pooled vectors), rerank (text documents) and transcription are typed (D65, D84). The other routes are reachable through `rawRequest`, with the request and response exactly as llama-server documents them (F53): completion, per-token embeddings (`EmbeddingsNative`), tokenize, token counting, slots and the Responses and Anthropic message formats. Transcription is not reachable through `rawRequest`, which carries no file (`Endpoint.Transcriptions` names the route; `transcribe` sends it), and realtime audio, a WebSocket upstream, runs in memory through the C API's `realtime` endpoint (D97) and is typed as `voiceSession` (D98), whose `Other` events and `sendRaw` reach the rest of upstream's realtime protocol. Typed calls for the other routes are planned; the raw level remains the escape hatch.
 
 ### 5.8 `llamabro-typed`
 

@@ -29,4 +29,21 @@
     <string name="ds_play">Play</string>
     <string name="ds_pause">Pause</string>
     <string name="ds_voice_message">Voice message, %1$s</string>
+    <string name="ds_voice_mode">Talk with the model</string>
+    <string name="ds_voice_close">Close voice mode</string>
+    <string name="ds_voice_name">Voice: %1$s</string>
+    <string name="ds_voice_ready">Tap or hold to talk</string>
+    <string name="ds_voice_listening">Listening</string>
+    <string name="ds_voice_thinking">Thinking</string>
+    <string name="ds_voice_speaking">Speaking</string>
+    <string name="ds_voice_release">Release to send</string>
+    <string name="ds_voice_interrupt">Talk to interrupt</string>
+    <string name="ds_voice_tap_send">Tap to send</string>
+    <string name="ds_voice_how">Tap to start, or hold while you talk</string>
+    <string name="ds_voice_talk">Talk</string>
+    <string name="ds_voice_talk_start">Start talking</string>
+    <string name="ds_voice_talk_send">Send what you said</string>
+    <string name="ds_voice_stop">Stop the reply</string>
+    <string name="ds_voice_replay">Play the reply</string>
+    <string name="ds_voice_replay_stop">Stop playing the reply</string>
 </resources>

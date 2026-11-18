@@ -1345,6 +1345,26 @@ static void fit_estimate_matches_load() {
     if (err) lb_string_free(err);
 }
 
+// F172: upstream's fit measurement swaps llama.cpp's process-wide log callback for its own and back (common/fit.cpp,
+// common_fit_log_scope), so two at once left one forwarding to the other's dead stack frame and crashed the demo on
+// the phone. Estimates from many threads at once must all answer, and alike.
+static void fit_estimates_at_once_all_answer() {
+    init_runtime();
+    const json cfg = {{"model_path", test_model()}, {"n_ctx", "auto"}, {"n_ctx_cap", 8192}, {"memory_budget_mib", 4300}};
+    const json first = estimate(cfg);
+    std::atomic<int> same{0};
+    std::vector<std::thread> threads;
+    for (int t = 0; t < 8; t++) {
+        threads.emplace_back([&] {
+            for (int i = 0; i < 6; i++) {
+                if (estimate(cfg).at("n_ctx") == first.at("n_ctx")) same++;
+            }
+        });
+    }
+    for (auto & t : threads) t.join();
+    LB_CHECK(same.load() == 8 * 6);
+}
+
 static void fit_estimate_on_stub_equals_real() {
     init_runtime();
     const char * home = std::getenv("HOME");
@@ -2115,6 +2135,124 @@ static void omni_tts_same_audio_as_upstream() {
     lb_model_free(m);
 }
 
+// ---------------------------------------------------------------------------------------------
+// Realtime (D97): upstream's /v1/realtime conversation on an in-memory connection (lb_request_send). The contract
+// (audio.jsonl r-*) checks the events equal a real WebSocket's; these check the C API's own promises.
+// ---------------------------------------------------------------------------------------------
+
+// waits for the next server event of `type` after index *from, and moves *from past it
+static json rt_wait(collector & c, const std::string & type, size_t * from) {
+    std::unique_lock<std::mutex> lk(c.mtx);
+    json found;
+    LB_CHECK(c.cv.wait_for(lk, std::chrono::seconds(300), [&] {
+        for (; *from < c.chunks.size() && found.is_null(); (*from)++) {
+            json ev = json::parse(c.chunks[*from]);
+            if (ev.value("type", "") == type) found = std::move(ev);
+        }
+        return !found.is_null() || c.n_terminal > 0;
+    }));
+    if (found.is_null()) std::fprintf(stderr, "no %s event\n", type.c_str());
+    LB_CHECK(!found.is_null());
+    return found;
+}
+
+static void rt_send(lb_request * req, const json & ev) {
+    const std::string msg = ev.dump();
+    LB_CHECK(lb_request_send(req, msg.data(), msg.size()) == LB_OK);
+}
+
+// the clip's PCM16 as input_audio_buffer.append events of 100 ms
+static void rt_append_clip(lb_request * req) {
+    const std::vector<uint8_t> wav = file_bytes(test_clip());
+    size_t at = 12;
+    while (at + 8 <= wav.size() && std::memcmp(wav.data() + at, "data", 4) != 0) {
+        uint32_t n;
+        std::memcpy(&n, wav.data() + at + 4, 4);
+        at += 8 + n + (n & 1);
+    }
+    LB_CHECK(at + 8 <= wav.size());
+    const char * pcm = reinterpret_cast<const char *>(wav.data() + at + 8);
+    const size_t len = wav.size() - at - 8, chunk = 3200;  // 16 kHz, 16-bit
+    for (size_t i = 0; i < len; i += chunk) {
+        rt_send(req, json{{"type", "input_audio_buffer.append"}, {"audio", base64::encode(pcm + i, std::min(chunk, len - i))}});
+    }
+}
+
+// one spoken turn and its reply, in text and speech; the client closing is a cancel, and nothing follows it
+static void realtime_turn_in_memory() {
+    lb_model * m = load_omni();
+    collector c;
+    lb_request * req = nullptr;
+    LB_CHECK(lb_model_request(m, "realtime", nullptr, nullptr, 0, collector::cb, &c, &req) == LB_OK);
+    size_t at = 0;
+    const json created = rt_wait(c, "session.created", &at);
+    LB_CHECK(created.at("session").at("type") == "realtime");
+    rt_send(req, json::parse(R"({"type": "session.update",
+                                 "session": {"output_modalities": ["text", "audio"], "max_output_tokens": 32}})"));
+    rt_wait(c, "session.updated", &at);
+    rt_append_clip(req);
+    rt_send(req, json{{"type", "input_audio_buffer.commit"}});
+    rt_wait(c, "input_audio_buffer.committed", &at);
+    rt_send(req, json{{"type", "response.create"}});
+    const size_t start = at;
+    const json done = rt_wait(c, "response.done", &at);
+    int n_text = 0, n_audio = 0;
+    {
+        std::lock_guard<std::mutex> lk(c.mtx);
+        for (size_t i = start; i < at; i++) {
+            const std::string type = json::parse(c.chunks[i]).value("type", "");
+            n_text += type == "response.output_text.delta";
+            n_audio += type == "response.output_audio.delta";
+        }
+        for (const int st : c.statuses) LB_CHECK(st == 200);
+    }
+    std::fprintf(stderr, "realtime: %d text deltas, %d audio deltas, status %s\n", n_text, n_audio,
+                 done.at("response").at("status").dump().c_str());
+    LB_CHECK(n_text > 0 && n_audio > 0);
+
+    lb_request_cancel(req);
+    c.wait_terminal();
+    LB_CHECK(c.terminal == LB_EVENT_CANCELLED);
+    LB_CHECK(c.n_terminal == 1 && !c.chunk_after_terminal);
+    const std::string late = json{{"type", "response.create"}}.dump();
+    LB_CHECK(lb_request_send(req, late.data(), late.size()) == LB_ERR_CANCELLED);
+    lb_request_free(req);
+    lb_model_free(m);
+}
+
+// a realtime session takes no body or attachments; lb_request_send is for realtime only
+static void realtime_misuse_refused() {
+    lb_model * m = load_omni();
+    collector c;
+    lb_request * req = nullptr;
+    const std::string body = "{}";
+    LB_CHECK(lb_model_request(m, "realtime", nullptr, body.data(), body.size(), collector::cb, &c, &req) == LB_ERR_INVALID_ARG);
+    LB_CHECK(req == nullptr);
+    const std::vector<uint8_t> bytes = {1, 2, 3};
+    LB_CHECK(start_with(m, "realtime", json(), {att_bytes("0", "audio/wav", bytes)}, c, &req) == LB_ERR_INVALID_ARG);
+
+    const std::string b = chat_body("Hi", 4, false).dump();
+    LB_CHECK(lb_model_request(m, "chat", nullptr, b.data(), b.size(), collector::cb, &c, &req) == LB_OK);
+    LB_CHECK(lb_request_send(req, "{}", 2) == LB_ERR_INVALID_ARG);
+    LB_CHECK(lb_request_send(nullptr, "{}", 2) == LB_ERR_INVALID_ARG);
+    c.wait_terminal();
+    lb_request_free(req);
+    lb_model_free(m);
+}
+
+// freeing the model closes an open session (its read is woken), as it cancels any request
+static void realtime_model_free_closes_session() {
+    lb_model * m = load_omni();
+    collector c;
+    lb_request * req = nullptr;
+    LB_CHECK(lb_model_request(m, "realtime", nullptr, nullptr, 0, collector::cb, &c, &req) == LB_OK);
+    size_t at = 0;
+    rt_wait(c, "session.created", &at);
+    lb_model_free(m);
+    LB_CHECK(c.n_terminal == 1 && c.terminal == LB_EVENT_CANCELLED);
+    lb_request_free(req);
+}
+
 int main(int argc, char ** argv) {
     const std::map<std::string, std::function<void()>> tests = {
         {"runtime_init_twice_same_config_ok", runtime_init_twice_same_config_ok},
@@ -2132,6 +2270,7 @@ int main(int argc, char ** argv) {
         {"ngram_config_maps_to_ngram_mod", ngram_config_maps_to_ngram_mod},
         {"ngram_drafts_and_keeps_the_reply", ngram_drafts_and_keeps_the_reply},
         {"fit_estimate_matches_load", fit_estimate_matches_load},
+        {"fit_estimates_at_once_all_answer", fit_estimates_at_once_all_answer},
         {"fit_estimate_on_stub_equals_real", fit_estimate_on_stub_equals_real},
         {"dflash_config_maps_to_draft_dflash", dflash_config_maps_to_draft_dflash},
         {"dflash_without_draft_fails", dflash_without_draft_fails},
@@ -2193,6 +2332,9 @@ int main(int argc, char ** argv) {
         {"hybrid_swa_cache_reuses_live_state", hybrid_swa_cache_reuses_live_state},
         {"hybrid_swa_cache_replies_equal_uncached", hybrid_swa_cache_replies_equal_uncached},
         {"omni_tts_same_audio_as_upstream", omni_tts_same_audio_as_upstream},
+        {"realtime_turn_in_memory", realtime_turn_in_memory},
+        {"realtime_misuse_refused", realtime_misuse_refused},
+        {"realtime_model_free_closes_session", realtime_model_free_closes_session},
         {"media_dir_path_attachment_same_reply_as_bytes", media_dir_path_attachment_same_reply_as_bytes},
         {"media_dir_link_lives_until_the_request_ends", media_dir_link_lives_until_the_request_ends},
         {"media_dir_caller_file_url_reaches_only_the_media_dir", media_dir_caller_file_url_reaches_only_the_media_dir},

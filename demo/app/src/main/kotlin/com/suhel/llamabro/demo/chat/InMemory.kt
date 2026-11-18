@@ -65,6 +65,6 @@ class ModelMemory(private val host: ModelHost, private val engine: ChatEngine) {
     suspend fun loadConfigChanged(chosen: suspend () -> LoadConfig) {
         engine.replying.first { !it }
         val ready = host.state.value as? HostState.Ready ?: return
-        if (ready.config != chosen()) engine.releaseModelIfIdle()
+        if (!ready.config.serves(chosen())) engine.releaseModelIfIdle()
     }
 }

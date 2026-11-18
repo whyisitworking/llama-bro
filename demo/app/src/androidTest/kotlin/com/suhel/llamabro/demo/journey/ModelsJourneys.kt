@@ -7,9 +7,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performTextInput
-import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.models.Catalog
-import com.suhel.llamabro.demo.models.HubEstimate
 import com.suhel.llamabro.demo.models.RepoFile
 import com.suhel.llamabro.hub.DownloadState
 import com.suhel.llamabro.hub.HfModel
@@ -86,10 +84,6 @@ class ModelsJourneys : Journey() {
         world.hub.list(phi, downloads = 1_200_000, baseModel = "microsoft/phi-4-mini", tags = files.map { it.quant })
         world.hub.list("someone/phi-4-mini-GGUF", downloads = 300, baseModel = "microsoft/phi-4-mini")
         world.discovery.repoFiles[phi] = files
-        for (f in files) {
-            world.discovery.estimates[HfModel.parse("$phi:${f.quant}")] =
-                HubEstimate(f.bytes, 0, true, 32_768, f.bytes + 300_000_000, DeviceKind.Npu)
-        }
 
         openLibrary()
         tap("Get more models")

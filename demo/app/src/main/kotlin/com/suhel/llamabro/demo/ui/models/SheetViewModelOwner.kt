@@ -18,7 +18,7 @@ class SheetStores : ViewModel() {
 
     fun store(key: String): ViewModelStore = stores.getOrPut(key) { ViewModelStore() }
 
-    /** The sheet [key] closed: its view models stop their work (estimates over the network). */
+    /** The sheet [key] closed: its view models stop their work. */
     fun clear(key: String) {
         stores.remove(key)?.clear()
     }

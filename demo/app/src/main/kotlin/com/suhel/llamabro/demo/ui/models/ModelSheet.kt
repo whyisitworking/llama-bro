@@ -50,7 +50,7 @@ import com.suhel.llamabro.hub.HfModel
 
 /**
  * A model's sheet: the stateful end. Its view model lives in a store that is cleared when the sheet closes, which stops
- * the estimates, and kept across a rotation; Get asks about notifications, starts the download and closes.
+ * its work, and kept across a rotation; Get asks about notifications, starts the download and closes.
  */
 @Composable
 fun ModelSheetRoute(
@@ -65,7 +65,6 @@ fun ModelSheetRoute(
             ModelSheetViewModel(
                 row,
                 container.discovery::files,
-                container.discovery::estimate,
                 container::deviceFacts,
                 container.models,
                 startTier = startTier,
@@ -100,7 +99,7 @@ fun ModelSheetRoute(
 
 /**
  * The sheet's contents, without the window. [fit] gives a file's fit; it is read inside each row's own composable, so
- * a late estimate recomposes that row alone.
+ * a late fit recomposes that row alone.
  */
 @Composable
 fun ColumnScope.ModelSheetContent(
@@ -227,7 +226,7 @@ private fun AdvancedQuants(
     fit: @Composable (RepoFile) -> FileFit?,
 ) {
     QuantHeader("Quant", "Size", "On this phone")
-    // lazy, so only the rows on screen ask for an estimate
+    // lazy, so only the rows on screen work out their fit
     LazyStack(Gap.Block, Modifier.sheetListMaxHeight().testTag("advanced_quants")) {
         items(state.files, key = { it.path }, contentType = { "quant" }) { file ->
             QuantOption(file, file == selected, file == state.recommended, { onSelect(file) }, fit)

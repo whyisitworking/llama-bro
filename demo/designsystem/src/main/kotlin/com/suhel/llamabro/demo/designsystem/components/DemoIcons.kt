@@ -89,6 +89,18 @@ object DemoIcons {
             "M3,17.25V21h3.75L17.81,9.94l-3.75,-3.75L3,17.25zM20.71,7.04c0.39,-0.39 0.39,-1.02 0,-1.41l-2.34,-2.34" +
                 "c-0.39,-0.39 -1.02,-0.39 -1.41,0l-1.83,1.83 3.75,3.75 1.83,-1.83z",
         )
+
+    /** Voice mode (Material's `graphic_eq`): talk with a model that speaks (D100). */
+    val VoiceMode = icon("VoiceMode", "M7,18h2V6H7v12zM11,22h2V2h-2v20zM3,14h2v-4H3v4zM15,18h2V6h-2v12zM19,10v4h2v-4h-2z")
+
+    /** A speaker (Material's `volume_up`): play a spoken reply again (D100). */
+    val Speaker =
+        icon(
+            "Speaker",
+            "M3,9v6h4l5,5V4L7,9H3zM16.5,12c0,-1.77 -1.02,-3.29 -2.5,-4.03v8.05c1.48,-0.73 2.5,-2.25 2.5,-4.02z" +
+                "M14,3.23v2.06c2.89,0.86 5,3.54 5,6.71s-2.11,5.85 -5,6.71v2.06c4.01,-0.91 7,-4.49 7,-8.77" +
+                "s-2.99,-7.86 -7,-8.77z",
+        )
     val Pause = icon("Pause", "M6,19h4V5H6v14zM14,5v14h4V5h-4z")
     val Play = icon("Play", "M8,5v14l11,-7z")
     val Mic =

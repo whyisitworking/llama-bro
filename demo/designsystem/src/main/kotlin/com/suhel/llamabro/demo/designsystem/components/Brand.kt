@@ -1,24 +1,38 @@
 package com.suhel.llamabro.demo.designsystem.components
 
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
+import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.sin
 
 /** The icon's warmth: amber at the lit point falling to rose at the far edge, the same in both themes. */
 private val Amber = Color(0xFFFDB969)
@@ -98,3 +112,104 @@ fun ModelName(name: String, modifier: Modifier = Modifier, realName: String? = n
         if (realName != null) Text(realName, color = colors.muted, style = DemoType.bodyMedium)
     }
 }
+
+/** What the voice view's orb is doing (D100). */
+enum class OrbMood { Still, Listening, Thinking, Speaking }
+
+/**
+ * The orb at the voice view's size (D100), alive with the conversation: [Still] when ready; while [Listening] it
+ * swells with the voice's [level] (0 to 1) and a hairline ring spreads from it; while [Thinking] a soft highlight turns
+ * inside it; while [Speaking] it moves with the reply's [level]. With animations off it holds still in every mood, and
+ * the screen's state line carries the meaning.
+ */
+@Composable
+fun VoiceOrb(mood: OrbMood, level: Float, modifier: Modifier = Modifier) {
+    val colors = LocalDemoColors.current
+    val still = animationsDisabled()
+    val clamped = level.coerceIn(0f, 1f)
+    val swell =
+        when {
+            still -> 0f
+            mood == OrbMood.Listening -> LISTEN_SWELL * clamped
+            mood == OrbMood.Speaking -> SPEAK_SWELL * clamped
+            else -> 0f
+        }
+    val scale by animateFloatAsState(
+        1f + swell,
+        tween(DemoMotion.SWAP_MILLIS, easing = DemoMotion.standard),
+        label = "orb",
+    )
+    val turning = mood == OrbMood.Thinking && !still
+    val angle =
+        if (turning) {
+            val turn = rememberInfiniteTransition(label = "orb turn")
+            turn
+                .animateFloat(
+                    0f,
+                    FULL_TURN,
+                    infiniteRepeatable(tween(DemoMotion.ORB_TURN_MILLIS, easing = DemoMotion.sweep)),
+                    label = "orb angle",
+                ).value
+        } else {
+            START_ANGLE
+        }
+    val tint = Rose.copy(alpha = if (colors.isDark) 0.35f else 0.22f)
+    val size = DemoSize.orbVoice
+    Box(modifier.size(size), contentAlignment = Alignment.Center) {
+        if (mood == OrbMood.Listening && !still) {
+            Canvas(Modifier.fillMaxSize()) {
+                val radius = this.size.minDimension / 2 * (RING_FROM + RING_SPREAD * clamped)
+                drawCircle(
+                    colors.muted.copy(alpha = RING_ALPHA * (1f - clamped / 2)),
+                    radius = radius,
+                    style = Stroke(DemoSize.hairline.toPx()),
+                )
+            }
+        }
+        Canvas(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }.shadow(elevation = size / 5, shape = CircleShape, ambientColor = tint, spotColor = tint),
+        ) {
+            val center = Offset(this.size.width * 0.34f, this.size.height * 0.28f)
+            val radius = hypot(this.size.width - center.x, this.size.height - center.y)
+            drawCircle(Brush.radialGradient(colorStops = Stops, center = center, radius = radius))
+            if (mood == OrbMood.Thinking) {
+                // the light turns about the centre, starting where the gradient is lit
+                val r = this.size.minDimension / 2
+                val rad = Math.toRadians(angle.toDouble())
+                val spot =
+                    Offset(
+                        this.center.x + r * HIGHLIGHT_ORBIT * cos(rad).toFloat(),
+                        this.center.y + r * HIGHLIGHT_ORBIT * sin(rad).toFloat(),
+                    )
+                drawCircle(
+                    Brush.radialGradient(
+                        listOf(Highlight, Highlight.copy(alpha = 0f)),
+                        center = spot,
+                        radius =
+                            r * HIGHLIGHT_SIZE,
+                    ),
+                    radius = r,
+                )
+            }
+        }
+    }
+}
+
+/** A warm white for the thinking orb's turning light. */
+private val Highlight = Color(0x8CFFF0DC)
+private const val LISTEN_SWELL = 0.09f
+private const val SPEAK_SWELL = 0.06f
+private const val RING_FROM = 1.04f
+private const val RING_SPREAD = 0.2f
+private const val RING_ALPHA = 0.5f
+private const val FULL_TURN = 360f
+
+/** Where the turning light starts: up and to the left, where the gradient's lit point is (34%, 28%). */
+private const val START_ANGLE = 225f
+private const val HIGHLIGHT_ORBIT = 0.45f
+private const val HIGHLIGHT_SIZE = 0.85f

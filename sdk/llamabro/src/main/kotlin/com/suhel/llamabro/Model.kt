@@ -14,7 +14,9 @@ import com.suhel.llamabro.internal.ErrorMapping
 import com.suhel.llamabro.internal.Media
 import com.suhel.llamabro.internal.MediaIo
 import com.suhel.llamabro.internal.NativeError
+import com.suhel.llamabro.internal.RealtimeLink
 import com.suhel.llamabro.internal.RequestSink
+import com.suhel.llamabro.internal.SEND_OK
 import com.suhel.llamabro.internal.SseParser
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -103,9 +105,18 @@ public class Model internal constructor(
         attachments: List<EngineAttachment>,
         params: Map<String, String> = emptyMap(),
     ): Flow<String> {
-        val flow = requestFlow(endpoint, jsonBody, attachments, params)
+        val body = if (isStreamBody(jsonBody)) BodyMode.Sse else BodyMode.Whole
+        val flow = requestFlow(endpoint, jsonBody, attachments, params, body) {}
         return if (attachments.isEmpty()) flow else flow.flowOn(io)
     }
+
+    /**
+     * A realtime conversation (`/v1/realtime`, D97): emits each server event as it comes and ends when the server
+     * closes it; cancelling the collector hangs up. [onOpen] gets the link for the client's events before the native
+     * session starts, so events sent at once are queued and go first.
+     */
+    internal fun realtime(params: Map<String, String>, onOpen: (RealtimeLink) -> Unit): Flow<String> =
+        requestFlow(Endpoint.Realtime, "", emptyList(), params, BodyMode.Events, onOpen)
 
     /** A descriptor's bytes, read once on [io] (D84); one that can't be read is the request's fault. */
     internal suspend fun read(descriptor: MediaSource.Descriptor): ByteArray = withContext(io) { readNow(descriptor) }
@@ -123,10 +134,12 @@ public class Model internal constructor(
         jsonBody: String,
         attachments: List<EngineAttachment>,
         params: Map<String, String>,
+        mode: BodyMode,
+        onOpen: (RealtimeLink) -> Unit,
     ): Flow<String> =
         callbackFlow {
             val call = ActiveCall(this)
-            val stream = isStreamBody(jsonBody)
+            onOpen(call)
             val paramsJson =
                 if (params.isEmpty()) {
                     null
@@ -147,7 +160,7 @@ public class Model internal constructor(
                             paramsJson,
                             jsonBody.toByteArray(Charsets.UTF_8),
                             attachments,
-                            call.sink(stream),
+                            call.sink(mode),
                         )
                     }
                 } catch (e: NativeError) {
@@ -251,11 +264,14 @@ public class Model internal constructor(
      * One request's state. The native handle may arrive after the first callbacks, and free() must follow
      * the terminal event, while cancel() must never touch a freed request: all three go through [lock].
      */
-    private class ActiveCall(val scope: ProducerScope<String>) {
+    private class ActiveCall(val scope: ProducerScope<String>) : RealtimeLink {
         private val lock = Any()
         private var handle: EngineRequest? = null
         private var terminal = false
         private var cancelRequested = false
+
+        /** Client events sent before the handle arrived, sent in order once it has. */
+        private val early = mutableListOf<ByteArray>()
 
         fun setHandle(h: EngineRequest) {
             synchronized(lock) {
@@ -264,9 +280,25 @@ public class Model internal constructor(
                     h.free()
                 } else if (cancelRequested) {
                     h.cancel()
+                } else {
+                    early.forEach { h.send(it) }
                 }
+                early.clear()
             }
         }
+
+        override fun send(message: String): Boolean =
+            synchronized(lock) {
+                if (terminal || cancelRequested) return false
+                val bytes = message.toByteArray(Charsets.UTF_8)
+                val h = handle
+                if (h == null) {
+                    early += bytes
+                    true
+                } else {
+                    h.send(bytes) == SEND_OK
+                }
+            }
 
         fun cancelIfRunning() {
             synchronized(lock) {
@@ -284,7 +316,7 @@ public class Model internal constructor(
             }
         }
 
-        fun sink(stream: Boolean): RequestSink =
+        fun sink(mode: BodyMode): RequestSink =
             object : RequestSink {
                 private val parser = SseParser()
                 private val whole = ByteArrayOutputStream()
@@ -294,7 +326,9 @@ public class Model internal constructor(
                     if (failed) return
                     if (httpStatus >= HTTP_ERROR_FROM) {
                         fail(ErrorMapping.fromBody(httpStatus, String(data, Charsets.UTF_8)))
-                    } else if (!stream) {
+                    } else if (mode == BodyMode.Events) {
+                        scope.trySend(String(data, Charsets.UTF_8))
+                    } else if (mode == BodyMode.Whole) {
                         whole.write(data)
                     } else {
                         for (payload in parser.feed(data)) {
@@ -318,7 +352,11 @@ public class Model internal constructor(
                 }
 
                 override fun onDone() {
-                    if (!stream && !failed && whole.size() > 0) scope.trySend(whole.toString(Charsets.UTF_8.name()))
+                    if (mode == BodyMode.Whole && !failed &&
+                        whole.size() > 0
+                    ) {
+                        scope.trySend(whole.toString(Charsets.UTF_8.name()))
+                    }
                     onTerminal()
                     scope.close()
                 }
@@ -333,6 +371,18 @@ public class Model internal constructor(
                     scope.close(e)
                 }
             }
+    }
+
+    /** How a response's chunks become the flow's strings. */
+    private enum class BodyMode {
+        /** The whole body, once, at the end. */
+        Whole,
+
+        /** Each SSE `data:` payload until `[DONE]`. */
+        Sse,
+
+        /** Each chunk as it comes: a realtime conversation's events (D97). */
+        Events,
     }
 
     private companion object {

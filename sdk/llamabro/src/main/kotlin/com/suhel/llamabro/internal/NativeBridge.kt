@@ -55,6 +55,9 @@ internal object NativeBridge {
 
     external fun requestFree(request: Long)
 
+    /** `lb_request_send`: a realtime client event (D97); answers the `lb_status`. */
+    external fun requestSend(request: Long, message: ByteArray): Int
+
     external fun modelFree(model: Long)
 }
 

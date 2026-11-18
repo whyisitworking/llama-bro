@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <mutex>
 #include <stdexcept>
 
 namespace {
@@ -153,6 +154,9 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string & 
                 apply_flag(ctx, "--cache-ram", int_of(key, v));
             } else if (key == "n_ctx_checkpoints") {
                 apply_flag(ctx, "--ctx-checkpoints", int_of(key, v));
+            } else if (key == "seed") {
+                // upstream's --seed: the sampler seed for requests without their own (a realtime session has none)
+                apply_flag(ctx, "--seed", int_of(key, v));
             } else if (key == "slot_save_path") {
                 apply_flag(ctx, "--slot-save-path", str_of(key, v));
             } else if (key == "media_dir") {
@@ -309,7 +313,14 @@ int64_t lb_config_memory_budget_mib(const json & cfg) {
         ? cfg.at("memory_budget_mib").get<int64_t>() : 0;
 }
 
+// Upstream's fit measurement swaps llama.cpp's process-wide log callback for its own and back while it runs
+// (common/fit.cpp, common_fit_log_scope), so two measurements at once (two estimates, or an estimate and a load's
+// automatic context) left one forwarding to the other's finished stack frame and crashed (F172). They run one at a
+// time; a measurement reads only headers and takes well under a second.
+static std::mutex g_fit_mutex;
+
 int64_t lb_measure_ctx(common_params & params, uint32_t n_ctx, uint32_t * n_ctx_train, int64_t * draft_bytes) {
+    std::lock_guard<std::mutex> one_at_a_time(g_fit_mutex);
     llama_model_params   mparams = common_model_params_to_llama(params);
     llama_context_params cparams = common_context_params_to_llama(params);
     cparams.n_ctx = n_ctx;

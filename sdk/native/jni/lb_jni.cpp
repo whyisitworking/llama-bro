@@ -346,6 +346,14 @@ jbyteArray readFd(JNIEnv * env, jobject, jint fd) {
 
 void requestCancel(JNIEnv *, jobject, jlong req) { lb_request_cancel(reinterpret_cast<lb_request *>(req)); }
 void requestFree(JNIEnv *, jobject, jlong req)   { lb_request_free(reinterpret_cast<lb_request *>(req)); }
+
+// a realtime client event (D97); the lb_status, which Kotlin maps: the bridge copies the bytes before it returns
+jint requestSend(JNIEnv * env, jobject, jlong req, jbyteArray msg) {
+    const jsize len = env->GetArrayLength(msg);
+    std::vector<char> buf(static_cast<size_t>(len));
+    if (len > 0) env->GetByteArrayRegion(msg, 0, len, reinterpret_cast<jbyte *>(buf.data()));
+    return static_cast<jint>(lb_request_send(reinterpret_cast<lb_request *>(req), buf.data(), buf.size()));
+}
 void modelFree(JNIEnv *, jobject, jlong model)   { lb_model_free(reinterpret_cast<lb_model *>(model)); }
 
 jclass global_class(JNIEnv * env, const char * name) {
@@ -404,6 +412,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM * vm, void *) {
         {"readFd",         "(I)[B", (void *) readFd},
         {"requestCancel",  "(J)V", (void *) requestCancel},
         {"requestFree",    "(J)V", (void *) requestFree},
+        {"requestSend",    "(J[B)I", (void *) requestSend},
         {"modelFree",      "(J)V", (void *) modelFree},
     };
     if (!(bridge = env->FindClass("com/suhel/llamabro/internal/NativeBridge"))) return fail("NativeBridge");

@@ -73,7 +73,7 @@ data class ModelRow(
                     catalog = null,
                 )
 
-        /** The five suggestions, in the order demo design §4.3 gives. */
+        /** The six suggestions, in the order demo design §4.3 gives. */
         val suggestions: List<ModelRow> get() = Catalog.suggested.map(::of)
     }
 }

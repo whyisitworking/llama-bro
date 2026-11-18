@@ -90,6 +90,16 @@ object DemoSize {
     val levelHeight = 24.dp
     val voiceWaveWidth = 136.dp
 
+    /**
+     * Voice mode (D100): the orb at the voice view's size, the hold-to-talk button and its glyph, and how far the
+     * caption's older lines fade at its top. Chosen: the orb leads the view as the hero orb leads the first run, and
+     * the talk button is Material's large floating button rounded to a circle.
+     */
+    val orbVoice = 152.dp
+    val talkButton = 80.dp
+    val talkGlyph = 32.dp
+    val captionFade = 36.dp
+
     /** A divider and an outline. */
     val hairline = 1.dp
 

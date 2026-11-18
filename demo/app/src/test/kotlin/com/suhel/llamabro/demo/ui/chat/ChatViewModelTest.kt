@@ -9,6 +9,8 @@ import com.suhel.llamabro.demo.chat.FakeChatDao
 import com.suhel.llamabro.demo.chat.LimitAction
 import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.chat.SampleSource
+import com.suhel.llamabro.demo.chat.VoiceChat
+import com.suhel.llamabro.demo.chat.VoiceConversation
 import com.suhel.llamabro.demo.chat.VoiceRecorder
 import com.suhel.llamabro.demo.data.AudioStore
 import com.suhel.llamabro.demo.data.ChatRepository
@@ -108,6 +110,7 @@ class ChatViewModelTest {
         saved: SavedStateHandle = SavedStateHandle(),
         chatId: Long = 0,
         recorder: VoiceRecorder? = null,
+        voiceMode: ((VoiceChat) -> VoiceConversation)? = null,
     ): ChatViewModel {
         testHub.install(model)
         models.changed()
@@ -120,8 +123,28 @@ class ChatViewModelTest {
             savedState = saved,
             background = scope,
             recorder = recorder,
+            voiceModeStart = voiceMode,
         ).also(viewModels::add)
     }
+
+    /** Voice mode that never loads a model: enough to see it open and close (D100). */
+    private fun voiceModeFor(started: MutableList<VoiceChat>): (VoiceChat) -> VoiceConversation =
+        { chat ->
+            started += chat
+            VoiceConversation(
+                chat.chatId,
+                chat.key,
+                chat.name,
+                { _, _ -> null },
+                settings,
+                chats,
+                audio,
+                microphone = { error("no microphone in this test") },
+                speech = { error("no speaker in this test") },
+                scope = scope,
+                dispatcher = Dispatchers.Default,
+            )
+        }
 
     /** What a process restored after its death hands the view model: the values saved, nothing live. */
     private fun restored(saved: SavedStateHandle) = SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
@@ -165,6 +188,35 @@ class ChatViewModelTest {
                         .isNotEmpty()
             }
             assertFalse(deaf.composerState.value.canRecord)
+        }
+
+    @Test fun voiceModeShowsForAModelThatTalksAndOpensInANewChat() =
+        runBlocking {
+            val omni = Catalog.suggested.first { it.talks }.key
+            settings.setVoices(omni.toString(), listOf("female"))
+            val started = mutableListOf<VoiceChat>()
+            val talking = viewModel(model = omni, voiceMode = voiceModeFor(started))
+            until("the voice-mode button") { talking.composerState.value.showsTalk }
+            talking.voiceMode.open()
+            until("voice mode opens") { talking.voiceMode.open.value != null }
+            assertFalse(
+                "a new chat has no earlier messages",
+                talking.voiceMode.open.value!!
+                    .startsFresh,
+            )
+            val chat = started.single()
+            assertEquals(omni, chat.key)
+            assertTrue("the new chat was made", chat.chatId != 0L)
+            assertEquals(chat.chatId, talking.handle.chatId.value)
+            talking.voiceMode.close()
+            assertNull(talking.voiceMode.open.value)
+
+            val quiet = viewModel(voiceMode = voiceModeFor(started))
+            until("the model is known") {
+                quiet.handle.name.value
+                    .isNotEmpty()
+            }
+            assertFalse(quiet.composerState.value.canTalk)
         }
 
     @Test fun aRecordingIsSentAsAVoiceMessageAndLeavesTheBar() =

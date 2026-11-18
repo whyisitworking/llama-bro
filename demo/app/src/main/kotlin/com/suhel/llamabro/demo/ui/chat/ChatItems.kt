@@ -86,6 +86,8 @@ private const val SECONDS_PER_MINUTE = 60
     val cut: Boolean = false,
     /** A cut reply that is the chat's last row: it can be continued. */
     val canContinue: Boolean = false,
+    /** A reply spoken in voice mode: its speech, which the speaker action plays again (D100). */
+    val speech: File? = null,
 ) : ChatItem {
     override val key get() = "m-$id"
     override val type get() = "reply"
@@ -174,6 +176,7 @@ class ChatItems(
             details = if (m.state == MessageState.Failed) emptyList() else details(m),
             cut = m.state == MessageState.Cut,
             canContinue = m.state == MessageState.Cut && isLast,
+            speech = m.voice?.file,
         )
 
     /** The details sheet's lines, each only when it's known: replies stored before version 2 have fewer. */

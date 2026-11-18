@@ -69,6 +69,12 @@ public class Endpoint private constructor(internal val nativeName: String, priva
          */
         @JvmField public val Speech: Endpoint = Endpoint("speech", "POST /v1/audio/speech")
 
+        /**
+         * `GET /v1/realtime`, a WebSocket conversation (D97). Not public: it sends events both ways, which
+         * [Model.rawRequest] can't; `Model.voiceSession` opens it.
+         */
+        internal val Realtime: Endpoint = Endpoint("realtime", "GET /v1/realtime")
+
         /** `POST /v1/systemone`, for decision models */
         @JvmField public val SystemOne: Endpoint = Endpoint("systemone", "POST /v1/systemone")
 

@@ -45,6 +45,7 @@ import com.suhel.llamabro.demo.AppContainer
 import com.suhel.llamabro.demo.chat.LimitAction
 import com.suhel.llamabro.demo.chat.MediaVoicePlayer
 import com.suhel.llamabro.demo.chat.Thinking
+import com.suhel.llamabro.demo.chat.VoiceConversation
 import com.suhel.llamabro.demo.chat.VoiceRecorder
 import com.suhel.llamabro.demo.data.AppLayout
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
@@ -121,7 +122,7 @@ fun ChatScreen(
     var shareRequest by rememberSaveable(stateSaver = ShareRequestSaver) { mutableStateOf<ShareCardContent?>(null) }
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(vm::attach) }
-    val voice = rememberVoiceActions(vm.voice)
+    val voice = rememberVoiceActions(vm.voice, vm.voiceMode::open)
     val playing = vm.player.clip.collectAsStateWithLifecycle()
 
     val messageActions =
@@ -218,6 +219,7 @@ fun ChatScreen(
     photo?.let { target ->
         PhotoHost(target, state.rows, onPageChange = { photo = target.copy(index = it) }, onClose = { photo = null })
     }
+    VoiceOverlay(vm, state.bar.header.name) { action -> limitAction(action, vm, chrome, context, {}, {}) }
     ShareCardRenderer(shareRequest) { shareRequest = null }
 }
 
@@ -248,6 +250,22 @@ private fun chatViewModel(
         background = container.appScope,
         recorder = VoiceRecorder(container.audio, container.microphone, container.appScope),
         player = MediaVoicePlayer(container.appScope),
+        voiceModeStart = { chat ->
+            VoiceConversation(
+                chat.chatId,
+                chat.key,
+                chat.name,
+                { slots, limit -> container.engine.holdForVoice(chat.key, chat.name, slots, limit) },
+                container.settings,
+                container.chats,
+                container.audio,
+                container.voiceMicrophone,
+                container.speech,
+                container.appScope,
+                Dispatchers.Main.immediate,
+                clock = container.clock,
+            )
+        },
     )
 }
 
@@ -284,18 +302,34 @@ private fun limitAction(
 /**
  * The bar's voice controls (D76): the mic asks for the microphone the first time, then records; refused, a line offers
  * Android's settings for the app. Leaving the screen stops a recording and keeps it in the bar, never sent by itself.
+ * The voice-mode button asks the same way, then opens voice mode with [onTalk] (D100); refused, the same line.
  */
 @Composable
-private fun rememberVoiceActions(voice: VoiceComposer?): VoiceActions {
+private fun rememberVoiceActions(voice: VoiceComposer?, onTalk: () -> Unit): VoiceActions {
     val context = LocalContext.current
+    var talkAsked by remember { mutableStateOf(false) }
     val ask =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) voice?.start() else voice?.refused()
+            val forTalk = talkAsked
+            talkAsked = false
+            when {
+                granted && forTalk -> onTalk()
+                granted -> voice?.start()
+                else -> voice?.refused()
+            }
         }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { voice?.pause() }
-    return remember(voice, context, ask) {
+    return remember(voice, context, ask, onTalk) {
+        val talk = {
+            if (hasMicrophone(context)) {
+                onTalk()
+            } else {
+                talkAsked = true
+                ask.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
         if (voice == null) {
-            VoiceActions.None
+            VoiceActions({}, {}, {}, onTalk = talk)
         } else {
             VoiceActions(
                 onRecord = {
@@ -303,6 +337,7 @@ private fun rememberVoiceActions(voice: VoiceComposer?): VoiceActions {
                 },
                 onDiscard = voice::discard,
                 onSend = voice::send,
+                onTalk = talk,
             )
         }
     }

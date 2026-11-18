@@ -174,7 +174,44 @@ added to the chat. A picture only llama.cpp can judge (HEIC or WebP) fails the s
 message, for `resume()`. `transcribe(source, language,
 prompt, options)` returns `Typed.Value(text)`, or `Typed.Incomplete(Length, textSoFar)` when cut at `maxTokens`;
 `prompt` is upstream's (words to expect, or an instruction in place of the model's own), and `options`' sampling
-applies. Speech output and live transcription are not part of the SDK.
+applies.
+
+### A spoken conversation
+
+A model that listens and talks (LFM3-Omni) holds a spoken conversation through upstream's `/v1/realtime`, run in
+memory (no port). The app sends the microphone's audio and ends each turn; the reply comes as text, for captions, and
+as speech:
+
+```kotlin
+val voice = model.voiceSession {
+    voice = "female"
+    language = "en"
+    instructions = "You are a helpful voice assistant. Answer the user's spoken question in your own words."
+    maxOutputTokens = 1024
+}
+launch {
+    voice.events.collect { event ->
+        when (event) {
+            is VoiceEvent.ReplyText -> captions.append(event.delta)
+            is VoiceEvent.ReplyAudio -> track.write(event.pcm, 0, event.pcm.size) // AudioTrack at voice.outputSampleRate
+            is VoiceEvent.ReplyDone -> saveTurn(event.text)
+            is VoiceEvent.Error -> showError(event.message)
+            else -> Unit
+        }
+    }
+}
+// push-to-talk: while the button is held, 16-bit mono PCM at voice.inputSampleRate
+voice.append(buffer, 0, read)
+voice.commit()       // on release: ends the turn and asks for the reply
+voice.cancelReply()  // the user taps stop
+voice.close()        // hang up
+```
+
+`model.info.voices` lists the voices a model speaks with (`supportsSpeech` when there are any). The SDK sets nothing in the session for you: without a voice, a language and an instruction to answer, LFM3-Omni can
+speak noise for minutes or read the question back (F166). Upstream sends no transcript of the user's words in a
+conversation; `transcribeUser { language = "en" }` adds one per turn (`VoiceEvent.UserTranscript`, after the turn's
+`TurnCommitted`), transcribed on a second slot while the reply is made, so load the model with `parallelSlots = 2`. On
+the phone it costs about 0.3 s before the reply's first audio (F170). Other realtime events arrive as `VoiceEvent.Other`, and `sendRaw` sends any client event.
 
 ## Embeddings and rerank
 
@@ -402,7 +439,10 @@ Tool handlers can be tested alone with `JsonArgs.parse("""{"city":"Paris"}""")`.
 `embed` and `rerank` take their answers from their own queue: `embeddings(vector, …)` gives one vector per input,
 `ranking(score, …)` one score per document in the documents' order (answered best first and cut at `topN`, as
 llama-server does), and `inputTooLong(tokens)` the batch error. `embedRequests` and `rerankRequests` keep the bodies.
-`transcribe` takes `transcript(text, cut = false)` from the same queue, and `transcribeRequests` keeps its fields. The
+`transcribe` takes `transcript(text, cut = false)` from the same queue, and `transcribeRequests` keeps its fields. A
+voice session answers each asked-for reply with the next `voiceReply { text("…"); audio(pcm) }`, and `voiceEvents`
+keeps every client event it was sent; with `transcribeUser`, each turn's caption takes the next `transcript(text)` (load
+with `parallelSlots = 2`). The
 fake model neither sees nor hears until you set `supportsVision` or `supportsAudio` before loading, as a text model
 on the phone refuses pictures and clips.
 
@@ -474,8 +514,8 @@ object LlamaBroModule {
 
 The config also holds `npuPolling`, off by default as in upstream: `LlamaBroConfig { npuPolling = true }` has the NPU
 backend poll for the NPU's results instead of sleeping, which keeps the waiting CPU core awake. Chat on the NPU runs 4-7%
-faster, but the chip runs hotter while busy, and on Android the DSP library logs an error for every empty poll, which
-floods logcat and drops your app's own lines (F162) until a later release carries the fix (D90).
+faster and speech about 30% faster, but the chip runs hotter while busy (D86, D90). Patch 0007 keeps the polls from
+flooding logcat with the DSP library's errors (F162).
 
 The SDK has no DI dependency; without a container, call `LlamaBro.create(context)` where you need it. Keep the config
 on your `Application` or in the DI graph and pass it from every entry point, workers and job services included: a

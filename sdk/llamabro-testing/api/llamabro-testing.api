@@ -1,4 +1,5 @@
 public final class com/suhel/llamabro/testing/FakeLlamaBro {
+	public static final field COMMIT_EMPTY Ljava/lang/String;
 	public static final field CUT_WITHOUT_LIMIT Ljava/lang/String;
 	public static final field LOAD_FAILED_STATUS I
 	public static final field LOAD_STEPS I
@@ -21,6 +22,8 @@ public final class com/suhel/llamabro/testing/FakeLlamaBro {
 	public final fun getSupportsAudio ()Z
 	public final fun getSupportsVision ()Z
 	public final fun getTranscribeRequests ()Ljava/util/List;
+	public final fun getVoiceEvents ()Ljava/util/List;
+	public final fun getVoices ()Ljava/util/List;
 	public final fun inputTooLong (II)V
 	public static synthetic fun inputTooLong$default (Lcom/suhel/llamabro/testing/FakeLlamaBro;IIILjava/lang/Object;)V
 	public final fun ranking ([F)V
@@ -29,8 +32,10 @@ public final class com/suhel/llamabro/testing/FakeLlamaBro {
 	public final fun setLoadMillis (J)V
 	public final fun setSupportsAudio (Z)V
 	public final fun setSupportsVision (Z)V
+	public final fun setVoices (Ljava/util/List;)V
 	public final fun transcript (Ljava/lang/String;Z)V
 	public static synthetic fun transcript$default (Lcom/suhel/llamabro/testing/FakeLlamaBro;Ljava/lang/String;ZILjava/lang/Object;)V
+	public final fun voiceReply (Lkotlin/jvm/functions/Function1;)V
 }
 
 public final class com/suhel/llamabro/testing/FakeLlamaBro$Reply {
@@ -41,5 +46,11 @@ public final class com/suhel/llamabro/testing/FakeLlamaBro$Reply {
 	public static synthetic fun timings$default (Lcom/suhel/llamabro/testing/FakeLlamaBro$Reply;IIIILjava/lang/Object;)V
 	public final fun toolCall (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun toolCall$default (Lcom/suhel/llamabro/testing/FakeLlamaBro$Reply;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+}
+
+public final class com/suhel/llamabro/testing/FakeLlamaBro$VoiceReply {
+	public final fun audio ([S)V
+	public final fun outputTokens (I)V
+	public final fun text (Ljava/lang/String;)V
 }
 

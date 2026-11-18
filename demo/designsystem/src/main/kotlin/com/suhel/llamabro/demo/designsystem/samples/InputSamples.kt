@@ -13,7 +13,8 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 
 /**
  * Search (empty and typed), the instructions box, and the message bar in its states: empty, typed, replying, a model
- * that can't think, and for a model that hears (D76) the mic, recording, and a recording that stopped and waits.
+ * that can't think, for a model that hears (D76) the mic, recording, and a recording that stopped and waits, and for
+ * a model that talks the voice-mode button (D100).
  */
 @Composable
 internal fun InputSamples() {
@@ -36,6 +37,11 @@ internal fun InputSamples() {
         SampleComposer(ComposerState("", canAttach = false, think = null, busy = false), "Message Writer")
         SampleComposer(
             ComposerState("", canAttach = true, think = null, busy = false, canRecord = true),
+            "Message Omni",
+        )
+        // a model that talks (D100): the mic before the voice-mode button in send's place
+        SampleComposer(
+            ComposerState("", canAttach = true, think = null, busy = false, canRecord = true, canTalk = true),
             "Message Omni",
         )
         SampleComposer(

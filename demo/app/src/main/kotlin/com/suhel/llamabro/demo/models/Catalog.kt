@@ -30,6 +30,8 @@ data class CatalogEntry(
      * the Gemma team, and for Llama 3.2 its `generation_config.json`. Qwen3.5's values for pictures are not used.
      */
     val sampling: CardSampling,
+    /** It holds a spoken conversation (voice mode, D100): it hears and speaks. */
+    val talks: Boolean = false,
 )
 
 object Catalog {
@@ -112,7 +114,7 @@ object Catalog {
             maker = "Alibaba Qwen",
             line = "Smarter, but heavy for this phone",
             about =
-                "Gives the most thoughtful answers of the five, and can look at pictures. " +
+                "Gives the most thoughtful answers of the suggestions, and can look at pictures. " +
                     "It is heavy for this phone, so it replies slowly and keeps less of a long chat in mind.",
             thinks = true,
             sees = true,
@@ -121,11 +123,30 @@ object Catalog {
             sampling = CardSampling(thinking = qwenThinking, answering = qwenAnswering),
         )
 
+    private val omni =
+        CatalogEntry(
+            key = HfModel.parse("ggml-org/LFM3-Omni-2B-GGUF:Q4_K_M"),
+            realName = "LFM3 Omni 2B",
+            maker = "Liquid AI",
+            line = "Talks with you: a voice conversation on the phone",
+            about =
+                "Listens and answers out loud, with captions, and can chat by text too. " +
+                    "It is small, so its answers are short and simple.",
+            thinks = false,
+            sees = false,
+            modelBytes = 1_099_630_048,
+            mmprojBytes = 506_842_432,
+            // the card decodes text greedily (`generation_config.json`: temperature 0, top_k 1); its speech sampling
+            // (audio_temperature 0.4) is the server's, not a chat's
+            sampling = CardSampling(Knobs.of(Temperature to 0f, TopK to 1f)),
+            talks = true,
+        )
+
     /** First run's three picks. */
     val picks: List<CatalogEntry> = listOf(swift, writer, deep)
 
     /** "Suggested for this phone", in order (demo design §4.3). */
-    val suggested: List<CatalogEntry> = listOf(swift, writer, deep, llama, nine)
+    val suggested: List<CatalogEntry> = listOf(swift, writer, deep, llama, nine, omni)
 
     fun byKey(key: HfModel): CatalogEntry? = suggested.firstOrNull { it.key == key }
 

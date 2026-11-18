@@ -107,9 +107,25 @@ public sealed class EngineAttachment {
 public interface EngineRequest {
     public fun cancel()
 
+    /**
+     * `lb_request_send`: one client event of a realtime request (D97), copied and queued in order. Answers the
+     * `lb_status`: [SEND_OK], [SEND_NOT_REALTIME] for another endpoint's request, or [SEND_CLOSED] once the
+     * conversation has closed. Never after [free].
+     */
+    public fun send(message: ByteArray): Int = SEND_NOT_REALTIME
+
     /** Only after the terminal event. */
     public fun free()
 }
+
+/** `LB_OK` from [EngineRequest.send]. */
+public const val SEND_OK: Int = 0
+
+/** `LB_ERR_INVALID_ARG` from [EngineRequest.send]: not a realtime request. */
+public const val SEND_NOT_REALTIME: Int = 1
+
+/** `LB_ERR_CANCELLED` from [EngineRequest.send]: the conversation has closed. */
+public const val SEND_CLOSED: Int = 6
 
 /** A request's events: chunks of the HTTP body with its status, then exactly one of [onDone] or [onCancelled]. */
 @InternalLlamaBroApi
@@ -119,4 +135,9 @@ public interface RequestSink {
     public fun onDone()
 
     public fun onCancelled()
+}
+
+/** The client's side of a realtime conversation (D97): [send] answers false once it has closed. */
+internal interface RealtimeLink {
+    fun send(message: String): Boolean
 }

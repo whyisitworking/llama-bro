@@ -112,6 +112,37 @@ class SettingsRepositoryTest {
             assertNull(KeepLoaded.UntilNeeded.millis)
         }
 
+    @Test fun voiceModeTakesTheModelsFirstVoiceAndCaptionsUntilChosen() =
+        runBlocking {
+            val first = repository()
+            assertNull(first.settings.first().voice)
+            assertTrue(first.settings.first().captionYou)
+            first.setVoice("male")
+            first.setCaptionYou(false)
+            scopes.forEach { it.cancel() }
+            val again = repository()
+            assertEquals("male", again.settings.first().voice)
+            assertFalse(again.settings.first().captionYou)
+            again.setVoice(null)
+            assertNull(again.settings.first().voice)
+        }
+
+    @Test fun aModelThatTalksIsRememberedWithItsVoicesUntilItStops() =
+        runBlocking {
+            val settings = repository()
+            assertEquals(emptyMap<String, List<String>>(), settings.talkingModels.first())
+            settings.setVoices("a/omni:Q4_K_M", listOf("female", "male"))
+            settings.setVoices("b/other:Q8_0", listOf("calm"))
+            assertEquals(
+                mapOf("a/omni:Q4_K_M" to listOf("female", "male"), "b/other:Q8_0" to listOf("calm")),
+                settings.talkingModels.first(),
+            )
+            settings.setVoices("a/omni:Q4_K_M", listOf("female"))
+            assertEquals(listOf("female"), settings.talkingModels.first()["a/omni:Q4_K_M"])
+            settings.setVoices("a/omni:Q4_K_M", emptyList())
+            assertEquals(setOf("b/other:Q8_0"), settings.talkingModels.first().keys)
+        }
+
     @Test fun theChipIsAutomaticUntilChosenAndSurvivesARestart() =
         runBlocking {
             val first = repository()

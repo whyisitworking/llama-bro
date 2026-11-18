@@ -87,8 +87,9 @@ private fun UserRow(item: UserItem, actions: MessageActions) {
                 val clip = actions.playing()?.takeIf { it.messageId == item.id }
                 VoiceClip(v.levels, v.length, playing = clip?.playing == true, progress = clip?.progress ?: 0f)
             }
+        // a voice message's text is its caption (D100), drawn under its bubble rather than as a bubble of its own
         UserBubble(
-            text = item.text,
+            text = if (item.voice == null) item.text else "",
             images = images,
             time = item.time,
             // a voice message has nothing to copy or edit (D76): no menu
@@ -96,6 +97,7 @@ private fun UserRow(item: UserItem, actions: MessageActions) {
             onImageClick = { index -> actions.openPhoto(item.position, index) },
             voice = voice,
             onVoiceToggle = { item.voice?.let { actions.toggleVoice(item.id, it.file) } },
+            caption = item.text.takeIf { item.voice != null },
         )
         if (item.heldNote != null) HeldNote(item.heldNote)
     }
@@ -138,6 +140,17 @@ private fun ReplyContent(item: ReplyItem, style: MessageStyle, actions: MessageA
     }
     if (showActions && item.failure == null) {
         ReplyActions {
+            item.speech?.let { speech ->
+                // a spoken reply plays again (D100): the speaker in ink while it plays
+                val playing = actions.playing()?.let { it.messageId == item.id && it.playing } == true
+                IconAction(
+                    DemoIcons.Speaker,
+                    if (playing) "Stop playing the reply" else "Play the reply",
+                    { actions.toggleVoice(item.id, speech) },
+                    muted = !playing,
+                    small = true,
+                )
+            }
             IconAction(DemoIcons.Copy, "Copy reply", { actions.copy(item.text) }, muted = true, small = true)
             IconAction(DemoIcons.Share, "Share reply", { actions.share(item.position) }, muted = true, small = true)
             IconAction(

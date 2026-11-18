@@ -17,8 +17,14 @@ import androidx.annotation.RequiresPermission
  */
 class Microphone
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    constructor(context: Context) :
-    SampleSource {
+    constructor(
+        context: Context,
+        /**
+         * Android's audio source: speech recognition's for a voice message (D76), the voice call's for voice mode,
+         * whose echo cancellation and noise suppression keep the reply out of the microphone (D100).
+         */
+        private val source: Int = MediaRecorder.AudioSource.VOICE_RECOGNITION,
+    ) : SampleSource {
         override val rate: Int = RATE
 
         private val audio = context.getSystemService(AudioManager::class.java)
@@ -46,7 +52,7 @@ class Microphone
                 AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             record =
                 AudioRecord(
-                    MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                    source,
                     RATE,
                     AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT,

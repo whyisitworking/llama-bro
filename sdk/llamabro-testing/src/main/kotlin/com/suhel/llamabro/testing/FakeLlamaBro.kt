@@ -9,6 +9,8 @@ import com.suhel.llamabro.internal.EngineModel
 import com.suhel.llamabro.internal.EngineRequest
 import com.suhel.llamabro.internal.NativeError
 import com.suhel.llamabro.internal.RequestSink
+import com.suhel.llamabro.internal.SEND_CLOSED
+import com.suhel.llamabro.internal.SEND_OK
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -40,7 +42,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * `Model.rerank` on a model loaded with their `ModelTask`, and `Model.transcribe`: each takes the next [embeddings],
  * [ranking], [inputTooLong] or [transcript], in their own queue. Pictures and clips need [supportsVision] and
  * [supportsAudio], as on a phone. `GET /slots` and the reasoning control answer as an idle server would; any
- * other route fails with `NotSupported`. Pre-encodes (`preEncodeAfterReply`) are answered without taking a reply.
+ * other route fails with `NotSupported`. A voice session (`Model.voiceSession`, on a model that [supportsAudio])
+ * answers each asked-for reply with the next [voiceReply], as upstream's realtime conversation sends it. Pre-encodes
+ * (`preEncodeAfterReply`) are answered without taking a reply.
  */
 @OptIn(InternalLlamaBroApi::class)
 public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
@@ -53,6 +57,9 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
     /** Whether the model hears (`Model.info.supportsAudio`), so chat and `transcribe` take clips; set first. */
     public var supportsAudio: Boolean = false
 
+    /** The voices the model speaks with (`Model.info.voices`); empty, the default, for a model that doesn't speak. */
+    public var voices: List<String> = emptyList()
+
     private val lock = Any()
     private val queue = ArrayDeque<Scripted>()
     private val chat = mutableListOf<String>()
@@ -61,6 +68,8 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
     private val embed = mutableListOf<String>()
     private val rerank = mutableListOf<String>()
     private val transcribe = mutableListOf<String>()
+    private val voiceQueue = ArrayDeque<VoiceReply>()
+    private val voice = mutableListOf<String>()
 
     /**
      * How long each model load takes, reported as progress in four steps. A `loadModel` cancelled meanwhile
@@ -91,6 +100,12 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
 
     /** The form fields of every transcription (`Model.transcribe`), as JSON, in order. */
     public val transcribeRequests: List<String> get() = synchronized(lock) { transcribe.toList() }
+
+    /**
+     * Every client event of every voice session, as upstream would read it (`session.update`,
+     * `input_audio_buffer.append`, `input_audio_buffer.commit`, `response.create`, …), in order.
+     */
+    public val voiceEvents: List<String> get() = synchronized(lock) { voice.toList() }
 
     /** The [LlamaBro] to hand to the code under test. */
     public val llamaBro: LlamaBro =
@@ -141,6 +156,15 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
     public fun reply(block: Reply.() -> Unit) {
         val r = Reply().apply(block)
         synchronized(lock) { queue += Scripted.Stream(r) }
+    }
+
+    /**
+     * Queues the reply to the next `response.create` of a voice session (a `commit` after audio, `respond` or
+     * `sendText`): its text and speech, in the order given. With none queued the session answers with an error event.
+     */
+    public fun voiceReply(block: VoiceReply.() -> Unit) {
+        val r = VoiceReply().apply(block)
+        synchronized(lock) { voiceQueue += r }
     }
 
     /** Queues the vectors for the next `Model.embed`: one per input, in the inputs' order. */
@@ -232,6 +256,28 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
         }
     }
 
+    /** One scripted voice reply: text (the captions) and speech, sent as deltas in the order given. */
+    public class VoiceReply internal constructor() {
+        internal val parts = mutableListOf<Any>()
+
+        /** The next piece of the reply's text. */
+        public fun text(delta: String) {
+            parts += delta
+        }
+
+        /** The next piece of the reply's speech: 16-bit mono PCM at 24 kHz, as LFM3 speaks. */
+        public fun audio(pcm: ShortArray) {
+            parts += pcm.copyOf()
+        }
+
+        internal var outputTokens: Int? = null
+
+        /** The reply's `usage.output_tokens`; by default a guess from its text. */
+        public fun outputTokens(tokens: Int) {
+            outputTokens = tokens
+        }
+    }
+
     private sealed interface Scripted {
         class Stream(val reply: Reply) : Scripted
 
@@ -271,13 +317,25 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
                 }
             }
             open.incrementAndGet()
-            return FakeModel(contextSize, supportsVision, supportsAudio)
+            val config = runCatching { Json.parseToJsonElement(configJson) as JsonObject }.getOrNull()
+            val slots = (config?.get("n_parallel") as? JsonPrimitive)?.intOrNull ?: 1
+            return FakeModel(contextSize, supportsVision, supportsAudio, slots, voices.toList())
         }
     }
 
-    private inner class FakeModel(private val nCtx: Int, vision: Boolean, audio: Boolean) : EngineModel {
+    private inner class FakeModel(
+        private val nCtx: Int,
+        vision: Boolean,
+        private val audio: Boolean,
+        slots: Int,
+        voices: List<String>,
+    ) : EngineModel {
         override val infoJson: String = """{"n_ctx":$nCtx,"n_ctx_train":$nCtx,"n_params":0,"size":0,"desc":"FakeLlamaBro",
-            "metadata":{},"props":{"total_slots":1,"chat_template":"","modalities":{"vision":$vision,"video":false,"audio":$audio},
+            "metadata":{},"props":{"total_slots":$slots,"voices":${voices.joinToString(
+            ",",
+            "[",
+            "]",
+        ) { q(it) }},"chat_template":"","modalities":{"vision":$vision,"video":false,"audio":$audio},
             "chat_template_caps":{"supports_tools":true,"supports_parallel_tool_calls":true,"supports_system_role":true}}}"""
 
         override fun request(
@@ -295,6 +353,7 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
                 "embeddings", "rerank", "transcriptions" -> task(endpoint, text, ::send)
                 "slots" -> send(200, """[{"id":0,"is_processing":false}]""")
                 "control" -> send(200, "{}")
+                "realtime" -> return VoiceConversation(sink, audio)
                 else -> send(501, notSupported("FakeLlamaBro doesn't script the $endpoint route"))
             }
             sink.onDone()
@@ -374,6 +433,134 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
         }
     }
 
+    /**
+     * Upstream's realtime conversation as far as a voice app sees it (server-realtime.cpp): session setup, audio
+     * turns, replies from [voiceQueue] and errors, answered on the sending thread, one event at a time.
+     */
+    private inner class VoiceConversation(private val sink: RequestSink, private val hears: Boolean) : EngineRequest {
+        private val open = AtomicBoolean(true)
+        private var hasAudio = false
+        private var items = 0
+        private var voiceName: String? = null
+        private var language: String? = null
+
+        init {
+            if (hears) {
+                event("""{"type":"session.created","session":${session()}}""")
+            } else {
+                event(error("The current model does not support realtime transcription."))
+                end()
+            }
+        }
+
+        override fun send(message: ByteArray): Int =
+            synchronized(this) {
+                if (!open.get()) return SEND_CLOSED
+                val text = String(message, Charsets.UTF_8)
+                synchronized(lock) { voice += text }
+                handle(text)
+                SEND_OK
+            }
+
+        private fun handle(text: String) {
+            val ev = runCatching { Json.parseToJsonElement(text) as JsonObject }.getOrNull()
+            when ((ev?.get("type") as? JsonPrimitive)?.content) {
+                null -> {
+                    event(error("invalid JSON"))
+                }
+
+                "session.update" -> {
+                    val out =
+                        ((ev["session"] as? JsonObject)?.get("audio") as? JsonObject)?.get("output") as? JsonObject
+                    out?.get("voice")?.let { voiceName = (it as? JsonPrimitive)?.content }
+                    out?.get("language")?.let { language = (it as? JsonPrimitive)?.content }
+                    event("""{"type":"session.updated","session":${session()}}""")
+                }
+
+                "input_audio_buffer.append" -> {
+                    hasAudio = true
+                }
+
+                "input_audio_buffer.commit" -> {
+                    if (!hasAudio) {
+                        event(error("input_audio_buffer.commit: the buffer is empty", COMMIT_EMPTY))
+                    } else {
+                        hasAudio = false
+                        event(
+                            """{"type":"input_audio_buffer.committed","previous_item_id":null,""" +
+                                """"item_id":"item_${++items}"}""",
+                        )
+                    }
+                }
+
+                "conversation.item.create" -> {
+                    event("""{"type":"conversation.item.added","item":{"id":"item_${++items}"}}""")
+                }
+
+                "response.create" -> {
+                    reply()
+                }
+
+                "response.cancel" -> {
+                    Unit // replies are sent whole, so there is nothing left to stop
+                }
+
+                else -> {
+                    event(error("unknown event type: ${(ev["type"] as JsonPrimitive).content}"))
+                }
+            }
+        }
+
+        private fun reply() {
+            val next =
+                synchronized(lock) { voiceQueue.removeFirstOrNull() }
+                    ?: return event(error("FakeLlamaBro: no voice reply scripted", "server_error"))
+            val id = "resp_${++items}"
+            event("""{"type":"response.created","response":{"id":"$id","status":"in_progress","output":[]}}""")
+            val text = StringBuilder()
+            for (part in next.parts) {
+                if (part is String) {
+                    text.append(part)
+                    event("""{"type":"response.output_text.delta","response_id":"$id","delta":${q(part)}}""")
+                } else {
+                    val pcm = part as ShortArray
+                    val bytes = ByteBuffer.allocate(pcm.size * 2).order(ByteOrder.LITTLE_ENDIAN)
+                    pcm.forEach { bytes.putShort(it) }
+                    val b64 = Base64.getEncoder().encodeToString(bytes.array())
+                    event("""{"type":"response.output_audio.delta","response_id":"$id","delta":"$b64"}""")
+                }
+            }
+            val tokens = next.outputTokens ?: maxOf(1, text.length / 4)
+            event(
+                """{"type":"response.done","response":{"id":"$id","status":"completed","output":[{"type":"message",""" +
+                    """"role":"assistant","content":[{"type":"output_text","text":${q(text.toString())}}]}],""" +
+                    """"usage":{"output_tokens":$tokens}}}""",
+            )
+        }
+
+        private fun session(): String =
+            """{"id":"sess_fake","type":"realtime","audio":{"input":{"format":{"type":"audio/pcm","rate":16000}},""" +
+                """"output":{"format":{"type":"audio/pcm","rate":24000},"voice":${voiceName?.let(::q)},""" +
+                """"language":${language?.let(::q)}}}}"""
+
+        private fun error(message: String, type: String = "invalid_request_error") =
+            """{"type":"error","error":{"type":"$type","code":null,"message":${q(message)},"param":null}}"""
+
+        private fun event(json: String) = sink.onChunk(200, json.toByteArray(Charsets.UTF_8))
+
+        private fun end() {
+            if (open.compareAndSet(true, false)) sink.onDone()
+        }
+
+        override fun cancel() {
+            synchronized(this) {
+                if (open.compareAndSet(true, false)) sink.onCancelled()
+            }
+        }
+
+        override fun free() {}
+    }
+
     private object Finished : EngineRequest {
         override fun cancel() {}
 
@@ -381,6 +568,9 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
     }
 
     private companion object {
+        /** Upstream's error type for a commit with no audio. */
+        const val COMMIT_EMPTY = "input_audio_buffer_commit_empty"
+
         /** The progress steps of a fake load. */
         const val LOAD_STEPS = 4
 

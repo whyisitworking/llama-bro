@@ -1,9 +1,6 @@
 package com.suhel.llamabro.demo.models
 
-import com.suhel.llamabro.LlamaBro
-import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubException
-import com.suhel.llamabro.hub.HubFile
 import com.suhel.llamabro.hub.LlamaBroHub
 import com.suhel.llamabro.hub.SearchResult
 
@@ -26,52 +23,32 @@ data class SearchModel(
 val HubException.offline: Boolean get() = this is HubException.Network && unreachable
 
 /**
- * Finding models through the SDK's hub (D68): search, a repo's files, the SDK's memory projection of one file set, and
- * the quick fit of a model the list can't afford a real estimate for (demo design §7.1). Open so the phone tests can
- * hold a row's fit back, and stand in sizes the fake hub can't hold. The view models take its functions, not the
- * class, so tests pass plain lambdas.
+ * Finding models through the SDK's hub (D68): search, a repo's files, and a model's fit from file sizes alone (demo
+ * design §7.1, D101). Open so the phone tests can hold a row's fit back, and stand in sizes the fake hub can't hold.
+ * The view models take its functions, not the class, so tests pass plain lambdas.
  */
-open class ModelDiscovery(
-    private val hub: LlamaBroHub,
-    private val llamaBro: LlamaBro,
-    private val facts: suspend () -> DeviceFacts,
-) {
+open class ModelDiscovery(private val hub: LlamaBroHub, private val facts: suspend () -> DeviceFacts) {
     /** One page of the Hub's GGUF repos for [query], most downloaded first, a row per model. */
     open suspend fun search(query: String): List<SearchModel> =
         SearchRows.merge(hub.search(query.trim()) { limit = SEARCH_LIMIT }.results.map(SearchRows::of))
 
-    /** Every quantisation in [repo] once, split files summed; the image reader is not one of them. */
-    open suspend fun files(repo: String): List<RepoFile> =
-        hub.files(repo).quantizations.map { RepoFile(it.path, it.name, it.sizeBytes) }
-
     /**
-     * The files of [model] and the SDK's projection of them (the network and the GGUF headers). The fit verdict made
-     * from it is the app's ([Fits.real]); the SDK makes none (D64).
+     * Every quantisation in [repo] once, split files summed, with the encoder the hub would fetch with it; the encoder
+     * is not one of them.
      */
-    open suspend fun estimate(model: HfModel): HubEstimate {
-        val plan = hub.plan(model)
-        val fit = llamaBro.estimateFit(hub.model(model))
-
-        fun bytes(role: HubFile.Role) = plan.files.filter { it.role == role }.sumOf { it.sizeBytes }
-        return HubEstimate(
-            modelBytes = bytes(HubFile.Role.Model),
-            mmprojBytes = bytes(HubFile.Role.Mmproj),
-            fits = fit.fits,
-            contextTokens = fit.contextTokens,
-            memoryBytes = fit.bytesAtMinimum,
-            chip = fit.device,
-        )
-    }
+    open suspend fun files(repo: String): List<RepoFile> =
+        hub.files(repo).quantizations.map { RepoFile(it.path, it.name, it.sizeBytes, it.encoderBytes) }
 
     /**
-     * How the model in [repo] runs here, from the size of its Recommended file: at once for a [catalog] model (the
-     * sizes ship with the app), one tree call for any other; null when the repo has no model file to size.
+     * How the model in [repo] runs here, from the size of its Recommended file and its encoder (D101): at once for a
+     * [catalog] model (the sizes ship with the app), one tree call for any other; null when the repo has no model file
+     * to size.
      */
     open suspend fun quickFit(repo: String, catalog: CatalogEntry?): FitView? {
         val device = facts()
         if (catalog != null) return Fits.quick(catalog, device)
         val recommended = Sizes.tiers(files(repo))[SizeTier.Recommended] ?: return null
-        return Fits.quick(recommended.bytes, recommended.bytes, device)
+        return Fits.quick(recommended.bytes + recommended.encoderBytes, recommended.bytes, device)
     }
 
     private companion object {

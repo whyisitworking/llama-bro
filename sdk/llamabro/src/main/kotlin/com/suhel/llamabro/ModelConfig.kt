@@ -32,6 +32,12 @@ public class ModelConfig internal constructor() {
     /** null = llama.cpp's default. */
     public var threads: Int? = null
 
+    /**
+     * The sampling seed of requests that set none (`--seed`); null keeps llama-server's default, a random seed. A
+     * voice session's replies take this seed and none of their own (F168), so a fixed one makes them reproducible.
+     */
+    public var seed: Int? = null
+
     /** Logical batch for prompt processing (`-b`). */
     public var batchSize: Int = 512
 
@@ -189,6 +195,7 @@ public class ModelConfig internal constructor() {
 
     private fun JsonObjectBuilder.putBatching(slotSavePath: String) {
         threads?.let { put("n_threads", it) }
+        seed?.let { put("seed", it) }
         put("n_batch", batchSize)
         put("n_ubatch", microBatchSize)
         put("n_parallel", parallelSlots)
