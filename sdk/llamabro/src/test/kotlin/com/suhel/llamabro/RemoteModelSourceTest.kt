@@ -205,18 +205,6 @@ class RemoteModelSourceTest {
             assertTrue(engine.loadConfigs.isEmpty())
         }
 
-    @Test fun anUnknownSourceIsRefused() =
-        runBlocking {
-            val engine = FakeEngine()
-            val unknown = object : ModelSource {}
-            try {
-                testLlamaBro(engine).loadModel(unknown)
-                fail("expected InvalidRequest")
-            } catch (_: LlamaBroException.InvalidRequest) {
-            }
-            assertTrue(engine.loadConfigs.isEmpty())
-        }
-
     @Test fun dflashIsCheckedOnTheFetchedFiles() =
         runBlocking {
             val engine = FakeEngine()

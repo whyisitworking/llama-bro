@@ -44,23 +44,15 @@ public sealed interface ChatEvent {
     ) : ChatEvent
 
     /**
-     * The end of a reply. A class, not a data class: it gains fields (D26).
+     * The end of a reply.
      * @param abort the `LbToolAbort` a tool threw when [reason] is [FinishReason.ToolAborted]; null otherwise.
      */
-    public class Done internal constructor(
+    public data class Done internal constructor(
         public val reason: FinishReason,
         public val timings: Timings?,
         public val usage: Usage?,
         public val abort: LbToolAbort? = null,
-    ) : ChatEvent {
-        override fun equals(other: Any?): Boolean =
-            other is Done && other.reason == reason && other.timings == timings && other.usage == usage &&
-                other.abort == abort
-
-        override fun hashCode(): Int = listOf(reason, timings, usage, abort).hashCode()
-
-        override fun toString(): String = "Done(reason=$reason, timings=$timings, usage=$usage, abort=$abort)"
-    }
+    ) : ChatEvent
 }
 
 /**

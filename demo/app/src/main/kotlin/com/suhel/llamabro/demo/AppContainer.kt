@@ -10,9 +10,6 @@ import androidx.room.Room
 import androidx.work.WorkManager
 import androidx.work.WorkerFactory
 import com.suhel.llamabro.LlamaBro
-import com.suhel.llamabro.chat.ChatEvent
-import com.suhel.llamabro.chat.Content
-import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.demo.chat.ChatEngine
 import com.suhel.llamabro.demo.chat.Microphone
 import com.suhel.llamabro.demo.chat.ModelHost
@@ -29,7 +26,6 @@ import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.TokenStore
 import com.suhel.llamabro.demo.data.db.ChatDatabase
-import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.DownloadScheduler
 import com.suhel.llamabro.demo.models.ModelDiscovery
@@ -40,6 +36,7 @@ import com.suhel.llamabro.demo.models.installedModel
 import com.suhel.llamabro.hub.LlamaBroHub
 import com.suhel.llamabro.hub.work.LlamaBroWorkerFactory
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -47,7 +44,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -66,7 +62,7 @@ class AppContainer(
     settingsName: String = "settings",
     val clock: () -> Long = System::currentTimeMillis,
     val database: ChatDatabase = Room.databaseBuilder(app, ChatDatabase::class.java, databaseName).build(),
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + logFailures),
     settingsStore: DataStore<Preferences> =
         PreferenceDataStoreFactory.create(scope = scope) { app.preferencesDataStoreFile(settingsName) },
     val tokenStore: TokenStore = TokenStore(app),
@@ -115,7 +111,9 @@ class AppContainer(
                 chats.recoverInterrupted()
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (
+                @Suppress("TooGenericExceptionCaught") e: Exception,
+            ) {
                 Log.w("AppContainer", "could not recover interrupted replies: ${e.javaClass.simpleName}")
             }
         }
@@ -185,3 +183,10 @@ class AppContainer(
         database.close()
     }
 }
+
+/**
+ * The app scope's last resort: background work that fails with nothing to catch it (a full disk, a database error) is
+ * logged and ends only itself. Unhandled, it would reach the thread's handler and close the app.
+ */
+private val logFailures =
+    CoroutineExceptionHandler { _, e -> Log.e("AppContainer", "background work failed", e) }

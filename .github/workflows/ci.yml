@@ -1,0 +1,87 @@
+# The checks that need no model and no device. Everything else (the native and contract tests against real GGUFs,
+# the host end-to-end, the phone steps, the demo's instrumented runs) stays in sdk/scripts/check.sh and
+# demo/scripts/check.sh, run locally: they need models and a phone this runner doesn't have.
+name: CI
+
+on:
+  push:
+    branches: [main, v2]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NDK: "29.0.14206865"
+  CMAKE: "4.1.2"
+
+jobs:
+  quality:
+    name: ktlint, detekt, imports
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew qualityCheck
+
+  sdk:
+    name: SDK API, lint, JVM tests, AARs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: android-actions/setup-android@v3
+      - name: NDK and CMake
+        run: yes | sdkmanager "ndk;${NDK}" "cmake;${CMAKE}" > /dev/null
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Public API matches the reviewed dumps
+        run: >
+          ./gradlew -p sdk
+          :llamabro:apiCheck :llamabro-typed:apiCheck :llamabro-testing:apiCheck
+          :llamabro-hub:apiCheck :llamabro-hub-work:apiCheck :llamabro-hub-testing:apiCheck
+      - name: Lint
+        run: >
+          ./gradlew -p sdk
+          :llamabro:lintRelease :llamabro-testing:lintRelease :llamabro-hexagon:lintRelease
+          :llamabro-opencl:lintRelease :llamabro-hub:lintRelease :llamabro-hub-work:lintRelease
+          :llamabro-hub-testing:lintRelease :llamabro-typed:lintRelease
+      # the host-native tests skip without -Pllamabro.host.* (they need a host build and models)
+      - name: JVM tests
+        run: >
+          ./gradlew -p sdk
+          :llamabro:testDebugUnitTest :llamabro-testing:testDebugUnitTest :llamabro-hexagon:testDebugUnitTest
+          :llamabro-hub:testDebugUnitTest :llamabro-hub-work:testDebugUnitTest :llamabro-hub-testing:testDebugUnitTest
+          :llamabro-typed:testDebugUnitTest :llamabro-typed-ksp:test
+      - name: AARs (the native build, with -Werror on the bridge)
+        run: >
+          ./gradlew -p sdk
+          :llamabro:assembleRelease :llamabro-hub:assembleRelease :llamabro-hub-work:assembleRelease
+
+  demo:
+    name: Demo unit tests, lint, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: android-actions/setup-android@v3
+      - name: NDK and CMake
+        run: yes | sdkmanager "ndk;${NDK}" "cmake;${CMAKE}" > /dev/null
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :demo:designsystem:testDebugUnitTest :demo:app:testDebugUnitTest
+      - run: ./gradlew :demo:app:lintDebug :demo:designsystem:lintDebug
+      - run: ./gradlew :demo:app:assembleDebug

@@ -87,7 +87,6 @@ public class JsonArgs internal constructor(public val raw: String) {
          * Arguments from a JSON object string, as the agent loop parses them. Meant for tool arguments and for testing
          * a tool's handler alone: the failure reason is built for the model, so don't use it on other JSON.
          */
-        @JvmStatic
         public fun parse(json: String): JsonArgs = JsonArgs(json)
     }
 }

@@ -1,8 +1,8 @@
 package com.suhel.llamabro
 
-import com.suhel.llamabro.internal.Engine
 import com.suhel.llamabro.internal.LlamaBroRuntime
 import com.suhel.llamabro.internal.MemoryBudget
+import com.suhel.llamabro.spi.Engine
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray

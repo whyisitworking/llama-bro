@@ -149,7 +149,6 @@ public open class DownloadNotifications {
          * Creates the [CHANNEL_ID] channel, named "Downloads", at low importance (no sound). The defaults call it; an
          * override that posts to this channel before them should too. Calling it again does nothing.
          */
-        @JvmStatic
         public fun createChannel(context: Context) {
             context.getSystemService(NotificationManager::class.java).createNotificationChannel(
                 NotificationChannel(

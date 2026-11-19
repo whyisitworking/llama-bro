@@ -3,6 +3,7 @@ package com.suhel.llamabro
 import com.suhel.llamabro.chat.FinishReason
 import com.suhel.llamabro.chat.RequestOptions
 import com.suhel.llamabro.internal.ChatJson
+import com.suhel.llamabro.internal.ErrorMapping
 import com.suhel.llamabro.internal.JsonMergePatch
 import com.suhel.llamabro.internal.Media
 import kotlinx.coroutines.flow.single
@@ -40,23 +41,16 @@ public suspend fun Model.transcribe(
     Media.checkAudio(info, source, WAV)
     val body = transcriptionBody(RequestOptions(options), language, prompt)
     val attachment = Media.attachment("file", WAV, source)
-    val response =
-        Json.parseToJsonElement(
-            request(Endpoint.Transcriptions, body.toString(), listOf(attachment)).single(),
-        )
-    val text =
-        response.jsonObject["text"]
-            ?.jsonPrimitive
-            ?.content
-            .orEmpty()
+    val reply = request(Endpoint.Transcriptions, body.toString(), listOf(attachment))
+    val (text, written) =
+        ErrorMapping.readReply("transcription") {
+            val response = Json.parseToJsonElement(reply.single()).jsonObject
+            val text = response["text"]?.jsonPrimitive?.content.orEmpty()
+            text to (response["usage"] as? JsonObject)?.get("output_tokens")?.jsonPrimitive?.intOrNull
+        }
     // upstream's transcription response has no finish reason (to_json_oaicompat_asr): a reply as long as the limit
     // was cut there
     val limit = (body["max_tokens"] as? JsonPrimitive)?.content?.toIntOrNull()
-    val written =
-        (response.jsonObject["usage"] as? JsonObject)
-            ?.get("output_tokens")
-            ?.jsonPrimitive
-            ?.intOrNull
     return if (limit != null && written != null && written >= limit) {
         Typed.Incomplete(FinishReason.Length, text)
     } else {

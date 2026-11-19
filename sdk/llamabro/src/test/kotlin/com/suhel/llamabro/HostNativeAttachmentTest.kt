@@ -1,11 +1,10 @@
 package com.suhel.llamabro
 
-import com.suhel.llamabro.internal.Engine
-import com.suhel.llamabro.internal.EngineAttachment
-import com.suhel.llamabro.internal.EngineModel
 import com.suhel.llamabro.internal.JniEngine
-import com.suhel.llamabro.internal.NativeError
-import com.suhel.llamabro.internal.RequestSink
+import com.suhel.llamabro.spi.EngineAttachment
+import com.suhel.llamabro.spi.EngineModel
+import com.suhel.llamabro.spi.NativeError
+import com.suhel.llamabro.spi.RequestSink
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.int
@@ -159,23 +158,6 @@ class HostNativeAttachmentTest {
             assertArrayEquals(clip.readBytes(), JniEngine.readFd(fdOf(stream.fd)))
             assertEquals(50L, stream.channel.position())
             assertNotEquals(-1, stream.read()) // still open
-        }
-        // the fakes' default reads the same way: whole, from offset 0, the caller's offset kept
-        val fake =
-            object : Engine {
-                override fun init(configJson: String): String? = null
-
-                override fun setLog(listener: ((level: Int, text: String) -> Unit)?) {}
-
-                override fun devices(): String = "[]"
-
-                override fun load(configJson: String, onProgress: (Float) -> Boolean): EngineModel = error("unused")
-            }
-        FileInputStream(clip).use { stream ->
-            stream.skip(50)
-            assertArrayEquals(clip.readBytes(), fake.readFd(fdOf(stream.fd)))
-            assertEquals(50L, stream.channel.position())
-            assertNotEquals(-1, stream.read())
         }
         try {
             JniEngine.readFd(4000)

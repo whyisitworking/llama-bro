@@ -154,7 +154,7 @@ context.contentResolver.openFileDescriptor(voiceNoteUri, "r")!!.use { pfd ->
 // …or only write down what it says
 when (val text = model.transcribe(MediaSource.file(recording.path), language = "en")) {
     is Typed.Value -> showTranscript(text.value)
-    is Typed.Incomplete -> showTranscript(text.json + "…")   // cut at maxTokens
+    is Typed.Incomplete -> showTranscript(text.text + "…")   // cut at maxTokens
     is Typed.Invalid -> Unit                                  // never for a transcript
 }
 
@@ -209,9 +209,9 @@ voice.close()        // hang up
 
 `model.info.voices` lists the voices a model speaks with (`supportsSpeech` when there are any). The SDK sets nothing in the session for you: without a voice, a language and an instruction to answer, LFM3-Omni can
 speak noise for minutes or read the question back (F166). Upstream sends no transcript of the user's words in a
-conversation; `transcribeUser { language = "en" }` adds one per turn (`VoiceEvent.UserTranscript`, after the turn's
-`TurnCommitted`), transcribed on a second slot while the reply is made, so load the model with `parallelSlots = 2`. On
-the phone it costs about 0.3 s before the reply's first audio (F170). Other realtime events arrive as `VoiceEvent.Other`, and `sendRaw` sends any client event.
+conversation. To caption them, keep each turn's recording and pass it to `transcribe`; loaded with `parallelSlots = 2`,
+the model transcribes it on the second slot while the reply is made, about 0.3 s later to the first audio on the
+phone (F170, D109). Other realtime events arrive as `VoiceEvent.Other`, and `sendRaw` sends any client event.
 
 ## Embeddings and rerank
 
@@ -288,8 +288,8 @@ the reasoning would only justify it.
 
 ```kotlin
 when (val r = chat.ask<Review>("Review: the battery lasts two days, but the screen scratches easily.")) {
-    is Typed.Value -> show(r.value)           // r.json is the model's JSON, r.reasoning its thinking (Think on)
-    is Typed.Incomplete -> retry(r.reason)    // cut at the output limit (Length), with r.json so far
+    is Typed.Value -> show(r.value)           // r.text is the model's JSON, r.reasoning its thinking (Think on)
+    is Typed.Incomplete -> retry(r.reason)    // cut at the output limit (Length), with r.text so far
     is Typed.Invalid -> report(r.cause)       // the JSON didn't decode: a failing require or check in init
 }
 val again = chat.askAgain<Review>()          // the last reply again, held to the same schema
@@ -410,11 +410,16 @@ class) in a unit test.
 
 ## Errors
 
-Everything the SDK throws is a `LlamaBroException`, with the underlying error as its `cause`:
+A call or flow fails with a `LlamaBroException`, with the underlying error as its `cause`:
 `InvalidRequest`, `ContextExceeded` (prompt and context sizes), `InputTooLong` (an embedding or rerank input past the
-batch), `NotSupported`, `Unavailable`, `ServerError`,
-`ModelLoadFailed` (`reason` `FileNotFound` or `Other`, with llama.cpp's own reason in the message), `ModelClosed`,
-`CompactionTruncated`, and `Busy` (a second send on a busy conversation).
+batch), `NotSupported`, `Unavailable`, `ServerError` (also a reply the SDK couldn't read, with status 200),
+`ModelLoadFailed` (`reason` `FileNotFound`, `InsufficientMemory` or `Other`, with llama.cpp's own reason in the
+message), `DeviceUnavailable` (`DevicePolicy.Only` couldn't be met), `ModelClosed`, `CompactionTruncated`, and `Busy`
+(a second send on a busy conversation).
+
+Using the API wrongly is the one exception, as in Kotlin's own `require` and `check`: an invalid argument throws
+`IllegalArgumentException` and a call made in the wrong state `IllegalStateException`, each listed under the function's
+`@throws`.
 
 ## Testing your app
 
@@ -441,9 +446,7 @@ Tool handlers can be tested alone with `JsonArgs.parse("""{"city":"Paris"}""")`.
 llama-server does), and `inputTooLong(tokens)` the batch error. `embedRequests` and `rerankRequests` keep the bodies.
 `transcribe` takes `transcript(text, cut = false)` from the same queue, and `transcribeRequests` keeps its fields. A
 voice session answers each asked-for reply with the next `voiceReply { text("…"); audio(pcm) }`, and `voiceEvents`
-keeps every client event it was sent; with `transcribeUser`, each turn's caption takes the next `transcript(text)` (load
-with `parallelSlots = 2`). The
-fake model neither sees nor hears until you set `supportsVision` or `supportsAudio` before loading, as a text model
+keeps every client event it was sent. The fake model neither sees nor hears until you set `supportsVision` or `supportsAudio` before loading, as a text model
 on the phone refuses pictures and clips.
 
 With the hub, add `testImplementation("io.github.whyisitworking:llamabro-hub-testing")`. `FakeLlamaBroHub` is the real
@@ -498,8 +501,8 @@ they go to stderr, which Android discards (F22). With none, the core logs to log
 ### Dependency injection
 
 `LlamaBro.create(context, config)` is the entry point, and there is one runtime per process. The first call creates it;
-a later call with an equal config returns the same object, and a different config throws `InvalidRequest` at once (D70).
-A logger is compared by reference, so create the config once. A DI container's singleton scope does that; with Hilt:
+a later call with the same settings returns the same object (keeping the first logger), and different settings throw
+`InvalidRequest` at once (D70, D106). A DI container's singleton scope is the natural home; with Hilt:
 
 ```kotlin
 @Module
@@ -585,9 +588,9 @@ files live in the app's private `noBackupFilesDir/llamabro/hub` by default; they
 be read by other apps. Set `cacheDir` in `HubConfig` to another app-private directory if you want a specific location.
 
 `LlamaBroHub.create(context, config)` gives one hub per cache folder (D70). The same folder with an equal `HubConfig`
-returns the same hub; a different config for that folder throws `IllegalStateException` naming the folder. Hubs on
-different folders coexist, so an app can move its models without a restart. A config compares its logger and token
-provider by reference, so create it once. In a DI singleton scope, provide the hub next to the runtime:
+returns the same hub, keeping the first hub's logger and token provider; a different endpoint or progress interval for
+that folder throws `IllegalStateException` naming the folder (D106). Hubs on different folders coexist, so an app can
+move its models without a restart. In a DI singleton scope, provide the hub next to the runtime:
 
 ```kotlin
 @Module
@@ -613,7 +616,6 @@ Configure a private token provider in the `HubConfig` you pass to `LlamaBroHub.c
 plan or download and sends the token only to the Hub endpoint, never to a redirect target:
 
 ```kotlin
-// A property, built once: the config compares its token provider by reference (D70).
 val hubConfig = HubConfig { token { tokenStore.read() } }
 val hub = LlamaBroHub.create(context, hubConfig)
 ```

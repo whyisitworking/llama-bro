@@ -1,14 +1,10 @@
-package com.suhel.llamabro.internal
+package com.suhel.llamabro.spi
 
 import com.suhel.llamabro.InternalLlamaBroApi
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.FileInputStream
-import java.nio.ByteBuffer
 
 /**
- * The native layer as the Kotlin API sees it: [JniEngine] in production, a fake in tests. Public only for
- * `llamabro-testing` (D27); apps never implement it.
+ * The native layer as the Kotlin API sees it: the JNI engine in production, a fake in tests. Public only for
+ * `llamabro-testing` (D27, D104); apps never implement it.
  */
 @InternalLlamaBroApi
 public interface Engine {
@@ -35,24 +31,9 @@ public interface Engine {
 
     /**
      * `lb_read_fd`: the whole file behind [fd], read from offset 0, and [fd] left open with its offset unchanged (D84:
-     * a descriptor in chat content is read once into bytes). Throws [NativeError] when it can't be read. The default,
-     * for fakes on a JVM, reads it through `/dev/fd` with positional reads, as the native side uses `pread`.
+     * a descriptor in chat content is read once into bytes). Throws [NativeError] when it can't be read.
      */
-    public fun readFd(fd: Int): ByteArray =
-        FileInputStream(File("/dev/fd/$fd")).use { stream ->
-            val channel = stream.channel
-            val out = ByteArrayOutputStream()
-            val buffer = ByteBuffer.allocate(64 * 1024)
-            var position = 0L
-            while (true) {
-                buffer.clear()
-                val n = channel.read(buffer, position)
-                if (n < 0) break
-                out.write(buffer.array(), 0, n)
-                position += n
-            }
-            out.toByteArray()
-        }
+    public fun readFd(fd: Int): ByteArray
 }
 
 @InternalLlamaBroApi
@@ -119,12 +100,15 @@ public interface EngineRequest {
 }
 
 /** `LB_OK` from [EngineRequest.send]. */
+@InternalLlamaBroApi
 public const val SEND_OK: Int = 0
 
 /** `LB_ERR_INVALID_ARG` from [EngineRequest.send]: not a realtime request. */
+@InternalLlamaBroApi
 public const val SEND_NOT_REALTIME: Int = 1
 
 /** `LB_ERR_CANCELLED` from [EngineRequest.send]: the conversation has closed. */
+@InternalLlamaBroApi
 public const val SEND_CLOSED: Int = 6
 
 /** A request's events: chunks of the HTTP body with its status, then exactly one of [onDone] or [onCancelled]. */
@@ -135,9 +119,4 @@ public interface RequestSink {
     public fun onDone()
 
     public fun onCancelled()
-}
-
-/** The client's side of a realtime conversation (D97): [send] answers false once it has closed. */
-internal interface RealtimeLink {
-    fun send(message: String): Boolean
 }

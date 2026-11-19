@@ -1,6 +1,7 @@
 package com.suhel.llamabro.demo.chat
 
 import com.suhel.llamabro.demo.data.AudioStore
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -85,6 +86,21 @@ class VoiceRecorderTest {
         assertEquals(3, take.levels.size)
         assertTrue(store.file(take.name).exists())
     }
+
+    @Test fun aRecordingThatCantBeWrittenGoesAndSaysSo() =
+        runBlocking {
+            val audio = folder.newFolder("readonly")
+            val recorder = VoiceRecorder(AudioStore(audio), Script(blocks = 3)::source, scope)
+            audio.setWritable(false)
+            val failure = CompletableDeferred<RecordingFailure>()
+            try {
+                recorder.start(onFailure = { failure.complete(it) })
+                assertEquals(RecordingFailure.Storage, withTimeout(5_000) { failure.await() })
+                assertNull(recorder.take.value)
+            } finally {
+                audio.setWritable(true)
+            }
+        }
 
     @Test fun aRecordingStopsAtTheLimitAndWaits() {
         val recorder = recorder(Script(blocks = 1_000), limitMillis = 500)

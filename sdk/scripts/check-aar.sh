@@ -33,7 +33,7 @@ if [ -n "$core" ]; then
     core_libs="$tmp/core/jni/arm64-v8a"
     # the NDK's system libraries, plus libOpenCL.so, the vendor public library llamabro-opencl's manifest asks for
     # (<uses-native-library>); libcdsprpc.so, llamabro-hexagon's, is opened at run time, never NEEDED
-    system="libc.so libm.so libdl.so liblog.so libandroid.so libvulkan.so libOpenCL.so"
+    system="libc.so libm.so libdl.so liblog.so libandroid.so libOpenCL.so"
     for so in "$libs"/*.so; do
         name="$(basename "$so")"
         case "$name" in

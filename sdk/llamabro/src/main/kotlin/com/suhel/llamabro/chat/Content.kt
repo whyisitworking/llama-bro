@@ -12,16 +12,9 @@ public sealed interface Content {
      * or a descriptor's contents into the Java heap: the native side reads them and writes the base64 llama-server
      * takes (D84).
      */
-    public class Image(public val source: MediaSource, public val mimeType: String = "image/jpeg") : Content {
+    public data class Image(public val source: MediaSource, public val mimeType: String = "image/jpeg") : Content {
         /** A picture already in memory. */
         public constructor(bytes: ByteArray, mimeType: String = "image/jpeg") : this(MediaSource.bytes(bytes), mimeType)
-
-        override fun equals(other: Any?): Boolean =
-            other is Image && other.mimeType == mimeType && other.source == source
-
-        override fun hashCode(): Int = 31 * source.hashCode() + mimeType.hashCode()
-
-        override fun toString(): String = "Image($source, $mimeType)"
     }
 
     /**
@@ -29,12 +22,5 @@ public sealed interface Content {
      * the formats llama.cpp decodes; the SDK converts nothing, so record WAV or convert first. [mimeType] names the
      * format: `audio/wav`, `audio/mpeg` or `audio/flac`.
      */
-    public class Audio(public val source: MediaSource, public val mimeType: String = "audio/wav") : Content {
-        override fun equals(other: Any?): Boolean =
-            other is Audio && other.mimeType == mimeType && other.source == source
-
-        override fun hashCode(): Int = 31 * source.hashCode() + mimeType.hashCode() + 1
-
-        override fun toString(): String = "Audio($source, $mimeType)"
-    }
+    public data class Audio(public val source: MediaSource, public val mimeType: String = "audio/wav") : Content
 }

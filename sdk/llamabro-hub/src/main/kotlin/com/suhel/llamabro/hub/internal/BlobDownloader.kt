@@ -74,7 +74,9 @@ internal class BlobDownloader(
                 try {
                     attemptOnce()
                     return
-                } catch (e: Exception) {
+                } catch (
+                    @Suppress("TooGenericExceptionCaught") e: Exception,
+                ) {
                     // A stop closes the connection under a blocked read, which fails as an IOException: it is the stop.
                     coroutineContext.ensureActive()
                     // Only a network failure that may pass gets another try. Cancelled, wrong bytes, a refusal (a 4xx),
@@ -243,7 +245,9 @@ internal class BlobDownloader(
                 createSymlink(snapshot.toPath(), relative)
                 storage.fsyncDir(snapshot.parentFile!!)
                 return
-            } catch (e: Exception) {
+            } catch (
+                @Suppress("TooGenericExceptionCaught") e: Exception,
+            ) {
                 if (degradedSymlinks.compareAndSet(false, true)) {
                     logger?.log(
                         LogLevel.Warn,
@@ -267,30 +271,18 @@ internal class BlobDownloader(
         if (response.status !in 200..299) throw statusError(response, path)
     }
 
+    // a 416 answers a range past the end: the partial is stale, and a fresh try starts it over
     private fun statusError(response: Response, path: String): HubException =
-        when (response.status) {
-            401, 403 -> {
-                HubException.Unauthorized(response.status, "access denied: $path")
-            }
-
-            404 -> {
-                HubException.NotFound("file not found: $path", emptyList())
-            }
-
-            429 -> {
-                HubException.RateLimited(response.headers["retry-after"]?.firstOrNull()?.toLongOrNull())
-            }
-
-            else -> {
-                HubException.Network(
-                    "HTTP ${response.status} for $path",
-                    null,
-                    response.status >= 500 || response.status == 416,
-                )
-            }
-        }
+        hubFailure(
+            response,
+            unauthorized = "access denied: $path",
+            notFound = "file not found: $path",
+            other = "HTTP ${response.status} for $path",
+            alsoRetryable = setOf(HTTP_RANGE_NOT_SATISFIABLE),
+        )
 
     private companion object {
+        const val HTTP_RANGE_NOT_SATISFIABLE = 416
         const val MAX_ATTEMPTS = 3
         const val RETRY_BACKOFF_MS = 2_000L
         const val MID_BODY_BYTES = 2L * 1024 * 1024

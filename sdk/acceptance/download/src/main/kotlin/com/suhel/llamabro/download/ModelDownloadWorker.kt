@@ -10,7 +10,6 @@ import androidx.work.WorkerParameters
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubException
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.collect
 
 class ModelDownloadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {

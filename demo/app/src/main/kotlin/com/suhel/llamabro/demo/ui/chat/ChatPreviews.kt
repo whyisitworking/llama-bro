@@ -3,7 +3,6 @@ package com.suhel.llamabro.demo.ui.chat
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.PreviewParameter
@@ -20,7 +19,6 @@ import com.suhel.llamabro.demo.designsystem.components.LimitLine
 import com.suhel.llamabro.demo.designsystem.components.SheetFrame
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.designsystem.components.gutterPadding
-import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.LibraryModel

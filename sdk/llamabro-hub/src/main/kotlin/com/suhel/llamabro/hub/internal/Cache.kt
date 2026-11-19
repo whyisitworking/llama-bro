@@ -3,7 +3,6 @@ package com.suhel.llamabro.hub.internal
 import com.suhel.llamabro.hub.CachedModel
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubFile
-import com.suhel.llamabro.hub.PlanOptions
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -15,22 +14,18 @@ import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
 /** Local cache enumeration and upstream-compatible removal. No network requests. */
-internal class Cache(private val cacheDir: File, private val resolver: Resolver, private val copies: LocalCopies) {
+internal class Cache(private val cacheDir: File, private val resolver: Resolver) {
     /**
-     * The installed copies (D64), then what the refs view adds for a cache from before the installed record. The refs
-     * view alone follows `refs/main`, which an online plan or a cancelled update moves off a complete copy, so it would
-     * drop a model that still loads. Only complete selections are listed: a stopped download leaves its model file
-     * linked before its projector or its other split parts arrive, and that copy doesn't load.
+     * The installed copies whose files are all on disk (D64, D107): what `source` loads. Upstream's view, the snapshot
+     * `refs/main` names, follows a ref that an online plan or a cancelled update moves off a complete copy, and can't
+     * tell a stopped download from a finished one.
      */
-    fun list(): List<CachedModel> {
-        val records =
-            listOf(PlanStore.PLANS, PlanStore.INSTALLED).associateWith { PlanStore.readEvery(cacheDir, it) }
-        return (installedCopies(records.getValue(PlanStore.INSTALLED)) + refsView(records.values.flatten()))
+    fun list(): List<CachedModel> =
+        installedCopies(PlanStore.readEvery(cacheDir, PlanStore.INSTALLED))
             .distinctBy { it.model.toString() }
             .sortedBy { it.model.toString() }
-    }
 
-    /** Each installed record whose files are all on disk, named `repo:TAG` as the refs view names it. */
+    /** Each installed record whose files are all on disk, named `repo:TAG` by its model file's tag. */
     private fun installedCopies(installed: List<Pair<HfModel, PlanStore.Record>>): List<CachedModel> =
         installed.mapNotNull { (model, record) ->
             val parts = record.files.filter { it.role == HubFile.Role.Model }
@@ -46,51 +41,6 @@ internal class Cache(private val cacheDir: File, private val resolver: Resolver,
             val path = File(cacheDir, "$folder/snapshots/${file.commit ?: record.commit}/${file.path}")
             path.isFile && path.length() == file.size
         }
-
-    /**
-     * Upstream's view: each tag in the snapshot `refs/main` names whose split parts are all there. A tag the SDK holds
-     * a plan or installed record of is listed only when one of those records is complete or the tag's default
-     * selection loads from disk as `source` would load it, since the snapshot alone can't tell a stopped download from
-     * a copy made without a projector (D89).
-     */
-    private fun refsView(records: List<Pair<HfModel, PlanStore.Record>>): List<CachedModel> =
-        cacheDir
-            .listFiles()
-            .orEmpty()
-            .asSequence()
-            .filter { it.isDirectory }
-            .mapNotNull { directory -> repoOfFolder(directory.name).takeIf(::isValidRepoId) }
-            .flatMap { repo ->
-                val files = resolver.cachedListing(repo)?.files.orEmpty()
-                files
-                    .asSequence()
-                    .mapNotNull { file ->
-                        val info = splitInfo(file.path)
-                        info.tag.takeIf { info.index == 1 && it.isNotEmpty() && !nameIsSidecar(info.prefix) }
-                    }.distinct()
-                    .mapNotNull { tag ->
-                        val primary =
-                            files.first { file ->
-                                val info = splitInfo(file.path)
-                                info.index == 1 && info.tag == tag && !nameIsSidecar(info.prefix)
-                            }
-                        val parts = splitFiles(files, primary)
-                        val count = splitInfo(primary.path).count
-                        val ofTag = records.filter { (model, record) -> model.repo == repo && tagOf(record) == tag }
-                        val complete =
-                            (count <= 1 || parts.size == count) &&
-                                (
-                                    ofTag.isEmpty() ||
-                                        ofTag.any { (model, record) -> onDisk(model, record) } ||
-                                        copies.loads(HfModel("$repo:$tag"), PlanOptions())
-                                )
-                        CachedModel(HfModel("$repo:$tag"), parts.sumOf { it.sizeBytes }).takeIf { complete }
-                    }
-            }.toList()
-
-    /** The tag of [record]'s model file, as the refs view reads it from a snapshot. */
-    private fun tagOf(record: PlanStore.Record): String? =
-        record.files.firstOrNull { it.role == HubFile.Role.Model }?.let { splitInfo(it.path).tag }
 
     suspend fun delete(model: HfModel): Boolean {
         val repoDir = File(cacheDir, repoFolder(model.repo))

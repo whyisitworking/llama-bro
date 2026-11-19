@@ -36,8 +36,10 @@ Run the check for the area you changed, and a change is ready when it prints `AL
 each step proves and what it needs. Two conventions: a check runs once per change (debug on the narrowest slice, then run
 it), and benchmarks run only when a change could move a budget.
 
-Style is enforced: `./gradlew ktlintFormat` formats Kotlin (ktlint, official style), `./gradlew qualityCheck` runs ktlint
-and detekt, and lint runs with warnings as errors. A public API change fails the API check: review the dump diff and update
+Style is enforced: `./gradlew ktlintFormat` formats Kotlin (ktlint, official style), `./gradlew qualityCheck` runs ktlint,
+detekt and an unused-import check, lint runs with warnings as errors, and the bridge and JNI code compile with
+`-Wall -Wextra -Werror`. CI (`.github/workflows/ci.yml`) runs the checks that need no model and no device; the rest stay
+in the scripts above. A public API change fails the API check: review the dump diff and update
 it with `./gradlew -p sdk :<module>:apiDump`, committing the `.api` file with the change.
 
 ## Upgrading llama.cpp

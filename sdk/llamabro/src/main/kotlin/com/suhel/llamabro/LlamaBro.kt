@@ -5,13 +5,13 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Process
 import com.suhel.llamabro.internal.BackendDiscovery
-import com.suhel.llamabro.internal.BackendInstaller
-import com.suhel.llamabro.internal.BackendOptions
-import com.suhel.llamabro.internal.Engine
 import com.suhel.llamabro.internal.JniEngine
 import com.suhel.llamabro.internal.LlamaBroRuntime
-import com.suhel.llamabro.internal.LogcatLogger
 import com.suhel.llamabro.internal.MemoryBudget
+import com.suhel.llamabro.spi.BackendInstaller
+import com.suhel.llamabro.spi.BackendOptions
+import com.suhel.llamabro.spi.Engine
+import com.suhel.llamabro.spi.LogcatLogger
 import java.io.File
 
 /**
@@ -90,18 +90,16 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
         private var createdConfig: LlamaBroConfig? = null
 
         /**
-         * The process's runtime (D70). The first call creates it; a later call with an equal [config] returns the
-         * same object, so a DI container can hold it as a singleton. The native runtime exists once per process, so a
-         * different config throws at once, before anything is built. [LlamaBroConfig] compares its logger by
-         * reference: create the config once, not on each call.
+         * The process's runtime (D70). The first call creates it; a later call with the same settings (log level, NPU
+         * polling) returns the same object, so a DI container can hold it as a singleton, and the first call's logger
+         * stays in use (D106). The native runtime exists once per process, so different settings throw at once,
+         * before anything is built.
          *
          * Runs no native code, so it's cheap on the main thread: the native runtime starts in the first [loadModel]
          * or [devices].
          *
-         * @throws LlamaBroException.InvalidRequest if the process's runtime was created with another [config].
+         * @throws LlamaBroException.InvalidRequest if the process's runtime was created with other settings.
          */
-        @JvmStatic
-        @JvmOverloads
         public fun create(context: Context, config: LlamaBroConfig = LlamaBroConfig.Default): LlamaBro =
             create(config) {
                 val app = context.applicationContext
@@ -133,7 +131,7 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
                     createdConfig = config
                 }
             }
-            if (createdConfig != config) {
+            if (!sameSettings(checkNotNull(createdConfig), config)) {
                 throw LlamaBroException.InvalidRequest(
                     "LlamaBro.create: the runtime already exists with $createdConfig; it can't be created again with " +
                         "$config. The native runtime is one per process: create the config once and share the object.",
@@ -141,6 +139,10 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
             }
             return existing
         }
+
+        // the logger is not a setting: a second create with a new logger lambda gets the runtime, which keeps the first
+        private fun sameSettings(a: LlamaBroConfig, b: LlamaBroConfig): Boolean =
+            a.logLevel == b.logLevel && a.npuPolling == b.npuPolling
 
         /** Forgets the created runtime so a test can start clean. */
         @Synchronized
@@ -154,7 +156,6 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
          * `noBackupFilesDir` (saved slots go under it).
          */
         @InternalLlamaBroApi
-        @JvmStatic
         public fun withEngine(
             engine: Engine,
             filesDir: File,
@@ -167,7 +168,6 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
          * `java.library.path`.
          */
         @InternalLlamaBroApi
-        @JvmStatic
         public fun withHostEngine(
             libDir: String,
             filesDir: File,
@@ -177,7 +177,7 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
 }
 
 /** A ggml backend device, from `lb_runtime_devices`. */
-public class DeviceInfo internal constructor(
+public data class DeviceInfo internal constructor(
     public val name: String,
     public val description: String,
     /** The chip kind, from the backend that added it (D29, D32); ggml's own type calls the NPU a GPU (F32). */
@@ -185,16 +185,7 @@ public class DeviceInfo internal constructor(
     /** Bytes, as ggml reports them; not a usable budget on a phone (F33, F64). */
     public val memoryFree: Long,
     public val memoryTotal: Long,
-) {
-    override fun equals(other: Any?): Boolean = other is DeviceInfo && parts() == other.parts()
-
-    override fun hashCode(): Int = parts().hashCode()
-
-    override fun toString(): String =
-        "DeviceInfo(name=$name, description=$description, kind=$kind, memoryFree=$memoryFree, memoryTotal=$memoryTotal)"
-
-    private fun parts() = listOf(name, description, kind, memoryFree, memoryTotal)
-}
+)
 
 /** The backend artifacts announced in [app]'s merged manifest (D24): one `PackageManager` call, no classpath scan. */
 private fun manifestBackends(app: Context, options: BackendOptions): BackendDiscovery.Result {

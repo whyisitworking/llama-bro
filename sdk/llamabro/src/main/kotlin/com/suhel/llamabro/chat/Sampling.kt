@@ -138,7 +138,6 @@ public class Sampling internal constructor(private val values: Map<String, Any>)
 
     public companion object {
         /** No field set: every value is the model's or llama-server's default. */
-        @JvmField
         public val Default: Sampling = Sampling(emptyMap())
 
         /** Wire order: P1's eleven first, so P1's request bodies stay byte-identical (PA T2 `bodiesMatchP1`). */

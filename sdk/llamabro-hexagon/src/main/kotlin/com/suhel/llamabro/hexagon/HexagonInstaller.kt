@@ -2,9 +2,9 @@ package com.suhel.llamabro.hexagon
 
 import android.content.Context
 import android.content.res.AssetManager
-import com.suhel.llamabro.internal.BackendInstaller
-import com.suhel.llamabro.internal.BackendLibraries
-import com.suhel.llamabro.internal.BackendOptions
+import com.suhel.llamabro.spi.BackendInstaller
+import com.suhel.llamabro.spi.BackendLibraries
+import com.suhel.llamabro.spi.BackendOptions
 import java.io.File
 import java.io.InputStream
 

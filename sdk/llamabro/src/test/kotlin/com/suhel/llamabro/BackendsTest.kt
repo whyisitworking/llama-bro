@@ -1,8 +1,8 @@
 package com.suhel.llamabro
 
 import com.suhel.llamabro.internal.BackendDiscovery
-import com.suhel.llamabro.internal.BackendLibraries
 import com.suhel.llamabro.internal.LlamaBroRuntime
+import com.suhel.llamabro.spi.BackendLibraries
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

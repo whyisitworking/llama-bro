@@ -1,7 +1,6 @@
 package com.suhel.llamabro.demo.ui.models
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
-import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.Format
@@ -135,6 +134,7 @@ class LibraryViewModelTest {
     @Test fun pauseResumeAndCancelGoToTheRepository() {
         val vm = viewModel()
         vm.pause(deep)
+        withTimeoutBlocking { while (scheduler.cancelled.isEmpty()) kotlinx.coroutines.delay(10) }
         assertEquals(listOf(deep), scheduler.cancelled)
         vm.resume(deep)
         withTimeoutBlocking { while (scheduler.enqueued.isEmpty()) kotlinx.coroutines.delay(10) }

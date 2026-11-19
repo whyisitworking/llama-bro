@@ -3,11 +3,7 @@ package com.suhel.llamabro.demo.designsystem.samples
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.components.CardTint
@@ -27,7 +23,6 @@ import com.suhel.llamabro.demo.designsystem.components.ListGroup
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.QuantHeader
 import com.suhel.llamabro.demo.designsystem.components.QuantRow
-import com.suhel.llamabro.demo.designsystem.components.QuietButton
 import com.suhel.llamabro.demo.designsystem.components.RowCard
 import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.SectionLabel

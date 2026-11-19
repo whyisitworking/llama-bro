@@ -183,10 +183,16 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 .toMap()
         }
 
-    /** Sets [modelKey]'s sampling values; [Knobs.None] gives it back to its card's. */
-    suspend fun setModelSampling(modelKey: String, knobs: Knobs) {
+    /**
+     * Changes [modelKey]'s own sampling values in one edit, so two quick changes both land; [Knobs.None] gives it back
+     * to its card's.
+     */
+    suspend fun updateModelSampling(modelKey: String, change: (Knobs) -> Knobs) {
         val key = stringPreferencesKey(SAMPLING_PREFIX + modelKey)
-        store.edit { if (knobs.isEmpty) it.remove(key) else it[key] = knobs.encode() }
+        store.edit {
+            val knobs = change(Knobs.decode(it[key]))
+            if (knobs.isEmpty) it.remove(key) else it[key] = knobs.encode()
+        }
     }
 
     /**

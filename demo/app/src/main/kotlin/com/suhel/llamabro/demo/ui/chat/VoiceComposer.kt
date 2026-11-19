@@ -3,6 +3,7 @@ package com.suhel.llamabro.demo.ui.chat
 import com.suhel.llamabro.demo.chat.ChatEngine
 import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.Limits
+import com.suhel.llamabro.demo.chat.RecordingFailure
 import com.suhel.llamabro.demo.chat.Take
 import com.suhel.llamabro.demo.chat.VoiceRecorder
 import kotlinx.coroutines.CancellationException
@@ -43,7 +44,16 @@ class VoiceComposer(
     fun start() {
         if (!canRecord() || handle.busy.value) return
         _limit.value = null
-        recorder.start(onFailure = { problem("The microphone couldn't be opened.") })
+        recorder.start(
+            onFailure = { failure ->
+                problem(
+                    when (failure) {
+                        RecordingFailure.Microphone -> "The microphone couldn't be opened."
+                        RecordingFailure.Storage -> "The recording couldn't be saved. Free some space and try again."
+                    },
+                )
+            },
+        )
     }
 
     /** The microphone permission was refused: a line with the way to Android's settings for the app. */

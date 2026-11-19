@@ -1,7 +1,7 @@
 package com.suhel.llamabro
 
-import com.suhel.llamabro.internal.Engine
-import com.suhel.llamabro.internal.EngineModel
+import com.suhel.llamabro.spi.Engine
+import com.suhel.llamabro.spi.EngineModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -47,6 +47,18 @@ class ModelLifecycleTest {
         b.join(5_000)
         assertFalse(closedWhileInside)
         assertTrue(engine.model.closed)
+    }
+
+    /** A model whose info can't be read after the native load is freed, not leaked, and the load fails typed. */
+    @Test
+    fun unreadableInfoFreesTheLoadedModel() {
+        val engine = FakeEngine()
+        engine.model.infoJson = "{}" // no n_ctx
+        val failure =
+            runCatching { runBlocking { testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf")) } }
+                .exceptionOrNull()
+        assertTrue("expected ModelLoadFailed, got $failure", failure is LlamaBroException.ModelLoadFailed)
+        assertTrue("the loaded native model leaked", engine.model.closed)
     }
 
     /** A loadModel cancelled during the (uninterruptible) native load must not leak the loaded model. */

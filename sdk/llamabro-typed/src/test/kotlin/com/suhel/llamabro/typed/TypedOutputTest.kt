@@ -97,7 +97,7 @@ class TypedOutputTest {
             val text = """{"name":"Bob","age":3000000000}"""
             val fake = FakeLlamaBro { reply { content(text) } }
             val typed = fake.model().conversation().ask<Person>("Bob")
-            assertTrue("$typed", typed is Typed.Invalid && typed.json == text)
+            assertTrue("$typed", typed is Typed.Invalid && typed.text == text)
             assertTrue("$typed", (typed as Typed.Invalid).cause is SerializationException)
         }
 
@@ -106,7 +106,7 @@ class TypedOutputTest {
         runTest {
             val fake = FakeLlamaBro { reply { content("""{"age":12}""") } }
             val typed = fake.model().conversation().ask<Adult>("A child")
-            assertTrue("$typed", typed is Typed.Invalid && typed.json == """{"age":12}""")
+            assertTrue("$typed", typed is Typed.Invalid && typed.text == """{"age":12}""")
             assertEquals("an adult is 18 or older", (typed as Typed.Invalid).cause.message)
         }
 
@@ -116,7 +116,7 @@ class TypedOutputTest {
             // check() throws IllegalStateException, not IllegalArgumentException: still a value that didn't decode
             val fake = FakeLlamaBro { reply { content("""{"age":30}""") } }
             val typed = fake.model().conversation().ask<Teen>("An adult")
-            assertTrue("$typed", typed is Typed.Invalid && typed.json == """{"age":30}""")
+            assertTrue("$typed", typed is Typed.Invalid && typed.text == """{"age":30}""")
             assertTrue("$typed", (typed as Typed.Invalid).cause is IllegalStateException)
         }
 

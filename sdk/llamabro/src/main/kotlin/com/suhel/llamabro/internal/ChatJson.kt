@@ -9,6 +9,7 @@ import com.suhel.llamabro.chat.ResponseFormat
 import com.suhel.llamabro.chat.Sampling
 import com.suhel.llamabro.chat.Tool
 import com.suhel.llamabro.chat.ToolChoice
+import com.suhel.llamabro.spi.EngineAttachment
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement

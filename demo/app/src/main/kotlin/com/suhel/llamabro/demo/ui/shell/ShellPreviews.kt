@@ -2,7 +2,6 @@ package com.suhel.llamabro.demo.ui.shell
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.PreviewParameter
@@ -11,7 +10,6 @@ import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.data.ChatSummary
 import com.suhel.llamabro.demo.designsystem.components.SheetFrame
 import com.suhel.llamabro.demo.designsystem.components.gutterPadding
-import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.ui.preview.DemoPreviews
 import com.suhel.llamabro.demo.ui.preview.DemoScreenPreviews
 import com.suhel.llamabro.demo.ui.preview.PreviewFrame

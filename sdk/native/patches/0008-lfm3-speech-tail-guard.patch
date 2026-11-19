@@ -2,7 +2,7 @@ From: ours (F167); measured on 600 realtime replies, nothing posted
 Subject: mtmd : LFM3 speech that runs past its text ends the response
 
 diff --git a/tools/mtmd/mtmd-helper-gen.cpp b/tools/mtmd/mtmd-helper-gen.cpp
-index 053603f..59e2de1 100644
+index 6a83ece..e6eb8f9 100644
 --- a/tools/mtmd/mtmd-helper-gen.cpp
 +++ b/tools/mtmd/mtmd-helper-gen.cpp
 @@ -1270,6 +1270,11 @@ public:
@@ -49,9 +49,9 @@ index 053603f..59e2de1 100644
 +                    watch_speech(audio_pcm.data() + n_pcm, audio_pcm.size() - n_pcm);
 +                }
              }
-             // speech alone (TTS): the next step reads only the hidden state, so the frame asks for embeddings only and
-             // the LM head is skipped; a continuing response may switch to text after this frame and samples its logits
-@@ -1551,7 +1562,9 @@ private:
+             decode_embd_batch batch_embd(const_cast<float *>(fb), 1, 1, n_embd);
+             batch_embd.set_position_normal(pos, seq_id);
+@@ -1544,7 +1555,9 @@ private:
  
          // the last code of every codebook ends the audio
          const int32_t eos = (int32_t) (logits.size() / n_cb) - 1;
@@ -62,7 +62,7 @@ index 053603f..59e2de1 100644
          if (*is_eos) {
              codes.assign(n_cb, eos);
              if (!continuing) {
-@@ -1676,6 +1689,41 @@ private:
+@@ -1669,6 +1682,41 @@ private:
      bool     speaking   = false; // interleaving: the current block is audio
      bool     text_done  = false; // interleaving: <|text_end|> was emitted, audio until the end-of-audio frame
  

@@ -3,7 +3,6 @@ package com.suhel.llamabro.hub.internal
 import com.suhel.llamabro.LogLevel
 import com.suhel.llamabro.Logger
 import com.suhel.llamabro.ModelSource
-import com.suhel.llamabro.hub.DraftRequest
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubException
 import com.suhel.llamabro.hub.HubFile
@@ -18,17 +17,9 @@ import java.nio.file.NoSuchFileException
  * The copy of a selection that loads, read from disk only (D64). Upstream's offline read follows `refs/main`, but that
  * ref means the newest commit the cache has seen: an online plan or a cancelled update moves it, and a load would then
  * miss a complete older copy and download the newer one unasked, or fail offline. So the SDK keeps an installed record
- * per selection, written only when a download completes, and loads that. A cache from before the record (complete by
- * the refs rule and its plan record) is adopted as installed the first time it is read, so no one downloads again.
+ * per selection, written only when a download completes, and loads that; a copy without one is not on the phone.
  */
-internal class LocalCopies(
-    private val cacheDir: File,
-    private val resolver: Resolver,
-    storage: Storage,
-    private val logger: Logger? = null,
-) {
-    private val lookup = CacheLookup(cacheDir)
-    private val plans = PlanStore(cacheDir, storage)
+internal class LocalCopies(private val cacheDir: File, storage: Storage, private val logger: Logger? = null) {
     private val installed = PlanStore(cacheDir, storage, PlanStore.INSTALLED)
 
     /** The installed record of the selection, whether or not its files are still there. */
@@ -142,37 +133,19 @@ internal class LocalCopies(
         }
     }
 
-    /** The installed copy, else a complete copy by the refs rule (then adopted), else [HubException.NotFound]. */
+    /** The installed copy, else [HubException.NotFound]. */
     fun source(model: HfModel, options: PlanOptions): ModelSource =
-        installedSource(model, options) ?: legacySource(model, options)
-
-    /** Records a complete copy by the refs rule as installed before a listing moves `refs/main` off it. */
-    fun adoptBeforeListing(model: HfModel, options: PlanOptions) {
-        if (installed.read(model, options) != null) return
-        try {
-            legacySource(model, options)
-        } catch (_: HubException.NotFound) {
-            // nothing complete to keep
-        }
-    }
+        installedSource(model, options) ?: throw HubException.NotFound("model is not cached: $model", emptyList())
 
     /**
      * The model GGUF (a split file's first part) of any complete installed copy of [model], read from disk only, or
      * null when none is on the phone. The model file is the same whatever the options (an image encoder, a draft), so
-     * a copy made with any of them serves, wherever `refs/main` has moved since (D64); only with no installed record is
-     * an old-format copy adopted, as [source] does.
+     * a copy made with any of them serves, wherever `refs/main` has moved since (D64).
      */
-    fun installedModelFile(model: HfModel): File? {
-        fun modelFileOf(record: PlanStore.Record): File? =
+    fun installedModelFile(model: HfModel): File? =
+        installed.readAll(model).firstNotNullOfOrNull { record ->
             pathsOf(model, record)?.firstOrNull { it.first == HubFile.Role.Model }?.second?.let(::File)
-        installed.readAll(model).firstNotNullOfOrNull(::modelFileOf)?.let { return it }
-        return try {
-            source(model, PlanOptions())
-            installed.read(model, PlanOptions())?.let(::modelFileOf)
-        } catch (_: HubException.NotFound) {
-            null
         }
-    }
 
     /** Each installed file's role and path when every one is on disk at its recorded size, else null. */
     private fun installedPaths(model: HfModel, options: PlanOptions): List<Pair<HubFile.Role, String>>? =
@@ -194,117 +167,6 @@ internal class LocalCopies(
             mmproj = paths.firstOrNull { it.first == HubFile.Role.Mmproj }?.second
             draft = paths.firstOrNull { it.first == HubFile.Role.Draft }?.second
         }
-    }
-
-    /** Today's upstream rule: the snapshot `refs/main` names, checked against the plan record when there is one. */
-    private fun legacySource(model: HfModel, options: PlanOptions): ModelSource {
-        installed.write(model, options, legacyRecord(model, options))
-        return requireNotNull(installedSource(model, options)) { "adopted copy of $model is incomplete" }
-    }
-
-    /**
-     * Whether [source] would load [model] from disk now, by the same rules, with nothing written: the installed copy
-     * is complete, or one by the refs rule would be adopted.
-     */
-    fun loads(model: HfModel, options: PlanOptions): Boolean =
-        installedPaths(model, options) != null ||
-            try {
-                pathsOf(model, legacyRecord(model, options)) != null
-            } catch (_: HubException.NotFound) {
-                false
-            }
-
-    /** What [legacySource] adopts: the refs rule's selection, checked against the plan record when there is one. */
-    private fun legacyRecord(model: HfModel, options: PlanOptions): PlanStore.Record {
-        val listing =
-            resolver.cachedListing(model.repo)
-                ?: throw HubException.NotFound("model is not cached: $model", emptyList())
-        val record = plans.read(model, options)
-        record?.let { requireRecordedFilesCached(it, model, options) }
-        val selected =
-            resolvePlan(
-                listing.files,
-                model.tag.orEmpty(),
-                model.file.orEmpty(),
-                options.mmproj,
-                options.draft?.from == null && options.draft != null,
-            )
-        if (selected.modelFiles.isEmpty() || !isCompleteSplit(selected)) {
-            throw HubException.NotFound("model is not cached: $model", emptyList())
-        }
-
-        fun local(file: RepoFile, role: HubFile.Role, repo: String, commit: String): PlanStore.FileRecord {
-            val path = lookup.snapshotPath(repo, commit, file)
-            val oid = record?.files?.firstOrNull { it.path == file.path }?.oid ?: linkedOid(path)
-            return PlanStore.FileRecord(file.path, role, File(path).length(), oid, repo, commit)
-        }
-        val files =
-            selected.modelFiles
-                .map {
-                    local(
-                        it,
-                        HubFile.Role.Model,
-                        model.repo,
-                        listing.commit,
-                    )
-                }.toMutableList()
-        selected.mmproj?.let { files += local(it, HubFile.Role.Mmproj, model.repo, listing.commit) }
-        options.draft?.let { draft ->
-            val (repo, commit, file) = draftFile(draft, model, selected, listing)
-            files += local(file, HubFile.Role.Draft, repo, commit)
-        }
-        return PlanStore.Record(listing.commit, files)
-    }
-
-    /** The oid a snapshot entry links to, which names its blob; null in a degraded (copied) cache. */
-    private fun linkedOid(path: String): String? {
-        val link = File(path).toPath()
-        if (!Files.isSymbolicLink(link)) return null
-        return Files
-            .readSymbolicLink(link)
-            .fileName
-            .toString()
-            .takeIf(::isValidOid)
-    }
-
-    /** A plan record that exists vouches for its files: every one must be on disk at its recorded size. */
-    private fun requireRecordedFilesCached(record: PlanStore.Record, model: HfModel, options: PlanOptions) {
-        val alternate = options.draft?.from
-        val draftCommit = alternate?.let { resolver.cachedListing(it.repo)?.commit }
-        for (file in record.files) {
-            val draftSource = alternate.takeIf { file.role == HubFile.Role.Draft }
-            val repo = draftSource?.repo ?: model.repo
-            val commit = if (draftSource != null) draftCommit else record.commit
-            val cached = commit?.let { File(cacheDir, "${repoFolder(repo)}/snapshots/$it/${file.path}") }
-            if (cached?.isFile != true || cached.length() != file.size) {
-                throw HubException.NotFound("file is not cached: ${file.path}", emptyList())
-            }
-        }
-    }
-
-    /** The draft as (repo, commit, file): the DFlash file beside the model, or the one the request names. */
-    private fun draftFile(
-        request: DraftRequest,
-        model: HfModel,
-        selected: Resolved,
-        listing: RepoListing,
-    ): Triple<String, String, RepoFile> {
-        val from = request.from
-        val found =
-            if (from == null) {
-                selected.dflash?.let { Triple(model.repo, listing.commit, it) }
-            } else {
-                namedDraft(from)
-            }
-        return found ?: throw HubException.NotFound("draft is not cached: ${from ?: model}", emptyList())
-    }
-
-    private fun namedDraft(from: HfModel): Triple<String, String, RepoFile>? {
-        val draftListing = resolver.cachedListing(from.repo) ?: return null
-        val choice = resolvePlan(draftListing.files, from.tag.orEmpty(), from.file.orEmpty(), false, true)
-        val files = choice.dflash?.let { listOf(it) } ?: choice.modelFiles.takeIf { it.isNotEmpty() } ?: return null
-        files.forEach { lookup.snapshotPath(from.repo, draftListing.commit, it) }
-        return Triple(from.repo, draftListing.commit, files.first())
     }
 }
 

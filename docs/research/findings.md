@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the SDK v2 design document (decisions D*), the phase plans, and the experiment results in [`research/p0/results/`](../../research/p0/results/session1.md).
-> **Status:** living document, updated 2026-11-18 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F172)
+> **Status:** living document, updated 2026-11-19 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174)
 
 A finding is something learned from a measurement or from reading upstream source. Every finding has a stable ID
 (`F<n>`, numbered in the order found, never reused). Other documents cite findings by ID, for example "per F10".
@@ -17,7 +17,103 @@ topic, and within a topic newest first. The index lists every ID.
 
 ---
 
-## Voice mode (F163–F172)
+## Vulkan on the Adreno 830, retried (F174)
+
+### F174. At b12479 ggml-vulkan still fails on the Adreno 830, now on every mat-vec type; Qualcomm's three upstream fixes and a patch of ours make it run correctly, but prompts are 4 times slower than on the CPU and 14 times slower than on OpenCL, and replies are 10% slower than on the CPU
+
+- **Finding:**
+  - **The pin fails, and worse than at b12052 (F64).** Phone: OnePlus 13, driver `V@0800.77`, which is newer than the
+    0.800.74 in [#28635](https://github.com/ggml-org/llama.cpp/issues/28635). ggml reports `int dot: 0 | matrix cores: none`.
+    The pin is b12479 with patches 0001-0008. In `test-backend-ops -o MUL_MAT`:
+    - q4_K aborts at its first case: `mul_mat_vec_q4_k_f32_f32` pipeline creation returns `ErrorUnknown`, which ends in
+      an uncaught `vk::UnknownError`.
+    - f16, q4_0, q8_0, q5_K and q6_K abort on their own mat-vec pipelines after a few cases. The cases that ran before
+      the abort were wrong (error 0.6-2.1).
+  - **Qualcomm's upstream fixes cure all of them but q4_K.** One Qualcomm engineer wrote three Adreno fixes, and all
+    apply cleanly. Patches `vk1`-`vk3` carry them:
+    - [#30824](https://github.com/ggml-org/llama.cpp/pull/30824): RMS_NORM with a runtime loop count; merged after the
+      pin.
+    - [#30826](https://github.com/ggml-org/llama.cpp/pull/30826): no subgroup arithmetic on Qualcomm's driver; open,
+      approved.
+    - [#30821](https://github.com/ggml-org/llama.cpp/pull/30821): no 8-bit vector pack or unpack; open.
+
+    With them, MUL_MAT passes every case for f16 (298), q4_0 (104), q8_0 (105), q5_K (85) and q6_K (63). The q4_K
+    pipelines (MUL_MAT and MUL_MAT_ID) still fail to compile.
+  - **The q4_K trigger is the shader's `vec4` load of B.** A bisection of `mul_mat_vec_q4_k.comp` found:
+    - Variants without the scale unpack, the quant unpack, `smin`, `sx..sw`, with 16-bit A loads, or with q5_K's
+      `smin` all still fail.
+    - An empty body, or one that reads only A, compiles.
+    - A body that reads only one `data_b_v4` element fails.
+    - Reading B as two `data_b_v2` loads (as q5_K does) or as scalars compiles. Then q4_K passes MUL_MAT 116/116 and
+      MUL_MAT_ID 110/110.
+
+    This is a driver bug. In #28635, others found that the same SPIR-V compiles with a workgroup size below 32, on
+    Mesa/Turnip, and on an Adreno 840 with a newer driver.
+  - **Long submissions lose the device.** Without matrix cores or integer dot, a large matmul runs at about 115-145
+    GFLOPS (about 0.5 s for m=4096, n=512, k=14336). Upstream submits every 200 GFLOP, which is about 1.7 s here, and
+    Qualcomm's driver then returns `ErrorDeviceLost`.
+    - Llama 3.2 3B: a 512-token prompt batch loses the device. `-ub 128` works, and so does `-ub 512` with at most 4
+      nodes per submission.
+    - Qwen3.5 4B: a 20 GFLOP cap is not enough, because ggml counts only matmul FLOPs and the gated delta net counts as
+      none. With `-p 512`, 100 nodes per submission lose the device and 64 do not.
+    - Decode for 32 tokens on Qwen3.5: 13.26 t/s at 100 nodes, 13.16 at 16, 11.76 at 1.
+    - A prompt-sized FLASH_ATTN_EXT (32-64 queries over 1-2K keys) runs past the limit within one op: 12 cases fail,
+      then the device is lost. A decode-sized one takes 0.35 ms.
+  - **Patch `vk4`.** It does three things:
+    - the q4_K mat-vec reads B as two `vec2` loads, for every vendor;
+    - on Qualcomm's proprietary driver, at most 20 GFLOP and 16 nodes per submission;
+    - on Qualcomm's proprietary driver, FLASH_ATTN_EXT is reported unsupported, so llama.cpp's automatic setting runs
+      attention as MUL_MAT and SOFT_MAX.
+
+    Every other op a Llama or Qwen3.5 graph uses passes all its cases. The SDK's tree plus `vk1`-`vk4` gives exactly the
+    tested `ggml-vulkan` tree. The SDK's own recipe (`build-backends.sh`, `LB_BUILD_VULKAN=1`) builds
+    `libllamabro-ggml-vulkan.so` from it.
+  - **Correct output.** Greedy replies to the 668-token prompt:
+    - Llama 3.2 3B Q4_K_M: on Vulkan, byte-identical to OpenCL in all 3 rounds; both keep the CPU's first 26 words and
+      then choose other, sensible words.
+    - Qwen3.5 4B Q4_K_M: coherent, the CPU's first 38 words (OpenCL writes `8888…`, F71).
+    - Phi-4-mini Q8_0: coherent, the CPU's first 37 words (F64's `edlyedly…` is gone).
+  - **Speed.** Llama 3.2 3B, 3 rounds, phone at thermal status 1-2:
+
+    | Arm | Ready | Prefill t/s | Decode t/s |
+    |---|---|---|---|
+    | CPU | 5.9-6.2 s | 82-84 | 18.1-18.5 |
+    | OpenCL | 12.9-14.8 s (68 s on the first load) | 269-271 | 19.7-20.0 |
+    | Vulkan | 3.9-4.5 s | 19.5-19.6 | 16.6-16.8 |
+
+    One round each of the other models, Vulkan against the CPU:
+    - Qwen3.5 4B: prefill 14.5 against 62 t/s, decode 10.9 against 13.3 t/s.
+    - Phi-4-mini Q8_0: prefill 12.5 against 82.5 t/s, decode 7.5 against 10.9 t/s.
+
+    Vulkan's memory figure is still the overcount (19 203 MiB on a 15.1 GB phone, F64).
+- **Evidence:** [`research/vulkan-adreno/`](../../research/vulkan-adreno/README.md), 2026-11-19: `build.sh`, `run.sh`,
+  `speed.sh` and `q4k-variant.py`, with every test-backend-ops count and bisection step in the README;
+  `research/vulkan-adreno/patches/` (`vk1`-`vk4`); the upstream PR heads `401563f` (merge), `3bae17b` and `8672ff2`; the server logs'
+  `ggml_vulkan: device lost on Vulkan0`.
+- **Means:**
+  - Vulkan can now run correctly on this phone, but it beats nothing: prompts are 4 times slower than on the CPU and 14
+    times slower than on OpenCL, and replies are 10% slower than on the CPU. Its only gain is the load: 4 s, against 6 s
+    on the CPU and 13-15 s on OpenCL (68 s the first time).
+  - D31 still holds, now for speed rather than crashes. Bringing it back would add a third GPU route that `Auto` should
+    never pick on an Adreno.
+  - Any pipeline failure still aborts the process, uncaught. A driver with another bug would still take an app down.
+  - With flash attention off on Qualcomm, a quantized V cache can't be used there (upstream allows one only with flash
+    attention), and a forced `-fa on` runs attention on the CPU.
+  - The patches touch only `ggml-vulkan` and are kept in `research/vulkan-adreno/patches/`, not in the build. The
+    recipe is kept for a retry once #30821 and #30826 merge and the q4_K load is fixed upstream (a draft could be filed,
+    but nothing is posted).
+  - A retry on newer Adreno parts (matrix cores: `QUALCOMM_ADRENO` with cooperative matrix) or a newer driver could
+    change the speed.
+- **Feeds:** D31, D23, D32, F64, F63, F71, D10 (upstream drafts).
+
+## Voice mode (F163–F173)
+
+### F173. Patch 0008's tail guard holds for a male voice, Q8_0, Spanish, German and Japanese: every runaway stopped, a clean reply loses at most a last word said after a 3 s pause; outside English the model runs away far more often and speaks most languages unintelligibly
+
+- **Finding:** Replayed over 500 new captioned replies (100 seeds each), the guard's thresholds (3 s of near-silence, or 5 frames per text token plus 13; F167) stop every runaway and cut no clean reply early, beyond two German replies that lose a last word said after a 3 s pause. English with a male voice: no runaway, no stop, the most headroom (78% of the length limit, at most 29 quiet frames). Q8_0, female, English: no runaway, two replies stopped, one looping ("That night, that night...") at 21.8 s of 41 s and one at its garbled last sentence (2.6 s); every unstopped English reply says its whole caption. Spanish runs away in 11 of 100, seven times English's rate; the guard stops all 11, ten at 16-58 s, and one at 115 s whose caption itself loops (181 words), so the length limit is far, and whose garbled speech stays loud. Its 9 other stops fall on speech already gone wrong; the most they remove is 4 caption words after a loop. German replies are one sentence (10 s) and never run away; 4 are stopped on the quiet rule, two of them before a last "bitte" said after the 3 s pause. Japanese replies all read the misheard question back, 49 of 100 run away, and the guard ends 98 of 100 at 6.9-11.9 s (93 on the length rule; 11.9 s is 1.45 times the question's own spoken length); their speech is unintelligible stopped or not. Looser lengths only trade stops: 6 frames per token spares 3 Spanish stops but misses two of F167's failures. The thresholds stay. Apart from the guard: in this mode the model's German, French, Japanese and Chinese speech is barely intelligible, and with an English instruction German and Japanese read the question back; the answering instruction must be in the reply's language.
+- **Evidence:** Mac CPU, upstream `llama-server` b12479 (upstream's CMake, no patches), `-c 2048`, one `/v1/realtime` turn per `--seed` 13-112 with `research/voice/realtime-sweep.sh` (new `RT_MODEL`, `RT_THREADS`, `RT_TIMEOUT`), the trained prompt plus an answering instruction in the reply's language, questions from macOS `say` at 16 kHz; sweeps male-en, Q8_0 female-en (`ggml-org/LFM3-Omni-2B-GGUF`), female-de, female-es, female-ja; pilots of 2 seeds in de, es, fr, ja, zh. `research/voice/tail-guard-sim.py --stats` replays the guard (text deltas match the tokenizer's count to 1-2 tokens); `research/voice/tail-guard-check.py` has whisper.cpp `ggml-small` transcribe each stopped reply whole and up to the stop, and with `--all` screens every English and Spanish reply. Results and the per-sweep table: `research/voice/tail-guard-sweep.md`. Not heard by the user; phone not run.
+- **Means:** Patch 0008 and D96 stand unchanged; the thresholds are not English-only. Outside English the guard matters more, since runaways are far more common, and a reply-length cap (D95's maximum reply length) remains the bound for a reply whose caption itself loops. The voice mode is fit for English and Spanish only as measured; a language picker should not offer German, French, Japanese or Chinese speech for LFM3-Omni-2B without a listening test, and the session's answering instruction should be in the reply's language.
+- **Feeds:** D95, D96, F166, F167; patch 0008.
 
 ### F172. Two fit measurements at once crashed the app: upstream's measurement swaps llama.cpp's process-wide log callback and restores it when it ends
 
@@ -1151,7 +1247,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
   - **Memory.** Vulkan0 reports 19 203 MiB total and free on a phone with 15.1 GB of RAM (and 11 GB of swap): for an integrated GPU ggml sums every heap the driver lists (`ggml-vulkan.cpp:15415`), and on a phone those heaps are views of the same RAM. Free equals total, so there's no live budget either. No backend's memory figure is usable on this phone: CPU all RAM (F33), OpenCL 7.5 GB, Hexagon 0, Vulkan 19 GB.
 - **Evidence:** [`research/p2/opencl-speed/results.md`](../../research/p2/opencl-speed/results.md) "Vulkan", 2026-11-05; the server log line `ggml_vulkan: compute pipeline creation failed for mul_mat_vec_q4_k_f32_f32`; `/proc/meminfo` (`MemTotal 15469920 kB`, `SwapTotal 11534332 kB`); the build (`scripts/build-backends.sh`, `scripts/fetch-deps.sh`); `check-aar.sh` on the AAR; device `VulkanDeviceTest.vulkanBackendLoads` (backend load only, no model).
 - **Means:** As built, `llamabro-vulkan` would let `Prefer(Vulkan)` or `Only(Vulkan)` take an app down on a Snapdragon 8 Elite phone, a crash `loadReport` can't catch, and give wrong answers on Q8_0. D23 planned to verify Vulkan on this Adreno, and it fails that verification. **Decided: Vulkan is dropped from 1.0 (D31)**; the recipe stays for a retry. T6 and T7 can't take any backend's memory figure as given: the budget comes from Android (D22), and D24's "Auto skips a device that can't hold the model" needs it too.
-- **Feeds:** D23, D24, D22, design §9, P2 T5, T6, T7, T10, D10 (a possible upstream issue report), P4/P5 (Vulkan revisited with a newer llama.cpp or driver).
+- **Feeds:** D23, D24, D22, design §9, P2 T5, T6, T7, T10, D10 (a possible upstream issue report), P4/P5 (Vulkan revisited with a newer llama.cpp or driver); retried at b12479 in F174.
 
 ### F63. OpenCL on the Adreno 830: about 3× faster prefill than the CPU, the same decode, and 2.5× slower loads (about a minute the first time)
 - **Finding:**
@@ -1736,6 +1832,8 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F174 | ggml-vulkan on the Adreno 830 at b12479: Qualcomm's upstream fixes and our patch (research `vk1`-`vk4`) make it run correctly (q4_K vec4 load, submission caps, no flash attention); 4x slower prefill than the CPU, 14x slower than OpenCL | D31, D23, D32, F64 |
+| F173 | Patch 0008's guard holds for a male voice, Q8_0, es, de, ja (500 replies): all runaways stopped, clean replies lose at most a last word after a 3 s pause (2 in de); es runs away 11%, ja 49%; de/fr/ja/zh speech barely intelligible; thresholds unchanged | D95, D96, F166, F167 |
 | F172 | Two fit measurements at once crashed the app: upstream's `common_fit_log_scope` swaps the process-wide log callback; the bridge now measures one at a time (8-thread host test: 3/3 crash before, 5/5 pass after) | D101, F58, F88 |
 | F171 | Patch 0008 on the NPU: 20 seeded captioned replies all end; the guard ended 1 (seed 4), a runaway by ear, and cut none of the others (0.30-0.43 s of audio per word) | D96, F167 |
 | F170 | NPU realtime turn: first audio 0.3 s after a live commit, 1.65x real time, cancel 80 ms, slot free 1 s after close, ~1.8 GB; a session holds its slot; captioning the user 0.6 s alone, +0.8 s before the reply or +0.3 s on a second slot | D95, D98, F166, F168, F169 |

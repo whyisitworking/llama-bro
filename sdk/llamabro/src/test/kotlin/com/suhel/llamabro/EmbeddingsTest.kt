@@ -1,7 +1,7 @@
 package com.suhel.llamabro
 
 import com.suhel.llamabro.chat.Content
-import com.suhel.llamabro.internal.EngineAttachment
+import com.suhel.llamabro.spi.EngineAttachment
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray

@@ -1,0 +1,60 @@
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+index d91b75c..6e89e29 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
++++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+@@ -4683,6 +4683,12 @@ vk_device ggml_vk_get_device(size_t idx) {
+ 
+         // Submit at least every 100 nodes, in case there are workloads without as much matmul.
+         device->max_nodes_per_submit = 100;
++        // Qualcomm's Android driver loses the device when one submission runs for about a second or more. The flops
++        // cap counts only matmuls, so a prompt batch of a hybrid model (gated delta net) needs a node cap too: on an
++        // Adreno 830, 100 nodes lost the device and 64 did not; 16 costs about 1% of decode
++        if (device->driver_id == vk::DriverId::eQualcommProprietary) {
++            device->max_nodes_per_submit = 16;
++        }
+         const char* GGML_VK_MAX_NODES_PER_SUBMIT = getenv("GGML_VK_MAX_NODES_PER_SUBMIT");
+         if (GGML_VK_MAX_NODES_PER_SUBMIT != nullptr) {
+             uint32_t max_nodes_per_submit = std::stoul(GGML_VK_MAX_NODES_PER_SUBMIT);
+@@ -15130,6 +15136,11 @@ static ggml_status ggml_backend_vk_graph_compute(ggml_backend_t backend, ggml_cg
+             flops_cap = 2'000'000'000ULL * ctx->device->shader_core_count;
+         }
+     }
++    // Qualcomm's Android driver loses the device when one submission runs for about a second or more, and without
++    // integer dot or matrix cores an Adreno 830 does about 120 GFLOPS on large matmuls: 200 GFLOP would take ~1.7 s
++    if (ctx->device->driver_id == vk::DriverId::eQualcommProprietary) {
++        flops_cap = 20'000'000'000ULL;
++    }
+     // small graphs gain nothing from splitting, each submit costs CPU time
+     uint64_t flops_per_submit = ctx->last_total_flops < 1'000'000'000ULL ? 0 :
+         std::clamp(ctx->last_total_flops / 40u, std::min<uint64_t>(100'000'000ULL, flops_cap), flops_cap);
+@@ -16370,6 +16381,11 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+                 if (op->src[5] != nullptr) {
+                     return false;
+                 }
++                // On Qualcomm's driver a prompt-sized flash attention (32+ queries over 1K+ keys) runs past the
++                // driver's watchdog in one dispatch and loses the device; the MUL_MAT + SOFT_MAX path works
++                if (device->driver_id == vk::DriverId::eQualcommProprietary) {
++                    return false;
++                }
+                 bool coopmat2 = device->coopmat2;
+                 uint32_t HSK = op->src[1]->ne[0];
+                 uint32_t HSV = op->src[2]->ne[0];
+diff --git a/ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_q4_k.comp b/ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_q4_k.comp
+index 5ec7c40..2718065 100644
+--- a/ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_q4_k.comp
++++ b/ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_q4_k.comp
+@@ -65,10 +65,10 @@ void calc_superblock(const uint a_offset, const uint b_offset, const uint v_im,
+         const FLOAT_TYPE q4_15 = qs64_hi4.w;
+ 
+         [[unroll]] for (uint j = 0; j < NUM_COLS; ++j) {
+-            vec4 by10 =  vec4(data_b_v4[(j*p.batch_stride_b + b_offset + y1_idx) / 4    ]);
+-            vec4 by132 = vec4(data_b_v4[(j*p.batch_stride_b + b_offset + y1_idx) / 4 + 8]);
+-            vec4 by20 =  vec4(data_b_v4[(j*p.batch_stride_b + b_offset + y2_idx) / 4    ]);
+-            vec4 by232 = vec4(data_b_v4[(j*p.batch_stride_b + b_offset + y2_idx) / 4 + 8]);
++            vec4 by10 =  vec4(data_b_v2[(j*p.batch_stride_b + b_offset + y1_idx) / 2 + 0], data_b_v2[(j*p.batch_stride_b + b_offset + y1_idx) / 2 + 1]);
++            vec4 by132 = vec4(data_b_v2[(j*p.batch_stride_b + b_offset + y1_idx) / 2 + 16], data_b_v2[(j*p.batch_stride_b + b_offset + y1_idx) / 2 + 17]);
++            vec4 by20 =  vec4(data_b_v2[(j*p.batch_stride_b + b_offset + y2_idx) / 2 + 0], data_b_v2[(j*p.batch_stride_b + b_offset + y2_idx) / 2 + 1]);
++            vec4 by232 = vec4(data_b_v2[(j*p.batch_stride_b + b_offset + y2_idx) / 2 + 16], data_b_v2[(j*p.batch_stride_b + b_offset + y2_idx) / 2 + 17]);
+ 
+             const FLOAT_TYPE sx = fma(FLOAT_TYPE(by10.x),      q4_0,  fma(FLOAT_TYPE(by10.y),  q4_1,  fma(FLOAT_TYPE(by10.z),  q4_2,  FLOAT_TYPE(by10.w) *  q4_3)));
+             const FLOAT_TYPE sy = fma(FLOAT_TYPE(by132.x),     q4_4,  fma(FLOAT_TYPE(by132.y), q4_5,  fma(FLOAT_TYPE(by132.z), q4_6,  FLOAT_TYPE(by132.w) * q4_7)));

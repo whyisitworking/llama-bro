@@ -8,12 +8,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,21 +27,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredHeight
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
@@ -51,15 +49,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.R
 import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
@@ -72,14 +71,37 @@ import com.suhel.llamabro.demo.designsystem.theme.onPhotoScrim
 import com.suhel.llamabro.demo.designsystem.theme.photoScrim
 import com.suhel.llamabro.demo.designsystem.theme.subtleFill
 
-/** Long-press for a message's actions (copy, edit, share, regenerate); a plain tap does nothing. */
-@OptIn(ExperimentalFoundationApi::class)
-private fun Modifier.longPress(onLongClick: (() -> Unit)?): Modifier =
-    // the touch area is at least 48 dp even when a short reply is not (the drawn size doesn't change)
+/**
+ * Long-press for a message's actions (copy, edit, share, regenerate), with a haptic tick; a plain tap does nothing. It
+ * is not a click: a clickable bubble whose text has scrolled out of view reads to a screen reader as a button with no
+ * label, and its double tap would do nothing. A screen reader offers the actions by name instead. The touch area is at
+ * least 48 dp even when a short reply is not; the drawn size doesn't change.
+ */
+private fun Modifier.messageActions(onLongClick: (() -> Unit)?): Modifier =
     if (onLongClick == null) {
         this
     } else {
-        minimumInteractiveComponentSize().combinedClickable(onClick = {}, onLongClick = onLongClick)
+        composed {
+            val label = stringResource(R.string.ds_message_actions)
+            val haptics = LocalHapticFeedback.current
+            val action by rememberUpdatedState(onLongClick)
+            // the action and the touch go before the minimum size, so both cover the 48 dp it makes, not only the
+            // bubble inside it
+            Modifier
+                .semantics {
+                    onLongClick(label) {
+                        action()
+                        true
+                    }
+                }.pointerInput(haptics) {
+                    detectTapGestures(
+                        onLongPress = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            action()
+                        },
+                    )
+                }.minimumInteractiveComponentSize()
+        }
     }
 
 /**
@@ -136,7 +158,7 @@ fun UserBubble(
                     .bubbleIn(end = true)
                     .clip(DemoShapes.userBubble)
                     .background(colors.bubble)
-                    .longPress(onLongClick)
+                    .messageActions(onLongClick)
                     .padding(start = DemoSpacing.inline, end = DemoSpacing.item),
                 time = time.takeIf { text.isEmpty() },
             )
@@ -156,7 +178,7 @@ fun UserBubble(
                     .bubbleIn(end = true)
                     .clip(DemoShapes.userBubble)
                     .background(colors.bubble)
-                    .longPress(onLongClick)
+                    .messageActions(onLongClick)
                     .padding(horizontal = DemoSpacing.item, vertical = DemoSpacing.compact),
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(DemoSpacing.inline),
@@ -188,7 +210,7 @@ fun ModelBubble(
                 .softShadow(DemoShapes.modelBubble, colors)
                 .clip(DemoShapes.modelBubble)
                 .background(colors.surface)
-                .longPress(onLongClick)
+                .messageActions(onLongClick)
                 .padding(horizontal = DemoSpacing.item, vertical = DemoSpacing.compact),
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(DemoSpacing.inline),
@@ -209,7 +231,7 @@ fun OpenReply(
 ) {
     val colors = LocalDemoColors.current
     Column(
-        modifier.fillMaxWidth().longPress(onLongClick),
+        modifier.fillMaxWidth().messageActions(onLongClick),
         verticalArrangement = Arrangement.spacedBy(DemoSpacing.inline),
     ) {
         content()
@@ -457,8 +479,9 @@ fun StarterChips(items: List<String>, onPick: (String) -> Unit, modifier: Modifi
 
 /**
  * A picture attached to the message being written, inside the message bar: 64 dp with a 12 dp corner, a soft fill
- * while it decodes, and a ✕ on a scrim 4 dp in from its top end to take it back. The ✕'s 48 dp target reaches past the
- * picture's corner instead of covering most of it.
+ * while it decodes, and a ✕ on a scrim 4 dp in from its top end to take it back. The ✕'s 48 dp target is the
+ * picture's top-end corner, inside the picture: a target reaching past it would be clipped to the picture's bounds for
+ * accessibility services, which would then report it smaller than 48 dp (F130).
  */
 @Composable
 fun Thumbnail(
@@ -480,26 +503,27 @@ fun Thumbnail(
                 )
             }
         }
-        Box(Modifier.align(Alignment.TopEnd).padding(DemoSpacing.inline).size(DemoSize.badge)) {
-            // a target larger than its box is centred on it: the 48 dp target sits round the 24 dp circle
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .size(DemoSize.target)
+                .clip(DemoShapes.card)
+                .clickable(role = Role.Button, onClick = onRemove),
+            contentAlignment = Alignment.TopEnd,
+        ) {
             Box(
                 Modifier
-                    .requiredSize(DemoSize.target)
-                    .clip(CircleShape)
-                    .clickable(role = Role.Button, onClick = onRemove),
+                    .padding(DemoSpacing.inline)
+                    .size(DemoSize.badge)
+                    .background(colors.photoScrim, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    Modifier.size(DemoSize.badge).background(colors.photoScrim, CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        DemoIcons.Close,
-                        contentDescription = removeLabel,
-                        tint = colors.onPhotoScrim,
-                        modifier = Modifier.size(DemoSize.iconSmall),
-                    )
-                }
+                Icon(
+                    DemoIcons.Close,
+                    contentDescription = removeLabel,
+                    tint = colors.onPhotoScrim,
+                    modifier = Modifier.size(DemoSize.iconSmall),
+                )
             }
         }
     }

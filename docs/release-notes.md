@@ -21,9 +21,8 @@ matches the new llama-server on every contract case, on the Mac and on the phone
   returns a `VoiceSession`: `append` the microphone's 16-bit PCM, `commit()` each turn, and collect `events` for the
   reply's text (captions) and speech (16-bit PCM for `AudioTrack`), its end, and refused events; `cancelReply` and
   `close` stop it. Other realtime events come as `VoiceEvent.Other`, and `sendRaw` sends any client event. The SDK sets
-  nothing in the session for the app: LFM3-Omni needs a voice, a language and an instruction to answer (F166). With
-  `transcribeUser { }` on a model loaded with two slots, each turn's words arrive as `VoiceEvent.UserTranscript` while
-  the reply is made (D99; upstream sends none, F169). `ModelInfo.voices` (and `supportsSpeech`) lists the voices a model speaks with, empty when it doesn't speak (D100). `ModelConfig.seed` sets the sampling seed. `FakeLlamaBro.voiceReply`
+  nothing in the session for the app: LFM3-Omni needs a voice, a language and an instruction to answer (F166). Upstream sends no transcript of the user's
+  words (F169); an app that captions them transcribes its recording of each turn with `transcribe` (D109). `ModelInfo.voices` (and `supportsSpeech`) lists the voices a model speaks with, empty when it doesn't speak (D100). `ModelConfig.seed` sets the sampling seed. `FakeLlamaBro.voiceReply`
   scripts replies for app tests. On the phone's NPU a reply's first audio comes 0.3 s after the commit, it
   speaks at 1.65 times real time, and a cancel stops it within 80 ms (F170); patch 0008 holds there too (F171).
 

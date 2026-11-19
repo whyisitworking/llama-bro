@@ -20,8 +20,6 @@ public class DraftRequest private constructor(
 ) {
     public companion object {
         /** Requests DFlash, with [from] selecting an alternate repository when supplied. */
-        @JvmStatic
-        @JvmOverloads
         public fun dflash(from: HfModel? = null): DraftRequest = DraftRequest(from)
     }
 }

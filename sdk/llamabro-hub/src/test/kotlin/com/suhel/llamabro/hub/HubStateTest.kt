@@ -3,7 +3,6 @@ package com.suhel.llamabro.hub
 import com.suhel.llamabro.hub.internal.HttpTransport
 import com.suhel.llamabro.hub.internal.JvmStorage
 import com.suhel.llamabro.hub.internal.repoFolder
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.AfterClass

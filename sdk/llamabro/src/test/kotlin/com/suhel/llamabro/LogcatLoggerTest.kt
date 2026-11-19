@@ -1,6 +1,6 @@
 package com.suhel.llamabro
 
-import com.suhel.llamabro.internal.LogcatLogger
+import com.suhel.llamabro.spi.LogcatLogger
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test

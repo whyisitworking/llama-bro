@@ -13,7 +13,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.accessibility.disableAccessibilityChecks
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -24,8 +24,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.waitUntilAtLeastOneExists
-import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.core.app.ActivityScenario
 import com.suhel.llamabro.demo.MainActivity
 import com.suhel.llamabro.demo.data.AppLayout
 import com.suhel.llamabro.demo.data.MessageKind
@@ -35,6 +34,7 @@ import com.suhel.llamabro.demo.testing.TestAppRule
 import com.suhel.llamabro.demo.testing.demoRules
 import com.suhel.llamabro.demo.testing.withAccessibilityChecks
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -46,9 +46,16 @@ import org.junit.rules.RuleChain
 @OptIn(ExperimentalTestApi::class)
 class ShellTest {
     private val app = TestAppRule()
-    private val compose = createAndroidComposeRule<MainActivity>()
+    private val compose = createEmptyComposeRule()
 
     @get:Rule val rules: RuleChain = RuleChain.outerRule(demoRules(app)).around(compose)
+
+    /** The app, launched by [waitForShell] once the test has set what it starts from (its layout, its chats). */
+    private lateinit var scenario: ActivityScenario<MainActivity>
+
+    @After fun closeApp() {
+        if (::scenario.isInitialized) scenario.close()
+    }
 
     private val swift = "unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M"
 
@@ -75,6 +82,7 @@ class ShellTest {
     private fun setLayout(layout: AppLayout) = runBlocking { app.container.settings.setLayout(layout) }
 
     private fun waitForShell() {
+        scenario = ActivityScenario.launch(MainActivity::class.java)
         compose.withAccessibilityChecks()
         compose.waitUntilAtLeastOneExists(
             androidx.compose.ui.test
@@ -102,6 +110,7 @@ class ShellTest {
         setLayout(AppLayout.ChatList)
         waitForShell()
         compose.waitUntilAtLeastOneExists(hasText("New chat"), 10_000)
+        compose.onAllNodesWithText("What's on your mind?").assertCountEquals(0) // the chats' home, no chat open
         compose.onNodeWithText("New chat").performClick()
         compose.waitUntilAtLeastOneExists(hasText("What's on your mind?"), 10_000)
     }
@@ -121,7 +130,7 @@ class ShellTest {
         setLayout(AppLayout.ChatList)
         waitForShell()
         compose.waitUntilAtLeastOneExists(hasText("Search chats"), 10_000)
-        compose.activityRule.scenario.recreate()
+        scenario.recreate()
         compose.waitUntilAtLeastOneExists(hasText("Search chats"), 10_000)
     }
 

@@ -7,17 +7,17 @@ import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.conversation.ConversationJson
 import com.suhel.llamabro.internal.ChatJson
 import com.suhel.llamabro.internal.ChatStreamDecoder
-import com.suhel.llamabro.internal.EngineAttachment
-import com.suhel.llamabro.internal.EngineModel
-import com.suhel.llamabro.internal.EngineRequest
 import com.suhel.llamabro.internal.ErrorMapping
 import com.suhel.llamabro.internal.Media
 import com.suhel.llamabro.internal.MediaIo
-import com.suhel.llamabro.internal.NativeError
 import com.suhel.llamabro.internal.RealtimeLink
-import com.suhel.llamabro.internal.RequestSink
-import com.suhel.llamabro.internal.SEND_OK
 import com.suhel.llamabro.internal.SseParser
+import com.suhel.llamabro.spi.EngineAttachment
+import com.suhel.llamabro.spi.EngineModel
+import com.suhel.llamabro.spi.EngineRequest
+import com.suhel.llamabro.spi.NativeError
+import com.suhel.llamabro.spi.RequestSink
+import com.suhel.llamabro.spi.SEND_OK
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -408,7 +408,7 @@ internal fun Model.chatInternal(request: ChatRequest, onCompletionId: ((String) 
         var reported = false
         val encoded = ChatJson.encode(request)
         request(Endpoint.ChatCompletions, encoded.body, encoded.attachments).collect { payload ->
-            val events = decoder.accept(payload)
+            val events = ErrorMapping.readReply("chat") { decoder.accept(payload) }
             if (!reported && onCompletionId != null) {
                 decoder.completionId?.let {
                     reported = true

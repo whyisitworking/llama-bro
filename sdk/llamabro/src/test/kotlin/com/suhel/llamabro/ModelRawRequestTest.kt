@@ -1,19 +1,17 @@
 package com.suhel.llamabro
 
-import com.suhel.llamabro.internal.Engine
-import com.suhel.llamabro.internal.EngineModel
+import com.suhel.llamabro.spi.Engine
+import com.suhel.llamabro.spi.EngineModel
+import com.suhel.llamabro.spi.NativeError
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Test
 
 class ModelRawRequestTest {
@@ -207,8 +205,7 @@ class ModelRawRequestTest {
             val engine =
                 object : Engine by FakeEngine() {
                     override fun load(configJson: String, onProgress: (Float) -> Boolean): EngineModel =
-                        throw com.suhel.llamabro.internal
-                            .NativeError(4, """{"error":"failed to load model: /m.gguf"}""")
+                        throw NativeError(4, """{"error":"failed to load model: /m.gguf"}""")
                 }
             val e =
                 runCatching {

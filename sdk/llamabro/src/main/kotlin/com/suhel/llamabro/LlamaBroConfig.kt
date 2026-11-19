@@ -2,8 +2,8 @@ package com.suhel.llamabro
 
 /**
  * Process-wide settings, fixed by the first [LlamaBro.create] (design §5, D70):
- * `LlamaBroConfig { logLevel = LogLevel.Info }`. A later `create` with an equal config returns the same object
- * and a different one throws; the logger is compared by reference, so build the config once.
+ * `LlamaBroConfig { logLevel = LogLevel.Info }`. A later `create` with the same settings returns the same object,
+ * keeping the first logger, and different settings throw (D106).
  */
 public class LlamaBroConfig internal constructor(
     /**
@@ -46,7 +46,6 @@ public class LlamaBroConfig internal constructor(
 
     public companion object {
         /** Warnings and errors, to the default sink; the NPU doesn't poll. */
-        @JvmField
         public val Default: LlamaBroConfig = LlamaBroConfig(LogLevel.Warn, null, npuPolling = false)
     }
 }

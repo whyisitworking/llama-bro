@@ -1,12 +1,9 @@
 package com.suhel.llamabro.demo.ui.firstrun
 
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.components.DemoDialog
 import com.suhel.llamabro.demo.designsystem.components.DialogCard
-import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.ui.preview.DemoPreviews
 import com.suhel.llamabro.demo.ui.preview.PreviewFrame
 

@@ -1,7 +1,6 @@
 package com.suhel.llamabro.demo.ui.firstrun
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
-import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.chat.FakeChatDao
 import com.suhel.llamabro.demo.data.ChatRepository

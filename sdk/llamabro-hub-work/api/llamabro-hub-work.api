@@ -2,7 +2,6 @@ public class com/suhel/llamabro/hub/work/DownloadNotifications {
 	public static final field CHANNEL_ID Ljava/lang/String;
 	public static final field Companion Lcom/suhel/llamabro/hub/work/DownloadNotifications$Companion;
 	public fun <init> ()V
-	public static final fun createChannel (Landroid/content/Context;)V
 	protected fun displayName (Lcom/suhel/llamabro/hub/HfModel;)Ljava/lang/String;
 	public fun downloading (Landroid/content/Context;Lcom/suhel/llamabro/hub/work/RunningDownload;)Landroid/app/Notification;
 	protected final fun downloadingBuilder (Landroid/content/Context;Lcom/suhel/llamabro/hub/work/RunningDownload;)Landroidx/core/app/NotificationCompat$Builder;
@@ -17,18 +16,11 @@ public final class com/suhel/llamabro/hub/work/DownloadNotifications$Companion {
 }
 
 public final class com/suhel/llamabro/hub/work/DownloadWork {
-	public static final fun cancelDownload (Landroidx/work/WorkManager;Lcom/suhel/llamabro/hub/HfModel;)Landroidx/work/Operation;
-	public static final fun cancelDownload (Landroidx/work/WorkManager;Lcom/suhel/llamabro/hub/HfModel;Z)Landroidx/work/Operation;
 	public static final fun cancelDownload (Landroidx/work/WorkManager;Lcom/suhel/llamabro/hub/HfModel;ZLcom/suhel/llamabro/hub/DraftRequest;)Landroidx/work/Operation;
 	public static synthetic fun cancelDownload$default (Landroidx/work/WorkManager;Lcom/suhel/llamabro/hub/HfModel;ZLcom/suhel/llamabro/hub/DraftRequest;ILjava/lang/Object;)Landroidx/work/Operation;
 	public static final fun defaultDownloadConstraints ()Landroidx/work/Constraints;
-	public static final fun downloadWorkName (Lcom/suhel/llamabro/hub/HfModel;)Ljava/lang/String;
-	public static final fun downloadWorkName (Lcom/suhel/llamabro/hub/HfModel;Z)Ljava/lang/String;
 	public static final fun downloadWorkName (Lcom/suhel/llamabro/hub/HfModel;ZLcom/suhel/llamabro/hub/DraftRequest;)Ljava/lang/String;
 	public static synthetic fun downloadWorkName$default (Lcom/suhel/llamabro/hub/HfModel;ZLcom/suhel/llamabro/hub/DraftRequest;ILjava/lang/Object;)Ljava/lang/String;
-	public static final fun enqueueDownload (Landroidx/work/WorkManager;Lcom/suhel/llamabro/hub/HfModel;)Landroidx/work/Operation;
-	public static final fun enqueueDownload (Landroidx/work/WorkManager;Lcom/suhel/llamabro/hub/HfModel;Z)Landroidx/work/Operation;
-	public static final fun enqueueDownload (Landroidx/work/WorkManager;Lcom/suhel/llamabro/hub/HfModel;ZLcom/suhel/llamabro/hub/DraftRequest;)Landroidx/work/Operation;
 	public static final fun enqueueDownload (Landroidx/work/WorkManager;Lcom/suhel/llamabro/hub/HfModel;ZLcom/suhel/llamabro/hub/DraftRequest;Landroidx/work/Constraints;)Landroidx/work/Operation;
 	public static synthetic fun enqueueDownload$default (Landroidx/work/WorkManager;Lcom/suhel/llamabro/hub/HfModel;ZLcom/suhel/llamabro/hub/DraftRequest;Landroidx/work/Constraints;ILjava/lang/Object;)Landroidx/work/Operation;
 }
@@ -40,7 +32,6 @@ public final class com/suhel/llamabro/hub/work/DownloadWorkProgress {
 }
 
 public final class com/suhel/llamabro/hub/work/LlamaBroWorkerFactory : androidx/work/WorkerFactory {
-	public fun <init> (Lcom/suhel/llamabro/hub/LlamaBroHub;)V
 	public fun <init> (Lcom/suhel/llamabro/hub/LlamaBroHub;Lcom/suhel/llamabro/hub/work/DownloadNotifications;)V
 	public synthetic fun <init> (Lcom/suhel/llamabro/hub/LlamaBroHub;Lcom/suhel/llamabro/hub/work/DownloadNotifications;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun createWorker (Landroid/content/Context;Ljava/lang/String;Landroidx/work/WorkerParameters;)Landroidx/work/ListenableWorker;

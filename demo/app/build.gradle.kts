@@ -22,6 +22,9 @@ android {
     testOptions {
         // trace sections (androidx.tracing) call android.os.Trace, which does nothing off a phone
         unitTests.isReturnDefaultValues = true
+        // no window animations while instrumented tests run: an accessibility check made during an activity's or a
+        // sheet's window animation reads a 48 dp target scaled down. Compose's own motion is unaffected
+        animationsDisabled = true
     }
 
     buildFeatures {

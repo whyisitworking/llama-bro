@@ -1,8 +1,4 @@
 public final class com/suhel/llamabro/testing/FakeLlamaBro {
-	public static final field COMMIT_EMPTY Ljava/lang/String;
-	public static final field CUT_WITHOUT_LIMIT Ljava/lang/String;
-	public static final field LOAD_FAILED_STATUS I
-	public static final field LOAD_STEPS I
 	public fun <init> ()V
 	public fun <init> (Lkotlin/jvm/functions/Function1;)V
 	public synthetic fun <init> (Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V

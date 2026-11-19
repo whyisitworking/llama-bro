@@ -45,9 +45,7 @@ class HostVoiceTest {
             model =
                 LlamaBro(LlamaBroRuntime(JniEngine, tempDir(), lib, LlamaBroConfig.Default))
                     .loadModel(ModelSource.file(gguf) { this.mmproj = mmproj }) {
-                        // two slots, each of CONTEXT: a second one for the user's captions (D99)
-                        contextSize = ContextSize.Fixed(2 * CONTEXT)
-                        parallelSlots = 2
+                        contextSize = ContextSize.Fixed(CONTEXT)
                         seed = SEED
                     }
         }
@@ -104,36 +102,6 @@ class HostVoiceTest {
         }
 
     @Test
-    fun theUsersTurnIsCaptionedOnTheSecondSlotWhileTheReplyIsMade() =
-        runBlocking {
-            val session =
-                model.voiceSession {
-                    maxOutputTokens = REPLY_TOKENS
-                    transcribeUser { language = "en" }
-                }
-            session.speak()
-            assertTrue(session.commit())
-            val events = mutableListOf<VoiceEvent>()
-            var ends = 0
-            withTimeout(TIMEOUT_MS) {
-                session.events
-                    .takeWhile {
-                        events += it
-                        if (it is VoiceEvent.ReplyDone || it is VoiceEvent.UserTranscript) ends++
-                        ends < 2
-                    }.toList()
-            }
-            val committed = events.filterIsInstance<VoiceEvent.TurnCommitted>().single()
-            val caption = events.filterIsInstance<VoiceEvent.UserTranscript>().single()
-            System.err.println("voice caption: $caption")
-            assertEquals(committed.itemId, caption.itemId)
-            assertTrue(events.indexOf(committed) < events.indexOf(caption))
-            assertTrue(events.none { it is VoiceEvent.Error })
-            assertFalse((events.last { it is VoiceEvent.ReplyDone } as VoiceEvent.ReplyDone).cancelled)
-            session.close()
-        }
-
-    @Test
     fun aRefusedEventIsAnErrorAndTheSessionGoesOn() =
         runBlocking {
             val session = open()
@@ -171,7 +139,7 @@ class HostVoiceTest {
     private companion object {
         const val CONTEXT = 4096
         const val REPLY_TOKENS = 32
-        const val SEED = 42
+        const val SEED = 42L
         const val TIMEOUT_MS = 300_000L
 
         /** The 16-bit samples of a WAV's `data` chunk (make-test-clip.sh writes 16 kHz mono). */

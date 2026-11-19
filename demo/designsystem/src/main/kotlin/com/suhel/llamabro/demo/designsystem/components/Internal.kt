@@ -9,7 +9,6 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.theme.DemoColors
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 

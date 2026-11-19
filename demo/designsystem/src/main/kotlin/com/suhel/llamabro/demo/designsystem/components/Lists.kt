@@ -2,8 +2,6 @@ package com.suhel.llamabro.demo.designsystem.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,7 +20,6 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.SwipeToDismissBox
@@ -36,15 +33,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -455,11 +449,12 @@ fun SwipeToRemove(label: String, onRemove: () -> Unit, modifier: Modifier = Modi
                     Modifier
                         .fillMaxSize()
                         .clip(DemoShapes.card)
-                        .background(colors.tooBigTint)
+                        .background(colors.canvas)
                         .padding(end = DemoSpacing.item),
                     contentAlignment = Alignment.CenterEnd,
                 ) {
-                    Text(label, color = colors.tooBigInk, style = DemoType.label)
+                    // a removal speaks in the danger colour, on a ground the contrast test holds it to 4.5:1 against
+                    Text(label, color = colors.danger, style = DemoType.label)
                 }
             }
         },

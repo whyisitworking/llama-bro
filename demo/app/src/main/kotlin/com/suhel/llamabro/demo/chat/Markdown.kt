@@ -13,7 +13,6 @@ import org.commonmark.ext.gfm.tables.TableCell
 import org.commonmark.ext.gfm.tables.TableRow
 import org.commonmark.ext.gfm.tables.TablesExtension
 import org.commonmark.node.BlockQuote
-import org.commonmark.node.BulletList
 import org.commonmark.node.Code
 import org.commonmark.node.Emphasis
 import org.commonmark.node.FencedCodeBlock
@@ -57,41 +56,27 @@ object Markdown {
     fun parse(text: String): MarkdownBlocks = parse(text, null)
 
     /**
-     * Parses [text], the previous reply's text plus more. Only the part the old text's last line may still join is
-     * parsed again, with what follows it: the line being written can grow the block above it (a table's next row, a
-     * list item's next line, a setext underline), but nothing before that. In a list that part is the last item, and
-     * in a table the last row (read again under the table's header), so a long list or table costs the same per append
-     * as a short one. The blocks before it keep their instances from [previous], so they don't redraw while a reply
-     * streams; those parsed again that come out equal keep theirs. While streaming, a last line of only `-` or `=`
-     * waits for its end, so "Steps:" doesn't flash as a heading before "- step" is written.
+     * Parses [text], the previous reply's text plus more. Only the top-level block the old text's last line may still
+     * join is parsed again, with what follows it: the line being written can grow the block above it (a table's next
+     * row, a list's next item, a setext underline), but nothing before that. A list or a table being written is parsed
+     * again whole on each append. The blocks before it keep their instances from [previous], so they don't redraw
+     * while a reply streams; those parsed again that come out equal keep theirs. While streaming, a last line of only
+     * `-` or `=` waits for its end, so "Steps:" doesn't flash as a heading before "- step" is written.
      */
     fun parse(text: String, previous: Parsed?): MarkdownBlocks = parseKeeping(text, previous).blocks
 
     /**
-     * A parse that remembers where each block's source is in the text ([sources]) and where the next append parses
-     * again from ([restart]: the last block that starts before the text's last line). A link reference definition
-     * reaches back to links before it, so a reply with one is parsed whole ([whole]). [text] is the text parsed, which
-     * leaves out a last line held back as a possible underline.
+     * A parse that remembers the line each block's top-level source starts on ([starts]; a list's items share their
+     * list's) and where the next append parses again from ([restart]: the last top-level block that starts before the
+     * text's last line). A link reference definition reaches back to links before it, so a reply with one is parsed
+     * whole ([whole]). [text] is the text parsed, which leaves out a last line held back as a possible underline.
      */
     class Parsed internal constructor(
         val text: String,
         val blocks: MarkdownBlocks,
-        internal val sources: Array<Source>,
+        internal val starts: IntArray,
         internal val restart: Int,
         internal val whole: Boolean,
-    )
-
-    /**
-     * Where a block's source is: the line it [start]s on (a top-level list item's own line, else its top-level
-     * block's); for a top-level list's item, the [list]'s start (-1 for none) and its [marker]; for a table, its
-     * header and delimiter lines and where each body row starts.
-     */
-    internal class Source(
-        val start: Int,
-        val list: Int = -1,
-        val marker: String? = null,
-        val header: String? = null,
-        val rows: IntArray? = null,
     )
 
     fun parseKeeping(text: String, previous: Parsed?): Parsed =
@@ -107,154 +92,54 @@ object Markdown {
             } else {
                 full
             }
-        if (previous == null || previous.whole || !text.startsWith(previous.text)) return parseWhole(text, previous)
-        val restart = previous.restart
-        val at = previous.sources.indexOfFirst { it.start == restart }
-        val source = previous.sources.getOrNull(at)
-        val resumed =
-            when {
-                source?.rows != null -> resumeTable(text, previous, at, source)
-                source != null && source.list in 0 until restart -> resumeList(text, previous, at, source)
-                else -> null
-            }
-        return resumed ?: parseFrom(text, restart, previous) ?: parseWhole(text, previous)
+        val from = if (previous == null || previous.whole || !text.startsWith(previous.text)) 0 else previous.restart
+        // from 0 a parse never returns null: a definition there has nothing earlier to reach back to
+        return parseFrom(text, from, previous) ?: checkNotNull(parseFrom(text, 0, previous))
     }
-
-    private fun parseWhole(text: String, previous: Parsed?): Parsed = checkNotNull(parseFrom(text, 0, previous))
-
-    /** Parses from a list's item past its first, as a list of its own numbered on from the item, else from the list. */
-    private fun resumeList(text: String, previous: Parsed, at: Int, source: Source): Parsed? {
-        val item = previous.blocks.blocks[at] as ListEntry
-        val resume = ListResume(source.list, source.marker, item.index)
-        return parseFrom(text, source.start, previous, list = resume) ?: parseFrom(text, source.list, previous)
-    }
-
-    /** Parses from a table's last row that starts before the old text's last line, under the table's header. */
-    private fun resumeTable(text: String, previous: Parsed, at: Int, source: Source): Parsed? {
-        val rows = checkNotNull(source.rows)
-        val header = checkNotNull(source.header)
-        val lastLine = previous.text.lastIndexOf('\n') + 1
-        val row = rows.indexOfLast { it < lastLine }
-        if (row < 0) return null
-        val resume = TableResume(previous.blocks.blocks[at] as MarkdownBlock.Table, source, row)
-        return parseFrom(text, rows[row] - header.length, previous, table = resume, keepBefore = source.start)
-    }
-
-    /** Where a parse from inside a list picks up: the list's start, its marker, and the first item's number. */
-    private class ListResume(val list: Int, val marker: String?, val index: Int)
-
-    /** Where a parse from inside a table picks up: the table so far, its source, and the first row read again. */
-    private class TableResume(val table: MarkdownBlock.Table, val source: Source, val row: Int)
 
     /**
-     * Parses [text] from [from], a line start, keeping [previous]'s blocks before [keepBefore]; null when the part read
-     * holds a link reference definition and earlier text must be read again with it, or when it doesn't open with the
-     * rest of the [list] or [table] it was to resume. For a [table], [from] is where the table's header would start
-     * if its rows from the resumed one followed it.
+     * Parses [text] from [from], a top-level block's line start, keeping [previous]'s blocks before it; null when the
+     * part read holds a link reference definition, so earlier text must be read again with it.
      */
-    private fun parseFrom(
-        text: String,
-        from: Int,
-        previous: Parsed?,
-        list: ListResume? = null,
-        table: TableResume? = null,
-        keepBefore: Int = from,
-    ): Parsed? {
-        val input =
-            when {
-                table != null -> checkNotNull(table.source.header) + text.substring(from + table.source.header.length)
-                from == 0 -> text
-                else -> text.substring(from)
-            }
-        val document = parser.parse(input)
+    private fun parseFrom(text: String, from: Int, previous: Parsed?): Parsed? {
+        val document = parser.parse(if (from == 0) text else text.substring(from))
         val whole = MarkdownTree.hasDefinition(document)
         if (whole && from > 0) return null
-        val first = document.firstChild
-        val out = Collector(text, previous, keepBefore)
-        when {
-            list != null -> if (!resumesList(first, list, from, out)) return null
-            table != null -> if (!resumesTable(first, table, from, out)) return null
-            first != null -> add(first, from, out)
-        }
-        var node = first?.next
+        val out = Collector(text, previous, from)
+        var node = document.firstChild
         while (node != null) {
-            add(node, from, out)
+            val start = from + lineStart(node)
+            for (block in MarkdownTree.blocks(node)) out.add(block, start)
             node = node.next
         }
         return out.parsed(whole)
     }
 
-    private fun resumesList(first: Node?, resume: ListResume, from: Int, out: Collector): Boolean {
-        if (first !is CmList || lineStart(first) != 0 || MarkdownTree.marker(first) != resume.marker) return false
-        for ((item, start) in MarkdownTree.items(first, resume.index)) {
-            out.add(item, Source(from + start, resume.list, resume.marker))
-        }
-        return true
-    }
-
-    private fun resumesTable(first: Node?, resume: TableResume, from: Int, out: Collector): Boolean {
-        if (first !is TableBlock || lineStart(first) != 0) return false
-        val read = MarkdownTree.table(first)
-        val old = resume.table
-        if (read.header != old.header || read.alignments != old.alignments) return false
-        val rows = checkNotNull(resume.source.rows)
-        val table = MarkdownBlock.Table(old.alignments, old.header, old.rows.subList(0, resume.row) + read.rows)
-        val starts = rows.copyOf(resume.row) + MarkdownTree.rowStarts(first).map { from + it }
-        out.add(table, Source(resume.source.start, header = resume.source.header, rows = starts))
-        return true
-    }
-
-    /** Adds the blocks of a top-level [node] of a part parsed from [from]. */
-    private fun add(node: Node, from: Int, out: Collector) {
-        val start = from + lineStart(node)
-        when (node) {
-            is CmList -> {
-                val marker = MarkdownTree.marker(node)
-                for ((item, itemStart) in MarkdownTree.items(node, null)) {
-                    out.add(item, Source(from + itemStart, start, marker))
-                }
-            }
-
-            is TableBlock -> {
-                // the header and delimiter lines, kept to read later rows under; only a table with body rows resumes
-                val rows = MarkdownTree.rowStarts(node).map { from + it }.toIntArray()
-                val header = if (rows.isEmpty()) null else out.text(start, rows[0])
-                out.add(MarkdownTree.table(node), Source(start, header = header, rows = header?.let { rows }))
-            }
-
-            else -> {
-                for (block in MarkdownTree.blocks(node)) out.add(block, Source(start))
-            }
-        }
-    }
-
-    /** The blocks of a parse of [text] in order: [previous]'s before [keepBefore], then those read, with sources. */
+    /** A parse of [text]'s blocks in order: [previous]'s before [keepBefore], then those read, with their starts. */
     private class Collector(private val text: String, private val previous: Parsed?, keepBefore: Int) {
         private val blocks = ArrayList<MarkdownBlock>()
-        private val sources = ArrayList<Source>()
+        private val starts = ArrayList<Int>()
 
         init {
             if (previous != null) {
                 var kept = 0
-                while (kept < previous.sources.size && previous.sources[kept].start < keepBefore) kept++
+                while (kept < previous.starts.size && previous.starts[kept] < keepBefore) kept++
                 blocks += previous.blocks.blocks.subList(0, kept)
-                for (i in 0 until kept) sources += previous.sources[i]
+                for (i in 0 until kept) starts += previous.starts[i]
             }
         }
 
-        fun add(block: MarkdownBlock, source: Source) {
+        fun add(block: MarkdownBlock, start: Int) {
             // a block that came out the same as before keeps its instance, so it doesn't redraw
             val old = previous?.blocks?.blocks?.getOrNull(blocks.size)
             blocks += if (old != null && old == block) old else block
-            sources += source
+            starts += start
         }
-
-        fun text(start: Int, end: Int): String = text.substring(start, end)
 
         fun parsed(whole: Boolean): Parsed {
             val lastLine = text.lastIndexOf('\n') + 1
-            val restart = sources.lastOrNull { it.start < lastLine }?.start ?: 0
-            return Parsed(text, MarkdownBlocks(blocks), sources.toTypedArray(), restart, whole)
+            val restart = starts.lastOrNull { it < lastLine } ?: 0
+            return Parsed(text, MarkdownBlocks(blocks), starts.toIntArray(), restart, whole)
         }
     }
 }
@@ -272,14 +157,6 @@ private object MarkdownTree {
 
     fun hasDefinition(node: Node): Boolean = node is LinkReferenceDefinition || kids(node).any(::hasDefinition)
 
-    /** A list's kind and marker: "-", "*" or "+" for bullets, "1." or "1)" for numbers. */
-    fun marker(list: CmList): String? =
-        when (list) {
-            is BulletList -> list.marker
-            is OrderedList -> "1" + list.markerDelimiter
-            else -> null
-        }
-
     /** The design system's blocks for one parsed block: none, one, or a list's items. */
     fun blocks(node: Node): List<MarkdownBlock> =
         when (node) {
@@ -291,7 +168,7 @@ private object MarkdownTree {
 
             is IndentedCodeBlock -> listOf(MarkdownBlock.Code(null, node.literal.removeSuffix("\n")))
 
-            is CmList -> items(node, null).map { it.first }
+            is CmList -> items(node)
 
             // a quote that holds only a link reference definition shows nothing
             is BlockQuote -> children(node).let { if (it.isEmpty()) emptyList() else listOf(MarkdownBlock.Quote(it)) }
@@ -319,13 +196,10 @@ private object MarkdownTree {
             ?.substringBefore(' ')
             ?.ifEmpty { null }
 
-    /**
-     * A list's items, numbered from its start (or from [continuing], when the list is the rest of one already begun),
-     * each with the line its source starts on: its first paragraph beside its marker, the rest under it.
-     */
-    fun items(list: CmList, continuing: Int?): List<Pair<ListEntry, Int>> {
+    /** A list's items, numbered from its start: each one's first paragraph beside its marker, the rest under it. */
+    private fun items(list: CmList): List<ListEntry> {
         val ordered = list is OrderedList
-        val start = continuing ?: (list as? OrderedList)?.markerStartNumber ?: 1
+        val start = (list as? OrderedList)?.markerStartNumber ?: 1
         return kids(list)
             .filterIsInstance<CmListItem>()
             .mapIndexed { k, item ->
@@ -336,21 +210,12 @@ private object MarkdownTree {
                     index = if (ordered) start + k else 0,
                     spans = first?.spans ?: emptyList(),
                     blocks = if (first != null) content.drop(1) else content,
-                    startsList = k == 0 && continuing == null,
-                ) to lineStart(item)
+                    startsList = k == 0,
+                )
             }.toList()
     }
 
-    /** Where each body row of a table starts, in the text parsed. */
-    fun rowStarts(table: TableBlock): List<Int> =
-        kids(table)
-            .flatMap(::kids)
-            .filterIsInstance<TableRow>()
-            .drop(1)
-            .map(::lineStart)
-            .toList()
-
-    fun table(table: TableBlock): MarkdownBlock.Table {
+    private fun table(table: TableBlock): MarkdownBlock.Table {
         // the head's row, then the body's
         val rows =
             kids(table)

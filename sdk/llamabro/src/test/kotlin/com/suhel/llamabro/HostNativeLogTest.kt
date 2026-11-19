@@ -1,8 +1,8 @@
 package com.suhel.llamabro
 
-import com.suhel.llamabro.internal.Engine
 import com.suhel.llamabro.internal.JniEngine
 import com.suhel.llamabro.internal.LlamaBroRuntime
+import com.suhel.llamabro.spi.Engine
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue

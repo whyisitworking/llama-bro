@@ -5,7 +5,7 @@ package com.suhel.llamabro
  * load (D64, D75). Not sealed, so that a module or an app can fetch files from anywhere; any other implementation of
  * this interface is refused with [LlamaBroException.InvalidRequest].
  */
-public interface ModelSource {
+public sealed interface ModelSource {
     public companion object {
         /** A local GGUF, optionally accompanied by a projector or draft model. */
         public fun file(path: String, configure: FileSourceBuilder.() -> Unit = {}): ModelSource {

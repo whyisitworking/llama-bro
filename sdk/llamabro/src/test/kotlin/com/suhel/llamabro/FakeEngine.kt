@@ -1,12 +1,12 @@
 package com.suhel.llamabro
 
-import com.suhel.llamabro.internal.Engine
-import com.suhel.llamabro.internal.EngineAttachment
-import com.suhel.llamabro.internal.EngineModel
-import com.suhel.llamabro.internal.EngineRequest
 import com.suhel.llamabro.internal.LlamaBroRuntime
-import com.suhel.llamabro.internal.NativeError
-import com.suhel.llamabro.internal.RequestSink
+import com.suhel.llamabro.spi.Engine
+import com.suhel.llamabro.spi.EngineAttachment
+import com.suhel.llamabro.spi.EngineModel
+import com.suhel.llamabro.spi.EngineRequest
+import com.suhel.llamabro.spi.NativeError
+import com.suhel.llamabro.spi.RequestSink
 import java.io.File
 import java.nio.file.Files
 

@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -41,7 +40,6 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.R
 import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
@@ -227,32 +225,35 @@ fun Composer(
             .softShadow(shape, colors, elevation = DemoSize.elevationRaised, lightAlpha = 0.08f)
             .clip(shape)
             .background(colors.surface)
-            .border(DemoSize.hairline, colors.hairline, shape)
-            .animateContentSize(tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard)),
+            .border(DemoSize.hairline, colors.hairline, shape),
     ) {
-        if (attachments != null) {
-            Box(
+        // only what grows animates: an animated size clips its content, and the buttons below must keep their whole
+        // 48 dp targets while the text area grows, or an accessibility check then reads them smaller
+        Column(Modifier.animateContentSize(tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard))) {
+            if (attachments != null) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(start = DemoSpacing.item, end = DemoSpacing.item, top = DemoSpacing.item),
+                ) { attachments() }
+            }
+            val textPadding =
                 Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(start = DemoSpacing.item, end = DemoSpacing.item, top = DemoSpacing.item),
-            ) { attachments() }
-        }
-        val textPadding =
-            Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = DemoSpacing.item,
-                    end = DemoSpacing.item,
-                    top = if (attachments != null) DemoSpacing.block else DemoSpacing.item,
-                    // 8 dp here and the 6 dp a 36 dp circle leaves in its 48 dp target: the buttons sit 14 dp
-                    // under the text, and the bar keeps the height it had with 40 dp circles
-                    bottom = DemoSpacing.block,
-                )
-        if (recording != null) {
-            RecordingLine(recording, textPadding)
-        } else {
-            MessageField(state, placeholder, onTextChange, textPadding)
+                    .padding(
+                        start = DemoSpacing.item,
+                        end = DemoSpacing.item,
+                        top = if (attachments != null) DemoSpacing.block else DemoSpacing.item,
+                        // 8 dp here and the 6 dp a 36 dp circle leaves in its 48 dp target: the buttons sit 14 dp
+                        // under the text, and the bar keeps the height it had with 40 dp circles
+                        bottom = DemoSpacing.block,
+                    )
+            if (recording != null) {
+                RecordingLine(recording, textPadding)
+            } else {
+                MessageField(state, placeholder, onTextChange, textPadding)
+            }
         }
         // 4 dp round the 48 dp targets: a 36 dp circle is 10 dp from the bar's bottom, start and end
         Row(

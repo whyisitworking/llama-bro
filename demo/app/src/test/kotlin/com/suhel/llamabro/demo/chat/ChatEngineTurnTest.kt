@@ -3,15 +3,12 @@ package com.suhel.llamabro.demo.chat
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.chat.ChatEvent
-import com.suhel.llamabro.chat.Content
-import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
-import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.NotOnPhone
@@ -25,7 +22,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking

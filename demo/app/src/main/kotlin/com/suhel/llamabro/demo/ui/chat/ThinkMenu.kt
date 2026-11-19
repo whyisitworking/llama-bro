@@ -1,19 +1,12 @@
 package com.suhel.llamabro.demo.ui.chat
 
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.components.DemoSheet
 import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.Section
-import com.suhel.llamabro.demo.designsystem.components.SectionLabel
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
-import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 
 /** The four ways to think (demo design §4.4): a sheet of rows, the current one ticked. */
 @Composable

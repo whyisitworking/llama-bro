@@ -36,7 +36,6 @@ public class Reasoning internal constructor(
 
     public companion object {
         /** Nothing set: the model's and llama-server's defaults. */
-        @JvmField
         public val Default: Reasoning = Reasoning(null, null, null, null)
     }
 }

@@ -16,8 +16,8 @@ package com.suhel.llamabro.chat
 public class ChatRequest internal constructor(
     public val messages: List<Message>,
     public val tools: List<Tool>,
-    /** Everything else: sampling, reasoning, format, stop, tool choice, [RequestOptions.extra]. */
-    public val options: RequestOptions,
+    // everything else (sampling, reasoning, format, stop, tool choice, extra), read through the getters below
+    internal val options: RequestOptions,
 ) {
     public val toolChoice: ToolChoice? get() = options.toolChoice
     public val parallelToolCalls: Boolean? get() = options.parallelToolCalls

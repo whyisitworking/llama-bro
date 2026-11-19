@@ -1,7 +1,8 @@
 # Tuned on top of detekt's defaults (buildUponDefaultConfig). What is changed, and why:
 #  - Composables are named like types (Compose's own guidelines) and are long because they describe a tree.
 #  - Numbers in tests, previews and design tokens are the data, not magic.
-#  - Boundaries catch `Exception` on purpose (the user's phone, the network, a native call) and say so in the code.
+#  - A broad catch is flagged everywhere; a boundary that means it (the user's phone, the network, a native call)
+#    suppresses the rule at that catch and says why.
 #  - Structure (length, complexity, return count, function count) stays strict.
 
 naming:
@@ -58,11 +59,15 @@ style:
     excludeReturnFromLambda: true
   UnusedPrivateProperty:
     active: true
+  # ktlint doesn't flag unused imports, so detekt does
+  UnusedImport:
+    active: true
 
 exceptions:
   TooGenericExceptionCaught:
     exceptionNames:
       - 'Error'
+      - 'Exception'
       - 'Throwable'
       - 'RuntimeException'
       - 'NullPointerException'
@@ -73,6 +78,8 @@ exceptions:
       - '**/conversation/Conversation.kt'
       - '**/internal/BackendDiscovery.kt'
       - '**/hub/internal/Transfers.kt'
+      # the acceptance apps are device harnesses: they show any failure on screen
+      - '**/acceptance/**'
       - '**/test/**'
       - '**/androidTest/**'
   SwallowedException:

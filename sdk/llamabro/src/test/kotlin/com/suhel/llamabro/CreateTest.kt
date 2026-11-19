@@ -80,6 +80,14 @@ class CreateTest {
     }
 
     @Test
+    fun aNewLoggerWithTheSameSettingsGetsTheSameRuntime() {
+        val first = LlamaBro.create(LlamaBroConfig { logger = Logger { _, _ -> } }) { testLlamaBro() }
+        // a config built again, as a DI module without a singleton scope would: only the logger instance differs
+        val again = LlamaBro.create(LlamaBroConfig { logger = Logger { _, _ -> } }) { error("built twice") }
+        assertSame(first, again)
+    }
+
+    @Test
     fun refusedCreateLeavesTheFirstLoggerAttached() {
         val lines = mutableListOf<String>()
         val config = LlamaBroConfig { logger = Logger { _, msg -> lines += msg } }
@@ -113,7 +121,6 @@ class CreateTest {
     @Test
     fun concurrentCreateBuildsOnce() {
         val builds = AtomicInteger()
-        // The configs are equal because they share one logger instance: LlamaBroConfig compares it by reference.
         val start = CountDownLatch(1)
         val pool = Executors.newFixedThreadPool(8)
         try {

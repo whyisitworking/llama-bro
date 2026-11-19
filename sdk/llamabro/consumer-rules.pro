@@ -4,16 +4,16 @@
 -keep class com.suhel.llamabro.internal.NativeBridge {
     native <methods>;
 }
--keep interface com.suhel.llamabro.internal.RequestSink { *; }
+-keep interface com.suhel.llamabro.spi.RequestSink { *; }
 -keep interface com.suhel.llamabro.internal.ProgressListener { *; }
 -keep interface com.suhel.llamabro.internal.LogListener { *; }
--keep class com.suhel.llamabro.internal.NativeError {
+-keep class com.suhel.llamabro.spi.NativeError {
     <init>(int, java.lang.String);
 }
 
 # Backend artifacts name their installer class in the manifest (<meta-data com.suhel.llamabro.backend.*>, D24); the
 # core creates it by that name with reflection (LlamaBro.kt, manifestBackends). Renamed or removed, the backend
 # would be reported as failed instead of loading.
--keep class * implements com.suhel.llamabro.internal.BackendInstaller {
+-keep class * implements com.suhel.llamabro.spi.BackendInstaller {
     public <init>();
 }

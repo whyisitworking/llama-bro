@@ -13,7 +13,6 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
@@ -27,6 +26,7 @@ import com.suhel.llamabro.demo.testing.ScreenshotRule
 import com.suhel.llamabro.demo.testing.TestAppRule
 import com.suhel.llamabro.demo.testing.TestConfig
 import com.suhel.llamabro.demo.testing.demoRules
+import com.suhel.llamabro.demo.testing.settleWindow
 import com.suhel.llamabro.demo.testing.withAccessibilityChecks
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.flow.first
@@ -73,9 +73,7 @@ class FirstRunTest {
     private fun waitForFirstRun(checks: Boolean = true) {
         if (checks) compose.withAccessibilityChecks()
         compose.waitUntilAtLeastOneExists(hasTestTag("pick_card"), 10_000)
-        // the window's open animation makes the accessibility check read buttons at about three quarters of their size (F101)
-        compose.waitForIdle()
-        Thread.sleep(900)
+        compose.settleWindow()
     }
 
     private fun waitFor(text: String, substring: Boolean = false) =

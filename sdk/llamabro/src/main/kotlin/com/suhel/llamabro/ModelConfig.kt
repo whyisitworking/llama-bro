@@ -36,7 +36,7 @@ public class ModelConfig internal constructor() {
      * The sampling seed of requests that set none (`--seed`); null keeps llama-server's default, a random seed. A
      * voice session's replies take this seed and none of their own (F168), so a fixed one makes them reproducible.
      */
-    public var seed: Int? = null
+    public var seed: Long? = null
 
     /** Logical batch for prompt processing (`-b`). */
     public var batchSize: Int = 512
@@ -115,12 +115,6 @@ public class ModelConfig internal constructor() {
 
             is RemoteModelSource -> {
                 // nothing to check before the fetch: the load checks the files it returns
-            }
-
-            else -> {
-                throw LlamaBroException.InvalidRequest(
-                    "unsupported ModelSource ${source::class.java.name}: use ModelSource.file or a RemoteModelSource",
-                )
             }
         }
     }
@@ -354,17 +348,10 @@ public sealed interface Speculative {
      *
      * @property draftMax tokens drafted per step (`--spec-draft-n-max`), at least 1.
      */
-    public class Mtp(public val draftMax: Int = 3) : Speculative {
+    public data class Mtp(public val draftMax: Int = 3) : Speculative {
         init {
             require(draftMax >= 1) { "draftMax must be at least 1" }
         }
-
-        // not a data class, so that a setting can be added later without breaking callers (D26)
-        override fun equals(other: Any?): Boolean = other is Mtp && draftMax == other.draftMax
-
-        override fun hashCode(): Int = draftMax
-
-        override fun toString(): String = "Mtp(draftMax=$draftMax)"
     }
 
     /**
@@ -380,14 +367,7 @@ public sealed interface Speculative {
      * @property then the MTP head to draft with when n-grams have nothing to offer (`--spec-type ngram-mod,draft-mtp`);
      * the model needs an MTP head ([ModelInfo]). On the NPU this was the fastest for code, quoting and JSON (F72).
      */
-    public class Ngram(public val then: Mtp? = null) : Speculative {
-        // not a data class, so that the n-gram sizes can be added later without breaking callers (D26)
-        override fun equals(other: Any?): Boolean = other is Ngram && then == other.then
-
-        override fun hashCode(): Int = then.hashCode()
-
-        override fun toString(): String = "Ngram(then=$then)"
-    }
+    public data class Ngram(public val then: Mtp? = null) : Speculative
 
     /**
      * Drafts with a separate local GGUF supplied by `ModelSource.file(path) { draft = … }`.
@@ -396,16 +376,10 @@ public sealed interface Speculative {
      *
      * @property draftMax tokens drafted per step (`--spec-draft-n-max`), at least 1.
      */
-    public class DFlash(public val draftMax: Int = 15) : Speculative {
+    public data class DFlash(public val draftMax: Int = 15) : Speculative {
         init {
             require(draftMax >= 1) { "draftMax must be at least 1" }
         }
-
-        override fun equals(other: Any?): Boolean = other is DFlash && draftMax == other.draftMax
-
-        override fun hashCode(): Int = draftMax
-
-        override fun toString(): String = "DFlash(draftMax=$draftMax)"
     }
 }
 
@@ -453,11 +427,4 @@ public enum class KvCacheType(internal val nativeName: String) {
 }
 
 /** A LoRA adapter GGUF made for the base model ([ModelConfig.loraAdapters]), applied at [scale] (0 = off). */
-public class LoraAdapter(public val path: String, public val scale: Float = 1f) {
-    // not a data class: upstream's adapters have more settings (task name, prompt prefix) that may come later (D26)
-    override fun equals(other: Any?): Boolean = other is LoraAdapter && path == other.path && scale == other.scale
-
-    override fun hashCode(): Int = 31 * path.hashCode() + scale.hashCode()
-
-    override fun toString(): String = "LoraAdapter(path=$path, scale=$scale)"
-}
+public data class LoraAdapter(public val path: String, public val scale: Float = 1f)

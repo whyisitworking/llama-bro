@@ -34,6 +34,13 @@ class FollowStateTest {
         assertFalse(follow.following)
     }
 
+    @Test fun theReaderLeavingStopsFollowingUntilTheEnd() {
+        follow.leave()
+        assertFalse(follow.following)
+        scrollTo(10, 500, end = true)
+        assertTrue(follow.following)
+    }
+
     @Test fun reachingTheEndResumes() {
         scrollTo(10, 100, end = false)
         scrollTo(10, 500, end = true)

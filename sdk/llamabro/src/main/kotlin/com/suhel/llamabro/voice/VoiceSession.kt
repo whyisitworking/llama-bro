@@ -31,10 +31,8 @@ public class VoiceSession internal constructor(
     public val voice: String?,
     /** The language the server will speak, null for the model's default. */
     public val language: String?,
-    /** The session's coroutines: its events' collector and the user's captions; [close] cancels them. */
+    /** The session's coroutines: its events' collector; [close] cancels them. */
     private val scope: CoroutineScope,
-    /** Captions of the user's turns, when the config asked for them (D99). */
-    private val captions: TurnCaptions?,
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
 
@@ -57,10 +55,7 @@ public class VoiceSession internal constructor(
         require(offset >= 0 && length >= 0 && offset + length <= pcm.size) { "offset and length outside the array" }
         if (length == 0) return !closed.get()
         return send(RealtimeJson.append(pcm, offset, length)).also {
-            if (it) {
-                captions?.append(pcm, offset, length)
-                hasAudio.set(true)
-            }
+            if (it) hasAudio.set(true)
         }
     }
 
@@ -73,7 +68,6 @@ public class VoiceSession internal constructor(
     public fun commit(respond: Boolean = true): Boolean {
         val audio = hasAudio.getAndSet(false)
         if (!send(RealtimeJson.commit)) return false
-        if (audio) captions?.commit()
         return if (respond && audio) send(RealtimeJson.respond) else true
     }
 
@@ -98,11 +92,6 @@ public class VoiceSession internal constructor(
     /** Hangs up: the server ends the conversation, and [events] completes. Calling it again does nothing. */
     override fun close() {
         if (closed.compareAndSet(false, true)) scope.cancel()
-    }
-
-    /** Each server event, after it went to the app. */
-    internal fun observe(event: VoiceEvent) {
-        if (event is VoiceEvent.TurnCommitted) captions?.committed(event.itemId)
     }
 
     private fun send(message: String): Boolean = !closed.get() && link.send(message)

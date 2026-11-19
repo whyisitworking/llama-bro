@@ -1,21 +1,10 @@
 package com.suhel.llamabro.demo.ui.chat
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -28,17 +17,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.LimitAction
 import com.suhel.llamabro.demo.data.AppLayout
@@ -61,8 +52,6 @@ import com.suhel.llamabro.demo.designsystem.components.TopBarTitle
 import com.suhel.llamabro.demo.designsystem.components.TypingDots
 import com.suhel.llamabro.demo.designsystem.components.WakeHairline
 import com.suhel.llamabro.demo.designsystem.components.messageMotion
-import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
-import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import kotlinx.coroutines.CancellationException
@@ -204,6 +193,10 @@ private fun MessageList(
     val listState = rememberLazyListState()
     val follow = rememberFollowState()
     val lastReplyKey = remember(rows) { rows.lastOrNull { it is ReplyItem }?.key }
+    val rowKeys = remember(rows) { rows.mapTo(HashSet()) { it.key } }
+    val shown = rememberShownReply(streaming, rowKeys)
+    // read apart from the text, so a new token doesn't recompose the list
+    val streamingKey by remember { derivedStateOf { shown()?.let { "m-${it.id}" } ?: STREAMING } }
     val bottom = rows.lastOrNull()
     val count = rows.size + if (busy) 1 else 0 // not the laid-out count, which can still be the old one
     // the message the reader last sent, so that coming back to the chat (or turning the phone) does not count again
@@ -220,6 +213,7 @@ private fun MessageList(
     }
     LaunchedEffect(listState) { followScrolls(listState, follow) }
     LaunchedEffect(listState) { keepAtEnd(listState, follow) }
+    val readerScrolls = remember(follow) { ReaderScrolls(follow) }
 
     // away from the end: a button back to the latest message. While a followed reply grows the end runs a frame
     // ahead of the list, which is not the reader being away
@@ -227,7 +221,7 @@ private fun MessageList(
     val scope = rememberCoroutineScope()
     MessageColumn(
         listState,
-        Modifier.testTag("message_list"),
+        Modifier.nestedScroll(readerScrolls).testTag("message_list"),
         overlay = {
             JumpToLatest(
                 visible = away,
@@ -250,15 +244,45 @@ private fun MessageList(
                 MessageRow(item, style, actions, showActions = !busy && item.key == lastReplyKey)
             }
         }
-        if (busy) {
-            item(key = "streaming", contentType = "streaming") {
-                Box(Modifier.messageMotion(this)) { StreamingHost(streaming, style, actions) }
+        // the streaming row has the key its saved reply will have, and stays until that reply is in the rows (see
+        // ChatViewModel.streaming), so when a reply ends the list keeps the reader's place in it
+        if ((busy || streamingKey != STREAMING) && streamingKey !in rowKeys) {
+            item(key = streamingKey, contentType = STREAMING) {
+                Box(Modifier.messageMotion(this)) { StreamingHost(shown, style, actions) }
             }
         }
     }
 }
 
-/** Tells [follow] where every scroll took the list, including the last step of one that has just stopped. */
+/**
+ * The reply being written, and once it has ended, until its saved row is among [rowKeys]: the database delivers that
+ * row a moment after the stream stops, and a list left with neither for a frame loses the reader's place inside a long
+ * reply. Decided on the rows the list draws, since the screen's rows can trail the view model's.
+ */
+@Composable
+private fun rememberShownReply(streaming: () -> StreamingItem?, rowKeys: Set<String>): () -> StreamingItem? {
+    var lastStreamed by remember { mutableStateOf<StreamingItem?>(null) }
+    val streamingNow by rememberUpdatedState(streaming)
+    val rowKeysNow by rememberUpdatedState(rowKeys)
+    LaunchedEffect(Unit) { snapshotFlow { streamingNow() }.collect { if (it != null) lastStreamed = it } }
+    return remember { { streamingNow() ?: lastStreamed?.takeIf { "m-${it.id}" !in rowKeysNow } } }
+}
+
+/**
+ * The reader's own drags and flings, as they move the list: one toward older messages stops following at once. It
+ * needs no sample of the list catching the scroll in progress, which a short drag with no fling can end before.
+ */
+private class ReaderScrolls(private val follow: FollowState) : NestedScrollConnection {
+    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+        if (consumed.y > 0f) follow.leave() // a positive delta shows what is above: older messages
+        return Offset.Zero
+    }
+}
+
+/**
+ * Tells [follow] where every scroll took the list, including the last step of one that has just stopped: an
+ * accessibility service's scroll, which no drag announces, reaches it here.
+ */
 private suspend fun followScrolls(listState: LazyListState, follow: FollowState) {
     var from = listState.position()
     var wasScrolling = false
@@ -279,7 +303,7 @@ private suspend fun keepAtEnd(listState: LazyListState, follow: FollowState) {
         val streamingHeight =
             listState.layoutInfo.visibleItemsInfo
                 .lastOrNull()
-                ?.takeIf { it.key == "streaming" }
+                ?.takeIf { it.contentType == STREAMING }
                 ?.size
         Triple(streamingHeight, follow.following, listState.isScrollInProgress)
     }.collect { (_, following, scrolling) ->
@@ -365,3 +389,6 @@ private fun PhotoThumb(name: String, thumbnail: suspend (String) -> ImageBitmap?
     val picture by produceState<ImageBitmap?>(null, name) { value = thumbnail(name) }
     Thumbnail(picture, "Attached photo", "Remove photo", { onRemove(name) })
 }
+
+/** The streaming row's content type, and its key until the reply's message id is known. */
+private const val STREAMING = "streaming"

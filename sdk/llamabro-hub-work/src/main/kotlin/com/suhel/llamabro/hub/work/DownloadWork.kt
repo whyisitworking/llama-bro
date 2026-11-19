@@ -32,7 +32,6 @@ import java.util.concurrent.TimeUnit
  * [mmproj] and [draft] are [com.suhel.llamabro.hub.PlanOptions]'s, with its defaults. [constraints] don't make the
  * work another one: a queued download keeps the constraints it was enqueued with.
  */
-@JvmOverloads
 public fun WorkManager.enqueueDownload(
     model: HfModel,
     mmproj: Boolean = true,
@@ -58,7 +57,6 @@ public fun defaultDownloadConstraints(): Constraints =
  * Cancels the download [enqueueDownload] started with the same arguments. The partial files stay, so enqueuing it
  * again resumes (F114); [com.suhel.llamabro.hub.LlamaBroHub.delete] removes them.
  */
-@JvmOverloads
 public fun WorkManager.cancelDownload(model: HfModel, mmproj: Boolean = true, draft: DraftRequest? = null): Operation =
     cancelUniqueWork(downloadWorkName(model, mmproj, draft))
 
@@ -66,7 +64,6 @@ public fun WorkManager.cancelDownload(model: HfModel, mmproj: Boolean = true, dr
  * The unique work name of a download, for [WorkManager.getWorkInfosForUniqueWorkFlow] and its kin. Equal for equal
  * arguments, different for a different model or options.
  */
-@JvmOverloads
 public fun downloadWorkName(model: HfModel, mmproj: Boolean = true, draft: DraftRequest? = null): String =
     "llamabro-download:$model mmproj=$mmproj draft=${draftKey(draft) ?: "none"}"
 

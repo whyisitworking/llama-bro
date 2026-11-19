@@ -1,11 +1,8 @@
 package com.suhel.llamabro.demo.ui.chat
 
 import android.graphics.BitmapFactory
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -13,19 +10,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.chat.PlayingClip
 import com.suhel.llamabro.demo.designsystem.components.DayLabel
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.Gap
 import com.suhel.llamabro.demo.designsystem.components.HeldNote
 import com.suhel.llamabro.demo.designsystem.components.IconAction
-import com.suhel.llamabro.demo.designsystem.components.Inline
 import com.suhel.llamabro.demo.designsystem.components.LimitLine
 import com.suhel.llamabro.demo.designsystem.components.MarkdownBlocks
 import com.suhel.llamabro.demo.designsystem.components.MarkdownText
@@ -40,7 +34,6 @@ import com.suhel.llamabro.demo.designsystem.components.TypingDots
 import com.suhel.llamabro.demo.designsystem.components.UserBubble
 import com.suhel.llamabro.demo.designsystem.components.VoiceClip
 import com.suhel.llamabro.demo.designsystem.testing.CountRecompositions
-import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import kotlinx.coroutines.Dispatchers
