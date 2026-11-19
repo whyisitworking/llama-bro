@@ -10,7 +10,7 @@ plugins {
 
 group = "io.github.whyisitworking"
 
-// FakeLlamaBro for apps' JVM tests (PA T7, D27): the real llamabro Kotlin layer over a scripted engine, no native code
+// FakeLlamaBro for apps' JVM tests (D27): the real llamabro Kotlin layer over a scripted engine, no native code
 android {
     namespace = "com.suhel.llamabro.testing"
     compileSdk = 37

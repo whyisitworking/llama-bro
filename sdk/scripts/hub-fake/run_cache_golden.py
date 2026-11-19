@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run upstream's real download handler against a fresh fake Hub per P3 T4 scenario."""
+"""Run upstream's real download handler against a fresh fake Hub per scenario."""
 
 import argparse
 import json

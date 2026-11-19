@@ -15,7 +15,7 @@ import com.suhel.llamabro.spi.LogcatLogger
 import java.io.File
 
 /**
- * The SDK's entry point: one per process (design §5, D6). Models are loaded from it as independent handles.
+ * The SDK's entry point: one per process (D6). Models are loaded from it as independent handles.
  */
 public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime) {
     /**
@@ -202,7 +202,7 @@ private fun manifestBackends(app: Context, options: BackendOptions): BackendDisc
 }
 
 /**
- * Memory now (P2 T7, D33, D34): the kernel's `MemAvailable`, else Android's `availMem`, and the low-memory threshold.
+ * Memory now (D33, D34): the kernel's `MemAvailable`, else Android's `availMem`, and the low-memory threshold.
  */
 private fun memorySnapshot(app: Context): MemoryBudget.Snapshot? {
     val am = app.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return null

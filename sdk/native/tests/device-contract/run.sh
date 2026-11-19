@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Device contract (P2 T9, design §12): on the phone's NPU, the C API must answer exactly like upstream llama-server
+# Device contract: on the phone's NPU, the C API must answer exactly like upstream llama-server
 # built from the same tree, with the same flags and `-dev HTP0 -ngl 99`. The host contract (tests/contract/run.sh)
 # with its request set, http-run.py and compare.py, but both sides run on the phone: llama-server in the background
 # (reached through adb forward, F20) and lb-run with the Hexagon backend passed as the app passes it. Passes only on
@@ -36,7 +36,7 @@ adb shell "[ -f '$model' ]" || { echo "FAIL: $model missing on the phone"; exit 
 mmproj="$models/${LB_DEVICE_MMPROJ:-mmproj-F16.gguf}"
 adb shell "[ -f '$mmproj' ]" || mmproj=""
 
-# never alongside another llama-server or a test app (F27's runaway sample, the PF overheating)
+# never alongside another llama-server or a test app (F27's runaway sample, and the phone overheating)
 adb shell pkill -x llama-server 2>/dev/null || true
 cool() {  # wait for thermal status <= 2, at most 10 minutes
     for _ in $(seq 1 60); do
@@ -74,7 +74,7 @@ adb push -q "$tools/." "$remote/bin/" >/dev/null
 adb push -q "$requests" "$remote/requests.jsonl" >/dev/null
 env="cd $remote && LD_LIBRARY_PATH=$remote/bin"  # ggml-hexagon finds the skeleton beside itself (b12352)
 
-# upstream: the host contract's flags plus the device (design §8)
+# upstream: the host contract's flags plus the device
 cool
 # the cleanup first, so that any later failure still stops the server and removes the forward
 trap 'adb shell pkill -x llama-server 2>/dev/null || true

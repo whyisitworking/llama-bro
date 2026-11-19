@@ -1,4 +1,4 @@
-# Chat stream fixtures (P1 T8)
+# Chat stream fixtures
 
 `*.jsonl`: upstream llama-server's raw SSE output for the spike's T2 requests on the phone CPU, copied from
 `research/p0/results/raw/cpu-t2-u1/` (one `{"t_us", "data"}` line per chunk). The requests are in

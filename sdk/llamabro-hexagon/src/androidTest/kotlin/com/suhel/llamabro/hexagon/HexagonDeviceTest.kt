@@ -11,7 +11,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 
-/** P2 T3 `hexagonBackendLoads`: on the OnePlus 13 the artifact alone makes HTP0 available (F36, F61). */
+/** On the OnePlus 13 the artifact alone makes HTP0 available (F36, F61). */
 @RunWith(AndroidJUnit4::class)
 class HexagonDeviceTest {
     @Test

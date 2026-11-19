@@ -22,13 +22,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/** PA T2 (F37, F43): request types built through builders, with P1's bodies unchanged. */
+/** Request types built through builders, with the golden bodies unchanged (F37, F43). */
 class RequestTypesTest {
     private fun body(r: ChatRequest) = Json.parseToJsonElement(ChatJson.encode(r).body) as JsonObject
 
-    /** The same requests as P1 built (golden recorded from P1's code before the change): byte-identical bodies. */
+    /** The golden requests (recorded before the builders): byte-identical bodies. */
     @Test
-    fun bodiesMatchP1() {
+    fun bodiesMatchTheGolden() {
         val golden = Json.parseToJsonElement(javaClass.getResource("/p1-bodies.json")!!.readText()) as JsonObject
         val weather =
             Tool.function(
@@ -120,7 +120,7 @@ class RequestTypesTest {
                     },
             )
         for ((name, request) in cases) {
-            // the one deliberate change since P1 (D84): a picture is a placeholder the native side fills
+            // the one deliberate change since the golden (D84): a picture is a placeholder the native side fills
             val expected =
                 golden
                     .getValue(
@@ -129,7 +129,7 @@ class RequestTypesTest {
                     .replace("data:image/png;base64,AQID", "lb-attachment:0")
             assertEquals(name, expected, ChatJson.encode(request).body)
         }
-        // the other deliberate change (F43): P1 replaced the whole object and lost enable_thinking
+        // the other deliberate change (F43): the golden's encoder replaced the whole object and lost enable_thinking
         val nested =
             ChatJson
                 .encode(
@@ -177,34 +177,34 @@ class RequestTypesTest {
                 "verbose" to "debug output",
                 "timings_per_token" to "timings arrive with Done",
                 "cache_prompt" to "on by default, as in llama-server",
-                "return_tokens" to "token ids are P4 (tokenize)",
+                "return_tokens" to "token ids are not typed (tokenize)",
                 "sse_ping_interval" to "HTTP keep-alive, no HTTP layer here",
-                "n_indent" to "infill (T6, P4)",
+                "n_indent" to "infill (T6)",
                 "n_keep" to "context shift is off (D17)",
                 "n_discard" to "context shift is off (D17)",
-                "n_cmpl" to "multiple completions are P4",
+                "n_cmpl" to "multiple completions are not typed",
                 "n_cache_reuse" to "cache reuse is a model setting",
                 "t_max_predict_ms" to "time limit; cancel the flow instead",
                 "response_fields" to "shapes non-streamed output; chat always streams",
-                "n_probs" to "logprobs are P4 (typed results)",
-                "post_sampling_probs" to "logprobs are P4",
-                "lora" to "LoRA adapters (T6 route, P4)",
+                "n_probs" to "logprobs are not typed",
+                "post_sampling_probs" to "logprobs are not typed",
+                "lora" to "LoRA adapters (T6 route)",
                 "json_schema" to "native endpoint form; chat uses responseFormat",
                 "grammar_lazy" to "set by the chat template",
-                "continue_final_message" to "assistant prefill is P4",
+                "continue_final_message" to "assistant prefill is not typed",
                 "echo" to "completion endpoint only",
                 "preserved_tokens" to "set by the chat template",
                 "grammar_triggers" to "set by the chat template",
                 "reasoning_control" to "Conversation.endReasoning uses the control endpoint",
                 "reasoning_budget_start_tag" to "set by the chat template",
                 "reasoning_budget_end_tags" to "set by the chat template",
-                "speculative.n_max" to "speculative decoding is a model setting (P2 T8)",
-                "speculative.n_min" to "speculative decoding is a model setting (P2 T8)",
-                "speculative.p_min" to "speculative decoding is a model setting (P2 T8)",
-                "speculative.type" to "speculative decoding is a model setting (P2 T8)",
-                "speculative.ngram_size_n" to "speculative decoding is a model setting (P2 T8)",
-                "speculative.ngram_size_m" to "speculative decoding is a model setting (P2 T8)",
-                "speculative.ngram_min_hits" to "speculative decoding is a model setting (P2 T8)",
+                "speculative.n_max" to "speculative decoding is a model setting",
+                "speculative.n_min" to "speculative decoding is a model setting",
+                "speculative.p_min" to "speculative decoding is a model setting",
+                "speculative.type" to "speculative decoding is a model setting",
+                "speculative.ngram_size_n" to "speculative decoding is a model setting",
+                "speculative.ngram_size_m" to "speculative decoding is a model setting",
+                "speculative.ngram_min_hits" to "speculative decoding is a model setting",
             )
         val known = typed + sdkOwned + extraOnly.keys
         assertEquals("upstream fields not classified", emptySet<String>(), upstream - known)

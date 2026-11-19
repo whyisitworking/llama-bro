@@ -1,4 +1,4 @@
-# Llama-Bro SDK native build (P1). Builds libllamabro (the C API over llama-server's server-context)
+# Llama-Bro SDK native build. Builds libllamabro (the C API over llama-server's server-context)
 # from the patched llama.cpp copy made by scripts/prepare-llama.sh.
 cmake_minimum_required(VERSION 3.25)
 project(llamabro C CXX)
@@ -29,7 +29,7 @@ if(NOT ANDROID)
     set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()
 
-# llama.cpp flags (P1 plan, Global Constraints)
+# llama.cpp flags
 set(BUILD_SHARED_LIBS      ON  CACHE BOOL "" FORCE)
 set(LLAMA_OPENSSL          OFF CACHE BOOL "" FORCE)
 set(LLAMA_SUBPROCESS       OFF CACHE BOOL "" FORCE)
@@ -48,7 +48,7 @@ set(GGML_CPU_ALL_VARIANTS  ON  CACHE BOOL "" FORCE)
 # runs were with OpenMP (F77, D38)
 set(GGML_OPENMP           OFF CACHE BOOL "" FORCE)
 
-# Optional backends (P2 T3-T5): built only by scripts/build-backends.sh, inside Qualcomm's image for Hexagon. They
+# Optional backends: built only by scripts/build-backends.sh, inside Qualcomm's image for Hexagon. They
 # come from this same file so ggml-base, which each backend links, is built with the AGP build's exact options.
 set(LB_BACKENDS "" CACHE STRING "Optional backends to build: hexagon (needs HEXAGON_SDK_ROOT), opencl")
 if("hexagon" IN_LIST LB_BACKENDS)
@@ -178,7 +178,7 @@ if(LB_BUILD_TESTS)
     target_link_libraries(lb-tests PRIVATE llamabro llama-common)
     add_dependencies(lb-tests llama-server)
 
-    # a device-less ggml backend for the backend-loading tests (P2 T2), next to the CPU variants
+    # a device-less ggml backend for the backend-loading tests, next to the CPU variants
     add_library(lb-test-backend MODULE bridge/tests/lb_test_backend.cpp)
     target_include_directories(lb-test-backend SYSTEM PRIVATE ${LB_LLAMA_DIR}/ggml/src ${LB_LLAMA_DIR}/ggml/include)
     set_target_properties(lb-test-backend PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

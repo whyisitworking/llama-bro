@@ -208,6 +208,8 @@ private fun VoiceWords(note: String?, userWords: String?, caption: String, modif
             .drawWithContent {
                 drawContent()
                 if (scroll.value > 0) {
+                    // a DstIn mask: only its alpha counts, its colour is never seen
+                    @Suppress("DemoRawColour")
                     drawRect(
                         Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = 0f, endY = fade.toPx()),
                         blendMode = BlendMode.DstIn,

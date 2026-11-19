@@ -43,7 +43,7 @@ import kotlinx.serialization.json.put
 import java.util.IdentityHashMap
 
 /**
- * A chat history that behaves like llama.cpp's own web client (`tools/ui`, design §6–§7, D8): it builds each
+ * A chat history that behaves like llama.cpp's own web client (`tools/ui`, D8): it builds each
  * request from the history, appends replies, and only ever appends, so the server reuses its cached prefix.
  *
  * Every request carries the conversation's [Builder.defaults]; one [send], [resume] or [regenerate] can change
@@ -283,7 +283,7 @@ public class Conversation internal constructor(
         internal val registry = ToolRegistry()
 
         /**
-         * Registers a tool (design §6.2). With a [handler], the agent loop runs it and sends its result back. What a
+         * Registers a tool. With a [handler], the agent loop runs it and sends its result back. What a
          * handler throws decides what the model sees (D62): an [LbToolError] sends `Error: <message>` (as do
          * [JsonArgs]' accessors, with `invalid arguments: …`), and its `cause`, if any, reaches the app as
          * `ChatEvent.ToolResult.error`; an [LbToolAbort] ends the turn with
@@ -505,7 +505,7 @@ public class Conversation internal constructor(
         }
 
     /**
-     * The agent loop, ported from tools/ui stores/agentic/index.svelte.ts (design §6.2): send; if the reply calls
+     * The agent loop, ported from tools/ui stores/agentic/index.svelte.ts: send; if the reply calls
      * tools, run them one after another in order, append each result, and send again; stop on a reply without
      * tool calls. The turn check sits at the top of the loop (`turn >= maxTurns`), so maxTurns counts model
      * requests per flow; tools/ui then asks the user to continue, which here is `Done(TurnLimit)` + [resume].
@@ -700,7 +700,7 @@ public class Conversation internal constructor(
             throw e
         } catch (e: Throwable) {
             // An error (e.g. ContextExceeded): keep what was streamed, nothing when it's empty, so resume()
-            // sends the same request again (P1 plan T9).
+            // sends the same request again.
             if (draft.hasAnything()) append(draft.partial())
             _reply.value = null
             throw e

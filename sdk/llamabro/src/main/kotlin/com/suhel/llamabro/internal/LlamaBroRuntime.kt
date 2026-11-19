@@ -59,7 +59,7 @@ import java.io.File
 import kotlin.random.Random
 
 /**
- * The process-wide runtime (design §5): initialises the native runtime on first use, off the caller's thread
+ * The process-wide runtime: initialises the native runtime on first use, off the caller's thread
  * (it costs about 13 ms on the phone, F48), and loads models.
  */
 internal class LlamaBroRuntime(
@@ -68,9 +68,9 @@ internal class LlamaBroRuntime(
     private val backendDir: String?,
     private val config: LlamaBroConfig,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    /** Backend artifacts on the classpath (P2 T2); runs once per init attempt, on [ioDispatcher]. */
+    /** Backend artifacts on the classpath; runs once per init attempt, on [ioDispatcher]. */
     private val discoverBackends: () -> BackendDiscovery.Result = { BackendDiscovery.Result.None },
-    /** Android's memory at load time, for `ContextSize.Auto` (P2 T7); null without it (the P1 default context). */
+    /** Android's memory at load time, for `ContextSize.Auto`; null without it (the default context). */
     private val memorySnapshot: () -> MemoryBudget.Snapshot? = { null },
     /** Where lines go when the app's [LlamaBroConfig.logger] is null (logcat on Android, D66). */
     private val defaultLogger: Logger? = null,
@@ -136,7 +136,7 @@ internal class LlamaBroRuntime(
                 } catch (ignored: Exception) {
                     null
                 }
-            // LB_ERR_ALREADY_INITIALIZED (2): another LlamaBroConfig was used first in this process (design §5)
+            // LB_ERR_ALREADY_INITIALIZED (2): another LlamaBroConfig was used first in this process
             throw LlamaBroException.InvalidRequest(
                 if (status == 2) {
                     "LlamaBro is already initialized with a different LlamaBroConfig: ${ErrorMapping.nativeMessage(
@@ -168,7 +168,7 @@ internal class LlamaBroRuntime(
         }
     }
 
-    /** `noBackupFilesDir/llamabro/slots/` (design §8). */
+    /** `noBackupFilesDir/llamabro/slots/`. */
     val slotsDir: File get() = File(noBackupDir, "llamabro/slots")
 
     /** `noBackupFilesDir/llamabro/media/`, shared by every process of the app. */
@@ -342,7 +342,7 @@ internal class LlamaBroRuntime(
     }
 
     /**
-     * Tries the plan's devices in order, one model load each (P2 T6): a failed load frees itself, its reason goes in
+     * Tries the plan's devices in order, one model load each: a failed load frees itself, its reason goes in
      * the report, and the next device is tried. A missing file stops at once, since no device can fix it.
      */
     private suspend fun loadOnFirstDevice(
@@ -657,7 +657,7 @@ internal class LlamaBroRuntime(
     private val shutdownScope = CoroutineScope(SupervisorJob() + ioDispatcher)
 }
 
-/** What decodes and why (P2 T8): what the app set, or for [Speculative.Auto] why it is off on this chip. */
+/** What decodes and why: what the app set, or for [Speculative.Auto] why it is off on this chip. */
 private fun speculativeOf(requested: Speculative, kind: DeviceKind, source: ModelSource): Pair<Speculative, String> {
     val result =
         when (requested) {
@@ -679,7 +679,7 @@ private fun speculativeOf(requested: Speculative, kind: DeviceKind, source: Mode
             }
 
             is Speculative.DFlash -> {
-                requested to "DFlash draft (D41)"
+                requested to "DFlash draft: set by the app"
             }
         }
     val unusedDraft = (source as? FileSource)?.draft != null && requested !is Speculative.DFlash
@@ -755,7 +755,7 @@ private fun sweepMediaFolders(root: File, own: File, pid: Int, alive: (Int) -> B
     }
 }
 
-/** [ModelConfig.toJson] with the runtime's slot and media folders (design §8, D87). */
+/** [ModelConfig.toJson] with the runtime's slot and media folders (D87). */
 private fun ModelConfig.loadJson(
     slotsDir: File,
     mediaDir: File,

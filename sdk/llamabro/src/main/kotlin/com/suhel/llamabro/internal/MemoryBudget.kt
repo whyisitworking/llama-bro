@@ -1,7 +1,7 @@
 package com.suhel.llamabro.internal
 
 /**
- * What a model may use in total for `ContextSize.Auto` (P2 T7, D33), from Android's view of memory at load time. The
+ * What a model may use in total for `ContextSize.Auto` (D33), from Android's view of memory at load time. The
  * native side fits the context to it with upstream's own measurement, over every device, since a phone has one RAM.
  * Measured on the OnePlus 13 (F66): that projection is 110–425 MiB above what loading and filling the context really
  * cost, so it already covers itself; the reserve covers what grows during chats and isn't projected (context

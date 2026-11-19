@@ -24,7 +24,7 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 internal fun ActionsSamples() {
     SampleFrame {
         PrimaryButton("Get Qwen3.5 4B · about 3 min", onClick = {}, modifier = Modifier.fillMaxWidth())
-        PrimaryButton("Get Swift", onClick = {}, modifier = Modifier.fillMaxWidth(), enabled = false)
+        PrimaryButton("Get Qwen3.5 0.8B", onClick = {}, modifier = Modifier.fillMaxWidth(), enabled = false)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             QuietButton("What's a model?", onClick = {})
             QuietButton("Get more models", onClick = {})

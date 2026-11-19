@@ -159,11 +159,11 @@ class ModelConfigTest {
                 model.loadReport.speculativeReason,
                 model.loadReport.speculativeReason.startsWith("off: MTP measured slower"),
             )
+            // the reason reaches apps through LoadReport: it says why, with no internal finding ID
             DeviceKind.entries.forEach {
-                assertTrue(
-                    MtpPolicy
-                        .reason(it)
-                        .contains("F67"),
+                assertFalse(
+                    MtpPolicy.reason(it),
+                    Regex("\\b[DF]\\d+\\b") in MtpPolicy.reason(it),
                 )
             }
         }
@@ -225,7 +225,7 @@ class ModelConfigTest {
             assertEquals("/draft.gguf", cfg["draft_path"]!!.jsonPrimitive.content)
             assertEquals("""{"type":"dflash","n_max":15}""", cfg["speculative"].toString())
             assertEquals(Speculative.DFlash(), model.loadReport.speculative)
-            assertEquals("DFlash draft (D41)", model.loadReport.speculativeReason)
+            assertEquals("DFlash draft: set by the app", model.loadReport.speculativeReason)
             assertEquals(Speculative.DFlash(8), Speculative.DFlash(8))
             assertEquals(Speculative.DFlash(8).hashCode(), Speculative.DFlash(8).hashCode())
             assertEquals("DFlash(draftMax=8)", Speculative.DFlash(8).toString())

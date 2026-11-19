@@ -1,4 +1,4 @@
-// A ggml backend library for the host tests only (P2 T2): it has no devices. ggml_backend_init records the value of
+// A ggml backend library for the host tests only: it has no devices. ggml_backend_init records the value of
 // LB_TEST_BACKEND_VALUE as it sees it, so a test can check that a backend's env was set before it initialised, and
 // returns NULL when LB_TEST_BACKEND_FAIL is set, the way a backend whose driver is missing does.
 #include "ggml-backend-impl.h"

@@ -4,7 +4,7 @@ plugins {
 
 group = "io.github.whyisitworking"
 
-// The NPU backend (P2 T3, design §9): libllamabro-ggml-hexagon.so and the HTP skeletons, built in Qualcomm's image
+// The NPU backend: libllamabro-ggml-hexagon.so and the HTP skeletons, built in Qualcomm's image
 // by sdk/native/scripts/build-backends.sh. Being on the classpath is enough: the core finds it through the manifest.
 android {
     namespace = "com.suhel.llamabro.hexagon"
@@ -45,7 +45,7 @@ dependencies {
 
     testImplementation(libs.junit)
 
-    // the device-choice test needs both backends in one APK (P2 T6, until T10's `full` sample flavor)
+    // the device-choice test needs both backends in one APK (until T10's `full` sample flavor)
     androidTestImplementation(project(":llamabro-opencl"))
     androidTestImplementation(libs.kotlinx.serialization.json)
     androidTestImplementation(libs.androidx.junit)

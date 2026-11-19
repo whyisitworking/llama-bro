@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the patched llama.cpp copy the SDK compiles from (P1 T1). The submodule is never edited:
+# Builds the patched llama.cpp copy the SDK compiles from. The submodule is never edited:
 #   OUT_DIR/llama.cpp = `git archive` of the submodule's HEAD, plus every patches/[0-9]*.patch applied
 #   in name order. OUT_DIR/llama.cpp/.lb-stamp records the submodule commit and each patch's SHA-256;
 #   when it matches, nothing is done. Otherwise the copy is rebuilt from scratch.

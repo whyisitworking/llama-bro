@@ -140,7 +140,7 @@ public class Sampling internal constructor(private val values: Map<String, Any>)
         /** No field set: every value is the model's or llama-server's default. */
         public val Default: Sampling = Sampling(emptyMap())
 
-        /** Wire order: P1's eleven first, so P1's request bodies stay byte-identical (PA T2 `bodiesMatchP1`). */
+        /** Wire order: the first eleven typed fields first, so request bodies match the golden ones byte for byte. */
         internal val FIELDS: List<Field> =
             listOf(
                 Field("temperature", "temperature", Kind.Float),

@@ -1,5 +1,5 @@
 // The root project's buildBackends task, applied by both root build files (the repository's and sdk/'s).
-// The optional backends' native libraries (P2 T3/T4), built in Qualcomm's Docker image by one script for every
+// The optional backends' native libraries, built in Qualcomm's Docker image by one script for every
 // backend module; up to date while the patched copy, the CMake file and the script are (findings F62).
 val sdkDir = gradle.extensions.extraProperties["sdkDir"] as File
 

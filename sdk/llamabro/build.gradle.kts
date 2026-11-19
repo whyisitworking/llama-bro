@@ -61,12 +61,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // run by sdk/scripts/check.sh (PA T1): any warning fails the build
+    // run by sdk/scripts/check.sh: any warning fails the build
     lint {
         abortOnError = true
         warningsAsErrors = true
         checkDependencies = false
-        // arm64-v8a only, by design (design §9 "Platform")
+        // arm64-v8a only, by design
         disable += "ChromeOsAbiSupport"
     }
 }
@@ -138,7 +138,7 @@ tasks.withType<Test>().configureEach {
     }
 }
 
-// Public API dump (PA T1, findings F45). `apiCheck` compares the release build's public API with the checked-in
+// Public API dump (findings F45). `apiCheck` compares the release build's public API with the checked-in
 // api/llamabro.api; `apiDump` updates it. BCV's plugin would set these up itself only for the
 // org.jetbrains.kotlin.android plugin, which AGP 9's built-in Kotlin doesn't apply, so its tasks are wired here to
 // the release variant's classes through AGP's variant API.

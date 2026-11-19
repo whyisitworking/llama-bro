@@ -1,5 +1,5 @@
 // Node module hooks that let Llama Chat's TypeScript (llama.cpp ui/apps/chat; tools/ui before b12479) run without its
-// build (P1 differential tests): `#lib/...` aliases point at the one module each needs, and extensionless relative
+// build (the differential tests): `#lib/...` aliases point at the one module each needs, and extensionless relative
 // imports get `.ts`. Read-only: the llama.cpp checkout is never written to.
 import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';

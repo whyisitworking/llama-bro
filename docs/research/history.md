@@ -387,24 +387,22 @@ it ships as patch 0008 in the speech helper (D96, F167).
 
 ## Open items
 
-- **The models do not see an attached picture on the phone (F119).** The suggested vision models answer as if no picture were attached. Next steps: send the same file through the acceptance app and the host test with the phone's models, try the CPU backend, read the native log (it does not reach logcat), then check the image's MIME type. No test yet asserts that a model names the colours of a known picture. **Resolved 2026-11-13 (F120, F121, D53):** ggml-hexagon computes some image encoders wrongly, upstream llama-server included. The encoder had followed the model onto the NPU since P2 T6, and no test read what a reply said. b12352 fixes the encoder (F121); it follows the model again, apps can move it (D53), and every image test asserts the colours.
-- **A looping small model has no guard (F113).** Stop is the only exit. A cap on the reply length per Think level and the model card's recommended presence penalty are candidates. **Done 2026-11-14 (D60):** a length limit per Think level with Continue, and each model's card values, Qwen's presence penalty among them.
-- **The model's memory (D59, done 2026-11-14).** Freed by a chosen delay or Android's signal, Unload in Settings and the model sheet, a notification only while a reply runs in the background. F134 holds on the phone. Open: saving the chat's slot to disk on release, measured (F135: about 3 s saved for a 3k-token chat, 300 MB of disk), not built.
-- **A Settings page for sampling values**, with a reset to the model's default. **Done 2026-11-14 (D60):** Settings › Sampling per model and the chat's own values in its model sheet, each with a reset; how other apps do it is F136.
-- **A test of the reasoning budget's forced end** on a small model. **Done 2026-11-14 (F137):** `ReplyLimitDeviceTest` on the phone; it also shows Continue working from inside the thinking.
-- **An intermittent miss of the held-message note (F138)**, twice on the emulator, not reproduced alone; traced part way and left for later.
-- Carried from earlier phases: DFlash's one unexplained divergence (F95); Vulkan on the Adreno 830 and GPU drafting, both waiting on upstream (F64, F80); typed classes for embeddings, rerank, completion and transcription (reachable now through `rawRequest`); CI, sanitizer runs and generated documentation; no non-Qualcomm device verified; and publishing, which needs a decision on the NPU runtime's licence terms.
-- **Load progress in the demo app.** The SDK already reports it (`ModelConfig.onProgress`, from llama-server's loading stages, the projector included), but the demo shows only an indeterminate line while a model wakes. A determinate bar is a small change. Check at the same time whether cancelling a load reaches llama.cpp, whose progress callback can abort it. **Done 2026-11-14:** the wake line fills from the SDK's load progress; whether cancelling a load reaches llama.cpp is in [sdk-review.md](sdk-review.md) (item 7).
-- **Headline features to discuss (proposed 2026-11-13, not decided).** Each stays within what llama-server offers:
-  1. *Typed structured output:* `generate<T>()` returns a Kotlin data class, its JSON schema derived from kotlinx.serialization and enforced by llama-server's schema grammar, so the reply always parses. (`ResponseFormat` exists today, with the schema as a string.)
-  2. *Typed tools:* the tool loop exists (`Conversation.tool`); the schema is a string and the arguments are read by name. Declaring a tool with a typed argument class removes both. Whether a tool may run stays the app's decision.
-  3. *Embeddings and rerank as typed calls* (`/embeddings`, `/rerank`, today only through `rawRequest`): private, offline semantic search on the phone.
-  4. *Audio input* for speech-capable models, through the same multimodal path as pictures.
-  5. *LoRA adapters switched at runtime* (llama-server's `/lora-adapters`): one base model, several tasks, no reload.
-  The suggested lead is 1 and 2. The full usability review, which ranks these with the memory check (done, D57) and loading by a Hugging Face name, is [sdk-review.md](sdk-review.md), with a proposed phase for them (PH) and one for the release (PR). What the SDK already has also counts toward the headline: the Hexagon NPU, MTP drafting, pictures with a choice of encoder device, fit estimates and resumable downloads from the hub.
-- **Open at the end of PH (2026-11-17).**
-  - *An interactive voice mode* is the next phase (D85). It starts with the llama.cpp upgrade (109 commits ahead, four patches to port, D90; [review](../../research/ph/upstream/review-2026-11-17.md)); done 2026-11-17, see the voice mode section. It continues with a byte-returning raw request (F74), `/v1/realtime` on an in-memory connection (F56), and a way to hold the voice steady across sentences (F154).
-  - *Upstream reports for the user to post:* the hybrid-SWA cache stop ([`research/ph/cache-stop/`](../../research/ph/cache-stop/), patch 0004) and Hexagon's tiled weight read by a lookup ([`research/ph/speech-output/upstream-issue-hexagon.md`](../../research/ph/speech-output/upstream-issue-hexagon.md), patch 0005).
-  - *Not measured on the phone:* integer bounds' grammar cost (F158, host only) and ADPF hints as an alternative to polling (D86).
-  - *Known and tolerated:* Llama 3.2 3B repeats a tool call until the turn limit (F27), as upstream does.
-  - *The W9 step 5 review* (rulings in D90-D92): polling went back to off and the speech-output patches (0005-0007) moved to branch `voice/speech-npu` for the voice phase (D90); the small bugs it found were fixed; the structural refactors (splitting `Conversation` and the demo's chat engine, one record model in the hub, API questions) and the release work (CI, publishing, licences) are a cleanup phase after the llama.cpp upgrade. `Auto` stays open on chips nobody has verified (D92).
+What is still open, as of 2026-11-19. Finished work is recorded in the phases above and in the decisions.
+
+- **DFlash's one divergence (F95).** On the NPU, DFlash once differed from upstream's greedy reply at one token, in
+  one of six runs; not reproduced and not root-caused.
+- **Drafting on the GPU (F80).** Any speculative decoding aborts the OpenCL backend, so the SDK never drafts on the
+  GPU; waits on upstream.
+- **Vulkan (F174).** It runs on the Adreno 830 with four patches kept in `research/vulkan-adreno/`, but is slower
+  there than the CPU and OpenCL, so it is not built (D112).
+- **Typed calls still to come.** Completion and runtime LoRA switching are reachable only through `rawRequest`
+  (`Endpoint.Completion`, `Endpoint.LoraAdaptersSet`).
+- **Not measured on the phone.** Integer bounds' grammar cost (F158, host only) and ADPF hints as an alternative to
+  NPU polling (D86).
+- **Known and tolerated.** Llama 3.2 3B repeats a tool call until the turn limit (F27), as it does on upstream.
+- **Upstream reports to post** (drafts only, never posted from here): the hybrid-SWA cache stop
+  ([`research/ph/cache-stop/`](../../research/ph/cache-stop/), patch 0004), Hexagon's tiled weight read by a lookup
+  ([`research/ph/speech-output/`](../../research/ph/speech-output/)), and the Q4_K shader fix for Qualcomm Vulkan
+  ([`research/vulkan-adreno/`](../../research/vulkan-adreno/)).
+- **The held-message note (F138).** Its intermittent misses came from a test reading before the screen settled; the
+  test now waits for the download ring (2026-11-19). No miss has been seen in the app.

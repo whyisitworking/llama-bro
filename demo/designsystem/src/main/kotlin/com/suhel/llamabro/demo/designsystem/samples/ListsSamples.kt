@@ -54,13 +54,19 @@ internal fun ListsSamples() {
             modifier = Modifier.height(180.dp),
         )
         Column {
-            ChatRow("W", "Portfolio bio", "9:38", "Writer: Here's a tighter version that leads with…", fromUser = false)
+            ChatRow(
+                "W",
+                "Portfolio bio",
+                "9:38",
+                "Gemma 3 4B: Here's a tighter version that leads with…",
+                fromUser = false,
+            )
             ChatRow("S", "Monstera brown edges", "8:02", "You: what about the soil?", fromUser = true)
             ChatRow("D", "CV for the design role", "Tue", "Deep: The 2021 gap reads fine if you…", fromUser = false)
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            LibraryRow("Swift", "Qwen3.5 0.8B · 0.7 GB", "Used today", onClick = {})
-            LibraryRow("Writer", "Gemma 3 4B · 2.5 GB", "Used today", defaultLabel = "Default", onClick = {})
+            LibraryRow("Qwen3.5 0.8B", "Qwen3.5 0.8B · 0.7 GB", "Used today", onClick = {})
+            LibraryRow("Gemma 3 4B", "Gemma 3 4B · 2.5 GB", "Used today", defaultLabel = "Default", onClick = {})
             LibraryRow("Deep", "Qwen3.5 4B · 2.8 GB", "2 weeks ago", onClick = {})
         }
         SectionLabel("Downloading")
@@ -85,11 +91,11 @@ internal fun ListsSheetSamples() {
         SheetFrame {
             Section("On this phone") {
                 RowCard(selected = false, onClick = {}) {
-                    ListRow("Swift", subtitle = "Qwen3.5 0.8B", end = { FitText("Runs great", CardTint.Great) })
+                    ListRow("Qwen3.5 0.8B", subtitle = "Qwen3.5 0.8B", end = { FitText("Runs great", CardTint.Great) })
                 }
                 RowCard(selected = true, onClick = {}) {
                     ListRow(
-                        "Writer",
+                        "Gemma 3 4B",
                         subtitle = "Gemma 3 4B",
                         end = {
                             Inline(Gap.Block) {

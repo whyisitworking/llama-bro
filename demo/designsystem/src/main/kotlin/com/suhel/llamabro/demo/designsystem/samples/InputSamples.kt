@@ -23,7 +23,10 @@ internal fun InputSamples() {
         SearchField("qwen", onValueChange = {}, placeholder = "Search Hugging Face", modifier = Modifier.fillMaxWidth())
         TextArea("", onValueChange = {
         }, placeholder = "What should every chat know about you?", modifier = Modifier.fillMaxWidth())
-        SampleComposer(ComposerState("", canAttach = true, think = ThinkLevel.Off, busy = false), "Message Swift")
+        SampleComposer(
+            ComposerState("", canAttach = true, think = ThinkLevel.Off, busy = false),
+            "Message Qwen3.5 0.8B",
+        )
         SampleComposer(
             ComposerState(
                 "Help me write a short bio for my portfolio",
@@ -31,10 +34,10 @@ internal fun InputSamples() {
                 think = ThinkLevel.Balanced,
                 busy = false,
             ),
-            "Message Swift",
+            "Message Qwen3.5 0.8B",
         )
         SampleComposer(ComposerState("", canAttach = true, think = ThinkLevel.Quick, busy = true), "Message Deep")
-        SampleComposer(ComposerState("", canAttach = false, think = null, busy = false), "Message Writer")
+        SampleComposer(ComposerState("", canAttach = false, think = null, busy = false), "Message Gemma 3 4B")
         SampleComposer(
             ComposerState("", canAttach = true, think = null, busy = false, canRecord = true),
             "Message Omni",

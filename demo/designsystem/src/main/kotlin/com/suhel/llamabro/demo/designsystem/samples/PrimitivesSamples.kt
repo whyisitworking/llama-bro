@@ -37,7 +37,7 @@ internal fun ScreenSamples() {
         scrolls = false,
     ) {
         Section("On this phone") {
-            for (name in listOf("Swift", "Writer")) {
+            for (name in listOf("Qwen3.5 0.8B", "Gemma 3 4B")) {
                 DemoCard(Modifier.fillMaxWidth()) {
                     Text(name, color = colors.ink, style = DemoType.title)
                     Text("Qwen3.5 0.8B · 0.7 GB", color = colors.muted, style = DemoType.bodyMedium)

@@ -99,12 +99,6 @@ fun GapAbove(gap: Gap) {
     Spacer(Modifier.height(gap.size))
 }
 
-/** A horizontal gap of its own, where the parts either side are not in one [Inline]. */
-@Composable
-fun GapBeside(gap: Gap) {
-    Spacer(Modifier.width(gap.size))
-}
-
 /**
  * A screen: the [topBar], then the body on the gutter with an [Gap.Item] above its first part and below its last,
  * its parts [Gap.Section] apart. The body scrolls unless [scrolls] is false (a screen that scrolls a list of its own
@@ -140,34 +134,6 @@ fun Screen(
                 content = content,
             )
         }
-    }
-}
-
-/**
- * A screen whose body is a list: the [topBar], then a lazy column on the gutter, its items [gap] apart. The same
- * edges as [Screen], for a list too long to compose at once.
- */
-@Composable
-fun ListScreen(
-    topBar: @Composable () -> Unit,
-    modifier: Modifier = Modifier,
-    gap: Gap = Gap.Block,
-    content: LazyListScope.() -> Unit,
-) {
-    Column(modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-        topBar()
-        LazyColumn(
-            Modifier.weight(1f).widthIn(max = ContentMaxWidth).fillMaxWidth(),
-            contentPadding =
-                PaddingValues(
-                    start = DemoSpacing.gutter,
-                    end = DemoSpacing.gutter,
-                    top = DemoSpacing.item,
-                    bottom = DemoSpacing.item,
-                ),
-            verticalArrangement = Arrangement.spacedBy(gap.size),
-            content = content,
-        )
     }
 }
 

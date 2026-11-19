@@ -1,4 +1,4 @@
-// Model config JSON -> common_params, with the phone defaults (P1 T3, design §8, D17).
+// Model config JSON -> common_params, with the phone defaults (D17).
 #pragma once
 
 #include "lb_common.h"
@@ -23,7 +23,7 @@ bool lb_resolve_auto_ctx(common_params & params, std::string & err, uint32_t n_c
 // view of available memory. Absent: 0.
 int64_t lb_config_memory_budget_mib(const json & cfg);
 
-// Auto context fitted to `budget_bytes` (P2 T7, D33): upstream's own dry-run measurement (common_fit_measure) at the
+// Auto context fitted to `budget_bytes` (D33): upstream's own dry-run measurement (common_fit_measure) at the
 // minimum (4096) and the training context, summed over every device and the host, since a phone has one RAM, then
 // upstream's linear interpolation between them. Sets params.n_ctx; `report` gets the numbers. When even the minimum
 // doesn't fit: false with `insufficient` set.

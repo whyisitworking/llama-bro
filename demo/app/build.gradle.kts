@@ -82,6 +82,8 @@ android.sourceSets {
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
 dependencies {
+    // the design-system rule (D113), run by lint with the rest of its checks
+    lintChecks(project(":demo:lint"))
     implementation(project(":demo:designsystem"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

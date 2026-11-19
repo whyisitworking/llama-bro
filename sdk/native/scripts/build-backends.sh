@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the optional backends in the Snapdragon image (P2 T3/T4, F18, F34):
+# Builds the optional backends in the Snapdragon image (F18, F34):
 #   hexagon: libllamabro-ggml-hexagon.so and the HTP skeletons libggml-htp-v73/v75/v79/v81/v85.so (Hexagon SDK)
 #   opencl:  libllamabro-ggml-opencl.so, linked against the image sysroot's libOpenCL.so; the phone's own
 #            libOpenCL.so is used at run time (<uses-native-library>), so none is shipped.

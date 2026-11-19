@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
@@ -103,7 +102,7 @@ fun InitialAvatar(letter: String, modifier: Modifier = Modifier, size: Dp = Demo
 
 /**
  * A chat in the chat list: the model's [avatar] letter, the [title] and [time], and the last message [preview]
- * ("Writer: Here's a tighter…", "You: what about…"). A reply's sender name is in ink, a user's line all muted.
+ * ("Gemma 3 4B: Here's a tighter…", "You: what about…"). A reply's sender name is in ink, a user's line all muted.
  * No unread counts, ticks or status (demo design §4.2).
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -196,9 +195,14 @@ private fun rememberQuantGrid(): QuantGrid {
             val stacked = fontScale > 1.3f
             QuantGrid(
                 stacked = stacked,
-                sizeWidth = 68.sp.toDp(),
-                fitWidth = 96.sp.toDp(),
-                rowHeight = if (stacked) 18.sp.toDp() * 2 + DemoSpacing.item + DemoSpacing.inline else DemoSize.target,
+                sizeWidth = DemoSize.quantSizeColumn.toDp(),
+                fitWidth = DemoSize.quantFitColumn.toDp(),
+                rowHeight =
+                    if (stacked) {
+                        DemoSize.quantStackedLine.toDp() * 2 + DemoSpacing.item + DemoSpacing.inline
+                    } else {
+                        DemoSize.target
+                    },
             )
         }
     }
@@ -395,17 +399,6 @@ fun DownloadRow(
             }
         }
     }
-}
-
-/** The tick at the end of a chosen row (Default model, Layout). */
-@Composable
-fun SelectedMark(modifier: Modifier = Modifier) {
-    Icon(
-        DemoIcons.Check,
-        contentDescription = "Selected",
-        tint = LocalDemoColors.current.accent,
-        modifier = modifier,
-    )
 }
 
 /**

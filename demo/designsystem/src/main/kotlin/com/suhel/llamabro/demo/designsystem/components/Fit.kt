@@ -5,12 +5,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
@@ -34,9 +37,10 @@ fun FitText(label: String, tint: CardTint, modifier: Modifier = Modifier) {
 
 /**
  * A model as a card, the same anatomy wherever one is offered (first run, Get models): the [name] in `title` with how
- * it runs here ([fit] in its tint's ink) at the end of the same line; the plain [line] under it in muted `bodyMedium`;
- * then, quietly, [facts] in `bodySmall` (size, "Thinks", "Sees images", "On this phone", downloads); and an optional
- * [footer] a block below (a download's progress). [fit] null leaves the card plain until the fit arrives.
+ * it runs here ([fit] in its tint's ink) at the end of the same line, after an accent "On this phone" mark when the
+ * model is downloaded ([onPhone]), so the mark is never cut off; the plain [line] under it in muted `bodyMedium`; then,
+ * quietly, [facts] in `bodySmall` (size, "Thinks", "Sees images", downloads); and an optional [footer] a block below
+ * (a download's progress). [fit] null leaves the card plain until the fit arrives.
  */
 @Composable
 fun ModelCard(
@@ -45,6 +49,7 @@ fun ModelCard(
     modifier: Modifier = Modifier,
     fit: Pair<String, CardTint>? = null,
     facts: String? = null,
+    onPhone: Boolean = false,
     onClick: (() -> Unit)? = null,
     footer: (@Composable () -> Unit)? = null,
 ) {
@@ -61,6 +66,10 @@ fun ModelCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    if (onPhone) {
+                        Spacer(Modifier.width(DemoSpacing.block))
+                        OnPhoneMark()
+                    }
                     if (fit != null) {
                         Spacer(Modifier.width(DemoSpacing.block))
                         FitText(fit.first, fit.second)
@@ -79,5 +88,18 @@ fun ModelCard(
             }
             footer?.invoke()
         }
+    }
+}
+
+/** A downloaded model's mark: a tick and "On this phone" in the accent, read as one phrase. */
+@Composable
+private fun OnPhoneMark() {
+    val accent = LocalDemoColors.current.accent
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(DemoSpacing.inline),
+    ) {
+        Icon(DemoIcons.Check, contentDescription = null, tint = accent, modifier = Modifier.size(DemoSize.iconSmall))
+        Text("On this phone", color = accent, style = DemoType.label, maxLines = 1)
     }
 }

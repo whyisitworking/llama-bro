@@ -23,7 +23,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** PA T3 (F38): Conversation reaches every request option, per send too; reply, isBusy, canCompact, regenerate. */
+/** Conversation reaches every request option, per send too; reply, isBusy, canCompact, regenerate (F38). */
 class ConversationOptionsTest {
     private suspend fun setup(vararg replies: List<String>): Pair<FakeEngine, Model> {
         val engine = FakeEngine()

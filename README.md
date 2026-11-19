@@ -12,9 +12,13 @@ small Kotlin API built on coroutines and `Flow`, without an HTTP hop. It picks t
 resume and verification.
 
 > **Status:** pre-1.0. The core, backends, Hub, typed output and tools, an agent loop, embeddings, rerank, speech in
-> and a complete demo chat app are built and tested; an interactive voice mode and publishing are next. What changed
-> is in [docs/release-notes.md](docs/release-notes.md). Coordinates will be `io.github.whyisitworking:llamabro`.
-> arm64-v8a, Android 10 (API 29) and up. Known issues are listed in [docs/research/history.md](docs/research/history.md#open-items).
+> and out, a realtime voice session and a complete demo chat app with voice mode are built and tested; publishing is
+> next. What changed is in [docs/release-notes.md](docs/release-notes.md). Coordinates will be
+> `io.github.whyisitworking:llamabro`. arm64-v8a, Android 10 (API 29) and up.
+>
+> Known issues: Llama 3.2 3B repeats a tool call until the turn limit, as it does on upstream (F27); speculative
+> decoding aborts the OpenCL GPU backend, so the SDK never drafts on the GPU (F80); Vulkan runs on the Adreno 830 only
+> with patches and is slower there than the CPU and OpenCL, so it is not built (F174).
 
 ## What is in this repository
 

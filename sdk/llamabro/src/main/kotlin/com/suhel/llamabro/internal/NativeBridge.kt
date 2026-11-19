@@ -4,7 +4,7 @@ import com.suhel.llamabro.spi.NativeError
 import com.suhel.llamabro.spi.RequestSink
 
 /**
- * JNI over the C API in `sdk/native/bridge/include/llamabro.h` (P1 T6). One function per `lb_*` call;
+ * JNI over the C API in `sdk/native/bridge/include/llamabro.h`. One function per `lb_*` call;
  * handles are the native pointers as `Long`. Callbacks arrive on native threads.
  */
 internal object NativeBridge {

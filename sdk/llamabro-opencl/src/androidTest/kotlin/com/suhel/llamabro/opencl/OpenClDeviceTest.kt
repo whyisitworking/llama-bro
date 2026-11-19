@@ -8,7 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** P2 T4 `openclBackendLoads`: on the OnePlus 13 the artifact alone makes the Adreno GPU available. */
+/** On the OnePlus 13 the artifact alone makes the Adreno GPU available. */
 @RunWith(AndroidJUnit4::class)
 class OpenClDeviceTest {
     @Test

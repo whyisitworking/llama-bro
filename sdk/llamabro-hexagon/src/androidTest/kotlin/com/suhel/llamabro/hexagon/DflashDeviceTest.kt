@@ -30,7 +30,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 
-/** Compares SDK DFlash on HTP0 with the upstream greedy JSON reply from P3's draft-model spike. */
+/** Compares SDK DFlash on HTP0 with the upstream greedy JSON reply from the draft-model spike. */
 @RunWith(AndroidJUnit4::class)
 class DflashDeviceTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext

@@ -8,7 +8,7 @@ import kotlinx.serialization.json.JsonObject
 
 /**
  * JSON Merge Patch (RFC 7396). Keys keep the target's order; new keys follow it, in the patch's order, so a
- * patch that only replaces top-level values gives the same bytes as P1's shallow merge (F43).
+ * patch that only replaces top-level values gives the same bytes as a shallow merge (F43).
  */
 internal object JsonMergePatch {
     fun apply(target: JsonElement, patch: JsonElement): JsonElement {

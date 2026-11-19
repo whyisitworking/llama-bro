@@ -8,11 +8,11 @@ import java.security.MessageDigest
 import java.util.UUID
 
 /**
- * Installs the HTP skeletons into `<root>/<set>/`, where `<set>` is derived from their SHA-256s (P2 T3, review focus
- * 2). A set's directory is only ever created whole, by renaming a staging directory, and is checked against the
- * hashes the build wrote next to each skeleton every time, so a truncated copy from a crash or a tampered file is
- * replaced and an app update (a new set) never sees an old file. Threads in one process are serialised by a lock
- * object, processes by a file lock in [root]. Other sets' directories are deleted once this one is in place.
+ * Installs the HTP skeletons into `<root>/<set>/`, where `<set>` is derived from their SHA-256s. A set's directory is
+ * only ever created whole, by renaming a staging directory, and is checked against the hashes the build wrote next to
+ * each skeleton every time, so a truncated copy from a crash or a tampered file is replaced and an app update (a new
+ * set) never sees an old file. Threads in one process are serialised by a lock object, processes by a file lock in
+ * [root]. Other sets' directories are deleted once this one is in place.
  */
 internal class SkeletonInstall(private val root: File, private val source: Source) {
     interface Source {

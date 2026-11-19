@@ -53,14 +53,14 @@ internal fun SurfacesSamples() {
     val c = LocalDemoColors.current
     SampleFrame {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            PickCard("Swift", "Instant replies, everyday questions", "0.7 GB", "Runs great", CardTint.Great)
-            PickCard("Writer", "Thoughtful writing and ideas", "2.5 GB", "Runs well", CardTint.Plain)
+            PickCard("Qwen3.5 0.8B", "Instant replies, everyday questions", "0.7 GB", "Runs great", CardTint.Great)
+            PickCard("Gemma 3 4B", "Thoughtful writing and ideas", "2.5 GB", "Runs well", CardTint.Plain)
             PickCard("Deep", "Thinks first, reads images", "2.8 GB", "A bit slow", CardTint.Slow)
             PickCard("Qwen3.5 35B", "Needs a computer, not a phone", "21 GB", "Too big", CardTint.TooBig)
             PickCard("Get more models", "Search Hugging Face", "", "", CardTint.Accent)
         }
         DemoCard(modifier = Modifier.fillMaxWidth(), selected = true, edgeLabel = "Default") {
-            Text("Writer", color = c.ink, style = DemoType.title)
+            Text("Gemma 3 4B", color = c.ink, style = DemoType.title)
             Text("Gemma 3 4B · 2.5 GB", color = c.muted, style = DemoType.bodyMedium)
         }
         EdgeChip("Recommended")
@@ -73,10 +73,10 @@ internal fun SheetSamples() {
     val c = LocalDemoColors.current
     SampleFrame {
         SheetFrame {
-            ModelName("Swift", realName = "Qwen3.5 0.8B · by Alibaba Qwen")
+            ModelName("Qwen3.5 0.8B", realName = "by Alibaba · by Alibaba Qwen")
             Text(
                 "Small and quick. Good for short questions, quick rewrites and casual chat. For long documents or " +
-                    "tricky reasoning, Writer or Deep do better.",
+                    "tricky reasoning, Gemma 3 4B or Deep do better.",
                 Modifier.padding(vertical = 10.dp),
                 color = c.muted,
                 style = DemoType.body,
@@ -94,7 +94,7 @@ internal fun SheetSamples() {
                     FactCard("Download", "740 MB · about 1 min", Modifier.weight(1f))
                 }
             }
-            PrimaryButton("Get Swift", onClick = {}, modifier = Modifier.fillMaxWidth())
+            PrimaryButton("Get Qwen3.5 0.8B", onClick = {}, modifier = Modifier.fillMaxWidth())
             Text(
                 "From Hugging Face",
                 Modifier.fillMaxWidth().padding(top = 10.dp),

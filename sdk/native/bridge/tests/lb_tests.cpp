@@ -1,4 +1,4 @@
-// Host tests for the C API (P1 Tasks 2-4). One executable; argv[1] names the test. Each test runs in its
+// Host tests for the C API. One executable; argv[1] names the test. Each test runs in its
 // own process (ctest), so process-wide runtime state starts fresh.
 #include "llamabro.h"
 #include "config.h"
@@ -155,7 +155,7 @@ static int count_devices_of_type(const char * type) {
 }
 
 // A failed init (no CPU backend in backend_dir) leaves the runtime retryable: a later init with a good config
-// succeeds and registers exactly one CPU backend (P1 follow-up).
+// succeeds and registers exactly one CPU backend.
 static void runtime_init_retry_after_failure() {
     char * err = nullptr;
     const std::string bad = json{{"backend_dir", "/nonexistent-llamabro-backends"}, {"log_level", "warn"}}.dump();
@@ -182,7 +182,7 @@ static void backend_path_env_ignored() {
 }
 
 // The app's logger runs outside the bridge's lock: it may log or swap the logger itself without deadlocking,
-// and llama's inference threads don't queue behind it (P1 review).
+// and llama's inference threads don't queue behind it.
 static std::atomic<int> g_log_calls{0};
 static void swap_logger_inside_callback(void *, lb_log_level, const char *) {
     g_log_calls++;
@@ -265,7 +265,7 @@ static void config_defaults_applied() {
     LB_CHECK(p.ctx_shift == false);
     LB_CHECK(p.sleep_idle_seconds == -1);
     LB_CHECK(p.load_mode == LLAMA_LOAD_MODE_NONE);  // F58, D30
-    // no device given is CPU only, never llama.cpp's "every GPU" default (P2 T6, F32)
+    // no device given is CPU only, never llama.cpp's "every GPU" default (F32)
     LB_CHECK(p.devices.size() == 1 && p.devices[0] == nullptr);
     LB_CHECK(p.mmproj_use_gpu == false);
     LB_CHECK(p.fit_params == false);  // context and placement are explicit (D33)
@@ -681,7 +681,7 @@ static void request_free_inside_callback() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// P2 Task 2: optional backends, loaded by name, never failing the runtime
+// Optional backends, loaded by name, never failing the runtime
 // ---------------------------------------------------------------------------------------------
 
 static lb_status init_with_backends(const json & backends, char ** err) {
@@ -828,7 +828,7 @@ static void backends_config_invalid() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// P2 Task 6: explicit devices
+// Explicit devices
 // ---------------------------------------------------------------------------------------------
 
 static void model_devices_default_is_cpu() {
@@ -866,7 +866,7 @@ static void model_devices_invalid_names_fail() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// P2 Task 7: automatic context fitted to a memory budget (D33)
+// Automatic context fitted to a memory budget (D33)
 // ---------------------------------------------------------------------------------------------
 
 static common_params parsed_test_config() {
@@ -933,7 +933,7 @@ static void auto_ctx_budget_load_and_insufficient_error() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// P2 Task 8: MTP only where the model has a head
+// MTP only where the model has a head
 // ---------------------------------------------------------------------------------------------
 
 static bool has_mtp(const common_params & p) {
@@ -998,7 +998,7 @@ static void ngram_drafts_and_keeps_the_reply() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// P3 Task 6: a separate DFlash draft model and its memory projection (D41)
+// A separate DFlash draft model and its memory projection (D41)
 // ---------------------------------------------------------------------------------------------
 
 static json dflash_config() {
@@ -1123,7 +1123,7 @@ static peak_memory measure_peak_memory() {
 #endif
 }
 
-// The projection against a real load (review of P3, F90): the process's peak memory after loading Qwen3.5 and
+// The projection against a real load (F90): the process's peak memory after loading Qwen3.5 and
 // the DFlash draft at 4096 tokens and answering once. Measured 5,793 projected vs 5,587-5,770 MiB peak footprint
 // at b12352 (1.00-1.04, F160; F90's lb-run run peaked at 5,576 RSS). Since b12479 the load's staging buffer gives
 // its pages back on Apple as soon as it is freed, so the peak is 5,150 MiB (1.125, F164). The target's recurrent

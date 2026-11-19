@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Writes requests.jsonl for the contract test (run.sh): the P0 spike's T2 set (t2.jsonl, unchanged) plus the
+"""Writes requests.jsonl for the contract test (run.sh): the research spike's set (t2.jsonl, unchanged) plus the
 cases below. Each line: {"id", "endpoint", "body" | "body_raw", options}. Options, read by run.sh / compare.py:
   needs: ["mmproj"]                 run only when the model has a projector
   cancel_after_chunks: N            stop the stream after N chunks (both runners)
@@ -94,7 +94,7 @@ add("x-35-error-bad-schema", "chat", chat("hi", response_format={"type": "json_s
 add("x-36-error-bad-tool-choice", "chat", chat("hi", tools=[WEATHER], tool_choice={"type": "function", "function": {"name": "missing"}}))
 add("x-37-error-repeat-last-n", "chat", chat("hi", repeat_last_n=-1))
 
-# PA T2: the sampling fields Kotlin's Sampling gained (llama-server's make_llama_cmpl_schema), seeded so they matter
+# the sampling fields Kotlin's Sampling gained (llama-server's make_llama_cmpl_schema), seeded so they matter
 add("x-38-sampling-dry-xtc", "chat", chat("Tell a very short story.", temperature=0.9, seed=11, dry_multiplier=0.8, dry_base=1.75,
     dry_allowed_length=2, dry_penalty_last_n=-1, dry_sequence_breakers=["\n", ":"], xtc_probability=0.5, xtc_threshold=0.1))
 add("x-39-sampling-mirostat", "chat", chat("Describe the sea.", temperature=0.8, seed=12, mirostat=2, mirostat_tau=5.0, mirostat_eta=0.1))
@@ -103,7 +103,7 @@ add("x-40-sampling-typical-dynatemp", "chat", chat("Name three birds.", temperat
 add("x-41-sampling-adaptive", "chat", chat("Name a city.", temperature=0.9, seed=14, adaptive_target=0.5, adaptive_decay=0.9))
 add("x-42-logit-bias-ignore-eos", "chat", chat("Say hello.", max_tokens=12, logit_bias={"Hello": False, "hello": -5.0}, ignore_eos=True))
 
-# PA T6: the routes the C API gained (every route server_register_routes maps for one model); without a FIM, audio,
+# the routes the C API gained (every route server_register_routes maps for one model); without a FIM, audio,
 # decision or LoRA model the answer is the error (or empty list) both servers give
 NO_THINK = {"chat_template_kwargs": {"enable_thinking": False}}
 add("x-43-infill", "infill", {"input_prefix": "def add(a, b):\n    ", "input_suffix": "\n", "n_predict": 12, "temperature": 0, "seed": 42})

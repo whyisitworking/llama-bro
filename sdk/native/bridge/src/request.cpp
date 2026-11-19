@@ -1,4 +1,4 @@
-// lb_request_*: one llama-server route handler call per request (P1 T4, design §3.2).
+// lb_request_*: one llama-server route handler call per request.
 //
 // Each request runs on its own detached thread, as an HTTP worker thread does in llama-server. The
 // thread builds a server_http_req, calls the ex_wrapper'd handler, pumps res->next() for streams and

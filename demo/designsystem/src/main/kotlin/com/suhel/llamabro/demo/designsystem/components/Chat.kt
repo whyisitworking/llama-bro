@@ -372,7 +372,7 @@ fun SwitchDivider(text: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** The line under a message held for a model that isn't ready ("Swift will answer the moment it's here"). */
+/** The line under a message held for a model that isn't ready ("Qwen3.5 0.8B will answer the moment it's here"). */
 @Composable
 fun HeldNote(text: String, modifier: Modifier = Modifier) {
     Text(

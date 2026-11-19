@@ -1,5 +1,7 @@
 [versions]
 agp = "9.5.1"
+# Android Lint ships with AGP: its version is AGP's plus 23.0.0
+lint = "32.5.1"
 coreKtx = "1.17.0"
 splashscreen = "1.2.0"
 junit = "4.13.2"
@@ -103,6 +105,10 @@ kotlin-metadata-jvm = { group = "org.jetbrains.kotlin", name = "kotlin-metadata-
 # llamabro-typed-ksp: the KSP API it builds on, and kctfork, which compiles snippets with it in its tests only (D81)
 ksp-api = { group = "com.google.devtools.ksp", name = "symbol-processing-api", version.ref = "ksp" }
 kctfork-ksp = { group = "dev.zacsweers.kctfork", name = "ksp", version = "0.14.0" }
+
+lint-api = { group = "com.android.tools.lint", name = "lint-api", version.ref = "lint" }
+lint-checks = { group = "com.android.tools.lint", name = "lint-checks", version.ref = "lint" }
+lint-tests = { group = "com.android.tools.lint", name = "lint-tests", version.ref = "lint" }
 
 [plugins]
 androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "benchmark" }

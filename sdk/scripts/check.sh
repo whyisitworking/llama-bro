@@ -32,7 +32,7 @@
 # env:   LB_TEST_MODEL (default ~/Downloads/Qwen3.5-4B-Q4_K_M.gguf), LB_TEST_MMPROJ (default ~/Downloads/mmproj-F16.gguf),
 #        LB_TEST_DFLASH (default ~/llamabro-models/Qwen3.5-4B-DFlash-Q8_0.gguf),
 #        LB_CONTRACT_MODELS extra GGUFs for the contract test, comma-separated (default: Llama 3.2 3B if present),
-#        LB_DEVICE_MODELS file names in the acceptance app's filesDir (default: the three P1 models),
+#        LB_DEVICE_MODELS file names in the acceptance app's filesDir (default: the three acceptance models),
 #        LB_VISION_MODEL, LB_VISION_MMPROJ a small vision model and its projector in the same filesDir, for VisionTest on
 #        the NPU (default: Qwen3.5 0.8B Q4_K_M and its BF16 projector, the demo's files; F120),
 #        LB_TEST_MODELS_DIR upstream's small test models for embeddings, rerank, LoRA and audio (fetch-test-models.sh)
@@ -243,7 +243,7 @@ step_aar() {
 step_device() {
     adb shell dumpsys window | grep -q "isKeyguardShowing=false" || { echo "the phone is locked: unlock it and run again"; return 1; }
     gradle :llamabro:connectedDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true || return 1
-    # the device-choice test reads Qwen3.5 from the hexagon test app's external files directory (P2 T6)
+    # the device-choice test reads Qwen3.5 from the hexagon test app's external files directory
     local htp_files=/sdcard/Android/data/com.suhel.llamabro.hexagon.test/files qwen=Qwen3.5-4B-Q4_K_M.gguf
     adb shell "mkdir -p $htp_files" || return 1
     if [ "$(adb shell "stat -c %s $htp_files/$qwen 2>/dev/null" | tr -d '\r')" != "$(stat -f %z "$model")" ]; then
@@ -259,13 +259,13 @@ step_device() {
     for f in bge-small-f16.gguf jina-reranker-tiny-f16.gguf; do
         adb push "$LB_TEST_MODELS_DIR/$f" "$htp_files/$f" >/dev/null && adb shell "chmod 644 $htp_files/$f" || return 1
     done
-    # each backend AAR alone makes its device available (P2 T3, T4; Vulkan dropped, D31)
+    # each backend AAR alone makes its device available (T4; Vulkan dropped, D31)
     gradle :llamabro-hexagon:connectedDebugAndroidTest :llamabro-opencl:connectedDebugAndroidTest \
         -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true || return 1
     adb shell run-as com.suhel.llamabro.sample rm -f files/acceptance.log 2>/dev/null
     local results="$sdk/acceptance/backends/build/outputs/androidTest-results/connected"
     rm -rf "$results"   # a stale passing file must not stand in for a flavor that didn't run
-    # one acceptance flavor per set of backend artifacts (P2 T10, D29): full runs everything on every model; cpu, gpu and
+    # one acceptance flavor per set of backend artifacts (D29): full runs everything on every model; cpu, gpu and
     # noskel (full with the NPU skeleton broken: Auto must say why and use the GPU) run device choice, a chat and stop
     gradle :acceptance:backends:connectedFullDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
         -Pandroid.testInstrumentationRunnerArguments.models="$device_models" \
@@ -361,7 +361,7 @@ step_hub_resume() (
 )
 
 step_device_contract() {
-    # both tools built in the Snapdragon image from the same tree; the model and mmproj copied once (P2 T9)
+    # both tools built in the Snapdragon image from the same tree; the model and mmproj copied once
     bash "$native/scripts/build-device-tools.sh" > "$logs/device-tools-build.log" 2>&1 ||
         { tail -20 "$logs/device-tools-build.log"; return 1; }
     local dir=/data/local/tmp/lb-contract-models f

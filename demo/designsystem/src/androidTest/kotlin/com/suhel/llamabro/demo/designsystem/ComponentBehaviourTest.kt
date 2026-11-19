@@ -158,8 +158,8 @@ class ComponentBehaviourTest {
                     Modifier.width(360.dp).background(Light.canvas).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    PrimaryButton("Get Swift", onClick = {}, modifier = Modifier.testTag("on"))
-                    PrimaryButton("Get Swift", onClick = {}, modifier = Modifier.testTag("off"), enabled = false)
+                    PrimaryButton("Get Qwen3.5 0.8B", onClick = {}, modifier = Modifier.testTag("on"))
+                    PrimaryButton("Get Qwen3.5 0.8B", onClick = {}, modifier = Modifier.testTag("off"), enabled = false)
                 }
             }
         }
@@ -199,7 +199,7 @@ class ComponentBehaviourTest {
             DemoTheme(ThemeMode.Light) {
                 Composer(
                     state = ComposerState("Hi", canAttach = true, think = ThinkLevel.Off, busy = busy),
-                    placeholder = "Message Swift",
+                    placeholder = "Message Qwen3.5 0.8B",
                     onTextChange = {},
                     onSend = { sent++ },
                     onStop = { stopped++ },
@@ -367,17 +367,17 @@ class ComponentBehaviourTest {
 
     @Test
     fun aRevealKeepsItsLastLineWhileItFoldsAway() {
-        var note by mutableStateOf<String?>("Writer may not fit")
+        var note by mutableStateOf<String?>("Gemma 3 4B may not fit")
         rule.setContent { DemoTheme(ThemeMode.Light) { Reveal(note) { Text(it) } } }
-        rule.onNodeWithText("Writer may not fit").assertIsDisplayed()
+        rule.onNodeWithText("Gemma 3 4B may not fit").assertIsDisplayed()
         rule.mainClock.autoAdvance = false
         note = null
         rule.mainClock.advanceTimeByFrame()
         rule.mainClock.advanceTimeBy(DemoMotion.EXIT_MILLIS / 2L)
         // halfway out, it still says what it said, not nothing
-        rule.onNodeWithText("Writer may not fit").assertExists()
+        rule.onNodeWithText("Gemma 3 4B may not fit").assertExists()
         rule.mainClock.advanceTimeBy(DemoMotion.EXIT_MILLIS.toLong())
-        rule.onNodeWithText("Writer may not fit").assertDoesNotExist()
+        rule.onNodeWithText("Gemma 3 4B may not fit").assertDoesNotExist()
     }
 
     @Test
@@ -432,7 +432,7 @@ class ComponentBehaviourTest {
                         selected = true,
                         edgeLabel = "Default",
                     ) {
-                        Text("Writer")
+                        Text("Gemma 3 4B")
                     }
                 }
             }
@@ -446,7 +446,7 @@ class ComponentBehaviourTest {
         )
         // the text's bounds exclude the chip's 8 dp of side padding
         assertNear("the label ends 16 dp from the card's end", card.right - DemoSpacing.item - 8.dp, chip.right)
-        val text = rule.onNodeWithText("Writer", useUnmergedTree = true).getBoundsInRoot()
+        val text = rule.onNodeWithText("Gemma 3 4B", useUnmergedTree = true).getBoundsInRoot()
         assertTrue("the card's own text starts below the label", text.top >= chip.bottom)
     }
 

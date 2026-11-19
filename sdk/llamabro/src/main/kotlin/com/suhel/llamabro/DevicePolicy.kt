@@ -46,7 +46,7 @@ public data class LoadReport internal constructor(
     public val contextReason: String,
     /**
      * What decodes: [Speculative.Mtp] when the MTP head drafts tokens, [Speculative.Ngram] when the app set it, else
-     * [Speculative.Off] (P2 T8).
+     * [Speculative.Off].
      */
     public val speculative: Speculative,
     /** Why: set by the app, measured faster or not on this chip, or the model has no MTP head. */

@@ -229,9 +229,9 @@ fun SheetFrame(modifier: Modifier = Modifier, content: @Composable ColumnScope.(
 }
 
 /**
- * A small question with two answers ("Remove Swift? This frees 0.7 GB."): the surface card on the scrim, the title,
- * one plain line, a primary [confirmLabel] and, when there is a [dismissLabel], a quiet one beside it ("Keep"). The
- * window is Material's; the card is [DialogCard].
+ * A small question with two answers ("Remove Qwen3.5 0.8B? This frees 0.7 GB."): the surface card on the scrim, the
+ * title, one plain line, a primary [confirmLabel] and, when there is a [dismissLabel], a quiet one beside it ("Keep").
+ * The window is Material's; the card is [DialogCard].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

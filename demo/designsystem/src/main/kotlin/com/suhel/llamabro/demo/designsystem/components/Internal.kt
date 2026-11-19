@@ -51,6 +51,8 @@ internal fun Modifier.softShadow(
     elevation: Dp = DemoSize.elevationSoft,
     lightAlpha: Float = 0.05f,
 ): Modifier {
+    // a shadow's tint is its darkness, not a colour of the palette
+    @Suppress("DemoRawColour")
     val tint = Color.Black.copy(alpha = if (colors.isDark) 0.35f else lightAlpha)
     return shadow(elevation = elevation, shape = shape, clip = false, ambientColor = tint, spotColor = tint)
 }

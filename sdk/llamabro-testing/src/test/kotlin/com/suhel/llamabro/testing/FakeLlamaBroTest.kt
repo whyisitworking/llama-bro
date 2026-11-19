@@ -36,7 +36,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * What an app's own test looks like (PA T7, D27): a screen model that takes [LlamaBro], driven by [FakeLlamaBro]
+ * What an app's own test looks like (D27): a screen model that takes [LlamaBro], driven by [FakeLlamaBro]
  * on the JVM, with the real `Model`, `Conversation`, agent loop and compaction.
  */
 class FakeLlamaBroTest {
@@ -74,7 +74,7 @@ class FakeLlamaBroTest {
         }
     }
 
-    /** P2 T6: device resolution runs over the fake's CPU-only engine, so apps' tests need nothing new. */
+    /** Device resolution runs over the fake's CPU-only engine, so apps' tests need nothing new. */
     @Test
     fun modelLoadsOnCpuWithNoAttempts() =
         runBlocking {

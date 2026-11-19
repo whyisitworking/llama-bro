@@ -38,6 +38,8 @@ composeCompiler {
 }
 
 dependencies {
+    // the design-system rule (D113), run by lint with the rest of its checks
+    lintChecks(project(":demo:lint"))
     api(platform(libs.androidx.compose.bom))
     api(libs.androidx.compose.ui)
     api(libs.androidx.compose.ui.graphics)

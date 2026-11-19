@@ -17,7 +17,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
-/** Races between closing or cancelling and native calls (final review of P1, Important #1 and #2). */
+/** Races between closing or cancelling and native calls. */
 class ModelLifecycleTest {
     /**
      * Thread A is inside engine.request() (past the closed check, before the native lock) while thread B closes the
@@ -95,7 +95,7 @@ class ModelLifecycleTest {
             assertTrue("the loaded model leaked", engine.model.closed)
         }
 
-    // --- PA T4: close off the caller's thread (F40) ---------------------------------------------------------
+    // --- Close off the caller's thread (F40) ---------------------------------------------------------
 
     /** A model whose native close blocks until [release] opens, as lb_model_free does while it joins its worker. */
     private class SlowClose {
