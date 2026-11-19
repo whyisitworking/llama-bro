@@ -155,7 +155,7 @@ internal object ConversationJson {
     }
 
     private fun mediaSource(p: JsonObject): MediaSource =
-        p.str("path")?.let { MediaSource.file(it) } ?: MediaSource.bytes(Base64.getDecoder().decode(p.str("data")!!))
+        p.str("path")?.let { MediaSource.file(it) } ?: MediaSource.bytes(Base64.getDecoder().decode(p.need("data")))
 
     private fun toolCallJson(call: ToolCall): JsonObject =
         buildJsonObject {
@@ -167,7 +167,7 @@ internal object ConversationJson {
     private fun message(o: JsonObject): Message =
         when (val role = o.str("role")) {
             "system" -> {
-                Message.System(o.str("text")!!)
+                Message.System(o.need("text"))
             }
 
             "user" -> {
@@ -175,9 +175,9 @@ internal object ConversationJson {
                     (o["content"] as JsonArray).map { p ->
                         p as JsonObject
                         when (p.str("type")) {
-                            "text" -> Content.Text(p.str("text")!!)
-                            "image" -> Content.Image(mediaSource(p), p.str("mime")!!)
-                            "audio" -> Content.Audio(mediaSource(p), p.str("mime")!!)
+                            "text" -> Content.Text(p.need("text"))
+                            "image" -> Content.Image(mediaSource(p), p.need("mime"))
+                            "audio" -> Content.Audio(mediaSource(p), p.need("mime"))
                             else -> throw IllegalArgumentException("unknown content type: ${p.str("type")}")
                         }
                     },
@@ -191,17 +191,17 @@ internal object ConversationJson {
                     toolCalls =
                         (o["tool_calls"] as? JsonArray).orEmpty().map {
                             it as JsonObject
-                            ToolCall(it.str("id")!!, it.str("name")!!, it.str("arguments")!!)
+                            ToolCall(it.need("id"), it.need("name"), it.need("arguments"))
                         },
                 )
             }
 
             "tool" -> {
-                Message.ToolResult(o.str("tool_call_id")!!, o.str("content")!!)
+                Message.ToolResult(o.need("tool_call_id"), o.need("content"))
             }
 
             "compaction" -> {
-                Message.Compaction(o.str("summary")!!, o["kept"]?.jsonPrimitive?.int ?: 0)
+                Message.Compaction(o.need("summary"), o["kept"]?.jsonPrimitive?.int ?: 0)
             }
 
             else -> {
@@ -210,4 +210,6 @@ internal object ConversationJson {
         }
 
     private fun JsonObject.str(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+    private fun JsonObject.need(key: String): String = requireNotNull(str(key)) { "a saved message without \"$key\"" }
 }

@@ -24,6 +24,7 @@ import java.net.URLDecoder
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
+import java.util.Locale
 
 /** A file of a scripted repo, its digests computed once. */
 internal class ScriptedFile(val path: String, val bytes: ByteArray) {
@@ -67,7 +68,7 @@ internal class ScriptedHub(endpoint: String) : Transport {
     fun publish(id: String, repo: FakeLlamaBroHub.Repo) {
         synchronized(lock) {
             val order = ++commits
-            val commit = Commit("%040x".format(order), order, repo, repo.files.toList())
+            val commit = Commit("%040x".format(Locale.ROOT, order), order, repo, repo.files.toList())
             repos.getOrPut(id) { mutableListOf() } += commit
         }
     }
@@ -99,7 +100,7 @@ internal class ScriptedHub(endpoint: String) : Transport {
     ): Response {
         val job = currentCoroutineContext()[Job]
         return synchronized(lock) {
-            log += "$method $url" + (range?.let { " bytes=$it-${rangeEnd ?: ""}" } ?: "")
+            log += "$method $url" + (range?.let { " bytes=$it-${rangeEnd ?: ""}" }.orEmpty())
             if (offline) throw IOException("FakeLlamaBroHub is offline")
             if (rateLimited > 0) {
                 rateLimited--
@@ -463,4 +464,4 @@ internal object Gguf {
         ).associate { (key, value) -> "general.sampling.$key" to value }
 }
 
-private fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
+private fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(Locale.ROOT, it) }

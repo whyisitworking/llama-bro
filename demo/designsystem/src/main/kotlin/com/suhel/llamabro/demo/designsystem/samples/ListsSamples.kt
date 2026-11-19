@@ -29,14 +29,12 @@ import com.suhel.llamabro.demo.designsystem.components.SectionLabel
 import com.suhel.llamabro.demo.designsystem.components.SheetFrame
 import com.suhel.llamabro.demo.designsystem.components.SwipeToRemove
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
-import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 
 /**
  * Section labels, the drawer's rows, the switcher sheet, the chat list, the quant table, the library and a download.
  */
 @Composable
 internal fun ListsSamples() {
-    val c = LocalDemoColors.current
     SampleFrame {
         SectionLabel("Picked for your phone", action = "What's a model?", onAction = {})
         GroupedList {
@@ -86,7 +84,6 @@ internal fun ListsSamples() {
 /** The switcher sheet of everyday.html and the Advanced quant table of models.html. */
 @Composable
 internal fun ListsSheetSamples() {
-    val c = LocalDemoColors.current
     SampleFrame {
         SheetFrame {
             Section("On this phone") {

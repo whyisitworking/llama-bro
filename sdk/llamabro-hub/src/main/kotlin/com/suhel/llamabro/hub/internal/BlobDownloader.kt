@@ -16,6 +16,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
 
@@ -66,6 +67,7 @@ internal class BlobDownloader(
         private val url = resolveUrl(endpoint, file)
         private val partial = File(blob.path + ".downloadInProgress")
 
+        @Suppress("InstanceOfCheckForException") // a boundary that classifies what it caught
         suspend fun run() {
             blob.parentFile!!.mkdirs()
             var lastError: Exception? = null
@@ -127,7 +129,7 @@ internal class BlobDownloader(
             val actual = hex(digest.digest())
             if (!actual.equals(file.oid, ignoreCase = true)) {
                 discardPartial()
-                throw HubException.IntegrityMismatch(file.path, file.oid!!, actual)
+                throw HubException.IntegrityMismatch(file.path, checkNotNull(file.oid), actual)
             }
             commit(partial, blob)
         }
@@ -225,10 +227,10 @@ internal class BlobDownloader(
         storage.fsyncDir(blob.parentFile!!)
     }
 
-    private fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
+    private fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(Locale.ROOT, it) }
 
     private fun digestFor(file: HubFile, total: Long): MessageDigest {
-        val digest = MessageDigest.getInstance(if (file.oid!!.length == 64) "SHA-256" else "SHA-1")
+        val digest = MessageDigest.getInstance(if (checkNotNull(file.oid).length == 64) "SHA-256" else "SHA-1")
         if (file.oid.length == 40) digest.update("blob $total\u0000".toByteArray(Charsets.UTF_8))
         return digest
     }

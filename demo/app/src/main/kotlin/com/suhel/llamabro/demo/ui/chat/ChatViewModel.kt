@@ -492,7 +492,7 @@ class ChatViewModel(
 
     private fun downloadLabel(s: DownloadStatus.Downloading): String {
         val pct = (fraction(s.bytesDone, s.bytesTotal) * 100).roundToInt()
-        val eta = s.etaSeconds?.let { " · about ${if (it < 60) "$it s" else "${(it + 30) / 60} min"}" } ?: ""
+        val eta = s.etaSeconds?.let { " · about ${if (it < 60) "$it s" else "${(it + 30) / 60} min"}" }.orEmpty()
         return "$pct%$eta"
     }
 

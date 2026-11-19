@@ -85,8 +85,10 @@ internal object BackendDiscovery {
 
                             else -> found += Found(name, libraries)
                         }
+                    } catch (e: VirtualMachineError) {
+                        throw e // out of memory and the like: not the installer's failure
                     } catch (e: Throwable) {
-                        if (e is VirtualMachineError) throw e
+                        // an installer's failure marks its backend failed, and the runtime goes on
                         fail("installer $value failed: $e")
                     }
                 }

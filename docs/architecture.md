@@ -1,6 +1,6 @@
 # Architecture
 
-Llama-Bro is an Android SDK that runs llama.cpp's `llama-server` core inside the application process and exposes it through a Kotlin API. This guide describes what the SDK is, how its modules fit together, how a request travels from Kotlin to native code and back, and which rules govern threading, memory and lifecycle. Choices are justified by decision records (`D<n>`, see [decisions.md](./decisions.md)) and measurements (`F<n>`, see the [findings register](./research/findings.md)).
+Llama Bro is an Android SDK that runs llama.cpp's `llama-server` core inside the application process and exposes it through a Kotlin API. This guide describes what the SDK is, how its modules fit together, how a request travels from Kotlin to native code and back, and which rules govern threading, memory and lifecycle. Choices are justified by decision records (`D<n>`, see [decisions.md](./decisions.md)) and measurements (`F<n>`, see the [findings register](./research/findings.md)).
 
 Contents:
 

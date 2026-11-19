@@ -405,6 +405,8 @@ public class LlamaBroHub internal constructor(
     internal suspend fun awaitDiskState(model: HfModel, configure: PlanOptions.() -> Unit = {}) {
         val options = PlanOptions().apply(configure)
         val key = plans.key(model, options)
+        // for its side effect: the first call starts the read from disk that the join waits for
+        @Suppress("IgnoredReturnValue")
         stateFor(key, model, options)
         stateLoads[key]?.join()
     }
@@ -540,7 +542,7 @@ public class LlamaBroHub internal constructor(
      */
     public suspend fun cached(): List<CachedModel> =
         withContext(Dispatchers.IO) {
-            Cache(cacheDir, Resolver(config.endpoint, cacheDir, transport, storage)).list()
+            Cache(cacheDir).list()
         }
 
     /**
@@ -563,7 +565,7 @@ public class LlamaBroHub internal constructor(
                 }
                 val removed =
                     Locks.withFileLock(File(cacheDir, ".locks/${repoFolder(model.repo)}/delete.lock")) {
-                        Cache(cacheDir, Resolver(config.endpoint, cacheDir, transport, storage)).delete(model)
+                        Cache(cacheDir).delete(model)
                     }
                 if (removed) {
                     for ((key, selection) in selections) {

@@ -34,6 +34,7 @@ internal class Resolver(
 ) {
     private val endpoint = endpoint.trimEnd('/') + "/"
 
+    @Suppress("InstanceOfCheckForException") // a boundary that classifies what it caught
     suspend fun list(repo: String): RepoListing =
         withContext(Dispatchers.IO) {
             require(isValidRepoId(repo)) { "invalid HF repo id: $repo" }

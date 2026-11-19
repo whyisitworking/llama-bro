@@ -46,7 +46,7 @@ public sealed class HubException(message: String, cause: Throwable?) : Exception
         /** Retry delay supplied by the Hub, if any. */
         public val retryAfterSeconds: Long?,
     ) : HubException(
-            "rate limited by the Hub" + (retryAfterSeconds?.let { ", retry after $it s" } ?: ""),
+            "rate limited by the Hub" + (retryAfterSeconds?.let { ", retry after $it s" }.orEmpty()),
             null,
         ) {
         override val retryable: Boolean get() = true
@@ -75,5 +75,17 @@ public sealed class HubException(message: String, cause: Throwable?) : Exception
         public val actual: String,
     ) : HubException("$path: digest $actual, expected $expected", null) {
         override val retryable: Boolean get() = true
+    }
+
+    /**
+     * A model file is not a GGUF the SDK can read: empty, damaged, cut short inside its header, or with a header past
+     * 256 MiB. Trying again fetches the same bytes, so it isn't retryable; the repository's owner has to fix the file.
+     */
+    public class Corrupt internal constructor(
+        /** Repository-relative file path. */
+        public val path: String,
+        message: String,
+    ) : HubException(message, null) {
+        override val retryable: Boolean get() = false
     }
 }

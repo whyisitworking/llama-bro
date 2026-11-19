@@ -208,7 +208,7 @@ private object MarkdownTree {
                 ListEntry(
                     ordered = ordered,
                     index = if (ordered) start + k else 0,
-                    spans = first?.spans ?: emptyList(),
+                    spans = first?.spans.orEmpty(),
                     blocks = if (first != null) content.drop(1) else content,
                     startsList = k == 0,
                 )

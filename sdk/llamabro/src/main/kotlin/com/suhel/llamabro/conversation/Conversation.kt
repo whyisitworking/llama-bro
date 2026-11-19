@@ -176,7 +176,7 @@ public class Conversation internal constructor(
         val opts = config.defaults.copy(options)
         return exclusive {
             val (index, call) = approvalFor(callId)
-            val handler = config.registry.entry(call.name)!!.handler!!
+            val handler = checkNotNull(config.registry.entry(call.name)?.handler) { "no handler for ${call.name}" }
             answer(this, call, runTool(handler, call))?.let { abort ->
                 emitStop(FinishReason.ToolAborted, null, abort)
                 return@exclusive
@@ -332,7 +332,7 @@ public class Conversation internal constructor(
             val source = CompactionPlanner.modelView(_messages.value)
             val cut =
                 CompactionPlanner.cutIndex(source, preservedSteps)
-                    ?: throw IllegalStateException(
+                    ?: error(
                         "nothing to compact: no step before the $preservedSteps preserved ones",
                     )
             // the request the chat sends, cut before the preserved steps, plus the instruction as a user message
@@ -359,7 +359,7 @@ public class Conversation internal constructor(
             } finally {
                 completionId = null
             }
-            val d = done!!
+            val d = checkNotNull(done)
             // a summary the output limit cut is no summary (tools/ui COMPACTION.FINISH_CUT): roll back
             if (d.reason == FinishReason.Length) throw LlamaBroException.CompactionTruncated()
             if (summary.isNotBlank()) {
@@ -709,7 +709,7 @@ public class Conversation internal constructor(
         }
         append(draft.finished())
         _reply.value = null
-        return Reply(draft.done!!, draft.calls)
+        return Reply(checkNotNull(draft.done), draft.calls)
     }
 
     /** Folds one event into the draft and the live state the UI reads. */

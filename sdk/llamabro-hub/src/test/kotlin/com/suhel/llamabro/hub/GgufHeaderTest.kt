@@ -165,8 +165,9 @@ internal class GgufHeaderTest {
                     try {
                         HeaderFetch(server.apiUrl, transport).fetch(selected, File(cache, "stub/$repo.gguf"))
                         Assert.fail("$repo should fail")
-                    } catch (e: HubException.NotFound) {
+                    } catch (e: HubException.Corrupt) {
                         assertTrue("$repo: ${e.message}", e.message!!.contains(expected))
+                        assertEquals(selected.path, e.path)
                     }
                 }
             }

@@ -69,7 +69,7 @@ data class DownloadFailure(
     val neededBytes: Long? = null,
     val availableBytes: Long? = null,
 ) {
-    enum class Kind { Network, RateLimited, NotFound, Unauthorized, IntegrityMismatch, InsufficientStorage }
+    enum class Kind { Network, RateLimited, NotFound, Corrupt, Unauthorized, IntegrityMismatch, InsufficientStorage }
 
     companion object {
         fun from(error: HubException): DownloadFailure =
@@ -84,6 +84,10 @@ data class DownloadFailure(
 
                 is HubException.NotFound -> {
                     DownloadFailure(Kind.NotFound, error.retryable)
+                }
+
+                is HubException.Corrupt -> {
+                    DownloadFailure(Kind.Corrupt, error.retryable)
                 }
 
                 is HubException.Unauthorized -> {
@@ -155,10 +159,10 @@ class WorkDownloadScheduler(private val manager: Lazy<WorkManager>) : DownloadSc
 internal fun workEnds(infos: Flow<List<WorkInfo>>): Flow<Unit> =
     flow {
         var live = false
-        infos.collect { infos ->
-            if (infos.any { !it.state.isFinished }) {
+        infos.collect { now ->
+            if (now.any { !it.state.isFinished }) {
                 live = true
-            } else if (live && infos.isNotEmpty()) {
+            } else if (live && now.isNotEmpty()) {
                 live = false
                 emit(Unit)
             }

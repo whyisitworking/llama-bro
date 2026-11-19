@@ -24,7 +24,8 @@ internal fun splitInfo(path: String): SplitInfo {
             .find(prefix)
             ?.groupValues
             ?.get(1)
-            ?.uppercase() ?: ""
+            ?.uppercase()
+            .orEmpty()
     return SplitInfo(prefix, tag, index, count)
 }
 
@@ -132,8 +133,8 @@ internal fun resolvePlan(
     val primary = if (hfFile.isNotEmpty()) all.firstOrNull { it.path == hfFile } else findBestModel(all, tag)
     // download.cpp returns an empty plan, sidecars included, when a named file isn't in the repo.
     if (hfFile.isNotEmpty() && primary == null) return Resolved(null, emptyList(), null, null)
-    val models = primary?.let { splitFiles(all, it) } ?: emptyList()
+    val models = primary?.let { splitFiles(all, it) }.orEmpty()
     val mmproj = if (wantMmproj && primary != null) findBestSibling(all, primary.path, "mmproj") else null
-    val dflash = if (wantDflash) findBestSibling(all, primary?.path ?: "", "dflash-", tag) else null
+    val dflash = if (wantDflash) findBestSibling(all, primary?.path.orEmpty(), "dflash-", tag) else null
     return Resolved(primary, models, mmproj, dflash)
 }

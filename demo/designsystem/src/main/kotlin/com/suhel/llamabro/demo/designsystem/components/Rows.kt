@@ -77,7 +77,10 @@ fun ListRow(
                 min =
                     when {
                         subtitle != null -> DemoSize.rowTwoLine
-                        dense -> DemoSize.rowDense
+
+                        dense -> DemoSize.target
+
+                        // a dense row is one touch target tall
                         else -> DemoSize.field
                     },
             ).padding(horizontal = DemoSpacing.item, vertical = DemoSpacing.block),

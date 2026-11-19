@@ -12,8 +12,6 @@ enum class ContextRoom { Large, Normal, Small, None }
 /** demo design §7.1, D101. Pure functions; the app reads the budget and the chip from the SDK once per screen. */
 object Fit {
     private const val GIB = 1L shl 30
-    private const val LARGE_CONTEXT_TOKENS = 16_384
-    private const val NORMAL_CONTEXT_TOKENS = 4_096
     private const val LARGE_HEADROOM_BYTES = GIB * 3 / 2
     private const val NORMAL_HEADROOM_BYTES = GIB / 2
     private const val SLOW_TOKENS_PER_SECOND = 8.0

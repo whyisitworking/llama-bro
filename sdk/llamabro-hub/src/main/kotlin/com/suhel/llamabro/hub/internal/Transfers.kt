@@ -117,7 +117,7 @@ internal class Transfers(private val scope: CoroutineScope = CoroutineScope(Supe
         val stopped =
             synchronized(lock) {
                 val keys = active.keys.filter(matches)
-                keys.map { active.remove(it)!! }
+                keys.map { checkNotNull(active.remove(it)) }
             }
         for (entry in stopped) entry.stoppedWith = error
         // Out of the map, an entry must still reach its end, or its collectors wait forever.

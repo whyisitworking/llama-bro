@@ -37,7 +37,7 @@ each step proves and what it needs. Two conventions: a check runs once per chang
 it), and benchmarks run only when a change could move a budget.
 
 Style is enforced: `./gradlew ktlintFormat` formats Kotlin (ktlint, official style), `./gradlew qualityCheck` runs ktlint,
-detekt and an unused-import check, lint runs with warnings as errors, and the bridge and JNI code compile with
+detekt (with type resolution on main code) and an unused-import check, lint runs with warnings as errors, and the bridge and JNI code compile with
 `-Wall -Wextra -Werror`. CI (`.github/workflows/ci.yml`) runs the checks that need no model and no device; the rest stay
 in the scripts above. A public API change fails the API check: review the dump diff and update
 it with `./gradlew -p sdk :<module>:apiDump`, committing the `.api` file with the change.
@@ -70,11 +70,11 @@ it with `./gradlew -p sdk :<module>:apiDump`, committing the `.api` file with th
 
 ## Making a change
 
-1. Branch from `v2`. Name the branch for what it does.
+1. Branch from the default branch. Name the branch for what it does.
 2. Keep the change focused. Add or update tests with the code; a behaviour with no test is not finished.
 3. If you learn something measurable, add a finding (`F<n>`, with the method and numbers) and update the experiment that
    produced it; if you choose between options, add a decision (`D<n>`).
-4. Run the checks above. Commit with a message that says what changed and why, in the imperative mood.
+4. Run the checks above. Commit with a message whose first line is `area: what is true now` (`hub: …`, `demo: …`) and whose body says why.
 5. Open a pull request describing the change, how you verified it, and anything you could not verify.
 
 ## Reporting a problem

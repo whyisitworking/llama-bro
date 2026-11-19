@@ -60,7 +60,7 @@ internal class ToolboxProcessor(private val codeGenerator: CodeGenerator, privat
 
     private fun generate(box: KSClassDeclaration) {
         val visibility = visibility(box) ?: return
-        val prefix = box.annotation(LB_TOOLBOX)?.arg("prefix") as? String ?: ""
+        val prefix = (box.annotation(LB_TOOLBOX)?.arg("prefix") as? String).orEmpty()
         val types = toolboxTypes(box)
         val functions =
             types

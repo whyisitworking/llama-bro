@@ -17,7 +17,7 @@ public data class HfModel private constructor(
     public val file: String?,
 ) {
     /** Canonical reference suitable for WorkManager data and Intent extras. */
-    override fun toString(): String = repo + (tag?.let { ":$it" } ?: "") + (file?.let { "#$it" } ?: "")
+    override fun toString(): String = repo + (tag?.let { ":$it" }.orEmpty()) + (file?.let { "#$it" }.orEmpty())
 
     public companion object {
         /**

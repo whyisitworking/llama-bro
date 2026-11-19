@@ -214,7 +214,7 @@ internal class LlamaBroRuntime(
                 name = o.getValue("name").jsonPrimitive.content,
                 loaded = o.getValue("loaded").jsonPrimitive.boolean,
                 error = o["error"]?.jsonPrimitive?.contentOrNull,
-                devices = (o["devices"] as? JsonArray)?.map { d -> d.jsonPrimitive.content } ?: emptyList(),
+                devices = (o["devices"] as? JsonArray)?.map { d -> d.jsonPrimitive.content }.orEmpty(),
             )
         }
 
@@ -404,7 +404,7 @@ internal class LlamaBroRuntime(
             if (e.isFinal()) throw e
             attempts +=
                 LoadReport.Attempt(
-                    encoder!!.kind,
+                    encoder.kind,
                     encoder.deviceName,
                     "image encoder on ${encoder.deviceName} failed (${e.message ?: "load failed"}); " +
                         "it follows the model instead",
@@ -562,7 +562,7 @@ internal class LlamaBroRuntime(
                     }
             }
             currentCoroutineContext().ensureActive()
-            return loaded!!
+            return checkNotNull(loaded)
         } catch (e: CancellationException) {
             // freed before the cancellation reaches the caller, as if the load never happened
             loaded?.let { m -> withContext(NonCancellable) { m.closeAndJoin() } }

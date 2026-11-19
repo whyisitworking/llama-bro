@@ -6,8 +6,12 @@ package com.suhel.llamabro
  */
 public sealed class LlamaBroException(message: String, cause: Throwable?) : Exception(message, cause) {
     /** llama-server rejected the request (`invalid_request_error` and the like), or the call was misused. */
-    public class InvalidRequest internal constructor(message: String, cause: Throwable? = null) :
-        LlamaBroException(message, cause)
+    public class InvalidRequest internal constructor(
+        message: String,
+        cause: Throwable? = null,
+        /** The bridge's code for its own refusals (`attachment`), so the SDK needn't read their words. */
+        internal val code: String? = null,
+    ) : LlamaBroException(message, cause)
 
     /**
      * The prompt doesn't fit (`exceed_context_size_error`). Compact or shorten, then retry. The counts are

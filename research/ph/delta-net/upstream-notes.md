@@ -2,9 +2,9 @@
 
 > **Parent:** [research](../../README.md) · **About:** [`delta-net-head-tail-split.patch`](delta-net-head-tail-split.patch) (the SDK's 0001 until D80), [F149](../../../docs/research/findings.md), [D80](../../../docs/decisions.md), [F7](../../../docs/research/findings.md), [F8](../../../docs/research/findings.md), [F121](../../../docs/research/findings.md), [D10](../../../docs/decisions.md)
 
-Working notes for the user, gathered 2026-11-15. **Nothing here has been posted, and nothing will be.** llama.cpp forbids
-AI-written issues, PR descriptions, commit messages and review replies (`CONTRIBUTING.md` "AI Usage Policy" item 5,
-`AGENTS.md` "Prohibited AI Usage"), so these are facts to write from, not text to paste.
+Facts gathered 2026-11-15 for an upstream proposal. llama.cpp asks for issues, PR descriptions, commit messages and
+review replies written by a person (`CONTRIBUTING.md` "AI Usage Policy" item 5, `AGENTS.md` "Prohibited AI Usage"), so
+these are facts to write from, not text to post. Not posted.
 
 ## 1. Upstream's rules that apply (pinned b12352, read 2026-11-15)
 

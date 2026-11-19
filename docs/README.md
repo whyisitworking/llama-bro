@@ -6,7 +6,6 @@
 | [decisions.md](decisions.md) | Every design decision (`D<n>`): what was chosen, why, and which findings back it |
 | [research/findings.md](research/findings.md) | The findings register (`F<n>`): every measurement and upstream reading, with its evidence |
 | [research/history.md](research/history.md) | How the SDK got here, phase by phase, and what is still open |
-| [research/sdk-review.md](research/sdk-review.md) | An opinion on the SDK's usability: what would headline it, and what to improve first |
 | [release-notes.md](release-notes.md) | What changed for apps in each phase: breaking changes, new API, speed-ups and fixes |
 | [testing.md](testing.md) | The verification gates, what each proves, what it needs, and the performance budgets |
 | [design/demo-app.md](design/demo-app.md) | The demo app's design reference: experience, naming, limits, design system |
