@@ -132,11 +132,13 @@ private fun <T> Typed<String>.decode(serializer: KSerializer<T>, json: Json): Ty
     when (this) {
         is Typed.Value -> {
             try {
-                Typed.Value(json.decodeFromString(serializer, this.json), this.json, reasoning)
-            } catch (e: Exception) {
+                Typed.Value(json.decodeFromString(serializer, text), text, reasoning)
+            } catch (
+                @Suppress("TooGenericExceptionCaught") e: Exception,
+            ) {
                 // a SerializationException, a failing require (IllegalArgumentException) or check
                 // (IllegalStateException) in the type's init, or a custom serializer's own: none is an engine failure
-                Typed.Invalid(this.json, e)
+                Typed.Invalid(text, e)
             }
         }
 

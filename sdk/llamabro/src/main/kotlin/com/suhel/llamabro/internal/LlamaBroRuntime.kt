@@ -19,6 +19,9 @@ import com.suhel.llamabro.ModelConfig
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.RemoteModelSource
 import com.suhel.llamabro.Speculative
+import com.suhel.llamabro.spi.Engine
+import com.suhel.llamabro.spi.EngineModel
+import com.suhel.llamabro.spi.NativeError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -541,30 +544,22 @@ internal class LlamaBroRuntime(
                         onProgress(p)
                         caller.isActive
                     }
-                val (contextSize, contextReason) =
-                    if (memoryWarning != null) {
-                        contextOf(engineModel.infoJson, builder.contextSize).first to
-                            "the smallest context, loaded although the memory check said it may not fit " +
-                            "(MemoryCheck.Warn)"
-                    } else {
-                        contextOf(engineModel.infoJson, builder.contextSize)
+                // the native model exists from here: anything that fails before it is handed out must free it
+                loaded =
+                    try {
+                        handOut(engineModel, memoryWarning, source, builder, candidate, encoder, attempts)
+                    } catch (
+                        @Suppress("TooGenericExceptionCaught") e: Throwable,
+                    ) {
+                        // freed, then rethrown typed
+                        engineModel.close()
+                        throw e as? LlamaBroException
+                            ?: LlamaBroException.ModelLoadFailed(
+                                LlamaBroException.ModelLoadFailed.Reason.Other,
+                                "the loaded model's info could not be read: ${e.message}",
+                                e,
+                            )
                     }
-                val (speculative, speculativeReason) = speculativeOf(builder.speculative, candidate.kind, source)
-                val report =
-                    LoadReport(
-                        candidate.kind,
-                        candidate.deviceName,
-                        candidate.backend,
-                        attempts,
-                        contextSize,
-                        contextReason,
-                        speculative,
-                        speculativeReason,
-                        encoder?.kind,
-                        encoder?.deviceName,
-                        memoryWarning,
-                    )
-                loaded = Model(engineModel, report, this@LlamaBroRuntime::shutdown, builder.task, mediaIo)
             }
             currentCoroutineContext().ensureActive()
             return loaded!!
@@ -573,6 +568,42 @@ internal class LlamaBroRuntime(
             loaded?.let { m -> withContext(NonCancellable) { m.closeAndJoin() } }
             throw e
         }
+    }
+
+    /** The loaded native model as the app's [Model], with the report of how and where it loaded. */
+    private fun handOut(
+        engineModel: EngineModel,
+        memoryWarning: String?,
+        source: ModelSource,
+        builder: ModelConfig,
+        candidate: DeviceResolver.Candidate,
+        encoder: DeviceResolver.Candidate?,
+        attempts: List<LoadReport.Attempt>,
+    ): Model {
+        val (contextSize, contextReason) =
+            if (memoryWarning != null) {
+                contextOf(engineModel.infoJson, builder.contextSize).first to
+                    "the smallest context, loaded although the memory check said it may not fit " +
+                    "(MemoryCheck.Warn)"
+            } else {
+                contextOf(engineModel.infoJson, builder.contextSize)
+            }
+        val (speculative, speculativeReason) = speculativeOf(builder.speculative, candidate.kind, source)
+        val report =
+            LoadReport(
+                candidate.kind,
+                candidate.deviceName,
+                candidate.backend,
+                attempts,
+                contextSize,
+                contextReason,
+                speculative,
+                speculativeReason,
+                encoder?.kind,
+                encoder?.deviceName,
+                memoryWarning,
+            )
+        return Model(engineModel, report, ::shutdown, builder.task, mediaIo)
     }
 
     /** [MemoryBudget.budgetMib] with no side files, in bytes (F97); reads memory on [ioDispatcher]. */
@@ -623,79 +654,75 @@ internal class LlamaBroRuntime(
         }
     }
 
-    /** What decodes and why (P2 T8): what the app set, or for [Speculative.Auto] why it is off on this chip. */
-    private fun speculativeOf(
-        requested: Speculative,
-        kind: DeviceKind,
-        source: ModelSource,
-    ): Pair<Speculative, String> {
-        val result =
-            when (requested) {
-                Speculative.Off -> {
-                    Speculative.Off to "off: set by the app"
-                }
-
-                Speculative.Auto -> {
-                    Speculative.Off to "off: ${MtpPolicy.reason(kind)}"
-                }
-
-                is Speculative.Mtp -> {
-                    requested to "MTP: set by the app"
-                }
-
-                is Speculative.Ngram -> {
-                    requested to
-                        (if (requested.then != null) "n-gram, then MTP: set by the app" else "n-gram: set by the app")
-                }
-
-                is Speculative.DFlash -> {
-                    requested to "DFlash draft (D41)"
-                }
-            }
-        val unusedDraft = (source as? FileSource)?.draft != null && requested !is Speculative.DFlash
-        return if (unusedDraft) {
-            result.first to "${result.second}; draft file unused (Speculative is not DFlash)"
-        } else {
-            result
-        }
-    }
-
-    /** The loaded context and why (`lb_model_info`'s `n_ctx` and `ctx_fit`, D33). */
-    private fun contextOf(infoJson: String, requested: ContextSize): Pair<Int, String> {
-        val info = Json.parseToJsonElement(infoJson) as JsonObject
-        val nCtx = info.getValue("n_ctx").jsonPrimitive.int
-        val fit = info["ctx_fit"] as? JsonObject
-        val reason =
-            when {
-                requested is ContextSize.Fixed -> {
-                    "set by the app"
-                }
-
-                fit == null -> {
-                    "min(${(requested as? ContextSize.UpTo)?.maxTokens ?: ContextSize.AUTO_CEILING}, the training context): no memory figure to fit to"
-                }
-
-                else -> {
-                    fun num(key: String) = fit[key]?.jsonPrimitive?.long
-                    val budget = num("budget_mib")
-                    val used = num("used_max_mib") ?: num("used_min_mib")
-                    // n_ctx_cap is per slot (several slots each get it); the other figures are totals
-                    if (nCtx.toLong() == (num("n_ctx_cap") ?: 0) * (num("n_streams") ?: 1)) {
-                        if (num("n_ctx_cap") == num("n_ctx_train")) {
-                            "the training context fits: $used MiB of $budget MiB available"
-                        } else {
-                            "the ceiling of ${num("n_ctx_cap")} tokens fits: $used MiB of $budget MiB available"
-                        }
-                    } else {
-                        "fitted to $budget MiB available: ${num("used_min_mib")} MiB at ${num("n_ctx_min")} tokens, " +
-                            "${num("used_max_mib")} MiB at ${num("n_ctx_max")}"
-                    }
-                }
-            }
-        return nCtx to reason
-    }
-
     private val shutdownScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+}
+
+/** What decodes and why (P2 T8): what the app set, or for [Speculative.Auto] why it is off on this chip. */
+private fun speculativeOf(requested: Speculative, kind: DeviceKind, source: ModelSource): Pair<Speculative, String> {
+    val result =
+        when (requested) {
+            Speculative.Off -> {
+                Speculative.Off to "off: set by the app"
+            }
+
+            Speculative.Auto -> {
+                Speculative.Off to "off: ${MtpPolicy.reason(kind)}"
+            }
+
+            is Speculative.Mtp -> {
+                requested to "MTP: set by the app"
+            }
+
+            is Speculative.Ngram -> {
+                requested to
+                    (if (requested.then != null) "n-gram, then MTP: set by the app" else "n-gram: set by the app")
+            }
+
+            is Speculative.DFlash -> {
+                requested to "DFlash draft (D41)"
+            }
+        }
+    val unusedDraft = (source as? FileSource)?.draft != null && requested !is Speculative.DFlash
+    return if (unusedDraft) {
+        result.first to "${result.second}; draft file unused (Speculative is not DFlash)"
+    } else {
+        result
+    }
+}
+
+/** The loaded context and why (`lb_model_info`'s `n_ctx` and `ctx_fit`, D33). */
+private fun contextOf(infoJson: String, requested: ContextSize): Pair<Int, String> {
+    val info = Json.parseToJsonElement(infoJson) as JsonObject
+    val nCtx = info.getValue("n_ctx").jsonPrimitive.int
+    val fit = info["ctx_fit"] as? JsonObject
+    val reason =
+        when {
+            requested is ContextSize.Fixed -> {
+                "set by the app"
+            }
+
+            fit == null -> {
+                "min(${(requested as? ContextSize.UpTo)?.maxTokens ?: ContextSize.AUTO_CEILING}, the training context): no memory figure to fit to"
+            }
+
+            else -> {
+                fun num(key: String) = fit[key]?.jsonPrimitive?.long
+                val budget = num("budget_mib")
+                val used = num("used_max_mib") ?: num("used_min_mib")
+                // n_ctx_cap is per slot (several slots each get it); the other figures are totals
+                if (nCtx.toLong() == (num("n_ctx_cap") ?: 0) * (num("n_streams") ?: 1)) {
+                    if (num("n_ctx_cap") == num("n_ctx_train")) {
+                        "the training context fits: $used MiB of $budget MiB available"
+                    } else {
+                        "the ceiling of ${num("n_ctx_cap")} tokens fits: $used MiB of $budget MiB available"
+                    }
+                } else {
+                    "fitted to $budget MiB available: ${num("used_min_mib")} MiB at ${num("n_ctx_min")} tokens, " +
+                        "${num("used_max_mib")} MiB at ${num("n_ctx_max")}"
+                }
+            }
+        }
+    return nCtx to reason
 }
 
 private const val BYTES_PER_MIB = 1024L * 1024L

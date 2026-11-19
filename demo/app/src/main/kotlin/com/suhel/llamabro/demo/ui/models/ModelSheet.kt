@@ -1,12 +1,7 @@
 package com.suhel.llamabro.demo.ui.models
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -14,9 +9,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.tooling.preview.PreviewParameter
-import androidx.compose.ui.tooling.preview.PreviewParameterProvider
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.suhel.llamabro.demo.AppContainer
@@ -34,18 +26,14 @@ import com.suhel.llamabro.demo.designsystem.components.QuietButton
 import com.suhel.llamabro.demo.designsystem.components.RowCard
 import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.SegmentedSwitch
-import com.suhel.llamabro.demo.designsystem.components.SheetFrame
 import com.suhel.llamabro.demo.designsystem.components.Stack
 import com.suhel.llamabro.demo.designsystem.components.sheetListMaxHeight
 import com.suhel.llamabro.demo.designsystem.testing.CountRecompositions
-import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.RepoFile
 import com.suhel.llamabro.demo.models.SizeTier
-import com.suhel.llamabro.demo.ui.preview.DemoPreviews
-import com.suhel.llamabro.demo.ui.preview.PreviewFrame
 import com.suhel.llamabro.hub.HfModel
 
 /**

@@ -158,7 +158,9 @@ class ModelSheetViewModel(
                     )
                 } catch (e: CancellationException) {
                     throw e
-                } catch (e: Exception) {
+                } catch (
+                    @Suppress("TooGenericExceptionCaught") e: Exception,
+                ) {
                     SheetState.Failed(retryable = (e as? HubException)?.retryable ?: true)
                 },
             )

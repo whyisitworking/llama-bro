@@ -34,9 +34,12 @@ public sealed class LlamaBroException(message: String, cause: Throwable?) : Exce
     /** The server can't take the request now (`unavailable_error`). */
     public class Unavailable internal constructor(message: String) : LlamaBroException(message, null)
 
-    /** Any other llama-server error, with its HTTP status. */
-    public class ServerError internal constructor(public val httpStatus: Int, message: String) :
-        LlamaBroException(message, null)
+    /** Any other llama-server error, with its HTTP status; or a reply the SDK couldn't read (status 200). */
+    public class ServerError internal constructor(
+        public val httpStatus: Int,
+        message: String,
+        cause: Throwable? = null,
+    ) : LlamaBroException(message, cause)
 
     /** The model didn't load; the message is upstream's reason (llama.cpp only logs it, F51). */
     public class ModelLoadFailed internal constructor(public val reason: Reason, message: String, cause: Throwable?) :

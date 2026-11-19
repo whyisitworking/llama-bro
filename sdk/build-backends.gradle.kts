@@ -5,13 +5,12 @@ val sdkDir = gradle.extensions.extraProperties["sdkDir"] as File
 
 tasks.register<Exec>("buildBackends") {
     description =
-        "Builds the Hexagon and OpenCL backend libraries in the Snapdragon Docker image, and Vulkan on the host"
+        "Builds the Hexagon and OpenCL backend libraries in the Snapdragon Docker image"
     val native = sdkDir.resolve("native")
     dependsOn(":llamabro:prepareLlama")
     inputs.file(native.resolve("build/llama.cpp/.lb-stamp"))
     inputs.file(native.resolve("CMakeLists.txt"))
     inputs.file(native.resolve("scripts/build-backends.sh"))
-    inputs.file(native.resolve("scripts/fetch-deps.sh"))
     outputs.dir(native.resolve("build/android-backends"))
     commandLine("bash", native.resolve("scripts/build-backends.sh").path)
 }

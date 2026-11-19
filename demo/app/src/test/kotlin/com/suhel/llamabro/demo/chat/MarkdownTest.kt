@@ -284,7 +284,7 @@ class MarkdownTest {
             assertEquals("at $end: ${text.takeLast(20)}", Markdown.parse(heldBack(text)), parsed.blocks)
             // a whole parse (once a reference definition arrives) may change earlier links: identity holds until then
             if (before != null && !parsed.whole) {
-                val stable = before.sources.count { it.start < before.restart }
+                val stable = before.starts.count { it < before.restart }
                 for (i in 0 until stable) {
                     assertSame("block $i at $end", before.blocks.blocks[i], parsed.blocks.blocks[i])
                 }

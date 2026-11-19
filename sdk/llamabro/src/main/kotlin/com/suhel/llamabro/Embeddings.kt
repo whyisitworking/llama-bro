@@ -3,9 +3,9 @@ package com.suhel.llamabro
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.internal.Attachments
 import com.suhel.llamabro.internal.ChatJson
-import com.suhel.llamabro.internal.EngineAttachment
 import com.suhel.llamabro.internal.ErrorMapping
 import com.suhel.llamabro.internal.Media
+import com.suhel.llamabro.spi.EngineAttachment
 import kotlinx.coroutines.flow.single
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -50,31 +50,17 @@ public sealed class Normalization {
     }
 
     /** Unit length by the [p]-norm, for [p] above 2 ([Taxicab] is 1, [Euclidean] is 2). */
-    public class PNorm(public val p: Int) : Normalization() {
-        // a regular class, not a data class: a field can be added later without a binary break
+    public data class PNorm(public val p: Int) : Normalization() {
         init {
             require(p > 2) { "p must be above 2 (Taxicab is 1, Euclidean is 2): $p" }
         }
 
         override val upstream: Int get() = p
-
-        override fun equals(other: Any?): Boolean = other is PNorm && p == other.p
-
-        override fun hashCode(): Int = p
-
-        override fun toString(): String = "PNorm(p=$p)"
     }
 }
 
 /** A document's place in [rerank]'s answer: its [index] in the documents passed, and its relevance [score]. */
-public class Ranked(public val index: Int, public val score: Float) {
-    // a regular class, not a data class: a field can be added later without a binary break
-    override fun equals(other: Any?): Boolean = other is Ranked && index == other.index && score == other.score
-
-    override fun hashCode(): Int = index * 31 + score.hashCode()
-
-    override fun toString(): String = "Ranked(index=$index, score=$score)"
-}
+public data class Ranked(public val index: Int, public val score: Float)
 
 /**
  * The embedding vector of [text] (`POST /v1/embeddings`), on a model loaded with [ModelTask.Embedding].
@@ -128,11 +114,13 @@ public suspend fun Model.rerank(query: String, documents: List<String>, topN: In
             put("documents", JsonArray(documents.map { JsonPrimitive(it) }))
             topN?.let { put("top_n", it) }
         }
-    val response = Json.parseToJsonElement(rawRequest(Endpoint.Rerank, body.toString()).single()).jsonObject
+    val reply = rawRequest(Endpoint.Rerank, body.toString())
     // upstream sorts best first and applies top_n (format_response_rerank)
-    return response.getValue("results").jsonArray.map {
-        val r = it.jsonObject
-        Ranked(r.getValue("index").jsonPrimitive.int, r.getValue("relevance_score").jsonPrimitive.float)
+    return ErrorMapping.readReply("rerank") {
+        Json.parseToJsonElement(reply.single()).jsonObject.getValue("results").jsonArray.map {
+            val r = it.jsonObject
+            Ranked(r.getValue("index").jsonPrimitive.int, r.getValue("relevance_score").jsonPrimitive.float)
+        }
     }
 }
 
@@ -149,14 +137,17 @@ private suspend fun Model.embedInput(
             put("encoding_format", "base64")
             put("embd_normalize", normalization.upstream)
         }
-    val response =
-        Json.parseToJsonElement(request(Endpoint.Embeddings, body.toString(), attachments).single()).jsonObject
-    return response
-        .getValue("data")
-        .jsonArray
-        .map { it.jsonObject }
-        .sortedBy { it.getValue("index").jsonPrimitive.int }
-        .map { decode(it.getValue("embedding").jsonPrimitive.content) }
+    val reply = request(Endpoint.Embeddings, body.toString(), attachments)
+    return ErrorMapping.readReply("embeddings") {
+        Json
+            .parseToJsonElement(reply.single())
+            .jsonObject
+            .getValue("data")
+            .jsonArray
+            .map { it.jsonObject }
+            .sortedBy { it.getValue("index").jsonPrimitive.int }
+            .map { decode(it.getValue("embedding").jsonPrimitive.content) }
+    }
 }
 
 internal inline fun <reified T : ModelTask> Model.requireTask(call: String, loadWith: String) {

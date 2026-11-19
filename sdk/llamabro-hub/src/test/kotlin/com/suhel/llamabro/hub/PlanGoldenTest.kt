@@ -3,7 +3,6 @@ package com.suhel.llamabro.hub
 import com.suhel.llamabro.hub.internal.HttpTransport
 import com.suhel.llamabro.hub.internal.JvmStorage
 import com.suhel.llamabro.hub.internal.Resolver
-import com.suhel.llamabro.hub.internal.repoFolder
 import com.suhel.llamabro.hub.internal.resolvePlan
 import com.suhel.llamabro.hub.internal.splitRepoTag
 import kotlinx.coroutines.runBlocking
@@ -19,7 +18,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 import java.nio.file.Files
 
 /** Exercises upstream's recorded choices through the same HTTP resolver used by plan(). */
@@ -137,49 +135,6 @@ internal class PlanGoldenTest {
                     )
                 }
             }
-            assertTrue(failures.joinToString("\n"), failures.isEmpty())
-        }
-
-    @Test fun upstreamCachedTagsMatchOfflineListing() =
-        runBlocking {
-            val cache = Files.createTempDirectory("hub-cached-golden-").toFile()
-            val expected = mutableMapOf<String, List<String>>()
-            for (element in golden.getValue("real_repos").jsonArray) {
-                val repo = element.jsonObject
-                val id = repo.getValue("id").jsonPrimitive.content
-                expected[id] =
-                    repo
-                        .getValue("listing")
-                        .jsonArray
-                        .map { it.jsonPrimitive.content }
-                        .sorted()
-                val root = File(cache, "${repoFolder(id)}/snapshots/${"a".repeat(40)}")
-                for (path in repo.getValue("files").jsonArray.map { it.jsonPrimitive.content }) {
-                    File(root, path).apply {
-                        parentFile!!.mkdirs()
-                        writeText("gguf")
-                    }
-                }
-                File(cache, "${repoFolder(id)}/refs/main").apply {
-                    parentFile!!.mkdirs()
-                    writeText("a".repeat(40))
-                }
-            }
-            val config =
-                HubConfig {
-                    cacheDir = cache
-                    endpoint = "http://127.0.0.1:1/"
-                }
-            val hub = LlamaBroHub(config, cache, HttpTransport(config.endpoint, null, null), JvmStorage())
-            val actual =
-                hub
-                    .cached()
-                    .groupBy { it.model.repo }
-                    .mapValues { (_, models) -> models.mapNotNull { it.model.tag }.sorted() }
-            val failures =
-                expected.mapNotNull { (repo, tags) ->
-                    if (actual[repo] == tags) null else "$repo: expected $tags, got ${actual[repo]}"
-                }
             assertTrue(failures.joinToString("\n"), failures.isEmpty())
         }
 

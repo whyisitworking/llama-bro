@@ -20,10 +20,9 @@ import kotlinx.serialization.json.put
 import java.util.Base64
 
 /**
- * `Conversation.toJson()` format. Version 3: `{"version":3,"system":…,"settings":{…},"messages":[…]}`, where
- * settings holds the defaults as body fields (ChatJson.options), `extra` as written, `max_turns` and
- * `pre_encode_after_reply`. Version 3 adds media a version-2 reader can't read: `"type":"audio"` parts and a `"path"`
- * source (D84). Version 2 is the same shape without them and still loads; version 1 had no settings and still loads.
+ * `Conversation.toJson()` format: `{"version":3,"system":…,"settings":{…},"messages":[…]}`, where settings holds the
+ * defaults as body fields (ChatJson.options), `extra` as written, `max_turns` and `pre_encode_after_reply`. Only this
+ * version is read; the earlier two never left development.
  * Each message keeps every field exactly, so a restored conversation sends byte-identical requests (and the server's
  * prompt cache still hits).
  */
@@ -54,35 +53,29 @@ internal object ConversationJson {
             put("messages", JsonArray(messages.map { message(it, read) }))
         }.toString()
 
-    /** @throws IllegalArgumentException for anything that isn't a version-1, -2 or -3 saved conversation. */
+    /** @throws IllegalArgumentException for anything that isn't a version-3 saved conversation. */
     fun decode(text: String): Saved =
         try {
             val o = Json.parseToJsonElement(text) as JsonObject
             val version = (o["version"] as? JsonPrimitive)?.int
-            require(version == 1 || version == 2 || version == VERSION) { "unsupported conversation version: $version" }
+            require(version == VERSION) { "unsupported conversation version: $version" }
             val system = (o["system"] as? JsonPrimitive)?.takeIf { it.isString }?.content
             val messages = (o["messages"] as JsonArray).map { message(it as JsonObject) }
-            val settings = o["settings"] as? JsonObject
-            require(version == 1 || settings != null) { "version-$version conversation without settings" }
-            val apply: Conversation.Builder.() -> Unit =
-                if (settings == null) {
-                    ({})
-                } else {
-                    val defaults = ChatJson.parseOptions(settings["options"] as JsonObject, settings.str("extra"))
-                    val maxTurns = settings.getValue("max_turns").jsonPrimitive.int
-                    val preEncode = settings.getValue("pre_encode_after_reply").jsonPrimitive.boolean
-                    (
-                        {
-                            this.defaults = defaults
-                            this.maxTurns = maxTurns
-                            this.preEncodeAfterReply = preEncode
-                        }
-                    )
-                }
+            val settings = requireNotNull(o["settings"] as? JsonObject) { "a saved conversation without settings" }
+            val defaults = ChatJson.parseOptions(settings["options"] as JsonObject, settings.str("extra"))
+            val maxTurns = settings.getValue("max_turns").jsonPrimitive.int
+            val preEncode = settings.getValue("pre_encode_after_reply").jsonPrimitive.boolean
+            val apply: Conversation.Builder.() -> Unit = {
+                this.defaults = defaults
+                this.maxTurns = maxTurns
+                this.preEncodeAfterReply = preEncode
+            }
             Saved(system, messages, apply)
         } catch (e: IllegalArgumentException) {
             throw e
-        } catch (e: Exception) {
+        } catch (
+            @Suppress("TooGenericExceptionCaught") e: Exception,
+        ) {
             // malformed JSON, a missing field (NPE from !!) or a wrong type (ClassCastException)
             throw IllegalArgumentException(
                 "not a saved conversation (expected Conversation.toJson() output): ${e.message}",

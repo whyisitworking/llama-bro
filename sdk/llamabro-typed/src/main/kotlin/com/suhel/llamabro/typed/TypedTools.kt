@@ -66,7 +66,9 @@ public class TypedTool<A, R> internal constructor(
                 json.decodeFromString(argsSerializer, raw.ifBlank { "{}" })
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (
+                @Suppress("TooGenericExceptionCaught") e: Exception,
+            ) {
                 throw decodeFailure(e)
             }
         val result = LbToolCallContext(call.id, call.name, raw).handler(args)

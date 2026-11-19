@@ -128,6 +128,16 @@ abstract class ChatDao {
     }
 
     /**
+     * Reads chat [id], applies [change] and writes it back in one transaction, so two changes to one chat at once
+     * (a rename while its sampling changes) both land.
+     */
+    @Transaction
+    open suspend fun modifyChat(id: Long, change: (ChatEntity) -> ChatEntity) {
+        val old = chat(id) ?: return
+        updateChat(change(old))
+    }
+
+    /**
      * Reads row [id], applies [change] and writes it back in one transaction; [touchAt] also moves the chat's
      * `updatedAt`.
      */

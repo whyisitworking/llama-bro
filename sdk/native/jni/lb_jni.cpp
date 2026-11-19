@@ -231,7 +231,12 @@ jstring fitEstimate(JNIEnv * env, jobject, jstring config) {
 }
 
 jstring modelInfo(JNIEnv * env, jobject, jlong model) {
-    return take_string(env, lb_model_info(reinterpret_cast<lb_model *>(model)));
+    char * info = lb_model_info(reinterpret_cast<lb_model *>(model));
+    if (!info) {
+        throw_native_error(env, LB_ERR_INTERNAL, nullptr, "{\"error\":\"the model's info could not be read\"}");
+        return nullptr;
+    }
+    return take_string(env, info);
 }
 
 void release_lent(JNIEnv * env, std::vector<std::pair<jbyteArray, jbyte *>> & lent) {
@@ -386,10 +391,10 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM * vm, void *) {
     g_utf8 = static_cast<jstring>(env->NewGlobalRef(env->NewStringUTF("UTF-8")));
     if (!g_string_ctor || !g_string_get_bytes || !g_utf8) return fail("String methods");
 
-    if (!(g_native_error_class = global_class(env, "com/suhel/llamabro/internal/NativeError"))) return fail("NativeError");
+    if (!(g_native_error_class = global_class(env, "com/suhel/llamabro/spi/NativeError"))) return fail("NativeError");
     if (!(g_native_error_ctor = env->GetMethodID(g_native_error_class, "<init>", "(ILjava/lang/String;)V"))) return fail("NativeError(int, String)");
 
-    if (!(sink = env->FindClass("com/suhel/llamabro/internal/RequestSink"))) return fail("RequestSink");
+    if (!(sink = env->FindClass("com/suhel/llamabro/spi/RequestSink"))) return fail("RequestSink");
     g_sink_on_chunk = env->GetMethodID(sink, "onChunk", "(I[B)V");
     g_sink_on_done = env->GetMethodID(sink, "onDone", "()V");
     g_sink_on_cancelled = env->GetMethodID(sink, "onCancelled", "()V");
@@ -408,7 +413,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM * vm, void *) {
         {"fitEstimate",    "(Ljava/lang/String;)Ljava/lang/String;", (void *) fitEstimate},
         {"modelInfo",      "(J)Ljava/lang/String;", (void *) modelInfo},
         {"modelRequest",   "(JLjava/lang/String;Ljava/lang/String;[B[Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;[I[[B"
-                           "Lcom/suhel/llamabro/internal/RequestSink;)J", (void *) modelRequest},
+                           "Lcom/suhel/llamabro/spi/RequestSink;)J", (void *) modelRequest},
         {"readFd",         "(I)[B", (void *) readFd},
         {"requestCancel",  "(J)V", (void *) requestCancel},
         {"requestFree",    "(J)V", (void *) requestFree},

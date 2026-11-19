@@ -28,11 +28,6 @@ public class VoiceConfig internal constructor(
      * upstream session field the typed ones don't cover, such as `tools`.
      */
     public val extra: String?,
-    /**
-     * Captions of the user's words, off (null) by default: see [Builder.transcribeUser]. Upstream's conversation sends
-     * none (F169), so the SDK transcribes each turn itself, on a second slot (D99).
-     */
-    public val userTranscription: UserTranscription?,
 ) {
     /** A copy with [configure] applied on top. */
     public fun copy(configure: Builder.() -> Unit): VoiceConfig = Builder(this).apply(configure).build()
@@ -44,7 +39,7 @@ public class VoiceConfig internal constructor(
     override fun toString(): String =
         "VoiceConfig(voice=$voice, language=$language, instructions=$instructions, " +
             "outputModalities=$outputModalities, maxOutputTokens=$maxOutputTokens, " +
-            "inputSampleRate=$inputSampleRate, extra=$extra, userTranscription=$userTranscription)"
+            "inputSampleRate=$inputSampleRate, extra=$extra)"
 
     private fun parts() =
         listOf(
@@ -55,14 +50,13 @@ public class VoiceConfig internal constructor(
             maxOutputTokens,
             inputSampleRate,
             extra,
-            userTranscription,
         )
 
     /** Mutable scope of `Model.voiceSession { }` and [copy]; it starts from the current config. */
     public class Builder internal constructor(from: VoiceConfig) {
         public var voice: String? = from.voice
 
-        /** The language the reply is spoken in; the user's own is [UserTranscription.language]. */
+        /** The language the reply is spoken in. */
         public var language: String? = from.language
         public var instructions: String? = from.instructions
 
@@ -100,20 +94,6 @@ public class VoiceConfig internal constructor(
                 field = value
             }
 
-        /** See [VoiceConfig.userTranscription]; [transcribeUser] sets it. */
-        public var userTranscription: UserTranscription? = from.userTranscription
-
-        /**
-         * Captions the user's words (D99): after each turn committed with audio, the session transcribes that audio
-         * with `Model.transcribe` while the reply is made, and sends [VoiceEvent.UserTranscript] with the turn's item
-         * id. A session holds its slot while it is open, so the model must be loaded with `parallelSlots = 2` or more,
-         * or `voiceSession` fails. On the phone's NPU this costs about 0.3 s before the reply's first audio, slows its
-         * speech from 1.65 to 1.5 times real time while it runs, and the second slot takes some more memory (F170).
-         */
-        public fun transcribeUser(configure: UserTranscription.Builder.() -> Unit = {}) {
-            userTranscription = (userTranscription ?: UserTranscription.Default).copy(configure)
-        }
-
         internal fun build(): VoiceConfig =
             VoiceConfig(
                 voice,
@@ -123,15 +103,13 @@ public class VoiceConfig internal constructor(
                 maxOutputTokens,
                 inputSampleRate,
                 extra,
-                userTranscription,
             )
     }
 
     public companion object {
         /** Nothing set but the captioned output: upstream's and the model's defaults. */
-        @JvmField
         public val Default: VoiceConfig =
-            VoiceConfig(null, null, null, setOf(OutputModality.Text, OutputModality.Audio), null, null, null, null)
+            VoiceConfig(null, null, null, setOf(OutputModality.Text, OutputModality.Audio), null, null, null)
 
         /** Session keys the SDK sets and `extra` may not touch. */
         internal val OWNED = setOf("type")

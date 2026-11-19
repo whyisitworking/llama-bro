@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The SDK's whole verification in one command. Every check compares against upstream where one exists:
-#   patched copy   prepare-llama.sh applies every patch and leaves the submodule untouched
+#   build          the patched llama.cpp copy (prepare-llama.sh, which leaves the submodule untouched) and the host build
 #   native         host C API tests (ctest)
 #   hub-golden     upstream model-resolution self-test and recorded golden cases
 #   contract       the C API vs upstream llama-server, same build, same flags, per model (run.sh); audio on
@@ -71,6 +71,16 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+steps="build native hub-golden contract tools-ui api hub-api quality lint jvm e2e aar device hub-device hub-resume device-contract device-speech"
+if [ -n "$only" ]; then
+    for step in $(echo "$only" | tr ',' ' '); do
+        case " $steps " in
+            *" $step "*) ;;
+            *) echo "unknown step for --only: $step (steps: $steps)"; exit 2 ;;
+        esac
+    done
+    only="$(echo "$only" | tr -s ' ' ',')"  # run() matches a comma list
+fi
 
 results=()
 failed=0
@@ -402,6 +412,8 @@ if [ $wants_device -eq 1 ]; then
 fi
 
 echo
+# a step named in --only that needs --device without it runs nothing: that is not a pass
+if [ ${#results[@]} -eq 0 ]; then echo "NO STEP RAN (a device step needs --device)"; exit 1; fi
 printf '%s\n' "${results[@]}"
 [ $failed -eq 0 ] && echo "ALL PASS" || echo "SOME CHECKS FAILED"
 exit $failed

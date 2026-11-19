@@ -20,35 +20,47 @@ import java.io.File
 import java.nio.file.Files
 
 internal class CacheTest {
-    @Test fun cachedListsRepoAndTagWithModelPartsOnly() {
+    @Test fun cachedListsInstalledCopiesByTagWithModelPartsOnly() {
         val root = Files.createTempDirectory("hub-list-").toFile()
         val tree = Tree(root, "test/split")
         tree.add("model-Q4_K_M-00001-of-00002.gguf", "one")
         tree.add("model-Q4_K_M-00002-of-00002.gguf", "two-two")
         tree.add("mmproj-model-Q4_K_M.gguf", "projector")
         tree.add("model-Q8_0.gguf", "eight")
+        val split =
+            listOf(
+                "model-Q4_K_M-00001-of-00002.gguf" to "Model" to 3,
+                "model-Q4_K_M-00002-of-00002.gguf" to "Model" to 7,
+                "mmproj-model-Q4_K_M.gguf" to "Mmproj" to 9,
+            )
+        record(root, "installed", "test/split:Q4_K_M", split)
+        record(root, "installed", "test/split:Q8_0", listOf("model-Q8_0.gguf" to "Model" to 5))
         val cached = cache(root).list()
         assertEquals(listOf("test/split:Q4_K_M", "test/split:Q8_0"), cached.map { it.model.toString() })
         assertEquals(listOf(10L, 5L), cached.map { it.sizeBytes })
+    }
+
+    @Test fun cachedSkipsACopyWithNoInstalledRecord() {
+        val root = Files.createTempDirectory("hub-list-unrecorded-").toFile()
+        val tree = Tree(root, "test/plain")
+        tree.add("model-Q4_K_M.gguf", "four")
+        record(root, "plans", "test/plain:Q4_K_M", listOf("model-Q4_K_M.gguf" to "Model" to 4))
+        assertEquals("complete on disk, but no download finished", emptyList<String>(), listed(root))
+        val e = runCatching { LocalCopies(root, JvmStorage()).source(HfModel("test/plain:Q4_K_M"), PlanOptions()) }
+        assertTrue("${e.exceptionOrNull()}", e.exceptionOrNull() is HubException.NotFound)
     }
 
     @Test fun cachedSkipsASplitModelWithAPartMissing() {
         val root = Files.createTempDirectory("hub-list-split-").toFile()
         val tree = Tree(root, "test/split")
         tree.add("model-Q4_K_M-00001-of-00002.gguf", "one")
-        tree.add("model-Q8_0.gguf", "eight")
-        assertEquals(listOf("test/split:Q8_0"), cache(root).list().map { it.model.toString() })
-    }
-
-    @Test fun cachedSkipsASelectionWhoseRecordedProjectorIsMissing() {
-        val root = Files.createTempDirectory("hub-list-projector-").toFile()
-        val tree = Tree(root, "test/vision")
-        tree.add("model-Q4_K_M.gguf", "four")
-        val files = listOf("model-Q4_K_M.gguf" to "Model" to 4, "mmproj-F16.gguf" to "Mmproj" to 9)
-        record(root, "plans", "test/vision:Q4_K_M", files)
-        assertEquals("a download stopped before its projector", emptyList<String>(), listed(root))
-        tree.add("mmproj-F16.gguf", "projector")
-        assertEquals(listOf("test/vision:Q4_K_M"), listed(root))
+        val split =
+            listOf(
+                "model-Q4_K_M-00001-of-00002.gguf" to "Model" to 3,
+                "model-Q4_K_M-00002-of-00002.gguf" to "Model" to 7,
+            )
+        record(root, "installed", "test/split:Q4_K_M", split)
+        assertEquals(emptyList<String>(), listed(root))
     }
 
     @Test fun cachedSkipsAnInstalledCopyWithAFileGone() {
@@ -59,9 +71,11 @@ internal class CacheTest {
         record(root, "plans", "test/vision:Q4_K_M", files) // a download writes both
         record(root, "installed", "test/vision:Q4_K_M", files)
         assertEquals("its projector is gone", emptyList<String>(), listed(root))
+        tree.add("mmproj-F16.gguf", "projector")
+        assertEquals(listOf("test/vision:Q4_K_M"), listed(root))
     }
 
-    @Test fun cachedListsWhatSourceLoadsWhenAnInstalledDraftIsGone() {
+    @Test fun cachedSkipsAnInstalledCopyWhoseDraftIsGone() {
         val root = Files.createTempDirectory("hub-list-draft-gone-").toFile()
         val tree = Tree(root, "test/main")
         tree.add("model-Q4_K_M.gguf", "four")
@@ -74,19 +88,11 @@ internal class CacheTest {
                 PlanStore.FileRecord("model-Q4_K_M.gguf", HubFile.Role.Model, 4, null),
                 PlanStore.FileRecord("dflash-Q4_K_M.gguf", HubFile.Role.Draft, 5, null, "test/draft", commit),
             )
-        for (folder in listOf(PlanStore.PLANS, PlanStore.INSTALLED)) { // a download writes both
-            PlanStore(root, JvmStorage(), folder).write(
-                HfModel("test/main:Q4_K_M"),
-                withDraft,
-                PlanStore.Record(commit, files),
-            )
-        }
+        PlanStore(root, JvmStorage(), PlanStore.INSTALLED)
+            .write(HfModel("test/main:Q4_K_M"), withDraft, PlanStore.Record(commit, files))
+        assertEquals(listOf("test/main:Q4_K_M"), listed(root))
         draftRepo.repoDir.deleteRecursively()
-        // listed before anything reads the copy: source adopts it, and from then on the installed record lists it
-        assertEquals("listed, as the default selection loads", listOf("test/main:Q4_K_M"), listed(root))
-        val resolver = Resolver("https://example.invalid", root, offline, JvmStorage())
-        val loads = LocalCopies(root, resolver, JvmStorage()).source(HfModel("test/main:Q4_K_M"), PlanOptions())
-        assertTrue(loads.toString(), loads.toString().contains("model-Q4_K_M.gguf"))
+        assertEquals(emptyList<String>(), listed(root))
     }
 
     private fun listed(root: File): List<String> = cache(root).list().map { it.model.toString() }
@@ -115,6 +121,7 @@ internal class CacheTest {
                     tree.add("model-Q4_K_M-%05d-of-%05d.gguf".format(part, SPLIT_PARTS), "part $part of $round")
                 }
                 tree.add("model-Q8_0.gguf", "eight")
+                record(root, "installed", "test/race:Q8_0", listOf("model-Q8_0.gguf" to "Model" to 5))
                 val removed =
                     List(2) { async(Dispatchers.IO) { hub.delete(HfModel("test/race:Q4_K_M")) } }.awaitAll()
                 assertEquals("round $round: the second sees it gone", listOf(false, true), removed.sorted())
@@ -129,6 +136,7 @@ internal class CacheTest {
         tree.add("model-Q4_K_M.gguf", "four")
         tree.add("model-Q8_0.gguf", "eight")
         tree.add("mmproj-Q4_K_M.gguf", "shared")
+        record(root, "installed", "test/shared:Q8_0", listOf("model-Q8_0.gguf" to "Model" to 5))
         val sharedBlob = tree.blob("mmproj-Q4_K_M.gguf")
         val fourBlob = tree.blob("model-Q4_K_M.gguf")
         assertTrue(delete(root, HfModel("test/shared:Q4_K_M")))
@@ -205,6 +213,7 @@ internal class CacheTest {
         val tree = Tree(root, "test/files")
         tree.add("model-Q4_K_M.gguf", "four")
         tree.add("model-Q8_0.gguf", "eight")
+        record(root, "installed", "test/files:Q8_0", listOf("model-Q8_0.gguf" to "Model" to 5))
         assertTrue(delete(root, HfModel("test/files#model-Q4_K_M.gguf")))
         assertFalse(tree.snapshot("model-Q4_K_M.gguf").exists())
         assertFalse(tree.blob("model-Q4_K_M.gguf").exists())
@@ -234,7 +243,7 @@ internal class CacheTest {
 
     private fun cache(root: File): Cache {
         val resolver = Resolver("https://example.invalid", root, offline, JvmStorage())
-        return Cache(root, resolver, LocalCopies(root, resolver, JvmStorage()))
+        return Cache(root, resolver)
     }
 
     private fun delete(root: File, model: HfModel): Boolean = runBlocking { cache(root).delete(model) }

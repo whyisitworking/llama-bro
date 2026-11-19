@@ -250,15 +250,18 @@ json load_optional_backend(const backend_request & b, const std::string & backen
 
 char * lb_strdup(const std::string & s) {
     char * out = static_cast<char *>(std::malloc(s.size() + 1));
+    if (!out) throw std::bad_alloc();
     std::memcpy(out, s.c_str(), s.size() + 1);
     return out;
 }
+
+char * lb_json_strdup(const json & j) { return lb_strdup(j.dump_safe()); }
 
 void lb_set_error(char ** error_json, const std::string & message, const char * code) {
     if (!error_json) return;
     json e = {{"error", message}};
     if (code) e["code"] = code;
-    *error_json = lb_strdup(e.dump());
+    *error_json = lb_json_strdup(e);
 }
 
 lb_error_capture::lb_error_capture() : prev_(t_capture) { t_capture = &text_; }
@@ -285,155 +288,159 @@ const char * lb_version(void) {
 void lb_string_free(char * s) { std::free(s); }
 
 char * lb_fit_estimate(const char * config_json, char ** error_json) {
-    if (error_json) *error_json = nullptr;
-    if (!lb_runtime_is_initialized()) {
-        lb_set_error(error_json, "lb_runtime_init has not been called");
-        return nullptr;
-    }
-    try {
-        const json cfg = json::parse(config_json ? config_json : "");
-        if (!cfg.is_object()) {
-            lb_set_error(error_json, "config must be a JSON object");
+    return lb_guard(static_cast<char *>(nullptr), error_json, [&]() -> char * {
+        if (error_json) *error_json = nullptr;
+        if (!lb_runtime_is_initialized()) {
+            lb_set_error(error_json, "lb_runtime_init has not been called");
             return nullptr;
         }
-        common_params params;
-        std::string err;
-        if (!lb_parse_model_config(cfg, params, err)) {
-            lb_set_error(error_json, err);
-            return nullptr;
-        }
-        for (const std::string * path : {&params.model.path, &params.mmproj.path,
-                                         &params.speculative.draft.mparams.path}) {
-            if (!path->empty() && !std::ifstream(*path).good()) {
-                lb_set_error(error_json, "failed to open model file: " + *path, "file_not_found");
+        try {
+            const json cfg = json::parse(config_json ? config_json : "");
+            if (!cfg.is_object()) {
+                lb_set_error(error_json, "config must be a JSON object");
                 return nullptr;
             }
-        }
+            common_params params;
+            std::string err;
+            if (!lb_parse_model_config(cfg, params, err)) {
+                lb_set_error(error_json, err);
+                return nullptr;
+            }
+            for (const std::string * path : {&params.model.path, &params.mmproj.path,
+                                             &params.speculative.draft.mparams.path}) {
+                if (!path->empty() && !std::ifstream(*path).good()) {
+                    lb_set_error(error_json, "failed to open model file: " + *path, "file_not_found");
+                    return nullptr;
+                }
+            }
 
-        constexpr int64_t MiB = 1024 * 1024;
-        const int64_t budget_mib = lb_config_memory_budget_mib(cfg);
-        const bool has_budget = budget_mib > 0;
-        const uint32_t cap = lb_config_ctx_cap(cfg);
-        json result = {{"fits", nullptr}, {"n_ctx", nullptr}, {"n_ctx_min", nullptr},
-                       {"used_min_mib", nullptr}, {"used_max_mib", nullptr}, {"budget_mib", nullptr}};
-        if (has_budget) result["budget_mib"] = budget_mib;
-        if (lb_config_wants_auto_ctx(cfg) && has_budget) {
-            json report;
-            bool insufficient = false;
-            if (!lb_fit_auto_ctx(params, budget_mib * MiB, report, insufficient, err, cap) && !insufficient) {
-                lb_set_error(error_json, err);
-                return nullptr;
-            }
-            result["fits"] = !insufficient;
-            result["n_ctx_min"] = report.at("n_ctx_min");
-            result["used_min_mib"] = report.at("used_min_mib");
-            if (report.contains("used_max_mib")) result["used_max_mib"] = report.at("used_max_mib");
-            if (!insufficient) result["n_ctx"] = report.at("n_ctx");
-        } else {
-            common_params minimum = params;
-            if (!lb_resolve_auto_ctx(minimum, err, (uint32_t) params.fit_params_min_ctx)) {
-                lb_set_error(error_json, err);
-                return nullptr;
-            }
-            const uint32_t min_ctx = (uint32_t) minimum.n_ctx;
-            if (lb_config_wants_auto_ctx(cfg) && !lb_resolve_auto_ctx(params, err, cap)) {
-                lb_set_error(error_json, err);
-                return nullptr;
-            }
-            const int64_t used_min = lb_measure_ctx(params, min_ctx);
-            const int64_t used = params.n_ctx == (int32_t) min_ctx ? used_min
-                : lb_measure_ctx(params, (uint32_t) params.n_ctx);
-            result["n_ctx_min"] = min_ctx;
-            result["used_min_mib"] = used_min / MiB;
-            result["used_max_mib"] = used / MiB;
-            if (has_budget && used > budget_mib * MiB) {
-                result["fits"] = false;
+            constexpr int64_t MiB = 1024 * 1024;
+            const int64_t budget_mib = lb_config_memory_budget_mib(cfg);
+            const bool has_budget = budget_mib > 0;
+            const uint32_t cap = lb_config_ctx_cap(cfg);
+            json result = {{"fits", nullptr}, {"n_ctx", nullptr}, {"n_ctx_min", nullptr},
+                           {"used_min_mib", nullptr}, {"used_max_mib", nullptr}, {"budget_mib", nullptr}};
+            if (has_budget) result["budget_mib"] = budget_mib;
+            if (lb_config_wants_auto_ctx(cfg) && has_budget) {
+                json report;
+                bool insufficient = false;
+                if (!lb_fit_auto_ctx(params, budget_mib * MiB, report, insufficient, err, cap) && !insufficient) {
+                    lb_set_error(error_json, err);
+                    return nullptr;
+                }
+                result["fits"] = !insufficient;
+                result["n_ctx_min"] = report.at("n_ctx_min");
+                result["used_min_mib"] = report.at("used_min_mib");
+                if (report.contains("used_max_mib")) result["used_max_mib"] = report.at("used_max_mib");
+                if (!insufficient) result["n_ctx"] = report.at("n_ctx");
             } else {
-                result["n_ctx"] = params.n_ctx;
-                if (has_budget) result["fits"] = true;
+                common_params minimum = params;
+                if (!lb_resolve_auto_ctx(minimum, err, (uint32_t) params.fit_params_min_ctx)) {
+                    lb_set_error(error_json, err);
+                    return nullptr;
+                }
+                const uint32_t min_ctx = (uint32_t) minimum.n_ctx;
+                if (lb_config_wants_auto_ctx(cfg) && !lb_resolve_auto_ctx(params, err, cap)) {
+                    lb_set_error(error_json, err);
+                    return nullptr;
+                }
+                const int64_t used_min = lb_measure_ctx(params, min_ctx);
+                const int64_t used = params.n_ctx == (int32_t) min_ctx ? used_min
+                    : lb_measure_ctx(params, (uint32_t) params.n_ctx);
+                result["n_ctx_min"] = min_ctx;
+                result["used_min_mib"] = used_min / MiB;
+                result["used_max_mib"] = used / MiB;
+                if (has_budget && used > budget_mib * MiB) {
+                    result["fits"] = false;
+                } else {
+                    result["n_ctx"] = params.n_ctx;
+                    if (has_budget) result["fits"] = true;
+                }
             }
+            return lb_json_strdup(result);
+        } catch (const std::exception & e) {
+            lb_set_error(error_json, std::string("fit estimate failed: ") + e.what());
+            return nullptr;
         }
-        return lb_strdup(result.dump());
-    } catch (const std::exception & e) {
-        lb_set_error(error_json, std::string("fit estimate failed: ") + e.what());
-        return nullptr;
-    }
+    });
 }
 
 lb_status lb_runtime_init(const char * config_json, char ** error_json) {
-    if (error_json) *error_json = nullptr;
+    return lb_guard(LB_ERR_INTERNAL, error_json, [&]() -> lb_status {
+        if (error_json) *error_json = nullptr;
 
-    json cfg;
-    try {
-        cfg = json::parse(config_json ? config_json : "{}");
-    } catch (const std::exception & e) {
-        lb_set_error(error_json, std::string("invalid config JSON: ") + e.what());
-        return LB_ERR_INVALID_ARG;
-    }
-    if (!cfg.is_object()) {
-        lb_set_error(error_json, "config must be a JSON object");
-        return LB_ERR_INVALID_ARG;
-    }
-
-    std::string backend_dir;
-    std::vector<backend_request> backends;
-    int verbosity = LOG_LEVEL_WARN;
-    for (const auto & item : cfg.items()) {
-        const std::string & key = item.key();
-        const json & value = item.value();
-        if (key == "backend_dir" && value.is_string()) {
-            backend_dir = value.get<std::string>();
-        } else if (key == "backends") {
-            std::string err;
-            if (!parse_backends(value, backends, err)) {
-                lb_set_error(error_json, err);
-                return LB_ERR_INVALID_ARG;
-            }
-        } else if (key == "log_level" && value.is_string()) {
-            if (!parse_log_level(value.get<std::string>(), verbosity)) {
-                lb_set_error(error_json, "log_level must be debug, info, warn or error");
-                return LB_ERR_INVALID_ARG;
-            }
-        } else {
-            lb_set_error(error_json, "unknown or mistyped config key: " + key);
+        json cfg;
+        try {
+            cfg = json::parse(config_json ? config_json : "{}");
+        } catch (const std::exception & e) {
+            lb_set_error(error_json, std::string("invalid config JSON: ") + e.what());
             return LB_ERR_INVALID_ARG;
         }
-    }
+        if (!cfg.is_object()) {
+            lb_set_error(error_json, "config must be a JSON object");
+            return LB_ERR_INVALID_ARG;
+        }
 
-    auto & s = state();
-    std::lock_guard<std::mutex> lk(s.mtx);
-    const std::string canonical = cfg.dump();
-    if (s.initialized) {
-        if (canonical == s.config) return LB_OK;
-        lb_set_error(error_json, "runtime already initialized with a different config: " + s.config);
-        return LB_ERR_ALREADY_INITIALIZED;
-    }
+        std::string backend_dir;
+        std::vector<backend_request> backends;
+        int verbosity = LOG_LEVEL_WARN;
+        for (const auto & item : cfg.items()) {
+            const std::string & key = item.key();
+            const json & value = item.value();
+            if (key == "backend_dir" && value.is_string()) {
+                backend_dir = value.get<std::string>();
+            } else if (key == "backends") {
+                std::string err;
+                if (!parse_backends(value, backends, err)) {
+                    lb_set_error(error_json, err);
+                    return LB_ERR_INVALID_ARG;
+                }
+            } else if (key == "log_level" && value.is_string()) {
+                if (!parse_log_level(value.get<std::string>(), verbosity)) {
+                    lb_set_error(error_json, "log_level must be debug, info, warn or error");
+                    return LB_ERR_INVALID_ARG;
+                }
+            } else {
+                lb_set_error(error_json, "unknown or mistyped config key: " + key);
+                return LB_ERR_INVALID_ARG;
+            }
+        }
 
-    // same order as llama_server() in tools/server/server.cpp: common_init, then the backend. Each step is safe
-    // to repeat if an earlier init failed (start_gc returns when already running).
-    common_init();
-    common_log_set_verbosity_thold(verbosity);
-    llama_log_set(log_trampoline, nullptr);  // replaces common_init's default, which it calls when the app has none
-    server_stream_session_manager_start();  // once per process, as llama_server() does
-    // Our backend goes in before llama_backend_init: with an empty registry it calls ggml_backend_load_all, which
-    // scans the executable's and the current directory and loads GGML_BACKEND_PATH. Backends come only from
-    // our list (findings F35). llama-server too loads backends before llama_backend_init when given --device.
-    std::string load_error;
-    ggml_backend_reg_t cpu = nullptr;
-    if (!load_cpu_backend(backend_dir, cpu, load_error)) {
-        lb_set_error(error_json, load_error);
-        return LB_ERR_INTERNAL;
-    }
-    json loaded = json::array();
-    loaded.push_back({{"name", "cpu"}, {"loaded", true}, {"error", nullptr}, {"devices", reg_device_names(cpu)}});
-    // the optional backends come only from this list too, so their devices are known before any model loads
-    for (const auto & b : backends) loaded.push_back(load_optional_backend(b, backend_dir));
-    llama_backend_init();
+        auto & s = state();
+        std::lock_guard<std::mutex> lk(s.mtx);
+        const std::string canonical = cfg.dump_safe();
+        if (s.initialized) {
+            if (canonical == s.config) return LB_OK;
+            lb_set_error(error_json, "runtime already initialized with a different config: " + s.config);
+            return LB_ERR_ALREADY_INITIALIZED;
+        }
 
-    s.backends = std::move(loaded);
-    s.config = canonical;
-    s.initialized = true;
-    return LB_OK;
+        // same order as llama_server() in tools/server/server.cpp: common_init, then the backend. Each step is safe
+        // to repeat if an earlier init failed (start_gc returns when already running).
+        common_init();
+        common_log_set_verbosity_thold(verbosity);
+        llama_log_set(log_trampoline, nullptr);  // replaces common_init's default, which it calls when the app has none
+        server_stream_session_manager_start();  // once per process, as llama_server() does
+        // Our backend goes in before llama_backend_init: with an empty registry it calls ggml_backend_load_all, which
+        // scans the executable's and the current directory and loads GGML_BACKEND_PATH. Backends come only from
+        // our list (findings F35). llama-server too loads backends before llama_backend_init when given --device.
+        std::string load_error;
+        ggml_backend_reg_t cpu = nullptr;
+        if (!load_cpu_backend(backend_dir, cpu, load_error)) {
+            lb_set_error(error_json, load_error);
+            return LB_ERR_INTERNAL;
+        }
+        json loaded = json::array();
+        loaded.push_back({{"name", "cpu"}, {"loaded", true}, {"error", nullptr}, {"devices", reg_device_names(cpu)}});
+        // the optional backends come only from this list too, so their devices are known before any model loads
+        for (const auto & b : backends) loaded.push_back(load_optional_backend(b, backend_dir));
+        llama_backend_init();
+
+        s.backends = std::move(loaded);
+        s.config = canonical;
+        s.initialized = true;
+        return LB_OK;
+    });
 }
 
 void lb_runtime_set_log(lb_log_cb cb, void * user) {
@@ -454,26 +461,30 @@ void lb_runtime_set_log(lb_log_cb cb, void * user) {
 }
 
 char * lb_runtime_backends(void) {
-    auto & s = state();
-    std::lock_guard<std::mutex> lk(s.mtx);
-    return lb_strdup(s.initialized ? s.backends.dump() : "[]");
+    return lb_guard(static_cast<char *>(nullptr), nullptr, [&]() -> char * {
+        auto & s = state();
+        std::lock_guard<std::mutex> lk(s.mtx);
+        return s.initialized ? lb_json_strdup(s.backends) : lb_strdup("[]");
+    });
 }
 
 char * lb_runtime_devices(void) {
-    json out = json::array();
-    for (size_t i = 0; i < ggml_backend_dev_count(); i++) {
-        ggml_backend_dev_t dev = ggml_backend_dev_get(i);
-        size_t free = 0, total = 0;
-        ggml_backend_dev_memory(dev, &free, &total);
-        out.push_back({
-            {"name", ggml_backend_dev_name(dev)},
-            {"description", ggml_backend_dev_description(dev)},
-            {"type", device_type_name(ggml_backend_dev_type(dev))},
-            {"memory_free", free},
-            {"memory_total", total},
-        });
-    }
-    return lb_strdup(out.dump());
+    return lb_guard(static_cast<char *>(nullptr), nullptr, [&]() -> char * {
+        json out = json::array();
+        for (size_t i = 0; i < ggml_backend_dev_count(); i++) {
+            ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+            size_t free = 0, total = 0;
+            ggml_backend_dev_memory(dev, &free, &total);
+            out.push_back({
+                {"name", ggml_backend_dev_name(dev)},
+                {"description", ggml_backend_dev_description(dev)},
+                {"type", device_type_name(ggml_backend_dev_type(dev))},
+                {"memory_free", free},
+                {"memory_total", total},
+            });
+        }
+        return lb_json_strdup(out);
+    });
 }
 
 }  // extern "C"

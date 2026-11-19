@@ -311,7 +311,7 @@ void write_placeholders(std::string & body, const std::vector<attachment> & atts
             entry(prompt);
         }
     }
-    if (replaced) body = j.dump();
+    if (replaced) body = j.dump_safe();
 }
 
 void release(lb_request * r) {
@@ -471,118 +471,120 @@ lb_status lb_model_request(lb_model * m, const char * endpoint, const char * par
 lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char * params_json,
                                 const char * body, size_t body_len, const lb_attachment * atts, size_t n_atts,
                                 lb_request_cb cb, void * user, lb_request ** out) {
-    if (out) *out = nullptr;
-    if (!m || !endpoint || !cb || !out || (n_atts > 0 && !atts)) return LB_ERR_INVALID_ARG;
+    return lb_guard(LB_ERR_INTERNAL, nullptr, [&]() -> lb_status {
+        if (out) *out = nullptr;
+        if (!m || !endpoint || !cb || !out || (n_atts > 0 && !atts)) return LB_ERR_INVALID_ARG;
 
-    const bool realtime = std::strcmp(endpoint, kRealtime) == 0;
-    const auto it = m->endpoints.find(endpoint);
-    if (realtime) {
-        // a WebSocket: no body or attachments, the client's events come through lb_request_send
-        if (body_len > 0 || n_atts > 0 || !m->routes || !m->routes->ws_realtime) return LB_ERR_INVALID_ARG;
-    } else if (it == m->endpoints.end()) {
-        return LB_ERR_INVALID_ARG;
-    }
-    const bool transcription = std::strcmp(endpoint, kTranscriptions) == 0;
-
-    // the caller's mistakes first, then every read, all before this returns (the caller may release its sources)
-    for (size_t i = 0; i < n_atts; i++) {
-        const lb_attachment & a = atts[i];
-        const int sources = (a.path ? 1 : 0) + (a.fd >= 0 ? 1 : 0) + (a.data ? 1 : 0);
-        if (!a.name || !*a.name || sources != 1) return LB_ERR_INVALID_ARG;
-        if (!transcription && (!a.mime || !*a.mime)) return LB_ERR_INVALID_ARG;  // a data URL needs its type
-        for (size_t j = 0; j < i; j++) {
-            if (std::strcmp(atts[j].name, a.name) == 0) return LB_ERR_INVALID_ARG;
-        }
-    }
-    std::vector<attachment> read;
-    std::string att_error;
-    media_links links;
-    // a chat's or embedding's path attachment is linked into the media root instead of read, when there is one
-    const std::string route = std::string("/") + endpoint;
-    const bool link_paths = !m->params.media_path.empty() && (takes_chat_messages(route) || takes_embedding_content(route));
-    try {
-        read.reserve(n_atts);
-        for (size_t i = 0; i < n_atts && att_error.empty(); i++) {
-            const lb_attachment & a = atts[i];
-            attachment & b = read.emplace_back();
-            b.name = a.name;
-            b.mime = a.mime ? a.mime : "";
-            std::string err;
-            if (a.path) {
-                const char * slash = std::strrchr(a.path, '/');
-                b.filename = slash ? slash + 1 : a.path;
-                if (link_paths && read_head(a.path, b.data, 16, err)) {
-                    b.link = link_into(m->params.media_path, a.path);
-                    if (!b.link.empty()) links.paths.push_back(m->params.media_path + b.link);
-                }
-                if (!err.empty()) {
-                    att_error = "attachment \"" + b.name + "\": " + err;
-                } else if (b.link.empty() && !read_path(a.path, b.data, err)) {
-                    att_error = "attachment \"" + b.name + "\": " + err;
-                }
-            } else if (a.fd >= 0) {
-                if (const int e = read_fd(a.fd, b.data)) att_error = "attachment \"" + b.name + "\": " + fd_error(a.fd, e);
-            } else {
-                b.data.assign(a.data, a.data + a.len);
-            }
-            const bool audio = transcription || b.mime.rfind("audio/", 0) == 0;
-            if (att_error.empty() && audio && !is_audio_file(reinterpret_cast<const char *>(b.data.data()), b.data.size())) {
-                att_error = "attachment \"" + b.name + "\" is not WAV, MP3 or FLAC audio, the formats llama.cpp decodes";
-            }
-        }
-    } catch (const std::bad_alloc &) {
-        att_error = "attachments too large to read into memory";
-    }
-    if (!att_error.empty()) read.clear();  // the request only reports the error
-
-    std::map<std::string, std::string> params;
-    std::string query;
-    if (params_json && *params_json) {
-        json p;
-        try {
-            p = json::parse(params_json);
-        } catch (...) {
-            return LB_ERR_INVALID_ARG;
-        }
-        if (!p.is_object()) return LB_ERR_INVALID_ARG;
-        for (const auto & item : p.items()) {
-            if (!item.value().is_string()) return LB_ERR_INVALID_ARG;
-            params[item.key()] = item.value().get<std::string>();
-            query += (query.empty() ? "" : "&") + item.key() + "=" + params[item.key()];
-        }
-    }
-
-    auto * r = new lb_request();
-    r->cb = cb;
-    r->user = user;
-    r->realtime = realtime;
-    r->should_stop = [r]() { return r->stop.load(); };
-
-    {
-        std::lock_guard<std::mutex> lk(m->mtx);
-        if (m->closing) {
-            delete r;
-            return LB_ERR_INVALID_ARG;
-        }
-        m->requests.insert(r);
-    }
-    try {
+        const bool realtime = std::strcmp(endpoint, kRealtime) == 0;
+        const auto it = m->endpoints.find(endpoint);
         if (realtime) {
-            std::thread(run_realtime, m, r, m->routes->ws_realtime, std::move(params), std::move(query)).detach();
-        } else {
-            std::thread(run_request, m, r, it->second, std::move(params), std::move(query),
-                        std::string("/") + endpoint, std::string(body ? body : "", body ? body_len : 0),
-                        std::move(read), std::move(att_error), std::move(links)).detach();
+            // a WebSocket: no body or attachments, the client's events come through lb_request_send
+            if (body_len > 0 || n_atts > 0 || !m->routes || !m->routes->ws_realtime) return LB_ERR_INVALID_ARG;
+        } else if (it == m->endpoints.end()) {
+            return LB_ERR_INVALID_ARG;
         }
-    } catch (...) {
-        std::lock_guard<std::mutex> lk(m->mtx);
-        m->requests.erase(r);
-        m->cv.notify_all();
-        delete r;
-        return LB_ERR_INTERNAL;
-    }
-    *out = r;
-    return LB_OK;
+        const bool transcription = std::strcmp(endpoint, kTranscriptions) == 0;
+
+        // the caller's mistakes first, then every read, all before this returns (the caller may release its sources)
+        for (size_t i = 0; i < n_atts; i++) {
+            const lb_attachment & a = atts[i];
+            const int sources = (a.path ? 1 : 0) + (a.fd >= 0 ? 1 : 0) + (a.data ? 1 : 0);
+            if (!a.name || !*a.name || sources != 1) return LB_ERR_INVALID_ARG;
+            if (!transcription && (!a.mime || !*a.mime)) return LB_ERR_INVALID_ARG;  // a data URL needs its type
+            for (size_t j = 0; j < i; j++) {
+                if (std::strcmp(atts[j].name, a.name) == 0) return LB_ERR_INVALID_ARG;
+            }
+        }
+        std::vector<attachment> read;
+        std::string att_error;
+        media_links links;
+        // a chat's or embedding's path attachment is linked into the media root instead of read, when there is one
+        const std::string route = std::string("/") + endpoint;
+        const bool link_paths = !m->params.media_path.empty() && (takes_chat_messages(route) || takes_embedding_content(route));
+        try {
+            read.reserve(n_atts);
+            for (size_t i = 0; i < n_atts && att_error.empty(); i++) {
+                const lb_attachment & a = atts[i];
+                attachment & b = read.emplace_back();
+                b.name = a.name;
+                b.mime = a.mime ? a.mime : "";
+                std::string err;
+                if (a.path) {
+                    const char * slash = std::strrchr(a.path, '/');
+                    b.filename = slash ? slash + 1 : a.path;
+                    if (link_paths && read_head(a.path, b.data, 16, err)) {
+                        b.link = link_into(m->params.media_path, a.path);
+                        if (!b.link.empty()) links.paths.push_back(m->params.media_path + b.link);
+                    }
+                    if (!err.empty()) {
+                        att_error = "attachment \"" + b.name + "\": " + err;
+                    } else if (b.link.empty() && !read_path(a.path, b.data, err)) {
+                        att_error = "attachment \"" + b.name + "\": " + err;
+                    }
+                } else if (a.fd >= 0) {
+                    if (const int e = read_fd(a.fd, b.data)) att_error = "attachment \"" + b.name + "\": " + fd_error(a.fd, e);
+                } else {
+                    b.data.assign(a.data, a.data + a.len);
+                }
+                const bool audio = transcription || b.mime.rfind("audio/", 0) == 0;
+                if (att_error.empty() && audio && !is_audio_file(reinterpret_cast<const char *>(b.data.data()), b.data.size())) {
+                    att_error = "attachment \"" + b.name + "\" is not WAV, MP3 or FLAC audio, the formats llama.cpp decodes";
+                }
+            }
+        } catch (const std::bad_alloc &) {
+            att_error = "attachments too large to read into memory";
+        }
+        if (!att_error.empty()) read.clear();  // the request only reports the error
+
+        std::map<std::string, std::string> params;
+        std::string query;
+        if (params_json && *params_json) {
+            json p;
+            try {
+                p = json::parse(params_json);
+            } catch (...) {
+                return LB_ERR_INVALID_ARG;
+            }
+            if (!p.is_object()) return LB_ERR_INVALID_ARG;
+            for (const auto & item : p.items()) {
+                if (!item.value().is_string()) return LB_ERR_INVALID_ARG;
+                params[item.key()] = item.value().get<std::string>();
+                query += (query.empty() ? "" : "&") + item.key() + "=" + params[item.key()];
+            }
+        }
+
+        auto * r = new lb_request();
+        r->cb = cb;
+        r->user = user;
+        r->realtime = realtime;
+        r->should_stop = [r]() { return r->stop.load(); };
+
+        {
+            std::lock_guard<std::mutex> lk(m->mtx);
+            if (m->closing) {
+                delete r;
+                return LB_ERR_INVALID_ARG;
+            }
+            m->requests.insert(r);
+        }
+        try {
+            if (realtime) {
+                std::thread(run_realtime, m, r, m->routes->ws_realtime, std::move(params), std::move(query)).detach();
+            } else {
+                std::thread(run_request, m, r, it->second, std::move(params), std::move(query),
+                            std::string("/") + endpoint, std::string(body ? body : "", body ? body_len : 0),
+                            std::move(read), std::move(att_error), std::move(links)).detach();
+            }
+        } catch (...) {
+            std::lock_guard<std::mutex> lk(m->mtx);
+            m->requests.erase(r);
+            m->cv.notify_all();
+            delete r;
+            return LB_ERR_INTERNAL;
+        }
+        *out = r;
+        return LB_OK;
+    });
 }
 
 void lb_request_cancel(lb_request * r) {
@@ -590,12 +592,14 @@ void lb_request_cancel(lb_request * r) {
 }
 
 lb_status lb_request_send(lb_request * r, const char * msg, size_t len) {
-    if (!r || !r->realtime || (!msg && len > 0)) return LB_ERR_INVALID_ARG;
-    std::lock_guard<std::mutex> lk(r->rt_mtx);
-    if (r->stop.load() || r->rt_closed) return LB_ERR_CANCELLED;
-    r->inbox.emplace_back(msg ? msg : "", len);
-    r->rt_cv.notify_all();
-    return LB_OK;
+    return lb_guard(LB_ERR_INTERNAL, nullptr, [&]() -> lb_status {
+        if (!r || !r->realtime || (!msg && len > 0)) return LB_ERR_INVALID_ARG;
+        std::lock_guard<std::mutex> lk(r->rt_mtx);
+        if (r->stop.load() || r->rt_closed) return LB_ERR_CANCELLED;
+        r->inbox.emplace_back(msg ? msg : "", len);
+        r->rt_cv.notify_all();
+        return LB_OK;
+    });
 }
 
 void lb_request_free(lb_request * r) {

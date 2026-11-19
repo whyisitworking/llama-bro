@@ -5,6 +5,7 @@ import com.suhel.llamabro.MediaSource
 import com.suhel.llamabro.ModelInfo
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.Message
+import com.suhel.llamabro.spi.EngineAttachment
 import kotlinx.coroutines.CoroutineDispatcher
 
 /**

@@ -9,12 +9,11 @@ import com.suhel.llamabro.chat.Tool
 import com.suhel.llamabro.chat.ToolCall
 import com.suhel.llamabro.chat.ToolChoice
 import com.suhel.llamabro.internal.ChatJson
-import com.suhel.llamabro.internal.EngineAttachment
+import com.suhel.llamabro.spi.EngineAttachment
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

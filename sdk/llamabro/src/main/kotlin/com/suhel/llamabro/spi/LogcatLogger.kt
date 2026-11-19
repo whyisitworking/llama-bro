@@ -1,4 +1,4 @@
-package com.suhel.llamabro.internal
+package com.suhel.llamabro.spi
 
 import android.util.Log
 import com.suhel.llamabro.InternalLlamaBroApi

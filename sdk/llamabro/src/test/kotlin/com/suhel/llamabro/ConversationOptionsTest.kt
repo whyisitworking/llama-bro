@@ -346,21 +346,13 @@ class ConversationOptionsTest {
         }
 
     @Test
-    fun versionOneStillRestores() =
+    fun earlierSaveVersionsAreRefused() =
         runTest {
-            val (engine, model) = setup(Replies.text("x"))
-            val v1 =
-                """{"version":1,"system":"sys","messages":[{"role":"user","content":[{"type":"text","text":"hi"}]},""" +
-                    """{"role":"assistant","content":"hello","reasoning":null,"tool_calls":[]}]}"""
-            model.restoreConversation(v1).send("again").toList()
-            assertEquals(
-                listOf(
-                    """{"role":"system","content":"sys"}""",
-                    """{"role":"user","content":"hi"}""",
-                    """{"role":"assistant","content":"hello"}""",
-                    """{"role":"user","content":"again"}""",
-                ),
-                messagesOf(engine.model.chatBodies.single()),
-            )
+            val (_, model) = setup()
+            for (version in 1..2) {
+                val old = """{"version":$version,"system":"sys","settings":{"options":{}},"messages":[]}"""
+                val e = runCatching { model.restoreConversation(old) }.exceptionOrNull()
+                assertTrue("$e", e is IllegalArgumentException && e.message!!.contains("version: $version"))
+            }
         }
 }

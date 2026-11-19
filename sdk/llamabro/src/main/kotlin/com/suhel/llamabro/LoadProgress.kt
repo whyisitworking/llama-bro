@@ -7,23 +7,10 @@ package com.suhel.llamabro
  */
 public sealed interface LoadProgress {
     /**
-     * The source's files are downloading; [download] is the source's own report. Not a data class, so fields can be
-     * added without breaking `copy` or destructuring, as [DownloadProgress].
+     * The source's files are downloading; [download] is the source's own report.
      */
-    public class Fetching(public val download: DownloadProgress) : LoadProgress {
-        override fun equals(other: Any?): Boolean = other is Fetching && download == other.download
+    public data class Fetching(public val download: DownloadProgress) : LoadProgress
 
-        override fun hashCode(): Int = download.hashCode()
-
-        override fun toString(): String = "Fetching(download=$download)"
-    }
-
-    /** llama.cpp's load progress, 0 to 1. Not a data class, as [Fetching]. */
-    public class Loading(public val fraction: Float) : LoadProgress {
-        override fun equals(other: Any?): Boolean = other is Loading && fraction == other.fraction
-
-        override fun hashCode(): Int = fraction.hashCode()
-
-        override fun toString(): String = "Loading(fraction=$fraction)"
-    }
+    /** llama.cpp's load progress, 0 to 1. */
+    public data class Loading(public val fraction: Float) : LoadProgress
 }

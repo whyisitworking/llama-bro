@@ -14,6 +14,7 @@
     <string name="ds_replying">Replying</string>
     <string name="ds_thought_for">Thought for %1$d s</string>
     <string name="ds_copy">Copy</string>
+    <string name="ds_message_actions">Message actions</string>
     <string name="ds_code">Code</string>
     <string name="ds_drag_handle">Drag handle</string>
     <string name="ds_dismiss">Dismiss</string>

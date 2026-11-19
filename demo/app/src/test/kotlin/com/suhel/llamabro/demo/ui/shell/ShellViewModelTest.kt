@@ -2,7 +2,6 @@ package com.suhel.llamabro.demo.ui.shell
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.demo.chat.FakeChatDao
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ChatSummary

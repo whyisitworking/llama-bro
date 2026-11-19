@@ -14,7 +14,7 @@ import kotlinx.serialization.json.long
  * @property templateCaps llama-server's `chat_template_caps` (boolean entries).
  * @property metadata every GGUF key as a string.
  */
-public class ModelInfo internal constructor(
+public data class ModelInfo internal constructor(
     /** The context this model was loaded with (`n_ctx`). */
     public val contextSize: Int,
     /** The context the model was trained with (`n_ctx_train`). */
@@ -39,37 +39,17 @@ public class ModelInfo internal constructor(
     public val voices: List<String>,
     public val templateCaps: Map<String, Boolean>,
     public val metadata: Map<String, String>,
-    /** llama-server's `total_slots`: the requests it serves at once (`ModelConfig.parallelSlots`). */
-    internal val totalSlots: Int = 1,
 ) {
     /** The model speaks: it has [voices], so a voice session can answer in speech (D100). */
     public val supportsSpeech: Boolean get() = voices.isNotEmpty()
 
-    override fun equals(other: Any?): Boolean = other is ModelInfo && parts() == other.parts()
-
-    override fun hashCode(): Int = parts().hashCode()
-
+    // the template and the metadata run to kilobytes: a log line shows their size only
     override fun toString(): String =
         "ModelInfo(contextSize=$contextSize, trainedContextSize=$trainedContextSize, parameterCount=$parameterCount, " +
             "sizeBytes=$sizeBytes, description=$description, supportsVision=$supportsVision, " +
             "supportsAudio=$supportsAudio, voices=$voices, " +
-            "hasMtp=$hasMtp, templateCaps=$templateCaps, metadata=${metadata.size} keys)"
-
-    private fun parts() =
-        listOf(
-            contextSize,
-            trainedContextSize,
-            parameterCount,
-            sizeBytes,
-            description,
-            chatTemplate,
-            supportsVision,
-            supportsAudio,
-            voices,
-            hasMtp,
-            templateCaps,
-            metadata,
-        )
+            "hasMtp=$hasMtp, templateCaps=$templateCaps, chatTemplate=${chatTemplate?.length} chars, " +
+            "metadata=${metadata.size} keys)"
 
     internal companion object {
         fun parse(infoJson: String): ModelInfo {
@@ -99,7 +79,6 @@ public class ModelInfo internal constructor(
                         .mapNotNull { (k, v) -> (v as? JsonPrimitive)?.booleanOrNull?.let { k to it } }
                         .toMap(),
                 metadata = metadata,
-                totalSlots = (props["total_slots"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 1,
             )
         }
     }

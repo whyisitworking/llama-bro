@@ -31,7 +31,7 @@ public sealed interface DevicePolicy {
 }
 
 /** How a model was placed ([Model.loadReport]): the device it runs on, and why others weren't used. */
-public class LoadReport internal constructor(
+public data class LoadReport internal constructor(
     /** The kind it runs on. */
     public val device: DeviceKind,
     /** ggml's device name, e.g. `HTP0`, `GPUOpenCL`, `CPU`. */
@@ -62,44 +62,9 @@ public class LoadReport internal constructor(
     public val memoryWarning: String? = null,
 ) {
     /** One device that wasn't used. [deviceName] is null when no device of [kind] was available at all. */
-    public class Attempt internal constructor(
+    public data class Attempt internal constructor(
         public val kind: DeviceKind,
         public val deviceName: String?,
         public val reason: String,
-    ) {
-        override fun equals(other: Any?): Boolean =
-            other is Attempt && kind == other.kind && deviceName == other.deviceName && reason == other.reason
-
-        override fun hashCode(): Int = listOf(kind, deviceName, reason).hashCode()
-
-        override fun toString(): String = "Attempt(kind=$kind, deviceName=$deviceName, reason=$reason)"
-    }
-
-    override fun equals(other: Any?): Boolean =
-        other is LoadReport && device == other.device && deviceName == other.deviceName && backend == other.backend &&
-            attempts == other.attempts && contextSize == other.contextSize && contextReason == other.contextReason &&
-            speculative == other.speculative && speculativeReason == other.speculativeReason &&
-            encoderDevice == other.encoderDevice && encoderDeviceName == other.encoderDeviceName &&
-            memoryWarning == other.memoryWarning
-
-    override fun hashCode(): Int =
-        listOf(
-            device,
-            deviceName,
-            backend,
-            attempts,
-            contextSize,
-            contextReason,
-            speculative,
-            speculativeReason,
-            encoderDevice,
-            encoderDeviceName,
-            memoryWarning,
-        ).hashCode()
-
-    override fun toString(): String =
-        "LoadReport(device=$device, deviceName=$deviceName, backend=$backend, attempts=$attempts, " +
-            "contextSize=$contextSize, contextReason=$contextReason, speculative=$speculative, " +
-            "speculativeReason=$speculativeReason, encoderDevice=$encoderDevice, " +
-            "encoderDeviceName=$encoderDeviceName, memoryWarning=$memoryWarning)"
+    )
 }

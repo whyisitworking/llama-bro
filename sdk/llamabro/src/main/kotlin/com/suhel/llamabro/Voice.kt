@@ -2,7 +2,6 @@ package com.suhel.llamabro
 
 import com.suhel.llamabro.internal.RealtimeLink
 import com.suhel.llamabro.voice.RealtimeJson
-import com.suhel.llamabro.voice.TurnCaptions
 import com.suhel.llamabro.voice.VoiceConfig
 import com.suhel.llamabro.voice.VoiceEvent
 import com.suhel.llamabro.voice.VoiceSession
@@ -14,7 +13,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -34,14 +32,13 @@ import kotlinx.serialization.json.intOrNull
  */
 public suspend fun Model.voiceSession(configure: VoiceConfig.Builder.() -> Unit = {}): VoiceSession {
     val config = VoiceConfig(configure)
-    checkCanTalk(config)
+    checkCanTalk()
     val update = RealtimeJson.sessionUpdate(config)
     val opened = CompletableDeferred<VoiceSession>()
     val events = Channel<VoiceEvent>(Channel.UNLIMITED)
     lateinit var link: RealtimeLink
     // its own scope: the session outlives the call that opened it, and ends with close() or the model
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    var open: VoiceSession? = null
     scope.launch {
         try {
             realtime(emptyMap()) {
@@ -52,13 +49,10 @@ public suspend fun Model.voiceSession(configure: VoiceConfig.Builder.() -> Unit 
                 if (opened.isCompleted) {
                     val decoded = RealtimeJson.decode(event, text)
                     events.send(decoded)
-                    open?.observe(decoded)
                 } else {
                     when (RealtimeJson.type(event)) {
                         "session.updated" -> {
-                            val session = session(link, events, event, scope, config)
-                            open = session
-                            opened.complete(session)
+                            opened.complete(session(link, events, event, scope))
                         }
 
                         "error" -> {
@@ -79,14 +73,16 @@ public suspend fun Model.voiceSession(configure: VoiceConfig.Builder.() -> Unit 
             opened.cancel(e)
             events.close()
             throw e
-        } catch (e: LlamaBroException) {
-            opened.completeExceptionally(e)
-            events.close(e)
-        } catch (e: SerializationException) {
-            // an event that isn't a JSON object: upstream never sends one
-            val failure = LlamaBroException.InvalidRequest("the voice session sent an unreadable event", e)
+        } catch (
+            @Suppress("TooGenericExceptionCaught") e: Exception,
+        ) {
+            // besides the SDK's own errors: an event that isn't a JSON object, or audio that isn't base64, which
+            // upstream never sends. Either ends the session typed; uncaught, it would leave the open hanging.
+            val failure = e as? LlamaBroException ?: LlamaBroException.InvalidRequest("unreadable voice event", e)
             opened.completeExceptionally(failure)
             events.close(failure)
+        } finally {
+            scope.cancel()
         }
     }
     // a caller cancelled while waiting, or a refused setup, ends the session it started
@@ -95,15 +91,9 @@ public suspend fun Model.voiceSession(configure: VoiceConfig.Builder.() -> Unit 
         .getOrThrow()
 }
 
-private fun Model.checkCanTalk(config: VoiceConfig) {
+private fun Model.checkCanTalk() {
     requireTask<ModelTask.Generate>("voiceSession", "ModelTask.Generate")
     if (!info.supportsAudio) throw LlamaBroException.NotSupported("this model doesn't hear: no voice session")
-    // the session holds its slot while it is open, so a caption on the same slot would wait for it to end (F170)
-    if (config.userTranscription != null && info.totalSlots < 2) {
-        throw LlamaBroException.InvalidRequest(
-            "transcribeUser needs a second slot: load the model with parallelSlots = 2 (it has ${info.totalSlots})",
-        )
-    }
 }
 
 /** The server's answer to a setup it refused, before the session opened. */
@@ -114,23 +104,12 @@ private fun Model.session(
     events: Channel<VoiceEvent>,
     updated: JsonObject,
     scope: CoroutineScope,
-    config: VoiceConfig,
 ): VoiceSession {
     val session = updated["session"] as? JsonObject ?: JsonObject(emptyMap())
     val audio = session["audio"] as? JsonObject
     val input = audio?.get("input") as? JsonObject
     val output = audio?.get("output") as? JsonObject
     val inputRate = input.rate() ?: DEFAULT_INPUT_RATE
-    val captions =
-        config.userTranscription?.let { t ->
-            TurnCaptions(scope, events, inputRate) { wav ->
-                when (val r = transcribe(MediaSource.bytes(wav), t.language, t.prompt)) {
-                    is Typed.Value -> r.value
-                    is Typed.Incomplete -> r.json
-                    is Typed.Invalid -> r.json
-                }
-            }
-        }
     return VoiceSession(
         link,
         events,
@@ -140,7 +119,6 @@ private fun Model.session(
         output?.string("voice"),
         output?.string("language"),
         scope,
-        captions,
     )
 }
 

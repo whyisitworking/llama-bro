@@ -1,7 +1,7 @@
 package com.suhel.llamabro
 
 import com.suhel.llamabro.internal.ErrorMapping
-import com.suhel.llamabro.internal.NativeError
+import com.suhel.llamabro.spi.NativeError
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame

@@ -5,7 +5,7 @@ import com.suhel.llamabro.hub.internal.splitRepoTag
 import java.nio.file.Paths
 
 /** A Hugging Face repository, optional quantization tag, or one exact GGUF path. */
-public class HfModel private constructor(
+public data class HfModel private constructor(
     /** Repository in `owner/name` form. */
     public val repo: String,
     /**
@@ -19,17 +19,11 @@ public class HfModel private constructor(
     /** Canonical reference suitable for WorkManager data and Intent extras. */
     override fun toString(): String = repo + (tag?.let { ":$it" } ?: "") + (file?.let { "#$it" } ?: "")
 
-    override fun equals(other: Any?): Boolean =
-        other is HfModel && repo == other.repo && tag == other.tag && file == other.file
-
-    override fun hashCode(): Int = 31 * (31 * repo.hashCode() + (tag?.hashCode() ?: 0)) + (file?.hashCode() ?: 0)
-
     public companion object {
         /**
          * Parses a Hub reference, upper-casing its tag; invalid repository and file paths throw
          * [IllegalArgumentException].
          */
-        @JvmStatic
         public fun parse(ref: String): HfModel {
             val repoAndTag = ref.substringBefore('#')
             val rawFile = ref.substringAfter('#', missingDelimiterValue = "")

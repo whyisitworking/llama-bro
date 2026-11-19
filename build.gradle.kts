@@ -18,7 +18,7 @@ apply(from = "sdk/build-backends.gradle.kts")
 //   ktlint: formatting and style, configured by .editorconfig (the command-line tool, pinned in the version catalog;
 //           the Gradle plugin finds no Kotlin sources under AGP 9's built-in Kotlin)
 //   detekt: smells, complexity, naming and structure, configured by config/detekt/detekt.yml
-// `./gradlew qualityCheck` runs both; `./gradlew ktlintFormat` fixes what ktlint can.
+// `./gradlew qualityCheck` runs both and the unused-import check; `./gradlew ktlintFormat` fixes what ktlint can.
 val ktlint by configurations.creating {
     // the tool's self-contained jar, not its dozens of modules
     attributes.attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.SHADOWED))
@@ -57,8 +57,16 @@ subprojects {
     }
 }
 
+// neither ktlint 1.x nor detekt without type resolution reports an unused import
+val importCheck =
+    tasks.register<Exec>("importCheck") {
+        group = "verification"
+        description = "Fails on an unused Kotlin import."
+        commandLine("python3", rootProject.file("config/check-imports.py").path, rootProject.projectDir.path)
+    }
+
 tasks.register("qualityCheck") {
     group = "verification"
-    description = "ktlint and detekt on every module."
-    dependsOn(ktlintCheck, subprojects.map { "${it.path}:detekt" })
+    description = "ktlint, detekt and the unused-import check on every module."
+    dependsOn(ktlintCheck, importCheck, subprojects.map { "${it.path}:detekt" })
 }

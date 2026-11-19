@@ -6,9 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -22,7 +20,6 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
@@ -40,6 +37,7 @@ import com.suhel.llamabro.demo.testing.ScreenshotRule
 import com.suhel.llamabro.demo.testing.TestAppRule
 import com.suhel.llamabro.demo.testing.TestConfig
 import com.suhel.llamabro.demo.testing.demoRules
+import com.suhel.llamabro.demo.testing.settleWindow
 import com.suhel.llamabro.demo.testing.withAccessibilityChecks
 import com.suhel.llamabro.demo.ui.models.GetModelsRoute
 import com.suhel.llamabro.demo.ui.models.LibraryRoute
@@ -123,7 +121,7 @@ class ModelsTest {
                 }
             }
         }
-        settleWindow()
+        compose.settleWindow()
     }
 
     private fun showLibrary(counter: RecompositionCounter? = null, theme: ThemeMode = ThemeMode.Light) {
@@ -138,18 +136,7 @@ class ModelsTest {
                 }
             }
         }
-        settleWindow()
-    }
-
-    /** The window's open animation makes the accessibility check read buttons smaller than they are (F101). */
-    private fun settleWindow() {
-        compose.waitForIdle()
-        Thread.sleep(900)
-    }
-
-    private fun settleSheet() {
-        compose.waitForIdle()
-        Thread.sleep(700)
+        compose.settleWindow()
     }
 
     private fun search(text: String) {
@@ -167,7 +154,7 @@ class ModelsTest {
         waitFor("Phi 4 mini")
         compose.onNodeWithText("Phi 4 mini").performClick()
         waitFor("Smaller")
-        settleSheet()
+        compose.settleWindow()
     }
 
     // ---- Get models ----
@@ -328,7 +315,7 @@ class ModelsTest {
         waitFor("Phi 4 mini")
         compose.onNodeWithText("Phi 4 mini").performClick()
         waitFor("Smaller")
-        settleSheet()
+        compose.settleWindow()
         compose.onNodeWithTag("get_button").performClick()
         compose.waitUntil(10_000) { scheduler.enqueued.isNotEmpty() }
         val key = scheduler.enqueued.single()

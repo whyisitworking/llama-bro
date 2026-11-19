@@ -19,7 +19,6 @@ import com.suhel.llamabro.hub.internal.Locks
 import com.suhel.llamabro.hub.internal.NetworkFailures
 import com.suhel.llamabro.hub.internal.PlanStore
 import com.suhel.llamabro.hub.internal.ProgressMeter
-import com.suhel.llamabro.hub.internal.RepoFile
 import com.suhel.llamabro.hub.internal.RepoListing
 import com.suhel.llamabro.hub.internal.Resolved
 import com.suhel.llamabro.hub.internal.Resolver
@@ -30,8 +29,7 @@ import com.suhel.llamabro.hub.internal.isCompleteSplit
 import com.suhel.llamabro.hub.internal.isUnreachable
 import com.suhel.llamabro.hub.internal.repoFolder
 import com.suhel.llamabro.hub.internal.resolvePlan
-import com.suhel.llamabro.hub.internal.splitInfo
-import com.suhel.llamabro.internal.LogcatLogger
+import com.suhel.llamabro.spi.LogcatLogger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -45,7 +43,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -103,7 +100,7 @@ public class LlamaBroHub internal constructor(
     private val plans: PlanStore = PlanStore(cacheDir, storage)
     private val lookup = CacheLookup(cacheDir)
     private val copies =
-        LocalCopies(cacheDir, Resolver(config.endpoint, cacheDir, transport, storage), storage, logger)
+        LocalCopies(cacheDir, storage, logger)
     private val searches = HubSearch(config.endpoint, cacheDir, logger)
 
     internal suspend fun operationTransport(): Transport =
@@ -146,10 +143,8 @@ public class LlamaBroHub internal constructor(
     public suspend fun hasUpdate(model: HfModel, configure: PlanOptions.() -> Unit = {}): Boolean =
         withContext(Dispatchers.IO) {
             val options = PlanOptions().apply(configure)
-            try {
-                copies.source(model, options) // adopts an old-format copy, so it has an installed record
-            } catch (notCached: HubException.NotFound) {
-                logger?.log(LogLevel.Debug, "hasUpdate: nothing installed: ${notCached.message}")
+            if (copies.installedSource(model, options) == null) {
+                logger?.log(LogLevel.Debug, "hasUpdate: nothing installed: $model")
                 return@withContext false
             }
             val installed = copies.installedRecord(model, options) ?: return@withContext false
@@ -253,8 +248,7 @@ public class LlamaBroHub internal constructor(
 
     /**
      * With [record] false the plan is a look only: no ref or plan record moves, and a refusal is thrown rather than
-     * answered from the cache. With [record] true an old-format copy is adopted as installed before the listing moves
-     * `refs/main` (D64).
+     * answered from the cache.
      */
     internal suspend fun planInternal(
         model: HfModel,
@@ -263,7 +257,6 @@ public class LlamaBroHub internal constructor(
         record: Boolean = true,
     ): HubPlan =
         withContext(Dispatchers.IO) {
-            if (record) copies.adoptBeforeListing(model, options)
             val resolver = Resolver(config.endpoint, cacheDir, operationTransport, storage, look = !record)
             val listing = resolver.list(model.repo)
             val selected =
@@ -547,7 +540,7 @@ public class LlamaBroHub internal constructor(
      */
     public suspend fun cached(): List<CachedModel> =
         withContext(Dispatchers.IO) {
-            Cache(cacheDir, Resolver(config.endpoint, cacheDir, transport, storage), copies).list()
+            Cache(cacheDir, Resolver(config.endpoint, cacheDir, transport, storage)).list()
         }
 
     /**
@@ -570,7 +563,7 @@ public class LlamaBroHub internal constructor(
                 }
                 val removed =
                     Locks.withFileLock(File(cacheDir, ".locks/${repoFolder(model.repo)}/delete.lock")) {
-                        Cache(cacheDir, Resolver(config.endpoint, cacheDir, transport, storage), copies).delete(model)
+                        Cache(cacheDir, Resolver(config.endpoint, cacheDir, transport, storage)).delete(model)
                     }
                 if (removed) {
                     for ((key, selection) in selections) {
@@ -599,17 +592,15 @@ public class LlamaBroHub internal constructor(
 
         /**
          * The hub for [config]'s cache folder (D70): one per folder. The first call for a folder creates it; a later
-         * call with an equal [config] returns the same object, so a DI container can hold it as a singleton. Hubs on
-         * different folders coexist, so an app can move its models without a restart. [HubConfig] compares its logger
-         * and token provider by reference: create the config once, not on each call.
+         * call with the same endpoint and progress interval returns the same object, keeping the first logger and token
+         * provider, so a DI container can hold it as a singleton (D106). Hubs on different folders coexist, so an app
+         * can move its models without a restart.
          *
          * Does no network, no native code and no disk I/O beyond resolving the folder: cheap on the main thread.
          *
          * @throws IllegalStateException if a hub already exists for the folder with another [config]: its endpoint,
-         * progress interval, logger or token provider differ.
+         * or progress interval differ.
          */
-        @JvmStatic
-        @JvmOverloads
         public fun create(context: Context, config: HubConfig = HubConfig.Default): LlamaBroHub {
             // A repeat call with an equal config skips the disk work below (D70).
             registered(config)?.let { return it }
@@ -638,7 +629,6 @@ public class LlamaBroHub internal constructor(
          * hub sends its requests through its own HTTP transport (F82), so a scripted Hub would not see them.
          */
         @InternalLlamaBroApi
-        @JvmStatic
         public fun withTransport(transport: Transport, storage: Storage, config: HubConfig): LlamaBroHub {
             val cacheDir = requireNotNull(config.cacheDir) { "LlamaBroHub.withTransport: set HubConfig.cacheDir" }
             require(config.token == null) { "LlamaBroHub.withTransport: a scripted Hub takes no token provider" }
@@ -671,12 +661,10 @@ public class LlamaBroHub internal constructor(
             return existing.second
         }
 
-        // The key already says the folder is the same, so its spelling (null, `..`, a symlink) is not a conflict.
+        // The key already says the folder is the same, so its spelling (null, `..`, a symlink) is not a conflict. The
+        // logger and the token provider are not settings: the first hub's stay in use (D106).
         private fun sameSettings(a: HubConfig, b: HubConfig): Boolean =
-            a.endpoint == b.endpoint &&
-                a.progressInterval == b.progressInterval &&
-                a.logger === b.logger &&
-                a.token === b.token
+            a.endpoint == b.endpoint && a.progressInterval == b.progressInterval
 
         /** Forgets the created hubs so a test can start clean. */
         @Synchronized

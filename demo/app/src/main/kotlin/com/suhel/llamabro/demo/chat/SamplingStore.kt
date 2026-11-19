@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
@@ -59,20 +58,16 @@ class SamplingStore(
             layers.copy(chat = own)
         }
 
-    suspend fun setModel(key: HfModel, knob: Knob, value: Float?) {
-        val own = settings.modelSampling.first()[key.toString()] ?: Knobs.None
-        settings.setModelSampling(key.toString(), own.with(knob, value))
-    }
+    suspend fun setModel(key: HfModel, knob: Knob, value: Float?) =
+        settings.updateModelSampling(key.toString()) { it.with(knob, value) }
 
     /** Gives [key] back its card's values. */
-    suspend fun resetModel(key: HfModel) = settings.setModelSampling(key.toString(), Knobs.None)
+    suspend fun resetModel(key: HfModel) = settings.updateModelSampling(key.toString()) { Knobs.None }
 
-    suspend fun setChat(chatId: Long, knob: Knob, value: Float?) {
-        chats.setSampling(chatId, chats.sampling(chatId).first().with(knob, value))
-    }
+    suspend fun setChat(chatId: Long, knob: Knob, value: Float?) = chats.updateSampling(chatId) { it.with(knob, value) }
 
     /** Gives the chat back its model's values. */
-    suspend fun resetChat(chatId: Long) = chats.setSampling(chatId, Knobs.None)
+    suspend fun resetChat(chatId: Long) = chats.updateSampling(chatId) { Knobs.None }
 
     /**
      * The card a turn uses now, at once: the catalog's, else the hub's answer if it has come. Otherwise none, and the

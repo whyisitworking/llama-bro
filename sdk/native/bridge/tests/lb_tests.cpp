@@ -424,10 +424,6 @@ static void load_runs_when_progress_says_true() {
 
 using clk = std::chrono::steady_clock;
 
-static int64_t ms_since(clk::time_point t) {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(clk::now() - t).count();
-}
-
 // Records every callback. Thread-safe; tests wait on it.
 struct collector {
     std::mutex mtx;
@@ -1254,6 +1250,38 @@ static void embeddings_off_by_default() {  // the gate F69 found: a chat model l
     auto [status, body] = call(m, "embeddings", json{{"input", "hello"}});
     LB_CHECK(status == 501);
     lb_model_free(m);
+}
+
+// GGUF metadata is untrusted bytes: a name that isn't UTF-8 must come back replaced, not end the process (an
+// exception from the JSON writer would cross the C API into std::terminate)
+static void model_info_survives_invalid_utf8_metadata() {
+    const std::string source = upstream_test_model("stories15M_MOE-F16.gguf");
+    gguf_init_params options = {true, nullptr};
+    gguf_context * header = gguf_init_from_file(source.c_str(), options);
+    LB_CHECK(header != nullptr);
+    const size_t data_offset = gguf_get_data_offset(header);
+    gguf_set_val_str(header, "general.name", "stories \xff\xfe");
+    std::vector<char> meta(gguf_get_meta_size(header));
+    gguf_get_meta_data(header, meta.data());
+    gguf_free(header);
+
+    const auto path = std::filesystem::temp_directory_path() / ("lb-bad-utf8-" + std::to_string(getpid()) + ".gguf");
+    {
+        std::ifstream input(source, std::ios::binary);
+        std::ofstream output(path, std::ios::binary);
+        LB_CHECK(input.good() && output.good());
+        output.write(meta.data(), (std::streamsize) meta.size());
+        input.seekg((std::streamoff) data_offset);
+        output << input.rdbuf();
+    }
+    lb_model * m = load_at(path.string(), json{{"n_ctx", 512}});
+    char * info = lb_model_info(m);
+    LB_CHECK(info != nullptr);
+    const json parsed = json::parse(info);
+    LB_CHECK(parsed.at("metadata").at("general.name").get<std::string>().rfind("stories ", 0) == 0);
+    lb_string_free(info);
+    lb_model_free(m);
+    std::filesystem::remove(path);
 }
 
 static void rerank_orders_documents() {  // test_rerank
@@ -2311,6 +2339,7 @@ int main(int argc, char ** argv) {
         {"load_features_parsed", load_features_parsed},
         {"embeddings_mean_pooling", embeddings_mean_pooling},
         {"embeddings_off_by_default", embeddings_off_by_default},
+        {"model_info_survives_invalid_utf8_metadata", model_info_survives_invalid_utf8_metadata},
         {"rerank_orders_documents", rerank_orders_documents},
         {"lora_scale_changes_output", lora_scale_changes_output},
         {"kv_cache_q8_0_loads_and_generates", kv_cache_q8_0_loads_and_generates},

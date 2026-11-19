@@ -49,7 +49,7 @@ internal class HeaderFetch(private val endpoint: String, private val transport: 
         var fetched = 0L
         var position = start
         transport.open("GET", resolveUrl(endpoint, file), range = start, rangeEnd = count - 1).use { response ->
-            position = positionFor(response.status, start, file)
+            position = positionFor(response, start, file)
             val input = response.body ?: throw HubException.Network("empty GGUF response: ${file.path}", null, true)
             stub.seek(position)
             val buffer = ByteArray(1 shl 20)
@@ -69,13 +69,18 @@ internal class HeaderFetch(private val endpoint: String, private val transport: 
     }
 
     /** Where the stub continues: a server that ignores Range answers 200 from byte 0, so the stub starts again. */
-    private fun positionFor(status: Int, start: Long, file: HubFile): Long =
-        when (status) {
+    private fun positionFor(response: Response, start: Long, file: HubFile): Long =
+        when (response.status) {
             206 -> start
+
             200 -> 0L
-            401, 403 -> throw HubException.Unauthorized(status, "access denied: ${file.path}")
-            404 -> throw HubException.NotFound("GGUF not found: ${file.path}", emptyList())
-            else -> throw HubException.Network("GGUF header request returned $status", null, status >= 500)
+
+            else -> throw hubFailure(
+                response,
+                unauthorized = "access denied: ${file.path}",
+                notFound = "GGUF not found: ${file.path}",
+                other = "GGUF header request returned ${response.status}",
+            )
         }
 
     /**

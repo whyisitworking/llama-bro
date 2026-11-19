@@ -7,6 +7,8 @@ import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -159,11 +161,22 @@ class SettingsRepositoryTest {
             val a = "unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M"
             val b = "unsloth/Qwen3.5-0.8B-GGUF:Q8_0"
             assertEquals(emptyMap<String, Knobs>(), settings.modelSampling.first())
-            settings.setModelSampling(a, Knobs.of(Knob.Temperature to 0.6f))
-            settings.setModelSampling(b, Knobs.of(Knob.TopK to 30f))
+            settings.updateModelSampling(a) { Knobs.of(Knob.Temperature to 0.6f) }
+            settings.updateModelSampling(b) { Knobs.of(Knob.TopK to 30f) }
             assertEquals(Knobs.of(Knob.Temperature to 0.6f), settings.modelSampling.first()[a])
             assertEquals(Knobs.of(Knob.TopK to 30f), settings.modelSampling.first()[b])
-            settings.setModelSampling(a, Knobs.None)
+            settings.updateModelSampling(a) { Knobs.None }
             assertEquals(setOf(b), settings.modelSampling.first().keys)
+        }
+
+    @Test fun twoChangesToOneModelAtOnceBothLand() =
+        runBlocking {
+            val settings = repository()
+            val key = "unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M"
+            Knob.entries
+                .map { knob -> async(Dispatchers.IO) { settings.updateModelSampling(key) { it.with(knob, 0.5f) } } }
+                .awaitAll()
+            val own = settings.modelSampling.first().getValue(key)
+            assertEquals(Knob.entries, Knob.entries.filter { own[it] != null })
         }
 }

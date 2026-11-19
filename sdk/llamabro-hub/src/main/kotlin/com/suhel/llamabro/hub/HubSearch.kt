@@ -6,8 +6,10 @@ import com.suhel.llamabro.chat.Sampling
 import com.suhel.llamabro.hub.internal.GgufHeader
 import com.suhel.llamabro.hub.internal.HeaderFetch
 import com.suhel.llamabro.hub.internal.Resolver
+import com.suhel.llamabro.hub.internal.Response
 import com.suhel.llamabro.hub.internal.Transport
 import com.suhel.llamabro.hub.internal.findBestSibling
+import com.suhel.llamabro.hub.internal.hubFailure
 import com.suhel.llamabro.hub.internal.isModelGguf
 import com.suhel.llamabro.hub.internal.isValidRepoId
 import com.suhel.llamabro.hub.internal.splitInfo
@@ -328,7 +330,7 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
                         ?.bufferedReader()
                         ?.use { it.readText() }
                         .orEmpty()
-                failure(response.status, response.headers, what)?.let { throw it }
+                if (response.status != HTTP_OK) throw failure(response, what)
                 try {
                     Answer(Json.parseToJsonElement(body), response.headers)
                 } catch (e: SerializationException) {
@@ -339,25 +341,13 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
 
     private fun invalid(what: String) = HubException.Network("invalid Hub $what response", null, true)
 
-    /** What a non-200 answer means, as the resolver reads one; null for a 200. */
-    private fun failure(status: Int, headers: Map<String, List<String>>, what: String): HubException? =
-        when (status) {
-            HTTP_OK -> null
-            HTTP_UNAUTHORIZED, HTTP_FORBIDDEN -> HubException.Unauthorized(status, "$what needs a token with access")
-            HTTP_NOT_FOUND -> HubException.NotFound("$what not found", emptyList())
-            HTTP_TOO_MANY -> HubException.RateLimited(headers["retry-after"]?.firstOrNull()?.toLongOrNull())
-            else -> HubException.Network("$what: HTTP $status", null, status >= HTTP_SERVER_ERROR)
-        }
+    private fun failure(response: Response, what: String): HubException =
+        hubFailure(response, "$what needs a token with access", "$what not found", "$what: HTTP ${response.status}")
 
     internal companion object {
         private const val MAX_LIMIT = 100
         private const val HEADER_LIMIT_BYTES = 256L shl 20 // HeaderFetch's bound on a GGUF header
         private const val HTTP_OK = 200
-        private const val HTTP_UNAUTHORIZED = 401
-        private const val HTTP_FORBIDDEN = 403
-        private const val HTTP_NOT_FOUND = 404
-        private const val HTTP_TOO_MANY = 429
-        private const val HTTP_SERVER_ERROR = 500
         private const val IMAGE_TASK = "image-text-to-text"
         private const val QUANTIZED = "base_model:quantized:"
         private const val GGUF_SAMPLING = "general.sampling."

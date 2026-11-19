@@ -3,14 +3,14 @@ package com.suhel.llamabro.testing
 import com.suhel.llamabro.InternalLlamaBroApi
 import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.LlamaBroException
-import com.suhel.llamabro.internal.Engine
-import com.suhel.llamabro.internal.EngineAttachment
-import com.suhel.llamabro.internal.EngineModel
-import com.suhel.llamabro.internal.EngineRequest
-import com.suhel.llamabro.internal.NativeError
-import com.suhel.llamabro.internal.RequestSink
-import com.suhel.llamabro.internal.SEND_CLOSED
-import com.suhel.llamabro.internal.SEND_OK
+import com.suhel.llamabro.spi.Engine
+import com.suhel.llamabro.spi.EngineAttachment
+import com.suhel.llamabro.spi.EngineModel
+import com.suhel.llamabro.spi.EngineRequest
+import com.suhel.llamabro.spi.NativeError
+import com.suhel.llamabro.spi.RequestSink
+import com.suhel.llamabro.spi.SEND_CLOSED
+import com.suhel.llamabro.spi.SEND_OK
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -298,6 +298,8 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
     private inner class FakeEngine : Engine {
         override fun init(configJson: String): String? = null
 
+        override fun readFd(fd: Int): ByteArray = readDevFd(fd)
+
         override fun setLog(listener: ((level: Int, text: String) -> Unit)?) {}
 
         override fun devices(): String =
@@ -569,15 +571,15 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
 
     private companion object {
         /** Upstream's error type for a commit with no audio. */
-        const val COMMIT_EMPTY = "input_audio_buffer_commit_empty"
+        private const val COMMIT_EMPTY = "input_audio_buffer_commit_empty"
 
         /** The progress steps of a fake load. */
-        const val LOAD_STEPS = 4
+        private const val LOAD_STEPS = 4
 
         private var callIds = 0
 
         /** `lb_status` for a failed load (the C API's generic error). */
-        const val LOAD_FAILED_STATUS = 1
+        private const val LOAD_FAILED_STATUS = 1
 
         fun q(s: String): String = JsonPrimitive(s).toString()
 
@@ -625,7 +627,7 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
             }.getOrNull()
 
         /** A cut transcript ends at `max_tokens`; without one, nothing says where, so the script is wrong. */
-        const val CUT_WITHOUT_LIMIT =
+        private const val CUT_WITHOUT_LIMIT =
             "FakeLlamaBro: a cut transcript ends at the request's max_tokens; set maxTokens to script a cut transcript"
 
         fun serverError(message: String) = """{"error":{"code":500,"message":${q(message)},"type":"server_error"}}"""

@@ -32,7 +32,11 @@ android {
 kotlin {
     explicitApi()
     // the transport and storage seam is public only for llamabro-hub-testing (InternalLlamaBroApi, D27, D75)
-    compilerOptions { optIn.add("com.suhel.llamabro.InternalLlamaBroApi") }
+    compilerOptions {
+        optIn.add("com.suhel.llamabro.InternalLlamaBroApi")
+        // a data class's copy is as visible as its constructor, so only the SDK makes the values it reports (D102)
+        freeCompilerArgs.add("-Xconsistent-data-class-copy-visibility")
+    }
 }
 
 dependencies {

@@ -6,10 +6,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.nio.channels.FileChannel
-import java.nio.file.FileAlreadyExistsException
-import java.nio.file.Files
 import java.nio.file.StandardOpenOption
-import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -35,18 +32,12 @@ internal object Locks {
     }
 
     /**
-     * The file's identity as the JVM's own lock table keys it (device and inode), so two hubs reaching one cache by
-     * different spellings (a link to it) share the mutex: the kernel lock can't order them, since the JVM refuses a
-     * second lock on a file it already locks (F161). The canonical path where the file system has no such key.
+     * The lock file's canonical path, so two spellings of one cache (a link to it) share the mutex: the kernel lock
+     * can't order two locks from one process, since the JVM refuses a second lock on a file it already locks (F161).
+     * `LlamaBroHub.create` keys its hubs the same way.
      */
     private fun keyOf(path: File): String {
         path.parentFile?.mkdirs()
-        val file = path.toPath()
-        try {
-            Files.createFile(file)
-        } catch (_: FileAlreadyExistsException) {
-            // made by an earlier lock, which is the usual case
-        }
-        return Files.readAttributes(file, BasicFileAttributes::class.java).fileKey()?.toString() ?: path.canonicalPath
+        return path.canonicalPath
     }
 }

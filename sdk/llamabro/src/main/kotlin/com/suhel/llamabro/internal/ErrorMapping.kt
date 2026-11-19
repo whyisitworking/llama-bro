@@ -1,6 +1,7 @@
 package com.suhel.llamabro.internal
 
 import com.suhel.llamabro.LlamaBroException
+import com.suhel.llamabro.spi.NativeError
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -13,6 +14,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * numbers (server-context.cpp send_error).
  */
 internal object ErrorMapping {
+    private const val HTTP_OK = 200
     private val json = Json { ignoreUnknownKeys = true }
 
     /** [body] is `{"error": {...}}` (or anything else for a non-JSON failure). */
@@ -121,6 +123,27 @@ internal object ErrorMapping {
             }
         return LlamaBroException.ModelLoadFailed(reason, nativeMessage(e.errorJson), e)
     }
+
+    /**
+     * Runs [read] over a successful reply and reports a reply it can't read (malformed JSON, a missing field, an
+     * empty body) as [LlamaBroException.ServerError], so a call fails only with the SDK's own errors.
+     */
+    inline fun <T> readReply(what: String, read: () -> T): T =
+        try {
+            read()
+        } catch (e: IllegalArgumentException) {
+            // kotlinx.serialization's errors, and a bad number
+            throw unreadable(what, e)
+        } catch (e: NoSuchElementException) {
+            // a missing field, or an empty body
+            throw unreadable(what, e)
+        } catch (e: ClassCastException) {
+            // a field of another JSON type
+            throw unreadable(what, e)
+        }
+
+    fun unreadable(what: String, e: Throwable): LlamaBroException.ServerError =
+        LlamaBroException.ServerError(HTTP_OK, "llama-server sent a $what reply the SDK can't read: ${e.message}", e)
 
     /** The message of a C API error JSON (`{"error": "..."}`). */
     fun nativeMessage(errorJson: String): String =

@@ -3,16 +3,12 @@
 #   hexagon: libllamabro-ggml-hexagon.so and the HTP skeletons libggml-htp-v73/v75/v79/v81/v85.so (Hexagon SDK)
 #   opencl:  libllamabro-ggml-opencl.so, linked against the image sysroot's libOpenCL.so; the phone's own
 #            libOpenCL.so is used at run time (<uses-native-library>), so none is shipped.
-# and, only with LB_BUILD_VULKAN=1, on this machine (the image has no host C++ compiler for ggml-vulkan's shader
-# generator, nor vulkan.hpp):
-#   vulkan:  libllamabro-ggml-vulkan.so, with the same NDK and the headers from scripts/fetch-deps.sh (P2 T5). Not
-#            shipped: it aborts or gives wrong output on the Adreno 830 (F64, D31); kept to retry after an upgrade.
 # It runs this repo's sdk/native/CMakeLists.txt with LB_BACKENDS, so ggml-base comes from the same file and options
 # as the AGP build and the backend links it by the same soname. The image's NDK is the SDK's (29.0.14206865,
 # checked below), so one libc++_shared.so serves every library in the APK.
 # Output, one directory per backend module: sdk/native/build/android-backends/hexagon/{jniLibs/arm64-v8a,
 # assets/llamabro/htp} (each skeleton plus its .sha256, which the app checks after copying it out: SkeletonInstall.kt)
-# and .../{opencl,vulkan}/jniLibs/arm64-v8a. Needs scripts/prepare-llama.sh first.
+# and .../opencl/jniLibs/arm64-v8a. Vulkan is not built (D31); its recipe is research/vulkan-adreno/ (F174). Needs scripts/prepare-llama.sh first.
 # Usage: build-backends.sh
 set -euo pipefail
 
@@ -53,30 +49,4 @@ for v in $skels; do
   cp "$f" "$htp/"
   shasum -a 256 "$htp/libggml-htp-$v.so" | cut -d' ' -f1 > "$htp/libggml-htp-$v.so.sha256"
 done
-# Vulkan, on the host with the same NDK revision and Android settings: only on request (D31)
-if [ "${LB_BUILD_VULKAN:-0}" = 1 ]; then
-ndk="${ANDROID_NDK:-${ANDROID_HOME:-$HOME/Library/Android/sdk}/ndk/$ndk_rev}"
-grep -q "Pkg.Revision = $ndk_rev" "$ndk/source.properties" || { echo "NDK $ndk_rev not found at $ndk" >&2; exit 1; }
-bash "$native/scripts/fetch-deps.sh"
-deps="$native/build/deps"
-spirv="$deps/SPIRV-Headers-install"
-[ -f "$spirv/share/cmake/SPIRV-Headers/SPIRV-HeadersConfig.cmake" ] || {
-  cmake -S "$deps/SPIRV-Headers" -B "$deps/SPIRV-Headers-build" -G Ninja -DCMAKE_INSTALL_PREFIX="$spirv" -DSPIRV_HEADERS_ENABLE_TESTS=OFF >/dev/null
-  cmake --install "$deps/SPIRV-Headers-build" >/dev/null
-}
-sysroot="$(ls -d "$ndk"/toolchains/llvm/prebuilt/*/sysroot | head -1)"
-vk_build="$native/build/android-backends-vulkan-build"
-cmake -S "$native" -B "$vk_build" -G Ninja \
-      -DCMAKE_TOOLCHAIN_FILE="$ndk/build/cmake/android.toolchain.cmake" \
-      -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 -DANDROID_STL=c++_shared \
-      -DCMAKE_BUILD_TYPE=Release -DLB_LLAMA_DIR="$native/build/llama.cpp" -DLB_BACKENDS=vulkan \
-      -DVulkan_INCLUDE_DIR="$deps/Vulkan-Headers/include" \
-      -DVulkan_LIBRARY="$sysroot/usr/lib/aarch64-linux-android/29/libvulkan.so" \
-      -DVulkan_GLSLC_EXECUTABLE="$(ls "$ndk"/shader-tools/*/glslc | head -1)" \
-      -DSPIRV-Headers_DIR="$spirv/share/cmake/SPIRV-Headers" -DLB_SPIRV_INCLUDE_DIR="$spirv/include"
-cmake --build "$vk_build" --target ggml-vulkan
-mkdir -p "$out/vulkan/jniLibs/arm64-v8a"
-cp "$(find "$vk_build" -name 'libllamabro-ggml-vulkan.so' -not -path '*/CMakeFiles/*' -print -quit)" "$out/vulkan/jniLibs/arm64-v8a/"
-fi
-
 ls -la "$out"/*/jniLibs/arm64-v8a "$htp"

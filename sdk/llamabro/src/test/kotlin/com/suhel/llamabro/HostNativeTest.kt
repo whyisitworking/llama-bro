@@ -10,15 +10,15 @@ import com.suhel.llamabro.chat.Sampling
 import com.suhel.llamabro.chat.Tool
 import com.suhel.llamabro.conversation.compact
 import com.suhel.llamabro.internal.ChatStreamDecoder
-import com.suhel.llamabro.internal.Engine
-import com.suhel.llamabro.internal.EngineAttachment
-import com.suhel.llamabro.internal.EngineModel
-import com.suhel.llamabro.internal.EngineRequest
 import com.suhel.llamabro.internal.JniEngine
 import com.suhel.llamabro.internal.LlamaBroRuntime
-import com.suhel.llamabro.internal.NativeError
-import com.suhel.llamabro.internal.RequestSink
 import com.suhel.llamabro.internal.SseParser
+import com.suhel.llamabro.spi.Engine
+import com.suhel.llamabro.spi.EngineAttachment
+import com.suhel.llamabro.spi.EngineModel
+import com.suhel.llamabro.spi.EngineRequest
+import com.suhel.llamabro.spi.NativeError
+import com.suhel.llamabro.spi.RequestSink
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -440,12 +440,14 @@ class HostNativeTest {
                         runCatching { model.rawRequest(e, "[]").collect() }
                             .exceptionOrNull(),
                     ) { it.cause }.any { it is NativeError }
+                // every constant, the internal ones included (their getters are public in bytecode)
                 val endpoints =
-                    Endpoint::class.java.fields.filter { it.type == Endpoint::class.java }.map {
-                        it.get(
-                            null,
-                        ) as Endpoint
-                    }
+                    Endpoint.Companion::class.java.methods
+                        .filter { it.returnType == Endpoint::class.java && it.parameterCount == 0 }
+                        .map { it.invoke(Endpoint.Companion) as Endpoint }
+                        .distinct()
+                        // a realtime request is a session of events, not one reply: HostVoiceTest covers it
+                        .filter { it != Endpoint.Realtime }
                 assertEquals(29, endpoints.size) // b12352 added /v1/audio/speech; D84 /v1/audio/transcriptions
                 val unknown = endpoints.filter { bridgeRejects(it) }
                 assertEquals("not in the C API's table: $unknown", emptyList<Endpoint>(), unknown)

@@ -1,5 +1,6 @@
 package com.suhel.llamabro.internal
 
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -29,7 +30,7 @@ internal object JsonMergePatch {
         val parsed =
             try {
                 Json.parseToJsonElement(patch)
-            } catch (e: Exception) {
+            } catch (e: SerializationException) {
                 throw IllegalArgumentException("extra is not valid JSON: ${e.message}", e)
             }
         require(parsed is JsonObject) { "extra must be a JSON object" }

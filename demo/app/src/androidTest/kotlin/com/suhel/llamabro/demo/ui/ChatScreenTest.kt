@@ -16,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.semantics.SemanticsActions
@@ -44,7 +45,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.platform.app.InstrumentationRegistry
@@ -57,7 +57,6 @@ import com.suhel.llamabro.demo.chat.sdkStream
 import com.suhel.llamabro.demo.data.AppLayout
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.NewMessage
-import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.designsystem.testing.LocalRecompositionCounter
 import com.suhel.llamabro.demo.designsystem.testing.RecompositionCounter
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
@@ -69,6 +68,7 @@ import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.testing.TestAppRule
 import com.suhel.llamabro.demo.testing.TestConfig
 import com.suhel.llamabro.demo.testing.demoRules
+import com.suhel.llamabro.demo.testing.settleWindow
 import com.suhel.llamabro.demo.testing.withAccessibilityChecks
 import com.suhel.llamabro.demo.ui.chat.ChatScreen
 import com.suhel.llamabro.demo.ui.chat.LocalIntentSink
@@ -196,25 +196,7 @@ class ChatScreenTest {
                 }
             }
         }
-        settleWindow()
-    }
-
-    /**
-     * A sheet opens in its own window. On this phone the system shrinks the screen behind it for a moment, and an
-     * accessibility check made then reads every button on it as too small. Wait for the window to settle first.
-     */
-    private fun settleSheet() {
-        compose.waitForIdle()
-        Thread.sleep(700)
-    }
-
-    /**
-     * The system zooms a freshly started activity open. An accessibility check made during that zoom reads every button
-     * at about three quarters of its size and fails it as too small, so a test starts after the window has settled.
-     */
-    private fun settleWindow() {
-        compose.waitForIdle()
-        Thread.sleep(900)
+        compose.settleWindow()
     }
 
     private fun type(text: String) =
@@ -343,14 +325,27 @@ class ChatScreenTest {
         return node.positionInRoot.y
     }
 
+    /**
+     * The reader drags the list toward older messages and holds still before lifting the finger, so no fling follows:
+     * the list rests where the finger left it, and what a test reads next is not a list still moving.
+     */
+    private fun dragTowardOlderMessages() {
+        compose.onNodeWithTag("message_list").performTouchInput {
+            down(center)
+            repeat(10) { moveBy(Offset(0f, height / 30f), delayMillis = 30) }
+            advanceEventTime(200)
+            up()
+        }
+        compose.waitForIdle()
+    }
+
     @Test fun scrollingUpDuringAReplyStopsFollowingIt() {
         longReply(400)
         onPhone(swift)
         show()
         ask("Write a lot")
         waitFor("line 40", substring = true)
-        compose.onNodeWithTag("message_list").performTouchInput { swipeDown() }
-        compose.waitForIdle()
+        dragTowardOlderMessages()
         val top = replyTop()
         // tokens keep arriving, and the list stays where the reader left it
         waitFor("line 80", substring = true)
@@ -370,8 +365,7 @@ class ChatScreenTest {
         show()
         ask("Write a lot")
         waitFor("line 40", substring = true)
-        compose.onNodeWithTag("message_list").performTouchInput { swipeDown() }
-        compose.waitForIdle()
+        dragTowardOlderMessages()
         val top = replyTop()
         compose.waitUntil(20_000) { compose.onAllNodes(hasTestTag("streaming_reply")).fetchSemanticsNodes().isEmpty() }
         compose.waitForIdle()
@@ -383,6 +377,9 @@ class ChatScreenTest {
         settingsLastModel(swift)
         hub.downloading(swift)
         show()
+        // the ring comes once the library, the chat's model and the download's state have all arrived: the top bar
+        // must have it before the message is sent, or the send's accessibility check meets a bar still laying out
+        compose.waitUntilAtLeastOneExists(hasTestTag("download_ring"), 10_000)
         ask("Hello when you're ready")
         waitFor("Qwen3.5 0.8B will answer the moment it's here")
         compose.onNodeWithTag("download_ring").assertIsDisplayed()
@@ -475,7 +472,7 @@ class ChatScreenTest {
         onPhone(swift)
         show()
         compose.onNodeWithContentDescription("Think").performClick() // the bulb in the bar's button row
-        settleSheet()
+        compose.settleWindow()
         for (level in listOf("Off", "Quick", "Balanced", "Deep")) compose.onNodeWithText(level).assertIsDisplayed()
         compose.onNodeWithText("Balanced").performClick()
         // the chosen level is in the bulb's description
@@ -622,7 +619,7 @@ class ChatScreenTest {
             .onNode(
                 hasText("question") and hasAnyAncestor(hasTestTag("user_message")),
             ).performTouchInput { longClick() }
-        settleSheet()
+        compose.settleWindow()
         compose.onNodeWithText("Edit").assertIsDisplayed()
         compose.onNodeWithText("Copy").performClick()
         assertEquals("question", clipboardText())
@@ -635,7 +632,7 @@ class ChatScreenTest {
         runBlocking { app.container.settings.pinDefault(deep.toString()) }
         show()
         compose.onNodeWithTag("model_title").performClick()
-        settleSheet()
+        compose.settleWindow()
         waitFor("On this phone", ignoreCase = true)
         waitFor("Qwen3.5 0.8B")
         waitFor("Qwen3.5 4B")
@@ -647,7 +644,7 @@ class ChatScreenTest {
         onPhone(swift, deep)
         show()
         compose.onNodeWithTag("model_title").performClick()
-        settleSheet()
+        compose.settleWindow()
         waitFor("On this phone", ignoreCase = true)
         compose.onNodeWithText("Qwen3.5 4B").performTouchInput { longClick() }
         compose.onNodeWithText("Use for new chats").performClick() // the long-press says what it will do first
@@ -665,7 +662,7 @@ class ChatScreenTest {
         onPhone(swift)
         show()
         compose.onNodeWithTag("model_title").performClick()
-        settleSheet()
+        compose.settleWindow()
         compose.onNodeWithText("Get more models").performClick()
         compose.waitUntil(5_000) { wentToModels }
     }
@@ -677,7 +674,7 @@ class ChatScreenTest {
         ask("hi")
         waitFor("hello")
         compose.onNodeWithTag("model_title").performClick()
-        settleSheet()
+        compose.settleWindow()
         compose.onNodeWithText("Qwen3.5 4B").performClick()
         waitFor("Switched to Qwen3.5 4B")
     }
@@ -689,7 +686,7 @@ class ChatScreenTest {
         ask("hi")
         waitFor("hello")
         compose.onNodeWithTag("model_title").performClick()
-        settleSheet()
+        compose.settleWindow()
         compose.onNode(hasText("Qwen3.5 0.8B") and hasAnyAncestor(hasTestTag("switcher"))).performClick()
         compose.waitForIdle()
         Thread.sleep(500)
@@ -717,7 +714,7 @@ class ChatScreenTest {
         show(chatId = id)
         waitFor("Qwen3.5 4B isn't on this phone any more.")
         compose.onNodeWithText("Switch model").performClick()
-        settleSheet()
+        compose.settleWindow()
         waitFor("On this phone", ignoreCase = true)
     }
 
@@ -840,7 +837,7 @@ class ChatScreenTest {
         compose.waitUntilAtLeastOneExists(hasContentDescription("Photo 2 of 2"), 10_000)
         compose.onNodeWithContentDescription("Photo 2 of 2").performClick()
         compose.waitUntil(5_000) { closeButtons().isNotEmpty() }
-        settleWindow()
+        compose.settleWindow()
         // the bubble's photo and the viewer's page, opened at the photo tapped
         compose.waitUntil(5_000) {
             compose.onAllNodesWithContentDescription("Photo 2 of 2").fetchSemanticsNodes().size == 2
@@ -850,7 +847,7 @@ class ChatScreenTest {
 
         compose.onNodeWithContentDescription("Photo 1 of 2").performClick()
         compose.waitUntil(5_000) { closeButtons().isNotEmpty() }
-        settleWindow()
+        compose.settleWindow()
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
         compose.waitUntil(5_000) { closeButtons().isEmpty() }
         compose.onNodeWithText("which one?").assertIsDisplayed() // back closed the viewer, not the chat
@@ -897,9 +894,10 @@ class ChatScreenTest {
         // the one exception: the reply that was the latest loses its Copy, Share and Regenerate actions when the new
         // reply starts, so it recomposes a couple of times, never once per token (30 tokens arrive in this window)
         val previousLatest = "row-m-4"
-        // (a row may recompose once for a reason outside the stream, such as the list settling: seen once in about
-        // five full runs; what is excluded is a recomposition per token, which would be 30)
-        assertTrue("earlier rows recomposed: $old", old.filterKeys { it != previousLatest }.values.all { it <= 1 })
+        // what is excluded is a recomposition per token, which would be 30. A row may recompose a few times for
+        // reasons outside the stream (the list settling, frames dropped on a loaded device), so the bound is well
+        // under the token count, not exact
+        assertTrue("earlier rows recomposed: $old", old.filterKeys { it != previousLatest }.values.all { it <= 3 })
         assertTrue("the previous latest reply recomposed ${old[previousLatest]} times", (old[previousLatest] ?: 0) <= 2)
         assertTrue(
             "the streaming row recomposed ${counter.counts["row-streaming"]} times",

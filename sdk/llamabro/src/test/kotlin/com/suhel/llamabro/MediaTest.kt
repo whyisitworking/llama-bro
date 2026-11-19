@@ -3,7 +3,7 @@ package com.suhel.llamabro
 import com.suhel.llamabro.chat.ChatRequest
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.Message
-import com.suhel.llamabro.internal.EngineAttachment
+import com.suhel.llamabro.spi.EngineAttachment
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -220,12 +220,12 @@ class MediaTest {
         }
 
     @Test
-    fun savesWithInlineImagesStillLoad() =
+    fun savesWithInlineImagesLoad() =
         runTest {
             val (engine, model) = setup()
             engine.model.script(Replies.text("a"))
             val old =
-                """{"version":2,"system":null,"settings":{"options":{},"extra":null,"max_turns":10,
+                """{"version":3,"system":null,"settings":{"options":{},"extra":null,"max_turns":10,
                 "pre_encode_after_reply":false},"messages":[{"role":"user","content":[{"type":"text","text":"hi"},
                 {"type":"image","mime":"image/png","data":"AQID"}]}]}"""
             val chat = model.restoreConversation(old)

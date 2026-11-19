@@ -1,6 +1,7 @@
 package com.suhel.llamabro.internal
 
-import com.suhel.llamabro.InternalLlamaBroApi
+import com.suhel.llamabro.spi.NativeError
+import com.suhel.llamabro.spi.RequestSink
 
 /**
  * JNI over the C API in `sdk/native/bridge/include/llamabro.h` (P1 T6). One function per `lb_*` call;
@@ -69,17 +70,4 @@ internal fun interface ProgressListener {
 /** [level] is `lb_log_level`: 0 debug, 1 info, 2 warn, 3 error. */
 internal fun interface LogListener {
     fun onLog(level: Int, text: String)
-}
-
-/**
- * A failed native call: [status] is `lb_status`, [errorJson] is `{"error": "..."}`, with `"code"` set for a
- * missing file (`file_not_found`) or too little memory (`insufficient_memory`). Public under the opt-in marker so
- * that an [Engine] in `llamabro-testing` can fail a load as the native side does.
- */
-@InternalLlamaBroApi
-public class NativeError(public val status: Int, public val errorJson: String) : RuntimeException(errorJson) {
-    public companion object {
-        /** `LB_ERR_CANCELLED`: the load's progress callback said stop (D67). */
-        public const val CANCELLED: Int = 6
-    }
 }

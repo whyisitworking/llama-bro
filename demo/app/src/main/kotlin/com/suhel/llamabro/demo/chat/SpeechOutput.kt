@@ -11,7 +11,8 @@ import java.util.ArrayDeque
 
 /**
  * Where voice mode's replies are spoken (D100): 16-bit mono PCM written as it arrives, played in order. [level] is the
- * loudness (0 to 1) of what is playing now, for the orb. Calls come from one thread at a time.
+ * loudness (0 to 1) of what is playing now, for the orb. [write] and [drain] come from one player at a time; [stop] may
+ * come from another thread while a write waits on a full buffer, and releases it.
  */
 interface SpeechOutput : AutoCloseable {
     /** Queues [pcm] to play after what is already queued. */

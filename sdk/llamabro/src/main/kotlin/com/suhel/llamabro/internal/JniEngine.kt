@@ -1,5 +1,10 @@
 package com.suhel.llamabro.internal
 
+import com.suhel.llamabro.spi.Engine
+import com.suhel.llamabro.spi.EngineAttachment
+import com.suhel.llamabro.spi.EngineModel
+import com.suhel.llamabro.spi.EngineRequest
+import com.suhel.llamabro.spi.RequestSink
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal object JniEngine : Engine {
@@ -17,7 +22,14 @@ internal object JniEngine : Engine {
 
     override fun load(configJson: String, onProgress: (Float) -> Boolean): EngineModel {
         val handle = NativeBridge.modelLoad(configJson) { onProgress(it) }
-        return JniModel(handle)
+        return try {
+            JniModel(handle)
+        } catch (
+            @Suppress("TooGenericExceptionCaught") e: Throwable,
+        ) {
+            NativeBridge.modelFree(handle) // nothing else holds the handle yet: freed, then rethrown
+            throw e
+        }
     }
 
     override fun readFd(fd: Int): ByteArray = NativeBridge.readFd(fd)

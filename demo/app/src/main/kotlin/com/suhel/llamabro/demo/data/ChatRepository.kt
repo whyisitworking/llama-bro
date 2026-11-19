@@ -179,25 +179,19 @@ class ChatRepository(
     suspend fun modelKey(chatId: Long): String? = dao.chat(chatId)?.modelKey
 
     /** Records the model of the chat's last turn (switching models). */
-    suspend fun setModel(chatId: Long, modelKey: String) {
-        val chat = dao.chat(chatId) ?: return
-        dao.updateChat(chat.copy(modelKey = modelKey))
-    }
+    suspend fun setModel(chatId: Long, modelKey: String) = dao.modifyChat(chatId) { it.copy(modelKey = modelKey) }
 
     /** The chat's own sampling values (D60); none for a chat not created yet or one without changes. */
     fun sampling(chatId: Long): Flow<Knobs> = dao.sampling(chatId).map { Knobs.decode(it) }
 
-    /** Sets the chat's own sampling values; [Knobs.None] gives the chat back to its model's. */
-    suspend fun setSampling(chatId: Long, knobs: Knobs) {
-        val chat = dao.chat(chatId) ?: return
-        dao.updateChat(chat.copy(sampling = knobs.encode().ifEmpty { null }))
-    }
+    /** Changes the chat's own sampling values in one step; [Knobs.None] gives the chat back to its model's. */
+    suspend fun updateSampling(chatId: Long, change: (Knobs) -> Knobs) =
+        dao.modifyChat(chatId) { it.copy(sampling = change(Knobs.decode(it.sampling)).encode().ifEmpty { null }) }
 
     /** Titles are never empty: a blank [title] is rejected. */
     suspend fun rename(chatId: Long, title: String) {
         require(title.isNotBlank()) { "a chat title cannot be blank" }
-        val chat = dao.chat(chatId) ?: return
-        dao.updateChat(chat.copy(title = title.trim()))
+        dao.modifyChat(chatId) { it.copy(title = title.trim()) }
     }
 
     /** Deletes the chat, its messages (cascade) and the images and recordings they hold. */

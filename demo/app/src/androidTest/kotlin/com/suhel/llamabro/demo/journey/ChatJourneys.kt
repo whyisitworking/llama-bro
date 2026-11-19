@@ -16,7 +16,6 @@ import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.RepoFile
 import com.suhel.llamabro.hub.HfModel
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeFalse
 import org.junit.Assume.assumeTrue
 import org.junit.Test

@@ -13,7 +13,6 @@ import com.suhel.llamabro.hub.DownloadState
 import com.suhel.llamabro.hub.HfModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Finding, fetching and keeping models: Get models, the sheet, the downloads and the library. */

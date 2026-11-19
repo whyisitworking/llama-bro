@@ -27,6 +27,8 @@ benchmarks alternate arms within a round, because the phone throttles under sust
 | PF | [pf/draft-models](pf/draft-models/README.md) | Do EAGLE-3, DFlash and DSpark beat no speculation and MTP? | F73 |
 | PF | [pf/ngram](pf/ngram/README.md) | Does n-gram speculation help without hurting other output? | F72 |
 | PF | [pf/tts](pf/tts/README.md) | Does text to speech run on the phone, and can the SDK return audio? | F74 |
+| Voice | [voice/tail-guard-sweep](voice/tail-guard-sweep.md) | Does patch 0008's speech tail guard hold for another voice, other languages and Q8_0? | F173 |
+| After PH | [vulkan-adreno](vulkan-adreno/README.md) | Why does ggml-vulkan fail on the Adreno 830, and can a patch make it run? How fast is it then? | F174 |
 
 ## How the experiments relate to the design
 

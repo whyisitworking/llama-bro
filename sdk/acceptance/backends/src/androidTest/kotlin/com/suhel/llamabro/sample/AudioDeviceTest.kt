@@ -15,7 +15,6 @@ import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.conversation
 import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.transcribe
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertTrue

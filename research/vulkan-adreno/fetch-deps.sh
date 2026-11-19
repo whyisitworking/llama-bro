@@ -3,10 +3,10 @@
 # and SPIRV-Headers, at Vulkan 1.3.275, the NDK 29 sysroot's own vulkan_core.h version and the one upstream's
 # Vulkan CI builds with (Ubuntu 24.04's libvulkan-dev). Official KhronosGroup release archives, checked by SHA-256
 # (pinned from the first download, 2026-11-05). Nothing fetched here ships in an AAR.
-# Output: sdk/native/build/deps/{Vulkan-Headers,SPIRV-Headers}. Usage: fetch-deps.sh
+# Output: sdk/native/build/deps/{Vulkan-Headers,SPIRV-Headers}. Usage: research/vulkan-adreno/fetch-deps.sh
 set -euo pipefail
 
-deps="$(cd "$(dirname "$0")/.." && pwd)/build/deps"
+deps="$(cd "$(dirname "$0")/../.." && pwd)/sdk/native/build/deps"
 mkdir -p "$deps"
 
 fetch() {  # name url sha256

@@ -51,6 +51,31 @@ internal class HubCreateTest {
         assertEquals(1, builds)
     }
 
+    @Test fun aNewLoggerAndTokenWithTheSameSettingsGetTheSameHub() {
+        val dir = folder()
+        val first =
+            create(
+                dir,
+                HubConfig {
+                    cacheDir = dir
+                    logger = Logger { _, _ -> }
+                    token { "a" }
+                },
+            )
+        assertSame(
+            first,
+            create(
+                dir,
+                HubConfig {
+                    cacheDir = dir
+                    logger = Logger { _, _ -> }
+                    token { "b" }
+                },
+            ),
+        )
+        assertEquals(1, builds)
+    }
+
     @Test fun sameFolderDifferentConfigThrows() {
         val dir = folder()
         create(dir, configFor(dir))
@@ -116,7 +141,7 @@ internal class HubCreateTest {
 
     @Test fun concurrentCreateBuildsOnce() {
         val dir = folder()
-        val sharedLogger = Logger { _, _ -> } // equal configs need one logger instance: it compares by reference
+        val sharedLogger = Logger { _, _ -> }
         val start = CountDownLatch(1)
         val pool = Executors.newFixedThreadPool(8)
         try {

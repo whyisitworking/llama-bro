@@ -1,9 +1,9 @@
 package com.suhel.llamabro.opencl
 
 import android.content.Context
-import com.suhel.llamabro.internal.BackendInstaller
-import com.suhel.llamabro.internal.BackendLibraries
-import com.suhel.llamabro.internal.BackendOptions
+import com.suhel.llamabro.spi.BackendInstaller
+import com.suhel.llamabro.spi.BackendLibraries
+import com.suhel.llamabro.spi.BackendOptions
 
 /**
  * Called by the core when the runtime starts (BackendDiscovery, through this module's manifest). Nothing to install.

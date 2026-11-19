@@ -35,6 +35,8 @@ import org.junit.rules.TemporaryFolder
 import org.junit.rules.Timeout
 import java.io.File
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Voice mode's conversation (D100) on FakeLlamaBro's voice session, with a scripted microphone and speaker. */
@@ -220,6 +222,20 @@ class VoiceConversationTest {
             voice.close()
         }
 
+    @Test fun stopDropsTheSpeechStillQueued() =
+        runBlocking {
+            fake.transcript("One.")
+            fake.voiceReply { repeat(5) { audio(ShortArray(4_800)) } }
+            speaker.blockWrites = CountDownLatch(1)
+            val (_, voice) = conversation()
+            say(voice)
+            until("speaking") { voice.ui.value.phase == VoicePhase.Speaking && speaker.played.get() > 0 }
+            voice.stop()
+            until("ready") { voice.ui.value.phase == VoicePhase.Ready }
+            assertEquals("speech played on after Stop", 0, speaker.writesAfterStop.get())
+            voice.close()
+        }
+
     @Test fun pausingLetsTheModelGoAndTheNextTalkOpensAgain() =
         runBlocking {
             fake.transcript("First.")
@@ -302,15 +318,25 @@ class VoiceConversationTest {
         }
     }
 
-    /** A speaker that counts what it plays; [holdDrain] keeps a reply "playing" until completed. */
+    /**
+     * A speaker that counts what it plays; [holdDrain] keeps a reply "playing" until completed, and [blockWrites] makes
+     * each write wait, as a full AudioTrack buffer does, until [stop] releases it.
+     */
     private class ScriptedSpeaker : SpeechOutput {
         val played = AtomicInteger()
         val stops = AtomicInteger()
 
+        /** Writes that came after a stop: speech that went on playing although the reply was stopped. */
+        val writesAfterStop = AtomicInteger()
+
         @Volatile var holdDrain: CompletableDeferred<Unit>? = null
 
+        @Volatile var blockWrites: CountDownLatch? = null
+
         override fun write(pcm: ShortArray) {
+            if (stops.get() > 0) writesAfterStop.incrementAndGet()
             played.addAndGet(pcm.size)
+            blockWrites?.await(5, TimeUnit.SECONDS)
         }
 
         override val level: Float = 0.5f
@@ -322,6 +348,7 @@ class VoiceConversationTest {
         override fun stop() {
             stops.incrementAndGet()
             holdDrain?.complete(Unit)
+            blockWrites?.countDown()
         }
 
         override fun close() = Unit

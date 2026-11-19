@@ -206,7 +206,7 @@ Consequences: The API was settled before external use, at the cost of a short de
 
 ### D26. API evolution rules
 
-Status: Decided (2026-11-04)
+Status: Decided (2026-11-04); its value-type rule is replaced by D102
 
 Context: A public type that gains a field breaks binary compatibility if it is a data class with `copy`, `componentN` or constructor defaults (F37, F42, F44).
 Decision: Public types that will grow are immutable classes built through a builder or DSL, with no `copy`, no `componentN` and no public constructor defaults; small value types that will not grow may be data classes. Sealed and enum sets (`ChatEvent`, `FinishReason`, `LlamaBroException`) are settled at 1.0 and grow only in a major version. The public API dump is checked by `check.sh`, and the API is Kotlin only.
@@ -816,3 +816,90 @@ Context: The demo labelled a model's fit two ways (demo design §7.1, D64): list
 Decision: Every fit in the demo is the formula: a model needs its file plus its image or audio encoder, against half the phone's total RAM (the CPU device's `memoryTotal`); the room left gives the context word as the quick estimate did (at least 1.5 GiB large, 0.5 GiB normal, anything above zero small), and the speed comes from the file's size per chip as before. The same estimate shows in lists, the model sheet and first run, so nothing changes after it shows, and no file is read. The encoder's size comes from the catalog for its models and, for any other repo, from the Hub's listing: `Quantization.encoderBytes`, the encoder the Hub would fetch with that quantisation by the same rule it downloads with. The maintainer chose formula only, total RAM and the 50% share (2026-11-19).
 Consequences: The SDK's `estimateFit` stays, for apps that want the projection; the demo no longer calls it, and the bridge measures one at a time anyway (F172). The KV cache is not modelled: a model with a large cache per token can label "Runs well" and then fit a shorter context than the word suggests, which the load's own automatic context still handles (D34). The 50% share is a judgement, not a measurement on several phones.
 
+### D102. Public value types are data classes; builder-built requests and configurations keep their builders
+
+Status: Decided (2026-11-19)
+
+Context: D26 kept public types that may grow out of data classes, because a new field changes the JVM signatures of a data class's constructor and `copy`, and bytecode compiled against the old ones fails with `NoSuchMethodError` (F37). That failure needs a library compiled against one Llama Bro version running in an app that resolves a newer one; an app that depends on the SDK directly recompiles and is unaffected. No such library exists, breaking changes are accepted before release, and the rule had cost 24 hand-written `equals`/`hashCode`/`toString` triples (about 250 lines) and `copy` for callers.
+Decision: Public value types are data classes: results (`ModelInfo`, `LoadReport`, `Timings`, `Usage`, `DeviceInfo`, `Backend`, `DownloadProgress`, `ChatEvent.Done`, `Ranked`, `Typed`'s outcomes, `VoiceEvent`'s events), progress (`LoadProgress`), and small settings and inputs (`Speculative.Mtp`, `Ngram`, `DFlash`, `LoraAdapter`, `Normalization.PNorm`, `Content.Image`, `Content.Audio`, `MediaSource.File`, `HfModel`). A type the SDK creates keeps its internal or private constructor, which also keeps its `copy` non-public. Two stay plain classes because a data class compares arrays by reference: `MediaSource.Bytes` and `VoiceEvent.ReplyAudio`. Requests and configurations built with `X { }` and changed with `copy { }` (`ChatRequest`, `Sampling`, `Reasoning`, `LlamaBroConfig`, `HubConfig`, `VoiceConfig`, `UserTranscription`) keep their builders, which name upstream's many optional fields better than a long constructor. D26's other rules stand: sealed and enum sets are settled at 1.0, the API dump is checked, and the API is Kotlin only. The maintainer chose data classes (2026-11-19).
+Consequences: Adding a field to a data class is source-compatible for callers that recompile and a binary break for libraries compiled against the older SDK; a release that adds one says so in its notes. `ModelInfo` keeps a short `toString`, since its template and metadata run to kilobytes.
+
+### D103. One error rule: a call or flow fails with a `LlamaBroException`; only misuse throws Kotlin's own exceptions
+
+Status: Decided (2026-11-19)
+
+Context: The README said everything the SDK throws is a `LlamaBroException`, but a reply the SDK couldn't read escaped as the parser's exception: `SerializationException` from a malformed chat chunk during collection, `NoSuchElementException` from an empty embeddings, rerank or transcription body, `ClassCastException` from a field of the wrong type. The README's list also missed `InsufficientMemory` and `DeviceUnavailable`. Misuse (an invalid argument, a call in the wrong state) already threw `IllegalArgumentException` and `IllegalStateException`, as `require` and `check` do.
+Decision: A call or a flow fails only with a `LlamaBroException`. A successful reply the SDK can't read is `ServerError` with status 200 and the parser's error as its cause; `ErrorMapping.readReply` wraps every reply the SDK parses (chat chunks, embeddings, rerank, transcription). Misuse of the API stays `IllegalArgumentException` or `IllegalStateException`, listed under each function's `@throws`. The README and architecture section 7 list the full set. The maintainer chose the rule (2026-11-19).
+Consequences: Apps catch one sealed type for every runtime failure and see Kotlin's own exceptions only for bugs in their own calls. `ServerError` gains an internal cause.
+
+### D104. The engine and backend seams are a `spi` package; `internal` is Kotlin-internal
+
+Status: Decided (2026-11-19)
+
+Context: The package `com.suhel.llamabro.internal` held both the runtime's implementation and the seams other modules implement: `Engine` for the testing fakes (D27), `BackendInstaller` for the backend artifacts (D24). The seams were public under `@InternalLlamaBroApi`, so a package named internal was public API; the `SEND_*` constants lacked the opt-in, and `Engine.readFd` had a JVM-only `/dev/fd` reader as its default, in production code.
+Decision: `Engine`, `EngineModel`, `EngineRequest`, `EngineAttachment`, `RequestSink`, `NativeError`, the `SEND_*` constants, `BackendInstaller`, `BackendOptions`, `BackendLibraries` and `LogcatLogger` (the hub's default logger) move to `com.suhel.llamabro.spi`, all under `@InternalLlamaBroApi`. Everything left in `internal` is Kotlin `internal`. `Engine.readFd` has no default: the JNI engine reads natively and `FakeLlamaBro`'s engine reads through `/dev/fd`. JNI and the consumer R8 rules name the new package. The maintainer chose the split (2026-11-19).
+Consequences: The API dump shows the seams under one package name that says what they are. Backend artifacts and fakes import from `spi`.
+
+### D105. API shape: a sealed `ModelSource`, internal speech endpoints, `Long` seeds, `Typed.text`, no `@Jvm` annotations
+
+Status: Decided (2026-11-19)
+
+Context: A review of the public API found small mismatches. `ModelSource` was an open interface whose loader refused anything but its own file source and a `RemoteModelSource`. `Endpoint.Tts` and `Endpoint.Speech` were public though `rawRequest`'s strings can't carry their audio (F74). `ModelConfig.seed` was `Int?` while `Sampling.seed` is `Long?`, and llama-server's seed is a 32-bit unsigned number. `Typed`'s outcomes called the reply's text `json`, though an incomplete reply's text is not JSON. `ChatRequest` exposed `options` beside seven getters that read through it. D26 says the API is Kotlin only, yet about sixty `@JvmStatic`, `@JvmOverloads` and `@JvmField` annotations shaped it for Java.
+Decision: `ModelSource` is sealed; `RemoteModelSource` stays open for the hub and apps. `Endpoint.Tts` and `Endpoint.Speech` are internal until a request returns bytes. Both seeds are `Long?`. `Typed.Value`, `Incomplete` and `Invalid` name the reply's text `text`. `ChatRequest.options` is internal; the getters stay. The `@Jvm*` annotations go, except one `@JvmName` that resolves a JVM signature clash. `LbToolCallContext` keeps its public constructor, since apps build one to unit-test a typed tool. The maintainer chose each point (2026-11-19).
+Consequences: Breaking for callers of the renamed and hidden members, which v2 allows. Java callers reach companion members through `Companion`.
+
+### D106. `create` compares settings, not the logger or token provider; hub locks key by canonical path; saves read version 3 only
+
+Status: Decided (2026-11-19)
+
+Context: `LlamaBro.create` and `LlamaBroHub.create` returned the existing object for an equal config and threw for a different one (D70), with the logger and the hub's token provider compared by reference. A config built twice with a new logger lambda threw, and the README warned three times to build it once. The hub's file locks were keyed by the lock file's inode (`fileKey`), which covers hard-linked folders and bind mounts that an Android app doesn't meet, and created the file only to read its identity; `create` already keys hubs by canonical path (D89). `Conversation.fromJson` still read save formats 1 and 2, which only development builds ever wrote.
+Decision: A repeated `create` compares the settings only (the log level and NPU polling; the hub's endpoint and progress interval). The first call's logger and token provider stay in use. The hub keys its locks by the lock file's canonical path, as `create` keys hubs. `fromJson` reads version 3 only and refuses the others as unsupported. The maintainer chose each point (2026-11-19).
+Consequences: Amends D70 and D89. A DI module that builds the config on each call works; a logger passed to a later `create` is ignored, as the KDoc says. Saves from development builds before version 3 no longer load.
+
+### D107. The hub loads and lists installed copies only; a copy without an installed record is not on the phone
+
+Status: Decided (2026-11-19)
+
+Context: Since D64 the hub writes an installed record when a download completes and loads exactly that copy. Copies downloaded before the record existed had none, so `LocalCopies` reconstructed one from the cached listing and upstream's selection rule, wrote it from read paths (`source`, `cached`, a plan's start), and `cached()` merged that reconstruction (the refs view) with the installed records under extra conditions (D89). That was about a third of `LocalCopies`, a second answer to what is on the phone, and the source of one of D89's bugs, and it served only development phones: no release wrote the old layout.
+Decision: `source`, `cached()`, `hasUpdate` and the sampling lookup read installed records only. A copy without one is not on the phone and downloads again, reusing the blobs whose hashes match. The cache layout stays upstream's. The maintainer chose this (2026-11-19).
+Consequences: Amends D64 and D89. Development phones download their pre-record models once more. The upstream-listing golden for `cached()` goes, since `cached()` no longer follows `refs/main`.
+
+### D108. Streaming markdown re-parses from the last top-level block; lists and tables are not resumed row by row
+
+Status: Decided (2026-11-19)
+
+Context: D74's streaming parse re-read only the block the line being written could still join, and inside a list or table it resumed from the last item or row: a top-level list's last item parsed as a list of its own and renumbered, a table's last row read again under the table's header. That kept a 10 KB list or table at about 0.01 ms per append on the host, against about 0.3 ms for the whole table, at the cost of the subtlest code in the demo, while the budget is 0.5 ms and replies that are one 10 KB table are rare.
+Decision: The parse restarts from the last top-level block that starts before the text's last line; a list's items share their list's start, so a list or table being written is parsed whole on each append. Earlier blocks keep their instances, and blocks parsed again that come out equal keep theirs. The maintainer chose this (2026-11-19).
+Consequences: Amends D74's streaming paragraph. A long list or table costs more per append as it grows, still under the budget on the host; the phone is not re-measured.
+
+### D109. Captions of the user's words move to the app: it transcribes its own recording of each turn
+
+Status: Decided (2026-11-19)
+
+Context: D99 put captions of the user's words in the SDK's voice session: it kept each turn's audio, transcribed it with `Model.transcribe` on a second slot while the reply was made, and sent `VoiceEvent.UserTranscript`, an event upstream's conversation doesn't send (F169). That composed two upstream features into app behaviour, against the rule that the SDK exposes llama-server and makes no app policy, and it paired captions to turns by counting commits, which a commit sent through `sendRaw` would misalign. The app already keeps each turn's recording as a voice message and knows which message it is.
+Decision: The voice session stays upstream's: `transcribeUser`, `UserTranscription`, `VoiceEvent.UserTranscript` and the two-slot check go. The demo transcribes each turn's saved recording with `Model.transcribe`, one turn at a time and in order, on the second slot while the reply is made, and writes the text to that turn's message. The SDK README shows the recipe. The maintainer chose this (2026-11-19).
+Consequences: Amends D99 and D100. Captions pair with their turns exactly. F170's costs stand: about 0.3 s later to the first audio and a second slot's memory, paid by apps that caption. A failed caption leaves the turn as a voice message without text, as before.
+
+### D110. Hub search and recommended sampling stay in the hub, as a deliberate exception to "expose llama-server"
+
+Status: Decided (2026-11-19)
+
+Context: The SDK exposes llama-server's features and little beyond them. The hub's search (paging, base-model grouping, quantisation listing, D68) and `recommendedSampling` (the GGUF header's and the base model's `generation_config.json`, D79) go beyond upstream's `-hf`, which only fetches a named model. A review proposed moving them to their own module. They rest on about twelve of the hub's internals (the resolver, transport, header reader, plan resolution, installed-copy lookup, token handling), so a module of their own would make those public behind the opt-in, or copy them, and move `FakeLlamaBroHub`'s search scripting with them.
+Decision: They stay in `llamabro-hub`, recorded as a deliberate scope exception: choosing a model to download is what a hub is for, and every app that lets people pick a model needs it. The maintainer chose this after weighing the split (2026-11-19).
+Consequences: The hub's public surface keeps search and sampling; its internals stay internal.
+
+### D111. Patch 0006 is dropped: speech computes the text head on every frame again
+
+Status: Decided (2026-11-19)
+
+Context: Patch 0006 (D86, D94) made `llama_batch_ext`'s two output flags differ so that LFM3's speech-only frames skip the 2048 × 128,000 text head: 38.3 → 33.8 ms per frame on the NPU, speech 2.0 → 2.3 times real time (F156, F165). It is 297 lines over nine files of llama.cpp, `llama.h`'s semantics included, and the costliest patch to carry at each upgrade. Without it speech still runs at about twice real time on the NPU, ample for playback; captions on the second slot slow it further (F170).
+Decision: Patch 0006 goes from `sdk/native/patches/`; it is kept in `research/ph/speech-output/` for upstream. Patch 0008, which edits the same speech helper, is re-cut on the remaining patches with its changed lines unchanged. The maintainer chose this (2026-11-19).
+Consequences: Amends D86 and D94. Speech output on the NPU costs about 4.5 ms more per frame; `device-speech` still requires at least 1.5 times real time; the phone gave 2.41 without the patch (19.8 s of audio in 8.2 s). One patch fewer to port at each llama.cpp upgrade.
+
+### D112. The Vulkan recipe leaves the live build for research/vulkan-adreno
+
+Status: Decided (2026-11-19)
+
+Context: D31 took Vulkan out of 1.0 but kept its recipe in the live build for a retry: a `vulkan` value of `LB_BACKENDS` in the CMake file, the SPIRV-Headers include, `build-backends.sh`'s host build behind `LB_BUILD_VULKAN=1`, and `fetch-deps.sh`. The retry at b12479 (F174) made ggml-vulkan run correctly on the Adreno 830 with four patches, and found it slower than the CPU and OpenCL for prompts and replies there; its build recipe and patches live in `research/vulkan-adreno/`.
+Decision: The live build loses its Vulkan branches. `fetch-deps.sh` moves to `research/vulkan-adreno/`, beside the build script and the patches that use it. `DeviceKind` keeps mapping a `vulkan` backend to the GPU, so a returning route needs no API change (D32). The maintainer chose this (2026-11-19).
+Consequences: Amends D31's "the build recipe is kept". A Vulkan retry starts from `research/vulkan-adreno/README.md`.

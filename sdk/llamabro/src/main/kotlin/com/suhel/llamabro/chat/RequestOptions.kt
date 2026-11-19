@@ -76,7 +76,6 @@ public class RequestOptions internal constructor(
 
     public companion object {
         /** Nothing set: the model's and llama-server's defaults. */
-        @JvmField
         public val Default: RequestOptions =
             RequestOptions(null, null, null, Sampling.Default, Reasoning.Default, emptyList(), null)
 

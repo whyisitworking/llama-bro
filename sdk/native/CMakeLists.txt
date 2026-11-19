@@ -1,6 +1,6 @@
 # Llama-Bro SDK native build (P1). Builds libllamabro (the C API over llama-server's server-context)
 # from the patched llama.cpp copy made by scripts/prepare-llama.sh.
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.25)
 project(llamabro C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -50,15 +50,11 @@ set(GGML_OPENMP           OFF CACHE BOOL "" FORCE)
 
 # Optional backends (P2 T3-T5): built only by scripts/build-backends.sh, inside Qualcomm's image for Hexagon. They
 # come from this same file so ggml-base, which each backend links, is built with the AGP build's exact options.
-set(LB_BACKENDS "" CACHE STRING "Optional backends to build: hexagon (needs HEXAGON_SDK_ROOT), opencl, vulkan")
+set(LB_BACKENDS "" CACHE STRING "Optional backends to build: hexagon (needs HEXAGON_SDK_ROOT), opencl")
 if("hexagon" IN_LIST LB_BACKENDS)
     set(GGML_HEXAGON ON CACHE BOOL "" FORCE)
     set(HEXAGON_SDK_ROOT   "$ENV{HEXAGON_SDK_ROOT}"   CACHE PATH "")
     set(HEXAGON_TOOLS_ROOT "$ENV{HEXAGON_TOOLS_ROOT}" CACHE PATH "")
-endif()
-if("vulkan" IN_LIST LB_BACKENDS)
-    # headers, glslc and SPIRV-Headers come from build-backends.sh (scripts/fetch-deps.sh, F34)
-    set(GGML_VULKAN ON CACHE BOOL "" FORCE)
 endif()
 if("opencl" IN_LIST LB_BACKENDS)
     # upstream's defaults: kernels embedded, Adreno kernels on, OpenCL 3.0 (ggml-opencl/CMakeLists.txt)
@@ -90,13 +86,6 @@ set(GIT_EXECUTABLE "${CMAKE_BINARY_DIR}/lb-git-build-info.sh" CACHE FILEPATH "" 
 
 add_subdirectory(${LB_LLAMA_DIR} llama EXCLUDE_FROM_ALL)
 
-# ggml-vulkan finds SPIRV-Headers but never links its target: upstream's builds get the headers from the system's
-# include directory, which an Android cross-build doesn't have (P2 T5)
-set(LB_SPIRV_INCLUDE_DIR "" CACHE PATH "SPIRV-Headers include directory for ggml-vulkan (build-backends.sh)")
-if(TARGET ggml-vulkan AND LB_SPIRV_INCLUDE_DIR)
-    target_include_directories(ggml-vulkan PRIVATE ${LB_SPIRV_INCLUDE_DIR})
-endif()
-
 add_library(llamabro SHARED
     bridge/src/runtime.cpp
     bridge/src/config.cpp
@@ -106,7 +95,20 @@ add_library(llamabro SHARED
 )
 target_include_directories(llamabro
     PUBLIC  bridge/include
-    PRIVATE bridge/src ${LB_LLAMA_DIR}/tools/server ${LB_LLAMA_DIR}/tools/mtmd ${LB_LLAMA_DIR} ${LB_LLAMA_DIR}/common)
+    PRIVATE bridge/src)
+# upstream's headers are not ours to warn about: SYSTEM keeps the bridge's -Werror to the bridge's own code
+target_include_directories(llamabro SYSTEM PRIVATE
+    ${LB_LLAMA_DIR}/tools/server ${LB_LLAMA_DIR}/tools/mtmd ${LB_LLAMA_DIR} ${LB_LLAMA_DIR}/common)
+foreach(t server-context llama-common llama ggml ggml-base mtmd cpp-httplib)
+    if(TARGET ${t})
+        set_target_properties(${t} PROPERTIES SYSTEM TRUE)
+    endif()
+endforeach()
+# the bridge, the JNI layer and their tools compile with every warning as an error
+function(lb_strict target)
+    target_compile_options(${target} PRIVATE -Wall -Wextra -Werror)
+endfunction()
+lb_strict(llamabro)
 target_link_libraries(llamabro PRIVATE server-context ${CMAKE_THREAD_LIBS_INIT})
 # Host JVM: the same JNI layer, so Kotlin's JniEngine runs against the real core in JVM tests (host end-to-end,
 # sdk/scripts/check.sh). The JDK bundled with Android Studio has no headers; the NDK's jni.h is self-contained and
@@ -150,7 +152,7 @@ add_dependencies(llamabro ${LB_CPU_BACKENDS})
 
 # Our own library names, so an app that also ships another llama.cpp build can't get a duplicate-file error or
 # load the wrong libllama.so (findings F25). OUTPUT_NAME only renames the files; nothing in llama.cpp changes.
-foreach(t ggml-base ggml llama llama-common mtmd ggml-hexagon ggml-opencl ggml-vulkan)
+foreach(t ggml-base ggml llama llama-common mtmd ggml-hexagon ggml-opencl)
     if(LB_PREFIX_LIBS AND TARGET ${t})
         set_target_properties(${t} PROPERTIES OUTPUT_NAME "llamabro-${t}")
     endif()
@@ -178,7 +180,7 @@ if(LB_BUILD_TESTS)
 
     # a device-less ggml backend for the backend-loading tests (P2 T2), next to the CPU variants
     add_library(lb-test-backend MODULE bridge/tests/lb_test_backend.cpp)
-    target_include_directories(lb-test-backend PRIVATE ${LB_LLAMA_DIR}/ggml/src ${LB_LLAMA_DIR}/ggml/include)
+    target_include_directories(lb-test-backend SYSTEM PRIVATE ${LB_LLAMA_DIR}/ggml/src ${LB_LLAMA_DIR}/ggml/include)
     set_target_properties(lb-test-backend PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     add_dependencies(lb-tests lb-test-backend)
     target_compile_definitions(lb-tests PRIVATE "LB_TEST_BACKEND_FILE=\"$<TARGET_FILE_NAME:lb-test-backend>\"")
@@ -188,93 +190,23 @@ if(LB_BUILD_TESTS)
     target_link_libraries(lb-run PRIVATE llamabro llama-common)
 
     add_executable(lb-hub-golden tests/hub-golden/lb_hub_golden.cpp)
-    target_include_directories(lb-hub-golden PRIVATE ${LB_LLAMA_DIR})
+    target_include_directories(lb-hub-golden SYSTEM PRIVATE ${LB_LLAMA_DIR})
     target_link_libraries(lb-hub-golden PRIVATE llama-common cpp-httplib)
+    foreach(t lb-tests lb-test-backend lb-run lb-hub-golden)
+        lb_strict(${t})
+    endforeach()
 
-    set(LB_TESTS
-        runtime_init_twice_same_config_ok
-        runtime_init_different_config_fails
-        devices_lists_cpu
-        runtime_init_retry_after_failure
-        backend_path_env_ignored
-        version_names_build
-        log_callback_can_reenter
-        model_load_auto_ctx
-        auto_ctx_cap_is_per_slot
-        props_build_info_names_llama_build
-        config_defaults_applied
-        model_load_missing_file_fails
-        model_load_bad_file_has_reason
-        model_load_unknown_key_fails
-        model_free_right_after_load
-        load_stops_when_progress_says_false
-        load_stops_midway
-        load_stops_after_the_weights
-        load_runs_when_progress_says_true
-        chat_nonstream_ok
-        chat_stream_ends_with_done_marker
-        cancel_during_decode
-        cancel_during_prefill
-        cancel_during_prefill_with_progress
-        context_exceeded_returns_counts
-        unknown_endpoint_invalid_arg
-        two_requests_one_slot_both_complete
-        model_free_with_inflight_request
-        request_free_inside_callback
-        backends_empty_before_init
-        optional_backend_failure_is_reported
-        backend_init_failure_is_reported
-        backend_env_set_before_load
-        runtime_init_twice_same_config_with_backends_ok
-        backends_config_invalid
-        model_devices_default_is_cpu
-        model_devices_empty_is_cpu_and_no_scan
-        model_devices_invalid_names_fail
-        auto_ctx_fits_budget
-        auto_ctx_budget_load_and_insufficient_error
-        ngram_config_maps_to_ngram_mod
-        ngram_drafts_and_keeps_the_reply
-        dflash_config_maps_to_draft_dflash
-        dflash_without_draft_fails
-        draft_path_without_dflash_fails
-        dflash_missing_file_is_file_not_found
-        dflash_loads_and_drafts
-        fit_counts_the_draft
-        dflash_fit_matches_load_rss
-        fit_estimate_matches_load
-        fit_estimates_at_once_all_answer
-        fit_estimate_on_stub_equals_real
-        load_features_parsed
-        embeddings_mean_pooling
-        embeddings_off_by_default
-        rerank_orders_documents
-        lora_scale_changes_output
-        kv_cache_q8_0_loads_and_generates
-        attachment_placeholder_replaced
-        attachment_user_text_untouched
-        attachment_placeholder_without_attachment_refused
-        attachment_read_errors_are_400
-        attachment_adts_aac_refused
-        attachment_fd_read_and_left_open
-        transcription_path_fd_bytes_same_text
-        attachment_buffers_freed_on_cancel
-        read_fd_reads_whole_file_and_leaves_it_open
-        placeholder_untouched_on_other_routes
-        placeholder_untouched_in_response_format
-        embeddings_placeholder_replaced
-        hybrid_swa_cache_covers_last_message
-        hybrid_swa_cache_covers_last_voice_note
-        hybrid_swa_cache_covers_short_chat
-        hybrid_swa_cache_reuses_live_state
-        hybrid_swa_cache_replies_equal_uncached
-        omni_tts_same_audio_as_upstream
-        realtime_turn_in_memory
-        realtime_misuse_refused
-        realtime_model_free_closes_session
-        media_dir_path_attachment_same_reply_as_bytes
-        media_dir_link_lives_until_the_request_ends
-        media_dir_caller_file_url_reaches_only_the_media_dir
-    )
+    # every test lb-tests registers in main(), read from its source so a new test can't be left out of ctest
+    file(STRINGS bridge/tests/lb_tests.cpp lb_test_entries REGEX "^        {\"[a-z0-9_]+\", [a-z0-9_]+},$")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS bridge/tests/lb_tests.cpp)
+    set(LB_TESTS "")
+    foreach(entry ${lb_test_entries})
+        string(REGEX REPLACE "^ *{\"([a-z0-9_]+)\".*" "\\1" name "${entry}")
+        list(APPEND LB_TESTS ${name})
+    endforeach()
+    if(NOT LB_TESTS)
+        message(FATAL_ERROR "no tests found in bridge/tests/lb_tests.cpp's registry")
+    endif()
     foreach(name ${LB_TESTS})
         add_test(NAME ${name} COMMAND lb-tests ${name})
         set_tests_properties(${name} PROPERTIES ENVIRONMENT "LB_BACKEND_DIR=${CMAKE_BINARY_DIR}/bin" TIMEOUT 300)

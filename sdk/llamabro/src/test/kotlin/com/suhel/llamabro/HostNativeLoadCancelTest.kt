@@ -1,10 +1,10 @@
 package com.suhel.llamabro
 
-import com.suhel.llamabro.internal.Engine
-import com.suhel.llamabro.internal.EngineModel
 import com.suhel.llamabro.internal.JniEngine
 import com.suhel.llamabro.internal.LlamaBroRuntime
-import com.suhel.llamabro.internal.NativeError
+import com.suhel.llamabro.spi.Engine
+import com.suhel.llamabro.spi.EngineModel
+import com.suhel.llamabro.spi.NativeError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers

@@ -32,8 +32,6 @@ import com.suhel.llamabro.demo.designsystem.components.TopBar
 import com.suhel.llamabro.demo.designsystem.components.TopBarTitle
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
-import com.suhel.llamabro.demo.ui.preview.DemoScreenPreviews
-import com.suhel.llamabro.demo.ui.preview.PreviewFrame
 
 /**
  * Get models: the stateful end. It owns the view model and the open row's sheet; each row asks the view model for its

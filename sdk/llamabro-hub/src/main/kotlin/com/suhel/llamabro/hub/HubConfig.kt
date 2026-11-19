@@ -44,8 +44,8 @@ public class HubConfig internal constructor(
         }
     }
 
-    // D70: create returns the same hub for an equal config and refuses a different one, so equality covers every
-    // setting. The logger and the token provider are compared by reference: build the config once and share it.
+    // equality covers every field, the logger and token provider by reference; create() compares only the settings
+    // (D106)
     override fun equals(other: Any?): Boolean =
         this === other ||
             (
@@ -72,7 +72,6 @@ public class HubConfig internal constructor(
 
     public companion object {
         /** Uses the public Hugging Face endpoint and the app's private no-backup cache. */
-        @JvmField
         public val Default: HubConfig = HubConfig("https://huggingface.co/", null, 1.seconds, null, null)
     }
 }

@@ -15,6 +15,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 import java.io.RandomAccessFile
 import kotlin.math.log10
 import kotlin.math.sqrt
@@ -27,6 +28,15 @@ interface SampleSource : AutoCloseable {
     val rate: Int
 
     fun read(buffer: ShortArray): Int
+}
+
+/** Why a recording couldn't start or go on. */
+enum class RecordingFailure {
+    /** The microphone couldn't be opened. */
+    Microphone,
+
+    /** The recording couldn't be written: the phone's storage is full or failing. Nothing of it is kept. */
+    Storage,
 }
 
 /** A voice message being recorded or waiting to be sent (D76): its file, its length so far, its levels, [live]. */
@@ -53,9 +63,10 @@ class VoiceRecorder(
 
     /**
      * Starts recording; false when one is already under way or waiting. The microphone and the file are opened off the
-     * caller's thread; when the microphone can't be opened, the take goes and [onFailure] runs.
+     * caller's thread; when the microphone can't be opened or the file can't be written, the take goes and [onFailure]
+     * says which.
      */
-    fun start(onFailure: () -> Unit = {}): Boolean {
+    fun start(onFailure: (RecordingFailure) -> Unit = {}): Boolean {
         if (_take.value != null) return false
         val name = store.newName()
         _take.value = Take(name, 0, emptyList(), live = true)
@@ -68,10 +79,16 @@ class VoiceRecorder(
                         throw e
                     } catch (ignored: Exception) {
                         _take.value = null
-                        onFailure()
+                        onFailure(RecordingFailure.Microphone)
                         return@launch
                     }
-                record(source, store.file(name))
+                try {
+                    record(source, store.file(name))
+                } catch (ignored: IOException) {
+                    store.file(name).delete()
+                    _take.value = null
+                    onFailure(RecordingFailure.Storage)
+                }
             }
         return true
     }

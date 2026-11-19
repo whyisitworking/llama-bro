@@ -177,122 +177,126 @@ std::string meta_key(const llama_model * model, int32_t i) {
 extern "C" {
 
 lb_status lb_model_load(const char * config_json, lb_progress_cb cb, void * user, lb_model ** out, char ** error_json) {
-    if (error_json) *error_json = nullptr;
-    if (!out) {
-        lb_set_error(error_json, "out is NULL");
-        return LB_ERR_INVALID_ARG;
-    }
-    *out = nullptr;
-    if (!lb_runtime_is_initialized()) {
-        lb_set_error(error_json, "lb_runtime_init has not been called");
-        return LB_ERR_NOT_INITIALIZED;
-    }
+    return lb_guard(LB_ERR_INTERNAL, error_json, [&]() -> lb_status {
+        if (error_json) *error_json = nullptr;
+        if (!out) {
+            lb_set_error(error_json, "out is NULL");
+            return LB_ERR_INVALID_ARG;
+        }
+        *out = nullptr;
+        if (!lb_runtime_is_initialized()) {
+            lb_set_error(error_json, "lb_runtime_init has not been called");
+            return LB_ERR_NOT_INITIALIZED;
+        }
 
-    json cfg;
-    try {
-        cfg = json::parse(config_json ? config_json : "");
-    } catch (const std::exception & e) {
-        lb_set_error(error_json, std::string("invalid config JSON: ") + e.what());
-        return LB_ERR_INVALID_ARG;
-    }
+        json cfg;
+        try {
+            cfg = json::parse(config_json ? config_json : "");
+        } catch (const std::exception & e) {
+            lb_set_error(error_json, std::string("invalid config JSON: ") + e.what());
+            return LB_ERR_INVALID_ARG;
+        }
 
-    auto m = std::make_unique<lb_model>();
-    std::string err;
-    if (!lb_parse_model_config(cfg, m->params, err)) {
-        lb_set_error(error_json, err);
-        return LB_ERR_INVALID_ARG;
-    }
-    if (!can_open(m->params.model.path, err) || !can_open(m->params.mmproj.path, err) ||
-        !can_open(m->params.speculative.draft.mparams.path, err)) {
-        lb_set_error(error_json, "failed to load model: " + err, "file_not_found");
-        return LB_ERR_LOAD_FAILED;
-    }
-    lb_error_capture errors;
-    if (lb_config_wants_auto_ctx(cfg)) {
-        const int64_t budget_mib = lb_config_memory_budget_mib(cfg);
-        bool insufficient = false;
-        const uint32_t cap = lb_config_ctx_cap(cfg);
-        const bool ok = budget_mib > 0
-            ? lb_fit_auto_ctx(m->params, budget_mib * 1024 * 1024, m->ctx_fit, insufficient, err, cap)
-            : lb_resolve_auto_ctx(m->params, err, cap);
-        if (!ok) {
-            if (insufficient) {
-                lb_set_error(error_json, "failed to load model: " + err, "insufficient_memory");
-            } else {
-                if (!errors.first_line().empty()) err += ": " + errors.first_line();
-                lb_set_error(error_json, "failed to load model: " + err);
-            }
+        auto m = std::make_unique<lb_model>();
+        std::string err;
+        if (!lb_parse_model_config(cfg, m->params, err)) {
+            lb_set_error(error_json, err);
+            return LB_ERR_INVALID_ARG;
+        }
+        if (!can_open(m->params.model.path, err) || !can_open(m->params.mmproj.path, err) ||
+            !can_open(m->params.speculative.draft.mparams.path, err)) {
+            lb_set_error(error_json, "failed to load model: " + err, "file_not_found");
             return LB_ERR_LOAD_FAILED;
         }
-    }
-    m->progress_cb = cb;
-    m->progress_user = user;
+        lb_error_capture errors;
+        if (lb_config_wants_auto_ctx(cfg)) {
+            const int64_t budget_mib = lb_config_memory_budget_mib(cfg);
+            bool insufficient = false;
+            const uint32_t cap = lb_config_ctx_cap(cfg);
+            const bool ok = budget_mib > 0
+                ? lb_fit_auto_ctx(m->params, budget_mib * 1024 * 1024, m->ctx_fit, insufficient, err, cap)
+                : lb_resolve_auto_ctx(m->params, err, cap);
+            if (!ok) {
+                if (insufficient) {
+                    lb_set_error(error_json, "failed to load model: " + err, "insufficient_memory");
+                } else {
+                    if (!errors.first_line().empty()) err += ": " + errors.first_line();
+                    lb_set_error(error_json, "failed to load model: " + err);
+                }
+                return LB_ERR_LOAD_FAILED;
+            }
+        }
+        m->progress_cb = cb;
+        m->progress_user = user;
 
-    lb_model * raw = m.get();
-    m->worker = std::thread(worker_main, raw);
-    {
-        std::unique_lock<std::mutex> lk(m->mtx);
-        m->cv.wait(lk, [raw] { return raw->state != lb_model::LOADING; });
-    }
-    m->loading.store(false);  // no progress callbacks once this returns: `user` may be gone
-    if (m->state == lb_model::FAILED) {
-        m->worker.join();
-        if (m->load_status != LB_ERR_CANCELLED) lb_set_error(error_json, m->load_error);
-        return m->load_status;  // m, and the model the worker loaded, are freed here
-    }
-    *out = m.release();
-    return LB_OK;
+        lb_model * raw = m.get();
+        m->worker = std::thread(worker_main, raw);
+        {
+            std::unique_lock<std::mutex> lk(m->mtx);
+            m->cv.wait(lk, [raw] { return raw->state != lb_model::LOADING; });
+        }
+        m->loading.store(false);  // no progress callbacks once this returns: `user` may be gone
+        if (m->state == lb_model::FAILED) {
+            m->worker.join();
+            if (m->load_status != LB_ERR_CANCELLED) lb_set_error(error_json, m->load_error);
+            return m->load_status;  // m, and the model the worker loaded, are freed here
+        }
+        *out = m.release();
+        return LB_OK;
+    });
 }
 
 char * lb_model_info(lb_model * m) {
-    if (!m) return nullptr;
-    const llama_context * lctx = m->ctx_server.get_llama_context();
-    const llama_model * model = llama_get_model(lctx);
+    return lb_guard(static_cast<char *>(nullptr), nullptr, [&]() -> char * {
+        if (!m) return nullptr;
+        const llama_context * lctx = m->ctx_server.get_llama_context();
+        const llama_model * model = llama_get_model(lctx);
 
-    char desc[256] = {0};
-    llama_model_desc(model, desc, sizeof(desc));
+        char desc[256] = {0};
+        llama_model_desc(model, desc, sizeof(desc));
 
-    json metadata = json::object();
-    const int32_t n_meta = llama_model_meta_count(model);
-    for (int32_t i = 0; i < n_meta; i++) {
-        metadata[meta_key(model, i)] = meta_value(model, i);
-    }
-
-    json props = json::object();
-    {
-        const std::function<bool()> never = []() { return false; };
-        server_http_req req{ {}, {}, "/props", "", "", {}, never };
-        auto res = m->endpoints.at("props")(req);
-        try {
-            props = json::parse(res->data);
-        } catch (...) {
-            props = json::object();
+        json metadata = json::object();
+        const int32_t n_meta = llama_model_meta_count(model);
+        for (int32_t i = 0; i < n_meta; i++) {
+            metadata[meta_key(model, i)] = meta_value(model, i);
         }
-        res->on_complete();
-    }
 
-    json devices = json::array();  // the devices the model was loaded on (P2 T6)
-    for (ggml_backend_dev_t dev : m->params.devices) {
-        if (dev) devices.push_back(ggml_backend_dev_name(dev));
-    }
-    if (devices.empty()) devices.push_back("CPU");
+        json props = json::object();
+        {
+            const std::function<bool()> never = []() { return false; };
+            server_http_req req{ {}, {}, "/props", "", "", {}, never };
+            auto res = m->endpoints.at("props")(req);
+            try {
+                props = json::parse(res->data);
+            } catch (...) {
+                props = json::object();
+            }
+            res->on_complete();
+        }
 
-    return lb_strdup(json{
-        {"devices", devices},
-        {"ctx_fit", m->ctx_fit},
-        // what decodes: a separate DFlash model, MTP head, or neither
-        {"speculative", std::find(m->params.speculative.types.begin(), m->params.speculative.types.end(),
-                                  COMMON_SPECULATIVE_TYPE_DRAFT_DFLASH) != m->params.speculative.types.end() ? "dflash" :
-                        std::find(m->params.speculative.types.begin(), m->params.speculative.types.end(),
-                                  COMMON_SPECULATIVE_TYPE_DRAFT_MTP) != m->params.speculative.types.end() ? "mtp" : "none"},
-        {"n_ctx", llama_n_ctx(lctx)},
-        {"n_ctx_train", llama_model_n_ctx_train(model)},
-        {"n_params", llama_model_n_params(model)},
-        {"size", llama_model_size(model)},
-        {"desc", desc},
-        {"metadata", metadata},
-        {"props", props},
-    }.dump());
+        json devices = json::array();  // the devices the model was loaded on (P2 T6)
+        for (ggml_backend_dev_t dev : m->params.devices) {
+            if (dev) devices.push_back(ggml_backend_dev_name(dev));
+        }
+        if (devices.empty()) devices.push_back("CPU");
+
+        return lb_json_strdup(json{
+            {"devices", devices},
+            {"ctx_fit", m->ctx_fit},
+            // what decodes: a separate DFlash model, MTP head, or neither
+            {"speculative", std::find(m->params.speculative.types.begin(), m->params.speculative.types.end(),
+                                      COMMON_SPECULATIVE_TYPE_DRAFT_DFLASH) != m->params.speculative.types.end() ? "dflash" :
+                            std::find(m->params.speculative.types.begin(), m->params.speculative.types.end(),
+                                      COMMON_SPECULATIVE_TYPE_DRAFT_MTP) != m->params.speculative.types.end() ? "mtp" : "none"},
+            {"n_ctx", llama_n_ctx(lctx)},
+            {"n_ctx_train", llama_model_n_ctx_train(model)},
+            {"n_params", llama_model_n_params(model)},
+            {"size", llama_model_size(model)},
+            {"desc", desc},
+            {"metadata", metadata},
+            {"props", props},
+        });
+    });
 }
 
 void lb_model_free(lb_model * m) {

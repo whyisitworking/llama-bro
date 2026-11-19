@@ -180,7 +180,7 @@ class HostAudioTest {
             val text =
                 when (byPath) {
                     is Typed.Value -> byPath.value
-                    is Typed.Incomplete -> byPath.json
+                    is Typed.Incomplete -> byPath.text
                     is Typed.Invalid -> error("a transcript is never Invalid: $byPath")
                 }
             assertTrue("a transcript: $byPath", text.isNotEmpty())

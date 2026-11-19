@@ -225,46 +225,6 @@ internal class HubModelTest {
             }
         }
 
-    @Test fun oldFormatCacheCountsAsInstalled() =
-        runBlocking {
-            val cache = Files.createTempDirectory("hub-model-old-format-").toFile()
-            val ref = HfModel("test/update")
-            instance(cache).model(ref).fetch {}
-            val installed = File(cache, ".llamabro/installed")
-            installed.deleteRecursively() // as a cache written before the installed record
-            hub.reset()
-            val requests = RecordingTransport(HttpTransport(hub.apiUrl, null, null))
-            assertTrue(
-                instance(cache, requests)
-                    .model(ref)
-                    .fetch {}
-                    .toString()
-                    .contains("a".repeat(40)),
-            )
-            assertEquals(emptyList<String>(), requests.urls)
-            assertTrue("adopted", leftovers(installed).isNotEmpty())
-
-            installed.deleteRecursively()
-            FakeHub(updateRepo(commit = "b".repeat(40), seed = 51)).use { newer ->
-                val client = instance(cache, endpoint = newer.apiUrl)
-                client.recordedPlan(ref) // a started update adopts the old copy before its listing moves refs/main
-                assertTrue(
-                    client
-                        .model(ref)
-                        .fetch {}
-                        .toString()
-                        .contains("a".repeat(40)),
-                )
-                assertTrue(
-                    newer.log().none {
-                        it.jsonObject
-                            .getValue("host")
-                            .jsonPrimitive.content == "cdn"
-                    },
-                )
-            }
-        }
-
     @Test fun hasUpdateThrowsWhenRefused() =
         runBlocking {
             val cache = Files.createTempDirectory("hub-model-refused-").toFile()

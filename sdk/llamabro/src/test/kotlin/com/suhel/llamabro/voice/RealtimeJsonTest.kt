@@ -141,24 +141,5 @@ class RealtimeJsonTest {
         assertEquals(null, bare.outputTokens)
     }
 
-    @Test
-    fun aTurnIsSentToTranscribeAsAPlainWav() {
-        val wav = TurnCaptions.wav(shortArrayOf(1, -1, 7, 99), 3, 16000)
-        val b =
-            java.nio.ByteBuffer
-                .wrap(wav)
-                .order(java.nio.ByteOrder.LITTLE_ENDIAN)
-        assertEquals("RIFF", String(wav, 0, 4))
-        assertEquals(36 + 6, b.getInt(4))
-        assertEquals("WAVEfmt ", String(wav, 8, 8))
-        assertEquals(1, b.getShort(20).toInt()) // PCM
-        assertEquals(1, b.getShort(22).toInt()) // mono
-        assertEquals(16000, b.getInt(24))
-        assertEquals(16, b.getShort(34).toInt())
-        assertEquals("data", String(wav, 36, 4))
-        assertEquals(6, b.getInt(40))
-        assertArrayEquals(shortArrayOf(1, -1, 7), ShortArray(3) { b.getShort(44 + 2 * it) })
-    }
-
     private fun decode(text: String): VoiceEvent = RealtimeJson.decode(RealtimeJson.parse(text), text)
 }

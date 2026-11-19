@@ -211,54 +211,6 @@ class FakeVoiceSessionTest {
         }
 
     @Test
-    fun theUsersTurnIsCaptionedAfterItsCommitWhileTheReplyIsMade() =
-        runBlocking {
-            val fake =
-                fake {
-                    voiceReply { text("Once upon a time.") }
-                    transcript("Tell me a story.")
-                }
-            val model = fake.model(slots = 2)
-            val session = model.voiceSession { transcribeUser { language = "fr" } }
-            session.append(shortArrayOf(1, 2, 3))
-            session.append(shortArrayOf(4, 5))
-            session.commit()
-            val events = session.until(2) { it is VoiceEvent.ReplyDone || it is VoiceEvent.UserTranscript }
-            val committed = events.filterIsInstance<VoiceEvent.TurnCommitted>().single()
-            val caption = events.filterIsInstance<VoiceEvent.UserTranscript>().single()
-            assertEquals(committed.itemId, caption.itemId)
-            assertEquals("Tell me a story.", caption.text)
-            assertTrue(events.indexOf(committed) < events.indexOf(caption))
-            assertTrue(fake.transcribeRequests.single().contains(""""language":"fr""""))
-            session.close()
-            model.closeAndJoin()
-        }
-
-    @Test
-    fun turnsCommittedTogetherAreCaptionedInTheirOrder() =
-        runBlocking {
-            val fake =
-                fake {
-                    transcript("First.")
-                    transcript("Second.")
-                    voiceReply { text("Both heard.") }
-                }
-            val model = fake.model(slots = 2)
-            val session = model.voiceSession { transcribeUser() }
-            session.append(ShortArray(4))
-            session.commit(respond = false)
-            session.append(ShortArray(4))
-            session.commit(respond = false)
-            session.respond()
-            val events = session.until(3) { it is VoiceEvent.ReplyDone || it is VoiceEvent.UserTranscript }
-            val items = events.filterIsInstance<VoiceEvent.TurnCommitted>().map { it.itemId }
-            val captions = events.filterIsInstance<VoiceEvent.UserTranscript>().associate { it.itemId to it.text }
-            assertEquals(mapOf(items[0] to "First.", items[1] to "Second."), captions)
-            session.close()
-            model.closeAndJoin()
-        }
-
-    @Test
     fun aModelThatSpeaksListsItsVoices() =
         runBlocking {
             val speaking = fake().apply { voices = listOf("female", "male") }.model()
@@ -269,33 +221,6 @@ class FakeVoiceSessionTest {
             assertEquals(emptyList<String>(), quiet.info.voices)
             assertFalse(quiet.info.supportsSpeech)
             quiet.closeAndJoin()
-        }
-
-    @Test
-    fun captionsNeedASecondSlot() =
-        runBlocking {
-            val model = fake().model(slots = 1)
-            val e =
-                assertThrows(LlamaBroException.InvalidRequest::class.java) {
-                    runBlocking { model.voiceSession { transcribeUser() } }
-                }
-            assertTrue(e.message!!, e.message!!.contains("parallelSlots = 2"))
-            model.closeAndJoin()
-        }
-
-    @Test
-    fun aFailedCaptionIsAnErrorAndTheReplyGoesOn() =
-        runBlocking {
-            val fake = fake { voiceReply { text("Hi.") } } // no transcript scripted: the transcription fails
-            val model = fake.model(slots = 2)
-            val session = model.voiceSession { transcribeUser() }
-            session.append(ShortArray(4))
-            session.commit()
-            val events = session.until(2) { it is VoiceEvent.ReplyDone || it is VoiceEvent.Error }
-            assertEquals("user_transcription_failed", events.filterIsInstance<VoiceEvent.Error>().single().type)
-            assertEquals("Hi.", events.filterIsInstance<VoiceEvent.ReplyDone>().single().text)
-            session.close()
-            model.closeAndJoin()
         }
 
     private fun VoiceEvent.replyIdOrNull(): String? =

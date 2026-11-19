@@ -5,7 +5,7 @@ package com.suhel.llamabro
  * always loaded; the others come from backend artifacts on the classpath (`llamabro-hexagon`, …). One that failed
  * never stops the runtime: it's here with its [error], and models load on the backends that did load.
  */
-public class Backend internal constructor(
+public data class Backend internal constructor(
     /** `cpu`, or the name a backend artifact announces (`hexagon`, `opencl`, `vulkan`). */
     public val name: String,
     public val loaded: Boolean,
@@ -13,12 +13,4 @@ public class Backend internal constructor(
     public val error: String?,
     /** Names of the devices it added (e.g. `HTP0`), as in [DeviceInfo.name]. */
     public val devices: List<String>,
-) {
-    override fun equals(other: Any?): Boolean = other is Backend && parts() == other.parts()
-
-    override fun hashCode(): Int = parts().hashCode()
-
-    override fun toString(): String = "Backend(name=$name, loaded=$loaded, error=$error, devices=$devices)"
-
-    private fun parts() = listOf(name, loaded, error, devices)
-}
+)

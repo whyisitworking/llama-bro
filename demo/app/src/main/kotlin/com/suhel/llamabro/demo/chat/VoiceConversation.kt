@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -93,9 +94,8 @@ class VoiceConversation(
     private var meter: Job? = null
     private var closed = false
 
-    /** The person's turns committed with audio, oldest first, whose caption hasn't come: their message ids. */
-    private val uncaptioned = ArrayDeque<Long>()
-    private val captionRows = mutableMapOf<String, Long>()
+    /** Captions of the person's turns while the session is open and captions are on (D109). */
+    private var captions: TurnCaptions? = null
 
     /** The reply being made: its id, what it said, its speech so far and its playback. */
     private class Reply(val id: String) {
@@ -186,9 +186,8 @@ class VoiceConversation(
             }
             // a turn whose recording can't be kept (the disk is full) still goes to the model; the chat says so
             saveClip(samples, MIC_RATE)?.let { voice ->
-                uncaptioned.addLast(
-                    chats.append(chatId, NewMessage(MessageKind.User, "", sentAt = clock(), voice = voice)),
-                )
+                val row = chats.append(chatId, NewMessage(MessageKind.User, "", sentAt = clock(), voice = voice))
+                captions?.add(row, audio.file(voice.name))
             }
             _ui.update { it.copy(phase = VoicePhase.Thinking, level = 0f, userWords = null, caption = "") }
             session?.commit()
@@ -241,7 +240,6 @@ class VoiceConversation(
                         listOfNotNull(INSTRUCTION, Instructions.system(now.instructionsAbout, now.instructionsStyle))
                             .joinToString("\n\n")
                     maxOutputTokens = MAX_REPLY_TOKENS
-                    if (now.captionYou) transcribeUser()
                 }
             } catch (e: CancellationException) {
                 lease.release()
@@ -253,6 +251,10 @@ class VoiceConversation(
             }
         held = lease
         session = opened
+        if (now.captionYou) {
+            captions =
+                TurnCaptions(lease.model, scope, dispatcher) { row, text -> turn.withLock { onCaption(row, text) } }
+        }
         output = speech(opened.outputSampleRate ?: OUT_RATE)
         _ui.update { it.copy(voice = voice) }
         events =
@@ -275,8 +277,7 @@ class VoiceConversation(
 
     private suspend fun onEvent(event: VoiceEvent) {
         when (event) {
-            is VoiceEvent.TurnCommitted -> uncaptioned.removeFirstOrNull()?.let { captionRows[event.itemId] = it }
-            is VoiceEvent.UserTranscript -> onCaption(event)
+            is VoiceEvent.TurnCommitted -> Unit
             is VoiceEvent.ReplyStarted -> reply = Reply(event.replyId)
             is VoiceEvent.ReplyText -> onReplyText(event)
             is VoiceEvent.ReplyAudio -> onReplyAudio(event)
@@ -286,12 +287,9 @@ class VoiceConversation(
         }
     }
 
-    /** The person's words, captioned (D99): kept as their voice message's text, and shown under the orb. */
-    private suspend fun onCaption(event: VoiceEvent.UserTranscript) {
-        val text = event.text.trim()
-        captionRows.remove(event.itemId)?.let { row ->
-            if (text.isNotEmpty()) chats.update(row, MessageChange(text = text))
-        }
+    /** The person's words, captioned: kept as their voice message's text, and shown under the orb. */
+    private suspend fun onCaption(row: Long, text: String) {
+        if (text.isNotEmpty()) chats.update(row, MessageChange(text = text))
         _ui.update { it.copy(userWords = text.ifEmpty { null }) }
     }
 
@@ -338,7 +336,10 @@ class VoiceConversation(
             }
         r.player =
             scope.launch(io) {
-                for (pcm in queue) out.write(pcm)
+                for (pcm in queue) {
+                    ensureActive() // a stopped reply plays nothing more of what was queued
+                    out.write(pcm)
+                }
                 out.drain()
                 withContext(dispatcher) { turn.withLock { finishReply(r) } }
             }
@@ -365,9 +366,14 @@ class VoiceConversation(
     private suspend fun stopReply() {
         val r = reply ?: return
         session?.cancelReply()
-        r.playback?.close()
-        output?.stop()
+        // drop the speech still queued (close would play it out), stop the player, then the track: stopping it
+        // releases a write blocked on a full buffer. A write that slipped in before the player saw its cancel would
+        // take audio focus again, so the track is stopped once more after the player has ended.
+        r.playback?.cancel()
         r.player?.cancel()
+        output?.stop()
+        r.player?.join()
+        output?.stop()
         saveReply(r, stopped = true)
         finishReply(r)
     }
@@ -401,10 +407,10 @@ class VoiceConversation(
         session = null
         output?.close()
         output = null
+        captions?.close()
+        captions = null
         held?.release()
         held = null
-        uncaptioned.clear()
-        captionRows.clear()
         _ui.update { it.copy(phase = VoicePhase.Ready, level = 0f) }
     }
 
@@ -490,7 +496,7 @@ class VoiceConversation(
         private const val MIN_TURN_SAMPLES = MIC_RATE / 5
         private const val METER_MILLIS = 50L
         private const val MILLIS_PER_SECOND = 1_000L
-        private val QUIET_ERRORS = setOf("input_audio_buffer_commit_empty", "user_transcription_failed")
+        private val QUIET_ERRORS = setOf("input_audio_buffer_commit_empty")
     }
 }
 

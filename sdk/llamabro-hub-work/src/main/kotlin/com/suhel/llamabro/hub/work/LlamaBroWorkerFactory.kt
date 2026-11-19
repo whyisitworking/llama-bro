@@ -34,7 +34,6 @@ public class LlamaBroWorkerFactory internal constructor(
     private val tries: (Context) -> StalledTries = ::PreferencesStalledTries,
     private val clock: () -> Long = ::monotonicMillis,
 ) : WorkerFactory() {
-    @JvmOverloads
     public constructor(hub: LlamaBroHub, notifications: DownloadNotifications = DownloadNotifications()) :
         this(hubDownloads(hub), notifications)
 

@@ -22,6 +22,11 @@ class FollowState(following: Boolean = true) {
         following = true
     }
 
+    /** The reader moved the list toward older messages: it stays where they leave it. */
+    fun leave() {
+        following = false
+    }
+
     /**
      * A scroll moved the list from [from] to [to], each the first visible item's index and its offset; [atEnd] is
      * whether it can scroll no further. Any scroll counts, the reader's touch or an accessibility service's action:

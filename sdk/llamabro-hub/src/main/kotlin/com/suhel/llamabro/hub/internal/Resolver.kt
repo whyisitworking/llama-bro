@@ -4,6 +4,7 @@ import com.suhel.llamabro.hub.HubException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -38,7 +39,9 @@ internal class Resolver(
             require(isValidRepoId(repo)) { "invalid HF repo id: $repo" }
             try {
                 listOnline(repo)
-            } catch (e: Exception) {
+            } catch (
+                @Suppress("TooGenericExceptionCaught") e: Exception,
+            ) {
                 if (e is CancellationException) throw e
                 // A look answers from the cache only when the Hub can't be reached: an HTTP answer (a refusal, a 5xx,
                 // malformed JSON) is the Hub's, and passing the cache off as it would hide it (D64).
@@ -117,7 +120,7 @@ internal class Resolver(
             statusFailure(response, body, repo)?.let { throw it }
             try {
                 return Json.parseToJsonElement(body)
-            } catch (e: Exception) {
+            } catch (e: SerializationException) {
                 throw HubException.Network("invalid Hub JSON from $url", e, true)
             }
         }
@@ -125,29 +128,17 @@ internal class Resolver(
 
     /** What a non-200 answer means, or null for a 200. */
     private fun statusFailure(response: Response, body: String, repo: String): HubException? =
-        when (response.status) {
-            200 -> {
-                null
-            }
-
-            401, 403 -> {
-                HubException.Unauthorized(
-                    response.status,
-                    "gated or private repo $repo: set HubConfig.token and accept the model's terms on huggingface.co",
-                )
-            }
-
-            404 -> {
-                HubException.NotFound("repository not found: $repo", emptyList())
-            }
-
-            429 -> {
-                HubException.RateLimited(response.headers["retry-after"]?.firstOrNull()?.toLongOrNull())
-            }
-
-            else -> {
-                HubException.Network(errorText(body), null, response.status >= 500)
-            }
+        if (response.status == HTTP_OK) {
+            null
+        } else {
+            hubFailure(
+                response,
+                unauthorized =
+                    "gated or private repo $repo: set HubConfig.token and accept the model's terms on " +
+                        "huggingface.co",
+                notFound = "repository not found: $repo",
+                other = errorText(body),
+            )
         }
 
     private fun errorText(body: String): String =
@@ -204,3 +195,5 @@ internal class Resolver(
 
 /** No route to the Hub, as opposed to an answer from it ([HubException.Network.unreachable]). */
 internal fun isUnreachable(e: Throwable): Boolean = e is IOException || (e is HubException.Network && e.unreachable)
+
+private const val HTTP_OK = 200

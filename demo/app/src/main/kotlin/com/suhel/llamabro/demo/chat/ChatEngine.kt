@@ -1,7 +1,6 @@
 package com.suhel.llamabro.demo.chat
 
 import androidx.tracing.trace
-import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelInfo
 import com.suhel.llamabro.chat.ChatEvent
@@ -325,7 +324,9 @@ class ChatEngine(
                 host.hold(key, chosen) { activeTurns.value > 1 }
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (
+                @Suppress("TooGenericExceptionCaught") e: Exception,
+            ) {
                 limit.value = Limits.forLoadFailure(name, e)
                     ?: Limit("$name didn't start. Try again.", LimitAction.Retry, "Retry")
                 return null
@@ -913,7 +914,9 @@ class ChatEngine(
                 }
                 invalidate()
                 throw e
-            } catch (e: Exception) {
+            } catch (
+                @Suppress("TooGenericExceptionCaught") e: Exception,
+            ) {
                 ticker.cancel()
                 val limit = Limits.forLoadFailure(currentName(), e)
                 finish(replyId, user, draft.failed(limit?.line ?: "That didn't work."))

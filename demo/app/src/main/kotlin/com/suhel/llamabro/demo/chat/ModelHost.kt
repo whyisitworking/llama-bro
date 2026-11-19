@@ -126,7 +126,9 @@ class ModelHost(
                     model?.let { open ->
                         try {
                             open.closeAndJoin()
-                        } catch (e: Exception) {
+                        } catch (
+                            @Suppress("TooGenericExceptionCaught") e: Exception,
+                        ) {
                             // a close that fails must not block every later load; the SDK has let go of what it could
                             Log.w("ModelHost", "close failed: ${e.javaClass.simpleName}")
                         }
@@ -184,7 +186,9 @@ class ModelHost(
                 Result.success(loaded)
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (
+                @Suppress("TooGenericExceptionCaught") e: Exception,
+            ) {
                 failed = true
                 if (current === this) _state.value = HostState.Failed(key, e)
                 Result.failure(e)
