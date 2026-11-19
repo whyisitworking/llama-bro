@@ -9,6 +9,7 @@ import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.SheetFrame
 import com.suhel.llamabro.demo.designsystem.components.SliderRow
 import com.suhel.llamabro.demo.designsystem.components.Stack
+import java.util.Locale
 
 /** Settings as a grouped list, an action as a group of one, a selectable list, sliders: every use of [ListRow]. */
 @Composable
@@ -44,7 +45,7 @@ internal fun RowsSamples() {
                         SliderRow(
                             "Temperature",
                             1f,
-                            { "%.2f".format(it) },
+                            { "%.2f".format(Locale.ROOT, it) },
                             0f..2f,
                             steps = 39,
                             onValueChange = {},

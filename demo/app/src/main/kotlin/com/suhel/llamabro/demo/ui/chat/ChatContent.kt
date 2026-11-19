@@ -162,7 +162,7 @@ private fun ChatListTitle(bar: ChatBar, onSwitcher: () -> Unit) {
 @Composable
 private fun DownloadIndicator(header: ChatHeader) {
     val fraction = header.downloadFraction ?: return
-    val label = "Arriving · ${header.downloadLabel ?: ""}".trimEnd(' ', '·')
+    val label = "Arriving · ${header.downloadLabel.orEmpty()}".trimEnd(' ', '·')
     Inline(Gap.Block, Modifier.testTag("download_ring")) {
         DownloadRing(fraction, label = label)
         // the ring already says it, with the time left, to a screen reader; the bar shows the percentage so that the

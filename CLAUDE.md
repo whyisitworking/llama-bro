@@ -6,8 +6,11 @@ An Android SDK that runs llama.cpp's llama-server core in-process with a Kotlin 
 
 ## Map
 
-- `sdk/llamabro`: the public API and its internals (`chat/`, `conversation/`, `internal/`); `sdk/llamabro-hub`: downloads;
-  `sdk/llamabro-hexagon`, `sdk/llamabro-opencl`: optional backends; `sdk/llamabro-testing`: `FakeLlamaBro`; `sdk/llamabro-hub-testing`: `FakeLlamaBroHub`;
+- `sdk/llamabro`: the public API and its internals (`chat/`, `conversation/`, `voice/`, `internal/`, `spi/`);
+  `sdk/llamabro-hub`: downloads and search; `sdk/llamabro-hub-work`: the WorkManager download worker;
+  `sdk/llamabro-typed`, `sdk/llamabro-typed-ksp`: typed output and tools, and their KSP processor;
+  `sdk/llamabro-hexagon`, `sdk/llamabro-opencl`: optional backends; `sdk/llamabro-testing`: `FakeLlamaBro`;
+  `sdk/llamabro-hub-testing`: `FakeLlamaBroHub`; `sdk/build-logic`: the modules' shared build conventions;
   `sdk/native`: the C++ bridge, patches and the llama.cpp submodule; `sdk/acceptance`: device test apps.
 - `demo/app`, `demo/designsystem`: the demo chat app and its component library; `demo/scripts`: its checks.
 - `docs/`: architecture, decisions (`D<n>`), findings (`F<n>`), testing, the demo's design. `research/`: the experiments.

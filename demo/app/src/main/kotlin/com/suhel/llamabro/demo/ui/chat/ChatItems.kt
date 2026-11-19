@@ -199,7 +199,8 @@ class ChatItems(
             s?.promptTokens?.let { prompt ->
                 val cached = s.cachedTokens?.takeIf { it > 0 }
                 val line =
-                    "${count.format(prompt)} tokens" + (cached?.let { " · ${count.format(it)} from the cache" } ?: "")
+                    "${count.format(prompt)} tokens" +
+                        (cached?.let { " · ${count.format(it)} from the cache" }.orEmpty())
                 add(ReplyDetail("Prompt", line))
             }
             s?.promptPerSecond?.takeIf { it > 0 }?.let { add(ReplyDetail("Prompt read at", rate(it))) }

@@ -1,13 +1,9 @@
 <!--
-NOT TEXT TO POST. This is reference material for the maintainer of Llama Bro: the problem, the patch and the evidence,
-with line citations. llama.cpp's rules (CONTRIBUTING.md "AI Usage Policy", AGENTS.md "Prohibited AI Usage", both in
-sdk/native/third_party/llama.cpp) prohibit AI-written PR descriptions and posts of any kind, so none of this prose is
-to be pasted into an issue or a PR.
-- Upstream's route is an issue first (CONTRIBUTING.md: "Features must begin with an issue, not a PR"), written by the
-  user in their own words.
-- Any PR needs the PR template's AI-usage disclosure (Requirements section) and a manual review of every line.
-- Search existing issues and PRs first (CONTRIBUTING.md "Before you start"; duplicates are closed). This draft did not.
-Title:
+Facts and evidence for an upstream proposal: the problem, the patch (SDK patch 0003) and its evidence, with line
+citations. llama.cpp asks for issues and pull-request descriptions written by a person (its CONTRIBUTING.md, "AI Usage
+Policy"), so this is material to write from, not text to post. Upstream's route is an issue first ("Features must begin
+with an issue, not a PR"), the PR template's AI-usage disclosure, and a search for existing issues and PRs (not done
+here). Not posted.
 -->
 # server : let an embedder stop a model load through the load progress callback
 

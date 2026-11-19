@@ -13,3 +13,8 @@ local_release.jks
 local_release.properties
 # the demo app
 /demo/**/build/
+# tools' local state, and what a run produces: models, recordings, device logs
+.omc/
+.claude/
+*.gguf
+*.logcat

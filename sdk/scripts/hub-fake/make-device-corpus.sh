@@ -3,8 +3,9 @@
 set -euo pipefail
 
 out="${1:?usage: make-device-corpus.sh OUTPUT_JSON [MODEL_PATH] [MMPROJ_PATH]}"
-model="${2:-$HOME/Downloads/Qwen3.5-4B-Q4_K_M.gguf}"
-mmproj="${3:-$HOME/Downloads/mmproj-F16.gguf}"
+models_dir="${LB_MODELS_DIR:-$HOME/Downloads}"
+model="${2:-$models_dir/Qwen3.5-4B-Q4_K_M.gguf}"
+mmproj="${3:-$models_dir/mmproj-F16.gguf}"
 [ -f "$model" ] || { echo "missing model: $model" >&2; exit 2; }
 [ -f "$mmproj" ] || { echo "missing mmproj: $mmproj" >&2; exit 2; }
 mkdir -p "$(dirname "$out")"

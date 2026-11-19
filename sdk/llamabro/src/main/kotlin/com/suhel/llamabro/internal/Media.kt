@@ -95,14 +95,6 @@ internal object Media {
         return (at(0, "RIFF") && at(WAVE_AT, "WAVE")) || at(0, "ID3") || mpeg || at(0, "fLaC")
     }
 
-    /** The native side's format refusal (a path or descriptor clip), with what to do added. */
-    fun advise(message: String): String =
-        if (message.contains("is not WAV, MP3 or FLAC audio") && !message.contains("convert")) {
-            "$message; record WAV or convert it first"
-        } else {
-            message
-        }
-
     /**
      * [descriptor]'s number. A closed `ParcelFileDescriptor` throws `IllegalStateException` from `getFd()`: that is the
      * request's fault, so it becomes [LlamaBroException.InvalidRequest].

@@ -122,7 +122,8 @@ fun SamplingModelScreen(viewModel: SettingsViewModel, key: HfModel, onBack: () -
             .collectAsStateWithLifecycle()
             .value
             .firstOrNull { it.key == key }
-            ?.name ?: ""
+            ?.name
+            .orEmpty()
     layers?.let { l ->
         SamplingModelContent(
             name,

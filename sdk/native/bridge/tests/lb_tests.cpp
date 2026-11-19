@@ -61,12 +61,14 @@ static void init_runtime() {
     LB_CHECK(st == LB_OK);
 }
 
+// Where the large test models are: LB_MODELS_DIR, else ~/Downloads (as check.sh)
+static std::string models_dir() {
+    const char * home = std::getenv("HOME");
+    return env_or("LB_MODELS_DIR", std::string(home ? home : "") + "/Downloads");
+}
+
 static std::string test_model() {
-    std::string path = env_or("LB_TEST_MODEL", "");
-    if (path.empty()) {
-        const char * home = std::getenv("HOME");
-        path = std::string(home ? home : "") + "/Downloads/Qwen3.5-4B-Q4_K_M.gguf";
-    }
+    const std::string path = env_or("LB_TEST_MODEL", models_dir() + "/Qwen3.5-4B-Q4_K_M.gguf");
     if (FILE * f = std::fopen(path.c_str(), "rb")) {
         std::fclose(f);
     } else {
@@ -174,8 +176,16 @@ static void runtime_init_retry_after_failure() {
 static void backend_path_env_ignored() {
     const std::string dir = env_or("LB_BACKEND_DIR", "");
     LB_CHECK(!dir.empty());
-    // a CPU variant other than the one the score picks, so a load would add a second CPU device
-    const std::string other = dir + "/libggml-cpu-apple_m1.so";
+    // a CPU variant file of this host's build (apple_m1 on a Mac, haswell on x86 and so on): honoured, the variable
+    // would load it beside the one the score picks and add a second CPU device
+    std::vector<std::string> variants;
+    for (const auto & e : std::filesystem::directory_iterator(dir)) {
+        const std::string name = e.path().filename().string();
+        if (name.rfind("libggml-cpu-", 0) == 0) variants.push_back(e.path().string());
+    }
+    LB_CHECK(!variants.empty());
+    std::sort(variants.begin(), variants.end());
+    const std::string other = variants.front();
     setenv("GGML_BACKEND_PATH", other.c_str(), 1);
     init_runtime();
     LB_CHECK(count_devices_of_type("cpu") == 1);
@@ -1395,8 +1405,7 @@ static void fit_estimates_at_once_all_answer() {
 
 static void fit_estimate_on_stub_equals_real() {
     init_runtime();
-    const char * home = std::getenv("HOME");
-    const std::string downloads = std::string(home ? home : "") + "/Downloads/";
+    const std::string downloads = models_dir() + "/";
     const std::vector<std::string> files = {
         "Qwen3.5-4B-Q4_K_M.gguf",
         "gemma-3-4b-it-qat-UD-Q4_K_XL.gguf",
@@ -1438,7 +1447,7 @@ static void fit_estimate_on_stub_equals_real() {
 
 // ---------------------------------------------------------------------------------------------
 // Attachments (D84) and transcription (F55): upstream's own audio test model (tools/server/tests/utils.py
-// ServerPreset.tinylfm3omni, fetch-test-models.sh) and a clip generated at check time (make-test-clip.sh)
+// ServerPreset.tinylfm3omni, fetch-test-models.sh) and the committed clip (sdk/scripts/fixtures/clip.wav)
 // ---------------------------------------------------------------------------------------------
 
 int lb_attachments_live();  // request.cpp, declared in model.h
@@ -1446,7 +1455,7 @@ int lb_attachments_live();  // request.cpp, declared in model.h
 static std::string test_clip() {
     const std::string path = env_or("LB_TEST_CLIP", "");
     if (path.empty() || !std::filesystem::exists(path)) {
-        std::fprintf(stderr, "test clip not found at '%s': run sdk/scripts/make-test-clip.sh <out.wav> and set LB_TEST_CLIP\n",
+        std::fprintf(stderr, "test clip not found at '%s': set LB_TEST_CLIP to sdk/scripts/fixtures/clip.wav\n",
                      path.c_str());
         std::exit(1);
     }

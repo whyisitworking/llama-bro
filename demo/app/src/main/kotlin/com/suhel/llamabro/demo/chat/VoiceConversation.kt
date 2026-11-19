@@ -61,6 +61,7 @@ data class VoiceUi(
  * they run on [io], and hand their results back. [microphone] and [speech] open the phone's audio; tests pass their
  * own.
  */
+@Suppress("LongParameterList") // its collaborators, each a seam the tests replace, are passed in rather than looked up
 class VoiceConversation(
     private val chatId: Long,
     private val key: HfModel,

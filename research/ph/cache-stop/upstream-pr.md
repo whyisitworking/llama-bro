@@ -1,17 +1,13 @@
-# Upstream PR: notes for the pull request (not posted)
+# Upstream PR: the prompt cache on hybrid SWA models
 
-> **Read first.** llama.cpp forbids AI-written PR descriptions (CONTRIBUTING.md, "AI Usage Policy", item 5, and
-> AGENTS.md, "Prohibited AI Usage: AI-written PR descriptions, commit messages, or reviewer responses"). These notes
-> were prepared with an AI assistant, and so was the code. Before opening the PR:
-> - write the description and the commit message yourself, from these facts;
-> - review the diff line by line until you can explain and defend it without help (CONTRIBUTING.md asks for a real
->   review and says you must be able to explain every line);
-> - fill in the AI disclosure line of the template truthfully;
-> - open the issue first (CONTRIBUTING.md: a bug-fix PR must include a reproducible issue and a regression test that
->   fails before the change; the unit test below does), and link it;
-> - avoid non-ASCII characters in the commit message and comments (AGENTS.md).
+> Facts, numbers, commands and code citations for an upstream pull request. llama.cpp asks for issues and pull-request
+> descriptions written by a person (its CONTRIBUTING.md, "AI Usage Policy"), so this is material to write from, not text
+> to post. Not posted.
+> Upstream's process for it: open the issue first and link it; a bug-fix PR needs a regression test that fails before
+> the change (the unit test below does); the template's AI-usage disclosure is filled in truthfully; every line is
+> reviewed by whoever submits it; no non-ASCII characters in the commit message or comments (AGENTS.md).
 >
-> On 2026-11-16 I found no existing PR for this. Related but separate: #31483 (iSWA `seq_rm`), #30683 (checkpoint
+> Searched on 2026-11-16: no existing PR for this. Related but separate: #31483 (iSWA `seq_rm`), #30683 (checkpoint
 > copies).
 
 Template: `.github/pull_request_template.md` (Overview, Additional information, Requirements).

@@ -41,7 +41,7 @@ internal class ToolReader(private val logger: KSPLogger) {
         val tool = f.annotation(LB_TOOL) ?: return null
         val method = f.simpleName.asString()
         val shapeOk = shapeOk(f, method)
-        val description = tool.arg("description") as? String ?: ""
+        val description = (tool.arg("description") as? String).orEmpty()
         val described = description.isNotBlank()
         if (!described) error("tool $method needs a description: the model chooses tools by it", f)
         val result = sendableResult(f, method)
@@ -172,7 +172,7 @@ internal class ToolReader(private val logger: KSPLogger) {
             error(problem, p)
             return null
         }
-        val description = p.annotation(LB_TOOL_PARAM)?.arg("description") as? String ?: ""
+        val description = (p.annotation(LB_TOOL_PARAM)?.arg("description") as? String).orEmpty()
         return Field(name, p.type.renderSerialized(), description, optional)
     }
 
@@ -182,7 +182,7 @@ internal class ToolReader(private val logger: KSPLogger) {
         when {
             isContext(p) -> "this@tool"
             args is ToolArgs.Whole -> "args"
-            else -> "args." + id(p.name!!.asString())
+            else -> "args." + id(checkNotNull(p.name).asString())
         }
 
     private fun isContext(p: KSValueParameter): Boolean =

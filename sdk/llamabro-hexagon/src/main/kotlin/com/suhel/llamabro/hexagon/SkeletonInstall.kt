@@ -5,6 +5,7 @@ import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.RandomAccessFile
 import java.security.MessageDigest
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -49,10 +50,10 @@ internal class SkeletonInstall(private val root: File, private val source: Sourc
                             staging.deleteRecursively()
                         }
                     }
-                    root.listFiles()?.filter { it.name != dir.name && it.name != ".lock" }?.forEach {
-                        it
-                            .deleteRecursively()
-                    }
+                    root
+                        .listFiles()
+                        ?.filter { other -> other.name != dir.name && other.name != ".lock" }
+                        ?.forEach { other -> other.deleteRecursively() }
                 }
             }
         }
@@ -97,6 +98,6 @@ internal class SkeletonInstall(private val root: File, private val source: Sourc
 
         fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).toHex()
 
-        fun ByteArray.toHex() = joinToString("") { "%02x".format(it) }
+        fun ByteArray.toHex() = joinToString("") { "%02x".format(Locale.ROOT, it) }
     }
 }

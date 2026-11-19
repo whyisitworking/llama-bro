@@ -28,7 +28,7 @@ internal class HeaderFetch(private val endpoint: String, private val transport: 
             stub.setLength(0)
             while (requested <= LIMIT_BYTES) {
                 val count = requested.coerceAtMost(file.sizeBytes)
-                if (count <= 0) throw HubException.NotFound("empty GGUF: ${file.path}", emptyList())
+                if (count <= 0) throw HubException.Corrupt(file.path, "empty GGUF: ${file.path}")
                 val round = fetchRound(file, stub, held, count)
                 held = round.held
                 fetched += round.fetched
@@ -41,7 +41,7 @@ internal class HeaderFetch(private val endpoint: String, private val transport: 
                 requested *= 2
             }
         }
-        throw HubException.NotFound("GGUF header of ${file.path} is larger than 256 MiB", emptyList())
+        throw HubException.Corrupt(file.path, "GGUF header of ${file.path} is larger than 256 MiB")
     }
 
     /** Asks for the bytes from [start] up to [count] and writes them to the stub. */
@@ -92,13 +92,10 @@ internal class HeaderFetch(private val endpoint: String, private val transport: 
             try {
                 stub.channel.map(FileChannel.MapMode.READ_ONLY, 0, held).let(GgufHeader::dataOffset)
             } catch (e: IllegalArgumentException) {
-                throw HubException.NotFound("${file.path} is not a valid GGUF: ${e.message}", emptyList())
+                throw HubException.Corrupt(file.path, "${file.path} is not a valid GGUF: ${e.message}")
             }
         if (offset == null && held == file.sizeBytes) {
-            throw HubException.NotFound(
-                "${file.path} ends inside its GGUF header (${file.sizeBytes} bytes)",
-                emptyList(),
-            )
+            throw HubException.Corrupt(file.path, "${file.path} ends inside its GGUF header (${file.sizeBytes} bytes)")
         }
         return offset
     }

@@ -1,11 +1,10 @@
-# Upstream issue: notes for the bug report (not posted)
+# Upstream issue: the prompt cache on hybrid SWA models
 
-> **Read first.** llama.cpp's contributing guide forbids AI-written posts: "It is strictly prohibited to use AI to
-> write your posts for you (bug reports, feature requests, pull request descriptions ...)", and the bug template says
-> "copypasting language model outputs is strictly prohibited". These notes were prepared with an AI assistant. Use
-> them as the facts, numbers, commands and code citations, and write the report itself in your own words. Do not paste
-> this file. Search first: on 2026-11-16 I found no open issue or PR for this (closest: #24055, a different cause on
-> Qwen with `--checkpoint-min-step`; #31483 changes iSWA `seq_rm` and does not touch this rule).
+> Facts, numbers, commands and code citations for an upstream bug report. llama.cpp asks for issues and pull-request
+> descriptions written by a person (its CONTRIBUTING.md, "AI Usage Policy"), so this is material to write from, not text
+> to post. Not posted.
+> Searched on 2026-11-16: no open issue or PR for this (closest: #24055, a different cause on Qwen with
+> `--checkpoint-min-step`; #31483 changes iSWA `seq_rm` and does not touch this rule).
 
 Template: "Bug (misc.)" (`019-bug-misc.yml`).
 

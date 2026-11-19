@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.library)
+    id("llamabro.library")
 }
 
 group = "io.github.whyisitworking"
@@ -8,10 +9,8 @@ group = "io.github.whyisitworking"
 // Qualcomm's image by sdk/native/scripts/build-backends.sh. Being on the classpath is enough (F61).
 android {
     namespace = "com.suhel.llamabro.opencl"
-    compileSdk = 37
 
     defaultConfig {
-        minSdk = 29
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -20,15 +19,7 @@ android {
         jniLibs.directories += projectDir.resolve("../native/build/android-backends/opencl/jniLibs").canonicalPath
     }
 
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-
     lint {
-        abortOnError = true
-        warningsAsErrors = true
-        checkDependencies = false
         disable += "ChromeOsAbiSupport"
     }
 }

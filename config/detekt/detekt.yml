@@ -22,6 +22,7 @@ style:
   MagicNumber:
     excludes:
       - '**/test/**'
+      - '**/benchmark/**'
       - '**/androidTest/**'
       - '**/screenshotTest/**'
       - '**/sharedTest/**'
@@ -59,6 +60,14 @@ style:
     excludeReturnFromLambda: true
   UnusedPrivateProperty:
     active: true
+  # a preview is used by the IDE, not by code
+  UnusedPrivateFunction:
+    ignoreAnnotated: ['Preview', 'LightDarkPreviews', 'PreviewLightDark']
+  UseOrEmpty:
+    excludes: ['**/test/**', '**/androidTest/**']
+  # Room generates the DAO from an abstract class, and the SDK's sealed classes are part of its API (D26)
+  AbstractClassCanBeInterface:
+    active: false
   # ktlint doesn't flag unused imports, so detekt does
   UnusedImport:
     active: true
@@ -78,8 +87,9 @@ exceptions:
       - '**/conversation/Conversation.kt'
       - '**/internal/BackendDiscovery.kt'
       - '**/hub/internal/Transfers.kt'
-      # the acceptance apps are device harnesses: they show any failure on screen
+      # the acceptance apps and the benchmark harness show or log any failure
       - '**/acceptance/**'
+      - '**/benchmark/**'
       - '**/test/**'
       - '**/androidTest/**'
   SwallowedException:
@@ -108,7 +118,8 @@ complexity:
     allowedFunctionParameters: 7
     allowedConstructorParameters: 9
     ignoreDefaultParameters: true
-    ignoreAnnotatedParameter: ['Composable']
+    # a composable's parameters are its state and events, listed out on purpose
+    ignoreAnnotated: ['Composable']
   CyclomaticComplexMethod:
     allowedComplexity: 14
     excludes:
@@ -126,3 +137,33 @@ complexity:
       - '**/androidTest/**'
   NestedBlockDepth:
     allowedDepth: 4
+
+# Rules that need type resolution run in `detektMain` (qualityCheck), on main code only.
+coroutines:
+  # the SDK picks the dispatcher each piece of work runs on; tests replace the scopes, not the dispatchers
+  InjectDispatcher:
+    active: false
+  SleepInsteadOfDelay:
+    excludes: ['**/test/**', '**/androidTest/**']
+  RedundantSuspendModifier:
+    excludes: ['**/test/**', '**/androidTest/**']
+
+performance:
+  # no spread here sits on a hot path
+  SpreadOperator:
+    active: false
+
+potential-bugs:
+  # a test reads results by draining a flow or a call; what it ignores is deliberate
+  IgnoredReturnValue:
+    excludes: ['**/test/**', '**/androidTest/**']
+  ImplicitDefaultLocale:
+    excludes: ['**/test/**', '**/androidTest/**']
+  UnnecessaryNotNullOperator:
+    excludes: ['**/test/**', '**/androidTest/**']
+  # a memory test asks for a collection on purpose
+  ExplicitGarbageCollectionCall:
+    excludes: ['**/test/**', '**/androidTest/**']
+  # a benchmark journey fails loudly on a missing view, as a test does
+  UnsafeCallOnNullableType:
+    excludes: ['**/test/**', '**/androidTest/**', '**/benchmark/**']

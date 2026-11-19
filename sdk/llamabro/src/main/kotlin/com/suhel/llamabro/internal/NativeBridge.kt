@@ -36,6 +36,7 @@ internal object NativeBridge {
      * `lb_model_request_with`. Attachment `i` is [names]`[i]` and [mimes]`[i]` with one source: [paths]`[i]`,
      * [fds]`[i]` (≥ 0, else -1) or [bytes]`[i]`, copied once. Throws [NativeError] if the request couldn't start.
      */
+    @Suppress("LongParameterList") // mirrors lb_model_request_with's arguments one for one
     external fun modelRequest(
         model: Long,
         endpoint: String,

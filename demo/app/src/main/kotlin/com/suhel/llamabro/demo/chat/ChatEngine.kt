@@ -483,7 +483,7 @@ class ChatEngine(
         /** The model's name for the header, whatever state it is in; empty until the model is known. */
         val name: StateFlow<String> =
             combine(modelKey, library) { key, lib ->
-                key?.let { k -> lib?.firstOrNull { it.key == k }?.name ?: displayName(k) } ?: ""
+                key?.let { k -> lib?.firstOrNull { it.key == k }?.name ?: displayName(k) }.orEmpty()
             }.stateIn(hs, SharingStarted.Eagerly, "")
 
         val model: StateFlow<ChatModelState> =
@@ -547,7 +547,7 @@ class ChatEngine(
             // header over the network (D64); it runs in the background and never holds a turn
             hs.launch {
                 combine(modelKey.filterNotNull(), library.filterNotNull()) { key, lib ->
-                    key.takeIf { lib.any { it.key == key } }
+                    key.takeIf { lib.any { model -> model.key == key } }
                 }.filterNotNull()
                     .distinctUntilChanged()
                     .collect { card(it) }

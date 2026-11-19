@@ -243,7 +243,7 @@ internal class CacheTest {
 
     private fun cache(root: File): Cache {
         val resolver = Resolver("https://example.invalid", root, offline, JvmStorage())
-        return Cache(root, resolver)
+        return Cache(root)
     }
 
     private fun delete(root: File, model: HfModel): Boolean = runBlocking { cache(root).delete(model) }

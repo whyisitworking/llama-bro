@@ -1,9 +1,10 @@
-# Upstream issue: notes for the Hexagon bug report (not posted)
+# Upstream issue: Hexagon tiles a weight that GET_ROWS also reads
 
-> **Read first.** llama.cpp's contributing guide forbids AI-written posts (bug reports, feature requests, pull request
-> descriptions). These notes were prepared with an AI assistant. Use them as the facts, numbers, commands and code
-> citations, and write the report in your own words; do not paste this file. Search first, and check master: this was
-> found and tested only at b12352 (`5676dfb`), not on master. F155 and patch 0005 in this repo hold the details.
+> Facts, numbers, commands and code citations for an upstream bug report. llama.cpp asks for issues and pull-request
+> descriptions written by a person (its CONTRIBUTING.md, "AI Usage Policy"), so this is material to write from, not text
+> to post. Not posted.
+> Found and tested only at b12352 (`5676dfb`); check master and search before writing. F155 and patch 0005 here hold
+> the details.
 
 Template: "Bug (misc.)". Module: ggml-hexagon (and llama-server's `/tts` as where it shows).
 

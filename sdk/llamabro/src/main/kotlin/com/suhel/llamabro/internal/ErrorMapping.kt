@@ -35,7 +35,7 @@ internal object ErrorMapping {
             }
 
             "invalid_request_error", "not_found_error", "authentication_error", "permission_error" -> {
-                LlamaBroException.InvalidRequest(Media.advise(message))
+                LlamaBroException.InvalidRequest(message, code = error.string("lb_code"))
             }
 
             "not_supported_error" -> {
@@ -52,8 +52,29 @@ internal object ErrorMapping {
         }
     }
 
-    /** Upstream's decoder refusal of a picture or clip (server-common.cpp, a `runtime_error`, so a `server_error`). */
+    /** The bridge's code for a request's attachment it couldn't read (request.cpp). */
+    const val ATTACHMENT = "attachment"
+
+    /**
+     * Upstream's words, matched because upstream gives no code for these: the decoder's refusal of a picture or clip
+     * (server-common.cpp, a `runtime_error`, so a `server_error`). `UpstreamMessagesTest` checks each against the
+     * pinned llama.cpp source, so an upgrade that rewords one fails there.
+     */
     const val UNDECODABLE = "Failed to load image or audio file"
+
+    /** A model without the projector for a picture's or clip's kind (server-common.cpp, "image input is not …"). */
+    const val NOT_SUPPORTED = " input is not supported"
+
+    /** An embedding or rerank input longer than the batch (server-context.cpp), with its two numbers. */
+    const val TOO_LARGE = "is too large to process"
+    const val BATCH_SIZE = "current batch size: "
+
+    /** Each upstream source file and the words the SDK matches in it, for `UpstreamMessagesTest`. */
+    val UPSTREAM_WORDS =
+        mapOf(
+            "tools/server/server-common.cpp" to listOf(UNDECODABLE, NOT_SUPPORTED),
+            "tools/server/server-context.cpp" to listOf(TOO_LARGE, BATCH_SIZE),
+        )
 
     /**
      * A picture or clip llama.cpp can't decode (HEIC, WebP, AAC, …): the request's fault, though upstream reports it
@@ -72,14 +93,14 @@ internal object ErrorMapping {
 
     /**
      * An [LlamaBroException.InvalidRequest] that a request's media caused, found after it was sent: a file or
-     * descriptor the bridge can't read or whose audio header is wrong (`attachment "<n>" …`, request.cpp), or one the
+     * descriptor the bridge can't read or whose audio header is wrong ([ATTACHMENT], request.cpp), or one the
      * decoder refused ([UNDECODABLE]).
      */
     fun isMediaError(e: Throwable): Boolean =
         e is LlamaBroException.InvalidRequest &&
             // the whole chain: coroutines' stack-trace recovery may hand over a copy whose cause is the original
             generateSequence<Throwable>(e) { it.cause }.take(MAX_CAUSES).any {
-                (it is LlamaBroException.InvalidRequest && it.message.orEmpty().startsWith("attachment")) ||
+                (it is LlamaBroException.InvalidRequest && it.code == ATTACHMENT) ||
                     (it is LlamaBroException.ServerError && it.message.orEmpty().contains(UNDECODABLE))
             }
 
@@ -89,7 +110,8 @@ internal object ErrorMapping {
      * An input that can't be split (embeddings, rerank) and is longer than the batch: upstream sends it as a plain
      * `server_error` whose message alone has the numbers (server-context.cpp, "is too large to process").
      */
-    private val tooLarge = Regex("""^input \((\d+) tokens\) is too large to process.*current batch size: (\d+)""")
+    private val tooLarge =
+        Regex("^input \\((\\d+) tokens\\) ${Regex.escape(TOO_LARGE)}.*${Regex.escape(BATCH_SIZE)}(\\d+)")
 
     private fun inputTooLong(message: String): LlamaBroException.InputTooLong? {
         val (tokens, limit) = tooLarge.find(message)?.destructured ?: return null
@@ -106,8 +128,8 @@ internal object ErrorMapping {
      * reaches the app as a `server_error`, though it's the request that is wrong (oaicompat_content_load_media).
      */
     fun unsupportedMedia(e: LlamaBroException): LlamaBroException =
-        if (e is LlamaBroException.ServerError && e.message?.contains(" input is not supported") == true) {
-            LlamaBroException.InvalidRequest(e.message!!, e)
+        if (e is LlamaBroException.ServerError && e.message?.contains(NOT_SUPPORTED) == true) {
+            LlamaBroException.InvalidRequest(e.message.orEmpty(), e)
         } else {
             e
         }

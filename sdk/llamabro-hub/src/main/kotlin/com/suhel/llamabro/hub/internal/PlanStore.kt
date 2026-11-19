@@ -20,6 +20,7 @@ import java.io.FileOutputStream
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -119,7 +120,7 @@ internal class PlanStore(
             MessageDigest
                 .getInstance("SHA-256")
                 .digest(key.toByteArray())
-                .joinToString("") { "%02x".format(it) }
+                .joinToString("") { "%02x".format(Locale.ROOT, it) }
         return File(cacheDir, ".llamabro/$folder/$digest.json")
     }
 

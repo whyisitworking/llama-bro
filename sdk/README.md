@@ -1,4 +1,4 @@
-# LlamaBro SDK
+# Llama Bro SDK
 
 Run a GGUF model on an Android phone with llama.cpp's own server core in-process: the same chat handling,
 templates, tool calls, reasoning, prompt cache and sampling as `llama-server`, without HTTP. Kotlin only

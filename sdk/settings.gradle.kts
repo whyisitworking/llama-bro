@@ -1,4 +1,6 @@
 pluginManagement {
+    // the SDK's convention plugins (sdk/build-logic)
+    includeBuild("build-logic")
     repositories {
         google {
             content {

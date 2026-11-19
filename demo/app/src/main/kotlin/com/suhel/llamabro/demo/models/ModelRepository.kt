@@ -299,7 +299,7 @@ class ModelRepository(
     fun state(model: HfModel): StateFlow<DownloadStatus> =
         states.computeIfAbsent(model) {
             val source = hub.progress(model)
-            val paused = settings.settings.map { model.toString() in it.pausedDownloads }.distinctUntilChanged()
+            val paused = settings.settings.map { now -> model.toString() in now.pausedDownloads }.distinctUntilChanged()
             combine(source.map(DownloadStatus::of), paused) { status, isPaused ->
                 if (isPaused && status == DownloadStatus.Absent) DownloadStatus.Partial(0, 0) else status
             }.stateIn(scope, SharingStarted.Eagerly, DownloadStatus.of(source.value))

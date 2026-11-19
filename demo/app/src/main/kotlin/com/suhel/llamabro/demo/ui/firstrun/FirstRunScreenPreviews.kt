@@ -13,6 +13,7 @@ import com.suhel.llamabro.demo.models.FitLabel
 import com.suhel.llamabro.demo.models.FitView
 import com.suhel.llamabro.demo.ui.preview.DemoScreenPreviews
 import com.suhel.llamabro.demo.ui.preview.PreviewFrame
+import java.util.Locale
 
 // Previews of FirstRunScreen.kt: each state of the screen or part, in light and dark.
 
@@ -21,7 +22,7 @@ private fun picks(vararg labels: FitLabel) =
         PickCard(
             entry,
             FitView(label, 10),
-            "${"%.1f".format((entry.modelBytes + entry.mmprojBytes) / 1e9)} GB",
+            "${"%.1f".format(Locale.ROOT, (entry.modelBytes + entry.mmprojBytes) / 1e9)} GB",
         )
     }
 

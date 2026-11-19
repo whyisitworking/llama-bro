@@ -95,7 +95,12 @@ class ErrorMappingTest {
         assertTrue("${e.cause}", e.cause is LlamaBroException.ServerError)
         assertTrue(ErrorMapping.isMediaError(e))
         // the bridge's own refusal of a file or a clip is a media error too; a plain bad request isn't
-        assertTrue(ErrorMapping.isMediaError(ErrorMapping.fromBody(400, body("invalid_request_error", "attachment x"))))
+        val attachment = body("invalid_request_error", "attachment x", extra = ",\"lb_code\":\"attachment\"")
+        assertTrue(ErrorMapping.isMediaError(ErrorMapping.fromBody(400, attachment)))
+        // known by its code, not its words
+        assertTrue(
+            !ErrorMapping.isMediaError(ErrorMapping.fromBody(400, body("invalid_request_error", "attachment x"))),
+        )
         assertTrue(!ErrorMapping.isMediaError(ErrorMapping.fromBody(400, body("invalid_request_error", "bad"))))
     }
 }

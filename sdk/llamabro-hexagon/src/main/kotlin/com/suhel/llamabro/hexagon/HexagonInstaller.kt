@@ -24,7 +24,7 @@ internal class HexagonInstaller : BackendInstaller {
     }
 
     private class Assets(private val assets: AssetManager, private val dir: String) : SkeletonInstall.Source {
-        override fun list(): List<String> = assets.list(dir)?.toList() ?: emptyList()
+        override fun list(): List<String> = assets.list(dir)?.toList().orEmpty()
 
         override fun open(name: String): InputStream = assets.open("$dir/$name")
     }

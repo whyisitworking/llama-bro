@@ -14,7 +14,7 @@ import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
 /** Local cache enumeration and upstream-compatible removal. No network requests. */
-internal class Cache(private val cacheDir: File, private val resolver: Resolver) {
+internal class Cache(private val cacheDir: File) {
     /**
      * The installed copies whose files are all on disk (D64, D107): what `source` loads. Upstream's view, the snapshot
      * `refs/main` names, follows a ref that an online plan or a cancelled update moves off a complete copy, and can't

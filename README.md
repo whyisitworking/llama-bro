@@ -1,7 +1,7 @@
 # Llama Bro
 
 <p align="center">
-  <img src="assets/llama-bro-banner.png" width="100%" alt="Llama Bro"/>
+  <img src="assets/llama-bro-banner.webp" width="100%" alt="Llama Bro"/>
 </p>
 
 Run GGUF models on Android with llama.cpp's own server core, in-process. The SDK exposes what `llama-server`

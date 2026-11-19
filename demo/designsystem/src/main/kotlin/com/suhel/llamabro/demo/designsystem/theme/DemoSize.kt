@@ -33,9 +33,6 @@ object DemoSize {
     /** A text field, a primary button, a one-line list row. */
     val field = 56.dp
 
-    /** A dense one-line list row: the drawer's chats, a long list scanned by title. Still a whole [target]. */
-    val rowDense = 48.dp
-
     /** A two-line list row. */
     val rowTwoLine = 72.dp
 

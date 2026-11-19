@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.Color
 
 /** demo design §8.6's table, verbatim. "Runs well" has no tint of its own: it is the plain surface. */
 @Immutable
+@Suppress("LongParameterList") // the palette: one parameter per colour role
 class DemoColors(
     val canvas: Color,
     val surface: Color,

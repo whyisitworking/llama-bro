@@ -142,8 +142,9 @@ fun AppShell(
         ) {
             // the start destination is decided once, when both the layout and first run are known
             val start = firstRun
-            if (layout != null && start != null) {
-                Shell(container, layout!!, start, shell, settings, chatScreen)
+            val shown = layout
+            if (shown != null && start != null) {
+                Shell(container, shown, start, shell, settings, chatScreen)
                 SideEffect(onReady)
             }
         }
@@ -346,7 +347,9 @@ private fun Graph(
         }
         composable(Routes.MODELS) { LibraryRoute(container, back, onGetMore = { getModels("") }) }
         composable(Routes.SETTINGS) {
-            SettingsHome(back, onOpen = { nav.navigate(it) { launchSingleTop = true } }, routes = settingsRoutes)
+            SettingsHome(back, onOpen = { route ->
+                nav.navigate(route) { launchSingleTop = true }
+            }, routes = settingsRoutes)
         }
         composable(Routes.APPEARANCE) { AppearanceScreen(settings, back) }
         composable(Routes.INSTRUCTIONS) { InstructionsScreen(settings, back) }

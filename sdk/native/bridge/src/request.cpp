@@ -324,11 +324,19 @@ void run_request(lb_model * m, lb_request * r, server_http_context::handler_t ha
     bool cancelled = false;
     {
         // the attachments become what upstream's handler reads: the upload's files for a transcription, data URLs in
-        // the body for the rest. A bad attachment is a bad request, answered as ex_wrapper answers one (400)
+        // the body for the rest. A bad attachment is a bad request, answered as ex_wrapper answers one (400), with
+        // "lb_code": "attachment" so the SDK knows it by its code rather than by its words
         std::map<std::string, uploaded_file> files;
         const bool transcription = path == std::string("/") + kTranscriptions;
         auto prepare = [&](const server_http_req &) -> server_http_res_ptr {
-            if (!att_error.empty()) throw std::invalid_argument(att_error);
+            if (!att_error.empty()) {
+                json error_data = format_error_response(att_error, ERROR_TYPE_INVALID_REQUEST);
+                error_data["lb_code"] = "attachment";
+                auto res = std::make_unique<server_http_res>();
+                res->status = json_value(error_data, "code", 400);
+                res->data = safe_json_to_str({{ "error", error_data }});
+                return res;
+            }
             if (!transcription) {
                 if (takes_chat_messages(path)) write_placeholders(body, atts, false);
                 if (takes_embedding_content(path)) write_placeholders(body, atts, true);
@@ -528,7 +536,7 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
                 }
                 const bool audio = transcription || b.mime.rfind("audio/", 0) == 0;
                 if (att_error.empty() && audio && !is_audio_file(reinterpret_cast<const char *>(b.data.data()), b.data.size())) {
-                    att_error = "attachment \"" + b.name + "\" is not WAV, MP3 or FLAC audio, the formats llama.cpp decodes";
+                    att_error = "attachment \"" + b.name + "\" is not WAV, MP3 or FLAC audio, the formats llama.cpp decodes; record WAV or convert it first";
                 }
             }
         } catch (const std::bad_alloc &) {

@@ -55,6 +55,9 @@ subprojects {
         config.setFrom(rootProject.file("config/detekt/detekt.yml"))
         parallel.set(true)
     }
+    // generated code (Room, KSP) is not ours to style
+    val buildDir = layout.buildDirectory.get().asFile
+    tasks.withType<dev.detekt.gradle.Detekt>().configureEach { exclude { it.file.startsWith(buildDir) } }
 }
 
 // neither ktlint 1.x nor detekt without type resolution reports an unused import
@@ -67,6 +70,8 @@ val importCheck =
 
 tasks.register("qualityCheck") {
     group = "verification"
-    description = "ktlint, detekt and the unused-import check on every module."
+    description = "ktlint, detekt (with type resolution on main code) and the unused-import check on every module."
     dependsOn(ktlintCheck, importCheck, subprojects.map { "${it.path}:detekt" })
+    // the rules that need types (unused code, ignored results, unsafe calls) run only with the compiled main code
+    dependsOn(provider { subprojects.mapNotNull { it.tasks.findByName("detektMain") } })
 }

@@ -110,6 +110,8 @@ lint-api = { group = "com.android.tools.lint", name = "lint-api", version.ref = 
 lint-checks = { group = "com.android.tools.lint", name = "lint-checks", version.ref = "lint" }
 lint-tests = { group = "com.android.tools.lint", name = "lint-tests", version.ref = "lint" }
 
+android-gradle-api = { group = "com.android.tools.build", name = "gradle-api", version.ref = "agp" }
+
 [plugins]
 androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "benchmark" }
 android-test = { id = "com.android.test", version.ref = "agp" }

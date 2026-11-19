@@ -1,167 +1,107 @@
 # Release notes
 
-What changed for apps, newest first. Decisions are cited as `D<n>` ([decisions](decisions.md)), measurements as `F<n>`
+What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md)), measurements as `F<n>`
 ([findings](research/findings.md)); the [architecture](architecture.md) has the full design and the
 [SDK README](../sdk/README.md) the examples.
 
-## Voice mode phase (unreleased, since 2026-11-17)
+## 2.0.0-alpha (unreleased)
 
-Built on llama.cpp b12479 (upstream master of 2026-11-17, tagged by upstream since; D93) with eight carried patches:
-PH's four, the three speech patches back from the voice branch (0005-0007, D90) and a guard for LFM3 speech (0008, D96). The C API gains a realtime session (D97), and Kotlin a voice session over it (D98). The SDK
-matches the new llama-server on every contract case, on the Mac and on the phone's NPU (F163).
+A rewrite of 1.x: llama-server's core runs in-process behind a C API, and the Kotlin API is built on it. Code written
+for 1.x needs changes throughout; this entry lists what an app meets, by area.
 
-### New
+### Platform
 
-- **A realtime voice session in the C API** (D95, D97): `lb_model_request(model, "realtime", …)` runs upstream's
-  `/v1/realtime` conversation in memory, with no port; `lb_request_send` sends the client's events. Its events equal
-  llama-server's over a WebSocket (F168). The model config takes `seed`.
-- **The encoder each quantisation brings** (D101): `Quantization.encoderBytes` in `hub.files` is the image or audio
-  encoder the Hub fetches with it, chosen as it downloads, from the listing alone.
-- **A voice session in Kotlin** (D95, D98): `model.voiceSession { voice = …; language = …; instructions = … }`
-  returns a `VoiceSession`: `append` the microphone's 16-bit PCM, `commit()` each turn, and collect `events` for the
-  reply's text (captions) and speech (16-bit PCM for `AudioTrack`), its end, and refused events; `cancelReply` and
-  `close` stop it. Other realtime events come as `VoiceEvent.Other`, and `sendRaw` sends any client event. The SDK sets
-  nothing in the session for the app: LFM3-Omni needs a voice, a language and an instruction to answer (F166). Upstream sends no transcript of the user's
-  words (F169); an app that captions them transcribes its recording of each turn with `transcribe` (D109). `ModelInfo.voices` (and `supportsSpeech`) lists the voices a model speaks with, empty when it doesn't speak (D100). `ModelConfig.seed` sets the sampling seed. `FakeLlamaBro.voiceReply`
-  scripts replies for app tests. On the phone's NPU a reply's first audio comes 0.3 s after the commit, it
-  speaks at 1.65 times real time, and a cancel stops it within 80 ms (F170); patch 0008 holds there too (F171).
+- **llama.cpp b12479** (D93) with seven carried patches in `sdk/native/patches/` (0001-0005, 0007, 0008). The SDK
+  matches llama-server on every contract case, on the Mac and on the phone's NPU (F163).
+- **Kotlin 2.2 or later** in the app; the SDK is built with Kotlin 2.3 (D82). arm64-v8a, Android 10 (API 29) and up.
+- **Modules.** `llamabro` (core), `llamabro-hub` (downloads and search), `llamabro-hub-work` (a WorkManager download
+  worker), `llamabro-typed` and `llamabro-typed-ksp` (typed output and tools), `llamabro-hexagon` and `llamabro-opencl`
+  (optional NPU and GPU backends), `llamabro-testing` and `llamabro-hub-testing` (fakes). Every module's public API is
+  tracked for binary compatibility.
 
-### Changed, from upstream llama-server
+### Core API
 
-- **Empty stop strings in a request are ignored.**
-- **A `reasoning_effort` level the model's template rejects** is answered with an HTTP 400 error.
-- **LFM2 may call a tool the request didn't declare**, and Gemma 4 and Ministral 3 may call tools while thinking; with
-  the SDK's tool loop, an undeclared tool is answered as unknown, as before.
-- **Changing the global LoRA configuration** clears the slot's prompt cache.
+- **Entry points.** `LlamaBro.create(context, config)` and `LlamaBroHub.create(context, config)`, once per process (a DI
+  singleton). An equal config returns the same object, a different one throws; the logger and token provider are not
+  compared (D70, D106). Your logger sees native init; with none, lines go to logcat as `llamabro` (D66).
+- **One error rule** (D103): a call or a flow fails only with a `LlamaBroException`; misuse (a bad argument, a closed
+  model) throws `IllegalArgumentException` or `IllegalStateException`.
+- **Value types are data classes** (D102); requests and configurations are built with their builders.
+- **Shape** (D105): `ModelSource` is sealed; seeds are `Long?`; `Typed.text` holds a typed reply's raw text. The engine
+  and backend seams live in `com.suhel.llamabro.spi`, marked `@InternalLlamaBroApi` (D104).
+- **`ask` returns a result:** `Typed<String>`, `Value` or `Incomplete` (`Length`, `TurnLimit`, `ToolCallsPending`,
+  `ToolAborted`), instead of throwing (D63, D71). `Conversation.askAgain()` and `Typed<T>.valueOrNull()` are new.
+- **Cancelling a load** aborts the weight reading and frees everything; on the phone a cancelled 4B load returns in about
+  1 s (D67, F148). Loads run one at a time, so two `ContextSize.Auto` loads no longer fit to the same free memory.
 
-### Faster
+### Media, embeddings and speech
 
-- **Typed output and tools** compile and match their grammars faster (upstream's left factoring), and chat templates
-  render with less overhead.
-- **NPU prefill with MTP** keeps patch 0001's gain at the new build: +67% (F163).
-- **Speech output on the NPU alone** works through `/tts` (`rawRequest`): patch 0005 keeps LFM3-Omni's speech
-  depthformer whole on the NPU and patch 0006 skips the text head on audio frames, now through upstream's own embeddings-only
-  output flag (D86, D94, F155, F156, F165). Before them, the NPU gave empty audio. On the phone at b12479, 2.3-2.4 times real
-  time; the head skip alone saves 4.5 ms of each 80 ms frame.
-- **On Apple hardware** a model load's peak memory is lower by about the size of the largest tensor (F164); Android was
-  not measured.
+- **Media.** `Content` has `Image` and `Audio`, each with a `MediaSource` (`file`, `descriptor` or `bytes`) in the root
+  package (D84). A file attachment is read while the request runs, so keep it until the reply ends (D87). Media reach
+  llama-server as `file://` links, about 100 ms faster a turn than base64 (F157); each process has its own media folder.
+  A picture or clip that fails is removed from the chat when its first request fails, so the chat isn't wedged.
+- **`embed`, `rerank` and `transcribe`** are typed calls in core (D65, D84).
 
-### Fixed
+### Tools and typed output
 
-- **Two fit estimates at once could crash the app** (F172): upstream's fit measurement swaps llama.cpp's process-wide
-  log callback while it runs, so `estimateFit` calls on several threads, or one during a load with automatic context,
-  crashed. The bridge now measures one at a time.
+- **The agent loop follows upstream's tools/ui** (D62). An unknown tool or invalid arguments go back to the model as an
+  error; only an `LbToolError`'s message reaches the model; `LbToolAbort` ends the turn. A tool marked
+  `requiresApproval` pauses the turn with `FinishReason.ToolCallsPending` until `approve(callId)` or `deny(callId,
+  reason)`. A tool's own timeout answers the model "Error: the tool failed" and the turn goes on; a JVM `Error` ends it.
+- **Typed output and typed tools** in `llamabro-typed` (D61, D63, D81 to D83, D88): `generate<T>`, `ask<T>` and
+  `askAgain<T>` hold the model to a JSON schema from your `@Serializable` class, with integer ranges by default (F158).
+  An `@LbToolbox` becomes typed tools through `llamabro-typed-ksp`, with build-time errors for what can't be
+  serialized. `assertTypedSchema<T>()` checks a class in your tests.
 
-- **`npuPolling` no longer floods logcat.** Patch 0007 polls the NPU's queue without blocking on Android too, so the DSP
-  library logs no error per empty poll and your app's own lines are no longer dropped (F162). Polling stays off by
-  default (D90).
-- **LFM3-Omni speech that never ends.** About one captioned reply in sixty lost its place after its text and played
-  minutes of noise; patch 0008 ends it within seconds of the speech going wrong, and clean replies are unchanged (D96,
-  F167).
+### Voice
 
-### Fixed, from upstream
+- **A realtime voice session** (D95, D97, D98): `model.voiceSession { voice = …; language = …; instructions = … }` runs
+  upstream's `/v1/realtime` conversation in memory, with no port; its events equal llama-server's over a WebSocket
+  (F168). `append` the microphone's 16-bit PCM, `commit()` each turn, and collect `events` for the reply's captions and
+  speech; `cancelReply`, `close` and `sendRaw` round it out. The SDK sets nothing for the app: LFM3-Omni needs a voice,
+  a language and an instruction (F166). `ModelInfo.voices` lists the voices a model speaks with (D100).
+- **Captions of the user's words** are the app's: it transcribes its own recording of each turn with `transcribe`
+  (D109); upstream sends no transcript (F169).
+- **On the phone's NPU** a reply's first audio comes 0.3 s after the commit and a cancel stops it within 80 ms (F170).
+  Speech runs on the NPU alone (patch 0005) at about 2.4 times real time (D111). Patch 0008 ends LFM3-Omni speech that
+  goes wrong after its text, about one reply in sixty, within seconds (D96, F167, F173).
 
-- **NPU:** Hexagon's buffer mapping under fragmentation and a flash-attention tail defect.
-- **GPU (Adreno):** an out-of-bounds read in the q4_K kernel and three flash-attention prefill defects, with new Q4_K,
-  Q6_K and Q8_0 kernels for A7 chips.
+### Hub
 
-## PH: the headline API (unreleased, since the `v2` branch of 2026-11-15)
+- **Loading by name** (D64, D68, D75, D79): `loadModel(hub.model("org/repo:Q4_K_M"))` downloads or finds the files and
+  loads them, with one `LoadProgress`. A complete copy on the phone loads offline; tags are case-insensitive, as in `-hf`.
+- **Search and sampling** stay in the hub (D110): `hub.search(...)` groups re-uploads, and `hub.recommendedSampling`
+  gives the file's values and the base model's card values, each labelled.
+- **Installed copies only** (D89, D107): `cached()` lists and `model()` loads only copies whose download completed. A
+  selection's files download in order (model parts, image or audio encoder, draft); `Quantization.encoderBytes` names
+  the encoder's size (D101). A file the SDK can't read is `HubException.Corrupt` (D114).
+- **Downloads** retry only I/O and network failures, never an HTTP 4xx; a refused resume restarts from the first byte.
+  `hub.plan()` only looks. `hub.delete()` stops this process's downloads of what it deletes and waits for them.
+  `HubException.Network.unreachable` says the Hub couldn't be reached at all. Background downloads live in
+  `llamabro-hub-work`, with `defaultDownloadConstraints()` to extend.
 
-Built on llama.cpp b12352 with four carried patches (`sdk/native/patches/`); the voice mode phase moves to b12479.
-Apps need Kotlin 2.2 or later (D82).
+### Backends and speed
 
-### Breaking changes
+- **NPU (Hexagon)** and **GPU (Adreno OpenCL)** are optional modules. `LlamaBroConfig.npuPolling`, off by default as
+  upstream, makes chat on the NPU 4-7% faster but the chip hotter (F156); patch 0007 keeps it from flooding logcat (F162).
+- **NPU prefill with MTP** is about 67% faster (patch 0001, D80, F149, F163).
+- **Voice notes in a chat:** with three, a text turn's first token comes in about 520 ms instead of 820 ms (patch 0004,
+  F153).
+- **Two fit estimates at once** no longer crash the app: the bridge measures one at a time (F172).
 
-- **Entry points.** `LlamaBro.getInstance` and both `ConfigProvider`s are gone. Use `LlamaBro.create(context, config)` and
-  `LlamaBroHub.create(context, config)`, once per process (a DI singleton). An equal config returns the same object, and
-  a different one throws `InvalidRequest` (D70).
-- **`ask` returns a result.** `Conversation.ask` returns `Typed<String>` (`Value`, or `Incomplete` for `Length`,
-  `TurnLimit`, `ToolCallsPending` and `ToolAborted`) instead of throwing `LlamaBroException.Incomplete`, which is
-  removed (D63, D71).
-- **Media.** `Content` gains `Audio`, so an exhaustive `when` over `Content` needs a branch. `Content.Image.bytes` becomes
-  `source`, a `MediaSource` (`file`, `descriptor` or `bytes`), and `MediaSource` lives in the root package
-  `com.suhel.llamabro` beside `ModelSource` (D84).
-- **Tools.** The agent loop follows upstream's tools/ui (D62). An unknown tool or invalid arguments go back to the model as an
-  error. Only an `LbToolError`'s message reaches the model; any other exception's text stays out of the prompt and the
-  saved chat. `LbToolAbort` ends the turn. A tool marked `requiresApproval` pauses the turn with
-  `FinishReason.ToolCallsPending` until `approve(callId)` or `deny(callId, reason)`. `ChatEvent.ToolResult` carries
-  the error.
-- **Typed output** (`llamabro-typed`, D88):
-  - Integer fields carry their Kotlin type's range in the schema by default (`Byte`, `Short`, `Int`, the unsigned types;
-    not `Long`), so the schema text and grammar change. The cost is under a millisecond per request (F158).
-  - Any exception while decoding a typed reply, such as a `check()` in `init`, is now `Typed.Invalid`; before, only an
-    `IllegalArgumentException` was.
-  - Typed tool results include fields at their default values.
-  - A missing argument field reads `missing field 'x'`.
-  - The KSP processor rejects, at build time, a separate `@LbToolParam` whose type kotlinx.serialization can't write,
-    a `@Contextual` or `@Polymorphic` one, and an interface or abstract class that isn't sealed. A type-use
-    `@Serializable` without `with =` no longer makes a type acceptable.
-- **`FakeLlamaBro`** refuses pictures and audio unless `supportsVision` or `supportsAudio` is set, as a real model does.
-- **Hub.**
-  - `LlamaBroHub.cached()` lists only what loads from the cache. A stopped download whose image encoder, draft or split
-    parts are missing is no longer listed (D89).
-  - A selection's files download in the plan's order: model parts, image encoder, draft.
-- **Media files must stay until the reply ends.** A path attachment (`MediaSource.file`) is read by llama-server while the
-  request runs (D87).
+### Behaviour that differs from llama-server
 
-### New
+- Empty stop strings in a request are ignored.
+- A `reasoning_effort` level the model's template rejects is answered with an HTTP 400 error.
+- With the SDK's tool loop, a tool the request didn't declare is answered as unknown.
 
-- **Typed output and typed tools** in `llamabro-typed` (D61, D63, D81 to D83, D88):
-  - `generate<T>`, `ask<T>` and `askAgain<T>` hold the model to a JSON schema derived from your `@Serializable` class.
-  - An annotated `@LbToolbox` becomes typed tools through `llamabro-typed-ksp`, with build-time errors.
-  - `assertTypedSchema<T>()` lets your tests check a class.
-  - Core gains `Conversation.askAgain()` and `Typed<T>.valueOrNull()`.
-- **Loading by name** (D64, D68, D75, D79):
-  - `loadModel(hub.model("org/repo"))` downloads (or finds) and loads in one call, with one progress (`LoadProgress`). A
-    complete copy on the phone loads offline.
-  - `hub.search(...)` groups re-uploads.
-  - `hub.recommendedSampling` gives the file's values and the base model's card values, each labelled.
-  - Background downloads live in `llamabro-hub-work`, with `defaultDownloadConstraints()` as the base to extend.
-- **Embeddings, rerank and speech in** as typed calls in core: `embed`, `rerank` and `transcribe` (D65, D84).
-- **Cancelling a load** aborts the weight reading and frees everything; on the phone a cancelled 4B load returns in about 1
-  s (D67, F148).
-- **Logs from the first call.** Your logger sees native init. With no logger, lines go to logcat as `llamabro` (D66).
-- **`LlamaBroConfig.npuPolling`**, off by default as in upstream: on, the NPU backend polls for its results, chat on the
-  NPU 4-7% faster but the chip hotter (F156). On Android it floods logcat with the DSP library's errors (F162); the fix,
-  with speech output on the NPU, comes with voice mode (D90).
-- **Test fakes.**
-  - `llamabro-hub-testing` has `FakeLlamaBroHub`, with `stopDownload(model, path, repo)` to reproduce a stopped download
-    (D70, D89).
-  - `llamabro-testing`'s API is now tracked for binary compatibility.
+### Testing
 
-### Faster
+- `FakeLlamaBro` (`llamabro-testing`) is a real `LlamaBro` over a scripted engine: replies, tool calls, voice replies
+  (`voiceReply`), and refusals of media the fake model doesn't support. `FakeLlamaBroHub` (`llamabro-hub-testing`)
+  scripts search, plans and downloads, including a stopped download.
 
-- **Voice notes in a chat.** With three voice notes, a text turn reaches its first token in about 520 ms instead of 820 ms:
-  patch 0004 fixes llama-server's prompt cache on the LFM3 family (F153). The voice notes also reach llama-server as
-  `file://` links rather than base64, which takes another 100 ms off each turn (D87, F157).
-- **NPU prefill with MTP** is about 61% faster through a one-line Hexagon gate (patch 0001, D80, F149).
+### Demo app
 
-### Fixed
-
-- **`hub.plan()` only looks:** it no longer moves `refs/main`, writes a plan record or adopts an old copy; only
-  `download()` records. It falls back to the cache only when the Hub can't be reached.
-- **`hub.delete()` stops this process's running downloads** of what it deletes and waits for them; their flows end with a
-  non-retryable `HubException.Network`, so a deleted model no longer comes back. A download of it that starts while the delete runs fails
-  at once with the same error.
-- **A download no longer retries an HTTP refusal** (a 4xx such as 400 or 410); a resume the server refuses (416 or 200)
-  restarts from the first byte.
-- **A programming error inside a download** passes through unchanged instead of becoming a retryable
-  `HubException.Network`; only I/O and network failures are retried.
-- **Quantisation tags are case-insensitive**, as in `-hf`: `HfModel("x:q4_k_m")` equals `HfModel("x:Q4_K_M")`.
-
-- **Two `loadModel` calls at once** no longer both fit `ContextSize.Auto` to the same free memory; loads run one at a time.
-- **A tool that times out** with its own `withTimeout` answers the model "Error: the tool failed" and the turn goes on,
-  instead of the turn ending silently. A JVM `Error` from a tool (out of memory, a stack overflow) ends the turn.
-- **Each process of an app has its own media folder**, so a second process starting no longer deletes the first one's
-  `file://` links.
-
-- **Hub.**
-  - Two `delete` calls for one model at once no longer throw; the second returns false. A delete no longer removes a
-    file that a download of another tag has just reused.
-  - `HubException.Network.unreachable` is public: true when the Hub couldn't be reached at all.
-  - `recommendedSampling` for a model on the phone whose header has no sampling values no longer asks the Hub for the
-    same header, so it works offline.
-  - A download that replaces an installed copy completes even if removing the old files fails. The failure is logged at
-    Warn (D89).
-- **Media errors.** A picture or clip that fails every request no longer wedges the chat. The message is removed when its
-  first request fails on the media before any token (D84).
+- A new chat app built on the SDK and its own design system (`demo/designsystem`): chats with pictures and voice notes,
+  tools, thinking, a voice mode with captions, model search, downloads and fit, and per-model sampling.

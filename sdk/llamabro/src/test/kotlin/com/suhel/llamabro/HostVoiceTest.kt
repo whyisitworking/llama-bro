@@ -142,7 +142,7 @@ class HostVoiceTest {
         const val SEED = 42L
         const val TIMEOUT_MS = 300_000L
 
-        /** The 16-bit samples of a WAV's `data` chunk (make-test-clip.sh writes 16 kHz mono). */
+        /** The 16-bit samples of a WAV's `data` chunk (the test clip is 16 kHz mono). */
         fun pcmOf(wav: ByteArray): ShortArray {
             val b = ByteBuffer.wrap(wav).order(ByteOrder.LITTLE_ENDIAN)
             var at = 12

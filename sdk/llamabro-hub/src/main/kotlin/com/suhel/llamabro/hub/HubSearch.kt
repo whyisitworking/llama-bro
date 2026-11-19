@@ -275,11 +275,15 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
      * [base]'s `generation_config.json` as sampling (D68), or null when the file is missing, holds no sampling values,
      * or is gated and the token (if any) can't read it: a missing recommendation, not an error (F146).
      */
+    @Suppress("InstanceOfCheckForException") // a boundary that classifies what it caught
     suspend fun fromBaseModel(transport: Transport, base: String): Sampling? {
         val config =
             try {
                 getJson(transport, "$endpoint$base/resolve/main/generation_config.json", base).json as? JsonObject
-            } catch (absent: HubException) {
+            } catch (
+                // a gated or missing base model means no values, not a failure; anything else is thrown on
+                absent: HubException,
+            ) {
                 if (absent !is HubException.Unauthorized && absent !is HubException.NotFound) throw absent
                 logger?.log(
                     LogLevel.Debug,

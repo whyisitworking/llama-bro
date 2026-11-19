@@ -309,7 +309,8 @@ class MediaTest {
             engine.model.onRequest = { r ->
                 r.chunk(
                     """{"error":{"code":400,"message":"attachment \"0\" is not WAV, MP3 or FLAC audio, the formats """ +
-                        """llama.cpp decodes","type":"invalid_request_error"}}""",
+                        """llama.cpp decodes; record WAV or convert it first","type":"invalid_request_error",""" +
+                        """"lb_code":"attachment"}}""",
                     status = 400,
                 )
                 r.done()
@@ -387,7 +388,8 @@ class MediaTest {
             engine.model.onRequest = { r ->
                 r.chunk(
                     """{"error":{"code":400,"message":"attachment \"0\" is not WAV, MP3 or FLAC audio, the formats """ +
-                        """llama.cpp decodes","type":"invalid_request_error"}}""",
+                        """llama.cpp decodes; record WAV or convert it first","type":"invalid_request_error",""" +
+                        """"lb_code":"attachment"}}""",
                     status = 400,
                 )
                 r.done()

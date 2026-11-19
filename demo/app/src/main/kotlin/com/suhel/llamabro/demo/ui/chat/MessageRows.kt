@@ -211,7 +211,7 @@ private fun ReplyBody(
     }
     when (style) {
         MessageStyle.Open -> OpenReply(content, speed = speed, onLongClick = onLongClick)
-        MessageStyle.Bubbles -> ModelBubble(content, time = time ?: "", speed = speed, onLongClick = onLongClick)
+        MessageStyle.Bubbles -> ModelBubble(content, time = time.orEmpty(), speed = speed, onLongClick = onLongClick)
     }
 }
 

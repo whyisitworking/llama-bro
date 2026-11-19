@@ -74,7 +74,7 @@ internal class HttpTransport(
                 val status = connection.responseCode
                 logger?.log(
                     LogLevel.Debug,
-                    "$method ${withoutQuery(current)} $status" + (rangeHeader?.let { " Range: $it" } ?: ""),
+                    "$method ${withoutQuery(current)} $status" + (rangeHeader?.let { " Range: $it" }.orEmpty()),
                 )
                 if (status in REDIRECTS) {
                     current = redirectTarget(current, connection, ++hops)

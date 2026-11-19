@@ -99,6 +99,11 @@ public abstract class com/suhel/llamabro/hub/HubException : java/lang/Exception 
 	public abstract fun getRetryable ()Z
 }
 
+public final class com/suhel/llamabro/hub/HubException$Corrupt : com/suhel/llamabro/hub/HubException {
+	public final fun getPath ()Ljava/lang/String;
+	public fun getRetryable ()Z
+}
+
 public final class com/suhel/llamabro/hub/HubException$InsufficientStorage : com/suhel/llamabro/hub/HubException {
 	public final fun getAvailableBytes ()J
 	public final fun getNeededBytes ()J

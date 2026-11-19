@@ -153,6 +153,14 @@ object Limits {
                 Limit("This model needs a Hugging Face token.", LimitAction.AddToken, "Add token")
             }
 
+            failure.kind == DownloadFailure.Kind.Corrupt -> {
+                Limit(
+                    "This model's file on Hugging Face is damaged. Try another quantisation.",
+                    LimitAction.Retry,
+                    "Got it",
+                )
+            }
+
             failure.kind == DownloadFailure.Kind.InsufficientStorage -> {
                 Limit("There isn't enough space on this phone for this model.", LimitAction.Retry, "Retry")
             }

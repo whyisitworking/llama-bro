@@ -4,7 +4,7 @@
 #   native         host C API tests (ctest)
 #   hub-golden     upstream model-resolution self-test and recorded golden cases
 #   contract       the C API vs upstream llama-server, same build, same flags, per model (run.sh); audio on
-#                  upstream's audio test model with a clip spoken at check time (make-test-clip.sh)
+#                  upstream's audio test model with the committed clip (fixtures/clip.wav)
 #   tools-ui       llama.cpp's own Llama Chat compaction code (ui/apps/chat; tools/ui before b12479) regenerated in
 #                  node; must equal the committed golden
 #   api            core, llamabro-typed and llamabro-testing release public APIs equal their reviewed dumps (D26)
@@ -29,7 +29,8 @@
 #   hub-resume    (--device) acceptance-app kill/force-stop resume and notification checks on the phone
 #
 # usage: sdk/scripts/check.sh [--device] [--only step,step]
-# env:   LB_TEST_MODEL (default ~/Downloads/Qwen3.5-4B-Q4_K_M.gguf), LB_TEST_MMPROJ (default ~/Downloads/mmproj-F16.gguf),
+# env:   LB_MODELS_DIR where the large GGUFs are (default ~/Downloads); in it by default:
+#        LB_TEST_MODEL (Qwen3.5-4B-Q4_K_M.gguf), LB_TEST_MMPROJ (mmproj-F16.gguf),
 #        LB_TEST_DFLASH (default ~/llamabro-models/Qwen3.5-4B-DFlash-Q8_0.gguf),
 #        LB_CONTRACT_MODELS extra GGUFs for the contract test, comma-separated (default: Llama 3.2 3B if present),
 #        LB_DEVICE_MODELS file names in the acceptance app's filesDir (default: the three acceptance models),
@@ -50,11 +51,12 @@ native="$sdk/native"
 logs="$native/build/check"
 mkdir -p "$logs"
 
-model="${LB_TEST_MODEL:-$HOME/Downloads/Qwen3.5-4B-Q4_K_M.gguf}"
+models_dir="${LB_MODELS_DIR:-$HOME/Downloads}"
+model="${LB_TEST_MODEL:-$models_dir/Qwen3.5-4B-Q4_K_M.gguf}"
 draft_model="${LB_TEST_DFLASH:-$HOME/llamabro-models/Qwen3.5-4B-DFlash-Q8_0.gguf}"
-mmproj="${LB_TEST_MMPROJ:-$HOME/Downloads/mmproj-F16.gguf}"
+mmproj="${LB_TEST_MMPROJ:-$models_dir/mmproj-F16.gguf}"
 [ -f "$mmproj" ] || mmproj=""
-default_extra="$HOME/Downloads/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+default_extra="$models_dir/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
 contract_models="${LB_CONTRACT_MODELS:-$( [ -f "$default_extra" ] && echo "$default_extra")}"
 device_models="${LB_DEVICE_MODELS:-Qwen3.5-4B-Q4_K_M.gguf,gemma-3-4b-it-qat-UD-Q4_K_XL.gguf,Llama-3.2-3B-Instruct-Q4_K_M.gguf}"
 
@@ -97,20 +99,35 @@ run() {  # run NAME COMMAND...: logs to $logs/NAME.log, records PASS/FAIL
     fi
 }
 
-[ -f "$model" ] || { echo "LB_TEST_MODEL not found: $model"; exit 2; }
-[ -f "$draft_model" ] || { echo "LB_TEST_DFLASH not found: $draft_model"; exit 2; }
-export LB_TEST_MODEL="$model"
-export LB_TEST_DFLASH="$draft_model"
+# a file's size in bytes, on macOS and Linux alike
+size_of() { wc -c < "$1" | tr -d ' '; }
+
+# the audio tests' clip: speech from llama.cpp's own sample, committed (fixtures/README.md); cmake bakes the path in
+export LB_TEST_CLIP="$sdk/scripts/fixtures/clip.wav"
 export LB_TEST_MODELS_DIR="${LB_TEST_MODELS_DIR:-$HOME/Downloads/llamabro-test}"
+
 omni="$LB_TEST_MODELS_DIR/tinyLFM3-Omni-for-testing-Q2_K.gguf"
 omni_mmproj="$LB_TEST_MODELS_DIR/mmproj-tinyLFM3-Omni-for-testing-Q2_K.gguf"
-for f in bge-small-f16.gguf jina-reranker-tiny-f16.gguf stories15M_MOE-F16.gguf moe_shakespeare15M.gguf \
-    "$(basename "$omni")" "$(basename "$omni_mmproj")"; do
-    [ -f "$LB_TEST_MODELS_DIR/$f" ] || { echo "$LB_TEST_MODELS_DIR/$f not found: run sdk/scripts/fetch-test-models.sh"; exit 2; }
-done
-# the audio tests' clip, spoken by macOS at check time (D84); cmake bakes this path into the native tests
-export LB_TEST_CLIP="$logs/clip.wav"
-bash "$sdk/scripts/make-test-clip.sh" "$LB_TEST_CLIP" || { echo "could not make the test clip (needs macOS say and afconvert)"; exit 2; }
+
+# the steps that read no model: a check of only these needs none on disk
+model_free="build tools-ui api hub-api quality lint aar"
+needs_models=1
+if [ -n "$only" ]; then
+    needs_models=0
+    for step in $(echo "$only" | tr ',' ' '); do
+        case " $model_free " in *" $step "*) ;; *) needs_models=1 ;; esac
+    done
+fi
+if [ "$needs_models" = 1 ]; then
+    [ -f "$model" ] || { echo "LB_TEST_MODEL not found: $model"; exit 2; }
+    [ -f "$draft_model" ] || { echo "LB_TEST_DFLASH not found: $draft_model"; exit 2; }
+    export LB_TEST_MODEL="$model"
+    export LB_TEST_DFLASH="$draft_model"
+    for f in bge-small-f16.gguf jina-reranker-tiny-f16.gguf stories15M_MOE-F16.gguf moe_shakespeare15M.gguf \
+        "$(basename "$omni")" "$(basename "$omni_mmproj")"; do
+        [ -f "$LB_TEST_MODELS_DIR/$f" ] || { echo "$LB_TEST_MODELS_DIR/$f not found: run sdk/scripts/fetch-test-models.sh"; exit 2; }
+    done
+fi
 
 gradle() { (cd "$root" && ./gradlew -p sdk "$@"); }
 
@@ -126,9 +143,9 @@ step_hub_golden() {
     python3 -m unittest discover -s "$sdk/scripts/hub-fake" || return 1
     "$native/build/host/bin/lb-hub-golden" self-test || return 1
     "$native/build/host/bin/lb-hub-golden" gguf-offset \
-        "$HOME/Downloads/Qwen3.5-4B-Q4_K_M.gguf" \
-        "$HOME/Downloads/gemma-3-4b-it-qat-UD-Q4_K_XL.gguf" \
-        "$HOME/Downloads/Llama-3.2-3B-Instruct-Q4_K_M.gguf" > "$logs/gguf-offsets.json" || return 1
+        "$models_dir/Qwen3.5-4B-Q4_K_M.gguf" \
+        "$models_dir/gemma-3-4b-it-qat-UD-Q4_K_XL.gguf" \
+        "$models_dir/Llama-3.2-3B-Instruct-Q4_K_M.gguf" > "$logs/gguf-offsets.json" || return 1
     "$native/build/host/bin/lb-hub-golden" cases > "$logs/model-resolution.json" || return 1
     diff -u "$sdk/llamabro-hub/src/test/resources/upstream/model-resolution.json" "$logs/model-resolution.json" || return 1
     python3 "$sdk/scripts/hub-fake/run_cache_golden.py" \
@@ -148,7 +165,7 @@ step_jvm() {
         :llamabro-hub-work:testDebugUnitTest :llamabro-hub-work:compileDebugAndroidTestKotlin \
         :llamabro:compileDebugAndroidTestKotlin \
         :llamabro-hub-testing:testDebugUnitTest :llamabro-typed:testDebugUnitTest :llamabro-typed-ksp:test \
-        -Pllamabro.hub.model.dir="$HOME/Downloads" -Pllamabro.hub.golden.dir="$logs/hub-golden" || return 1
+        -Pllamabro.hub.model.dir="$models_dir" -Pllamabro.hub.golden.dir="$logs/hub-golden" || return 1
     grep -q 'skipped="0"' \
         "$sdk/llamabro-hub/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.hub.GgufHeaderTest.xml" || {
         echo "GgufHeaderTest was skipped"; return 1;
@@ -246,12 +263,12 @@ step_device() {
     # the device-choice test reads Qwen3.5 from the hexagon test app's external files directory
     local htp_files=/sdcard/Android/data/com.suhel.llamabro.hexagon.test/files qwen=Qwen3.5-4B-Q4_K_M.gguf
     adb shell "mkdir -p $htp_files" || return 1
-    if [ "$(adb shell "stat -c %s $htp_files/$qwen 2>/dev/null" | tr -d '\r')" != "$(stat -f %z "$model")" ]; then
+    if [ "$(adb shell "stat -c %s $htp_files/$qwen 2>/dev/null" | tr -d '\r')" != "$(size_of "$model")" ]; then
         adb push "$model" "$htp_files/$qwen" || return 1
     fi
     adb shell "chmod 644 $htp_files/$qwen" || return 1
     local draft_name=Qwen3.5-4B-DFlash-Q8_0.gguf
-    if [ "$(adb shell "stat -c %s $htp_files/$draft_name 2>/dev/null" | tr -d '\r')" != "$(stat -f %z "$draft_model")" ]; then
+    if [ "$(adb shell "stat -c %s $htp_files/$draft_name 2>/dev/null" | tr -d '\r')" != "$(size_of "$draft_model")" ]; then
         adb push "$draft_model" "$htp_files/$draft_name" || return 1
     fi
     adb shell "chmod 644 $htp_files/$draft_name" || return 1
@@ -332,7 +349,7 @@ step_hub_device() (
     for file in "$model" "$mmproj"; do
         [ -n "$file" ] || continue
         name="$(basename "$file")"
-        if [ "$(adb shell "stat -c %s $hub_files/$name 2>/dev/null" | tr -d '\r')" != "$(stat -f %z "$file")" ]; then
+        if [ "$(adb shell "stat -c %s $hub_files/$name 2>/dev/null" | tr -d '\r')" != "$(size_of "$file")" ]; then
             adb push "$file" "$hub_files/$name" || return 1
         fi
         adb shell "chmod 644 $hub_files/$name" || return 1
@@ -367,7 +384,7 @@ step_device_contract() {
     local dir=/data/local/tmp/lb-contract-models f
     adb shell "mkdir -p $dir" || return 1
     for f in "$model" $mmproj; do
-        if [ "$(adb shell "stat -c %s $dir/$(basename "$f") 2>/dev/null" | tr -d '\r')" != "$(stat -f %z "$f")" ]; then
+        if [ "$(adb shell "stat -c %s $dir/$(basename "$f") 2>/dev/null" | tr -d '\r')" != "$(size_of "$f")" ]; then
             adb push "$f" "$dir/" || return 1
         fi
     done
