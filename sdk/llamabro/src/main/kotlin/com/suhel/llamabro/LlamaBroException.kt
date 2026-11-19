@@ -1,7 +1,7 @@
 package com.suhel.llamabro
 
 /**
- * Every error the SDK raises, mapped from llama-server's error types (design §6.1). Apps catch these; only the SDK
+ * Every error the SDK raises, mapped from llama-server's error types. Apps catch these; only the SDK
  * creates them. [cause] holds the underlying error where there is one.
  */
 public sealed class LlamaBroException(message: String, cause: Throwable?) : Exception(message, cause) {

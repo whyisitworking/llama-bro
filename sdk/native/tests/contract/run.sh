@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Contract test (P1 T5, design §12, the per-upgrade check): the C API must answer exactly like upstream
+# Contract test (the per-upgrade check): the C API must answer exactly like upstream
 # llama-server built from the same tree with the same flags. Runs requests.jsonl through llama-server
 # over HTTP (http-run.py) and through the C API (lb-run), then compares with compare.py (both copied
 # from research/p0/scripts). Passes only on "N/N identical".
@@ -41,7 +41,7 @@ with open(sys.argv[2], "w") as out:
 PY
 echo "$(wc -l < "$requests" | tr -d ' ') requests$( [ -n "$mmproj" ] || echo ", without the image ones (no LB_TEST_MMPROJ)")"
 
-# upstream: the same values the C API config below produces (phone defaults, design §8)
+# upstream: the same values the C API config below produces (phone defaults)
 "$bin/llama-server" -m "$model" ${mmproj:+--mmproj "$mmproj"} -c 8192 -np 1 --cache-ram 1024 --ctx-checkpoints 8 --load-mode none --fit off --seed 42 \
     -b 512 -ub 512 --host 127.0.0.1 --port "$port" > "$out/llama-server.log" 2>&1 &
 server_pid=$!

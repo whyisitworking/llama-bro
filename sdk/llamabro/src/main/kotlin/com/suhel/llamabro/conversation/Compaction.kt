@@ -23,7 +23,7 @@ public object Compaction {
 }
 
 /**
- * Summarises the history before the last [preservedSteps] steps, the way tools/ui does (design §7.2). The
+ * Summarises the history before the last [preservedSteps] steps, the way tools/ui does. The
  * summary request is the chat's own request cut before the preserved steps plus [instruction], so the server
  * reuses its cached prefix. On success a [Message.Compaction] is appended and the shortened history is
  * pre-encoded in the background (cancelled by the next send).

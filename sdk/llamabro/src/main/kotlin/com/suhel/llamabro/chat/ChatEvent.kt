@@ -57,7 +57,7 @@ public sealed interface ChatEvent {
 
 /**
  * Why a reply ended. The set is final at 1.0 (D26). [TurnLimit], [ToolCallsPending] and [ToolAborted] come only from
- * `Conversation`'s agent loop (design §6.2): [ToolCallsPending] when a call waits for the app's result, [ToolAborted]
+ * `Conversation`'s agent loop: [ToolCallsPending] when a call waits for the app's result, [ToolAborted]
  * when a tool threw `LbToolAbort` (D62; the exception is `Done.abort`).
  */
 public enum class FinishReason { Stop, Length, ToolCalls, TurnLimit, ToolCallsPending, ToolAborted }

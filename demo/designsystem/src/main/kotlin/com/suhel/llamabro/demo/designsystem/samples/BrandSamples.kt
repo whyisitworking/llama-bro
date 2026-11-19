@@ -37,7 +37,7 @@ internal fun BrandSamples() {
             Orb(40.dp, Modifier.padding(bottom = 12.dp))
             EmptyLine("What's on your mind?")
         }
-        ModelName("Swift", realName = "Qwen3.5 0.8B · by Alibaba Qwen")
+        ModelName("Qwen3.5 0.8B", realName = "by Alibaba · by Alibaba Qwen")
         ModelName("Qwen3.5 4B")
         Greeting("Chats", textAlign = TextAlign.Start)
     }

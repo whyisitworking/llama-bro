@@ -260,7 +260,7 @@ The gutter is 16 dp everywhere, measured from the edge of a content column that 
 
 ### 8.4 Layout primitives
 
-Screens and sheets are assembled from primitives that own the gutter and the gaps and that take content, never padding: `Screen`, `ListScreen`, `Sheet`, `Section`, `Stack` and `Inline` (gaps from the named steps only), with `BottomBar`, `MessageColumn`, `Centered`, `ScrollStack` and `LazyStack` for specific jobs. A sheet is the 48 dp handle area, then content on the gutter, ending 16 dp above the bottom inset with no dead space; its primary action is a 56 dp ink button. A sheet whose content grows after it opens re-expands so that its content stays on screen (F118).
+Screens and sheets are assembled from primitives that own the gutter and the gaps and that take content, never padding: `Screen`, `Sheet`, `Section`, `Stack` and `Inline` (gaps from the named steps only), with `BottomBar`, `MessageColumn`, `Centered`, `ScrollStack` and `LazyStack` for specific jobs. A sheet is the 48 dp handle area, then content on the gutter, ending 16 dp above the bottom inset with no dead space; its primary action is a 56 dp ink button. A sheet whose content grows after it opens re-expands so that its content stays on screen (F118).
 
 ### 8.5 Controls and shapes
 

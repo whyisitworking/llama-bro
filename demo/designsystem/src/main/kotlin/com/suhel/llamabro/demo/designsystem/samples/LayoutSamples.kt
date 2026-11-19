@@ -37,7 +37,7 @@ internal val SampleTabs =
 internal fun LayoutSamples() {
     SampleFrame {
         TopBar(
-            title = { TopBarTitle("Writer", chevron = true, onClick = {}) },
+            title = { TopBarTitle("Gemma 3 4B", chevron = true, onClick = {}) },
             start = { IconAction(DemoIcons.Menu, "Chats", onClick = {}) },
             end = { IconAction(DemoIcons.NewChat, "New chat", onClick = {}) },
         )
@@ -45,7 +45,7 @@ internal fun LayoutSamples() {
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     InitialAvatar("W", size = 32.dp)
-                    TopBarTitle("Portfolio bio", subtitle = "Writer", chevron = true, onClick = {})
+                    TopBarTitle("Portfolio bio", subtitle = "Gemma 3 4B", chevron = true, onClick = {})
                 }
             },
             start = { IconAction(DemoIcons.Back, "Back", onClick = {}) },

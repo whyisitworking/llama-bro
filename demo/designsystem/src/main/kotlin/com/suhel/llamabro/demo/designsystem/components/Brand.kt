@@ -19,11 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import com.suhel.llamabro.demo.designsystem.theme.DemoBrand
 import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
@@ -34,9 +34,7 @@ import kotlin.math.hypot
 import kotlin.math.sin
 
 /** The icon's warmth: amber at the lit point falling to rose at the far edge, the same in both themes. */
-private val Amber = Color(0xFFFDB969)
-private val Rose = Color(0xFFC35F5A)
-private val Stops = arrayOf(0.00f to Amber, 1.00f to Rose)
+private val Stops = arrayOf(0.00f to DemoBrand.amber, 1.00f to DemoBrand.rose)
 
 /** The two sizes the orb is drawn at. */
 enum class OrbSize(internal val size: Dp) {
@@ -62,7 +60,7 @@ fun Orb(size: Dp, modifier: Modifier = Modifier) {
     val colors = LocalDemoColors.current
     // Android's shadow is fainter than CSS's at the same alpha, hence 0.22 light and 0.35 dark; elevation = a fifth of
     // the size.
-    val tint = Rose.copy(alpha = if (colors.isDark) 0.35f else 0.22f)
+    val tint = DemoBrand.rose.copy(alpha = if (colors.isDark) 0.35f else 0.22f)
     Canvas(
         modifier
             .size(size)
@@ -100,8 +98,7 @@ fun EmptyLine(text: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * A model's name in serif, with its real name in sans under it when the name is a friendly one ("Swift" over "Qwen3.5
- * 0.8B").
+ * A model's name in serif, with a second line in sans under it when there is one: its maker ("by Alibaba").
  */
 @Composable
 fun ModelName(name: String, modifier: Modifier = Modifier, realName: String? = null, centered: Boolean = false) {
@@ -152,7 +149,7 @@ fun VoiceOrb(mood: OrbMood, level: Float, modifier: Modifier = Modifier) {
         } else {
             START_ANGLE
         }
-    val tint = Rose.copy(alpha = if (colors.isDark) 0.35f else 0.22f)
+    val tint = DemoBrand.rose.copy(alpha = if (colors.isDark) 0.35f else 0.22f)
     val size = DemoSize.orbVoice
     Box(modifier.size(size), contentAlignment = Alignment.Center) {
         if (mood == OrbMood.Listening && !still) {
@@ -187,7 +184,7 @@ fun VoiceOrb(mood: OrbMood, level: Float, modifier: Modifier = Modifier) {
                     )
                 drawCircle(
                     Brush.radialGradient(
-                        listOf(Highlight, Highlight.copy(alpha = 0f)),
+                        listOf(DemoBrand.highlight, DemoBrand.highlight.copy(alpha = 0f)),
                         center = spot,
                         radius =
                             r * HIGHLIGHT_SIZE,
@@ -199,8 +196,6 @@ fun VoiceOrb(mood: OrbMood, level: Float, modifier: Modifier = Modifier) {
     }
 }
 
-/** A warm white for the thinking orb's turning light. */
-private val Highlight = Color(0x8CFFF0DC)
 private const val LISTEN_SWELL = 0.09f
 private const val SPEAK_SWELL = 0.06f
 private const val RING_FROM = 1.04f

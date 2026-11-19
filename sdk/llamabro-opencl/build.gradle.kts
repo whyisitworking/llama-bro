@@ -4,7 +4,7 @@ plugins {
 
 group = "io.github.whyisitworking"
 
-// The OpenCL GPU backend (P2 T4, design §9): libllamabro-ggml-opencl.so with upstream's Adreno kernels, built in
+// The OpenCL GPU backend: libllamabro-ggml-opencl.so with upstream's Adreno kernels, built in
 // Qualcomm's image by sdk/native/scripts/build-backends.sh. Being on the classpath is enough (F61).
 android {
     namespace = "com.suhel.llamabro.opencl"

@@ -27,7 +27,7 @@ import org.junit.runners.Parameterized
 import java.io.File
 
 /**
- * P1 and P2 done-when (design §13, P1 T12, P2 T10): chat, tools, stop and the context error on the phone, through the
+ * The SDK on the phone: chat, tools, stop and the context error on the phone, through the
  * public API only, for each model named in the instrumentation argument `models` (file names in the app's filesDir).
  * Each flavor ships a different set of backends: `DevicePolicy.Auto` must pick its device ([BuildConfig.AUTO_DEVICE]);
  * `full` runs every test, `cpu`, `gpu` and `noskel` (the forced NPU failure) device choice, one chat and stop:
@@ -92,7 +92,7 @@ class AcceptanceTest(private val file: String) {
         log("autoPicksTheFlavorsDevice", "device=${r.device} attempts=${r.attempts}")
         assertEquals(r.toString(), DeviceKind.valueOf(BuildConfig.AUTO_DEVICE), r.device)
         if (BuildConfig.FLAVOR == "noskel") {
-            // the NPU's backend couldn't install its skeleton: one line with the reason, then the GPU (P2 T10)
+            // the NPU's backend couldn't install its skeleton: one line with the reason, then the GPU
             val a = r.attempts.single()
             assertEquals(r.toString(), DeviceKind.Npu, a.kind)
             assertTrue(a.reason, a.reason.startsWith("hexagon didn't load") && a.reason.contains("libggml-htp-v79.so"))

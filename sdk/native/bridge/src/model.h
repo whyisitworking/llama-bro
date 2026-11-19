@@ -22,7 +22,7 @@
 struct lb_model {
     // load
     common_params params;
-    json ctx_fit;                                        // lb_fit_auto_ctx's numbers, null when not fitted (P2 T7)
+    json ctx_fit;                                        // lb_fit_auto_ctx's numbers, null when not fitted
     lb_progress_cb progress_cb = nullptr;
     void * progress_user = nullptr;
     std::atomic<bool> loading{true};

@@ -20,7 +20,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * The native path on a phone (P1 T6). The model must be in the test app's filesDir:
+ * The native path on a phone. The model must be in the test app's filesDir:
  *   adb shell run-as com.suhel.llamabro.test cp /data/local/tmp/lb-spike/models/Qwen3.5-4B-Q4_K_M.gguf files/
  */
 @RunWith(AndroidJUnit4::class)

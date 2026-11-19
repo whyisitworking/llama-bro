@@ -17,7 +17,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
-/** PD T1 (F96): a Conversation started from an app's own stored messages. */
+/** A Conversation started from an app's own stored messages (F96). */
 class ConversationHistoryTest {
     private val history = listOf(Message.user("hi"), Message.Assistant("hello", null, emptyList()))
 

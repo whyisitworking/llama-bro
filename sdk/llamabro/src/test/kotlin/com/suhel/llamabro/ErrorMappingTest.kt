@@ -8,7 +8,7 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** PA T5 (F41): each llama-server error type and each bridge error to its [LlamaBroException]. */
+/** Each llama-server error type and each bridge error to its [LlamaBroException] (F41). */
 class ErrorMappingTest {
     private fun body(type: String, message: String = "m", extra: String = "") =
         """{"error":{"code":400,"message":"$message","type":"$type"$extra}}"""

@@ -3,8 +3,8 @@
 #   unit      JVM tests of :designsystem (tokens, theme mapping, contrast) and :app
 #   lint      Android lint on :app and :designsystem, warnings as errors
 #   assemble  debug APK, the minified (R8) release APK signed with the debug key, and the device-test APKs
-#   ds        the component library's gates: the Compose compiler's stability report (scripts/stability.py), and no raw colour, text style, shape, shadow, motion or Material widget in
-#             demo/app/src/main, and (D48) no number, padding or font override in a screen and no role overridden
+#   ds        the component library's gates: the Compose compiler's stability report (scripts/stability.py), and the
+#             design-system lint rule (demo/lint, D113): sizes, colours and type roles from the theme, screens from components
 #   quality   ktlint and detekt over every Kotlin module (the root build's `qualityCheck`)
 #   device    (--device) :designsystem's and :app's instrumented tests on the
 #             device or emulator named in DEMO_DEVICE (the demo's tests use a fake engine, so an arm64 emulator will do)
@@ -87,75 +87,12 @@ run() {  # run NAME COMMAND...: logs to $logs/NAME.log, records PASS, SKIP (exit
 gradle() { (cd "$root" && ./gradlew "$@"); }
 
 # Global constraints, "Design system only": these never appear in :app's main sources.
-raw_visuals='(^|[^A-Za-z0-9_])((Color|TextStyle|RoundedCornerShape|CutCornerShape)\(|Color\.[A-Z]|(Button|OutlinedButton|TextButton|ElevatedButton|FilledTonalButton|IconButton|FloatingActionButton|ExtendedFloatingActionButton|SmallFloatingActionButton|Card|ElevatedCard|OutlinedCard|TextField|OutlinedTextField|ListItem|Surface|ModalBottomSheet|BottomSheetScaffold|TopAppBar|CenterAlignedTopAppBar|MediumTopAppBar|LargeTopAppBar|NavigationBar|NavigationBarItem|NavigationRail|AssistChip|FilterChip|SuggestionChip|InputChip|LinearProgressIndicator|CircularProgressIndicator|HorizontalDivider|VerticalDivider|Divider|Checkbox|RadioButton|Switch|Slider|SegmentedButton|SingleChoiceSegmentedButtonRow|Badge|BadgedBox)[[:space:]]*[({])|\.shadow\('
-raw_motion='(^|[^A-Za-z0-9_.])(tween|spring|keyframes|AnimatedVisibility|animateItem|animate[A-Z][A-Za-z]*AsState|rememberInfiniteTransition)\('
-
-design_system_only() {
-    local hits
-    hits="$(grep -rnE "$raw_visuals" "$root/demo/app/src/main" --include='*.kt' || true)"
-    if [ -n "$hits" ]; then
-        echo "raw visuals in :app; use a :designsystem component:"
-        echo "$hits"
-        return 1
-    fi
-    # motion too comes from the design system (DemoMotion's durations and easings, in its components)
-    hits="$(grep -rnE "$raw_motion" "$root/demo/app/src/main" --include='*.kt' || true)"
-    if [ -n "$hits" ]; then
-        echo "raw motion in :app; use a :designsystem component (Reveal, messageMotion, TypingDots...):"
-        echo "$hits"
-        return 1
-    fi
-    echo "demo/app/src/main: no raw colour, text style, shape, shadow, motion or Material widget"
-}
-
-# Font sizes come from DemoType and spacing from DemoSpacing: no sizes in sp, and no dp literal (but 0) in a padding,
-# a gap or a spacer of :app.
-# Design system v2 (D48): a screen takes its type from a DemoType role and its gaps and edges from the layout primitives
-# (Gap, Stack, Inline, Section, Screen, BottomBar...), and carries no number of its own: no .dp or .sp, no padding,
-# Spacer, spacedBy or PaddingValues, no DemoSpacing, no font override. Previews (frames and sizes for a picture) and the
-# share card (its pixel maths for an off-screen render) are not screens. The design system itself keeps its roles whole:
-# no component overrides a role's size, weight or tracking.
-screens_have_no_numbers() {
-    local files hits
-    files="$(find "$root/demo/app/src/main" -name '*.kt' ! -name '*Previews.kt' ! -name 'PreviewSupport.kt' ! -name 'ShareCard.kt')"
-    # shellcheck disable=SC2086
-    hits="$(grep -nE '[0-9]\.(dp|sp)\b|fontSize|fontWeight|letterSpacing|\bpadding\(|Spacer\(|spacedBy\(|PaddingValues\(|DemoSpacing\.|\.copy\(font' $files || true)"
-    if [ -n "$hits" ]; then
-        echo "a screen carries no number: type from a DemoType role, gaps and edges from Gap and the layout primitives:"
-        echo "$hits"
-        return 1
-    fi
-    hits="$(grep -rnE '\.copy\([^)]*(fontWeight|fontSize|letterSpacing|lineHeight)' \
-        "$root/demo/designsystem/src/main" "$root/demo/app/src/main" --include='*.kt' | grep -v '/theme/DemoType.kt' || true)"
-    if [ -n "$hits" ]; then
-        echo "a role is used whole (size, weight, tracking): add a role to DemoType instead of overriding one:"
-        echo "$hits"
-        return 1
-    fi
-    echo "demo/app/src/main: no number, padding or font override in a screen; roles used whole"
-    components_use_the_scale
-}
-
-# The components take every size from the scales in theme/ (DemoSpacing, DemoSize, DemoShapes): no dp literal but 0
-# (previews in samples/ excepted)
-# outside theme/, so sizes rank the same way everywhere and a change to the scale reaches every component.
-components_use_the_scale() {
-    local hits
-    hits="$(grep -rnE '[0-9]\.?[0-9]*\.dp\b' "$root/demo/designsystem/src/main" --include='*.kt' | grep -vE '/(theme|samples)/' |
-        grep -vE '[^0-9.]0\.dp\b' || true)"
-    if [ -n "$hits" ]; then
-        echo "a component takes its sizes from DemoSpacing, DemoSize and DemoShapes, not a dp literal:"
-        echo "$hits"
-        return 1
-    fi
-    echo "demo/designsystem: every size from the scales in theme/"
-}
-
 step_ds() {
     gradle :demo:designsystem:compileReleaseKotlin --rerun || return 1
     python3 "$root/demo/scripts/stability.py" "$root/demo" || return 1
-    design_system_only || return 1
-    screens_have_no_numbers
+    # sizes, colours and type roles from the theme, and screens built from components: the lint rule of demo/lint
+    # (D113), on the syntax tree with calls resolved
+    gradle :demo:lint:test :demo:designsystem:lintDebug :demo:app:lintDebug
 }
 
 # no test ever touches the phone's radios, and the real-model run needs the network: a run stops when airplane mode is on

@@ -1,4 +1,4 @@
-// Model config JSON -> common_params (P1 T3). Every key is applied through the same common/arg.cpp option
+// Model config JSON -> common_params. Every key is applied through the same common/arg.cpp option
 // handler as the equivalent llama-server flag, so values get llama-server's validation and side effects
 // (for example --slot-save-path checks the directory and appends a separator). Unlike common_params_parse,
 // no environment variables or config.ini files are read: an app's process must not be steered by them.
@@ -81,7 +81,7 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string & 
     try {
         bool has_draft_path = false;
         bool is_dflash = false;
-        // phone defaults (design §8, D17); keys below override them
+        // phone defaults (D17); keys below override them
         apply_flag(ctx, "--parallel", "1");
         apply_flag(ctx, "--cache-ram", "1024");
         apply_flag(ctx, "--ctx-checkpoints", "8");
@@ -90,13 +90,13 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string & 
         // read weights instead of mapping them: the CPU repack copies them anyway, and the mapped pages
         // would stay resident next to the copy (findings F50, F58; D30)
         apply_flag(ctx, "--load-mode", "none");
-        // the context and the placement are always explicit (P2 T6/T7, D33), so upstream's fit has nothing to do; on
+        // the context and the placement are always explicit (D33), so upstream's fit has nothing to do; on
         // the NPU (no reported memory) it only fails (F66)
         apply_flag(ctx, "--fit", "off");
 
         if (!cfg.contains("model_path")) throw std::invalid_argument("model_path is required");
 
-        // The device is always explicit (P2 T6, F32): without one, llama.cpp would use every GPU-type device, and
+        // The device is always explicit (F32): without one, llama.cpp would use every GPU-type device, and
         // Hexagon and OpenCL both are. No "devices" key, or an empty list, is CPU only, as `--device none`. Names are
         // resolved here rather than through `--device`, whose handler rescans for backends on every load (F35).
         out.devices = {nullptr};
@@ -246,7 +246,7 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string & 
         if (has_draft_path && !is_dflash) throw std::invalid_argument("draft_path needs speculative.type dflash");
         if (is_dflash && !has_draft_path) throw std::invalid_argument("speculative.type dflash needs draft_path");
 
-        // always forced (design §8): no context shift, no idle sleep (reload failure after sleep aborts)
+        // always forced: no context shift, no idle sleep (reload failure after sleep aborts)
         apply_switch(ctx, "--no-context-shift");
         apply_flag(ctx, "--sleep-idle-seconds", "-1");
     } catch (const std::exception & e) {

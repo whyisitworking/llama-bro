@@ -7,7 +7,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** PD T1 (F97): the budget `ContextSize.Auto` would use, for fit labels without a plan per model. */
+/** The budget `ContextSize.Auto` would use, for fit labels without a plan per model (F97). */
 class MemoryBudgetApiTest {
     private val gib = 1024L * 1024 * 1024
     private val mib = 1024L * 1024

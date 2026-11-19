@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Check for prepare-llama.sh (P1 T1): builds the patched copy twice into a temp dir, checks that the
+# Check for prepare-llama.sh: builds the patched copy twice into a temp dir, checks that the
 # second run is a no-op, that the shipped patch is applied, and that the submodule is untouched.
 set -euo pipefail
 

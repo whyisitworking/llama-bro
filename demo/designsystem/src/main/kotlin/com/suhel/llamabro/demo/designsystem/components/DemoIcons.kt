@@ -149,6 +149,10 @@ object DemoIcons {
                 defaultHeight = DemoSize.icon,
                 viewportWidth = 24f,
                 viewportHeight = 24f,
-            ).addPath(pathData = addPathNodes(path), fill = SolidColor(Color.Black))
+            ).addPath(pathData = addPathNodes(path), fill = SolidColor(MASK))
             .build()
 }
+
+// a path's fill is only its shape: Icon tints it, so the colour here is never seen
+@Suppress("DemoRawColour")
+private val MASK = Color.Black

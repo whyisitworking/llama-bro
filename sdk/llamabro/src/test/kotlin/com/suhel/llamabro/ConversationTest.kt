@@ -250,7 +250,7 @@ class ConversationTest {
     /**
      * tools/ui creates the assistant message before streaming and a stop never removes it
      * (stores/chat/index.svelte.ts sendMessage + savePartialResponseIfNeeded), so the next request still alternates
-     * roles. Templates like Gemma 3's raise "Conversation roles must alternate" otherwise (found on the phone, P1 T12).
+     * roles. Templates like Gemma 3's raise "Conversation roles must alternate" otherwise (found on the phone).
      */
     @Test
     fun stopBeforeAnyTokenKeepsEmptyAssistant() =
@@ -283,7 +283,7 @@ class ConversationTest {
             )
         }
 
-    /** The natural call: a positional string is the system prompt (P1 review: the old fromJson overload took it). */
+    /** The natural call: a positional string is the system prompt (the old fromJson overload took it). */
     @Test
     fun positionalStringIsTheSystemPrompt() =
         runTest {

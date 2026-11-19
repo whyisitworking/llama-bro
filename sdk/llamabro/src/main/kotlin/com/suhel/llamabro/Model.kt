@@ -48,7 +48,7 @@ import kotlin.concurrent.read
 import kotlin.concurrent.write
 
 /**
- * A loaded model: one llama-server core on its own worker thread (design §3.2). Close it when done; [close] is safe
+ * A loaded model: one llama-server core on its own worker thread. Close it when done; [close] is safe
  * on the main thread.
  */
 public class Model internal constructor(
@@ -394,7 +394,7 @@ public class Model internal constructor(
 }
 
 /**
- * A typed chat completion (design §6.1, level 2). Always streams; emits [ChatEvent]s
+ * A typed chat completion (level 2). Always streams; emits [ChatEvent]s
  * ending with exactly one `Done`. Errors fail the flow with a [LlamaBroException].
  */
 public fun Model.chat(request: ChatRequest): Flow<ChatEvent> = chatInternal(request, null)
@@ -421,7 +421,7 @@ internal fun Model.chatInternal(request: ChatRequest, onCompletionId: ((String) 
     }
 
 /**
- * A new [com.suhel.llamabro.conversation.Conversation] (design §6.1, level 1), with an optional system prompt.
+ * A new [com.suhel.llamabro.conversation.Conversation] (level 1), with an optional system prompt.
  *
  * [history] starts it from messages the app stored itself (F96): user, assistant, tool-result and compaction
  * messages, in order, without the system prompt, which has its own parameter. The next request sends them before the

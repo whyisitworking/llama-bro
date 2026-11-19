@@ -57,7 +57,7 @@ internal object ChatJson {
         )
     }
 
-    /** The body fields of [o], in P1's order; `extra` is not among them (it is applied to the whole body). */
+    /** The body fields of [o], in the golden order; `extra` is not among them (it is applied to the whole body). */
     fun options(o: RequestOptions): JsonObject =
         buildJsonObject {
             o.toolChoice?.let { put("tool_choice", toolChoice(it)) }

@@ -85,8 +85,8 @@ fun TopBar(
 }
 
 /**
- * The title of a [TopBar]: [title] ("Swift", "Portfolio bio") with an optional [subtitle] ("On this phone",
- * "Writer"). [chevron] adds the ⌄ that says it opens something (the model switcher); [onClick] makes it tappable.
+ * The title of a [TopBar]: [title] ("Qwen3.5 0.8B", "Portfolio bio") with an optional [subtitle] ("On this phone",
+ * "Gemma 3 4B"). [chevron] adds the ⌄ that says it opens something (the model switcher); [onClick] makes it tappable.
  */
 @Composable
 fun TopBarTitle(

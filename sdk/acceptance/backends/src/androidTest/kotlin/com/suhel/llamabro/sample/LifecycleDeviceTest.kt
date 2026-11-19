@@ -32,7 +32,7 @@ import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
 /**
- * PA T4 (F40): closing is safe on the main thread, frees the model's memory, and never overlaps the next load.
+ * Closing is safe on the main thread, frees the model's memory, and never overlaps the next load (F40).
  * Uses the models the acceptance test pushes to the app's filesDir. Numbers go to logcat under "Lifecycle".
  */
 @RunWith(AndroidJUnit4::class)

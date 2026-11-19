@@ -21,7 +21,7 @@ internal fun ProgressSamples() {
     val c = LocalDemoColors.current
     SampleFrame {
         TopBar(
-            title = { TopBarTitle("Swift", subtitle = "Arriving · 38% · about 40 s") },
+            title = { TopBarTitle("Qwen3.5 0.8B", subtitle = "Arriving · 38% · about 40 s") },
             end = { DownloadRing(0.38f, label = "Arriving · 38% · about 40 s") },
             divider = true,
         )

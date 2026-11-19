@@ -26,7 +26,7 @@ import org.junit.runner.RunWith
 import java.io.File
 
 /**
- * P2 T6 Step 4, with both backend artifacts in the test APK (until T10's `full` flavor): `Auto` picks the NPU, and
+ * Device choice with both backend artifacts in the test APK: `Auto` picks the NPU, and
  * `Only` loads and chats on each kind. The model is Qwen3.5 4B, copied into this app's external files directory by
  * sdk/scripts/check.sh.
  */
@@ -88,7 +88,7 @@ class DeviceChoiceDeviceTest {
         assertEquals(r.toString(), device, r.deviceName)
         assertEquals(r.toString(), backend, r.backend)
         assertEquals(r.toString(), emptyList<LoadReport.Attempt>(), r.attempts)
-        // ContextSize.Auto is fitted to Android's available memory (P2 T7, D33)
+        // ContextSize.Auto is fitted to Android's available memory (D33)
         assertTrue(r.toString(), r.contextSize >= 4096)
         assertTrue(
             r.toString(),
@@ -97,7 +97,7 @@ class DeviceChoiceDeviceTest {
             },
         )
         assertTrue(r.toString(), r.contextSize <= ContextSize.AUTO_CEILING)
-        // Speculative.Auto leaves Qwen3.5's MTP head off on every chip (P2 T8, F67)
+        // Speculative.Auto leaves Qwen3.5's MTP head off on every chip (F67)
         assertEquals(r.toString(), Speculative.Off, r.speculative)
         assertTrue(r.toString(), r.speculativeReason.startsWith("off: MTP"))
     }

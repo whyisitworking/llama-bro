@@ -37,19 +37,19 @@ fun ModelRowItem(
         line = row.line,
         modifier = modifier.testTag("model_row"),
         fit = fit?.let { it.label.text() to it.label.tint() },
-        facts = facts(row, onPhone),
+        facts = facts(row),
+        onPhone = onPhone,
         onClick = onClick,
         footer = download?.let { { DownloadLine(it) } },
     )
 }
 
-/** "Thinks", "Sees images", "Talks", "On this phone" and the download count, quietly, on one line; null when none. */
-private fun facts(row: ModelRow, onPhone: Boolean): String? =
+/** "Thinks", "Talks", "Sees images" and the download count, quietly, on one line; null when none. */
+private fun facts(row: ModelRow): String? =
     listOfNotNull(
         "Thinks".takeIf { row.thinks },
         "Talks".takeIf { row.catalog?.talks == true },
         "Sees images".takeIf { row.sees },
-        "On this phone".takeIf { onPhone },
         row.downloads?.let { "↓ ${Format.downloads(it)}" },
     ).takeIf { it.isNotEmpty() }?.joinToString("  ·  ")
 

@@ -9,7 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Edge cases from the P1 final review that an app developer will meet. */
+/** Edge cases an app developer will meet. */
 class ApiEdgesTest {
     private suspend fun setup(): Pair<FakeEngine, Model> {
         val engine = FakeEngine()

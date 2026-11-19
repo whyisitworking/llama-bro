@@ -1,5 +1,5 @@
 // Copied word for word from tools/server/server.cpp:64 (b12479; unchanged since b12352), where both functions are static.
-// Same copies as the P0 harness research/p0/harness/lb-spike.cpp.
+// Same copies as the research harness research/p0/harness/lb-spike.cpp.
 #include "upstream.h"
 
 #include "server-common.h"

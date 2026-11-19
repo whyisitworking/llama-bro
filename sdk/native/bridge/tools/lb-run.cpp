@@ -1,6 +1,6 @@
 // lb-run: sends a request file through the C API and writes the same files as
 // research/p0/scripts/http-run.py (OUT/<id>.jsonl with {"t_us", "data"} lines, OUT/summary.jsonl), so the
-// contract test can compare it with upstream llama-server (P1 T5).
+// contract test can compare it with upstream llama-server.
 //
 // usage: lb-run CONFIG_JSON REQUESTS.jsonl OUT_DIR
 //   CONFIG_JSON: the lb_model_load config. Backends load from this executable's directory.
@@ -157,7 +157,7 @@ int main(int argc, char ** argv) {
     char * err = nullptr;
     json rt = json::object();
     rt["backend_dir"] = exe_dir(argv[0]);
-    // optional backends, as the app passes them (the device contract on the phone, P2 T9)
+    // optional backends, as the app passes them (the device contract on the phone)
     if (const char * b = std::getenv("LB_RUN_BACKENDS"); b && *b) rt["backends"] = json::parse(b);
     if (const char * l = std::getenv("LB_RUN_LOG_LEVEL"); l && *l) rt["log_level"] = l;
     if (lb_runtime_init(rt.dump().c_str(), &err) != LB_OK) {

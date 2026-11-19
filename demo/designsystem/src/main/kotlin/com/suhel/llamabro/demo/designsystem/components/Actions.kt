@@ -33,9 +33,9 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 
 /**
- * The one strong button of a screen or sheet ("Get Swift", "Save", "New chat"): the ink primary, [onAccent] text, a
- * 56 dp pill (Material's medium button). Disabled, it is a flat hairline pill with muted text, which still reads as a
- * label (a faded ink pill would put its label on grey).
+ * The one strong button of a screen or sheet ("Get Qwen3.5 0.8B", "Save", "New chat"): the ink primary, [onAccent]
+ * text, a 56 dp pill (Material's medium button). Disabled, it is a flat hairline pill with muted text, which still
+ * reads as a label (a faded ink pill would put its label on grey).
  */
 @Composable
 fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {

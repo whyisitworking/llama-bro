@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Checks an llamabro AAR (P1 T6): the native libraries it must carry under our own names, the symbols
+# Checks an llamabro AAR: the native libraries it must carry under our own names, the symbols
 # libllamabro.so exports, and 16 KB LOAD alignment for every .so.
-# A backend AAR (P2 T3, llamabro-<backend>) is checked against the core AAR it runs with: its libraries are
+# A backend AAR (llamabro-<backend>) is checked against the core AAR it runs with: its libraries are
 # prefixed and 16 KB aligned, it carries no copy of the core's (one libc++_shared.so per APK, from the same NDK),
 # every NEEDED library is in one of the two AARs or a system library, and each HTP skeleton matches its .sha256.
 # usage: check-aar.sh AAR            (the core)

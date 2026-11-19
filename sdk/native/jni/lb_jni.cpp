@@ -1,4 +1,4 @@
-// JNI over the C API (P1 T6). Kotlin side: sdk/llamabro/src/main/kotlin/com/suhel/llamabro/internal/NativeBridge.kt.
+// JNI over the C API. Kotlin side: sdk/llamabro/src/main/kotlin/com/suhel/llamabro/internal/NativeBridge.kt.
 //
 // Native threads (the model worker, each request's thread) call back into Kotlin. A thread is attached
 // to the JVM on its first callback and detached when it exits (thread_local guard), which for a request

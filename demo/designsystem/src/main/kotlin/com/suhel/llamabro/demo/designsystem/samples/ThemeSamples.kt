@@ -48,7 +48,7 @@ internal fun ThemeSamples() {
         }
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Good evening", style = DemoType.displayHero, color = c.ink)
-            Text("Swift", style = DemoType.sheetTitle, color = c.ink)
+            Text("Qwen3.5 0.8B", style = DemoType.sheetTitle, color = c.ink)
             Text("What's on your mind?", style = DemoType.displayHero, color = c.ink)
             Text("Portfolio bio", style = DemoType.title, color = c.ink)
             Text(

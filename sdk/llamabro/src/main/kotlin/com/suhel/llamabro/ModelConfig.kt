@@ -8,7 +8,7 @@ import kotlinx.serialization.json.put
 
 /**
  * Settings fixed when a model loads: the scope of `loadModel(source) { … }`. Defaults are the phone defaults
- * (design §8, D17).
+ * (D17).
  */
 public class ModelConfig internal constructor() {
     /** Tokens of context (`n_ctx`). */
@@ -276,13 +276,12 @@ public sealed interface ContextSize {
      *
      * "Fits" uses llama.cpp's own projection of what the model, its context cache and its compute buffers take, summed
      * over the chosen device and the host (a phone has one RAM), compared with the kernel's available memory
-     * (`MemAvailable`, what Android itself reports as
-     * `availMem`) less Android's low-memory threshold, the prompt cache ([ModelConfig.ramCacheMib]), an image
-     * encoder's file and a reserve for what grows during a chat ([ModelConfig.memoryReserveMib], 512 MiB by default). A
-     * phone short on memory gets a smaller
-     * context. If even 4096 tokens don't fit, [ModelConfig.memoryCheck] decides: by default the model loads at 4096
-     * tokens and [LoadReport.memoryWarning] says by how much it was short ([MemoryCheck.Warn]); with
-     * [MemoryCheck.Refuse] the load fails with `LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory`.
+     * (`MemAvailable`, what Android itself reports as `availMem`) less Android's low-memory threshold, the prompt cache
+     * ([ModelConfig.ramCacheMib]), an image encoder's file and a reserve for what grows during a chat
+     * ([ModelConfig.memoryReserveMib], 512 MiB by default). A phone short on memory gets a smaller context. If even
+     * 4096 tokens don't fit, [ModelConfig.memoryCheck] decides: by default the model loads at 4096 tokens and
+     * [LoadReport.memoryWarning] says by how much it was short ([MemoryCheck.Warn]); with [MemoryCheck.Refuse] the load
+     * fails with `LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory`.
      *
      * Why 16 384: common local defaults are 4096 (Ollama, LM Studio, Apple's on-device model); reasoning and tool
      * results take 1–3K tokens a turn on current models, so four times that leaves room for a real conversation,
@@ -325,11 +324,10 @@ public sealed interface ContextSize {
 public sealed interface Speculative {
     /**
      * The default: no speculative decoding, as upstream. Kept apart from [Off] so a later llama.cpp can turn it on
-     * where it
-     * wins; at b12052 it wins nowhere for prose (MTP is slower on the CPU and the NPU, F67), and drafting aborts the
-     * GPU
-     * backend. [Model.loadReport] gives the reason for the chip. For structured output (JSON, tool calls) on the NPU,
-     * [Mtp] with `draftMax = 4` decodes about 1.5× faster (F68); for replies that copy their input, [Ngram].
+     * where it wins; measured, it wins nowhere for prose (MTP is slower on the CPU and the NPU, F67), and drafting
+     * aborts the GPU backend. [Model.loadReport] gives the reason for the chip. For structured output (JSON, tool
+     * calls) on the NPU, [Mtp] with `draftMax = 4` decodes about 1.5× faster (F68); for replies that copy their
+     * input, [Ngram].
      */
     public data object Auto : Speculative
 
@@ -339,11 +337,9 @@ public sealed interface Speculative {
     /**
      * The GGUF's multi-token-prediction head (`--spec-type draft-mtp`), for the whole load (llama-server can't switch
      * it per request). Worth it on [DeviceKind.Npu] when replies are mostly structured output (F68). On the NPU a
-     * greedy
-     * reply can differ slightly from one without it (F72). Never on [DeviceKind.Gpu]: ggml-opencl aborts the
+     * greedy reply can differ slightly from one without it (F72). Never on [DeviceKind.Gpu]: ggml-opencl aborts the
      * process on the first drafted batch (F67, F80), so [DevicePolicy.Auto] and [DevicePolicy.Prefer] skip the GPU,
-     * with
-     * that reason in [Model.loadReport], and `DevicePolicy.Only(DeviceKind.Gpu)` throws
+     * with that reason in [Model.loadReport], and `DevicePolicy.Only(DeviceKind.Gpu)` throws
      * [LlamaBroException.DeviceUnavailable].
      *
      * @property draftMax tokens drafted per step (`--spec-draft-n-max`), at least 1.
@@ -356,13 +352,12 @@ public sealed interface Speculative {
 
     /**
      * n-gram drafting (upstream's `--spec-default`: ngram-mod, lookup 24, drafts of 48 to 64 tokens): the recent tokens
-     * are
-     * looked up in the prompt and earlier replies, and what followed them is drafted, with no extra model. For replies
-     * that copy their input: code edits, rewrites, quoting, repeated structured output. On the OnePlus 13 a code edit
-     * decoded 7x faster on [DeviceKind.Npu] and 2.3x on [DeviceKind.Cpu] with an identical reply; prose drafts nothing,
-     * so it is unaffected; output that only partly repeats was 10-15% slower on the CPU (F72, D35). For the whole load,
-     * like [Mtp]. The pool is shared across requests, so a reply can draft from an earlier one. Never on the GPU, as
-     * for [Mtp]: drafted batches abort ggml-opencl (F80).
+     * are looked up in the prompt and earlier replies, and what followed them is drafted, with no extra model. For
+     * replies that copy their input: code edits, rewrites, quoting, repeated structured output. On the OnePlus 13 a
+     * code edit decoded 7x faster on [DeviceKind.Npu] and 2.3x on [DeviceKind.Cpu] with an identical reply; prose
+     * drafts nothing, so it is unaffected; output that only partly repeats was 10-15% slower on the CPU (F72, D35). For
+     * the whole load, like [Mtp]. The pool is shared across requests, so a reply can draft from an earlier one. Never
+     * on the GPU, as for [Mtp]: drafted batches abort ggml-opencl (F80).
      *
      * @property then the MTP head to draft with when n-grams have nothing to offer (`--spec-type ngram-mod,draft-mtp`);
      * the model needs an MTP head ([ModelInfo]). On the NPU this was the fastest for code, quoting and JSON (F72).

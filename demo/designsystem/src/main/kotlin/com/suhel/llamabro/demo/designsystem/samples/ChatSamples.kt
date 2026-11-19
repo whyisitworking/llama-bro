@@ -105,7 +105,7 @@ internal val KotlinReply =
 internal fun ChatOpenSamples() {
     SampleFrame {
         UserBubble("Help me write a short bio for my portfolio")
-        HeldNote("Swift will answer the moment it's here")
+        HeldNote("Qwen3.5 0.8B will answer the moment it's here")
         StillHairline()
         Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
             ThoughtFold(ThoughtState(seconds = 4, expanded = false, text = ""), onToggle = {})
@@ -126,10 +126,10 @@ internal fun ChatOpenSamples() {
         )
         SwitchDivider("Switched to Deep")
         StarterChips(listOf("Plan my week", "Explain like I'm 12", "Draft a reply"), onPick = {})
-        LimitLine("Writer can't see images. Deep can.", action = "Switch to Deep", onAction = {})
-        LimitLine("This chat outgrew Swift's memory.", action = "New chat", onAction = {})
+        LimitLine("Gemma 3 4B can't see images. Deep can.", action = "Switch to Deep", onAction = {})
+        LimitLine("This chat outgrew Qwen3.5 0.8B's memory.", action = "New chat", onAction = {})
         LimitLine(
-            "Writer needs more memory than this phone has free right now.",
+            "Gemma 3 4B needs more memory than this phone has free right now.",
             action = "Try again",
             onAction = {},
             secondAction = "Smaller size",

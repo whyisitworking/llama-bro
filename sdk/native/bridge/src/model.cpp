@@ -1,5 +1,5 @@
-// lb_model_*: one server_context per model on its own worker thread (P1 T3, design §3.2, F3).
-// The startup order mirrors server.cpp main() as the P0 harness (research/p0/harness/lb-spike.cpp) does:
+// lb_model_*: one server_context per model on its own worker thread (F3).
+// The startup order mirrors server.cpp main() as the research harness (research/p0/harness/lb-spike.cpp) does:
 // server_prepare_params, server_context, server_routes, load_model, update_meta, then start_loop on
 // the same thread.
 #include "model.h"
@@ -274,7 +274,7 @@ char * lb_model_info(lb_model * m) {
             res->on_complete();
         }
 
-        json devices = json::array();  // the devices the model was loaded on (P2 T6)
+        json devices = json::array();  // the devices the model was loaded on
         for (ggml_backend_dev_t dev : m->params.devices) {
             if (dev) devices.push_back(ggml_backend_dev_name(dev));
         }

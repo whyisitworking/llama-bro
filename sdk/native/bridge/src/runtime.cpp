@@ -1,4 +1,4 @@
-// lb_runtime_*: process-wide state (P1 T2, design §5). One runtime per process: the first lb_runtime_init
+// lb_runtime_*: process-wide state. One runtime per process: the first lb_runtime_init
 // wins; the same config again is a no-op, a different one is LB_ERR_ALREADY_INITIALIZED.
 #include "llamabro.h"
 #include "lb_common.h"
@@ -153,7 +153,7 @@ json reg_device_names(ggml_backend_reg_t reg) {
     return names;
 }
 
-// One optional backend from the config's "backends" (P2 T2, D24).
+// One optional backend from the config's "backends" (D24).
 struct backend_request {
     std::string name;
     std::vector<std::string> files;
@@ -217,7 +217,7 @@ bool parse_backends(const json & value, std::vector<backend_request> & out, std:
 }
 
 // Loads one optional backend after its env is set. A failure is returned as the reason, never thrown: an optional
-// backend can't stop the runtime (P2 review focus 1). ggml says why only in its log, so the reason is its error
+// backend can't stop the runtime. ggml says why only in its log, so the reason is its error
 // line (as for model loads, F51). Runs under the runtime lock: setenv isn't safe against getenv on other threads,
 // and this is before any of llama.cpp's own threads exist.
 json load_optional_backend(const backend_request & b, const std::string & backend_dir) {

@@ -9,7 +9,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** P2 T2: backend artifacts found through the manifest, loaded by native init, failures reported, never fatal. */
+/** Backend artifacts found through the manifest, loaded by native init, failures reported, never fatal. */
 class BackendsTest {
     private val hexagon =
         BackendLibraries(

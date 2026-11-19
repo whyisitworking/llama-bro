@@ -14,7 +14,7 @@ import java.util.Collections
 import java.util.concurrent.CyclicBarrier
 import kotlin.concurrent.thread
 
-/** P2 T3 `skeletonCopyIsAtomicAndVerified`, split by case (review focus 2). */
+/** The skeleton copy is atomic and verified, case by case. */
 class SkeletonInstallTest {
     private val root = Files.createTempDirectory("htp").toFile()
 

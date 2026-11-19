@@ -379,7 +379,7 @@ class HostNativeTest {
             assertEquals(mismatches.joinToString("\n"), 0, mismatches.size)
         }
 
-    // --- load failures over the real core (PA T5, F51) -------------------------------------------------
+    // --- load failures over the real core (F51) -------------------------------------------------
 
     private fun hostLlama(): LlamaBro {
         val lib = System.getProperty("llamabro.host.lib")
@@ -422,7 +422,7 @@ class HostNativeTest {
             assertTrue("${e!!.message}", e.message!!.contains("not within the file bounds"))
         }
 
-    // --- every route (PA T6, F53) ----------------------------------------------------------------------
+    // --- every route (F53) ----------------------------------------------------------------------
 
     /** Each [Endpoint] reaches an upstream handler: any answer but the bridge's "unknown endpoint" will do. */
     @Test

@@ -1,7 +1,7 @@
 package com.suhel.llamabro
 
 /**
- * Process-wide settings, fixed by the first [LlamaBro.create] (design §5, D70):
+ * Process-wide settings, fixed by the first [LlamaBro.create] (D70):
  * `LlamaBroConfig { logLevel = LogLevel.Info }`. A later `create` with the same settings returns the same object,
  * keeping the first logger, and different settings throw (D106).
  */

@@ -20,7 +20,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
-/** P2 T7: `ContextSize.Auto` fitted to Android's available memory (D33, F66). */
+/** `ContextSize.Auto` fitted to Android's available memory (D33, F66). */
 class ContextFitTest {
     private val gib = 1024L * 1024 * 1024
     private val mib = 1024L * 1024

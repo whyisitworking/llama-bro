@@ -19,7 +19,7 @@ android {
 
     buildFeatures { buildConfig = true }
 
-    // one flavor per set of backend artifacts an app can ship (P2 T10, D31); the same applicationId, so the models
+    // one flavor per set of backend artifacts an app can ship (D31); the same applicationId, so the models
     // pushed into the app's files survive switching flavors. AUTO_DEVICE is what DevicePolicy.Auto must pick.
     flavorDimensions += "backends"
     productFlavors {
@@ -63,7 +63,7 @@ android {
 }
 
 dependencies {
-    // public API only: this app must compile without internal access (P1 T12)
+    // public API only: this app must compile without internal access
     implementation(project(":llamabro"))
     // the minified release build decodes a typed value at start, so R8 runs over llamabro-typed (F28, D88)
     implementation(project(":llamabro-typed"))

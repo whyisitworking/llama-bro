@@ -27,4 +27,4 @@ rootProject.name = "Llama Bro"
 // sdk/modules.gradle.kts) and the demo app (demo/). The SDK is also its own build, `./gradlew -p sdk`, which the SDK's
 // checks use; it is the same projects over the same folders and does not know the demo.
 apply(from = "sdk/modules.gradle.kts")
-include(":demo:app", ":demo:designsystem", ":demo:benchmark")
+include(":demo:app", ":demo:designsystem", ":demo:benchmark", ":demo:lint")

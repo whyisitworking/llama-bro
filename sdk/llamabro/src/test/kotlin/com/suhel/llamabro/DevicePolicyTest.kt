@@ -11,7 +11,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
-/** P2 T6: DevicePolicy resolution and loadReport, over FakeEngine (D24, D31, D32). */
+/** DevicePolicy resolution and loadReport, over FakeEngine (D24, D31, D32). */
 class DevicePolicyTest {
     private val cpu = """{"name":"cpu","loaded":true,"error":null,"devices":["CPU"]}"""
     private val hexagon = """{"name":"hexagon","loaded":true,"error":null,"devices":["HTP0"]}"""
@@ -148,7 +148,7 @@ class DevicePolicyTest {
             assertEquals(DeviceKind.Cpu, model.loadReport.device)
             val gpu = model.loadReport.attempts.single { it.kind == DeviceKind.Gpu }
             assertEquals("GPUOpenCL", gpu.deviceName)
-            assertTrue(gpu.reason, gpu.reason.contains("F80"))
+            assertTrue(gpu.reason, gpu.reason.contains("OpenCL"))
             try {
                 load(engine(cpu, opencl)) {
                     speculative = spec
@@ -157,7 +157,7 @@ class DevicePolicyTest {
                 fail("Only(Gpu) with $spec loaded")
             } catch (x: LlamaBroException.DeviceUnavailable) {
                 assertEquals(DeviceKind.Gpu, x.kind)
-                assertTrue(x.message, x.message!!.contains("F80"))
+                assertTrue(x.message, x.message!!.contains("OpenCL"))
             }
         }
         // without drafting the GPU is tried as before

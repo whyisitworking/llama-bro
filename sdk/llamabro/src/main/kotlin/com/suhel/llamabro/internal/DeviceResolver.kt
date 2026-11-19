@@ -5,7 +5,7 @@ import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.DevicePolicy
 import com.suhel.llamabro.LoadReport
 
-/** Turns a [DevicePolicy] into the devices to try, in order (P2 T6). Pure: the runtime does the loading. */
+/** Turns a [DevicePolicy] into the devices to try, in order. Pure: the runtime does the loading. */
 internal object DeviceResolver {
     /** One device to try: CPU has no device list ([devices] empty), the others exactly one. */
     data class Candidate(val kind: DeviceKind, val backend: String, val deviceName: String) {

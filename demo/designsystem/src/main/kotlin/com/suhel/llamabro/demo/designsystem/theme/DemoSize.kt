@@ -1,6 +1,7 @@
 package com.suhel.llamabro.demo.designsystem.theme
 
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * The size scale: every height, width and icon size a component uses, so related elements rank the same way on every
@@ -131,4 +132,12 @@ object DemoSize {
 
     /** The tallest a list inside a sheet grows before it scrolls. */
     val sheetListMaxHeight = 340.dp
+
+    /**
+     * The quantisation table's size and fit columns, and a stacked row's line, in sp so they grow with the text they
+     * hold (the model sheet's [com.suhel.llamabro.demo.designsystem.components.QuantRow]).
+     */
+    val quantSizeColumn = 68.sp
+    val quantFitColumn = 96.sp
+    val quantStackedLine = 18.sp
 }
