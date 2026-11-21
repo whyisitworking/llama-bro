@@ -20,6 +20,9 @@
 #                  in-memory /v1/realtime on the same model (HostVoiceTest)
 #   aar            release AAR: libraries, names, exports, 16 KB alignment (check-aar.sh); hub, hub-work and typed carry
 #                  no native code, and hub-work's manifest declares the dataSync foreground service
+#   scripts        the host scripts against stubs, no phone: device-preflight.sh (tests/device-preflight-test.sh),
+#                  bench.sh end to end (tests/bench-sh-test.sh) and bench.py's merge, charts and README check
+#                  (tests/bench-test.py)
 #   device         (--device) phone tests: native, UI, acceptance per model and per acceptance-app flavor (cpu, gpu, full,
 #                  noskel), and each flavor's minified (R8) build
 #   device-contract (--device) the C API vs upstream llama-server on the phone's NPU (tests/device-contract/run.sh)
@@ -73,7 +76,7 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
-steps="build native hub-golden contract tools-ui api hub-api quality lint jvm e2e aar device hub-device hub-resume device-contract device-speech"
+steps="build native hub-golden contract tools-ui api hub-api quality lint jvm e2e aar scripts device hub-device hub-resume device-contract device-speech"
 if [ -n "$only" ]; then
     for step in $(echo "$only" | tr ',' ' '); do
         case " $steps " in
@@ -110,7 +113,7 @@ omni="$LB_TEST_MODELS_DIR/tinyLFM3-Omni-for-testing-Q2_K.gguf"
 omni_mmproj="$LB_TEST_MODELS_DIR/mmproj-tinyLFM3-Omni-for-testing-Q2_K.gguf"
 
 # the steps that read no model: a check of only these needs none on disk
-model_free="build tools-ui api hub-api quality lint aar"
+model_free="build tools-ui api hub-api quality lint aar scripts"
 needs_models=1
 if [ -n "$only" ]; then
     needs_models=0
@@ -133,6 +136,11 @@ gradle() { (cd "$root" && ./gradlew -p sdk "$@"); }
 
 # ktlint and detekt are configured in the root build (which includes these modules), so they run from there
 step_quality() { (cd "$root" && ./gradlew qualityCheck); }
+
+step_scripts() {
+    bash "$sdk/scripts/tests/device-preflight-test.sh" && bash "$sdk/scripts/tests/bench-sh-test.sh" &&
+        python3 "$sdk/scripts/tests/bench-test.py"
+}
 
 step_build() {
     bash "$native/scripts/prepare-llama.sh" "$native/build" &&
@@ -406,6 +414,7 @@ run lint     gradle :llamabro:lintRelease :llamabro-testing:lintRelease :llamabr
 run jvm      step_jvm
 run e2e      step_e2e
 run aar      step_aar
+run scripts  step_scripts
 device_steps=device,hub-device,hub-resume,device-contract,device-speech
 wants_device=0
 if [ $device -eq 1 ]; then

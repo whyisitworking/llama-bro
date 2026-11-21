@@ -33,6 +33,8 @@ val ktlintSources =
         "!sdk/native/**",
         "!research/**",
         "!**/generated/**",
+        // data files for a test to read (the bench edit prompt is Kotlin text), not source
+        "!**/src/*/assets/**",
     )
 
 fun registerKtlint(name: String, description: String, vararg extra: String) =

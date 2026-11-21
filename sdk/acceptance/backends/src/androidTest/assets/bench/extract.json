@@ -1,0 +1,35 @@
+{
+  "document": "Release notes, Pocket Ledger 4.2\n\nPocket Ledger 4.2 adds three things and removes one. Receipts can now be scanned in batches: the camera screen keeps open after each photo, and the batch is filed as a single entry when the user taps Done. Currency conversion uses the rate of the receipt's date, not the day it was scanned, so a trip's expenses no longer drift as rates change; the setting is on by default and can be turned off per account. Reports gain a monthly comparison view that lays two months side by side with the largest differences first. The export to spreadsheets is unchanged.\n\nThe legacy sync service, which was deprecated in 4.0, is removed. Accounts that still used it are moved to the new service on first launch; the move takes about a minute for a year of data and cannot be undone. Android 8 is no longer supported: the minimum is Android 9 (API 28). On iOS the minimum stays at iOS 16.\n\nFixes: a crash when a receipt had more than 40 line items; a rounding error of one cent in splits among three people; the dark theme's low contrast on the report totals; notifications that arrived twice after a device restore. Known issues: batch scanning is slower on devices with less than 3 GB of memory, and the monthly comparison cannot yet be exported as an image.",
+  "instruction": "List every change in the release notes above as a JSON array of objects. Output only the JSON, with no other text.",
+  "schema": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "required": [
+        "kind",
+        "summary",
+        "platforms"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "added",
+            "removed",
+            "changed",
+            "fixed",
+            "known_issue"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "platforms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

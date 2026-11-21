@@ -76,6 +76,7 @@ dependencies {
     implementation(libs.androidx.activity.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
 
+    androidTestImplementation(libs.kotlinx.serialization.json)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.runner)
 }

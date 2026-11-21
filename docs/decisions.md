@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D131 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D132 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -177,6 +177,7 @@ its amendments to know what holds now.
 | [D3](#d3-minimum-sdk-level) Minimum SDK level | 2026-11-03 | |
 | [D4](#d4-distribution) Distribution | 2026-11-03 | |
 | [D21](#d21-verification) Verification | 2026-11-04 | |
+| [D132](#d132-the-readme-shows-two-demo-screens-the-no-screenshots-rule-keeps-one-exception) The README shows two demo screens; the no-screenshots rule keeps one exception | 2026-11-21 | |
 
 ---
 
@@ -1609,3 +1610,34 @@ Consequences: amends D123's `soft` values (`#717171` and `#808080` there) and th
 which follows `Tokens.kt`. The fit tints and inks and `danger` are unchanged. This change also set the accent to the
 new ink (`#1D1D1F` and `#E3E3E6`); D125 later changed `accent` and `onAccent` to the monochrome tone it records, so
 read those two from D125.
+
+### D132. The README shows two demo screens; the no-screenshots rule keeps one exception
+
+Status: Decided (2026-11-21)
+
+Context: the rewritten README led with the banner and the benchmark's numbers, and showed nothing of the app a reader
+would build on the SDK. The maintainer asked for two pictures of the demo on its first screen. `CLAUDE.md` forbade
+committing screenshots, a rule that keeps device captures, journey evidence and anything personal out of the
+repository, and that still matters for those.
+
+Decision:
+
+- **Two screens, each in both themes.** `assets/readme/demo-chat-{light,dark}.webp` is a chat with Qwen3.5 4B: two
+  Kotlin questions, the second answered with a two-line code block and a short list, above the message bar.
+  `assets/readme/demo-voice-{light,dark}.webp` is voice mode with LFM3 Omni 2B: the orb, the spoken question and the
+  captioned reply. The README shows them side by side under the headline numbers, each a `<picture>` that follows the
+  reader's colour scheme.
+- **The app's own pixels, over the fake engine.** They are captured with `screencap` from the debug build on an
+  emulator, driven by a throwaway journey over `FakeLlamaBro` and the fake Hub with scripted replies (the journeys'
+  path, so no model runs on the emulator), with the status bar in SystemUI demo mode. The caption says the replies are
+  scripted; no measured result is shown.
+- **Framed, not dressed.** Each is the full screen with the phone's rounded corners cut to transparency and a clear
+  margin at its sides (no bezel artwork; a hairline edge is drawn in processing so the dark screens read on a dark
+  page), scaled to 720 pixels of screen and WebP-encoded, each under 70 kB.
+- **The rule is narrowed, not dropped.** Screenshots stay out of the repository, except curated README images under
+  `assets/readme/`. Dropping the rule would let journey shots and device captures back in, with the serials, paths and
+  personal content it exists to keep out; one named folder for chosen pictures keeps both.
+
+Consequences: amends the no-screenshots line of `CLAUDE.md`. `CONTRIBUTING.md`'s rule names personal and
+machine-specific data, not screenshots, and is unchanged. The images are retaken by hand when the chat or voice
+screens change enough that they no longer match the app.

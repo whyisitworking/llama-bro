@@ -26,6 +26,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
 import java.io.File
+import java.io.InputStream
 import java.io.RandomAccessFile
 import java.net.URL
 import java.net.URLEncoder
@@ -409,7 +410,7 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
                 transport.open("GET", "$endpoint$repo/resolve/main/README.md").use { response ->
                     if (response.status == HTTP_NOT_FOUND) return@use null
                     if (response.status != HTTP_OK) throw failure(response, repo)
-                    val bytes = response.body?.readNBytes(README_LIMIT_BYTES) ?: ByteArray(0)
+                    val bytes = response.body?.readAtMost(README_LIMIT_BYTES) ?: ByteArray(0)
                     String(bytes, Charsets.UTF_8)
                 }
             }
@@ -541,4 +542,16 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
             return sampling.takeIf { it != Sampling.Default }
         }
     }
+}
+
+/** The stream's first [limit] bytes, or all of it when it is shorter. `InputStream.readNBytes(int)` needs API 33. */
+private fun InputStream.readAtMost(limit: Int): ByteArray {
+    val buffer = ByteArray(limit)
+    var filled = 0
+    while (filled < limit) {
+        val read = read(buffer, filled, limit - filled)
+        if (read < 0) break
+        filled += read
+    }
+    return buffer.copyOf(filled)
 }

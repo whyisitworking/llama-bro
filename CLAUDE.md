@@ -33,7 +33,8 @@ DEMO_DEVICE=<serial> demo/scripts/check.sh --device     # instrumented tests, jo
 - Never run model inference on an emulator. Journeys use a fake engine and run anywhere; real models need a device, and
   device runs are short and attended.
 - Do not commit device serials, home paths, tokens, screenshots, logs, model files or build output. Device scripts read
-  `ANDROID_SERIAL` or `DEMO_DEVICE`.
+  `ANDROID_SERIAL` or `DEMO_DEVICE`. The one exception for screenshots is the curated README images under
+  `assets/readme/` (D132).
 - Do not edit `sdk/native/third_party/`; use `sdk/native/patches/`.
 - Public API changes: run `./gradlew -p sdk :<module>:apiDump` and commit the `.api` diff with the change.
 - Demo sizes, colours and type roles come from `:demo:designsystem`'s theme tokens, anywhere outside the theme; screens are

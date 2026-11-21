@@ -1,12 +1,62 @@
 #!/usr/bin/env bash
-# stub adb for the preflight test: answers from STUB_* variables, logs every call
+# stub adb for the host script tests: answers from STUB_* variables, logs every call. With STUB_PHONE set it also plays
+# a phone for bench.sh: STUB_PHONE/files is the sample app's files, STUB_PHONE/tmp is /data/local/tmp, and the app is
+# installed once STUB_PHONE/installed exists (the stub gradle creates it). STUB_THERMAL (default 0) is the thermal
+# status, STUB_LOCKED the keyguard, STUB_FAIL_ARM an arm whose instrumentation call reports a failure,
+# STUB_WATCH a path whose existence each instrumentation call logs,
+# STUB_NO_SLOTLOG leaves the slot-cache log unwritten. STUB_FAIL_ARM=all fails every arm. STUB_FAIL_PUSH makes every
+# push fail, with the serial in its message. After STUB_HOT_AFTER
+# instrumentation calls the thermal status becomes 3; after STUB_GONE_AFTER calls every command fails the way adb does
+# for a phone that dropped off, with the serial in its message.
 echo "adb $*" >> "${STUB_LOG:-/dev/null}"
 [ "$1" = -s ] && shift 2
+calls="$(cat "${STUB_PHONE:-/nonexistent}/count" 2> /dev/null || echo 0)"
+if [ -n "${STUB_GONE_AFTER:-}" ] && [ "$calls" -ge "$STUB_GONE_AFTER" ]; then
+    echo "error: device '${ANDROID_SERIAL:-PHONE1}' not found" >&2; exit 1
+fi
 case "$*" in
     get-serialno) printf '%s\r\n' "${STUB_SERIAL-PHONE1}" ;;
     get-state) printf 'device\r\n' ;;
     "forward --list") printf '%b' "${STUB_FORWARDS:-}" ;;
     "reverse --list") printf '%b' "${STUB_REVERSES:-}" ;;
     "shell ps -A -o NAME") printf 'NAME\r\ninit\r\nsystem_server\r\n%b' "${STUB_PS:-}" ;;
+    "shell dumpsys window") printf 'mHasSurface=true isKeyguardShowing=%s\r\n' "$([ -n "${STUB_LOCKED:-}" ] && echo true || echo false)" ;;
+    "shell dumpsys thermalservice") printf 'IsStatusOverride: false\r\nThermal Status: %s\r\nCached HAL temperatures\r\n' "$([ -n "${STUB_HOT_AFTER:-}" ] && [ "$calls" -ge "$STUB_HOT_AFTER" ] && echo 3 || echo "${STUB_THERMAL:-0}")" ;;
+    "shell getprop ro.product.model") printf 'Stub Phone\r\n' ;;
+    "shell getprop ro.soc.model") printf 'STUB8\r\n' ;;
+    "shell getprop ro.build.version.release") printf '16\r\n' ;;
+    "shell pm list instrumentation") printf 'instrumentation:other.test/androidx.test.runner.AndroidJUnitRunner (target=other)\r\ninstrumentation:com.suhel.llamabro.sample.test/androidx.test.runner.AndroidJUnitRunner (target=com.suhel.llamabro.sample)\r\n' ;;
+    "shell am force-stop "*) ;;
+    "shell chmod "*) ;;
+    "shell rm -f /data/local/tmp/"*) last="${*: -1}"; rm -f "$STUB_PHONE/tmp/${last##*/}" ;;
+    "push "*)
+        [ -z "${STUB_FAIL_PUSH:-}" ] || { echo "adb: error: failed to copy '$2' to '${ANDROID_SERIAL:-PHONE1}'" >&2; exit 1; }
+        mkdir -p "$STUB_PHONE/tmp"; cp "$2" "$STUB_PHONE/tmp/${3##*/}" ;;
+    "shell run-as com.suhel.llamabro.sample "*)
+        [ -e "$STUB_PHONE/installed" ] || { echo "run-as: package not found" >&2; exit 1; }
+        mkdir -p "$STUB_PHONE/files"; shift 3
+        case "$*" in
+            "stat -c %s files/"*) last="${*: -1}"; f="$STUB_PHONE/files/${last##*/}"; [ -f "$f" ] && wc -c < "$f" | tr -d ' ' || exit 1 ;;
+            "cp /data/local/tmp/"*) cp "$STUB_PHONE/tmp/${2##*/}" "$STUB_PHONE/files/${3##*/}" ;;
+            "rm -f "*) for f in "${@:2}"; do rm -f "$STUB_PHONE/files/${f##*/}"; done ;;
+            "cat files/"*) last="${*: -1}"; cat "$STUB_PHONE/files/${last##*/}" 2> /dev/null || exit 1 ;;
+            *) echo "stub adb: unexpected run-as: $*" >&2; exit 1 ;;
+        esac ;;
+    "shell am instrument -w -e class "*)
+        shift 6; class="$1"; [ -n "${STUB_WATCH:-}" ] && { [ -e "$STUB_WATCH" ] && echo "watch: present" || echo "watch: absent"; } >> "$STUB_LOG"
+        arm=restore; round=1
+        case "$class" in
+            *BenchDeviceTest) arm="$4"; round="$7" ;;
+        esac
+        mkdir -p "$STUB_PHONE"; echo $((calls + 1)) > "$STUB_PHONE/count"
+        if [ -n "${STUB_FAIL_ARM:-}" ] && { [ "$arm" = "$STUB_FAIL_ARM" ] || [ "$STUB_FAIL_ARM" = all ]; }; then echo "INSTRUMENTATION_FAILED: stub"; exit 0; fi
+        mkdir -p "$STUB_PHONE/files"
+        if [ "$arm" = restore ]; then
+            [ -n "${STUB_NO_SLOTLOG:-}" ] || printf 'cold: 1ms\nread again: 4200ms in all (load 100, ask 4100)\nrestore: 1900ms in all (load 100, restore 300, ask 1500)\n' > "$STUB_PHONE/files/slotcache.log"
+        else
+            grep "\"arm\":\"$arm\"" "$(dirname "$0")/../fixtures/bench/lines.jsonl" | head -1 |
+                sed "s/\"round\":[0-9]*/\"round\":$round/" >> "$STUB_PHONE/files/bench.jsonl"
+        fi
+        printf 'INSTRUMENTATION_STATUS_CODE: 1\r\n\r\nTime: 1\r\n\r\nOK (1 test)\r\n\r\n' ;;
     *) [ -n "${STUB_ACCEPT_ALL:-}" ] && exit 0; echo "stub adb: unexpected: $*" >&2; exit 1 ;;
 esac

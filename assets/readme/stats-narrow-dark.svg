@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" width="480" height="300" role="img" aria-labelledby="title desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+<title id="title">Llama Bro at a glance</title>
+<desc id="desc">Awaiting the benchmark run. 76 of 76 contract cases identical to upstream llama-server (F163). Prompt reading (Qwen3.5 4B, NPU): — t/s; Drafted code edit (Qwen3.5 4B, NPU): — t/s; First spoken audio (LFM3-Omni 2B): — s; Contract cases (same as llama-server): 76 of 76.</desc>
+<defs><linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8B5CF6"/><stop offset="1" stop-color="#F7883F"/></linearGradient></defs>
+<rect x="0.5" y="0.5" width="479" height="299" rx="16" fill="#161618" stroke="#2C2C2F"/>
+<text x="32" y="76" font-size="44" fill="#E3E3E6" font-weight="600">—</text>
+<text x="79.84" y="70" font-size="16" fill="#98989D">awaiting</text>
+<text x="32" y="114" font-size="16" fill="#E3E3E6" font-weight="600">Prompt reading</text>
+<text x="32" y="136" font-size="16" fill="#98989D">Qwen3.5 4B, NPU</text>
+<path d="M240.5 32L240.5 136" stroke="#2C2C2F" stroke-width="1"/>
+<text x="264" y="76" font-size="44" fill="#E3E3E6" font-weight="600">—</text>
+<text x="311.84" y="70" font-size="16" fill="#98989D">awaiting</text>
+<text x="264" y="114" font-size="16" fill="#E3E3E6" font-weight="600">Drafted code edit</text>
+<text x="264" y="136" font-size="16" fill="#98989D">Qwen3.5 4B, NPU</text>
+<path d="M32 149.5L448 149.5" stroke="#2C2C2F" stroke-width="1"/>
+<text x="32" y="208" font-size="44" fill="#E3E3E6" font-weight="600">—</text>
+<text x="79.84" y="202" font-size="16" fill="#98989D">awaiting</text>
+<text x="32" y="246" font-size="16" fill="#E3E3E6" font-weight="600">First spoken audio</text>
+<text x="32" y="268" font-size="16" fill="#98989D">LFM3-Omni 2B</text>
+<path d="M240.5 164L240.5 268" stroke="#2C2C2F" stroke-width="1"/>
+<text x="264" y="208" font-size="44" fill="#E3E3E6" font-weight="600">76<tspan fill="#98989D" font-weight="400"> of 76</tspan></text>
+<text x="264" y="246" font-size="16" fill="#E3E3E6" font-weight="600">Contract cases</text>
+<text x="264" y="268" font-size="16" fill="#98989D">same as llama-server</text>
+</svg>

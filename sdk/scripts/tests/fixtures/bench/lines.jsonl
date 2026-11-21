@@ -1,0 +1,39 @@
+{"arm":"qwen-npu","round":1,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4120,"promptTokens":2048,"promptTps":912.4,"predictedTokens":128,"predictedTps":15.3}
+{"arm":"qwen-gpu","round":1,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Gpu","loadMs":3480,"promptTokens":2048,"promptTps":151.8,"predictedTokens":128,"predictedTps":14.1}
+{"arm":"qwen-cpu","round":1,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Cpu","loadMs":1890,"promptTokens":2048,"promptTps":61.2,"predictedTokens":128,"predictedTps":12.9}
+{"arm":"lfm-npu","round":1,"ok":true,"error":null,"model":"LFM3-Omni-2B-Q4_K_M.gguf","device":"Npu","loadMs":2650,"promptTokens":2048,"promptTps":1835.0,"predictedTokens":128,"predictedTps":38.6}
+{"arm":"lfm-gpu","round":1,"ok":false,"error":"OpenCL backend: unsupported op CONV_TRANSPOSE_1D","model":"LFM3-Omni-2B-Q4_K_M.gguf","device":"Gpu"}
+{"arm":"lfm-cpu","round":1,"ok":true,"error":null,"model":"LFM3-Omni-2B-Q4_K_M.gguf","device":"Cpu","loadMs":1210,"promptTokens":2048,"promptTps":142.7,"predictedTokens":128,"predictedTps":33.4}
+{"arm":"json-off","round":1,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4300,"promptTokens":412,"promptTps":880.0,"predictedTokens":256,"predictedTps":15.1,"build":{"sdkCommit":"b6d1681"}}
+{"arm":"json-dflash","round":1,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4300,"promptTokens":412,"promptTps":880.0,"predictedTokens":256,"predictedTps":34.2,"draftAccepted":148,"build":{"sdkCommit":"b6d1681"}}
+{"arm":"edit-off","round":1,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4300,"promptTokens":1890,"promptTps":880.0,"predictedTokens":256,"predictedTps":15.0}
+{"arm":"edit-ngram-mtp","round":1,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4300,"promptTokens":1890,"promptTps":880.0,"predictedTokens":256,"predictedTps":138.4,"draftAccepted":231}
+{"arm":"stop","round":1,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4100,"extra":{"stopMs":38.0,"cancelReturnMs":3.0}}
+{"arm":"voice","round":1,"ok":true,"error":null,"model":"LFM3-Omni-2B-Q4_K_M.gguf","device":"Npu","loadMs":3900,"extra":{"firstAudioMs":312.0,"realtimeFactor":3.4}}
+{"arm":"restore","round":1,"ok":true,"extra":{"readAgainMs":8120.0,"restoreMs":5040.0},"build":{"sdkCommit":"b6d1681"}}
+{"arm":"qwen-npu","round":2,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4058,"promptTokens":2048,"promptTps":885.0,"predictedTokens":128,"predictedTps":15.1}
+{"arm":"qwen-gpu","round":2,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Gpu","loadMs":3427,"promptTokens":2048,"promptTps":147.2,"predictedTokens":128,"predictedTps":13.9}
+{"arm":"qwen-cpu","round":2,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Cpu","loadMs":1861,"promptTokens":2048,"promptTps":59.4,"predictedTokens":128,"predictedTps":12.7}
+{"arm":"lfm-npu","round":2,"ok":true,"error":null,"model":"LFM3-Omni-2B-Q4_K_M.gguf","device":"Npu","loadMs":2610,"promptTokens":2048,"promptTps":1780.0,"predictedTokens":128,"predictedTps":38.0}
+{"arm":"lfm-gpu","round":2,"ok":false,"error":"OpenCL backend: unsupported op CONV_TRANSPOSE_1D","model":"LFM3-Omni-2B-Q4_K_M.gguf","device":"Gpu"}
+{"arm":"lfm-cpu","round":2,"ok":true,"error":null,"model":"LFM3-Omni-2B-Q4_K_M.gguf","device":"Cpu","loadMs":1191,"promptTokens":2048,"promptTps":138.4,"predictedTokens":128,"predictedTps":32.9}
+{"arm":"json-off","round":2,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4235,"promptTokens":412,"promptTps":853.6,"predictedTokens":256,"predictedTps":14.9,"build":{"sdkCommit":"b6d1681"}}
+{"arm":"json-dflash","round":2,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4235,"promptTokens":412,"promptTps":853.6,"predictedTokens":256,"predictedTps":33.7,"draftAccepted":148,"build":{"sdkCommit":"b6d1681"}}
+{"arm":"edit-off","round":2,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4235,"promptTokens":1890,"promptTps":853.6,"predictedTokens":256,"predictedTps":14.8}
+{"arm":"edit-ngram-mtp","round":2,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4235,"promptTokens":1890,"promptTps":853.6,"predictedTokens":256,"predictedTps":136.3,"draftAccepted":231}
+{"arm":"stop","round":2,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4038,"extra":{"stopMs":44.0,"cancelReturnMs":2.0}}
+{"arm":"voice","round":2,"ok":false,"error":"timed out waiting for reply audio","model":"LFM3-Omni-2B-Q4_K_M.gguf","device":"Npu"}
+{"arm":"restore","round":2,"ok":true,"extra":{"readAgainMs":7980.0,"restoreMs":4980.0},"build":{"sdkCommit":"b6d1681"}}
+{"arm":"qwen-npu","round":3,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4161,"promptTokens":2048,"promptTps":930.6,"predictedTokens":128,"predictedTps":15.5}
+{"arm":"qwen-gpu","round":3,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Gpu","loadMs":3514,"promptTokens":2048,"promptTps":154.8,"predictedTokens":128,"predictedTps":14.2}
+{"arm":"qwen-cpu","round":3,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Cpu","loadMs":1908,"promptTokens":2048,"promptTps":62.4,"predictedTokens":128,"predictedTps":13.0}
+{"arm":"lfm-npu","round":3,"ok":true,"error":null,"model":"LFM3-Omni-2B-Q4_K_M.gguf","device":"Npu","loadMs":2676,"promptTokens":2048,"promptTps":1871.7,"predictedTokens":128,"predictedTps":39.0}
+{"arm":"lfm-gpu","round":3,"ok":false,"error":"OpenCL backend: unsupported op CONV_TRANSPOSE_1D","model":"LFM3-Omni-2B-Q4_K_M.gguf","device":"Gpu"}
+{"arm":"lfm-cpu","round":3,"ok":true,"error":null,"model":"LFM3-Omni-2B-Q4_K_M.gguf","device":"Cpu","loadMs":1222,"promptTokens":2048,"promptTps":145.6,"predictedTokens":128,"predictedTps":33.7}
+{"arm":"json-off","round":3,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4343,"promptTokens":412,"promptTps":897.6,"predictedTokens":256,"predictedTps":15.3,"build":{"sdkCommit":"b6d1681"}}
+{"arm":"json-dflash","round":3,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4343,"promptTokens":412,"promptTps":897.6,"predictedTokens":256,"predictedTps":34.5,"draftAccepted":148,"build":{"sdkCommit":"b6d1681"}}
+{"arm":"edit-off","round":3,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4343,"promptTokens":1890,"promptTps":897.6,"predictedTokens":256,"predictedTps":15.2}
+{"arm":"edit-ngram-mtp","round":3,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4343,"promptTokens":1890,"promptTps":897.6,"predictedTokens":256,"predictedTps":139.8,"draftAccepted":231}
+{"arm":"stop","round":3,"ok":true,"error":null,"model":"Qwen3.5-4B-Q4_K_M.gguf","device":"Npu","loadMs":4141,"extra":{"stopMs":41.0,"cancelReturnMs":4.0}}
+{"arm":"voice","round":3,"ok":true,"error":null,"model":"LFM3-Omni-2B-Q4_K_M.gguf","device":"Npu","loadMs":3939,"extra":{"firstAudioMs":298.0,"realtimeFactor":3.6}}
+{"arm":"restore","round":3,"ok":true,"extra":{"readAgainMs":8240.0,"restoreMs":5110.0},"build":{"sdkCommit":"b6d1681"}}
