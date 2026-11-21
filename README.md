@@ -14,6 +14,14 @@
 </p>
 
 <p align="center">
+  <a href="#the-numbers">The numbers</a> ·
+  <a href="#why-llama-bro">Why Llama Bro</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="demo/README.md">The demo app</a> ·
+  <a href="docs/README.md">Docs</a>
+</p>
+
+<p align="center">
   <picture>
     <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="assets/readme/stats-narrow-dark.svg">
     <source media="(max-width: 600px)" srcset="assets/readme/stats-narrow-light.svg">
@@ -34,6 +42,140 @@
   <br>
   <sub>The demo app in <a href="demo/"><code>demo/</code></a>, captured on an emulator over the SDK's fake engine with scripted replies.</sub>
 </p>
+
+## The numbers
+
+One phone, one sitting, 37 benchmark arms, **37 ran and none failed**. Every figure below is the SDK measured
+through its public API on a OnePlus 13 (Snapdragon 8 Elite, the phone the SDK is verified on,
+[D92](docs/decisions.md#d92-auto-keeps-trying-the-npu-and-the-gpu-on-every-qualcomm-chip-only-one-phone-is-verified)),
+and a script checks every one of them on this page against the run's results
+([F178](docs/research/findings.md#f178-the-readmes-benchmark-run-37-arms-on-the-oneplus-13)).
+
+- ⚡ **<!-- bench:ladder-lfm230m-npu.promptTps -->7,299<!-- /bench --> tokens a second** reading a prompt: LFM2.5 230M on the NPU. A 4B model, Qwen3.5,
+  still reads a 2,048-token document at **<!-- bench:qwen-npu.promptTps -->934<!-- /bench --> tokens a second**, more than 14× its CPU speed.
+- 🧠 **Six models, 230M to 4B, on all three chips**, every one of 18 combinations running, with the NPU fastest for
+  every model: from <!-- bench:ladder-lfm230m-npu.predictedTps -->171<!-- /bench --> tokens a second written by LFM2.5 230M down to
+  <!-- bench:ladder-qwen4b-npu.predictedTps -->15.3<!-- /bench --> by Qwen3.5 4B.
+- ✍️ **<!-- bench:edit-ngram-mtp.predictedTps -->120<!-- /bench --> tokens a second** writing a code edit with Qwen3.5 4B, n-gram drafting and MTP
+  behind it: 8× the <!-- bench:edit-off.predictedTps -->14.9<!-- /bench --> it writes without drafting.
+- 🗣️ **<!-- bench:voice.extra.firstAudioMs/1000 -->0.38<!-- /bench --> s until it talks back**: the first audio of the reply in a realtime voice session with LFM3-Omni 2B,
+  which then speaks <!-- bench:voice.extra.realtimeFactor -->1.4<!-- /bench -->× faster than real time.
+- 🔎 **<!-- bench:rerank-npu.extra.itemsPerSecond -->227<!-- /bench --> sentences a second reranked** and <!-- bench:embed-npu.extra.itemsPerSecond -->108<!-- /bench --> embedded, on the
+  NPU, for on-device search.
+- 🛑 **<!-- bench:stop.extra.stopMs -->85<!-- /bench --> ms** from cancelling a reply until the engine is idle; **<!-- bench:restore.extra.restoreMs/1000 -->5.1<!-- /bench --> s**
+  to come back to a 3,000-token chat by restoring its saved slot, against <!-- bench:restore.extra.readAgainMs/1000 -->8.3<!-- /bench --> s to read it
+  again.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/ladder-dark.svg">
+    <img src="assets/readme/ladder-light.svg" width="600" alt="Table chart, tokens per second: six models from LFM2.5 230M to Qwen3.5 4B writing a reply and reading a 512-token prompt on the NPU, the GPU and the CPU, the fastest chip of each model marked; and bge-small embeddings and jina-reranker-tiny reranking in sentences per second on each chip">
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/speed-dark.svg">
+    <img src="assets/readme/speed-light.svg" width="600" alt="Bar chart, tokens per second, more is better: how fast Qwen3.5 4B and LFM3-Omni 2B read a 2,048-token prompt and write a reply of up to 128 tokens on the NPU, the GPU and the CPU">
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/drafting-dark.svg">
+    <img src="assets/readme/drafting-light.svg" width="600" alt="Bar chart, Qwen3.5 4B on the NPU, writing tokens per second with drafting off and on: a JSON extraction with a DFlash draft model, and a code edit with n-gram drafting and MTP">
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/latency-dark.svg">
+    <img src="assets/readme/latency-light.svg" width="600" alt="Bar chart of waiting times, less is better: loading the model on each chip, stopping a reply, the first spoken audio, and coming back to a chat of about 3,000 tokens, from loading the model to the next answer, by reading it again or by restoring its saved slot">
+  </picture>
+</p>
+
+<details>
+<summary>Every number as a table</summary>
+
+Reading a 2,048-token prompt and writing a reply of up to 128 tokens, in tokens per second; loading, in seconds.
+
+| Model | Chip | Reading | Writing | Loading |
+|---|---|--:|--:|--:|
+| Qwen3.5 4B | NPU | <!-- bench:qwen-npu.promptTps -->934<!-- /bench --> | <!-- bench:qwen-npu.predictedTps -->15.3<!-- /bench --> | <!-- bench:qwen-npu.loadMs/1000 -->5.2<!-- /bench --> |
+| Qwen3.5 4B | GPU | <!-- bench:qwen-gpu.promptTps -->188<!-- /bench --> | <!-- bench:qwen-gpu.predictedTps -->15.1<!-- /bench --> | <!-- bench:qwen-gpu.loadMs/1000 -->40.3<!-- /bench --> |
+| Qwen3.5 4B | CPU | <!-- bench:qwen-cpu.promptTps -->64.5<!-- /bench --> | <!-- bench:qwen-cpu.predictedTps -->12.1<!-- /bench --> | <!-- bench:qwen-cpu.loadMs/1000 -->7.9<!-- /bench --> |
+| LFM3-Omni 2B | NPU | <!-- bench:lfm-npu.promptTps -->2,358<!-- /bench --> | <!-- bench:lfm-npu.predictedTps -->36.3<!-- /bench --> | <!-- bench:lfm-npu.loadMs/1000 -->2.2<!-- /bench --> |
+| LFM3-Omni 2B | GPU | <!-- bench:lfm-gpu.promptTps -->490<!-- /bench --> | <!-- bench:lfm-gpu.predictedTps -->38.4<!-- /bench --> | <!-- bench:lfm-gpu.loadMs/1000 -->9.6<!-- /bench --> |
+| LFM3-Omni 2B | CPU | <!-- bench:lfm-cpu.promptTps -->167<!-- /bench --> | <!-- bench:lfm-cpu.predictedTps -->33.0<!-- /bench --> | <!-- bench:lfm-cpu.loadMs/1000 -->2.8<!-- /bench --> |
+
+The model ladder: a 512-token prompt and a reply of up to 64 tokens, in tokens per second; loading, in seconds.
+
+| Model | Chip | Reading | Writing | Loading |
+|---|---|--:|--:|--:|
+| LFM2.5 230M | NPU | <!-- bench:ladder-lfm230m-npu.promptTps -->7,299<!-- /bench --> | <!-- bench:ladder-lfm230m-npu.predictedTps -->171<!-- /bench --> | <!-- bench:ladder-lfm230m-npu.loadMs/1000 -->0.58<!-- /bench --> |
+| LFM2.5 230M | GPU | <!-- bench:ladder-lfm230m-gpu.promptTps -->2,243<!-- /bench --> | <!-- bench:ladder-lfm230m-gpu.predictedTps -->136<!-- /bench --> | <!-- bench:ladder-lfm230m-gpu.loadMs/1000 -->4.9<!-- /bench --> |
+| LFM2.5 230M | CPU | <!-- bench:ladder-lfm230m-cpu.promptTps -->168<!-- /bench --> | <!-- bench:ladder-lfm230m-cpu.predictedTps -->149<!-- /bench --> | <!-- bench:ladder-lfm230m-cpu.loadMs/1000 -->0.80<!-- /bench --> |
+| Qwen3.5 0.8B | NPU | <!-- bench:ladder-qwen08b-npu.promptTps -->2,174<!-- /bench --> | <!-- bench:ladder-qwen08b-npu.predictedTps -->53.4<!-- /bench --> | <!-- bench:ladder-qwen08b-npu.loadMs/1000 -->1.7<!-- /bench --> |
+| Qwen3.5 0.8B | GPU | <!-- bench:ladder-qwen08b-gpu.promptTps -->531<!-- /bench --> | <!-- bench:ladder-qwen08b-gpu.predictedTps -->48.6<!-- /bench --> | <!-- bench:ladder-qwen08b-gpu.loadMs/1000 -->8.5<!-- /bench --> |
+| Qwen3.5 0.8B | CPU | <!-- bench:ladder-qwen08b-cpu.promptTps -->259<!-- /bench --> | <!-- bench:ladder-qwen08b-cpu.predictedTps -->46.8<!-- /bench --> | <!-- bench:ladder-qwen08b-cpu.loadMs/1000 -->6.7<!-- /bench --> |
+| LFM3 1.7B | NPU | <!-- bench:ladder-lfm17b-npu.promptTps -->1,682<!-- /bench --> | <!-- bench:ladder-lfm17b-npu.predictedTps -->34.1<!-- /bench --> | <!-- bench:ladder-lfm17b-npu.loadMs/1000 -->2.1<!-- /bench --> |
+| LFM3 1.7B | GPU | <!-- bench:ladder-lfm17b-gpu.promptTps -->348<!-- /bench --> | <!-- bench:ladder-lfm17b-gpu.predictedTps -->33.5<!-- /bench --> | <!-- bench:ladder-lfm17b-gpu.loadMs/1000 -->11.9<!-- /bench --> |
+| LFM3 1.7B | CPU | <!-- bench:ladder-lfm17b-cpu.promptTps -->143<!-- /bench --> | <!-- bench:ladder-lfm17b-cpu.predictedTps -->32.6<!-- /bench --> | <!-- bench:ladder-lfm17b-cpu.loadMs/1000 -->3.2<!-- /bench --> |
+| Llama 3.2 3B | NPU | <!-- bench:ladder-llama3b-npu.promptTps -->1,392<!-- /bench --> | <!-- bench:ladder-llama3b-npu.predictedTps -->21.2<!-- /bench --> | <!-- bench:ladder-llama3b-npu.loadMs/1000 -->4.0<!-- /bench --> |
+| Llama 3.2 3B | GPU | <!-- bench:ladder-llama3b-gpu.promptTps -->202<!-- /bench --> | <!-- bench:ladder-llama3b-gpu.predictedTps -->17.0<!-- /bench --> | <!-- bench:ladder-llama3b-gpu.loadMs/1000 -->16.4<!-- /bench --> |
+| Llama 3.2 3B | CPU | <!-- bench:ladder-llama3b-cpu.promptTps -->69.2<!-- /bench --> | <!-- bench:ladder-llama3b-cpu.predictedTps -->6.3<!-- /bench --> | <!-- bench:ladder-llama3b-cpu.loadMs/1000 -->12.2<!-- /bench --> |
+| Gemma 3 4B (QAT) | NPU | <!-- bench:ladder-gemma4b-npu.promptTps -->172<!-- /bench --> | <!-- bench:ladder-gemma4b-npu.predictedTps -->14.2<!-- /bench --> | <!-- bench:ladder-gemma4b-npu.loadMs/1000 -->5.1<!-- /bench --> |
+| Gemma 3 4B (QAT) | GPU | <!-- bench:ladder-gemma4b-gpu.promptTps -->152<!-- /bench --> | <!-- bench:ladder-gemma4b-gpu.predictedTps -->12.5<!-- /bench --> | <!-- bench:ladder-gemma4b-gpu.loadMs/1000 -->19.0<!-- /bench --> |
+| Gemma 3 4B (QAT) | CPU | <!-- bench:ladder-gemma4b-cpu.promptTps -->48.6<!-- /bench --> | <!-- bench:ladder-gemma4b-cpu.predictedTps -->7.9<!-- /bench --> | <!-- bench:ladder-gemma4b-cpu.loadMs/1000 -->9.8<!-- /bench --> |
+| Qwen3.5 4B | NPU | <!-- bench:ladder-qwen4b-npu.promptTps -->646<!-- /bench --> | <!-- bench:ladder-qwen4b-npu.predictedTps -->15.3<!-- /bench --> | <!-- bench:ladder-qwen4b-npu.loadMs/1000 -->5.4<!-- /bench --> |
+| Qwen3.5 4B | GPU | <!-- bench:ladder-qwen4b-gpu.promptTps -->126<!-- /bench --> | <!-- bench:ladder-qwen4b-gpu.predictedTps -->14.1<!-- /bench --> | <!-- bench:ladder-qwen4b-gpu.loadMs/1000 -->19.9<!-- /bench --> |
+| Qwen3.5 4B | CPU | <!-- bench:ladder-qwen4b-cpu.promptTps -->45.0<!-- /bench --> | <!-- bench:ladder-qwen4b-cpu.predictedTps -->11.5<!-- /bench --> | <!-- bench:ladder-qwen4b-cpu.loadMs/1000 -->9.9<!-- /bench --> |
+
+Search models: 32 sentences in one request, after one request to warm up, in sentences per second.
+
+| Model | NPU | GPU | CPU |
+|---|--:|--:|--:|
+| bge-small (embeddings) | <!-- bench:embed-npu.extra.itemsPerSecond -->108<!-- /bench --> | <!-- bench:embed-gpu.extra.itemsPerSecond -->46.2<!-- /bench --> | <!-- bench:embed-cpu.extra.itemsPerSecond -->41.6<!-- /bench --> |
+| jina-reranker-tiny (rerank) | <!-- bench:rerank-npu.extra.itemsPerSecond -->227<!-- /bench --> | <!-- bench:rerank-gpu.extra.itemsPerSecond -->106<!-- /bench --> | <!-- bench:rerank-cpu.extra.itemsPerSecond -->69.4<!-- /bench --> |
+
+Drafting, Qwen3.5 4B on the NPU, writing at most 256 tokens, in tokens per second.
+
+| Request | Drafting off | Drafting on |
+|---|--:|--:|
+| JSON extraction, with a DFlash draft model | <!-- bench:json-off.predictedTps -->15.4<!-- /bench --> | <!-- bench:json-dflash.predictedTps -->14.0<!-- /bench --> |
+| Code edit, with n-gram drafting and MTP | <!-- bench:edit-off.predictedTps -->14.9<!-- /bench --> | <!-- bench:edit-ngram-mtp.predictedTps -->120<!-- /bench --> |
+
+Waiting times.
+
+| Moment | Time |
+|---|--:|
+| Stopping a reply: the cancel until every slot is idle | <!-- bench:stop.extra.stopMs -->85<!-- /bench --> ms |
+| Stopping a reply: the cancel call's return, the app's side | <!-- bench:stop.extra.cancelReturnMs -->3<!-- /bench --> ms |
+| Voice, LFM3-Omni 2B: the app's commit of the user's turn until the first reply audio | <!-- bench:voice.extra.firstAudioMs/1000 -->0.38<!-- /bench --> s |
+| Voice, LFM3-Omni 2B: seconds of reply audio per second from the commit to the end of the reply | <!-- bench:voice.extra.realtimeFactor -->1.4<!-- /bench --> |
+| A 3,000-token chat after the model was freed, from loading to the next answer: read again | <!-- bench:restore.extra.readAgainMs/1000 -->8.3<!-- /bench --> s |
+| The same, with its saved slot restored before the question | <!-- bench:restore.extra.restoreMs/1000 -->5.1<!-- /bench --> s |
+
+</details>
+
+### How they were measured
+
+- Every arm runs in a fresh process with a fresh load. The speed, drafting and stop arms
+  ([`BenchDeviceTest`](sdk/acceptance/backends/src/androidTest/kotlin/com/suhel/llamabro/sample/BenchDeviceTest.kt)) use one chip, a context of 8,192 tokens, no prompt cache, thinking off and greedy
+  sampling; their speeds are llama-server's own timings of the request. The voice arm, in the same test, is a realtime
+  session set up with a voice, a language and an instruction, fed a recorded question at microphone pace. The restore
+  arm ([`SlotCacheDeviceTest`](sdk/acceptance/backends/src/androidTest/kotlin/com/suhel/llamabro/sample/SlotCacheDeviceTest.kt)) lets the SDK choose the chip. The code-edit figure covers the
+  reply's first 256 tokens, the start of the edited file, which are almost all copied from the prompt: where n-gram
+  drafting gains most. Each arm's request is in the [method's table](research/bench/README.md#what-each-arm-asks).
+- Models are Q4_K_M, except Gemma 3 4B (Unsloth's UD-Q4_K_XL of Google's QAT release) and the two search models (F16); the DFlash
+  draft and LFM3-Omni's projector are Q8_0. The ladder arms read 512 tokens and write up to 64; the search arms send
+  32 sentences in one request after one request to warm the chip. Every arm ran once: before each, the script waits
+  for the phone's thermal status to be 1 or lower, so no arm runs on a hot phone.
+- [`sdk/scripts/bench.sh`](sdk/scripts/bench.sh) runs it,
+  [`sdk/scripts/bench.py`](sdk/scripts/bench.py) draws the charts and checks every figure on this page against the
+  results. The method, the requests and what the numbers do not cover are in
+  [research/bench/README.md](research/bench/README.md); the run itself, read against earlier measurements, is
+  [F178](docs/research/findings.md#f178-the-readmes-benchmark-run-37-arms-on-the-oneplus-13).
 
 ## Why Llama Bro
 
@@ -96,97 +238,11 @@ val review = model.generate<Review>("The battery lasts two days, but the screen 
 
 [sdk/README.md](sdk/README.md) has a full chat screen, tools, voice, embeddings, the Hub, backends and error handling.
 
-## Benchmarks
-
-Every number here is the SDK itself, measured through its public API on one phone, a OnePlus 13 (Snapdragon 8 Elite,
-the phone the SDK is verified on, [D92](docs/decisions.md#d92-auto-keeps-trying-the-npu-and-the-gpu-on-every-qualcomm-chip-only-one-phone-is-verified)):
-
-- **Reading a prompt** of 2,048 tokens, Qwen3.5 4B on the NPU: <!-- bench:qwen-npu.promptTps -->—<!-- /bench --> tokens
-  per second.
-- **Writing a code edit**, Qwen3.5 4B on the NPU: <!-- bench:edit-ngram-mtp.predictedTps -->—<!-- /bench --> tokens
-  per second with n-gram drafting and MTP behind it, against <!-- bench:edit-off.predictedTps -->—<!-- /bench --> without
-  drafting.
-- **Speaking back** with LFM3-Omni 2B on the NPU: the first audio comes <!-- bench:voice.extra.firstAudioMs/1000 -->—<!-- /bench -->
-  s after the app commits the user's spoken turn.
-- **Stopping a reply**: every slot is idle <!-- bench:stop.extra.stopMs -->—<!-- /bench --> ms after the cancel.
-- **Coming back to a chat of about 3,000 tokens** after the model was freed, from loading the model to the answer to
-  the next message: <!-- bench:restore.extra.restoreMs/1000 -->—<!-- /bench --> s when its saved slot is restored, against the
-  chat read again in <!-- bench:restore.extra.readAgainMs/1000 -->—<!-- /bench --> s.
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/speed-dark.svg">
-    <img src="assets/readme/speed-light.svg" width="600" alt="Bar chart, tokens per second, more is better: how fast Qwen3.5 4B and LFM3-Omni 2B read a 2,048-token prompt and write a reply of up to 128 tokens on the NPU, the GPU and the CPU">
-  </picture>
-</p>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/drafting-dark.svg">
-    <img src="assets/readme/drafting-light.svg" width="600" alt="Bar chart, Qwen3.5 4B on the NPU, writing tokens per second with drafting off and on: a JSON extraction with a DFlash draft model, and a code edit with n-gram drafting and MTP">
-  </picture>
-</p>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/latency-dark.svg">
-    <img src="assets/readme/latency-light.svg" width="600" alt="Bar chart of waiting times, less is better: loading the model on each chip, stopping a reply, the first spoken audio, and coming back to a chat of about 3,000 tokens, from loading the model to the next answer, by reading it again or by restoring its saved slot">
-  </picture>
-</p>
-
-<details>
-<summary>Every number as a table</summary>
-
-Reading a 2,048-token prompt and writing a reply of up to 128 tokens, in tokens per second; loading, in seconds.
-
-| Model | Chip | Reading | Writing | Loading |
-|---|---|--:|--:|--:|
-| Qwen3.5 4B | NPU | <!-- bench:qwen-npu.promptTps -->—<!-- /bench --> | <!-- bench:qwen-npu.predictedTps -->—<!-- /bench --> | <!-- bench:qwen-npu.loadMs/1000 -->—<!-- /bench --> |
-| Qwen3.5 4B | GPU | <!-- bench:qwen-gpu.promptTps -->—<!-- /bench --> | <!-- bench:qwen-gpu.predictedTps -->—<!-- /bench --> | <!-- bench:qwen-gpu.loadMs/1000 -->—<!-- /bench --> |
-| Qwen3.5 4B | CPU | <!-- bench:qwen-cpu.promptTps -->—<!-- /bench --> | <!-- bench:qwen-cpu.predictedTps -->—<!-- /bench --> | <!-- bench:qwen-cpu.loadMs/1000 -->—<!-- /bench --> |
-| LFM3-Omni 2B | NPU | <!-- bench:lfm-npu.promptTps -->—<!-- /bench --> | <!-- bench:lfm-npu.predictedTps -->—<!-- /bench --> | <!-- bench:lfm-npu.loadMs/1000 -->—<!-- /bench --> |
-| LFM3-Omni 2B | GPU | <!-- bench:lfm-gpu.promptTps -->—<!-- /bench --> | <!-- bench:lfm-gpu.predictedTps -->—<!-- /bench --> | <!-- bench:lfm-gpu.loadMs/1000 -->—<!-- /bench --> |
-| LFM3-Omni 2B | CPU | <!-- bench:lfm-cpu.promptTps -->—<!-- /bench --> | <!-- bench:lfm-cpu.predictedTps -->—<!-- /bench --> | <!-- bench:lfm-cpu.loadMs/1000 -->—<!-- /bench --> |
-
-Drafting, Qwen3.5 4B on the NPU, writing at most 256 tokens, in tokens per second.
-
-| Request | Drafting off | Drafting on |
-|---|--:|--:|
-| JSON extraction, with a DFlash draft model | <!-- bench:json-off.predictedTps -->—<!-- /bench --> | <!-- bench:json-dflash.predictedTps -->—<!-- /bench --> |
-| Code edit, with n-gram drafting and MTP | <!-- bench:edit-off.predictedTps -->—<!-- /bench --> | <!-- bench:edit-ngram-mtp.predictedTps -->—<!-- /bench --> |
-
-Waiting times.
-
-| Moment | Time |
-|---|--:|
-| Stopping a reply: the cancel until every slot is idle | <!-- bench:stop.extra.stopMs -->—<!-- /bench --> ms |
-| Stopping a reply: the cancel call's return, the app's side | <!-- bench:stop.extra.cancelReturnMs -->—<!-- /bench --> ms |
-| Voice, LFM3-Omni 2B: the app's commit of the user's turn until the first reply audio | <!-- bench:voice.extra.firstAudioMs/1000 -->—<!-- /bench --> s |
-| Voice, LFM3-Omni 2B: seconds of reply audio per second from the commit to the end of the reply | <!-- bench:voice.extra.realtimeFactor -->—<!-- /bench --> |
-| A 3,000-token chat after the model was freed, from loading to the next answer: read again | <!-- bench:restore.extra.readAgainMs/1000 -->—<!-- /bench --> s |
-| The same, with its saved slot restored before the question | <!-- bench:restore.extra.restoreMs/1000 -->—<!-- /bench --> s |
-
-</details>
-
-### How they were measured
-
-- Every arm runs in a fresh process with a fresh load. The speed, drafting and stop arms
-  ([`BenchDeviceTest`](sdk/acceptance/backends/src/androidTest/kotlin/com/suhel/llamabro/sample/BenchDeviceTest.kt)) use one chip, a context of 8,192 tokens, no prompt cache, thinking off and greedy
-  sampling; their speeds are llama-server's own timings of the request. The voice arm, in the same test, is a realtime
-  session set up with a voice, a language and an instruction, fed a recorded question at microphone pace. The restore
-  arm ([`SlotCacheDeviceTest`](sdk/acceptance/backends/src/androidTest/kotlin/com/suhel/llamabro/sample/SlotCacheDeviceTest.kt)) lets the SDK choose the chip. The code-edit figure covers the
-  reply's first 256 tokens, the start of the edited file, which are almost all copied from the prompt: where n-gram
-  drafting gains most. Each arm's request is in the [method's table](research/bench/README.md#what-each-arm-asks).
-- Models are Q4_K_M; the DFlash draft and LFM3-Omni's projector are Q8_0. Each arm runs three rounds by default, in
-  reversed order every second round, and before each arm the script waits for the phone's thermal status to be 1 or
-  lower. A figure is the median of the rounds; the range is kept beside it.
-- [`sdk/scripts/bench.sh`](sdk/scripts/bench.sh) runs it,
-  [`sdk/scripts/bench.py`](sdk/scripts/bench.py) draws the charts and checks every figure on this page against the
-  results. The method, the requests and what the numbers do not cover are in
-  [research/bench/README.md](research/bench/README.md).
-
 ## Known issues
 
+- At llama.cpp b12479 a DFlash draft model no longer speeds up JSON on the NPU: it writes 14.0 tokens a second against
+  15.4 without, where b12052 gave 2.3× ([F178](docs/research/findings.md#f178-the-readmes-benchmark-run-37-arms-on-the-oneplus-13),
+  [F73](docs/research/findings.md#f73-draft-models-for-qwen35-4b-dflash-decodes-json-23-faster-than-off-and-15-faster-than-mtp-on-the-npu-but-loses-on-prose-and-the-cpu-and-needs-about-29-gb-more-memory-eagle-3-and-dspark-lose-everywhere)).
 - Llama 3.2 3B repeats a tool call until the turn limit, as it does on upstream
   ([F27](docs/research/findings.md#f27-p1-device-acceptance-qwen35-passes-everything-gemma-3-has-no-tools-llama-32-3b-loops-on-tool-calls)).
 - Speculative decoding aborts the OpenCL GPU backend, so the SDK never drafts on the GPU

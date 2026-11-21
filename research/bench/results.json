@@ -1,0 +1,1359 @@
+{
+  "meta": {
+    "sdkCommit": "03878c39",
+    "llamaCppBuild": "b12479",
+    "phone": "CPH2649",
+    "soc": "SM8750",
+    "android": "17",
+    "date": "2026-11-21"
+  },
+  "arms": {
+    "json-off": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Qwen3.5-4B-Q4_K_M.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 6671,
+        "promptTokens": 387,
+        "promptTps": 742.6,
+        "predictedTokens": 256,
+        "predictedTps": 15.4,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          6671,
+          6671
+        ],
+        "promptTokens": [
+          387,
+          387
+        ],
+        "promptTps": [
+          742.6,
+          742.6
+        ],
+        "predictedTokens": [
+          256,
+          256
+        ],
+        "predictedTps": [
+          15.4,
+          15.4
+        ],
+        "extra": {}
+      }
+    },
+    "json-dflash": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Qwen3.5-4B-Q4_K_M.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 6552,
+        "promptTokens": 387,
+        "promptTps": 388.9,
+        "predictedTokens": 256,
+        "predictedTps": 14.0,
+        "draftAccepted": 203,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          6552,
+          6552
+        ],
+        "promptTokens": [
+          387,
+          387
+        ],
+        "promptTps": [
+          388.9,
+          388.9
+        ],
+        "predictedTokens": [
+          256,
+          256
+        ],
+        "predictedTps": [
+          14.0,
+          14.0
+        ],
+        "draftAccepted": [
+          203,
+          203
+        ],
+        "extra": {}
+      }
+    },
+    "edit-off": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Qwen3.5-4B-Q4_K_M.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 5257,
+        "promptTokens": 1767,
+        "promptTps": 885.9,
+        "predictedTokens": 256,
+        "predictedTps": 14.9,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          5257,
+          5257
+        ],
+        "promptTokens": [
+          1767,
+          1767
+        ],
+        "promptTps": [
+          885.9,
+          885.9
+        ],
+        "predictedTokens": [
+          256,
+          256
+        ],
+        "predictedTps": [
+          14.9,
+          14.9
+        ],
+        "extra": {}
+      }
+    },
+    "edit-ngram-mtp": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Qwen3.5-4B-Q4_K_M.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 4520,
+        "promptTokens": 1767,
+        "promptTps": 563.7,
+        "predictedTokens": 256,
+        "predictedTps": 119.6,
+        "draftAccepted": 246,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          4520,
+          4520
+        ],
+        "promptTokens": [
+          1767,
+          1767
+        ],
+        "promptTps": [
+          563.7,
+          563.7
+        ],
+        "predictedTokens": [
+          256,
+          256
+        ],
+        "predictedTps": [
+          119.6,
+          119.6
+        ],
+        "draftAccepted": [
+          246,
+          246
+        ],
+        "extra": {}
+      }
+    },
+    "stop": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Qwen3.5-4B-Q4_K_M.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 4832,
+        "extra": {
+          "stopMs": 85.0,
+          "cancelReturnMs": 3.0
+        }
+      },
+      "range": {
+        "loadMs": [
+          4832,
+          4832
+        ],
+        "extra": {
+          "stopMs": [
+            85.0,
+            85.0
+          ],
+          "cancelReturnMs": [
+            3.0,
+            3.0
+          ]
+        }
+      }
+    },
+    "voice": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "LFM3-Omni-2B-Q4_K_M.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 3037,
+        "predictedTokens": 104,
+        "extra": {
+          "firstAudioMs": 378.0,
+          "realtimeFactor": 1.3778256189451024,
+          "replyAudioSeconds": 6.4
+        }
+      },
+      "range": {
+        "loadMs": [
+          3037,
+          3037
+        ],
+        "predictedTokens": [
+          104,
+          104
+        ],
+        "extra": {
+          "firstAudioMs": [
+            378.0,
+            378.0
+          ],
+          "realtimeFactor": [
+            1.3778256189451024,
+            1.3778256189451024
+          ],
+          "replyAudioSeconds": [
+            6.4,
+            6.4
+          ]
+        }
+      }
+    },
+    "restore": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "median": {
+        "extra": {
+          "readAgainMs": 8328,
+          "restoreMs": 5105
+        }
+      },
+      "range": {
+        "extra": {
+          "readAgainMs": [
+            8328,
+            8328
+          ],
+          "restoreMs": [
+            5105,
+            5105
+          ]
+        }
+      }
+    },
+    "ladder-lfm230m-npu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "LFM2.5-230M-Q4_K_M.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 578,
+        "promptTokens": 529,
+        "promptTps": 7298.8,
+        "predictedTokens": 64,
+        "predictedTps": 170.7,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          578,
+          578
+        ],
+        "promptTokens": [
+          529,
+          529
+        ],
+        "promptTps": [
+          7298.8,
+          7298.8
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          170.7,
+          170.7
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-lfm230m-gpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "LFM2.5-230M-Q4_K_M.gguf",
+      "device": "Gpu",
+      "median": {
+        "loadMs": 4884,
+        "promptTokens": 529,
+        "promptTps": 2242.9,
+        "predictedTokens": 64,
+        "predictedTps": 135.7,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          4884,
+          4884
+        ],
+        "promptTokens": [
+          529,
+          529
+        ],
+        "promptTps": [
+          2242.9,
+          2242.9
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          135.7,
+          135.7
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-lfm230m-cpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "LFM2.5-230M-Q4_K_M.gguf",
+      "device": "Cpu",
+      "median": {
+        "loadMs": 800,
+        "promptTokens": 529,
+        "promptTps": 167.5,
+        "predictedTokens": 64,
+        "predictedTps": 149.1,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          800,
+          800
+        ],
+        "promptTokens": [
+          529,
+          529
+        ],
+        "promptTps": [
+          167.5,
+          167.5
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          149.1,
+          149.1
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-qwen08b-npu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Qwen3.5-0.8B-Q4_K_M.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 1667,
+        "promptTokens": 532,
+        "promptTps": 2173.7,
+        "predictedTokens": 64,
+        "predictedTps": 53.4,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          1667,
+          1667
+        ],
+        "promptTokens": [
+          532,
+          532
+        ],
+        "promptTps": [
+          2173.7,
+          2173.7
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          53.4,
+          53.4
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-qwen08b-gpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Qwen3.5-0.8B-Q4_K_M.gguf",
+      "device": "Gpu",
+      "median": {
+        "loadMs": 8482,
+        "promptTokens": 532,
+        "promptTps": 531.1,
+        "predictedTokens": 64,
+        "predictedTps": 48.6,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          8482,
+          8482
+        ],
+        "promptTokens": [
+          532,
+          532
+        ],
+        "promptTps": [
+          531.1,
+          531.1
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          48.6,
+          48.6
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-qwen08b-cpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Qwen3.5-0.8B-Q4_K_M.gguf",
+      "device": "Cpu",
+      "median": {
+        "loadMs": 6734,
+        "promptTokens": 532,
+        "promptTps": 258.9,
+        "predictedTokens": 64,
+        "predictedTps": 46.8,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          6734,
+          6734
+        ],
+        "promptTokens": [
+          532,
+          532
+        ],
+        "promptTps": [
+          258.9,
+          258.9
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          46.8,
+          46.8
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-lfm17b-npu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "LFM3-1.7B-Q4_K_M.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 2103,
+        "promptTokens": 531,
+        "promptTps": 1681.6,
+        "predictedTokens": 64,
+        "predictedTps": 34.1,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          2103,
+          2103
+        ],
+        "promptTokens": [
+          531,
+          531
+        ],
+        "promptTps": [
+          1681.6,
+          1681.6
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          34.1,
+          34.1
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-lfm17b-gpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "LFM3-1.7B-Q4_K_M.gguf",
+      "device": "Gpu",
+      "median": {
+        "loadMs": 11890,
+        "promptTokens": 531,
+        "promptTps": 348.0,
+        "predictedTokens": 64,
+        "predictedTps": 33.5,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          11890,
+          11890
+        ],
+        "promptTokens": [
+          531,
+          531
+        ],
+        "promptTps": [
+          348.0,
+          348.0
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          33.5,
+          33.5
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-lfm17b-cpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "LFM3-1.7B-Q4_K_M.gguf",
+      "device": "Cpu",
+      "median": {
+        "loadMs": 3197,
+        "promptTokens": 531,
+        "promptTps": 142.8,
+        "predictedTokens": 64,
+        "predictedTps": 32.6,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          3197,
+          3197
+        ],
+        "promptTokens": [
+          531,
+          531
+        ],
+        "promptTps": [
+          142.8,
+          142.8
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          32.6,
+          32.6
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-llama3b-npu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 4022,
+        "promptTokens": 554,
+        "promptTps": 1392.0,
+        "predictedTokens": 64,
+        "predictedTps": 21.2,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          4022,
+          4022
+        ],
+        "promptTokens": [
+          554,
+          554
+        ],
+        "promptTps": [
+          1392.0,
+          1392.0
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          21.2,
+          21.2
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-llama3b-gpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+      "device": "Gpu",
+      "median": {
+        "loadMs": 16382,
+        "promptTokens": 554,
+        "promptTps": 202.3,
+        "predictedTokens": 64,
+        "predictedTps": 17.0,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          16382,
+          16382
+        ],
+        "promptTokens": [
+          554,
+          554
+        ],
+        "promptTps": [
+          202.3,
+          202.3
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          17.0,
+          17.0
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-llama3b-cpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+      "device": "Cpu",
+      "median": {
+        "loadMs": 12157,
+        "promptTokens": 554,
+        "promptTps": 69.2,
+        "predictedTokens": 64,
+        "predictedTps": 6.3,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          12157,
+          12157
+        ],
+        "promptTokens": [
+          554,
+          554
+        ],
+        "promptTps": [
+          69.2,
+          69.2
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          6.3,
+          6.3
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-gemma4b-npu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "gemma-3-4b-it-qat-UD-Q4_K_XL.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 5128,
+        "promptTokens": 528,
+        "promptTps": 171.9,
+        "predictedTokens": 64,
+        "predictedTps": 14.2,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          5128,
+          5128
+        ],
+        "promptTokens": [
+          528,
+          528
+        ],
+        "promptTps": [
+          171.9,
+          171.9
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          14.2,
+          14.2
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-gemma4b-gpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "gemma-3-4b-it-qat-UD-Q4_K_XL.gguf",
+      "device": "Gpu",
+      "median": {
+        "loadMs": 18956,
+        "promptTokens": 528,
+        "promptTps": 151.5,
+        "predictedTokens": 64,
+        "predictedTps": 12.5,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          18956,
+          18956
+        ],
+        "promptTokens": [
+          528,
+          528
+        ],
+        "promptTps": [
+          151.5,
+          151.5
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          12.5,
+          12.5
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-gemma4b-cpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "gemma-3-4b-it-qat-UD-Q4_K_XL.gguf",
+      "device": "Cpu",
+      "median": {
+        "loadMs": 9820,
+        "promptTokens": 528,
+        "promptTps": 48.6,
+        "predictedTokens": 64,
+        "predictedTps": 7.9,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          9820,
+          9820
+        ],
+        "promptTokens": [
+          528,
+          528
+        ],
+        "promptTps": [
+          48.6,
+          48.6
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          7.9,
+          7.9
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-qwen4b-npu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Qwen3.5-4B-Q4_K_M.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 5366,
+        "promptTokens": 532,
+        "promptTps": 646.4,
+        "predictedTokens": 64,
+        "predictedTps": 15.3,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          5366,
+          5366
+        ],
+        "promptTokens": [
+          532,
+          532
+        ],
+        "promptTps": [
+          646.4,
+          646.4
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          15.3,
+          15.3
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-qwen4b-gpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Qwen3.5-4B-Q4_K_M.gguf",
+      "device": "Gpu",
+      "median": {
+        "loadMs": 19871,
+        "promptTokens": 532,
+        "promptTps": 126.3,
+        "predictedTokens": 64,
+        "predictedTps": 14.1,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          19871,
+          19871
+        ],
+        "promptTokens": [
+          532,
+          532
+        ],
+        "promptTps": [
+          126.3,
+          126.3
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          14.1,
+          14.1
+        ],
+        "extra": {}
+      }
+    },
+    "ladder-qwen4b-cpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Qwen3.5-4B-Q4_K_M.gguf",
+      "device": "Cpu",
+      "median": {
+        "loadMs": 9940,
+        "promptTokens": 532,
+        "promptTps": 45.0,
+        "predictedTokens": 64,
+        "predictedTps": 11.5,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          9940,
+          9940
+        ],
+        "promptTokens": [
+          532,
+          532
+        ],
+        "promptTps": [
+          45.0,
+          45.0
+        ],
+        "predictedTokens": [
+          64,
+          64
+        ],
+        "predictedTps": [
+          11.5,
+          11.5
+        ],
+        "extra": {}
+      }
+    },
+    "embed-npu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "bge-small-f16.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 350,
+        "extra": {
+          "batchMs": 297.0,
+          "itemsPerSecond": 107.7
+        }
+      },
+      "range": {
+        "loadMs": [
+          350,
+          350
+        ],
+        "extra": {
+          "batchMs": [
+            297.0,
+            297.0
+          ],
+          "itemsPerSecond": [
+            107.7,
+            107.7
+          ]
+        }
+      }
+    },
+    "rerank-npu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "jina-reranker-tiny-f16.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 8613,
+        "extra": {
+          "batchMs": 141.0,
+          "itemsPerSecond": 227.0
+        }
+      },
+      "range": {
+        "loadMs": [
+          8613,
+          8613
+        ],
+        "extra": {
+          "batchMs": [
+            141.0,
+            141.0
+          ],
+          "itemsPerSecond": [
+            227.0,
+            227.0
+          ]
+        }
+      }
+    },
+    "embed-gpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "bge-small-f16.gguf",
+      "device": "Gpu",
+      "median": {
+        "loadMs": 906,
+        "extra": {
+          "batchMs": 692.0,
+          "itemsPerSecond": 46.2
+        }
+      },
+      "range": {
+        "loadMs": [
+          906,
+          906
+        ],
+        "extra": {
+          "batchMs": [
+            692.0,
+            692.0
+          ],
+          "itemsPerSecond": [
+            46.2,
+            46.2
+          ]
+        }
+      }
+    },
+    "rerank-gpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "jina-reranker-tiny-f16.gguf",
+      "device": "Gpu",
+      "median": {
+        "loadMs": 6423,
+        "extra": {
+          "batchMs": 301.0,
+          "itemsPerSecond": 106.3
+        }
+      },
+      "range": {
+        "loadMs": [
+          6423,
+          6423
+        ],
+        "extra": {
+          "batchMs": [
+            301.0,
+            301.0
+          ],
+          "itemsPerSecond": [
+            106.3,
+            106.3
+          ]
+        }
+      }
+    },
+    "embed-cpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "bge-small-f16.gguf",
+      "device": "Cpu",
+      "median": {
+        "loadMs": 312,
+        "extra": {
+          "batchMs": 769.0,
+          "itemsPerSecond": 41.6
+        }
+      },
+      "range": {
+        "loadMs": [
+          312,
+          312
+        ],
+        "extra": {
+          "batchMs": [
+            769.0,
+            769.0
+          ],
+          "itemsPerSecond": [
+            41.6,
+            41.6
+          ]
+        }
+      }
+    },
+    "rerank-cpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "jina-reranker-tiny-f16.gguf",
+      "device": "Cpu",
+      "median": {
+        "loadMs": 9471,
+        "extra": {
+          "batchMs": 461.0,
+          "itemsPerSecond": 69.4
+        }
+      },
+      "range": {
+        "loadMs": [
+          9471,
+          9471
+        ],
+        "extra": {
+          "batchMs": [
+            461.0,
+            461.0
+          ],
+          "itemsPerSecond": [
+            69.4,
+            69.4
+          ]
+        }
+      }
+    },
+    "qwen-npu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Qwen3.5-4B-Q4_K_M.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 5225,
+        "promptTokens": 2000,
+        "promptTps": 933.8,
+        "predictedTokens": 128,
+        "predictedTps": 15.3,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          5225,
+          5225
+        ],
+        "promptTokens": [
+          2000,
+          2000
+        ],
+        "promptTps": [
+          933.8,
+          933.8
+        ],
+        "predictedTokens": [
+          128,
+          128
+        ],
+        "predictedTps": [
+          15.3,
+          15.3
+        ],
+        "extra": {}
+      }
+    },
+    "qwen-gpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Qwen3.5-4B-Q4_K_M.gguf",
+      "device": "Gpu",
+      "median": {
+        "loadMs": 40290,
+        "promptTokens": 2000,
+        "promptTps": 187.8,
+        "predictedTokens": 128,
+        "predictedTps": 15.1,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          40290,
+          40290
+        ],
+        "promptTokens": [
+          2000,
+          2000
+        ],
+        "promptTps": [
+          187.8,
+          187.8
+        ],
+        "predictedTokens": [
+          128,
+          128
+        ],
+        "predictedTps": [
+          15.1,
+          15.1
+        ],
+        "extra": {}
+      }
+    },
+    "qwen-cpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "Qwen3.5-4B-Q4_K_M.gguf",
+      "device": "Cpu",
+      "median": {
+        "loadMs": 7889,
+        "promptTokens": 2000,
+        "promptTps": 64.5,
+        "predictedTokens": 128,
+        "predictedTps": 12.1,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          7889,
+          7889
+        ],
+        "promptTokens": [
+          2000,
+          2000
+        ],
+        "promptTps": [
+          64.5,
+          64.5
+        ],
+        "predictedTokens": [
+          128,
+          128
+        ],
+        "predictedTps": [
+          12.1,
+          12.1
+        ],
+        "extra": {}
+      }
+    },
+    "lfm-npu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "LFM3-Omni-2B-Q4_K_M.gguf",
+      "device": "Npu",
+      "median": {
+        "loadMs": 2171,
+        "promptTokens": 2019,
+        "promptTps": 2358.4,
+        "predictedTokens": 128,
+        "predictedTps": 36.3,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          2171,
+          2171
+        ],
+        "promptTokens": [
+          2019,
+          2019
+        ],
+        "promptTps": [
+          2358.4,
+          2358.4
+        ],
+        "predictedTokens": [
+          128,
+          128
+        ],
+        "predictedTps": [
+          36.3,
+          36.3
+        ],
+        "extra": {}
+      }
+    },
+    "lfm-gpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "LFM3-Omni-2B-Q4_K_M.gguf",
+      "device": "Gpu",
+      "median": {
+        "loadMs": 9557,
+        "promptTokens": 2019,
+        "promptTps": 489.6,
+        "predictedTokens": 128,
+        "predictedTps": 38.4,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          9557,
+          9557
+        ],
+        "promptTokens": [
+          2019,
+          2019
+        ],
+        "promptTps": [
+          489.6,
+          489.6
+        ],
+        "predictedTokens": [
+          128,
+          128
+        ],
+        "predictedTps": [
+          38.4,
+          38.4
+        ],
+        "extra": {}
+      }
+    },
+    "lfm-cpu": {
+      "ok": true,
+      "rounds": 1,
+      "roundsFailed": 0,
+      "model": "LFM3-Omni-2B-Q4_K_M.gguf",
+      "device": "Cpu",
+      "median": {
+        "loadMs": 2846,
+        "promptTokens": 2019,
+        "promptTps": 166.6,
+        "predictedTokens": 128,
+        "predictedTps": 33.0,
+        "extra": {}
+      },
+      "range": {
+        "loadMs": [
+          2846,
+          2846
+        ],
+        "promptTokens": [
+          2019,
+          2019
+        ],
+        "promptTps": [
+          166.6,
+          166.6
+        ],
+        "predictedTokens": [
+          128,
+          128
+        ],
+        "predictedTps": [
+          33.0,
+          33.0
+        ],
+        "extra": {}
+      }
+    }
+  }
+}

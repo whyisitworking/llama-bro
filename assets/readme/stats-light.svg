@@ -1,20 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 168" width="760" height="168" role="img" aria-labelledby="title desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
 <title id="title">Llama Bro at a glance</title>
-<desc id="desc">Awaiting the benchmark run. 76 of 76 contract cases identical to upstream llama-server (F163). Prompt reading (Qwen3.5 4B, NPU): — t/s; Drafted code edit (Qwen3.5 4B, NPU): — t/s; First spoken audio (LFM3-Omni 2B): — s; Contract cases (same as llama-server): 76 of 76.</desc>
+<desc id="desc">76 of 76 contract cases identical to upstream llama-server (F163). Prompt reading (Qwen3.5 4B, NPU): 934 t/s; Drafted code edit (Qwen3.5 4B, NPU): 120 t/s; First spoken audio (LFM3-Omni 2B): 0.38 s; Contract cases (same as llama-server): 76 of 76.</desc>
 <defs><linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7B44F6"/><stop offset="1" stop-color="#F7883F"/></linearGradient></defs>
 <rect x="0.5" y="0.5" width="759" height="167" rx="16" fill="#FBFBFC" stroke="#E3E3E8"/>
-<text x="32" y="76" font-size="44" fill="#1D1D1F" font-weight="600">—</text>
-<text x="79.84" y="70" font-size="16" fill="#65656A">awaiting</text>
+<text x="32" y="76" font-size="44" fill="#1D1D1F" font-weight="600">934<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
 <text x="32" y="114" font-size="16" fill="#1D1D1F" font-weight="600">Prompt reading</text>
 <text x="32" y="136" font-size="16" fill="#65656A">Qwen3.5 4B, NPU</text>
 <path d="M206.5 32L206.5 136" stroke="#E3E3E8" stroke-width="1"/>
-<text x="230" y="76" font-size="44" fill="#1D1D1F" font-weight="600">—</text>
-<text x="277.84" y="70" font-size="16" fill="#65656A">awaiting</text>
+<text x="230" y="76" font-size="44" fill="#1D1D1F" font-weight="600">120<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<rect x="230" y="90" width="76.56" height="4" rx="2" fill="url(#accent)"/>
 <text x="230" y="114" font-size="16" fill="#1D1D1F" font-weight="600">Drafted code edit</text>
 <text x="230" y="136" font-size="16" fill="#65656A">Qwen3.5 4B, NPU</text>
 <path d="M380.5 32L380.5 136" stroke="#E3E3E8" stroke-width="1"/>
-<text x="404" y="76" font-size="44" fill="#1D1D1F" font-weight="600">—</text>
-<text x="451.84" y="70" font-size="16" fill="#65656A">awaiting</text>
+<text x="404" y="76" font-size="44" fill="#1D1D1F" font-weight="600">0.38<tspan fill="#65656A" font-weight="400"> s</tspan></text>
 <text x="404" y="114" font-size="16" fill="#1D1D1F" font-weight="600">First spoken audio</text>
 <text x="404" y="136" font-size="16" fill="#65656A">LFM3-Omni 2B</text>
 <path d="M554.5 32L554.5 136" stroke="#E3E3E8" stroke-width="1"/>

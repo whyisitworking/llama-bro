@@ -20,7 +20,7 @@ FIXTURES = HERE / "fixtures" / "bench"
 LINES = FIXTURES / "lines.jsonl"
 META = FIXTURES / "meta.json"
 SVG = "{http://www.w3.org/2000/svg}"
-IMAGES = ["stats", "stats-narrow", "speed", "drafting", "latency"]
+IMAGES = ["stats", "stats-narrow", "speed", "drafting", "latency", "ladder"]
 # a phone's README column, and the smallest text that reads there: body text 10 CSS px, footers and footnotes 9
 PHONE_WIDTH = 343
 WIDE_ONLY = {"stats"}  # the 1x4 strip; phones get stats-narrow
@@ -210,7 +210,7 @@ class BenchTest(unittest.TestCase):
             self.assertEqual(run.returncode, 0, run.stderr)
         texts = [out.read_text()] + [run.stdout + run.stderr for run in runs]
         texts += [path.read_text() for path in sorted(self.tmp.glob("*/*.svg"))]
-        self.assertEqual(len(texts), 4 + 20)
+        self.assertEqual(len(texts), 4 + 24)
         for text in texts:
             self.assertNotIn(serial, text)
             self.assertNotIn(home, text)
@@ -244,6 +244,30 @@ class BenchTest(unittest.TestCase):
         latency = (self.charts(out) / "latency-light.svg").read_text()
         self.assertNotIn('data-arm="stop"', latency)
         self.assertIn("Stop a reply did not run", latency)
+
+    def test_ladder_marks_each_rows_fastest_chip(self):
+        build = {"sdkCommit": "b6d1681", "llamaCppBuild": "b9123"}
+        lines = []
+        for model in ("lfm230m", "qwen08b", "lfm17b", "llama3b", "gemma4b", "qwen4b"):
+            for chip, speed in (("npu", 30.0), ("gpu", 20.0), ("cpu", 10.0)):
+                ok = (model, chip) != ("gemma4b", "npu")
+                line = {"arm": f"ladder-{model}-{chip}", "round": 1, "ok": ok, "build": build,
+                        "error": None if ok else "unsupported op GLU", "model": "m", "device": chip}
+                if ok:
+                    line.update(promptTps=speed * 10, predictedTps=speed)
+                lines.append(line)
+        for kind in ("embed", "rerank"):
+            for chip, rate in (("npu", 50.0), ("gpu", 40.0), ("cpu", 60.0)):
+                lines.append({"arm": f"{kind}-{chip}", "round": 1, "ok": True, "build": build, "model": "m",
+                              "device": chip, "extra": {"itemsPerSecond": rate}})
+        out = self.tmp / "results.json"
+        run = bench("merge", self.write_lines("ladder.jsonl", lines), META, "-o", out)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        ladder = (self.charts(out) / "ladder-light.svg").read_text()
+        # six rows in each speed table and two in the search table, one accent each; Gemma's falls to the GPU
+        self.assertEqual(ladder.count('fill="url(#accent)"'), 14)
+        self.assertIn("Gemma 3 4B on NPU: unsupported op GLU", ladder)
+        self.assertIn("one run per arm", ladder)
 
     def test_text_is_legible_on_a_phone(self):
         self.merged()

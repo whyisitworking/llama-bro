@@ -1,27 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 442" width="520" height="442" role="img" aria-labelledby="title desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
 <title id="title">Drafting</title>
-<desc id="desc">Reply writing speed with and without speculative drafting. JSON extraction, with DFlash; Code edit, with n-gram and MTP.</desc>
+<desc id="desc">Reply writing speed with and without speculative drafting. JSON extraction, 1.1× slower with DFlash; Without 15.4 t/s; Drafted 14.0 t/s; Code edit, 8.0× faster with n-gram and MTP; Without 14.9 t/s; Drafted 120 t/s.</desc>
 <defs><linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8B5CF6"/><stop offset="1" stop-color="#F7883F"/></linearGradient></defs>
 <rect x="0.5" y="0.5" width="519" height="441" rx="16" fill="#161618" stroke="#2C2C2F"/>
 <text x="32" y="54" font-size="24" fill="#E3E3E6" font-weight="600">Drafting</text>
 <text x="32" y="82" font-size="17" fill="#98989D">Qwen3.5 4B on the NPU, writing tokens per second</text>
-<text x="32" y="134" font-size="18" fill="#E3E3E6" font-weight="600">JSON extraction<tspan dx="15.12" fill="#98989D" font-weight="400">with DFlash</tspan></text>
+<text x="32" y="134" font-size="18" fill="#E3E3E6" font-weight="600">JSON extraction<tspan dx="15.12" fill="#98989D" font-weight="400">1.1× slower with DFlash</tspan></text>
 <text x="32" y="173" font-size="17" fill="#E3E3E6">Without</text>
-<rect x="114.64" y="158" width="350.009" height="20" rx="4" fill="#222224"/>
-<text x="472.649" y="173" font-size="17" fill="#98989D">—</text>
+<path data-arm="json-off" d="M114.64 158h34.2429a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-34.2429z" fill="#6E6E73"/>
+<text x="160.883" y="173" font-size="17" fill="#E3E3E6" font-weight="600">15.4<tspan fill="#98989D" font-weight="400"> t/s</tspan></text>
 <text x="32" y="205" font-size="17" fill="#E3E3E6">Drafted</text>
-<rect x="114.64" y="190" width="350.009" height="20" rx="4" fill="#222224"/>
-<text x="472.649" y="205" font-size="17" fill="#98989D">—</text>
+<path data-arm="json-dflash" d="M114.64 190h30.7662a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-30.7662z" fill="#6E6E73"/>
+<text x="157.406" y="205" font-size="17" fill="#E3E3E6" font-weight="600">14.0<tspan fill="#98989D" font-weight="400"> t/s</tspan></text>
 <path d="M115.14 152L115.14 216" stroke="#2C2C2F" stroke-width="1"/>
-<text x="32" y="254" font-size="18" fill="#E3E3E6" font-weight="600">Code edit<tspan dx="15.12" fill="#98989D" font-weight="400">with n-gram and MTP</tspan></text>
+<text x="32" y="254" font-size="18" fill="#E3E3E6" font-weight="600">Code edit<tspan dx="15.12" fill="#98989D" font-weight="400">8.0× faster with n-gram and MTP</tspan></text>
 <text x="32" y="293" font-size="17" fill="#E3E3E6">Without</text>
-<rect x="114.64" y="278" width="350.009" height="20" rx="4" fill="#222224"/>
-<text x="472.649" y="293" font-size="17" fill="#98989D">—</text>
+<path data-arm="edit-off" d="M114.64 278h33.0012a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-33.0012z" fill="#6E6E73"/>
+<text x="159.641" y="293" font-size="17" fill="#E3E3E6" font-weight="600">14.9<tspan fill="#98989D" font-weight="400"> t/s</tspan></text>
 <text x="32" y="325" font-size="17" fill="#E3E3E6">Drafted</text>
-<rect x="114.64" y="310" width="350.009" height="20" rx="4" fill="#222224"/>
-<text x="472.649" y="325" font-size="17" fill="#98989D">—</text>
+<path data-arm="edit-ngram-mtp" d="M114.64 310h293.003a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-293.003z" fill="url(#accent)"/>
+<text x="419.643" y="325" font-size="17" fill="#E3E3E6" font-weight="600">120<tspan fill="#98989D" font-weight="400"> t/s</tspan></text>
 <path d="M115.14 272L115.14 336" stroke="#2C2C2F" stroke-width="1"/>
 <path d="M32 368L488 368" stroke="#2C2C2F" stroke-width="1"/>
-<text x="32" y="394" font-size="15" fill="#E3E3E6" font-weight="600">Awaiting the benchmark run.</text>
-<text x="32" y="416" font-size="15" fill="#98989D">Every number here comes from one run of the SDK on a phone.</text>
+<text x="32" y="394" font-size="15" fill="#98989D">OnePlus 13 · Snapdragon 8 Elite · Android 17 · 2026-11-21</text>
+<text x="32" y="416" font-size="15" fill="#98989D">Llama Bro 03878c39 · llama.cpp b12479 · one run per arm</text>
 </svg>

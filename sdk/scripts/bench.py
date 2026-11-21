@@ -10,7 +10,7 @@ merge takes every .jsonl file as BenchDeviceTest lines (one per arm and round; t
 writes the median and the [min, max] range of each number, `extra` included. It refuses lines or METAs from
 different builds (sdkCommit, llamaCppBuild) and names them.
 
-charts writes stats, speed, drafting and latency, each as -light.svg and -dark.svg. With no results file it draws the
+charts writes stats, speed, drafting, latency and ladder, each as -light.svg and -dark.svg. With no results file it draws the
 same images in the "awaiting run" state.
 
 check-readme reads every marker of the form
@@ -37,9 +37,16 @@ META_KEYS = ["sdkCommit", "llamaCppBuild", "phone", "soc", "android", "date"]
 BUILD_KEYS = ["sdkCommit", "llamaCppBuild"]
 MODELS = [("qwen", "Qwen3.5 4B"), ("lfm", "LFM3-Omni 2B")]
 CHIPS = [("npu", "NPU"), ("gpu", "GPU"), ("cpu", "CPU")]
+# the ladder's models, smallest first: the arm name without its chip, the name, and the size shown under it
+LADDER = [("ladder-lfm230m", "LFM2.5", "230M"), ("ladder-qwen08b", "Qwen3.5", "0.8B"), ("ladder-lfm17b", "LFM3", "1.7B"),
+          ("ladder-llama3b", "Llama 3.2", "3B"), ("ladder-gemma4b", "Gemma 3", "4B"), ("ladder-qwen4b", "Qwen3.5", "4B")]
+BATCHES = [("embed", "bge-small", "embed"), ("rerank", "jina-tiny", "rerank")]
 # F163: the C API answered all 76 contract cases exactly as upstream llama-server did. A fixed fact, not a run's result.
 CONTRACT_CASES = 76
 PLACEHOLDER = "—"
+# the names a reader knows, for the model and SoC numbers the phone reports; an unknown one is shown as reported
+PHONE_NAMES = {"CPH2649": "OnePlus 13", "CPH2653": "OnePlus 13"}
+SOC_NAMES = {"SM8750": "Snapdragon 8 Elite", "SM8650": "Snapdragon 8 Gen 3", "SM8850": "Snapdragon 8 Elite Gen 5"}
 
 FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif"
 # D131's neutral palette; the icon's violet-to-orange (sampled from ic_launcher_foreground) is the one accent
@@ -260,7 +267,8 @@ def footer(d, y, results, notes, method):
         lines = ["Awaiting the benchmark run.", "Every number here comes from one run of the SDK on a phone."]
     else:
         m = results["meta"]
-        lines = [f"{m['phone']} · {m['soc']} · Android {m['android']} · {m['date']}",
+        phone, soc = PHONE_NAMES.get(m["phone"], m["phone"]), SOC_NAMES.get(m["soc"], m["soc"])
+        lines = [f"{phone} · {soc} · Android {m['android']} · {m['date']}",
                  f"Llama Bro {m['sdkCommit']} · llama.cpp {m['llamaCppBuild']} · {method}"]
     for i, s in enumerate(lines):
         d.text(PAD, y + 34 + 22 * i, fit(s, 15, WIDTH - 2 * PAD), 15, "muted" if i or results else "ink",
@@ -272,6 +280,8 @@ def rounds_word(results, arms):
     counts = {results["arms"][a]["rounds"] for a in arms if results["arms"].get(a, {}).get("ok")}
     if not counts:
         return "no rounds"
+    if counts == {1}:
+        return "one run per arm"
     return f"median of {max(counts)} rounds" if len(counts) == 1 else f"median of up to {max(counts)} rounds"
 
 
@@ -390,7 +400,15 @@ def chart_drafting(results):
     def panel(title, plain, drafted, how):
         without, faster = value(results, plain, "predictedTps"), value(results, drafted, "predictedTps")
         # the speed-up heads the panel: a phone-width chart has no room for it beside the bar
-        aside = f"{faster / without:.1f}× faster with {how}" if without and faster else f"with {how}"
+        if not (without and faster):
+            aside = f"with {how}"
+        elif faster >= without * 1.05:
+            aside = f"{faster / without:.1f}× faster with {how}"
+        elif faster <= without * 0.95:
+            # a drafter that loses is a result too, said as plainly as a win
+            aside = f"{without / faster:.1f}× slower with {how}"
+        else:
+            aside = f"no faster with {how}"
         return Panel(title, aside, "t/s", [(plain, "Without", without), (drafted, "Drafted", faster)])
 
     panels = [panel("JSON extraction", "json-off", "json-dflash", "DFlash"),
@@ -415,6 +433,64 @@ def chart_latency(results):
          Panel("Back to a 3,000-token chat", "", "s",
                [("restore", "Read it again", value(results, "restore", "extra.readAgainMs", 1000)),
                 ("restore", "Restore its slot", value(results, "restore", "extra.restoreMs", 1000))], "min")])
+
+
+def grid(d, y, title, aside, rows, results, marks, notes, said, unit):
+    """A table of chips: one row per model, a column per chip, each cell its number over a thin bar on the section's
+    one scale; the fastest chip of a row gets the accent. `rows` is (prefix, name, sub) and the arms are
+    PREFIX-CHIP."""
+    label_w = max(text_width(f"{name} {sub}", 17) for _, name, sub in rows) + 16
+    x0 = PAD + label_w
+    cell = (WIDTH - PAD - x0) / len(CHIPS)
+    d.text(PAD, y + 18, title, 18, weight=600, tail=(f"   {aside}", "muted"))
+    said.append(f"{title}, {aside}")
+    y += 40
+    for i, (_, chip) in enumerate(CHIPS):
+        d.text(x0 + i * cell, y + 14, chip, 16, "muted", weight=600)
+    y += 26
+    values = {(p, c): value(results, f"{p}-{c}", unit[1]) for p, _, _ in rows for c, _ in CHIPS}
+    top = max([v for v in values.values() if v is not None] or [1])
+    for prefix, name, sub in rows:
+        d.line(PAD, y + 0.5, WIDTH - PAD, y + 0.5)
+        d.text(PAD, y + 26, name, 17, weight=600, tail=(f" {sub}", "muted"))
+        row = [values[(prefix, c)] for c, _ in CHIPS]
+        best = max([v for v in row if v is not None], default=None)
+        for i, (chip, label) in enumerate(CHIPS):
+            x, v, arm = x0 + i * cell, values[(prefix, chip)], f"{prefix}-{chip}"
+            if results is None:
+                d.text(x, y + 24, PLACEHOLDER, 17, "muted")
+                d.rect(x, y + 32, cell - 16, 5, "track", rx=2)
+            elif v is None:
+                if arm not in marks:
+                    marks[arm] = superscript(len(marks) + 1)
+                    reason = missing_reason(results, arm)
+                    notes.append(f"{marks[arm]} {name} {sub} on {label}: {reason}")
+                    said.append(f"{name} {sub} on {label} did not run: {reason}")
+                d.text(x, y + 24, f"—{marks[arm]}", 17, "muted")
+            else:
+                shown = number(v)
+                d.text(x, y + 24, shown, 17, weight=600)
+                d.rect(x, y + 32, cell - 16, 5, "track", rx=2)
+                d.rect(x, y + 32, max((cell - 16) * v / top, 4), 5, "url(#accent)" if v == best else "bar", rx=2)
+                said.append(f"{name} {sub} on {label} {shown} {unit[0]}")
+        y += 46
+    d.line(PAD, y + 0.5, WIDTH - PAD, y + 0.5)
+    return y + 28
+
+
+def chart_ladder(results):
+    d = Drawing()
+    y = header(d, "Every size, every chip", "Six models from 230M to 4B, tokens per second")
+    marks, notes, said = {}, [], []
+    y = grid(d, y, "Writing", "up to 64 tokens", LADDER, results, marks, notes, said, ("t/s", "predictedTps"))
+    y = grid(d, y, "Reading", "512-token prompt", LADDER, results, marks, notes, said, ("t/s", "promptTps"))
+    y = grid(d, y, "Search models", "sentences per second", BATCHES, results, marks, notes, said,
+             ("sentences/s", "extra.itemsPerSecond"))
+    arms = [f"{p}-{c}" for p, _, _ in LADDER + BATCHES for c, _ in CHIPS]
+    height = footer(d, y - 20, results, notes, results and rounds_word(results, arms))
+    about = "Reply and prompt speed of six models on the NPU, GPU and CPU, and embedding and rerank throughput. "
+    return d, height, "Every size, every chip", about + ("; ".join(said) + "." if results else
+                                                         "Awaiting the benchmark run.")
 
 
 def chart_stats(results, columns=4):
@@ -458,7 +534,8 @@ def charts(results_path, out):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     images = (("stats", chart_stats), ("stats-narrow", lambda r: chart_stats(r, columns=2)),
-              ("speed", chart_speed), ("drafting", chart_drafting), ("latency", chart_latency))
+              ("speed", chart_speed), ("drafting", chart_drafting), ("latency", chart_latency),
+              ("ladder", chart_ladder))
     for name, draw in images:
         d, height, title, desc, *width = draw(results)
         for theme in THEMES:

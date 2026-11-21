@@ -1932,10 +1932,47 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ---
 
+## The README's benchmark (F178)
+
+### F178. The README's benchmark run: 37 arms on the OnePlus 13
+
+- **Finding:** One run of `sdk/scripts/bench.sh` (speed, extras, ladder; one round per arm, thermal status ≤ 1 before
+  each) on the OnePlus 13 (SM8750, Android 17), SDK build `03878c39`, llama.cpp b12479, 2026-11-21 UTC: all 37 arms ran,
+  none failed, in about 12 minutes of phone time. Every figure is in `research/bench/results.json`; the README's are
+  checked against it by `bench.py check-readme`.
+    - **The NPU is the fastest chip for every model of the ladder**, in reading and in writing (512-token prompt,
+      64 reply tokens): LFM2.5 230M reads at 7,299 t/s and writes 171; Qwen3.5 0.8B 2,174 / 53.4; LFM3 1.7B 1,682 /
+      34.1; Llama 3.2 3B 1,392 / 21.2; Gemma 3 4B QAT 172 / 14.2; Qwen3.5 4B 646 / 15.3. The GPU writes within 10% of
+      the NPU for three of the six models and within 20% for all but reads 3-7× slower and loads slowest (5-20 s, OpenCL's kernel build); the CPU writes
+      within 15% of the NPU for models up to 1.7B, then falls behind (Llama 3.2 3B: 6.3 t/s).
+    - **Gemma 3 4B QAT reads only 172 t/s on the NPU**, a quarter of Qwen3.5 4B's 646: the UD-Q4_K_XL file mixes
+      quantisation types, and it is the one model whose prompt the NPU barely speeds up over the GPU (152). Not
+      investigated further; a plain Q4_K_M Gemma file would tell whether the mix is the cause.
+    - **Qwen3.5 4B at the README's 2,048 tokens:** NPU 934 / 15.3 t/s, GPU 188 / 15.1, CPU 64.5 / 12.1; LFM3-Omni 2B
+      NPU 2,358 / 36.3, GPU 490 / 38.4, CPU 167 / 33.0. The NPU's writing matches F73 (14.6-14.9 off); the CPU's
+      reading is above F63's 39-61 range, within one run's noise.
+    - **Drafting:** the code edit writes 119.6 t/s with n-gram drafting and MTP against 14.9 off (8.0×, 246 of 256
+      tokens accepted), close to F72's 138. **DFlash no longer wins JSON:** 14.0 t/s against 15.4 off, with 203 of 256
+      draft tokens accepted and prompt reading halved (389 against 743 t/s). F73 measured 32.6-36.0 t/s with DFlash at
+      b12052; the drafts are still accepted, so the time goes to verifying or drafting, not to rejections. The cause at
+      b12479 is not investigated here.
+    - **Waiting:** stopping a reply leaves every slot idle 85 ms after the cancel (the cancel call returns in 3 ms; F170:
+      80 ms); a voice reply's first audio comes 0.38 s after the commit and the reply plays 1.38× faster than real time
+      (F170 measured 0.3 s and 1.65× from a live session, timed to the end of speech, not of the reply); a 3,000-token
+      chat comes back in 5.1 s by restoring its slot against 8.3 s read again.
+    - **Search models** (32 sentences per request, after one warm-up): bge-small embeds 108 sentences a second on the
+      NPU, 46 on the GPU, 42 on the CPU; jina-reranker-tiny ranks 227, 106 and 69. The reranker's NPU scores differ
+      slightly from the CPU's (F69); only speed is measured here.
+- **Evidence:** `research/bench/results.json`, the charts in `assets/readme/`, [research/bench/README.md](../../research/bench/README.md)
+  (method), `BenchDeviceTest` at `03878c39`.
+- **Means:** The README's figures. The DFlash regression and Gemma's NPU prefill are open questions for a later
+  session; until DFlash is measured again, the README shows its result as it is.
+
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F178 | The README's run, 37 arms on the OnePlus 13 at b12479: the NPU fastest for all six ladder models (230M-4B); code edit 8.0× with n-gram + MTP; DFlash JSON now 0.9× off (F73: 2.3×); first voice audio 0.38 s; stop 85 ms | F73, F72, F170, F63, F69 |
 | F177 | The merged Models screen's card re-expanded up to five times over ~0.9 s and its list dropped ~20 dp when storage landed; the rebuilt card rises once into its compact height on the phone (B4 fixed), one size per file (B5) | D118-D121, D130, models audit |
 | F176 | "Fits this phone" caps the parameter count at budget × 8 / 5.2 (6.6 billion on an 8 GiB phone), from the same guess as the fit symbol; the Hub filters on each upload's reported count and takes the cap as a plain number | models search design, D101, D127, F175 |
 | F175 | A Q4_K_M file takes 5.2 bits per weight, an image reader 28.5% more: the Hub's parameter count sizes every catalog file within 9% and gives the same fit label in the three cases checked (NPU 4 GiB and 6 GiB budget, CPU 4 GiB) | models screen design, D101, D116 |
