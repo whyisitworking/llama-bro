@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D133 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D134 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -182,6 +182,7 @@ its amendments to know what holds now.
 | [D21](#d21-verification) Verification | 2026-11-04 | |
 | [D132](#d132-the-readme-shows-two-demo-screens-the-no-screenshots-rule-keeps-one-exception) The README shows two demo screens; the no-screenshots rule keeps one exception | 2026-11-21 | |
 | [D133](#d133-the-sdk-is-published-to-maven-central-through-the-central-portal-with-the-vanniktech-plugin) The SDK is published to Maven Central through the Central Portal, with the vanniktech plugin | 2026-11-21 | |
+| [D134](#d134-arm64-v8a-is-the-only-abi) arm64-v8a is the only ABI | 2026-11-22 | |
 
 ---
 
@@ -1726,3 +1727,31 @@ native libraries in its APK. Not exercised: a signed publication (no key exists 
 convention, and the composite build that the demo and the README's quick start use still substitutes by group and name.
 Splitting the SDK into its own repository (D1) would change the POM's URLs and nothing else here. Implements D4 with
 D2's group.
+
+### D134. arm64-v8a is the only ABI
+
+Status: Decided (2026-11-22)
+
+Context: every native module (`llamabro`, `llamabro-hexagon`, `llamabro-opencl`) and the demo build for `arm64-v8a`
+alone, which the README's badge states, but no record said why. The question was whether 32-bit Arm
+(`armeabi-v7a`) phones could be served too.
+
+Decision: arm64-v8a only. llama.cpp's CPU code does compile for 32-bit Arm with NEON, but a 32-bit build would serve
+almost no one who can use the SDK:
+
+- **Address space.** A 32-bit process maps at most about 4 GB, less in practice. A model file is memory-mapped beside
+  its context cache, so a 4B model (about 2.7 GB in Q4_K_M, F178's ladder) does not fit, and the limit falls near 1B
+  parameters.
+- **Speed.** llama.cpp defines its CPU variants for 64-bit Arm only (dot product, i8mm, SVE, SME); the SDK loads the
+  best one a phone supports through `ggml_backend_score` (F29). A 32-bit build would be one plain NEON library,
+  slower than the slowest variant shipped.
+- **Backends.** The Hexagon and OpenCL libraries are built in Qualcomm's arm64 toolchain image (F179); a 32-bit build
+  would be CPU only.
+- **The phones.** Devices that run 32-bit apps only are low-memory budget phones that could not hold a useful model;
+  phones with 64-bit hardware already run the arm64 build. Google Play has required 64-bit native code since 2019, and
+  newer chips and Android versions drop 32-bit apps.
+
+Consequences: the AAR carries `arm64-v8a` libraries only, so an app that also targets other ABIs gets no Llama Bro
+native code for them and must not load a model there. Emulators run the arm64 image on Apple silicon, or the fake
+engine (`llamabro-testing`) elsewhere. Revisit only if a common 64-bit ABI other than Arm (x86_64 phones, RISC-V)
+appears among phones that run models.
