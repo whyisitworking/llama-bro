@@ -118,7 +118,8 @@ class ModelRepositoryRecordsTest {
             repo.recordIs(record)
             repo.pause(swift)
             repo.get(swift)
-            scheduler.awaitEnqueued(swift)
+            // both Gets start the work: waiting for the second one's start is what makes the check follow it
+            scheduler.awaitEnqueued(swift, swift)
             assertEquals(record, repo.record(swift).first())
         }
 
