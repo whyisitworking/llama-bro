@@ -192,9 +192,10 @@ llama.cpp's own dry run ([§9](docs/architecture.md#9-memory-fit-and-contextsize
 
 ```kotlin
 // app/build.gradle.kts
-implementation("io.github.whyisitworking:llamabro:2.0.0-alpha")
-implementation("io.github.whyisitworking:llamabro-hexagon:2.0.0-alpha")   // optional: the Snapdragon NPU
-implementation("io.github.whyisitworking:llamabro-opencl:2.0.0-alpha")    // optional: the Adreno GPU
+implementation(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))   // one version for every module
+implementation("io.github.whyisitworking:llamabro")
+implementation("io.github.whyisitworking:llamabro-hexagon")   // optional: the Snapdragon NPU
+implementation("io.github.whyisitworking:llamabro-opencl")    // optional: the Adreno GPU
 ```
 
 arm64-v8a, Android 10 (API 29) and up, Kotlin 2.2 or later

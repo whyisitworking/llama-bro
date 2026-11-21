@@ -4,8 +4,9 @@ Run a GGUF model on an Android phone with llama.cpp's own server core in-process
 templates, tool calls, reasoning, prompt cache and sampling as `llama-server`, without HTTP. Kotlin only
 (coroutines and `Flow`). Package `com.suhel.llamabro`.
 
-> `implementation("io.github.whyisitworking:llamabro:2.0.0-alpha")` from Maven Central, plus `llamabro-hexagon` and
-> `llamabro-opencl` for the NPU and GPU, and the other modules as needed (the same group and version).
+> From Maven Central: `implementation(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))`, then
+> `implementation("io.github.whyisitworking:llamabro")`, plus `llamabro-hexagon` and `llamabro-opencl` for the NPU and
+> GPU and the other modules as needed, with no version of their own (the BOM keeps them matched, D135).
 > arm64-v8a, Android 10 (API 29) and up. Kotlin 2.2 or later: the SDK is built with Kotlin 2.3, whose metadata a
 > 2.2 compiler still reads (D82). `llamabro-typed-ksp` needs KSP 2.3 or later.
 

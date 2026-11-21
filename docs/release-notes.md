@@ -13,6 +13,8 @@ for 1.x needs changes throughout; this entry lists what an app meets, by area.
 
 - **llama.cpp b12479** (D93) with seven carried patches in `sdk/native/patches/` (0001-0005, 0007, 0008). The SDK
   matches llama-server on every contract case, on the Mac and on the phone's NPU (F163).
+- **On Maven Central** as `io.github.whyisitworking`, with `llamabro-bom` to keep every module on one version (D133,
+  D135).
 - **Kotlin 2.2 or later** in the app; the SDK is built with Kotlin 2.3 (D82). arm64-v8a, Android 10 (API 29) and up.
 - **Modules.** `llamabro` (core), `llamabro-hub` (downloads and search), `llamabro-hub-work` (a WorkManager download
   worker), `llamabro-typed` and `llamabro-typed-ksp` (typed output and tools), `llamabro-hexagon` and `llamabro-opencl`

@@ -1,7 +1,7 @@
 # A release: CI's checks as the gate, then two jobs.
 #   demo  the demo app's minified release APK, signed with the upload key in this repository's secrets, attached to a
 #         GitHub release for a version tag (Google Play uploads are made by hand, from the maintainer's machine)
-#   sdk   the SDK's nine modules, signed and uploaded to the Maven Central Portal as a deployment that waits there:
+#   sdk   the SDK's nine modules and its BOM, signed and uploaded to the Maven Central Portal as a deployment that waits there:
 #         nothing is public until the maintainer presses Publish in the Portal (D133, docs/publishing.md)
 #
 #   git tag 2.0.0-alpha && git push origin 2.0.0-alpha   both; the tag must be the catalog's llamabro version

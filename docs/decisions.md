@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D134 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D135 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -181,8 +181,9 @@ its amendments to know what holds now.
 | [D4](#d4-distribution) Distribution | 2026-11-03 | |
 | [D21](#d21-verification) Verification | 2026-11-04 | |
 | [D132](#d132-the-readme-shows-two-demo-screens-the-no-screenshots-rule-keeps-one-exception) The README shows two demo screens; the no-screenshots rule keeps one exception | 2026-11-21 | |
-| [D133](#d133-the-sdk-is-published-to-maven-central-through-the-central-portal-with-the-vanniktech-plugin) The SDK is published to Maven Central through the Central Portal, with the vanniktech plugin | 2026-11-21 | |
+| [D133](#d133-the-sdk-is-published-to-maven-central-through-the-central-portal-with-the-vanniktech-plugin) The SDK is published to Maven Central through the Central Portal, with the vanniktech plugin | 2026-11-21 | [D135](#d135-a-bom-llamabro-bom-keeps-every-module-on-one-version) |
 | [D134](#d134-arm64-v8a-is-the-only-abi) arm64-v8a is the only ABI | 2026-11-22 | |
+| [D135](#d135-a-bom-llamabro-bom-keeps-every-module-on-one-version) A BOM, `llamabro-bom`, keeps every module on one version | 2026-11-22 | |
 
 ---
 
@@ -1755,3 +1756,25 @@ Consequences: the AAR carries `arm64-v8a` libraries only, so an app that also ta
 native code for them and must not load a model there. Emulators run the arm64 image on Apple silicon, or the fake
 engine (`llamabro-testing`) elsewhere. Revisit only if a common 64-bit ABI other than Arm (x86_64 phones, RISC-V)
 appears among phones that run models.
+
+### D135. A BOM, `llamabro-bom`, keeps every module on one version
+
+Status: Decided (2026-11-22). Amends D133.
+
+Context: D133 publishes nine modules at one version, and an app picks several: the core, a backend or two, the hub,
+the typed layer, the test fakes. They must match, since the backend modules load native libraries the core was built
+with, yet each dependency line carried its own version. The architecture guide (§2.1) had sketched a BOM as planned.
+
+Decision: a tenth published artifact, `io.github.whyisitworking:llamabro-bom`, built by Gradle's `java-platform`
+plugin in `sdk/llamabro-bom`. It holds a version constraint for each of the nine modules at its own version (the
+catalog's `llamabro`), and `llamabro.publish` publishes it with the vanniktech plugin's `JavaPlatform`: a POM with
+`dependencyManagement` and Gradle module metadata, signed like the rest. An app names the version once:
+
+```kotlin
+implementation(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))
+implementation("io.github.whyisitworking:llamabro")
+```
+
+Consequences: the README, the SDK guide and the architecture guide install through the BOM. A new published module
+needs one line in the BOM's list as well as in `sdk/modules.gradle.kts`. Checked against the local repository: the
+BOM's POM lists all nine at `2.0.0-alpha`, and a project that names only the BOM's version resolves a module to it.

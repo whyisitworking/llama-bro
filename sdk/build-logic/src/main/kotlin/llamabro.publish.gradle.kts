@@ -3,6 +3,7 @@
 // javadoc jar Central requires, and the POM. A module adds its `description`. docs/publishing.md has the commands and
 // the properties; no credential or key is ever in the repository.
 import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+import com.vanniktech.maven.publish.JavaPlatform
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinJvm
 import com.vanniktech.maven.publish.SourcesJar
@@ -37,6 +38,10 @@ mavenPublishing {
     }
     plugins.withId("org.jetbrains.kotlin.jvm") {
         configure(KotlinJvm(JavadocJar.Empty(), SourcesJar.Sources()))
+    }
+    // the BOM (llamabro-bom): a POM of version constraints, no jar
+    plugins.withId("java-platform") {
+        configure(JavaPlatform())
     }
 
     pom {

@@ -108,7 +108,7 @@ An application depends on the core, plus optional backend and hub artifacts:
 
 ```kotlin
 dependencies {
-    implementation(platform("io.github.whyisitworking:llamabro-bom:1.0.0"))  // planned with publishing; not built yet
+    implementation(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))  // one version for all (D135)
     implementation("io.github.whyisitworking:llamabro")             // CPU, always works
     runtimeOnly("io.github.whyisitworking:llamabro-hexagon")        // optional: Snapdragon NPU
     runtimeOnly("io.github.whyisitworking:llamabro-opencl")         // optional: Adreno GPU
