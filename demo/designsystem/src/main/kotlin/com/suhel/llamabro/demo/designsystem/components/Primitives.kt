@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -59,6 +60,9 @@ enum class Gap(internal val size: Dp) {
 
     /** Between the blocks of one unit: a reply's paragraph, list and code block; the cards of one list. */
     Block(DemoSpacing.block),
+
+    /** A little more than [Block]: the model rows of the Models page, apart enough to read as one each (D123). */
+    Compact(DemoSpacing.compact),
 
     /** Between units: two replies of one speaker, the parts of a card, the blocks of a sheet. */
     Item(DemoSpacing.item),
@@ -144,8 +148,18 @@ fun Modifier.sheetListMaxHeight(): Modifier = heightIn(max = DemoSize.sheetListM
  * own. For a list too long to compose at once that sits under a field or a header.
  */
 @Composable
-fun LazyStack(gap: Gap, modifier: Modifier = Modifier, content: LazyListScope.() -> Unit) {
-    LazyColumn(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(gap.size), content = content)
+fun LazyStack(
+    gap: Gap,
+    modifier: Modifier = Modifier,
+    state: LazyListState = rememberLazyListState(),
+    content: LazyListScope.() -> Unit,
+) {
+    LazyColumn(
+        modifier.fillMaxWidth(),
+        state = state,
+        verticalArrangement = Arrangement.spacedBy(gap.size),
+        content = content,
+    )
 }
 
 /**

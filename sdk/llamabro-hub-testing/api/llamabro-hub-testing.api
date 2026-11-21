@@ -21,17 +21,29 @@ public final class com/suhel/llamabro/hub/testing/FakeLlamaBroHub : java/io/Clos
 
 public final class com/suhel/llamabro/hub/testing/FakeLlamaBroHub$Repo {
 	public final fun generationConfig (Ljava/lang/String;)V
+	public final fun getArchitecture ()Ljava/lang/String;
 	public final fun getBaseModel ()Ljava/lang/String;
+	public final fun getChatTemplate ()Z
 	public final fun getDownloads ()J
 	public final fun getGated ()Z
 	public final fun getLikes ()J
+	public final fun getParameters ()Ljava/lang/Long;
+	public final fun getReadme ()Ljava/lang/String;
+	public final fun getTags ()Ljava/util/List;
 	public final fun getTakesImages ()Z
+	public final fun getTask ()Ljava/lang/String;
 	public final fun gguf (Ljava/lang/String;ILcom/suhel/llamabro/chat/Sampling;)V
 	public static synthetic fun gguf$default (Lcom/suhel/llamabro/hub/testing/FakeLlamaBroHub$Repo;Ljava/lang/String;ILcom/suhel/llamabro/chat/Sampling;ILjava/lang/Object;)V
+	public final fun setArchitecture (Ljava/lang/String;)V
 	public final fun setBaseModel (Ljava/lang/String;)V
+	public final fun setChatTemplate (Z)V
 	public final fun setDownloads (J)V
 	public final fun setGated (Z)V
 	public final fun setLikes (J)V
+	public final fun setParameters (Ljava/lang/Long;)V
+	public final fun setReadme (Ljava/lang/String;)V
+	public final fun setTags (Ljava/util/List;)V
 	public final fun setTakesImages (Z)V
+	public final fun setTask (Ljava/lang/String;)V
 }
 

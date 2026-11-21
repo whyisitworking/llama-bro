@@ -13,8 +13,10 @@ import com.suhel.llamabro.hub.work.cancelDownload
 import com.suhel.llamabro.hub.work.downloadWorkName
 import com.suhel.llamabro.hub.work.enqueueDownload
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.runningFold
 
 /**
  * What the screens read of a model's download, as plain values a preview can build: the SDK's `DownloadState` and
@@ -34,7 +36,8 @@ sealed interface DownloadStatus {
 
     data object Complete : DownloadStatus
 
-    data class Failed(val failure: DownloadFailure) : DownloadStatus
+    /** Stopped by [failure], with what had arrived before it ([bytesDone] of [bytesTotal]; 0 when not seen). */
+    data class Failed(val failure: DownloadFailure, val bytesDone: Long = 0, val bytesTotal: Long = 0) : DownloadStatus
 
     companion object {
         fun of(state: DownloadState): DownloadStatus =
@@ -157,17 +160,18 @@ class WorkDownloadScheduler(private val manager: Lazy<WorkManager>) : DownloadSc
  * had already finished before the first emission (an old run kept under the name) is not one either.
  */
 internal fun workEnds(infos: Flow<List<WorkInfo>>): Flow<Unit> =
-    flow {
-        var live = false
-        infos.collect { now ->
-            if (now.any { !it.state.isFinished }) {
-                live = true
-            } else if (live && now.isNotEmpty()) {
-                live = false
-                emit(Unit)
+    infos
+        .runningFold(WorkWatch()) { watch, now ->
+            when {
+                now.any { !it.state.isFinished } -> WorkWatch(live = true)
+                watch.live && now.isNotEmpty() -> WorkWatch(ended = true)
+                else -> watch.copy(ended = false)
             }
-        }
-    }
+        }.filter { it.ended }
+        .map { }
+
+/** What [workEnds] has seen of a work: an entry queued or running since the last end, and whether it just ended. */
+private data class WorkWatch(val live: Boolean = false, val ended: Boolean = false)
 
 /** A load was asked for a model that is not on the phone; the app downloads only when the person says Get (D64). */
 class NotOnPhone(val model: HfModel) : Exception("$model is not on the phone")

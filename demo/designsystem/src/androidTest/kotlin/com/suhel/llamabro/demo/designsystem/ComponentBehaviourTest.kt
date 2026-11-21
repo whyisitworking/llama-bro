@@ -38,6 +38,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -67,6 +68,7 @@ import com.suhel.llamabro.demo.designsystem.components.ViewerPhoto
 import com.suhel.llamabro.demo.designsystem.components.WakeHairline
 import com.suhel.llamabro.demo.designsystem.components.ink
 import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
+import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.Light
@@ -241,6 +243,31 @@ class ComponentBehaviourTest {
         rule.waitForIdle()
         grown = true
         rule.waitForIdle()
+        rule.onNodeWithTag("get").assertIsDisplayed()
+    }
+
+    @Test
+    fun anExpandableSheetKeepsItsActionAtTheFootAndGoesFullScreenWhenPulledUp() {
+        // a model's card: the page under the sizes is long, the Get button stays pinned while it scrolls
+        rule.setContent {
+            DemoTheme(ThemeMode.Light) {
+                DemoSheet(
+                    onDismissRequest = {},
+                    expandable = true,
+                    pinned = { Box(Modifier.fillMaxWidth().height(56.dp).testTag("get")) },
+                ) {
+                    repeat(40) { Text("A line of the model's page, number $it") }
+                }
+            }
+        }
+        rule.waitForIdle()
+        rule.onNodeWithTag("get").assertIsDisplayed()
+        val compact = rule.onNodeWithTag(DsTags.SHEET_SCROLL).getBoundsInRoot().height
+        assertTrue("opens no taller than its compact height: $compact", compact <= DemoSize.sheetCompactHeight)
+        rule.onNodeWithTag(DsTags.SHEET_SCROLL).performTouchInput { swipeUp() }
+        rule.waitForIdle()
+        val full = rule.onNodeWithTag(DsTags.SHEET_SCROLL).getBoundsInRoot().height
+        assertTrue("pulled up, it takes the screen: $compact then $full", full > compact)
         rule.onNodeWithTag("get").assertIsDisplayed()
     }
 

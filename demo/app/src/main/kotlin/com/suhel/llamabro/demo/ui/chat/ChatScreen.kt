@@ -52,10 +52,12 @@ import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.designsystem.components.VoiceActions
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.SizeTier
-import com.suhel.llamabro.demo.ui.models.ModelRow
+import com.suhel.llamabro.demo.ui.models.ModelEntry
 import com.suhel.llamabro.demo.ui.models.ModelSheetRoute
 import com.suhel.llamabro.demo.ui.shell.ChatChrome
+import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -92,16 +94,26 @@ fun ChatScreen(
     chatId: Long,
     chrome: ChatChrome,
     modifier: Modifier = Modifier,
-    style: MessageStyle = chrome.layout.messageStyle(),
+    /** A fixed layout for the rows (screenshots); null follows the layout setting. */
+    styleOverride: MessageStyle? = null,
 ) {
+    val style = styleOverride ?: chrome.layout.messageStyle()
     val context = LocalContext.current
     val vm: ChatViewModel =
         viewModel {
             // after process death a new chat's route still says 0: its saved state holds the id its first message made
             val saved = createSavedStateHandle()
-            chatViewModel(container, ChatViewModel.chatIdToOpen(saved, chatId), style, context, saved)
+            // a new chat opened on a model (its card's "Chat with") starts on it; the chat is made at its first message
+            chatViewModel(
+                container,
+                ChatViewModel.chatIdToOpen(saved, chatId),
+                styleOverride?.let(::flowOf)
+                    ?: container.settings.settings.map { it.layout.messageStyle() },
+                context,
+                saved,
+                chrome.startModel,
+            )
         }
-    LaunchedEffect(style) { vm.setStyle(style) }
     LaunchedEffect(vm) { vm.handle.chatId.collect { if (it != 0L) chrome.onChatResolved(it) } }
     val state by vm.uiState.collectAsStateWithLifecycle()
     val streaming = vm.streaming.collectAsStateWithLifecycle()
@@ -109,6 +121,9 @@ fun ChatScreen(
     val draft = vm.composer
     val composer = vm.composerState
     var sheet by rememberSaveable { mutableStateOf<Sheet?>(null) }
+
+    // the model whose card the switcher's info action opened, by its key
+    var card by rememberSaveable { mutableStateOf<String?>(null) }
     // the menu and a share under way stay open across a rotation
     var menu by rememberSaveable(stateSaver = MenuTargetSaver) { mutableStateOf<MenuTarget?>(null) }
     var details by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -187,27 +202,7 @@ fun ChatScreen(
 
     ChatContent(state, live, actions, chrome.layout, style, modifier)
 
-    when (sheet) {
-        Sheet.Switcher -> {
-            SwitcherHost(container, vm, chrome, onSampling = { sheet = Sheet.Sampling }, onDismiss = { sheet = null })
-        }
-
-        Sheet.Sampling -> {
-            SamplingHost(container, vm, onDismiss = { sheet = null })
-        }
-
-        Sheet.Think -> {
-            ThinkMenu(composer.value.think ?: ThinkLevel.Off, vm::setThink) { sheet = null }
-        }
-
-        Sheet.Smaller -> {
-            SmallerHost(container, vm, onDismiss = { sheet = null })
-        }
-
-        null -> {
-            Unit
-        }
-    }
+    ChatSheets(container, vm, chrome, sheet, { sheet = it }, card, { card = it })
     menu?.let { target -> MessageMenu(target, state.rows, messageActions, onDismiss = { menu = null }) }
     details?.let { position -> ReplyDetailsSheet(position, state.rows, onDismiss = { details = null }) }
     photo?.let { target ->
@@ -217,17 +212,64 @@ fun ChatScreen(
     ShareCardRenderer(shareRequest) { shareRequest = null }
 }
 
+/** The chat's sheets: one of [sheet] at a time, and the card the switcher's info action opened ([card], by key). */
+@Composable
+@Suppress("LongParameterList") // the two sheet states and their setters, kept by the screen across rotation
+private fun ChatSheets(
+    container: AppContainer,
+    vm: ChatViewModel,
+    chrome: ChatChrome,
+    sheet: Sheet?,
+    onSheet: (Sheet?) -> Unit,
+    card: String?,
+    onCard: (String?) -> Unit,
+) {
+    when (sheet) {
+        Sheet.Switcher -> {
+            SwitcherHost(
+                container,
+                vm,
+                chrome,
+                onSampling = { onSheet(Sheet.Sampling) },
+                onInfo = { key ->
+                    onSheet(null)
+                    onCard(key.toString())
+                },
+                onDismiss = { onSheet(null) },
+            )
+        }
+
+        Sheet.Sampling -> {
+            SamplingHost(container, vm, onDismiss = { onSheet(null) })
+        }
+
+        Sheet.Think -> {
+            ThinkMenu(vm.composerState.value.think ?: ThinkLevel.Off, vm::setThink) { onSheet(null) }
+        }
+
+        Sheet.Smaller -> {
+            SmallerHost(container, vm, onDismiss = { onSheet(null) })
+        }
+
+        null -> {
+            Unit
+        }
+    }
+    card?.let { key -> CardHost(container, HfModel.parse(key), onDismiss = { onCard(null) }) }
+}
+
 private fun chatViewModel(
     container: AppContainer,
     chatId: Long,
-    style: MessageStyle,
+    styles: Flow<MessageStyle>,
     context: Context,
     saved: SavedStateHandle,
+    startModel: HfModel? = null,
 ): ChatViewModel {
     val resolver = context.applicationContext.contentResolver
     return ChatViewModel(
-        container.engine.open(chatId),
-        style,
+        container.engine.open(chatId, startModel),
+        styles,
         saveImage = { container.images.save(it, resolver) },
         discardImages = { container.images.delete(it) },
         clock = container.clock,
@@ -352,7 +394,10 @@ private fun openAppSettings(context: Context) {
     }
 }
 
-/** "Smaller size" (beside "Try again"): this model's own sheet, on Smaller; Get starts it and the chat moves to it. */
+/**
+ * "Smaller size" (beside "Try again"): this model's own sheet, on Smaller; Get starts it and the chat moves to it. No
+ * "Chat with": the chat already runs this model.
+ */
 @Composable
 private fun SmallerHost(container: AppContainer, vm: ChatViewModel, onDismiss: () -> Unit) {
     val current by vm.handle.current.collectAsStateWithLifecycle()
@@ -360,9 +405,11 @@ private fun SmallerHost(container: AppContainer, vm: ChatViewModel, onDismiss: (
     val key = current ?: return
     ModelSheetRoute(
         container,
-        ModelRow.ofKey(key, name),
+        // the chat's own file, so the card follows it rather than another quant of its repo
+        ModelEntry.ofKey(key, name).copy(key = key),
         onStarted = vm.handle::switchModel,
         onDismiss = onDismiss,
+        onChatWith = null,
         startTier = SizeTier.Smaller,
     )
 }
@@ -373,6 +420,7 @@ private fun SwitcherHost(
     vm: ChatViewModel,
     chrome: ChatChrome,
     onSampling: () -> Unit,
+    onInfo: (HfModel) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val library by container.models.library.collectAsStateWithLifecycle(emptyList())
@@ -393,11 +441,29 @@ private fun SwitcherHost(
         facts = facts,
         onSwitch = vm.handle::switchModel,
         onUseForNewChats = { key -> scope.launch { container.settings.pinDefault(key.toString()) } },
+        onInfo = onInfo,
         onGetMore = chrome.onGetModels,
         onDismiss = onDismiss,
         memory = SheetMemory(inMemory, replying) { scope.launch { container.memory.unload() } },
         sampling = chatSampling?.let { SheetSampling(it.values.size, onSampling) },
     )
+}
+
+/**
+ * The card of a model on the phone, opened from the switcher's info action (models-page design §7). No "Chat with":
+ * switching is the switcher's own tap. Another size got here lands on the phone and shows in the switcher; the chat
+ * stays on its model. A model removed meanwhile closes the card.
+ */
+@Composable
+private fun CardHost(container: AppContainer, key: HfModel, onDismiss: () -> Unit) {
+    val library by container.models.library.collectAsStateWithLifecycle(null)
+    val shelf = library ?: return // not read yet
+    val model = shelf.firstOrNull { it.key == key }
+    if (model == null) {
+        LaunchedEffect(Unit) { onDismiss() }
+        return
+    }
+    ModelSheetRoute(container, ModelEntry.of(model), onStarted = {}, onDismiss = onDismiss, onChatWith = null)
 }
 
 /** The chat's sampling sheet, at the chat's Think level; it closes if the chat has no model or no row yet. */

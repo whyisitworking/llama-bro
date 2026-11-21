@@ -11,34 +11,27 @@ import androidx.compose.ui.platform.testTag
 import com.suhel.llamabro.demo.chat.InMemory
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DemoSheet
-import com.suhel.llamabro.demo.designsystem.components.EdgeChip
-import com.suhel.llamabro.demo.designsystem.components.FitText
 import com.suhel.llamabro.demo.designsystem.components.Gap
 import com.suhel.llamabro.demo.designsystem.components.GroupedList
-import com.suhel.llamabro.demo.designsystem.components.Inline
 import com.suhel.llamabro.demo.designsystem.components.ListRow
-import com.suhel.llamabro.demo.designsystem.components.RowCard
+import com.suhel.llamabro.demo.designsystem.components.ModelRow
 import com.suhel.llamabro.demo.designsystem.components.ScrollStack
 import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.models.DeviceFacts
-import com.suhel.llamabro.demo.models.Fit
 import com.suhel.llamabro.demo.models.FitLabel
-import com.suhel.llamabro.demo.models.Format
+import com.suhel.llamabro.demo.models.Fits
 import com.suhel.llamabro.demo.models.LibraryModel
+import com.suhel.llamabro.demo.ui.models.ModelEntry
+import com.suhel.llamabro.demo.ui.models.capabilities
+import com.suhel.llamabro.demo.ui.models.level
 import com.suhel.llamabro.demo.ui.models.text
-import com.suhel.llamabro.demo.ui.models.tint
 import com.suhel.llamabro.demo.ui.settings.InMemoryList
 import com.suhel.llamabro.hub.HfModel
 
 /**
- * The quick fit of a model that is already on the phone: its file size against the memory budget, and the chip's speed.
- */
-fun quickFit(sizeBytes: Long, facts: DeviceFacts): FitLabel =
-    Fit.label(Fit.roomFromSize(sizeBytes, facts.budgetBytes), Fit.tokensPerSecond(sizeBytes, facts.chip))
-
-/**
- * "On this phone": the library as rows tinted by fit, the default outlined with a "Default" chip on its edge, a check
- * on the model this chat uses; long-press a row to use it for new chats; "Get more models" at the bottom.
+ * "On this phone": the library as the one model row (models-page design §7), its state word "Current" on the model
+ * this chat uses and "Default" on the one new chats use, the fit as a symbol; tap a row to switch, long-press it to use
+ * it for new chats, its info action (under the fit symbol) to open its card; "Get more models" at the bottom.
  */
 @Composable
 fun ModelSwitcherSheet(
@@ -47,6 +40,7 @@ fun ModelSwitcherSheet(
     facts: DeviceFacts,
     onSwitch: (HfModel) -> Unit,
     onUseForNewChats: (HfModel) -> Unit,
+    onInfo: (HfModel) -> Unit,
     onGetMore: () -> Unit,
     onDismiss: () -> Unit,
     memory: SheetMemory = SheetMemory(),
@@ -59,6 +53,7 @@ fun ModelSwitcherSheet(
             facts,
             onSwitch,
             onUseForNewChats,
+            onInfo,
             onGetMore,
             onDismiss,
             memory,
@@ -84,6 +79,7 @@ fun ColumnScope.ModelSwitcherContent(
     facts: DeviceFacts,
     onSwitch: (HfModel) -> Unit,
     onUseForNewChats: (HfModel) -> Unit,
+    onInfo: (HfModel) -> Unit,
     onGetMore: () -> Unit,
     onDone: () -> Unit,
     memory: SheetMemory = SheetMemory(),
@@ -104,26 +100,18 @@ fun ColumnScope.ModelSwitcherContent(
         }
         ScrollStack(Gap.Block, Modifier.testTag("switcher")) {
             for (model in library) {
-                val fit = quickFit(model.sizeBytes, facts)
-                RowCard(
-                    selected = model.key == current,
+                SwitcherRow(
+                    model,
+                    current = model.key == current,
+                    // the one fit formula the page's row and the card use
+                    fit = Fits.quick(model, facts).label,
                     onClick = {
-                        if (model.key != current) onSwitch(model.key)
+                        if (model.key != current) onSwitch(model.key) // the same model: nothing to switch
                         onDone()
-                    }, // the same model: nothing to switch
+                    },
                     onLongClick = { pressed = model.key },
-                ) {
-                    ListRow(
-                        title = model.name,
-                        subtitle = Format.sizeInGb(model.sizeBytes),
-                        end = {
-                            Inline(Gap.Block) {
-                                if (model.isDefault) EdgeChip("Default")
-                                FitText(fit.text(), fit.tint())
-                            }
-                        },
-                    )
-                }
+                    onInfo = { onInfo(model.key) },
+                )
             }
         }
     }
@@ -155,4 +143,39 @@ fun ColumnScope.ModelSwitcherContent(
             })
         }
     }
+}
+
+/**
+ * One model of the switcher as the one model row: the Models page's lines (maker and size, capabilities), "Current" for
+ * this chat's model over "Default" as line 2's small mark, the fit as its symbol only (its words are in the card).
+ */
+@Composable
+private fun SwitcherRow(
+    model: LibraryModel,
+    current: Boolean,
+    fit: FitLabel,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onInfo: () -> Unit,
+) {
+    val entry = ModelEntry.of(model)
+    ModelRow(
+        name = entry.name,
+        fit = fit.level(),
+        fitDescription = fit.text(),
+        maker = entry.maker,
+        size = entry.size?.text(),
+        state =
+            when {
+                current -> "Current"
+                model.isDefault -> "Default"
+                else -> null
+            },
+        capabilities = capabilities(entry),
+        // no "Used today" (D123): the less text, the better
+        fact = null,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        onInfo = onInfo,
+    )
 }

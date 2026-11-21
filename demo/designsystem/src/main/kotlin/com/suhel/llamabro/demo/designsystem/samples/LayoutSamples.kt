@@ -3,6 +3,7 @@ package com.suhel.llamabro.demo.designsystem.samples
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -11,9 +12,8 @@ import com.suhel.llamabro.demo.designsystem.components.BottomTab
 import com.suhel.llamabro.demo.designsystem.components.BottomTabs
 import com.suhel.llamabro.demo.designsystem.components.DemoDrawer
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
-import com.suhel.llamabro.demo.designsystem.components.DrawerActions
-import com.suhel.llamabro.demo.designsystem.components.Gap
-import com.suhel.llamabro.demo.designsystem.components.GapAbove
+import com.suhel.llamabro.demo.designsystem.components.DrawerFoot
+import com.suhel.llamabro.demo.designsystem.components.DrawerHead
 import com.suhel.llamabro.demo.designsystem.components.GroupedLazyList
 import com.suhel.llamabro.demo.designsystem.components.IconAction
 import com.suhel.llamabro.demo.designsystem.components.InitialAvatar
@@ -21,8 +21,11 @@ import com.suhel.llamabro.demo.designsystem.components.LayoutKind
 import com.suhel.llamabro.demo.designsystem.components.LayoutPreviewCard
 import com.suhel.llamabro.demo.designsystem.components.ListEntry
 import com.suhel.llamabro.demo.designsystem.components.ListGroup
+import com.suhel.llamabro.demo.designsystem.components.NavRow
+import com.suhel.llamabro.demo.designsystem.components.SearchField
 import com.suhel.llamabro.demo.designsystem.components.TopBar
 import com.suhel.llamabro.demo.designsystem.components.TopBarTitle
+import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 
 internal val SampleTabs =
@@ -65,23 +68,42 @@ internal fun LayoutSamples() {
 @Composable
 private fun LayoutPreview() = DemoTheme { LayoutSamples() }
 
-/** The Sidebar layout's drawer, open over a chat. */
+/** The Sidebar layout's drawer (D126), open over a chat: the name and New chat, the search, the history, the places. */
 @Composable
 internal fun DrawerSample() {
     DemoDrawer(
         open = true,
         onOpenChange = {},
         drawerContent = {
-            GapAbove(Gap.Item)
+            DrawerHead("Llama Bro", DemoIcons.NewChat, "New chat", onAction = {})
+            SearchField(
+                "",
+                {},
+                "Search chats",
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = DemoSpacing.gutter)
+                    .padding(top = DemoSpacing.compact, bottom = DemoSpacing.inline),
+            )
             GroupedLazyList(
                 listOf(
-                    ListGroup("Today", listOf(ListEntry(1, "Portfolio bio", true), ListEntry(2, "Trip plan", false))),
+                    ListGroup(
+                        "Today",
+                        listOf(
+                            ListEntry(1, "Portfolio bio", true, "2:14 pm"),
+                            ListEntry(2, "Trip plan", false, "9:40 am"),
+                        ),
+                    ),
+                    ListGroup("This week", listOf(ListEntry(3, "What is a quant", false, "Wed"))),
                 ),
                 onClick = {},
                 onLongClick = {},
                 modifier = Modifier.weight(1f),
             )
-            DrawerActions("Models, 3 on this phone", onSettings = {}, onModels = {}, onNewChat = {})
+            DrawerFoot {
+                NavRow(DemoIcons.Models, "Models", onClick = {}, note = "3 on this phone")
+                NavRow(DemoIcons.Settings, "Settings", onClick = {})
+            }
         },
     ) {
         com.suhel.llamabro.demo.designsystem.components

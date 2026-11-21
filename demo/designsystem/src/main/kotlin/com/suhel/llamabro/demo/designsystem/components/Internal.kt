@@ -36,6 +36,9 @@ internal object DsTags {
     const val CARD_SURFACE = "ds_card_surface"
     const val WAKE_HAIRLINE = "ds_wake_hairline"
     const val PHOTO_VIEWER = "ds_photo_viewer"
+    const val SHEET_SCROLL = "ds_sheet_scroll"
+    const val SHEET_FOOT = "ds_sheet_foot"
+    const val DIALOG_SCROLL = "ds_dialog_scroll"
 }
 
 /** True inside a [DemoSheet]: a plain card there sits on the canvas colour, as rows on a sheet do in the design. */

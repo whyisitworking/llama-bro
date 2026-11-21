@@ -15,8 +15,8 @@ enum class ThemeMode { System, Light, Dark }
  * Material 3's scheme derived from the tokens. Every role is mapped, so no stock Material colour can
  * reach a screen through a Material widget; the tonal elevation tint is switched off. The roles the design doesn't
  * name follow one rule: secondary and tertiary track the accent (their "on" roles the onAccent), surface containers
- * are the surface, errors use the "slow here" sand (a limit is stated plainly, not alarmed), the inverse roles swap
- * ink and canvas, and the scrim is the darkest token.
+ * are the surface, an error is the danger ink on the plain surface (never the "slow here" sand, which is a fit: models
+ * audit R4), the inverse roles swap ink and canvas, and the scrim is the darkest token.
  */
 internal fun DemoColors.toScheme(): ColorScheme =
     ColorScheme(
@@ -44,8 +44,8 @@ internal fun DemoColors.toScheme(): ColorScheme =
         inverseOnSurface = canvas,
         error = danger,
         onError = surface,
-        errorContainer = slowTint,
-        onErrorContainer = slowInk,
+        errorContainer = surface,
+        onErrorContainer = danger,
         outline = muted,
         outlineVariant = hairline,
         scrim = scrimBase,
@@ -134,3 +134,12 @@ fun DemoTheme(themeMode: ThemeMode = ThemeMode.System, content: @Composable () -
         )
     }
 }
+
+/** The opaque end of an alpha mask (a scroll's edge fade): never a colour shown. */
+internal val FadeMask: Color = Color.Black
+
+/**
+ * A download ring's track: at least 1.5:1 against the surface and the canvas in both themes, so a frozen arc's ring
+ * still reads as a ring on the dark sheet; the soft accent is 1.2:1 there.
+ */
+internal val DemoColors.ringTrack: Color get() = if (isDark) Color(0xFF3D3D3D) else Color(0xFFC6C6C6)

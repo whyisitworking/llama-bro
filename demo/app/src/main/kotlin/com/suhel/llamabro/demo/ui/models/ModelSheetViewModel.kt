@@ -3,17 +3,20 @@ package com.suhel.llamabro.demo.ui.models
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.suhel.llamabro.demo.designsystem.components.DownloadView
+import com.suhel.llamabro.demo.designsystem.components.MarkdownBlocks
+import com.suhel.llamabro.demo.models.Cached
+import com.suhel.llamabro.demo.models.Capability
 import com.suhel.llamabro.demo.models.DeviceFacts
+import com.suhel.llamabro.demo.models.DownloadRecord
+import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.models.FitView
-import com.suhel.llamabro.demo.models.Fits
-import com.suhel.llamabro.demo.models.Format
-import com.suhel.llamabro.demo.models.ModelRepository
-import com.suhel.llamabro.demo.models.RepoFile
+import com.suhel.llamabro.demo.models.HubCard
+import com.suhel.llamabro.demo.models.ModelLibrary
 import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.models.Sizes
 import com.suhel.llamabro.hub.HfModel
-import com.suhel.llamabro.hub.HubException
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,158 +24,400 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.runningReduce
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
-import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.launch
+import kotlin.coroutines.CoroutineContext
 
 enum class SheetMode { Basic, Advanced }
 
-/** The repo's files, once listed: the three tiers of Basic, every quant for Advanced, and the one Recommended. */
+/**
+ * The card's header: the name, "by [maker]", the [repo] on its own line, what the model can do, and how it runs here
+ * ([fit], spelled out only here; null until the phone's facts and a file are known).
+ */
 @Immutable
-sealed interface SheetState {
-    data object Loading : SheetState
+data class CardHeader(
+    val name: String,
+    val maker: String?,
+    val repo: String,
+    val capabilities: List<Capability>,
+    val fit: FitView?,
+    /** No maker yet, but one may still arrive: the "by …" line keeps its height. */
+    val makerReserved: Boolean = false,
+)
 
-    data class Ready(val tiers: List<Pair<SizeTier, RepoFile>>, val files: List<RepoFile>, val recommended: RepoFile?) :
-        SheetState
+/**
+ * The one state line: "Not on this phone", "On this phone · Q4_K_M · 3.4 GB"; null while a download runs, which the
+ * pinned ring panel alone describes.
+ */
+@Immutable
+data class CardState(val text: String?)
 
-    data class Failed(val retryable: Boolean) : SheetState
+/**
+ * One of Basic's three sizes: titled by its [tier], with the [quant] and the whole size ([bytes], file and image
+ * reader) under the title. [missing] when the upload has no file for it ("Not in this upload", disabled); [reserved]
+ * while the listing isn't known, so the choice holds its final shape. A tier [onPhone] can't be got again.
+ */
+@Immutable
+data class TierView(
+    val tier: SizeTier,
+    val quant: String?,
+    val bytes: Long?,
+    val fit: FitView?,
+    val missing: Boolean = false,
+    val onPhone: Boolean = false,
+    /** Why a size isn't known yet, said in its place ("Needs the network"); null holds it blank. */
+    val note: String? = null,
+) {
+    val reserved: Boolean get() = quant == null && !missing
+}
+
+/** One quant in Advanced: its whole size, how it runs here, and "Recommended" or "On phone" under its name. */
+@Immutable
+data class QuantView(
+    val quant: String,
+    val bytes: Long,
+    val fit: FitView?,
+    val recommended: Boolean,
+    val onPhone: Boolean,
+)
+
+/** Why the choice has no sizes to offer, said in its place. */
+@Immutable
+sealed interface ChoiceNotice {
+    data class Failed(val retryable: Boolean) : ChoiceNotice
+
+    /** The catalog's own size is shown; the listing of the others couldn't be read. */
+    data class OtherSizes(val retryable: Boolean) : ChoiceNotice
+
+    data object NoFile : ChoiceNotice
+}
+
+/** The size choice: the [mode], Basic's [tiers], Advanced's [quants], the quant [selected], the image reader's size. */
+@Immutable
+data class ChoiceView(
+    val mode: SheetMode,
+    val tiers: List<TierView>,
+    val quants: List<QuantView>,
+    val selected: String?,
+    val readerBytes: Long?,
+    val notice: ChoiceNotice? = null,
+    /**
+     * The quant already on the phone when the choice was opened by "Another size": the choice says so in one muted
+     * line, which is also why that size isn't the one selected, beside a Done that closes the choice.
+     */
+    val alreadyHere: String? = null,
+)
+
+/** The model's page under the card's own parts; nothing while it isn't known. */
+@Immutable
+sealed interface PageView {
+    data object Unknown : PageView
+
+    data class Markdown(val blocks: MarkdownBlocks) : PageView
+
+    data object None : PageView
+
+    data class Failed(val retryable: Boolean) : PageView
+}
+
+/** The pinned foot (docs/design/models-page.md §4.5), 64 dp in every one of these. */
+@Immutable
+sealed interface CardFoot {
+    /**
+     * "Get Q4_K_M · 3.4 GB · about 8 min", the same formula in Basic and Advanced: [lead] names the file and its size,
+     * [time] how long it takes, a line of its own at large font.
+     */
+    data class Get(val lead: String, val enabled: Boolean, val time: String? = null) : CardFoot {
+        val label: String get() = listOfNotNull(lead, time).joinToString(" · ")
+    }
+
+    /** The ring panel, the same words as the row's. */
+    data class Download(val view: DownloadView) : CardFoot
+
+    /** "Start a chat", and "Another size" when the upload has a size not on the phone ([another]). */
+    data class OnPhone(val another: Boolean) : CardFoot
+
+    data object CantChat : CardFoot
+}
+
+/** The whole card, drawn final from local data: each part sits in the same place in every state. */
+@Immutable
+data class CardView(
+    val header: CardHeader,
+    val state: CardState,
+    val choice: ChoiceView?,
+    val page: PageView,
+    val foot: CardFoot,
+)
+
+/** What a tap on Cancel did: it asked first ([Confirm], with the dialog's line), or it cancelled. */
+sealed interface CancelAsk {
+    data class Confirm(val text: String) : CancelAsk
+
+    data object Done : CancelAsk
 }
 
 /**
- * What the sheet shows of one file: how it runs here ([fit], from the file and its encoder, D101), the download's size
- * ([totalBytes], the file and its image reader) and the reader's own size ([readerBytes], 0 for none).
- */
-@Immutable
-data class FileFit(val fit: FitView, val totalBytes: Long, val readerBytes: Long)
-
-/**
- * A model's sheet (demo design §4.3). The inputs are the user's: the mode, the file picked, "Retry". Everything shown
- * is derived from them: the file list ([state]), the file that counts as selected ([selected], Recommended unless the
- * user chose another, and always one of the three sizes in Basic), the button's words ([button]) and the image reader
- * ([imageReaderBytes]). Each file's fit ([fit]) is its own flow, made from file sizes alone (D101) when a row is first
- * shown, so a row recomposes alone when its fit arrives.
+ * A model's card (docs/design/models-page.md §4). Everything shown is [view], one `combine` of local flows: the
+ * library and the queue, the download's state and record, and the Hub's cached files, page and facts; the person's
+ * inputs are the mode, the quant picked and "Another size". [view] is null until each of those local reads has
+ * answered once (Room only, never the network), so the card's first drawn frame is final from the cache; the reserved
+ * shapes (three blank sizes, the maker's line) show only when the cache truly holds nothing (D118). It asks the Hub
+ * to refresh the files, the page and the facts once. [CardViews] derives the view. [onExactFit] hears the Recommended
+ * file's fit once: the list's guess gives way to it.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ModelSheetViewModel(
-    val row: ModelRow,
-    private val files: suspend (String) -> List<RepoFile>,
+    val row: ModelEntry,
+    private val hub: HubCard,
+    private val models: ModelLibrary,
     private val facts: suspend () -> DeviceFacts,
-    private val models: ModelRepository,
-    /** The size the sheet starts on instead of Recommended ("Smaller size" opens it on Smaller). */
-    private val startTier: SizeTier? = null,
+    private val onExactFit: (FitView) -> Unit = {},
+    /** The size the card starts on instead of Recommended ("Smaller size", from a chat on this model). */
+    startTier: SizeTier? = null,
+    /** Where a page is parsed: off the main thread. */
+    private val work: CoroutineContext = Dispatchers.Default,
 ) : ViewModel() {
+    private val repo = row.repo.lowercase()
+    private val cards = CardViews(row, startTier)
+
+    // user input: Basic or Advanced
     private val modeInput = MutableStateFlow(SheetMode.Basic)
-    private val pickInput = MutableStateFlow<RepoFile?>(null)
-    private val retryInput = MutableStateFlow(0)
-    private val fits = ConcurrentHashMap<String, StateFlow<FileFit?>>()
 
-    val mode: StateFlow<SheetMode> = modeInput.asStateFlow()
+    // user input: the quant picked
+    private val pickInput = MutableStateFlow<String?>(null)
 
-    val state: StateFlow<SheetState> =
-        retryInput
-            .flatMapLatest { listing() }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), SheetState.Loading)
+    // a card opened on a size (from a chat on this very model) is there to get another one
+    // user input: "Another size" opened, Done closed it
+    private val choosingInput = MutableStateFlow(startTier != null)
 
-    val selected: StateFlow<RepoFile?> =
-        combine(state, modeInput, pickInput) { state, mode, pick ->
-            val ready = state as? SheetState.Ready ?: return@combine null
-            val started = startTier?.let { tier -> ready.tiers.firstOrNull { it.first == tier }?.second }
-            val wanted = pick ?: started ?: ready.recommended
-            // Basic offers three sizes: a quant picked in Advanced that isn't one of them gives way to Recommended
-            if (mode == SheetMode.Basic && ready.tiers.none { it.second == wanted }) ready.recommended else wanted
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
+    // an action's outcome: a cancel that failed, closed by the person
+    private val problemInput = MutableStateFlow<String?>(null)
+
+    // user input: the Cancel question asked about one download, answered by Keep or Cancel download
+    private val askingInput = MutableStateFlow<CancelQuestion?>(null)
 
     /**
-     * The image reader's size (the catalog's own figure, else the hub's listing); null for a model without one.
+     * This repo here. The download followed is the row's own file when it is queued (two quants of one repo may be),
+     * else the repo's first.
      */
-    val imageReaderBytes: StateFlow<Long?> =
-        state
-            .flatMapLatest { state ->
-                val recommended = (state as? SheetState.Ready)?.recommended
-                if (recommended == null) {
-                    flowOf(null)
+    private val here: Flow<RepoHere> =
+        combine(models.library, models.downloading) { onPhone, downloads ->
+            val installed = onPhone.filter { it.key.repo.lowercase() == repo }
+            RepoHere(
+                downloading =
+                    downloads.firstOrNull { it == row.key } ?: downloads.firstOrNull { it.repo.lowercase() == repo },
+                onPhone = installed.firstOrNull { it.key == row.key } ?: installed.firstOrNull(),
+                quants = installed.mapNotNull { it.key.tag?.uppercase() }.toSet(),
+                installed = installed,
+            )
+        }.distinctUntilChanged()
+
+    private val download: Flow<RepoDownload?> =
+        here
+            .map { it.downloading }
+            .distinctUntilChanged()
+            .flatMapLatest { key -> if (key == null) flowOf(null) else downloadOf(key) }
+
+    private val local: StateFlow<CardInputs?> =
+        combine(here, download, hub.files(repo), hub.page(repo), hub.repoFacts(repo), ::CardInputs)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /**
+     * The page, parsed apart from the other inputs and off the main thread, so a long README never holds them up;
+     * parsed again only when what is stored or its failure changes, not while a refresh merely runs.
+     */
+    private val pageView: Flow<PageView> =
+        hub
+            .page(repo)
+            .map { Cached(it.value, false, it.failure.takeIf { _ -> !it.refreshing }) }
+            .distinctUntilChanged()
+            .map(cards::page)
+            .flowOn(work)
+
+    /**
+     * The phone's facts: local, read once the app starts, so the card waits for them rather than drawing its fit line
+     * blank and filling it a moment later.
+     */
+    private val device: Flow<DeviceFacts?> = flow<DeviceFacts?> { emit(facts()) }
+
+    private val choices: Flow<CardChoices> = combine(modeInput, pickInput, choosingInput, device, ::CardChoices)
+
+    /** The card, null until every local read has answered once; the route shows the sheet from then on. */
+    val view: StateFlow<CardView?> =
+        combine(local.filterNotNull(), pageView, choices, cards::of)
+            // a maker's line held once the card is drawn stays: its going would move everything under it
+            .runningReduce { shown, next ->
+                if (shown.header.makerReserved && next.header.maker == null) {
+                    next.copy(header = next.header.copy(makerReserved = true))
                 } else {
-                    fit(recommended).map { it?.readerBytes?.takeIf { bytes -> bytes > 0 } }
+                    next
                 }
-            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
+            }.distinctUntilChanged()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** The button's words: Basic names the model and the time, Advanced the quant and the size. */
-    val button: StateFlow<String> =
-        combine(
-            selected,
-            modeInput,
-            selected.flatMapLatest { file -> if (file == null) flowOf(null) else fit(file) },
-        ) { file, mode, fit ->
-            if (file == null || fit == null) return@combine ""
-            when (mode) {
-                SheetMode.Basic -> {
-                    "Get ${row.name} · ${Format.downloadTime(fit.totalBytes)}"
-                }
+    /** A cancel that couldn't stop the download's work: nothing was deleted, and this line says so. */
+    val problem: StateFlow<String?> = problemInput.asStateFlow()
 
-                SheetMode.Advanced -> {
-                    "Get ${file.quant} · ${Format.sizeInGb(fit.totalBytes)}" +
-                        if (fit.readerBytes > 0) " in all" else ""
-                }
-            }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), "")
+    /** The question a Cancel past [CANCEL_ASKS_BYTES] asks ("0.9 GB has arrived. Cancelling deletes it."). */
+    val asking: StateFlow<String?> =
+        askingInput.map { it?.text }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    init {
+        viewModelScope.launch { hub.refreshFiles(row.repo) }
+        viewModelScope.launch { hub.refreshPage(row.repo) }
+        viewModelScope.launch { hub.refreshRepoFacts(row.repo) }
+        // the Recommended file's fit, once it is known, stands over the guess the list showed
+        viewModelScope.launch {
+            val exact =
+                combine(local.filterNotNull(), device) { local, device ->
+                    val recommended =
+                        local.files.value
+                            ?.let(Sizes::tiers)
+                            ?.get(SizeTier.Recommended)
+                    if (recommended == null || device == null) null else cards.fit(recommended, device)
+                }.filterNotNull().first()
+            onExactFit(exact)
+        }
+    }
 
     fun setMode(mode: SheetMode) {
         modeInput.value = mode
     }
 
-    fun select(file: RepoFile) {
-        pickInput.value = file
+    fun select(quant: String) {
+        pickInput.value = quant
     }
 
+    /** The card's one Try again (models audit S20): asks again for each of the files, page and facts that failed. */
     fun retry() {
-        retryInput.update { it + 1 }
+        val now = local.value ?: return
+        if (now.files.failure != null) viewModelScope.launch { hub.refreshFiles(row.repo) }
+        if (now.page.failure != null) viewModelScope.launch { hub.refreshPage(row.repo) }
+        if (now.facts.failure != null) viewModelScope.launch { hub.refreshRepoFacts(row.repo) }
     }
 
-    /** The fit flow of [file]: null until the phone's facts are read, then the fit from its sizes. */
-    fun fit(file: RepoFile): StateFlow<FileFit?> =
-        fits.getOrPut(file.path) {
-            flow { emit(fitOf(file)) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
-        }
+    fun getAnotherSize() {
+        choosingInput.value = true
+    }
 
-    /** Starts the download of the selected file; returns its key (the row shows its progress), or null when none. */
+    /** "Done" in the choice "Another size" opened: back to the foot's "Start a chat". */
+    fun doneChoosing() {
+        choosingInput.value = false
+    }
+
+    /**
+     * Starts the download of the selected file, recording the name, maker, whole size and model file's size (the fit's
+     * speed) it was chosen with; returns
+     * its key, or null when the foot offers no Get.
+     */
     fun get(): HfModel? {
-        val file = selected.value ?: return null
-        return HfModel.parse("${row.repo}:${file.quant}").also(models::get)
+        val now = view.value ?: return null
+        val foot = now.foot
+        if (foot !is CardFoot.Get || !foot.enabled) return null
+        val target = cards.target(checkNotNull(local.value), now.choice) ?: return null
+        val key = HfModel.parse("${row.repo}:${target.quant}")
+        models.get(key, DownloadRecord(key, row.name, now.header.maker, target.bytes, target.modelBytes))
+        return key
     }
 
-    private fun listing(): Flow<SheetState> =
-        flow {
-            emit(SheetState.Loading)
-            emit(
-                try {
-                    val list = files(row.repo)
-                    val tiers = Sizes.tiers(list)
-                    SheetState.Ready(
-                        tiers = SizeTier.entries.mapNotNull { tier -> tiers[tier]?.let { tier to it } },
-                        files = list.sortedBy { it.bytes },
-                        recommended = tiers[SizeTier.Recommended],
-                    )
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (
-                    @Suppress("TooGenericExceptionCaught") e: Exception,
-                ) {
-                    SheetState.Failed(retryable = (e as? HubException)?.retryable ?: true)
-                },
-            )
+    /** The file of this repo on the phone that "Start a chat" opens; null when none is. */
+    fun onPhone(): HfModel? =
+        local.value
+            ?.here
+            ?.onPhone
+            ?.key
+            ?: local.value
+                ?.download
+                ?.takeIf { it.status == DownloadStatus.Complete }
+                ?.key
+
+    /** The ring's control: pauses a download, resumes a paused one, tries a stopped one again. */
+    fun toggle() {
+        val download = local.value?.download ?: return
+        when (download.status) {
+            is DownloadStatus.Downloading -> models.pause(download.key)
+            is DownloadStatus.Partial, is DownloadStatus.Failed -> models.get(download.key)
+            DownloadStatus.Absent, DownloadStatus.Complete -> Unit
+        }
+    }
+
+    /** Cancels the download, or asks first when more than [CANCEL_ASKS_BYTES] have arrived ([asking]). */
+    fun cancel(): CancelAsk {
+        val download = local.value?.download ?: return CancelAsk.Done
+        val text = DownloadViews.cancelQuestion(download.status, download.record?.totalBytes ?: row.size?.bytes)
+        if (DownloadViews.arrivedOf(download.status) > CANCEL_ASKS_BYTES && text != null) {
+            askingInput.value = CancelQuestion(download.key, text)
+            return CancelAsk.Confirm(text)
+        }
+        cancelNow(download.key)
+        return CancelAsk.Done
+    }
+
+    /**
+     * Cancels the download the question named, by its key: if that one has since landed or gone while the dialog was
+     * open, there is nothing to cancel, even when another quant of the repo has started.
+     */
+    fun confirmCancel() {
+        val asked = askingInput.value ?: return
+        askingInput.value = null
+        when (models.state(asked.key).value) {
+            is DownloadStatus.Downloading, is DownloadStatus.Partial, is DownloadStatus.Failed -> cancelNow(asked.key)
+            DownloadStatus.Absent, DownloadStatus.Complete -> Unit
+        }
+    }
+
+    fun keepDownload() {
+        askingInput.value = null
+    }
+
+    fun dismissProblem() {
+        problemInput.value = null
+    }
+
+    private fun cancelNow(key: HfModel) {
+        val cancelled = models.cancel(key)
+        viewModelScope.launch {
+            if (!cancelled.await()) problemInput.value = "Couldn't cancel the download of ${row.name}. Try again."
+        }
+    }
+
+    private fun downloadOf(key: HfModel): Flow<RepoDownload> =
+        combine(models.state(key), models.records.map { it[key] }.distinctUntilChanged()) { status, record ->
+            status to record
+        }.flatMapLatest { (status, record) ->
+            val ahead = if (status == DownloadStatus.Absent) runningBesides(key) else flowOf(null)
+            ahead.map { RepoDownload(key, status, record, it) }
         }
 
-    private suspend fun fitOf(file: RepoFile): FileFit {
-        // the catalog's figure for a model it knows, else the encoder the hub would fetch with this quant
-        val reader = row.catalog?.mmprojBytes ?: file.encoderBytes
-        return FileFit(Fits.quick(file.bytes + reader, file.bytes, facts()), file.bytes + reader, reader)
-    }
+    /** The name of the download that runs while [key] waits its turn, as the row says it. */
+    private fun runningBesides(key: HfModel): Flow<String?> =
+        combine(models.downloading, models.records) { keys, records -> keys.filter { it != key } to records }
+            .flatMapLatest { (others, records) ->
+                if (others.isEmpty()) {
+                    flowOf(null)
+                } else {
+                    combine(others.map { other -> models.state(other).map { other.takeIf { _ -> it.running() } } }) {
+                        it.firstNotNullOfOrNull { running -> running }?.let { k ->
+                            records[k]?.name ?: ModelEntry.downloading(k, null).name
+                        }
+                    }
+                }
+            }.distinctUntilChanged()
+
+    private fun DownloadStatus.running() = this is DownloadStatus.Downloading
 
     private companion object {
-        const val STOP_TIMEOUT = 5_000L
+        /** Past this much arrived, Cancel asks first (models-page design §4.5). */
+        const val CANCEL_ASKS_BYTES = 300_000_000L
     }
 }

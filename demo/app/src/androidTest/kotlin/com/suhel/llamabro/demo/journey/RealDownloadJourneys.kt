@@ -5,6 +5,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasContentDescription
 import androidx.work.WorkManager
 import com.suhel.llamabro.demo.models.Catalog
+import com.suhel.llamabro.demo.ui.models.MODELS_INTRO
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -35,9 +36,8 @@ class RealDownloadJourneys : Journey(seenFirstRun = false, asksForNotifications 
         }
 
     private fun getSwift() {
-        seeTag("pick_card")
-        tap("Qwen3.5 0.8B")
-        tap("Get Qwen3.5 0.8B")
+        see(MODELS_INTRO) // a fresh install starts on Models
+        getFromModels("Qwen3.5 0.8B")
         robot.allowNotificationsIfAsked()
         seeTag("chat_screen")
         seeDescription("Arriving")

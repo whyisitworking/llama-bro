@@ -2,6 +2,7 @@ package com.suhel.llamabro.demo.models
 
 import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.data.SettingsRepository
+import com.suhel.llamabro.demo.data.db.HubCacheDao
 import com.suhel.llamabro.demo.models.DownloadFailure.Kind
 import com.suhel.llamabro.hub.CachedModel
 import com.suhel.llamabro.hub.DownloadState
@@ -29,22 +30,54 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.runningReduce
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 import java.util.concurrent.ConcurrentHashMap
 
-/** A model on the phone. [name] is its own name (the catalog's, else tidied from its repo); never a nickname. */
+/**
+ * A model on the phone. [name] is its own name (the catalog's, else tidied from its repo); never a nickname.
+ * [sizeBytes] is its model file's (what decoding reads, the speed's measure); [readerBytes] its image reader's, the
+ * catalog's, else the repo's cached listing's for this quant, 0 for none or not known. [totalBytes] is the one size
+ * shown everywhere (models-page design §7) and what memory holds.
+ */
 data class LibraryModel(
     val key: HfModel,
     val name: String,
     val sizeBytes: Long,
     val lastUsed: Long?,
     val isDefault: Boolean,
-)
+    val readerBytes: Long = 0,
+) {
+    val totalBytes: Long get() = sizeBytes + readerBytes
+}
+
+/**
+ * The models on the phone and the download queue, as a model's card reads and drives them. [ModelRepository] in the
+ * app; a test fakes it with plain flows.
+ */
+interface ModelLibrary {
+    val library: Flow<List<LibraryModel>>
+    val downloading: Flow<List<HfModel>>
+    val records: Flow<Map<HfModel, DownloadRecord>>
+
+    fun state(model: HfModel): StateFlow<DownloadStatus>
+
+    fun get(model: HfModel, record: DownloadRecord? = null)
+
+    fun pause(model: HfModel)
+
+    fun cancel(model: HfModel): Deferred<Boolean>
+
+    /** Deletes [model] from the phone; false when its download's work couldn't be told to stop. */
+    suspend fun remove(model: HfModel): Boolean
+}
 
 /**
  * The models on the phone and their downloads, over the SDK's hub (D70). `pause` stops the work and keeps the hub's
@@ -63,7 +96,10 @@ class ModelRepository(
     lastUsed: Flow<Map<String, Long>> = flowOf(emptyMap()),
     /** The models wholly on the phone; a test counts the scans here. */
     private val installed: suspend () -> List<CachedModel> = { hub.installed() },
-) {
+    /** Where a download's [DownloadRecord] is kept; without it (a test that doesn't care) nothing is recorded. */
+    private val recordsDao: HubCacheDao? = null,
+) : ModelLibrary {
+    // external event: a model arrived or went; a counter, since the cache can't be observed
     private val changes = MutableStateFlow(0)
 
     private class Scan(val version: Int, val entries: List<CachedModel>)
@@ -77,12 +113,15 @@ class ModelRepository(
             .map { version -> Scan(version, installed()) }
             .stateIn(scope, SharingStarted.Eagerly, null)
 
-    val library: Flow<List<LibraryModel>> =
+    override val library: Flow<List<LibraryModel>> =
         combine(
-            scan.filterNotNull().filter { it.version == changes.value },
+            scan
+                .filterNotNull()
+                .filter { it.version == changes.value }
+                .flatMapLatest { scanned -> listings(scanned.entries).map { scanned to it } },
             settings.settings.map { it.defaultModel }.distinctUntilChanged(),
             lastUsed.distinctUntilChanged(),
-        ) { scanned, defaultKey, used ->
+        ) { (scanned, listings), defaultKey, used ->
             scanned.entries
                 .map { entry ->
                     LibraryModel(
@@ -91,18 +130,70 @@ class ModelRepository(
                         sizeBytes = entry.sizeBytes,
                         lastUsed = used[entry.model.toString()],
                         isDefault = entry.model.toString() == defaultKey,
+                        readerBytes = readerOf(entry.model, listings),
                     )
                 }.sortedWith(compareByDescending<LibraryModel> { it.lastUsed ?: 0L }.thenBy { it.name })
         }.distinctUntilChanged()
 
     /**
+     * The cached listings of the scanned models' repos the catalog doesn't know, by lowercase repo: one query for the
+     * whole library, which follows the cache, so a listing fetched later gives a row its
+     * reader without a rescan.
+     */
+    private fun listings(entries: List<CachedModel>): Flow<Map<String, List<RepoFile>>> {
+        val dao = recordsDao ?: return flowOf(emptyMap())
+        val repos =
+            entries
+                .map { it.model.repo }
+                .filter {
+                    Catalog.byRepo(
+                        it,
+                    ) == null
+                }.map { it.lowercase() }
+                .distinct()
+        if (repos.isEmpty()) return flowOf(emptyMap())
+        return dao
+            .filesOf(repos)
+            .map { rows ->
+                rows.associate { row ->
+                    row.repo to
+                        runCatching {
+                            FILES_JSON.decodeFromString(
+                                filesSerializer,
+                                row.filesJson,
+                            )
+                        }.getOrDefault(emptyList())
+                }
+            }.distinctUntilChanged()
+    }
+
+    /**
+     * The image reader that came with [model]: the hub keeps its file beside the model's but lists only the model's
+     * size, so the catalog's figure, else the repo's cached listing's for this quant; 0 when neither knows.
+     */
+    private fun readerOf(model: HfModel, listings: Map<String, List<RepoFile>>): Long {
+        Catalog.byRepo(model.repo)?.let { return it.mmprojBytes }
+        val files = listings[model.repo.lowercase()] ?: return 0
+        return files.firstOrNull { it.quant.equals(model.tag, ignoreCase = true) }?.encoderBytes ?: 0
+    }
+
+    /**
      * The downloads under way or paused, started here and not yet finished or cancelled, oldest first. The hub keeps a
      * partial file but has no list of them, so the app keeps the keys (settings), and each one's state is [state].
      */
-    val downloading: Flow<List<HfModel>> =
+    override val downloading: Flow<List<HfModel>> =
         settings.settings.map { it.pendingDownloads }.distinctUntilChanged().map { keys ->
             keys.sorted().mapNotNull { runCatching { HfModel.parse(it) }.getOrNull() }
         }
+
+    /** [model]'s record while it downloads; null before Get gave one, and after it landed or was cancelled. */
+    fun record(model: HfModel): Flow<DownloadRecord?> =
+        recordsDao?.record(model.toString())?.map { it?.toRecord() } ?: flowOf(null)
+
+    /** Every download's record, by model, oldest first. */
+    override val records: Flow<Map<HfModel, DownloadRecord>> =
+        recordsDao?.records()?.map { rows -> rows.mapNotNull { it.toRecord() }.associateBy { it.model } }
+            ?: flowOf(emptyMap())
 
     /**
      * One download at a time (F89: one transfer ran about twice as fast as four on the phone; demo design §6). The
@@ -112,6 +203,8 @@ class ModelRepository(
      * rebuilt from the pending downloads and WorkManager's work ([restore]), so it carries on after a restart.
      */
     private val steps = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+
+    // engine's own source: the download queue's running item
     private val active = MutableStateFlow<Run?>(null)
     private var runs = 0L
 
@@ -143,11 +236,14 @@ class ModelRepository(
 
     /**
      * Starts the download, or queues it behind the one running; does nothing when every file of the model is on the
-     * phone. A model only partly there (its image reader still missing, say) is downloaded, which resumes it.
+     * phone. A model only partly there (its image reader still missing, say) is downloaded, which resumes it. A
+     * [record] is kept until the model lands or is cancelled; a Get without one (Resume, Retry, a saved token) keeps
+     * the record already there.
      */
-    fun get(model: HfModel) {
+    override fun get(model: HfModel, record: DownloadRecord?) {
         step {
             if (!hub.isInstalled(model)) {
+                if (record != null) keep(record)
                 settings.addPendingDownload(model.toString())
                 settings.setDownloadPaused(model.toString(), false)
                 settings.setDownloadNeedsToken(model.toString(), false)
@@ -160,6 +256,12 @@ class ModelRepository(
                 }
             }
         }
+    }
+
+    private suspend fun keep(record: DownloadRecord) {
+        val dao = recordsDao ?: return
+        val first = dao.record(record.model.toString()).first()?.startedAt
+        dao.putRecord(record.toEntity(startedAt = first ?: System.currentTimeMillis()))
     }
 
     /** [model] no longer downloads: it leaves the queue, and when it was the one running the next one starts. */
@@ -242,7 +344,7 @@ class ModelRepository(
      * Stops the work and keeps the partial: the state reads `Partial` (a download that hadn't started too, with no
      * bytes), it stays paused across a restart, and `get` resumes it. The next one waiting starts.
      */
-    fun pause(model: HfModel) {
+    override fun pause(model: HfModel) {
         step {
             scheduler.cancel(model)
             settings.setDownloadPaused(model.toString(), true)
@@ -254,7 +356,7 @@ class ModelRepository(
      * Stops the work and deletes what had arrived, on the repository's scope. False when the work couldn't be told to
      * stop: it may still be writing, so its files stay, and so does the row; the screen says so.
      */
-    fun cancel(model: HfModel): Deferred<Boolean> =
+    override fun cancel(model: HfModel): Deferred<Boolean> =
         scope.async {
             val stopped =
                 stepAndWait {
@@ -265,6 +367,7 @@ class ModelRepository(
                 awaitStopped(model)
                 delete(model)
                 settings.removePendingDownloads(listOf(model.toString()))
+                recordsDao?.deleteRecord(model.toString())
                 changed()
             }
             stopped
@@ -275,7 +378,7 @@ class ModelRepository(
      * default. Deleting a model a reply is streaming from waits for that reply to end. False, as for [cancel], when
      * its download's work couldn't be told to stop: nothing is deleted and the model stays listed.
      */
-    suspend fun remove(model: HfModel): Boolean {
+    override suspend fun remove(model: HfModel): Boolean {
         val stopped =
             stepAndWait {
                 scheduler.cancel(model)
@@ -287,6 +390,7 @@ class ModelRepository(
             if (settings.settings.first().defaultModel == model.toString()) settings.pinDefault(null)
             delete(model)
             settings.removePendingDownloads(listOf(model.toString()))
+            recordsDao?.deleteRecord(model.toString())
             changed()
         }
         return stopped
@@ -296,13 +400,14 @@ class ModelRepository(
     private val states = ConcurrentHashMap<HfModel, StateFlow<DownloadStatus>>()
 
     /** [model]'s download as the screens read it; one paused before any byte arrived reads `Partial` with none. */
-    fun state(model: HfModel): StateFlow<DownloadStatus> =
+    override fun state(model: HfModel): StateFlow<DownloadStatus> =
         states.computeIfAbsent(model) {
             val source = hub.progress(model)
             val paused = settings.settings.map { now -> model.toString() in now.pausedDownloads }.distinctUntilChanged()
             combine(source.map(DownloadStatus::of), paused) { status, isPaused ->
                 if (isPaused && status == DownloadStatus.Absent) DownloadStatus.Partial(0, 0) else status
-            }.stateIn(scope, SharingStarted.Eagerly, DownloadStatus.of(source.value))
+            }.runningReduce(::keepArrived)
+                .stateIn(scope, SharingStarted.Eagerly, DownloadStatus.of(source.value))
         }
 
     init {
@@ -347,6 +452,7 @@ class ModelRepository(
                     .pendingDownloads
                     .filter { it in onPhone }
             settings.removePendingDownloads(finished)
+            finished.forEach { recordsDao?.deleteRecord(it) }
         }
     }
 
@@ -372,3 +478,20 @@ class ModelRepository(
         const val STOP_WAIT_MILLIS = 5_000L
     }
 }
+
+/**
+ * A failure keeps what had arrived before it: the hub's failed state carries no bytes, and the row and the card say
+ * "0.9 of 3.4 GB kept" with a frozen ring.
+ */
+internal fun keepArrived(last: DownloadStatus, next: DownloadStatus): DownloadStatus {
+    if (next !is DownloadStatus.Failed || next.bytesDone > 0) return next
+    return when (last) {
+        is DownloadStatus.Downloading -> next.copy(bytesDone = last.bytesDone, bytesTotal = last.bytesTotal)
+        is DownloadStatus.Partial -> next.copy(bytesDone = last.bytesDone, bytesTotal = last.bytesTotal)
+        is DownloadStatus.Failed -> next.copy(bytesDone = last.bytesDone, bytesTotal = last.bytesTotal)
+        else -> next
+    }
+}
+
+private val FILES_JSON = Json { ignoreUnknownKeys = true }
+private val filesSerializer = ListSerializer(RepoFile.serializer())

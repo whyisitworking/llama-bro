@@ -39,6 +39,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
@@ -95,6 +97,8 @@ fun TopBarTitle(
     subtitle: String? = null,
     chevron: Boolean = false,
     onClick: (() -> Unit)? = null,
+    /** The Models page's title (D123): light and a step larger, naming the page without weight. */
+    light: Boolean = false,
 ) {
     val colors = LocalDemoColors.current
     Column(
@@ -107,12 +111,13 @@ fun TopBarTitle(
     ) {
         val chevronOnTitle = chevron && subtitle == null
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // at large font a model's name wraps rather than lose its end: the name is never what gets cut first
             Text(
                 title,
                 Modifier.weight(1f, fill = false),
                 color = colors.ink,
-                style = DemoType.screenTitle,
-                maxLines = 1,
+                style = if (light) DemoType.screenTitleLight else DemoType.screenTitle,
+                maxLines = if (isLargeText()) 2 else 1,
                 overflow = TextOverflow.Ellipsis,
             )
             if (chevronOnTitle) {
@@ -335,53 +340,52 @@ fun DemoDrawer(
 }
 
 /**
- * The Sidebar drawer's actions, in one row at its foot under a hairline (demo design §4.2): Settings and Models as
- * plain icons at the start, New chat at the end in a tonal circle, the drawer's one strong action. Each is a 48 dp
- * target; a screen reader says "Settings", [modelsLabel] ("Models, 2 on this phone": the count is in the label, not
- * on screen) and "New chat". The first glyph starts on the 16 dp line of the rows' text and the circle ends on the
- * 16 dp line of their ticks.
+ * The head of the Sidebar drawer (D126): the app's [title] in the quiet serif on the 24 dp line the history's text
+ * starts on, and at the end its one action, a 48 dp icon in the ink ([actionIcon], spoken as [actionLabel]: New chat),
+ * whose glyph ends on the same 24 dp line on the right. A heading for a screen reader.
  */
 @Composable
-fun DrawerActions(
-    modelsLabel: String,
-    onSettings: () -> Unit,
-    onModels: () -> Unit,
-    onNewChat: () -> Unit,
+fun DrawerHead(
+    title: String,
+    actionIcon: ImageVector,
+    actionLabel: String,
+    onAction: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = LocalDemoColors.current
-    Column(modifier.fillMaxWidth()) {
-        Box(Modifier.fillMaxWidth().height(DemoSize.hairline).background(colors.hairline))
-        Row(
-            Modifier
-                .fillMaxWidth()
-                // a 48 dp target leaves 12 dp round a 24 dp glyph and 4 dp round a 40 dp circle
-                .padding(start = DemoSpacing.inline, end = DemoSpacing.compact)
-                .padding(vertical = DemoSpacing.block),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconAction(DemoIcons.Settings, "Settings", onSettings)
-            IconAction(DemoIcons.Models, modelsLabel, onModels)
-            Spacer(Modifier.weight(1f))
-            Box(
-                Modifier
-                    .size(DemoSize.target)
-                    .clip(CircleShape)
-                    .clickable(role = Role.Button, onClick = onNewChat),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    Modifier.size(DemoSize.control).background(colors.accentSoft, CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        DemoIcons.NewChat,
-                        contentDescription = "New chat",
-                        tint = colors.accent,
-                        modifier = Modifier.size(DemoSize.icon),
-                    )
-                }
-            }
-        }
+    Row(
+        modifier
+            .fillMaxWidth()
+            .padding(start = DemoSpacing.section, end = DemoSpacing.compact)
+            .padding(vertical = DemoSpacing.inline),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            title,
+            Modifier.weight(1f).semantics { heading() },
+            color = LocalDemoColors.current.ink,
+            style = DemoType.sidebarTitle,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        IconAction(actionIcon, actionLabel, onAction)
+    }
+}
+
+/**
+ * The foot of the Sidebar drawer (D126): a hairline, then its [content], the labelled places ([NavRow]s: Models,
+ * Settings) that replaced a row of bare icons, so they read as places to go and not as mystery glyphs. Inset 12 dp
+ * like the history's rows, so their text starts on the same line.
+ */
+@Composable
+fun DrawerFoot(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = DemoSpacing.compact)
+            .padding(top = DemoSpacing.block, bottom = DemoSpacing.item),
+    ) {
+        Box(Modifier.fillMaxWidth().height(DemoSize.hairline).background(LocalDemoColors.current.hairline))
+        Spacer(Modifier.height(DemoSpacing.block))
+        content()
     }
 }

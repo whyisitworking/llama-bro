@@ -49,8 +49,9 @@ private val previewChats =
 internal data class DrawerPreview(
     val name: String,
     val chats: List<ChatSummary>,
-    val modelCount: Int,
+    val modelCount: Int?,
     val open: Long?,
+    val search: String = "",
 ) {
     override fun toString() = name
 }
@@ -60,6 +61,8 @@ internal class DrawerStates : PreviewParameterProvider<DrawerPreview> {
         sequenceOf(
             DrawerPreview("Chats, one open", previewChats, 3, open = 3),
             DrawerPreview("No chats yet", emptyList(), 0, open = null),
+            DrawerPreview("Nothing matches", emptyList(), 3, open = null, search = "zzzz"),
+            DrawerPreview("Count not read yet", previewChats, null, open = null),
         )
 }
 
@@ -71,8 +74,12 @@ internal fun DrawerContentPreview(
     PreviewFrame {
         DrawerContent(
             groups = ChatListFormat.group(p.chats, NOW, ZoneOffset.UTC),
+            searchText = p.search,
             modelCount = p.modelCount,
             currentChatId = p.open,
+            now = NOW,
+            zone = ZoneOffset.UTC,
+            onSearch = {},
             onNewChat = {},
             onOpenChat = {},
             onModels = {},

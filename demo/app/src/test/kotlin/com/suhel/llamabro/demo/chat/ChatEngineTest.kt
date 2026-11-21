@@ -678,9 +678,15 @@ class ChatEngineTest {
                 DownloadFailure.Kind.IntegrityMismatch,
                 retryable = false,
             )
+        // what stopped and why, never "paused": a pause is the person's own
+        assertEquals(Limit("The connection dropped.", LimitAction.Retry, "Try again"), Limits.forDownload(network))
         assertEquals(
-            Limit("The download paused. It'll pick up where it left off.", LimitAction.Retry, "Retry"),
-            Limits.forDownload(network),
+            "Hugging Face is busy right now.",
+            Limits.forDownload(DownloadFailure(DownloadFailure.Kind.RateLimited, retryable = true)).line,
+        )
+        assertEquals(
+            "The download stopped.",
+            Limits.forDownload(DownloadFailure(DownloadFailure.Kind.NotFound, retryable = true)).line,
         )
         assertEquals(
             Limit("This model needs a Hugging Face token.", LimitAction.AddToken, "Add token"),

@@ -44,6 +44,13 @@ public final class com/suhel/llamabro/hub/DraftRequest$Companion {
 	public static synthetic fun dflash$default (Lcom/suhel/llamabro/hub/DraftRequest$Companion;Lcom/suhel/llamabro/hub/HfModel;ILjava/lang/Object;)Lcom/suhel/llamabro/hub/DraftRequest;
 }
 
+public final class com/suhel/llamabro/hub/GgufSummary {
+	public final fun getArchitecture ()Ljava/lang/String;
+	public final fun getContextLength ()Ljava/lang/Long;
+	public final fun getHasChatTemplate ()Z
+	public final fun getParameters ()J
+}
+
 public final class com/suhel/llamabro/hub/HfModel {
 	public static final field Companion Lcom/suhel/llamabro/hub/HfModel$Companion;
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -166,6 +173,7 @@ public final class com/suhel/llamabro/hub/HubPlan {
 
 public final class com/suhel/llamabro/hub/LlamaBroHub {
 	public static final field Companion Lcom/suhel/llamabro/hub/LlamaBroHub$Companion;
+	public final fun baseModel (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun cached (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun delete (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun download (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/flow/Flow;
@@ -177,6 +185,7 @@ public final class com/suhel/llamabro/hub/LlamaBroHub {
 	public final fun model (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/RemoteModelSource;
 	public static synthetic fun model$default (Lcom/suhel/llamabro/hub/LlamaBroHub;Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/suhel/llamabro/RemoteModelSource;
 	public static synthetic fun model$default (Lcom/suhel/llamabro/hub/LlamaBroHub;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lcom/suhel/llamabro/RemoteModelSource;
+	public final fun modelCard (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun plan (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun plan$default (Lcom/suhel/llamabro/hub/LlamaBroHub;Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun progress (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/flow/StateFlow;
@@ -229,15 +238,24 @@ public final class com/suhel/llamabro/hub/RepoFiles {
 }
 
 public final class com/suhel/llamabro/hub/SearchCursor {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun getValue ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/suhel/llamabro/hub/SearchOptions {
 	public final fun getAuthor ()Ljava/lang/String;
+	public final fun getHideGated ()Z
 	public final fun getLimit ()I
+	public final fun getMaxParameters ()Ljava/lang/Long;
+	public final fun getMinParameters ()Ljava/lang/Long;
 	public final fun getSort ()Lcom/suhel/llamabro/hub/SearchSort;
 	public final fun getTakesImages ()Z
 	public final fun setAuthor (Ljava/lang/String;)V
+	public final fun setHideGated (Z)V
 	public final fun setLimit (I)V
+	public final fun setMaxParameters (Ljava/lang/Long;)V
+	public final fun setMinParameters (Ljava/lang/Long;)V
 	public final fun setSort (Lcom/suhel/llamabro/hub/SearchSort;)V
 	public final fun setTakesImages (Z)V
 }
@@ -252,9 +270,13 @@ public final class com/suhel/llamabro/hub/SearchRepo {
 	public final fun getAuthor ()Ljava/lang/String;
 	public final fun getBaseModel ()Ljava/lang/String;
 	public final fun getDownloads ()J
+	public final fun getGguf ()Lcom/suhel/llamabro/hub/GgufSummary;
 	public final fun getId ()Ljava/lang/String;
+	public final fun getLastModified ()Ljava/lang/String;
 	public final fun getLikes ()J
+	public final fun getTags ()Ljava/util/List;
 	public final fun getTakesImages ()Z
+	public final fun getTask ()Ljava/lang/String;
 	public fun toString ()Ljava/lang/String;
 }
 
@@ -270,6 +292,7 @@ public final class com/suhel/llamabro/hub/SearchResult {
 public final class com/suhel/llamabro/hub/SearchSort : java/lang/Enum {
 	public static final field Downloads Lcom/suhel/llamabro/hub/SearchSort;
 	public static final field Likes Lcom/suhel/llamabro/hub/SearchSort;
+	public static final field Newest Lcom/suhel/llamabro/hub/SearchSort;
 	public static final field RecentlyUpdated Lcom/suhel/llamabro/hub/SearchSort;
 	public static final field Trending Lcom/suhel/llamabro/hub/SearchSort;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;

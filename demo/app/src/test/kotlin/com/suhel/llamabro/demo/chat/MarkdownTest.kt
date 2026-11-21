@@ -360,4 +360,107 @@ class MarkdownTest {
         // the quote held only the definition, so it shows nothing
         assertEquals(1, blocks("> [x]: https://x.dev\n\n[x]").size)
     }
+
+    // a model's page (models-screen design, "The card")
+
+    private fun page(text: String) = Markdown.parsePage(text).blocks
+
+    @Test fun aPageOfOnlyHtmlShowsItsText() {
+        assertEquals(
+            listOf(MarkdownBlock.Paragraph(listOf(MarkdownSpan("Hi")))),
+            page("<p align=center><b>Hi</b></p>"),
+        )
+    }
+
+    @Test fun aPagesHtmlBlockKeepsItsParagraphsAndDropsCommentsAndPictures() {
+        val html =
+            "<div align=\"center\">\n<img src=\"logo.png\" width=\"400\"/>\n</div>\n" +
+                "<!-- a note for editors -->\n" +
+                "<p align=\"center\">\n  <a href=\"https://x.dev\">Blog</a> &amp;\n  <a href=\"https://y.dev\">Paper</a>\n</p>"
+        assertEquals(listOf(MarkdownBlock.Paragraph(listOf(MarkdownSpan("Blog & Paper")))), page(html))
+    }
+
+    @Test fun aPagesInlineHtmlIsFlattenedToItsText() {
+        assertEquals(
+            listOf(MarkdownBlock.Paragraph(listOf(MarkdownSpan("a bold word")))),
+            page("a <b>bold</b> word"),
+        )
+    }
+
+    @Test fun pageImagesKeepTheirAltText() {
+        // the app has no image loader, so a picture is its words
+        assertEquals(
+            listOf(MarkdownBlock.Paragraph(listOf(MarkdownSpan("see a llama")))),
+            page("see ![a llama](l.png)"),
+        )
+    }
+
+    @Test fun aWideTableIsOneTableBlock() {
+        val columns = (1..12).map { "Column $it" }
+        val text =
+            columns.joinToString(" | ", "| ", " |\n") +
+                columns.joinToString("|", "|", "|\n") { "---" } +
+                columns.joinToString(" | ", "| ", " |") { "a long cell value" }
+        val table = page(text).single() as MarkdownBlock.Table
+        assertEquals(12, table.header.size)
+        assertEquals(1, table.rows.size)
+    }
+
+    @Test fun aPagesLeadingHeadingThatRepeatsTheNameIsDropped() {
+        // the sheet's title already names the model
+        assertEquals(
+            listOf(MarkdownBlock.Paragraph(listOf(MarkdownSpan("Text")))),
+            Markdown.parsePage("# Qwen3.5-4B\n\nText", dropHeading = "Qwen3.5 4B").blocks,
+        )
+        assertEquals(
+            listOf(MarkdownBlock.Paragraph(listOf(MarkdownSpan("Text")))),
+            Markdown.parsePage("## gemma_3_4b_it\n\nText", dropHeading = "Gemma 3 4B IT").blocks,
+        )
+    }
+
+    @Test fun aRepoNamedHeadingAfterTheLogosIsDropped() {
+        // pages open with a centred logo and badges, then the H1 names the upload: "Qwen3.5-4B-GGUF"
+        val text = "<p align=\"center\"><img src=\"logo.png\"/></p>\n\n# Qwen3.5-4B-GGUF\n\nText"
+        val blocks = Markdown.parsePage(text, dropHeading = "Qwen3.5 4B").blocks
+        assertEquals(listOf(MarkdownBlock.Paragraph(listOf(MarkdownSpan("Text")))), blocks)
+    }
+
+    @Test fun aPagesOtherHeadingsStay() {
+        val text = "# Qwen3.5-4B-Instruct\n\nText\n\n# Qwen3.5 4B"
+        assertEquals(3, Markdown.parsePage(text, dropHeading = "Qwen3.5 4B").blocks.size)
+        assertEquals(2, Markdown.parsePage("# Qwen3.5-4B\n\nText").blocks.size)
+        assertEquals(2, Markdown.parsePage("Text\n\n# Qwen3.5-4B", dropHeading = "Qwen3.5 4B").blocks.size)
+    }
+    // D123: what a page carries for GitHub rather than for a reader is left out
+
+    @Test fun aPagesNoteBoxesAreLeftOut() {
+        val text =
+            "> [!Note]\n> This repo has GGUF files.\n\n> [!WARNING]\n> Use the latest build.\n\n" +
+                "Text\n\n> A quote."
+        assertEquals(
+            listOf("Text", "A quote."),
+            page(text).map {
+                when (it) {
+                    is MarkdownBlock.Paragraph -> it.spans.joinToString("") { span -> span.text }
+                    is MarkdownBlock.Quote -> (it.blocks.single() as MarkdownBlock.Paragraph).spans.single().text
+                    else -> it.toString()
+                }
+            },
+        )
+    }
+
+    @Test fun aPagesBadgeRowsAndLinkLinesAreLeftOut() {
+        val text =
+            "[![Discord](d.svg)](https://d.dev) [![License](l.svg)](https://l.dev)\n\n" +
+                "https://huggingface.co/Qwen\n\n" +
+                "[Blog](https://b.dev) | [Docs](https://x.dev)\n\n" +
+                "<p align=\"center\"><a href=\"https://x.dev\"><img src=\"logo.png\"/></a></p>\n\n" +
+                "Read the [docs](https://x.dev) first."
+        val blocks = page(text)
+        assertEquals(1, blocks.size)
+        assertEquals(
+            "Read the docs first.",
+            (blocks.single() as MarkdownBlock.Paragraph).spans.joinToString("") { it.text },
+        )
+    }
 }

@@ -19,12 +19,15 @@ import com.suhel.llamabro.demo.designsystem.samples.ActionsSamples
 import com.suhel.llamabro.demo.designsystem.samples.BrandSamples
 import com.suhel.llamabro.demo.designsystem.samples.ChatBubbleSamples
 import com.suhel.llamabro.demo.designsystem.samples.ChatOpenSamples
+import com.suhel.llamabro.demo.designsystem.samples.DownloadPanelSamples
 import com.suhel.llamabro.demo.designsystem.samples.FitSamples
+import com.suhel.llamabro.demo.designsystem.samples.FitSymbolSamples
 import com.suhel.llamabro.demo.designsystem.samples.GapSamples
 import com.suhel.llamabro.demo.designsystem.samples.InputSamples
 import com.suhel.llamabro.demo.designsystem.samples.LayoutSamples
 import com.suhel.llamabro.demo.designsystem.samples.ListsSamples
 import com.suhel.llamabro.demo.designsystem.samples.ListsSheetSamples
+import com.suhel.llamabro.demo.designsystem.samples.ModelRowSamples
 import com.suhel.llamabro.demo.designsystem.samples.PhotoViewerSamples
 import com.suhel.llamabro.demo.designsystem.samples.ProgressSamples
 import com.suhel.llamabro.demo.designsystem.samples.RemovalSamples
@@ -55,6 +58,9 @@ private val Groups: List<Pair<String, @Composable () -> Unit>> =
         "Surfaces" to { SurfacesSamples() },
         "Sheet" to { SheetSamples() },
         "Fit" to { FitSamples() },
+        "Fit symbols" to { FitSymbolSamples() },
+        "Model rows" to { ModelRowSamples() },
+        "Download panel" to { DownloadPanelSamples() },
         "Actions" to { ActionsSamples() },
         "Input" to { InputSamples() },
         "Lists" to { ListsSamples() },

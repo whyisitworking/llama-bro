@@ -42,14 +42,15 @@ import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.EmptyLine
 import com.suhel.llamabro.demo.designsystem.components.IconAction
 import com.suhel.llamabro.demo.designsystem.components.TopBar
+import com.suhel.llamabro.demo.designsystem.components.screenEnter
+import com.suhel.llamabro.demo.designsystem.components.screenExit
 import com.suhel.llamabro.demo.designsystem.theme.Dark
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.Light
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
-import com.suhel.llamabro.demo.ui.firstrun.FirstRunRoute
-import com.suhel.llamabro.demo.ui.models.GetModelsRoute
-import com.suhel.llamabro.demo.ui.models.LibraryRoute
+import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
+import com.suhel.llamabro.demo.ui.models.ModelsRoute
 import com.suhel.llamabro.demo.ui.settings.AboutScreen
 import com.suhel.llamabro.demo.ui.settings.AppearanceScreen
 import com.suhel.llamabro.demo.ui.settings.DefaultModelScreen
@@ -79,6 +80,8 @@ class ChatChrome(
     val onMemory: () -> Unit = {},
     /** The id of the chat on screen once it has one: a new chat is made with its first message. */
     val onChatResolved: (Long) -> Unit = {},
+    /** The model a new chat starts on, chosen on a model's card ("Chat with"); null for the usual one. */
+    val startModel: HfModel? = null,
 )
 
 private val settingsRoutes =
@@ -87,7 +90,7 @@ private val settingsRoutes =
         instructions = Routes.INSTRUCTIONS,
         defaultModel = Routes.DEFAULT_MODEL,
         token = Routes.TOKEN,
-        storage = Routes.MODELS,
+        storage = Routes.models(),
         memory = Routes.MEMORY,
         sampling = Routes.SAMPLING,
         about = Routes.ABOUT,
@@ -96,8 +99,7 @@ private val settingsRoutes =
 
 /**
  * The whole app: the theme, then one of the two layouts (demo design §4.2) around one navigation graph. Switching
- * layout crossfades and keeps the open chat open. [chatScreen] is the chat screen; first run, Get models and the
- * library are supplied the same way.
+ * layout crossfades and keeps the open chat open. [chatScreen] is the chat screen.
  */
 @Composable
 fun AppShell(
@@ -130,6 +132,7 @@ fun AppShell(
     val theme by shell.theme.collectAsStateWithLifecycle()
     val layout by shell.layout.collectAsStateWithLifecycle()
     val firstRun by shell.startsWithFirstRun.collectAsStateWithLifecycle()
+    val seen by shell.seenFirstRun.collectAsStateWithLifecycle()
     SystemBars(theme)
     DemoTheme(theme) {
         Box(
@@ -143,7 +146,8 @@ fun AppShell(
             // the start destination is decided once, when both the layout and first run are known
             val start = firstRun
             val shown = layout
-            if (shown != null && start != null) {
+            // first run's seen flag too: the Models page's intro is drawn from it on the first frame
+            if (shown != null && start != null && seen != null) {
                 Shell(container, shown, start, shell, settings, chatScreen)
                 SideEffect(onReady)
             }
@@ -161,14 +165,7 @@ private fun Shell(
     chatScreen: @Composable (Long, ChatChrome) -> Unit,
 ) {
     val nav = rememberNavController()
-    val start =
-        remember {
-            when {
-                startsWithFirstRun -> Routes.FIRST_RUN
-                layout == AppLayout.Sidebar -> Routes.chat(Routes.NEW_CHAT_ID)
-                else -> Routes.CHATS
-            }
-        }
+    val start = remember { Routes.start(startsWithFirstRun, layout) }
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
     var drawerOpen by rememberSaveable { mutableStateOf(false) }
@@ -220,7 +217,7 @@ private fun Shell(
                             },
                             onModels = {
                                 drawerOpen = false
-                                go(Routes.MODELS)
+                                go(Routes.models())
                             },
                             onSettings = {
                                 drawerOpen = false
@@ -273,7 +270,7 @@ private fun Shell(
                         }
                     if (tab != null) {
                         BottomTabs(ChatListTabs, tab, {
-                            go(listOf(Routes.CHATS, Routes.MODELS, Routes.SETTINGS)[it])
+                            go(listOf(Routes.CHATS, Routes.models(), Routes.SETTINGS)[it])
                         }, Modifier.navigationBarsPadding())
                     }
                 }
@@ -304,33 +301,44 @@ private fun Graph(
             nav.popBackStack()
         }
     }
-    val getModels = { query: String -> nav.navigate(Routes.getModels(query)) { launchSingleTop = true } }
-    NavHost(nav, startDestination = start) {
-        composable(Routes.FIRST_RUN) {
-            FirstRunRoute(
-                container,
-                onOpenChat = { id -> nav.navigate(Routes.chat(id)) { popUpTo(Routes.FIRST_RUN) { inclusive = true } } },
-                onSearch = getModels,
-            )
+    val models = { query: String -> nav.navigate(Routes.models(query)) { launchSingleTop = true } }
+    // a model card's "Chat with": a new chat on that model, in place of the chat the Sidebar shows, as New chat does
+    val chatWith = { key: HfModel ->
+        nav.navigate(Routes.newChatWith(key)) {
+            if (layout == AppLayout.Sidebar) popUpTo(Routes.CHAT_PATTERN) { inclusive = true }
         }
-        composable(
-            Routes.GET_MODELS_PATTERN,
-            arguments =
-                listOf(
-                    navArgument(Routes.QUERY_ARG) {
-                        type = NavType.StringType
-                        defaultValue = ""
-                    },
-                ),
-        ) { entry -> GetModelsRoute(container, entry.arguments?.getString(Routes.QUERY_ARG).orEmpty(), back) }
+    }
+    // screens fade through, never crossfade: the chat's greeting, orb and chips drew over
+    // the Models rows for 300 ms. The one leaving fades out, then the one arriving fades in, on the text motion tokens
+    val still = animationsDisabled()
+    NavHost(
+        nav,
+        startDestination = start,
+        enterTransition = { screenEnter(still) },
+        exitTransition = { screenExit(still) },
+        popEnterTransition = { screenEnter(still) },
+        popExitTransition = { screenExit(still) },
+    ) {
         composable(Routes.CHATS) {
             ChatListHome(shell, openChat, onNewChat = { openChat(Routes.NEW_CHAT_ID) }, onDelete = deleteChat)
         }
         composable(
             Routes.CHAT_PATTERN,
-            arguments = listOf(navArgument(Routes.CHAT_ARG) { type = NavType.LongType }),
+            arguments =
+                listOf(
+                    navArgument(Routes.CHAT_ARG) { type = NavType.LongType },
+                    navArgument(Routes.CHAT_MODEL_ARG) {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
         ) { entry: NavBackStackEntry ->
             val id = entry.arguments?.getLong(Routes.CHAT_ARG) ?: 0L
+            val startModel =
+                entry.arguments
+                    ?.getString(Routes.CHAT_MODEL_ARG)
+                    ?.let { runCatching { HfModel.parse(it) }.getOrNull() }
             chatScreen(
                 id,
                 ChatChrome(
@@ -338,14 +346,37 @@ private fun Graph(
                     openDrawer,
                     back,
                     { openChat(Routes.NEW_CHAT_ID) },
-                    { getModels("") },
+                    { models("") },
                     { nav.navigate(Routes.TOKEN) { launchSingleTop = true } },
                     onMemory = { nav.navigate(Routes.MEMORY) { launchSingleTop = true } },
                     onChatResolved = { onChatResolved(entry.id, it) },
+                    startModel = startModel,
                 ),
             )
         }
-        composable(Routes.MODELS) { LibraryRoute(container, back, onGetMore = { getModels("") }) }
+        composable(
+            Routes.MODELS,
+            arguments =
+                listOf(
+                    navArgument(Routes.QUERY_ARG) {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
+                ),
+        ) { entry ->
+            val seenFirstRun by shell.seenFirstRun.collectAsStateWithLifecycle()
+            // Back only when something is under the page: a fresh install starts here (models-page design §2)
+            val under = remember(entry) { nav.previousBackStackEntry != null }
+            ModelsRoute(
+                container,
+                entry.arguments?.getString(Routes.QUERY_ARG).orEmpty(),
+                onBack = if (under) back else null,
+                onChatWith = chatWith,
+                // the first Get on a fresh install opens its chat in the page's place, as first run's did
+                onOpenChat = { id -> nav.navigate(Routes.chat(id)) { popUpTo(Routes.MODELS) { inclusive = true } } },
+                initialIntro = seenFirstRun?.not(),
+            )
+        }
         composable(Routes.SETTINGS) {
             SettingsHome(back, onOpen = { route ->
                 nav.navigate(route) { launchSingleTop = true }

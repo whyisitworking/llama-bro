@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +34,8 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
@@ -41,6 +44,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -49,6 +53,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import com.suhel.llamabro.demo.designsystem.R
@@ -79,7 +84,10 @@ enum class MarkdownAlignment { Start, Center, End }
 sealed interface MarkdownBlock {
     @Immutable data class Paragraph(val spans: List<MarkdownSpan>) : MarkdownBlock
 
-    /** A heading of [level] 1 to 6: 1 and 2 in the screen title role, 3 and deeper in the title role. */
+    /**
+     * A heading of [level] 1 to 6: 1 and 2 in the screen title role, 3 and deeper in the title role; on a page, two
+     * levels lower ([MarkdownText]).
+     */
     @Immutable data class Heading(val level: Int, val spans: List<MarkdownSpan>) : MarkdownBlock
 
     @Immutable data class Code(val language: String?, val text: String) : MarkdownBlock
@@ -119,11 +127,43 @@ data class MarkdownBlocks(val blocks: List<MarkdownBlock>)
  * Renders parsed markdown (parsing stays in `:app`): paragraphs and list items in the body style, headings in the
  * title roles, quotes muted behind a soft bar, tables and code scrolling sideways, a rule as a hairline. Links open in
  * the browser (`:app` keeps links to http, https and mailto only).
+ *
+ * A [page] (a model's page under its card) sits under the card's own lines, quiet (D123): small airy text in the muted
+ * ink, every heading a soft Regular label, links muted with their underline, so the app speaks first and the page's H1
+ * never outweighs the model's name; a table narrower than the page spans its width (S26).
  */
 @Composable
-fun MarkdownText(blocks: MarkdownBlocks, onCopyCode: (String) -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier) { MarkdownBlockList(blocks.blocks, onCopyCode, muted = false, depth = 0) }
+fun MarkdownText(
+    blocks: MarkdownBlocks,
+    onCopyCode: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    page: Boolean = false,
+) {
+    CompositionLocalProvider(LocalPage provides page) {
+        Column(modifier) { MarkdownBlockList(blocks.blocks, onCopyCode, muted = false, depth = 0) }
+    }
 }
+
+/** True inside a model's page ([MarkdownText]'s `page`), however deep in lists and quotes. */
+private val LocalPage = staticCompositionLocalOf { false }
+
+/**
+ * A heading's role: a reply's in the screen title and title roles; on a page every level is the quiet label, soft and
+ * Regular (D123), so nothing in the card's scroll outweighs its own lines.
+ */
+@Composable
+private fun headingStyle(level: Int): TextStyle =
+    when {
+        !LocalPage.current -> if (level <= 2) DemoType.screenTitle else DemoType.title
+        else -> DemoType.quietLabel
+    }
+
+/**
+ * The running text's role: a reply's body on its looser line (D125); a page's small airy text, under the card's own
+ * facts (D123).
+ */
+@Composable
+private fun bodyStyle(): TextStyle = if (LocalPage.current) DemoType.pageBody else DemoType.replyBody
 
 /** Blocks one after another, with the gaps of [gapBefore]; [depth] is how deep in lists they are (for the bullet). */
 @Composable
@@ -163,7 +203,7 @@ private fun Bullet(depth: Int, color: Color, modifier: Modifier = Modifier) {
             }
         },
         color = Color.Transparent,
-        style = DemoType.body,
+        style = bodyStyle(),
         textAlign = TextAlign.End,
         onTextLayout = { glyph = it.getBoundingBox(0) },
     )
@@ -172,18 +212,30 @@ private fun Bullet(depth: Int, color: Color, modifier: Modifier = Modifier) {
 @Composable
 private fun MarkdownBlockView(block: MarkdownBlock, onCopyCode: (String) -> Unit, muted: Boolean, depth: Int) {
     val colors = LocalDemoColors.current
-    val ink = if (muted) colors.muted else colors.ink
+    // a page's text is muted throughout (D123): the card's own lines are the ink; a reply's body is the reply ink, a
+    // step softer than its headings and bold, which stay the ink
+    val ink = textInk(colors, muted)
     when (block) {
         is MarkdownBlock.Paragraph -> {
-            Text(rememberSpans(block.spans, colors), color = ink, style = DemoType.body)
+            Text(
+                rememberSpans(block.spans, colors, LocalPage.current, strongOf(colors, ink)),
+                color = ink,
+                style = bodyStyle(),
+            )
         }
 
         is MarkdownBlock.Heading -> {
             Text(
-                rememberSpans(block.spans, colors),
+                rememberSpans(block.spans, colors, LocalPage.current),
                 Modifier.semantics { heading() },
-                color = ink,
-                style = if (block.level <= 2) DemoType.screenTitle else DemoType.title,
+                // a page's headings are its quietest labels, soft (D123)
+                color =
+                    when {
+                        LocalPage.current -> colors.soft
+                        muted -> colors.muted
+                        else -> colors.ink
+                    },
+                style = headingStyle(block.level),
             )
         }
 
@@ -225,16 +277,17 @@ private fun MarkdownListItem(item: MarkdownBlock.ListItem, onCopyCode: (String) 
         // the minimum is inside the gap, not around it, or each number's own width would move the text
         val marker = Modifier.padding(end = DemoSpacing.block).widthIn(min = DemoSpacing.section)
         if (item.ordered) {
-            Text("${item.index}.", marker, color = colors.muted, style = DemoType.body, textAlign = TextAlign.End)
+            Text("${item.index}.", marker, color = colors.muted, style = bodyStyle(), textAlign = TextAlign.End)
         } else {
             Bullet(depth, colors.muted, marker)
         }
         Column {
             if (item.spans.isNotEmpty()) {
+                val ink = textInk(colors, muted)
                 Text(
-                    rememberSpans(item.spans, colors),
-                    color = if (muted) colors.muted else colors.ink,
-                    style = DemoType.body,
+                    rememberSpans(item.spans, colors, LocalPage.current, strongOf(colors, ink)),
+                    color = ink,
+                    style = bodyStyle(),
                 )
             }
             if (item.blocks.isNotEmpty()) {
@@ -253,43 +306,78 @@ private fun MarkdownListItem(item: MarkdownBlock.ListItem, onCopyCode: (String) 
 /**
  * A table: the header row on a fill one step off the canvas, hairline rules between rows inside a hairline card, each
  * column as wide as its widest cell and aligned as the delimiter row says. Cells don't wrap; a wide table scrolls
- * sideways, like code.
+ * sideways, like code. On a page a narrower table spans the width, its columns sharing what is left.
  */
 @Composable
 private fun MarkdownTable(table: MarkdownBlock.Table, ink: Color) {
     val colors = LocalDemoColors.current
-    Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-        Row(
-            Modifier
-                .border(DemoSize.hairline, colors.hairline, DemoShapes.card)
-                .clip(DemoShapes.card),
-        ) {
-            table.alignments.forEachIndexed { column, alignment ->
-                // every cell is one line of one style, so the columns' rows line up; each cell fills its column's width
-                Column(Modifier.width(IntrinsicSize.Max)) {
-                    MarkdownCell(
-                        table.header.getOrElse(column) {
-                            emptyList()
-                        },
-                        alignment,
-                        ink,
-                        header = true,
-                        ruled = table.rows.isNotEmpty(),
-                    )
-                    table.rows.forEachIndexed { row, cells ->
-                        MarkdownCell(
-                            cells.getOrElse(column) { emptyList() },
-                            alignment,
-                            ink,
-                            header = false,
-                            ruled =
-                                row < table.rows.lastIndex,
-                        )
+    val page = LocalPage.current
+    // the width the table may span, read from the outer constraints as it is measured: no subcomposition, so a table
+    // in a quote (whose bar asks its blocks for their intrinsic height) still measures
+    val span = remember { IntArray(1) }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .layout { measurable, constraints ->
+                span[0] = if (page && constraints.hasBoundedWidth) constraints.maxWidth else 0
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+            },
+    ) {
+        val sideways = rememberScrollState()
+        // a table wider than the page fades at its end while it can scroll on: cut mid-header, it read as
+        // the table's end
+        Box(Modifier.edgeFade({ sideways.canScrollForward }, horizontal = true).horizontalScroll(sideways)) {
+            Layout(
+                content = {
+                    table.alignments.forEachIndexed { column, alignment ->
+                        // every cell is one line of one style, so the columns' rows line up; each cell fills its
+                        // column's width
+                        Column {
+                            MarkdownCell(
+                                table.header.getOrElse(column) { emptyList() },
+                                alignment,
+                                ink,
+                                header = true,
+                                ruled = table.rows.isNotEmpty(),
+                            )
+                            table.rows.forEachIndexed { row, cells ->
+                                MarkdownCell(
+                                    cells.getOrElse(column) { emptyList() },
+                                    alignment,
+                                    ink,
+                                    header = false,
+                                    ruled = row < table.rows.lastIndex,
+                                )
+                            }
+                        }
+                    }
+                },
+                modifier =
+                    Modifier
+                        .border(DemoSize.hairline, colors.hairline, DemoShapes.card)
+                        .clip(DemoShapes.card),
+            ) { columns, _ ->
+                val widths = columns.map { it.maxIntrinsicWidth(Constraints.Infinity) }.toMutableList()
+                spread(widths, span[0])
+                val placed = columns.mapIndexed { i, column -> column.measure(Constraints.fixedWidth(widths[i])) }
+                layout(widths.sum(), placed.maxOfOrNull { it.height } ?: 0) {
+                    var x = 0
+                    for (column in placed) {
+                        column.placeRelative(x, 0)
+                        x += column.width
                     }
                 }
             }
         }
     }
+}
+
+/** Widens [widths] to sum to [span] when they fall short, the extra shared evenly; a wider table keeps its widths. */
+internal fun spread(widths: MutableList<Int>, span: Int) {
+    val extra = span - widths.sum()
+    if (extra <= 0 || widths.isEmpty()) return
+    for (i in widths.indices) widths[i] += extra / widths.size + if (i < extra % widths.size) 1 else 0
 }
 
 @Composable
@@ -303,10 +391,11 @@ private fun MarkdownCell(
     val colors = LocalDemoColors.current
     val rule = colors.hairline
     Text(
-        rememberSpans(spans, colors),
+        rememberSpans(spans, colors, LocalPage.current, strongOf(colors, ink)),
         Modifier
             .fillMaxWidth()
-            .then(if (header) Modifier.background(colors.subtleFill) else Modifier)
+            // a reply's header row sits on a fill; a page's is a label on the rule alone
+            .then(if (header && !LocalPage.current) Modifier.background(colors.subtleFill) else Modifier)
             .drawBehind {
                 if (ruled) {
                     val y = size.height - DemoSize.hairline.toPx() / 2
@@ -314,7 +403,12 @@ private fun MarkdownCell(
                 }
             }.padding(horizontal = DemoSpacing.compact, vertical = DemoSpacing.block),
         color = ink,
-        style = if (header) DemoType.title else DemoType.body,
+        style =
+            when {
+                !LocalPage.current -> if (header) DemoType.title else DemoType.body
+                header -> DemoType.quietLabel
+                else -> DemoType.pageBody
+            },
         textAlign =
             when (alignment) {
                 MarkdownAlignment.Start -> TextAlign.Start
@@ -326,14 +420,28 @@ private fun MarkdownCell(
     )
 }
 
+/** The running text's ink: a reply's body the reply ink, a page's or a quote's muted. */
 @Composable
-private fun rememberSpans(spans: List<MarkdownSpan>, colors: DemoColors): AnnotatedString =
-    remember(spans, colors) {
+private fun textInk(colors: DemoColors, muted: Boolean): Color =
+    if (muted || LocalPage.current) colors.muted else colors.reply
+
+/** Bold in a reply's body stays the ink, a step over the reply ink around it; elsewhere it keeps its text's colour. */
+private fun strongOf(colors: DemoColors, ink: Color): Color = if (ink == colors.reply) colors.ink else Color.Unspecified
+
+@Composable
+private fun rememberSpans(
+    spans: List<MarkdownSpan>,
+    colors: DemoColors,
+    page: Boolean = false,
+    strong: Color = Color.Unspecified,
+): AnnotatedString =
+    remember(spans, colors, page, strong) {
         buildAnnotatedString {
             for (span in spans) {
                 val style =
                     SpanStyle(
                         fontWeight = if (span.bold) FontWeight.SemiBold else null,
+                        color = if (span.bold) strong else Color.Unspecified,
                         fontStyle = if (span.italic) FontStyle.Italic else null,
                         fontFamily = if (span.code) FontFamily.Monospace else null,
                         background = if (span.code) colors.subtleFill else Color.Unspecified,
@@ -341,7 +449,13 @@ private fun rememberSpans(spans: List<MarkdownSpan>, colors: DemoColors): Annota
                     )
                 if (span.link != null) {
                     val linkStyle =
-                        TextLinkStyles(SpanStyle(color = colors.accent, textDecoration = TextDecoration.Underline))
+                        // on a page a link reads but doesn't call: muted, with its underline (D123)
+                        TextLinkStyles(
+                            SpanStyle(
+                                color = if (page) colors.muted else colors.accent,
+                                textDecoration = TextDecoration.Underline,
+                            ),
+                        )
                     withLink(LinkAnnotation.Url(span.link, linkStyle)) { withStyle(style) { append(span.text) } }
                 } else {
                     withStyle(style) { append(span.text) }

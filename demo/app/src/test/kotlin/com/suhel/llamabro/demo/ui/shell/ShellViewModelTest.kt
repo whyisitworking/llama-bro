@@ -10,9 +10,11 @@ import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.NewMessage
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.models.FakeScheduler
+import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.ui.keepAlive
+import com.suhel.llamabro.demo.ui.models.FakeModelLibrary
 import com.suhel.llamabro.demo.ui.shutDown
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CoroutineScope
@@ -144,6 +146,23 @@ class ShellViewModelTest {
             testHub.hub.delete(HfModel.parse(swift))
             settings.markFirstRunSeen()
             assertEquals("seen once is seen for good", false, launch())
+        }
+
+    @Test fun theModelCountIsUnknownUntilTheLibraryIsRead() =
+        runBlocking<Unit> {
+            // a drawer opened before the library's first read says nothing rather than "0", then the count
+            val library = FakeModelLibrary().apply { shelf.value = null }
+            val vm =
+                ShellViewModel(chats, settings, library, { now }, zone, SavedStateHandle()).also {
+                    viewModels += it
+                    it.modelCount.keepAlive(collectors)
+                }
+            assertEquals(null, vm.modelCount.value)
+            library.shelf.value = emptyList()
+            assertEquals(0, awaitValue({ vm.modelCount.value }) { it != null })
+            library.shelf.value =
+                listOf(LibraryModel(HfModel.parse(swift), "Qwen3.5 0.8B", 1, lastUsed = null, isDefault = false))
+            assertEquals(1, awaitValue({ vm.modelCount.value }) { it == 1 })
         }
 
     @Test fun chatsAreGroupedByDay() =

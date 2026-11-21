@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.androidx.baselineprofile)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -22,6 +23,12 @@ android {
     testOptions {
         // trace sections (androidx.tracing) call android.os.Trace, which does nothing off a phone
         unitTests.isReturnDefaultValues = true
+        // Robolectric reads the manifest and resources of the app to start its application
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            // Robolectric on a current JDK reaches into java.base's internals
+            it.jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
+        }
         // no window animations while instrumented tests run: an accessibility check made during an activity's or a
         // sheet's window animation reads a 48 dp target scaled down. Compose's own motion is unaffected
         animationsDisabled = true
@@ -107,6 +114,10 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+    // Hugging Face search pages (models-search design): a Pager over Room with a RemoteMediator
+    implementation(libs.androidx.paging.runtime)
+    implementation(libs.androidx.paging.compose)
+    implementation(libs.room.paging)
     // markdown (D74): CommonMark and the GFM tables, strikethrough and bare-URL links
     implementation(libs.commonmark)
     implementation(libs.commonmark.ext.gfm.tables)
@@ -125,7 +136,14 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.room.testing)
+    testImplementation(libs.androidx.paging.testing)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.work.testing)
+    // host Compose tests of the model card's layout, under Robolectric
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.androidx.junit)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.junit)
@@ -133,11 +151,14 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.work.testing)
     androidTestImplementation(libs.room.testing)
+    androidTestImplementation(libs.androidx.paging.testing)
     androidTestImplementation(libs.androidx.test.uiautomator)
     androidTestImplementation(project(":llamabro-testing"))
     androidTestImplementation(project(":llamabro-hub-testing"))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4.accessibility)
+    // Compose's ui-test brings espresso 3.5, whose InputManager reflection fails on Android 17.
+    androidTestImplementation(libs.androidx.espresso.core)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.leakcanary.android)
     androidTestImplementation(libs.leakcanary.android.instrumentation)

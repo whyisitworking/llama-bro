@@ -54,6 +54,7 @@ class VoiceRecorder(
     private val scope: CoroutineScope,
     private val limitMillis: Long = LIMIT_MILLIS,
 ) {
+    // external event: the microphone's recording, as the audio arrives
     private val _take = MutableStateFlow<Take?>(null)
 
     /** The recording in progress or waiting, or null. */

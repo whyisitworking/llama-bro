@@ -111,7 +111,7 @@ class ChatScreenshotsTest(private val style: MessageStyle, private val theme: Th
             DemoTheme(theme) {
                 Box(Modifier.background(LocalDemoColors.current.canvas)) {
                     val layout = if (style == MessageStyle.Open) AppLayout.Sidebar else AppLayout.ChatList
-                    ChatScreen(app.container, chatId, ChatChrome(layout, {}, {}, {}, {}), style = style)
+                    ChatScreen(app.container, chatId, ChatChrome(layout, {}, {}, {}, {}), styleOverride = style)
                 }
             }
         }

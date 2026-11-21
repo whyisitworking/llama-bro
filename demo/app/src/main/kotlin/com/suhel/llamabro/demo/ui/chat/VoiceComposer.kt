@@ -35,6 +35,7 @@ class VoiceComposer(
     /** The recording under way or waiting. */
     val take: StateFlow<Take?> get() = recorder.take
 
+    // external event: the microphone permission refused
     private val _limit = MutableStateFlow<Limit?>(null)
 
     /** The microphone was refused: its line, until the next recording starts. */

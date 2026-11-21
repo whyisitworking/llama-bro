@@ -244,27 +244,31 @@ internal fun ThinkMenuPreview() {
     }
 }
 
+// last used relative to now, so the rows read "Used today" and "2 weeks ago" as on the phone
+private val previewNow = System.currentTimeMillis()
+private const val PREVIEW_DAY = 24L * 3600 * 1000
+
 private val previewLibrary =
     listOf(
         LibraryModel(
             HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M"),
             "Qwen3.5 0.8B",
             739_863_648,
-            0,
+            previewNow,
             isDefault = false,
         ),
         LibraryModel(
             HfModel.parse("unsloth/gemma-3-4b-it-qat-GGUF:Q4_K_M"),
             "Gemma 3 4B",
             3_341_145_472,
-            0,
+            previewNow - 14 * PREVIEW_DAY,
             isDefault = true,
         ),
         LibraryModel(
             HfModel.parse("unsloth/Qwen3.5-4B-GGUF:Q4_K_M"),
             "Qwen3.5 4B",
             3_416_507_232,
-            0,
+            null,
             isDefault = false,
         ),
     )
@@ -277,10 +281,11 @@ internal fun ModelSwitcherPreview() {
             SheetFrame {
                 ModelSwitcherContent(
                     previewLibrary,
-                    current = previewLibrary[1].key,
+                    current = previewLibrary[0].key,
                     facts = DeviceFacts(budgetBytes = 5L shl 30, chip = DeviceKind.Npu),
                     onSwitch = {},
                     onUseForNewChats = {},
+                    onInfo = {},
                     onGetMore = {},
                     onDone = {},
                     sampling = SheetSampling(changed = 2, onOpen = {}),

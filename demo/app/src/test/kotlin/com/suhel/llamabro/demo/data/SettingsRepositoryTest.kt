@@ -4,12 +4,17 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.suhel.llamabro.demo.chat.Knob
 import com.suhel.llamabro.demo.chat.Knobs
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
+import com.suhel.llamabro.demo.models.SearchFilters
+import com.suhel.llamabro.demo.models.SearchOrder
+import com.suhel.llamabro.demo.models.SizeFilter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -45,6 +50,32 @@ class SettingsRepositoryTest {
             assertEquals("", s.instructionsAbout)
             assertEquals("", s.instructionsStyle)
             assertFalse(s.seenFirstRun)
+        }
+
+    @Test fun searchFiltersAreTheDefaultUntilSetAndSurviveARestart() =
+        runBlocking {
+            val first = repository()
+            assertEquals(SearchFilters(), first.settings.first().searchFilters)
+            val chosen =
+                SearchFilters(SearchOrder.Newest, SizeFilter.Range(1_000_000_000, 4_000_000_000), seesImages = true)
+            first.setSearchFilters(chosen)
+            // the first store is closed before the next opens the file, as a process restart does
+            scopes.forEach { checkNotNull(it.coroutineContext[Job]).cancelAndJoin() }
+            assertEquals(chosen, repository().settings.first().searchFilters)
+        }
+
+    /** Each change is applied to the stored filters, so two at once both land, whichever the store writes first. */
+    @Test fun twoFilterChangesAtOnceBothSurvive() =
+        runBlocking {
+            val repo = repository()
+            listOf(
+                async(Dispatchers.IO) { repo.updateSearchFilters { it.copy(sort = SearchOrder.Newest) } },
+                async(Dispatchers.IO) { repo.updateSearchFilters { it.copy(seesImages = true) } },
+            ).awaitAll()
+            assertEquals(
+                SearchFilters(sort = SearchOrder.Newest, seesImages = true),
+                repo.settings.first().searchFilters,
+            )
         }
 
     @Test fun newChatUsesPinnedOverLast() =

@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,11 +58,15 @@ import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.runningFold
 import kotlinx.coroutines.launch
 
 /**
  * The conversation, stateless: the top bar with the model's name, the messages, the limit line and the message bar
- * (demo design §4.1 and §4.4). What it draws is [state]; what changes faster is read from [live] where it
+ * (demo design §4.3 and §4.4). What it draws is [state]; what changes faster is read from [live] where it
  * is drawn; what the user does goes to [actions].
  */
 @Composable
@@ -260,11 +265,10 @@ private fun MessageList(
  * reply. Decided on the rows the list draws, since the screen's rows can trail the view model's.
  */
 @Composable
-private fun rememberShownReply(streaming: () -> StreamingItem?, rowKeys: Set<String>): () -> StreamingItem? {
-    var lastStreamed by remember { mutableStateOf<StreamingItem?>(null) }
+internal fun rememberShownReply(streaming: () -> StreamingItem?, rowKeys: Set<String>): () -> StreamingItem? {
     val streamingNow by rememberUpdatedState(streaming)
     val rowKeysNow by rememberUpdatedState(rowKeys)
-    LaunchedEffect(Unit) { snapshotFlow { streamingNow() }.collect { if (it != null) lastStreamed = it } }
+    val lastStreamed by remember { snapshotFlow { streamingNow() }.filterNotNull() }.collectAsState(null)
     return remember { { streamingNow() ?: lastStreamed?.takeIf { "m-${it.id}" !in rowKeysNow } } }
 }
 
@@ -283,16 +287,33 @@ private class ReaderScrolls(private val follow: FollowState) : NestedScrollConne
  * Tells [follow] where every scroll took the list, including the last step of one that has just stopped: an
  * accessibility service's scroll, which no drag announces, reaches it here.
  */
-private suspend fun followScrolls(listState: LazyListState, follow: FollowState) {
-    var from = listState.position()
-    var wasScrolling = false
-    snapshotFlow { Triple(listState.position(), listState.isScrollInProgress, !listState.canScrollForward) }
-        .collect { (to, scrolling, atEnd) ->
-            if (scrolling || wasScrolling) follow.onScroll(from, to, atEnd)
-            from = to
-            wasScrolling = scrolling
-        }
+internal suspend fun followScrolls(listState: LazyListState, follow: FollowState) {
+    snapshotFlow { ListSample(listState.position(), listState.isScrollInProgress, !listState.canScrollForward) }
+        .scrollMoves(listState.position())
+        .collect { follow.onScroll(it.from, it.to, it.atEnd) }
 }
+
+/** One look at the list: where it is, whether a scroll is under way, and whether it can scroll no further. */
+internal data class ListSample(val position: ListPosition, val scrolling: Boolean, val atEnd: Boolean)
+
+/** A scroll's step from one sample to the next. */
+internal data class ScrollMove(val from: ListPosition, val to: ListPosition, val atEnd: Boolean)
+
+/**
+ * Each step between two samples while a scroll is under way, and the step that ends one (the sample after it stops),
+ * from [start], where the list stood, still, before the first sample.
+ */
+internal fun Flow<ListSample>.scrollMoves(start: ListPosition): Flow<ScrollMove> =
+    runningFold(SampleStep(ListSample(start, scrolling = false, atEnd = false), null)) { step, now ->
+        SampleStep(step.now ?: step.previous, now)
+    }.mapNotNull { step ->
+        step.now
+            ?.takeIf { it.scrolling || step.previous.scrolling }
+            ?.let { ScrollMove(step.previous.position, it.position, it.atEnd) }
+    }
+
+/** A sample and the one before it; [now] is null only for the start. */
+private class SampleStep(val previous: ListSample, val now: ListSample?)
 
 /**
  * While following and nothing else scrolls the list, keeps the end of the last item in view as the streaming row grows

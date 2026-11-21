@@ -12,6 +12,10 @@ import com.suhel.llamabro.DevicePolicy
 import com.suhel.llamabro.demo.chat.Knobs
 import com.suhel.llamabro.demo.chat.LoadConfig
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
+import com.suhel.llamabro.demo.models.FiltersChange
+import com.suhel.llamabro.demo.models.SearchFilters
+import com.suhel.llamabro.demo.models.SearchOrder
+import com.suhel.llamabro.demo.models.SizeFilter
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -93,6 +97,8 @@ data class AppSettings(
     val voice: String? = null,
     /** Voice mode captions what the person says (D99, D100); it then loads the model with two slots. */
     val captionYou: Boolean = true,
+    /** What Hugging Face search asks for (models-search design §5), remembered across launches. */
+    val searchFilters: SearchFilters = SearchFilters(),
 )
 
 /** The model a new chat starts with: the pinned one, else the one used last (demo design §4.2). */
@@ -124,6 +130,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 replyLength = ReplyLength.entries.firstOrNull { it.name == p[REPLY_LENGTH] } ?: ReplyLength.Automatic,
                 voice = p[VOICE],
                 captionYou = p[CAPTION_YOU] ?: true,
+                searchFilters = searchFiltersOf(p),
             )
         }
 
@@ -246,6 +253,28 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         }
     }
 
+    suspend fun setSearchFilters(filters: SearchFilters) = updateSearchFilters { filters }
+
+    /**
+     * Applies [change] to the filters as stored, inside the store's one edit: two changes made at once both land, as
+     * the store runs its edits one after the other on what the last one wrote (D128).
+     */
+    suspend fun updateSearchFilters(change: FiltersChange) {
+        store.edit {
+            val filters = change(searchFiltersOf(it))
+            it[SEARCH_SORT] = filters.sort.name
+            it[SEARCH_SIZE] = filters.size.encode()
+            it[SEARCH_SEES_IMAGES] = filters.seesImages
+        }
+    }
+
+    private fun searchFiltersOf(p: Preferences): SearchFilters =
+        SearchFilters(
+            sort = SearchOrder.entries.firstOrNull { it.name == p[SEARCH_SORT] } ?: SearchOrder.MostDownloaded,
+            size = SizeFilter.decode(p[SEARCH_SIZE]),
+            seesImages = p[SEARCH_SEES_IMAGES] ?: false,
+        )
+
     suspend fun markFirstRunSeen() {
         store.edit { it[SEEN_FIRST_RUN] = true }
     }
@@ -302,5 +331,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val INSTRUCTIONS_ABOUT = stringPreferencesKey("instructions_about")
         val INSTRUCTIONS_STYLE = stringPreferencesKey("instructions_style")
         val SEEN_FIRST_RUN = booleanPreferencesKey("seen_first_run")
+        val SEARCH_SORT = stringPreferencesKey("search_sort")
+        val SEARCH_SIZE = stringPreferencesKey("search_size")
+        val SEARCH_SEES_IMAGES = booleanPreferencesKey("search_sees_images")
     }
 }

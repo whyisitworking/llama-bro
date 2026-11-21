@@ -45,6 +45,9 @@ public enum class SearchSort {
 
     /** The last commit, newest first. */
     RecentlyUpdated,
+
+    /** The repo's creation, newest first. */
+    Newest,
 }
 
 /** Mutable scope of [LlamaBroHub.search]. Every search is for GGUF repos. */
@@ -60,6 +63,18 @@ public class SearchOptions internal constructor() {
 
     /** Repos per page, 1 to 100; a page may hold fewer results, since quantized uploads of one model group. */
     public var limit: Int = 40
+
+    /**
+     * Only repos whose GGUF has at least this many parameters, or null for no floor. The Hub filters on each upload's
+     * reported count (`num_parameters`), which an upload sometimes reports wrongly.
+     */
+    public var minParameters: Long? = null
+
+    /** Only repos whose GGUF has at most this many parameters, or null for no ceiling; as [minParameters]. */
+    public var maxParameters: Long? = null
+
+    /** Leaves out gated repos, the ones that need their terms accepted on the Hub before a token can download them. */
+    public var hideGated: Boolean = false
 }
 
 /**
@@ -77,10 +92,16 @@ public class SearchPage internal constructor(
 }
 
 /**
- * Where a search's next page starts: the Hub's own cursor. Valid for the hub that returned it; the Hub may expire it,
- * so search again from the start rather than keeping one.
+ * Where a search's next page starts: the Hub's own cursor, as text ([value]) an app may store, for an endless list that
+ * outlives the process, and pass back. The hub follows it only on its own endpoint. The Hub may expire it: a refused
+ * cursor fails as a first page does, and the search starts again from its first page.
  */
-public class SearchCursor internal constructor(internal val url: String)
+public class SearchCursor(
+    /** The cursor as the Hub gave it: a URL on the hub's endpoint. */
+    public val value: String,
+) {
+    override fun toString(): String = "SearchCursor($value)"
+}
 
 /**
  * A model found by search: its quantized uploads grouped under the original they were made from (D68). Only repos
@@ -117,12 +138,32 @@ public class SearchRepo internal constructor(
     public val takesImages: Boolean,
     /** The original this repo is a quantized upload of (its `base_model:quantized:` tag), or null. */
     public val baseModel: String?,
+    /** The Hub's task (`pipeline_tag`, e.g. `text-generation`), or null when the repo has none. */
+    public val task: String?,
+    /** The repo's Hub tags, as listed. */
+    public val tags: List<String>,
+    /** When the repo last changed, ISO-8601 as the Hub sends it (`2026-11-12T02:15:52.000Z`), or null. */
+    public val lastModified: String?,
+    /** What the Hub read from the repo's GGUF headers, or null when it has none. */
+    public val gguf: GgufSummary?,
 ) {
     /** The user or organisation that uploaded it. */
     public val author: String get() = id.substringBefore('/')
 
     override fun toString(): String = id
 }
+
+/** The facts the Hub lists about a repo's GGUF files, read from the search list alone, with no extra request. */
+public class GgufSummary internal constructor(
+    /** The parameter count of the repo's GGUF (the Hub's `gguf.total`). */
+    public val parameters: Long,
+    /** The model architecture (`qwen35`, `llama`, `bert`). */
+    public val architecture: String,
+    /** The trained context length in tokens, or null when the header has none. */
+    public val contextLength: Long?,
+    /** Whether the GGUF carries a chat template; embedding models do not. */
+    public val hasChatTemplate: Boolean,
+)
 
 /** A repo's GGUF files as [LlamaBroHub.files] lists them: sizes, and no verdict on whether they fit (D68). */
 public class RepoFiles internal constructor(
@@ -194,18 +235,35 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
 
     fun firstPage(query: String, options: SearchOptions): String {
         require(options.limit in 1..MAX_LIMIT) { "limit must be 1 to $MAX_LIMIT, was ${options.limit}" }
+        val min = options.minParameters
+        val max = options.maxParameters
+        require(min == null || min >= 0) { "minParameters must not be negative, was $min" }
+        require(max == null || max > 0) { "maxParameters must be positive, was $max" }
+        require(min == null || max == null || min <= max) { "minParameters $min is above maxParameters $max" }
         val params = mutableListOf<String>()
         query.trim().takeIf { it.isNotEmpty() }?.let { params += "search=${encode(it)}" }
         params += "filter=gguf"
         params += "sort=${sortKey(options.sort)}"
         params += "direction=-1"
         params += "limit=${options.limit}"
+        EXPANDED_FIELDS.forEach { params += "expand[]=$it" }
         options.author
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
             ?.let { params += "author=${encode(it)}" }
         if (options.takesImages) params += "pipeline_tag=$IMAGE_TASK"
+        listOfNotNull(min?.let { "min:$it" }, max?.let { "max:$it" })
+            .takeIf { it.isNotEmpty() }
+            ?.let { params += "num_parameters=" + it.joinToString(",") }
+        if (options.hideGated) params += "gated=false"
         return "${endpoint}api/models?" + params.joinToString("&")
+    }
+
+    /** A cursor's page, only on the endpoint's origin: a stored cursor is text an app hands back. */
+    suspend fun next(transport: Transport, cursor: SearchCursor): SearchPage {
+        val url = runCatching { URL(cursor.value) }.getOrNull()
+        require(url != null && sameOrigin(url, origin)) { "a search cursor must be on the hub's endpoint" }
+        return page(transport, cursor.value)
     }
 
     suspend fun page(transport: Transport, url: String): SearchPage {
@@ -226,7 +284,23 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
         val id = item.string("id")?.takeIf(::isValidRepoId) ?: return null
         val tags = item.tags()
         val takesImages = item.string("pipeline_tag") == IMAGE_TASK || "vision" in tags || "multimodal" in tags
-        return SearchRepo(id, item.long("downloads"), item.long("likes"), takesImages, quantizedBase(tags))
+        return SearchRepo(
+            id,
+            item.long("downloads"),
+            item.long("likes"),
+            takesImages,
+            quantizedBase(tags),
+            item.string("pipeline_tag"),
+            tags,
+            item.string("lastModified"),
+            (item["gguf"] as? JsonObject)?.let(::ggufSummary),
+        )
+    }
+
+    private fun ggufSummary(gguf: JsonObject): GgufSummary? {
+        val parameters = gguf.long("total").takeIf { it > 0 } ?: return null
+        val contextLength = (gguf["context_length"] as? JsonPrimitive)?.longOrNull
+        return GgufSummary(parameters, gguf.string("architecture").orEmpty(), contextLength, "chat_template" in gguf)
     }
 
     /** Groups by the original, case-insensitively as the Hub does; a group sits where its first repo did. */
@@ -267,6 +341,7 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
      * A refusal is thrown: the caller decides what it means.
      */
     suspend fun baseModelOf(transport: Transport, repo: String): String? {
+        require(isValidRepoId(repo)) { "invalid HF repo id: $repo" }
         val info = getJson(transport, "${endpoint}api/models/$repo", repo).json as? JsonObject ?: throw invalid(repo)
         return quantizedBase(info.tags())
     }
@@ -323,6 +398,24 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
         }
     }
 
+    /**
+     * [repo]'s `README.md` at `main` without its front matter, or null when it has none. At most [README_LIMIT_BYTES]
+     * are read, so a huge card is cut short instead of failing. A refusal is thrown.
+     */
+    suspend fun modelCard(transport: Transport, repo: String): String? {
+        require(isValidRepoId(repo)) { "invalid HF repo id: $repo" }
+        val text =
+            withContext(Dispatchers.IO) {
+                transport.open("GET", "$endpoint$repo/resolve/main/README.md").use { response ->
+                    if (response.status == HTTP_NOT_FOUND) return@use null
+                    if (response.status != HTTP_OK) throw failure(response, repo)
+                    val bytes = response.body?.readNBytes(README_LIMIT_BYTES) ?: ByteArray(0)
+                    String(bytes, Charsets.UTF_8)
+                }
+            }
+        return text?.let(::withoutFrontMatter)
+    }
+
     /** One JSON answer and its headers. */
     private class Answer(val json: JsonElement, val headers: Map<String, List<String>>)
 
@@ -349,10 +442,26 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
         hubFailure(response, "$what needs a token with access", "$what not found", "$what: HTTP ${response.status}")
 
     internal companion object {
+        private const val README_LIMIT_BYTES = 512 * 1024
+        private const val HTTP_NOT_FOUND = 404
+        private const val FRONT_MATTER_FENCE = "---"
+
+        /** [card] minus a leading `---` block (to the next line that is exactly `---`) and the blank lines after it. */
+        internal fun withoutFrontMatter(card: String): String {
+            val lines = card.split("\n")
+            if (lines.first().trimEnd('\r') != FRONT_MATTER_FENCE) return card
+            val close =
+                lines.indices.drop(1).firstOrNull { lines[it].trimEnd('\r') == FRONT_MATTER_FENCE }
+                    ?: return card
+            return lines.drop(close + 1).dropWhile { it.isBlank() }.joinToString("\n")
+        }
+
         private const val MAX_LIMIT = 100
         private const val HEADER_LIMIT_BYTES = 256L shl 20 // HeaderFetch's bound on a GGUF header
         private const val HTTP_OK = 200
         private const val IMAGE_TASK = "image-text-to-text"
+        private val EXPANDED_FIELDS =
+            listOf("downloads", "likes", "tags", "pipeline_tag", "lastModified", "gguf")
         private const val QUANTIZED = "base_model:quantized:"
         private const val GGUF_SAMPLING = "general.sampling."
         private val NEXT_LINK = Regex("<([^>]+)>\\s*;\\s*rel=\"?next\"?")
@@ -363,6 +472,7 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
                 SearchSort.Likes -> "likes"
                 SearchSort.Trending -> "trendingScore"
                 SearchSort.RecentlyUpdated -> "lastModified"
+                SearchSort.Newest -> "createdAt"
             }
 
         /** F146: only `base_model:quantized:X` names a re-upload's original; `finetune:`, `merge:` etc. don't. */

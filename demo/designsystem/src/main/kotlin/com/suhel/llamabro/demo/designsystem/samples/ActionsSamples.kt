@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.suhel.llamabro.demo.designsystem.components.ChoiceChips
 import com.suhel.llamabro.demo.designsystem.components.DemoFab
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.IconAction
@@ -17,8 +18,8 @@ import com.suhel.llamabro.demo.designsystem.components.SheetFrame
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 
 /**
- * Every action: the strong button (on and off), quiet ones, icons, the FAB, the Think chip and the Basic/Advanced
- * switch.
+ * Every action: the strong button (on and off), quiet ones, icons (one with its mark), the FAB, the Think chip, the
+ * Basic/Advanced switch and a few choices as chips.
  */
 @Composable
 internal fun ActionsSamples() {
@@ -37,6 +38,9 @@ internal fun ActionsSamples() {
             IconAction(DemoIcons.Copy, "Copy", onClick = {})
             IconAction(DemoIcons.Share, "Share", onClick = {})
             IconAction(DemoIcons.Regenerate, "Regenerate", onClick = {}, muted = true)
+            // a search's filters, plain and changed from their defaults (the dot)
+            IconAction(DemoIcons.Filter, "Search filters", onClick = {}, muted = true)
+            IconAction(DemoIcons.Filter, "Search filters", onClick = {}, muted = true, mark = "Changed")
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             DemoFab("New chat", DemoIcons.NewChat, onClick = {})
@@ -53,6 +57,11 @@ internal fun ActionsSamples() {
                 selected = 1,
                 onSelect = {},
                 modifier = Modifier.fillMaxWidth(),
+            )
+            ChoiceChips(
+                listOf("Most downloaded", "Trending", "Most liked", "Newest", "Recently updated"),
+                selected = 3,
+                onSelect = {},
             )
         }
     }

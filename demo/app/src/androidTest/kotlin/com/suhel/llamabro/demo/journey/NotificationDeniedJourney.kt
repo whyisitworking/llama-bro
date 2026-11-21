@@ -2,6 +2,7 @@ package com.suhel.llamabro.demo.journey
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import com.suhel.llamabro.demo.models.Catalog
+import com.suhel.llamabro.demo.ui.models.MODELS_INTRO
 import org.junit.Assert.assertEquals
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -18,9 +19,8 @@ class NotificationDeniedJourney : Journey(seenFirstRun = false, asksForNotificat
 
     @Test fun notificationPermissionDeniedStillDownloads() {
         world.engine.reply { content("Hello from Qwen3.5 0.8B") }
-        seeTag("pick_card")
-        tap("Qwen3.5 0.8B")
-        tap("Get Qwen3.5 0.8B")
+        see(MODELS_INTRO) // a fresh install starts on Models
+        getFromModels("Qwen3.5 0.8B")
         assumeTrue("the question was already answered on this install", robot.notificationDialogIsShowing())
         robot.denyNotifications()
 

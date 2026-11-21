@@ -9,6 +9,7 @@ import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.SheetFrame
 import com.suhel.llamabro.demo.designsystem.components.SliderRow
 import com.suhel.llamabro.demo.designsystem.components.Stack
+import com.suhel.llamabro.demo.designsystem.components.SwitchRow
 import java.util.Locale
 
 /** Settings as a grouped list, an action as a group of one, a selectable list, sliders: every use of [ListRow]. */
@@ -69,7 +70,10 @@ internal fun RowsSamples() {
     }
 }
 
-/** A menu on a sheet: the group is the canvas on the sheet's surface, a check on the chosen row, no dead space. */
+/**
+ * A menu on a sheet: the group is the canvas on the sheet's surface, a check on the chosen row, no dead space; and a
+ * setting that is on or off, with its caveat and without.
+ */
 @Composable
 internal fun RowsSheetSamples() {
     SampleFrame {
@@ -80,6 +84,17 @@ internal fun RowsSheetSamples() {
                     row { ListRow("Quick", subtitle = "A short think first", onClick = {}) }
                     row { ListRow("Deep", subtitle = "Takes as long as it needs", onClick = {}) }
                 }
+            }
+            GroupedList {
+                row {
+                    SwitchRow(
+                        "Sees images",
+                        checked = true,
+                        onCheckedChange = {},
+                        subtitle = "Only models tagged as seeing pictures. Untagged ones are left out.",
+                    )
+                }
+                row { SwitchRow("Sees images", checked = false, onCheckedChange = {}) }
             }
         }
     }

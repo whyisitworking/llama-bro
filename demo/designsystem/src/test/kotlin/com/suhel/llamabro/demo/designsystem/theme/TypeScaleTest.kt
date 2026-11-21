@@ -21,11 +21,19 @@ class TypeScaleTest {
             "title" to DemoType.title,
             "titleSmall" to DemoType.titleSmall,
             "body" to DemoType.body,
+            "replyBody" to DemoType.replyBody,
             "bodyMedium" to DemoType.bodyMedium,
             "bodySmall" to DemoType.bodySmall,
             "label" to DemoType.label,
             "labelSmall" to DemoType.labelSmall,
             "code" to DemoType.code,
+            "cardTitle" to DemoType.cardTitle,
+            "screenTitleLight" to DemoType.screenTitleLight,
+            "titleRegular" to DemoType.titleRegular,
+            "quietLabel" to DemoType.quietLabel,
+            "pageBody" to DemoType.pageBody,
+            "sidebarTitle" to DemoType.sidebarTitle,
+            "rowLine" to DemoType.rowLine,
         )
 
     private data class Spec(val size: Float, val line: Float, val weight: FontWeight, val tracking: Float)
@@ -38,10 +46,21 @@ class TypeScaleTest {
             "title" to Spec(16f, 24f, FontWeight.Medium, 0.2f),
             "titleSmall" to Spec(14f, 20f, FontWeight.Medium, 0.1f),
             "body" to Spec(16f, 24f, FontWeight.Normal, 0.5f),
+            // a reply's looser line (D125)
+            "replyBody" to Spec(16f, 26f, FontWeight.Normal, 0.5f),
             "bodyMedium" to Spec(14f, 20f, FontWeight.Normal, 0.2f),
             "bodySmall" to Spec(12f, 16f, FontWeight.Normal, 0.4f),
             "label" to Spec(14f, 20f, FontWeight.Medium, 0.1f),
             "labelSmall" to Spec(12f, 16f, FontWeight.Medium, 0.5f),
+            // the Models page's quiet roles (D123)
+            "cardTitle" to Spec(24f, 32f, FontWeight.Normal, 0f),
+            "screenTitleLight" to Spec(24f, 32f, FontWeight.Light, 0f),
+            "titleRegular" to Spec(16f, 24f, FontWeight.Normal, 0.15f),
+            "quietLabel" to Spec(13f, 20f, FontWeight.Normal, 0f),
+            "pageBody" to Spec(13f, 24f, FontWeight.Normal, 0.2f),
+            // the sidebar's quiet roles (D126)
+            "sidebarTitle" to Spec(22f, 28f, FontWeight.Normal, 0f),
+            "rowLine" to Spec(15f, 20f, FontWeight.Normal, 0.1f),
         )
 
     @Test
@@ -57,7 +76,8 @@ class TypeScaleTest {
 
     @Test
     fun everyLineHeightIsOnTheFourDpGrid() {
-        for ((name, style) in allRoles) {
+        // a reply's line is chosen by eye, off the grid on purpose (D125)
+        for ((name, style) in allRoles - "replyBody") {
             assertEquals("$name line height is not a multiple of 4", 0f, style.lineHeight.value % 4f, 0f)
         }
     }
@@ -68,13 +88,20 @@ class TypeScaleTest {
     }
 
     @Test
-    fun onlyTheTwoHeroRolesAreSerif() {
-        val serif =
-            allRoles.filter {
-                it.value.fontFamily != FontFamily.SansSerif &&
-                    it.value.fontFamily != FontFamily.Monospace
-            }
-        assertEquals(setOf("displayHero", "sheetTitle"), serif.keys)
+    fun onlyTheHeroRolesTheCardsNameAndTheSidebarsTitleAreSerif() {
+        val sans = DemoType.body.fontFamily
+        val serif = allRoles.filter { it.value.fontFamily != sans && it.value.fontFamily != FontFamily.Monospace }
+        assertEquals(setOf("displayHero", "sheetTitle", "cardTitle", "sidebarTitle"), serif.keys)
+        assertEquals(
+            serif.values
+                .map { it.fontFamily }
+                .toSet()
+                .size,
+            1,
+        )
+        assertNotEquals(sans, DemoType.displayHero.fontFamily)
+        // the sans is the bundled face (D125), not the system's
+        assertNotEquals(FontFamily.SansSerif, sans)
         assertEquals(FontFamily.Monospace, DemoType.code.fontFamily)
     }
 

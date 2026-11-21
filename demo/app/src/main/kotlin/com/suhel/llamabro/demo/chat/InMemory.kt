@@ -2,14 +2,18 @@ package com.suhel.llamabro.demo.chat
 
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.Format
+import com.suhel.llamabro.demo.models.LibraryModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 /**
  * The model in memory now, as the person sees it before unloading it (D59): "Qwen3.5 4B", "2.8 GB · NPU · 16k context".
- * The size is the model's weights; its context and caches come on top. The context is the size the SDK picked.
+ * The size is the one size the Models page says (the model file and its image reader, models-page design §7), else
+ * the weights the SDK loaded; its context and caches come on top. The context is the size the SDK picked.
  */
 data class InMemory(val name: String, val detail: String)
 
@@ -30,22 +34,35 @@ private const val TOKENS_PER_K = 1_024
  */
 fun HostState.loaded(): HostState.Ready? = this as? HostState.Ready ?: (this as? HostState.Waking)?.outgoing
 
-/** What [HostState] holds in memory: a loaded model, or nothing (idle, waking with nothing loaded, failed). */
-fun HostState.inMemory(): InMemory? =
+/**
+ * What [HostState] holds in memory: a loaded model, or nothing (idle, waking with nothing loaded, failed). [totalBytes]
+ * is the loaded model's one size from the library; without it, the weights' size.
+ */
+fun HostState.inMemory(totalBytes: Long? = null): InMemory? =
     loaded()?.let { ready ->
         InMemory(
             Catalog.nameOf(ready.key),
             listOf(
-                Format.sizeInGb(ready.model.info.sizeBytes),
+                Format.sizeInGb(totalBytes?.takeIf { it > 0 } ?: ready.model.info.sizeBytes),
                 ready.model.loadReport.device.label,
                 contextLabel(ready.model.loadReport.contextSize),
             ).joinToString(" · "),
         )
     }
 
-/** What the person sees and controls of the model's memory: what is loaded, whether a reply holds it, unloading it. */
-class ModelMemory(private val host: ModelHost, private val engine: ChatEngine) {
-    val inMemory: Flow<InMemory?> = host.state.map { it.inMemory() }
+/**
+ * What the person sees and controls of the model's memory: what is loaded, whether a reply holds it, unloading it.
+ * [library] gives the loaded model's one size.
+ */
+class ModelMemory(
+    private val host: ModelHost,
+    private val engine: ChatEngine,
+    library: Flow<List<LibraryModel>> = flowOf(emptyList()),
+) {
+    val inMemory: Flow<InMemory?> =
+        combine(host.state, library) { state, models ->
+            state.inMemory(models.firstOrNull { it.key == state.loaded()?.key }?.totalBytes)
+        }
 
     /** A reply is under way somewhere: unloading waits for it rather than cutting it off. */
     val replying: StateFlow<Boolean> get() = engine.replying

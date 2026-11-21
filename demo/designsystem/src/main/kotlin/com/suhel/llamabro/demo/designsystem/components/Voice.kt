@@ -95,7 +95,7 @@ internal fun RecordingLine(state: RecordingState, modifier: Modifier = Modifier)
 }
 
 /**
- * A sent voice message (D76): a play or pause circle filled with the send accent, the clip's levels with the played
+ * A sent voice message (D76): a play or pause circle filled with the accent, the clip's levels with the played
  * part in ink, and its length, with the [time] after it when the layout shows times. Read out as one item, "Voice
  * message, 0:42"; the circle is its own button.
  */
@@ -113,14 +113,14 @@ fun VoiceBubble(clip: VoiceClip, onToggle: () -> Unit, modifier: Modifier = Modi
                 .minimumInteractiveComponentSize()
                 .size(DemoSize.barCircle)
                 .clip(CircleShape)
-                .background(colors.sendAccent)
+                .background(colors.accent)
                 .clickable(role = Role.Button, onClick = onToggle),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 if (clip.playing) DemoIcons.Pause else DemoIcons.Play,
                 contentDescription = stringResource(if (clip.playing) R.string.ds_pause else R.string.ds_play),
-                tint = colors.onSendAccent,
+                tint = colors.onAccent,
                 modifier = Modifier.size(DemoSize.barGlyph),
             )
         }

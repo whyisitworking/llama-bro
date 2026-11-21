@@ -95,7 +95,7 @@ class ChatJourneys : Journey() {
 
         tapDescription("Chats")
         tapDrawerModels()
-        see("Get more models")
+        see("On this phone")
         compose.onNode(hasTestTag("library_model") and hasAnyDescendant(hasText("Qwen3.5 0.8B"))).performTouchInput {
             swipeLeft()
         }
@@ -133,7 +133,9 @@ class ChatJourneys : Journey() {
         see("Recommended")
         Thread.sleep(SHEET_SETTLE)
         shot("2-the-sheet-on-smaller")
-        tap("Get Qwen3.5 0.8B", substring = true)
+        // the chat already runs this model: no "Start a chat" on it; Get names the Smaller file's quant
+        compose.onAllNodes(hasTestTag("chat_with")).assertCountEquals(0)
+        tap("Get Q3_K_M", substring = true)
         compose.waitUntil(WAIT) { world.downloads.enqueued.isNotEmpty() }
         assertEquals(listOf(HfModel.parse("${swift.repo}:Q3_K_M")), world.downloads.enqueued)
     }

@@ -1,7 +1,5 @@
 package com.suhel.llamabro.demo.benchmark
 
-import com.suhel.llamabro.DeviceKind
-import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.ModelDiscovery
 import com.suhel.llamabro.demo.models.RepoFile
 import com.suhel.llamabro.hub.LlamaBroHub
@@ -10,7 +8,7 @@ import com.suhel.llamabro.hub.LlamaBroHub
  * Hugging Face with every repo listing three sizes, each fitting: the model sheet's work is measured, not the network's
  * (the fake hub keeps its files a few KB, so real sizes are stood in here).
  */
-class BenchmarkDiscovery(hub: LlamaBroHub) : ModelDiscovery(hub, { DeviceFacts(8L shl 30, DeviceKind.Npu) }) {
+class BenchmarkDiscovery(hub: LlamaBroHub) : ModelDiscovery(hub) {
     override suspend fun files(repo: String): List<RepoFile> =
         listOf(
             RepoFile("model-Q3_K_M.gguf", "Q3_K_M", 1_900_000_000),

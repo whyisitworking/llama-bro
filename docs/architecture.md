@@ -667,8 +667,10 @@ hub.recommendedSampling(ref)                         // fromFile and fromBaseMod
 ```
 
 Search (D68) asks `/api/models` for GGUF repos with a query, a sort (downloads by default, likes, trending, recently
-updated), a filter by author and one for models that take pictures, and pages through the Hub's `Link` cursor; a cursor
-that leaves the endpoint's origin is not followed. A result groups the repos tagged `base_model:quantized:X` under X;
+updated, newest), a filter by author, one for models that take pictures, a parameter range (`num_parameters`, as each
+upload reports its count) and one that hides gated repos, and pages through the Hub's `Link` cursor; a cursor that
+leaves the endpoint's origin is not followed. A cursor is text (`SearchCursor.value`) an app may store for an endless
+list that outlives the process; the hub follows a stored one only on its own endpoint. A result groups the repos tagged `base_model:quantized:X` under X;
 a fine-tune, merge or adapter names the same base under another tag and stays its own result (F146). Grouping is per
 page, so an endless list merges pages by result id. `files(repo)` lists the newest commit through the resolver's look (it moves no ref) and gives each model GGUF
 once, split parts summed, with an `HfModel` naming that file, and whether an `mmproj` is there; sizes, not a fit

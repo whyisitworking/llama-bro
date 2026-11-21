@@ -163,7 +163,7 @@ fun InMemoryList(inMemory: InMemory?, replying: Boolean, onUnload: () -> Unit) {
                 }
 
                 else -> {
-                    ListRow(inMemory.name, subtitle = inMemory.detail, end = { QuietButton("Unload", onUnload) })
+                    ListRow(inMemory.name, subtitle = inMemory.detail, control = { QuietButton("Unload", onUnload) })
                 }
             }
         }

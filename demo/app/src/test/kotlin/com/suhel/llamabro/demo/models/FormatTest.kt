@@ -14,14 +14,9 @@ class FormatTest {
         assertEquals("12k", Format.downloads(12_345))
     }
 
-    @Test fun progressTextFormats() {
-        assertEquals(
-            "1.2 GB of 2.8 GB · 9.8 MB/s · 3 min left",
-            Format.progress(1_200_000_000, 2_800_000_000, 9_800_000, 180),
-        )
-        assertEquals("532 MB of 2.8 GB", Format.progress(532_000_000, 2_800_000_000, null, null))
-        assertEquals("1.2 GB of 2.8 GB · under a minute left", Format.progress(1_200_000_000, 2_800_000_000, null, 20))
-        assertEquals("1.0 GB of 2.8 GB · 9.8 MB/s", Format.progress(1_000_000_000, 2_800_000_000, 9_800_000, null))
+    @Test fun timeLeftTextFormats() {
+        assertEquals("under a minute left", Format.timeLeftText(20))
+        assertEquals("3 min left", Format.timeLeftText(180))
     }
 
     @Test fun downloadTimeFormats() {
@@ -51,5 +46,14 @@ class FormatTest {
         assertEquals("6.1 GB", Format.storageGb(6_100_000_000))
         assertEquals("120 GB", Format.storageGb(120_000_000_000))
         assertEquals("10 GB", Format.storageGb(10_000_000_000))
+    }
+
+    @Test fun arrivedSaysBothNumbersInTheTotalsUnit() {
+        // one string, never a flip at 1 GB
+        assertEquals("0.0 of 3.4 GB", Format.arrived(45_000_000, 3_400_000_000))
+        assertEquals("0.9 of 3.4 GB", Format.arrived(900_000_000, 3_400_000_000))
+        assertEquals("1.2 of 3.4 GB", Format.arrived(1_200_000_000, 3_400_000_000))
+        assertEquals("35 of 740 MB", Format.arrived(35_000_000, 740_000_000))
+        assertEquals("310 of 740 MB", Format.arrived(310_000_000, 740_000_000))
     }
 }

@@ -56,17 +56,68 @@ internal class HubSearchTest {
             assertNull("no Link header, no next page", page.next)
         }
 
+    @Test fun searchAsksForTheFactsItNeedsInOneRequest() =
+        runBlocking {
+            val transport = ScriptedTransport()
+            transport.json(searchUrl("qwen"), "[]")
+            hub(transport).search("qwen")
+            assertEquals(listOf(searchUrl("qwen")), transport.requests)
+            assertTrue(transport.requests.single().endsWith(EXPAND))
+        }
+
+    @Test fun searchReadsTaskTagsAndGgufSummary() =
+        runBlocking {
+            val repo =
+                searchRepo(
+                    """{"id":"a/b-GGUF","pipeline_tag":"text-generation","tags":["gguf","code"],""" +
+                        """"lastModified":"2026-11-12T02:15:52.000Z","gguf":{"total":27320697856,""" +
+                        """"architecture":"qwen35","context_length":262144,"chat_template":"{{x}}"}}""",
+                )
+            assertEquals("text-generation", repo.task)
+            assertEquals(listOf("gguf", "code"), repo.tags)
+            assertEquals("2026-11-12T02:15:52.000Z", repo.lastModified)
+            val gguf = repo.gguf!!
+            assertEquals(27320697856L, gguf.parameters)
+            assertEquals("qwen35", gguf.architecture)
+            assertEquals(262144L, gguf.contextLength)
+            assertTrue(gguf.hasChatTemplate)
+        }
+
+    @Test fun aRepoWithoutGgufMetadataHasANullSummary() =
+        runBlocking {
+            assertNull(searchRepo("""{"id":"a/b-GGUF"}""").gguf)
+            assertNull(searchRepo("""{"id":"a/b-GGUF","gguf":{"total":0,"architecture":"x"}}""").gguf)
+        }
+
+    @Test fun noChatTemplateIsReported() =
+        runBlocking {
+            val repo = searchRepo("""{"id":"a/b-GGUF","gguf":{"total":5,"architecture":"bert"}}""")
+            assertFalse(repo.gguf!!.hasChatTemplate)
+            assertNull(repo.gguf!!.contextLength)
+        }
+
+    private suspend fun searchRepo(item: String): SearchRepo {
+        val transport = ScriptedTransport()
+        transport.json(searchUrl("x"), "[$item]")
+        return hub(transport)
+            .search("x")
+            .results
+            .single()
+            .repos
+            .single()
+    }
+
     @Test fun sortAndFiltersBuildTheQuery() =
         runBlocking {
             val transport = ScriptedTransport()
             transport.json(searchUrl("gemma 3"), "[]")
             transport.json(
-                "${ENDPOINT}api/models?search=gemma+3&filter=gguf&sort=trendingScore&direction=-1&limit=10" +
+                "${ENDPOINT}api/models?search=gemma+3&filter=gguf&sort=trendingScore&direction=-1&limit=10$EXPAND" +
                     "&author=ggml-org&pipeline_tag=image-text-to-text",
                 "[]",
             )
-            transport.json("${ENDPOINT}api/models?filter=gguf&sort=likes&direction=-1&limit=40", "[]")
-            transport.json("${ENDPOINT}api/models?filter=gguf&sort=lastModified&direction=-1&limit=40", "[]")
+            transport.json("${ENDPOINT}api/models?filter=gguf&sort=likes&direction=-1&limit=40$EXPAND", "[]")
+            transport.json("${ENDPOINT}api/models?filter=gguf&sort=lastModified&direction=-1&limit=40$EXPAND", "[]")
             val client = hub(transport)
 
             client.search("gemma 3")
@@ -85,7 +136,7 @@ internal class HubSearchTest {
     @Test fun paging() =
         runBlocking {
             val transport = ScriptedTransport()
-            val second = "${ENDPOINT}api/models?search=qwen&filter=gguf&sort=downloads&direction=-1&limit=40&cursor=abc"
+            val second = searchUrl("qwen") + "&cursor=abc"
             transport.json(searchUrl("qwen"), SEARCH_ONE, headers = mapOf("link" to listOf("<$second>; rel=\"next\"")))
             transport.json(
                 second,
@@ -133,6 +184,64 @@ internal class HubSearchTest {
 
                 assertEquals(listOf(true, true), endpoint.auth)
                 assertEquals("the redirect reached the other host", 1, other.auth.size)
+                assertEquals("no token across the redirect", listOf(false), other.auth)
+            } finally {
+                endpoint.stop()
+                other.stop()
+            }
+        }
+
+    @Test fun modelCardStripsFrontMatter() =
+        runBlocking {
+            val transport = ScriptedTransport()
+            transport.text("Qwen/Qwen3.5-4B", "---\nlicense: mit\n---\n\n# Qwen\nHello")
+            assertEquals("# Qwen\nHello", hub(transport).modelCard("Qwen/Qwen3.5-4B"))
+            transport.text("a/plain", "# Title\n---\nbody")
+            assertEquals("# Title\n---\nbody", hub(transport).modelCard("a/plain"))
+            transport.text("a/unclosed", "---\nlicense: mit\n# Title")
+            assertEquals("---\nlicense: mit\n# Title", hub(transport).modelCard("a/unclosed"))
+        }
+
+    @Test fun modelCardIsNullWithoutAReadme() =
+        runBlocking { assertNull(hub(ScriptedTransport()).modelCard("Qwen/Qwen3.5-4B")) }
+
+    @Test fun modelCardIsCutAtHalfAMebibyte() =
+        runBlocking {
+            val transport = ScriptedTransport()
+            transport.text("a/big", "x".repeat(600 * 1024))
+            assertEquals(512 * 1024, hub(transport).modelCard("a/big")?.length)
+        }
+
+    @Test fun modelCardOfAGatedRepoThrowsUnauthorized() =
+        runBlocking {
+            val endpoint = Server { exchange -> exchange.reply(401, """{"error":"gated"}""") }
+            try {
+                tokenHub(endpoint.port).modelCard("meta/gated")
+                fail("expected Unauthorized")
+            } catch (expected: HubException.Unauthorized) {
+                assertEquals(401, expected.httpStatus)
+            } finally {
+                endpoint.stop()
+            }
+        }
+
+    @Test fun modelCardSendsTheTokenOnlyToTheEndpoint() =
+        runBlocking {
+            val other = Server { exchange -> exchange.reply(200, "# elsewhere") }
+            val endpoint =
+                Server { exchange ->
+                    if (exchange.requestURI.path.startsWith("/redirect/")) {
+                        exchange.responseHeaders.add("Location", "http://127.0.0.1:${other.port}/card.md")
+                        exchange.reply(302, "")
+                    } else {
+                        exchange.reply(200, "# here")
+                    }
+                }
+            try {
+                val client = tokenHub(endpoint.port)
+                assertEquals("# here", client.modelCard("a/b"))
+                client.modelCard("redirect/b")
+                assertEquals(listOf(true, true), endpoint.auth)
                 assertEquals("no token across the redirect", listOf(false), other.auth)
             } finally {
                 endpoint.stop()
@@ -584,6 +693,10 @@ internal class HubSearchTest {
             routes[url] = Route(status, body.toByteArray(), headers)
         }
 
+        fun text(repo: String, readme: String) {
+            routes["$ENDPOINT$repo/resolve/main/README.md"] = Route(200, readme.toByteArray(), emptyMap())
+        }
+
         /** The refs and tree a [com.suhel.llamabro.hub.internal.Resolver] reads; a size of 0 is filled by [gguf]. */
         fun listing(repo: String, files: List<Pair<String, Long>>) {
             json("${ENDPOINT}api/models/$repo/refs", refs())
@@ -663,8 +776,14 @@ internal class HubSearchTest {
         val NEWER = "d".repeat(40)
         val TOKEN = "hf_" + "a".repeat(34)
 
+        const val EXPAND =
+            "&expand[]=downloads&expand[]=likes&expand[]=tags&expand[]=pipeline_tag&expand[]=lastModified&expand[]=gguf"
+
         fun searchUrl(query: String): String =
-            "${ENDPOINT}api/models?search=${query.replace(" ", "+")}&filter=gguf&sort=downloads&direction=-1&limit=40"
+            "${ENDPOINT}api/models?search=${query.replace(
+                " ",
+                "+",
+            )}&filter=gguf&sort=downloads&direction=-1&limit=40$EXPAND"
 
         fun refs(): String = """{"branches":[{"name":"main","targetCommit":"$COMMIT"}]}"""
 

@@ -6,6 +6,7 @@ import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.models.NotOnPhone
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /** What the user can do about a [Limit]: the buttons the design lists, as values the screen maps to components. */
 enum class LimitAction {
@@ -39,8 +40,9 @@ data class Limit(
  * closes: a line the chat waits on keeps its way out.
  */
 class ClosedNotes {
+    // the person's ✕: an input
     private val _closed = MutableStateFlow<Limit?>(null)
-    val closed: StateFlow<Limit?> = _closed
+    val closed: StateFlow<Limit?> = _closed.asStateFlow()
 
     fun close(limit: Limit?) {
         _closed.value = limit?.takeIf { it.dismissible }
@@ -145,8 +147,17 @@ object Limits {
     /** The line for a failed download (the hub's [failure]). */
     fun forDownload(failure: DownloadFailure): Limit =
         when {
+            // what stopped and why, never "paused" for a failure: a pause is the person's own (models audit R5, S7)
+            failure.kind == DownloadFailure.Kind.Network -> {
+                Limit("The connection dropped.", LimitAction.Retry, "Try again")
+            }
+
+            failure.kind == DownloadFailure.Kind.RateLimited -> {
+                Limit("Hugging Face is busy right now.", LimitAction.Retry, "Try again")
+            }
+
             failure.retryable -> {
-                Limit("The download paused. It'll pick up where it left off.", LimitAction.Retry, "Retry")
+                Limit("The download stopped.", LimitAction.Retry, "Try again")
             }
 
             failure.kind == DownloadFailure.Kind.Unauthorized -> {

@@ -6,7 +6,7 @@ integration tests of the public API.
 
 ## Features
 
-- First run offers three suggested models with plain-language descriptions; Get models searches Hugging Face and shows
+- First run offers three suggested models with plain-language descriptions; the Models screen shows what is downloading and on the phone, searches Hugging Face and shows
   how each file will run on this phone before anything is downloaded.
 - Downloads continue in the background, survive process death and resume where they stopped.
 - Chat with streaming replies, markdown and code blocks, a thought fold ("Thought for 8 s"), think levels (Off, Quick,

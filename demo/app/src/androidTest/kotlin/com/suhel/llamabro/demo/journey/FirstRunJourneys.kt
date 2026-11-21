@@ -2,10 +2,11 @@ package com.suhel.llamabro.demo.journey
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import com.suhel.llamabro.demo.models.Catalog
+import com.suhel.llamabro.demo.ui.models.MODELS_INTRO
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** The first minutes: from the three picks to the first answer. */
+/** The first minutes: from the Models page a fresh install starts on to the first answer. */
 @OptIn(ExperimentalTestApi::class)
 class FirstRunJourneys : Journey(seenFirstRun = false, asksForNotifications = true) {
     private val swift = Catalog.picks[0].key
@@ -16,12 +17,12 @@ class FirstRunJourneys : Journey(seenFirstRun = false, asksForNotifications = tr
             content("Hello from Qwen3.5 0.8B")
             timings(promptTokens = 5, predictedTokens = 40)
         }
-        seeTag("pick_card")
-        shot("1-picks")
-        tap("Qwen3.5 0.8B")
-        see("Get Qwen3.5 0.8B")
-        shot("2-sheet")
-        tap("Get Qwen3.5 0.8B")
+        see(MODELS_INTRO)
+        shot("1-models")
+        tap("Qwen3.5 0.8B", substring = true)
+        seeTag("get_button")
+        shot("2-card")
+        tapTag("get_button")
         robot.allowNotificationsIfAsked()
 
         seeTag("chat_screen")

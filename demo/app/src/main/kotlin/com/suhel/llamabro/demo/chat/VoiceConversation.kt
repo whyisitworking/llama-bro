@@ -78,10 +78,14 @@ class VoiceConversation(
     private val clock: () -> Long = System::currentTimeMillis,
     private val locale: () -> Locale = Locale::getDefault,
 ) {
+    // external event: the speech session's phases, levels and captions
     private val _ui = MutableStateFlow(VoiceUi())
     val ui: StateFlow<VoiceUi> = _ui.asStateFlow()
 
-    /** Why voice mode can't go on (the model didn't load, the microphone was refused), with its way out. */
+    /**
+     * Why voice mode can't go on (the model didn't load, the microphone was refused), with its way out. An outside
+     * event: the session's failures, and the load's, which the engine writes.
+     */
     val limit = MutableStateFlow<Limit?>(null)
 
     private var held: VoiceHold? = null

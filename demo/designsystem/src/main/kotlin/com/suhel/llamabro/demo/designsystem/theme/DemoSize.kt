@@ -6,7 +6,7 @@ import androidx.compose.ui.unit.sp
 /**
  * The size scale: every height, width and icon size a component uses, so related elements rank the same way on every
  * screen (docs/design/demo-app.md, section 8.6). Heights follow Material 3: a 48 dp touch target, 40 dp controls,
- * 56 dp fields and buttons, 48 (dense), 56 and 72 dp list rows, a 64 dp top bar and an 80 dp navigation bar. Icons
+ * 48 dp buttons, 56 dp fields, 48 (dense), 56 and 72 dp list rows, a 64 dp top bar and an 80 dp navigation bar. Icons
  * come in two sizes: [icon] for actions and leading icons, [iconSmall] for marks inside text (a chevron, a check, a
  * remove cross).
  */
@@ -16,6 +16,23 @@ object DemoSize {
 
     /** A mark inside a line of text, or on a thumbnail: one size for every small glyph. */
     val iconSmall = 18.dp
+
+    /**
+     * A model's fit symbol: one box and one visual weight for all five figures (models-screen design). It grows with
+     * the font up to [fitSymbolMax], so at large font it still reads beside the name.
+     */
+    val fitSymbol = 20.dp
+    val fitSymbolMax = 32.dp
+
+    /** A capability icon on a model row's quiet line; it grows with the font up to [capabilityIconMax]. */
+    val capabilityIcon = 16.dp
+    val capabilityIconMax = 24.dp
+
+    /**
+     * Every button, primary or quiet, bordered or not: one touch target tall, so a pinned foot of
+     * 64 dp holds one with 8 dp above and below.
+     */
+    val button = 48.dp
 
     /** The minimum touch target of anything tappable (Material, WCAG 2.5.8). */
     val target = 48.dp
@@ -68,6 +85,16 @@ object DemoSize {
     val ring = 28.dp
     val ringStroke = 3.5.dp
 
+    /**
+     * The download panel's ring drawn around its Pause / Resume / Try again glyph (models-page design §4.5), centred in
+     * a [target]: [panelRing] with a [panelGlyph] in the card's 64 dp foot, [panelRingCompact] with a
+     * [panelGlyphCompact] on a model row, where the panel is one target tall.
+     */
+    val panelRing = 40.dp
+    val panelGlyph = 20.dp
+    val panelRingCompact = 34.dp
+    val panelGlyphCompact = 16.dp
+
     /** Progress tracks: a thin line under a title, a download bar, the storage bar. */
     val trackThin = 2.dp
     val track = 4.dp
@@ -98,11 +125,24 @@ object DemoSize {
     val talkGlyph = 32.dp
     val captionFade = 36.dp
 
+    /**
+     * How far content fades at the end of a scroll that has more beyond it (a wide table, a sheet's page, a long
+     * dialog): enough to read as "continues", not to hide a line.
+     */
+    val edgeFade = 24.dp
+
     /** A divider and an outline. */
     val hairline = 1.dp
 
-    /** The outline of a selected card. */
+    /**
+     * The one "this is chosen" outline (D125), always in the accent on the chosen thing's own shape: a selected card,
+     * a size or quant row, a layout choice and a segmented switch's chosen segment.
+     */
     val selectedStroke = 2.dp
+
+    /** A choice's radio mark (Material's 20 dp circle) and the dot inside it when chosen. */
+    val radioMark = 20.dp
+    val radioDot = 10.dp
 
     /** Shadow elevations: [elevationSoft] lifts a card or a raised segment, [elevationRaised] a floating bar. */
     val elevationSoft = 2.dp
@@ -129,6 +169,15 @@ object DemoSize {
 
     /** The tallest a list inside a sheet grows before it scrolls. */
     val sheetListMaxHeight = 340.dp
+
+    /** The tallest an expandable sheet (a model's card) opens before its content is pulled up to full screen. */
+    val sheetCompactHeight = 560.dp
+
+    /**
+     * An expandable sheet's pinned foot, at least (models-page design §4): one [button] with 8 dp above and below, so
+     * nothing above it moves when its action changes.
+     */
+    val sheetFoot = 64.dp
 
     /**
      * The quantisation table's size and fit columns, and a stacked row's line, in sp so they grow with the text they

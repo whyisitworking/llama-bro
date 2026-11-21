@@ -289,7 +289,8 @@ fun DefaultModelContent(
                         row {
                             ListRow(
                                 model.name,
-                                subtitle = Format.sizeInGb(model.sizeBytes),
+                                // the one size, the file and its image reader (models-page design §7)
+                                subtitle = Format.sizeInGb(model.totalBytes),
                                 selected = defaultModel == model.key.toString(),
                                 onClick = { onPin(model.key.toString()) },
                             )
@@ -383,6 +384,7 @@ fun AboutContent(version: String, onBack: () -> Unit) {
         Section("Licences") {
             GroupedList {
                 row { ListRow("llama.cpp", subtitle = "MIT licence") }
+                row { ListRow("Geist", subtitle = "SIL Open Font Licence 1.1") }
                 row { ListRow("Source Serif 4", subtitle = "SIL Open Font Licence 1.1") }
                 row { ListRow("Jetpack Compose, Room, WorkManager", subtitle = "Apache licence 2.0") }
             }

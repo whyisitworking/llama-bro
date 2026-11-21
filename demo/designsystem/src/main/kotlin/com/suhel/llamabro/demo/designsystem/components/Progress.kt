@@ -34,9 +34,10 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
+import com.suhel.llamabro.demo.designsystem.theme.ringTrack
 
 /**
- * The model waking up (demo design §4.1): a fine accent line across the top of the reply area, [DemoSize.trackThin]
+ * The model waking up (demo design §4.3): a fine accent line across the top of the reply area, [DemoSize.trackThin]
  * high. Once the load reports how far it has come, [progress] (0 to 1), the line fills: the accent over a soft accent
  * track, as the download ring does, easing to each new value. Before that, a 30%-wide gradient sweeps across it every
  * 1,400 ms; with animations off it is a static line. Inactive, it keeps its height and draws nothing. The sweep and the
@@ -109,16 +110,26 @@ fun WakeHairline(active: Boolean, modifier: Modifier = Modifier, progress: Float
 
 /**
  * The download ring beside a model's name while it arrives: the accent arc over a soft accent track, easing to each
- * new [fraction]. [label] ("Arriving · 38% · about 40 s") is what a screen reader says.
+ * new [fraction]. [label] ("Arriving · 38% · about 40 s") is what a screen reader says. [frozen] draws the arc in the
+ * muted ink: a download that is paused or stopped keeps its amount but is not moving (models-page design §4.5).
  */
 @Composable
-fun DownloadRing(fraction: Float, modifier: Modifier = Modifier, label: String? = null, size: Dp = DemoSize.ring) {
+fun DownloadRing(
+    fraction: Float,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    size: Dp = DemoSize.ring,
+    frozen: Boolean = false,
+    /** False draws each [fraction] as it comes: a panel whose words say the bytes moves its arc with them. */
+    eases: Boolean = true,
+) {
     val colors = LocalDemoColors.current
-    val shown by animateFloatAsState(
+    val animated by animateFloatAsState(
         fraction.coerceIn(0f, 1f),
         tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard),
         label = "ring",
     )
+    val shown = if (eases) animated else fraction.coerceIn(0f, 1f)
     Canvas(
         modifier.size(size).semantics {
             progressBarRangeInfo = ProgressBarRangeInfo(fraction.coerceIn(0f, 1f), 0f..1f)
@@ -128,9 +139,9 @@ fun DownloadRing(fraction: Float, modifier: Modifier = Modifier, label: String? 
         val stroke = DemoSize.ringStroke.toPx()
         val inset = stroke / 2
         val arcSize = Size(this.size.width - stroke, this.size.height - stroke)
-        drawArc(colors.accentSoft, 0f, 360f, false, Offset(inset, inset), arcSize, style = Stroke(stroke))
+        drawArc(colors.ringTrack, 0f, 360f, false, Offset(inset, inset), arcSize, style = Stroke(stroke))
         drawArc(
-            colors.accent,
+            if (frozen) colors.muted else colors.accent,
             -90f,
             360f * shown,
             false,
@@ -139,6 +150,34 @@ fun DownloadRing(fraction: Float, modifier: Modifier = Modifier, label: String? 
             style = Stroke(stroke, cap = StrokeCap.Round),
         )
     }
+}
+
+/**
+ * A slot for a bar that is not always there (a search's first page loading): it always takes [DemoSize.track] of
+ * height, so the list under it doesn't jump when the bar comes and goes. [active] draws an indeterminate bar, a band
+ * of accent sweeping across a soft accent track (still, with animations off); inactive, nothing.
+ */
+@Composable
+fun LoadingSlot(active: Boolean, modifier: Modifier = Modifier) {
+    val colors = LocalDemoColors.current
+    val still = animationsDisabled()
+    val slot = modifier.fillMaxWidth().height(DemoSize.track)
+    if (!active) {
+        Box(slot)
+        return
+    }
+    val sweep = if (still) null else rememberLoop(DemoMotion.SWEEP_MILLIS)
+    Box(
+        slot
+            .semantics { stateDescription = "Loading" }
+            .clip(CircleShape)
+            .drawBehind {
+                drawRect(colors.accentSoft)
+                val band = size.width * DemoMotion.SWEEP_WIDTH_FRACTION
+                val start = if (sweep == null) (size.width - band) / 2 else -band + sweep.value * (size.width + band)
+                drawRect(colors.accent, topLeft = Offset(start, 0f), size = Size(band, size.height))
+            },
+    )
 }
 
 /** A thin progress bar (a download on its row, in the library): the accent over the hairline, 4 dp. */

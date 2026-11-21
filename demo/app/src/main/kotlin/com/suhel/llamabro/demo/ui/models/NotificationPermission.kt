@@ -14,7 +14,7 @@ import androidx.core.content.ContextCompat
  * Returns an action that, when [asks], asks for the notification permission (Android 13 and later, when it isn't
  * granted) and then
  * runs [proceed], whatever the answer: a download doesn't wait on the notification, it only loses it (demo design
- * §4.1).
+ * §4.3).
  */
 @Composable
 fun rememberAskNotificationsThen(asks: Boolean, proceed: () -> Unit): () -> Unit {

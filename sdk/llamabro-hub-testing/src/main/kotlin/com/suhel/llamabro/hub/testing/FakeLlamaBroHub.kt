@@ -198,6 +198,24 @@ public class FakeLlamaBroHub(script: FakeLlamaBroHub.() -> Unit = {}) : Closeabl
         /** Whether it takes pictures (the Hub's `image-text-to-text` task), for search's filter. */
         public var takesImages: Boolean = false
 
+        /** The Hub's task (`pipeline_tag`); null lists `text-generation`, or the image task if [takesImages]. */
+        public var task: String? = null
+
+        /** Extra Hub tags, beside `gguf` and the `base_model:` ones. */
+        public var tags: List<String> = emptyList()
+
+        /** The GGUF parameter count the Hub lists (`gguf.total`); null lists no `gguf` summary at all. */
+        public var parameters: Long? = null
+
+        /** The architecture listed in the summary, when [parameters] is set. */
+        public var architecture: String = "llama"
+
+        /** Whether the listed summary has a chat template; false is how an embedding model lists. */
+        public var chatTemplate: Boolean = true
+
+        /** The repo's README text, as the Hub serves it; null serves none. */
+        public var readme: String? = null
+
         /** Whether the repo needs a token: every request for it answers 401, `HubException.Unauthorized`. */
         public var gated: Boolean = false
 

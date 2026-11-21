@@ -18,3 +18,5 @@ local_release.properties
 .claude/
 *.gguf
 *.logcat
+# Python bytecode the scripts leave behind
+__pycache__/

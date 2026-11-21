@@ -53,13 +53,17 @@ object Format {
         return if (seconds < SECONDS_PER_MINUTE) "under a minute" else "about ${minutes(seconds)} min"
     }
 
-    /** "1.2 GB of 2.8 GB · 9.8 MB/s · 3 min left"; the speed and the time are left out when unknown. */
-    fun progress(bytesDone: Long, bytesTotal: Long, bytesPerSecond: Long?, etaSeconds: Long?): String {
-        val parts = mutableListOf("${size(bytesDone)} of ${size(bytesTotal)}")
-        if (bytesPerSecond != null) parts += String.format(Locale.ROOT, "%.1f MB/s", bytesPerSecond / BYTES_PER_MB)
-        if (etaSeconds != null) parts += timeLeftText(etaSeconds)
-        return parts.joinToString(" · ")
-    }
+    /**
+     * How much of a download has arrived, both numbers in the total's unit a total under
+     * a gigabyte reads "35 of 740 MB", any other one decimal of a gigabyte, "0.9 of 3.4 GB". The one progress string:
+     * the ring panel, the row's footer and the cancel dialog all say it.
+     */
+    fun arrived(bytesDone: Long, bytesTotal: Long): String =
+        if (bytesTotal < BYTES_PER_GB) {
+            "${(bytesDone / BYTES_PER_MB).toLong()} of ${(bytesTotal / BYTES_PER_MB).toLong()} MB"
+        } else {
+            String.format(Locale.ROOT, "%.1f of %.1f GB", bytesDone / BYTES_PER_GB, bytesTotal / BYTES_PER_GB)
+        }
 
     /** "under a minute left" or "3 min left": the end of a progress line or of the download notification. */
     fun timeLeftText(etaSeconds: Long): String =
@@ -90,7 +94,8 @@ object Format {
 
     private fun minutes(seconds: Double): Int = ceil(seconds / SECONDS_PER_MINUTE).toInt()
 
-    private fun size(bytes: Long): String =
+    /** "3.4 GB", or "310 MB" under a gigabyte. */
+    fun size(bytes: Long): String =
         if (bytes >= BYTES_PER_GB) sizeInGb(bytes) else "${(bytes / BYTES_PER_MB).toLong()} MB"
 
     /** [tenthsOfUnit] is a count of tenths: 12 gives "1.2", 10 gives "1". */

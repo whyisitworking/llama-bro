@@ -33,6 +33,14 @@ object DemoMotion {
     const val ENTER_MILLIS = 300
     const val EXIT_MILLIS = 150
 
+    /**
+     * Text that changes in place fades through (D119): the old words fade out in [TEXT_OUT_MILLIS], then the new ones
+     * fade in over [TEXT_IN_MILLIS], so two texts never show at once (Material's fade through, short2 and short4 less
+     * a frame). A list's arriving item waits [TEXT_OUT_MILLIS] too, so it never shares a slot with one still leaving.
+     */
+    const val TEXT_OUT_MILLIS = 90
+    const val TEXT_IN_MILLIS = 120
+
     /** A small thing swapping in place: the send icon turning into stop (Material's short4). */
     const val SWAP_MILLIS = 200
     const val SWEEP_MILLIS = 1_400

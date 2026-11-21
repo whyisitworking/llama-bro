@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -26,7 +27,7 @@ import org.junit.rules.RuleChain
 /**
  * A journey starts the real activity over a fresh [World] and drives it as a person would: by what is on the screen
  * (its text, its description, its tags), never through a repository. [asksForNotifications] lets the system's own
- * permission dialog appear; [seenFirstRun] false starts at first run.
+ * permission dialog appear; [seenFirstRun] false starts at first run, the Models page's empty state.
  */
 @OptIn(ExperimentalTestApi::class)
 abstract class Journey(
@@ -88,6 +89,21 @@ abstract class Journey(
     fun tap(text: String, substring: Boolean = false) {
         see(text, substring)
         compose.onNodeWithText(text, substring = substring).performClick()
+    }
+
+    fun tapTag(tag: String) {
+        seeTag(tag)
+        compose.onNodeWithTag(tag).performClick()
+    }
+
+    /**
+     * On the Models page: [name]'s row, then its card's Get (the card names the quant and size, not the model). The
+     * first Get on a fresh install opens a chat on it; a later one stays on the page.
+     */
+    fun getFromModels(name: String) {
+        compose.waitUntilAtLeastOneExists(hasTestTag("model_row") and hasText(name, substring = true), WAIT)
+        compose.onNode(hasTestTag("model_row") and hasText(name, substring = true)).performClick()
+        tapTag("get_button")
     }
 
     fun tapDescription(description: String, substring: Boolean = false) {

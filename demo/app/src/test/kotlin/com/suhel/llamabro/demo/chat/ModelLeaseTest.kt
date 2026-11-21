@@ -14,6 +14,7 @@ import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.models.FakeScheduler
+import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.models.installedModel
@@ -176,6 +177,17 @@ class ModelLeaseTest {
             val newInMemory = host.state.value.inMemory()
             assertEquals("Qwen3.5 4B", newInMemory?.name)
             bigLease.release()
+        }
+
+    /** The model in memory says the one size, its file and its image reader, when it is known. */
+    @Test fun theModelInMemorySaysTheOneSize() =
+        runBlocking {
+            val lease = host.hold(swift, LoadConfig())
+            val weights = lease.model.info.sizeBytes
+            val state = host.state.value
+            assertEquals(Format.sizeInGb(weights), state.inMemory()?.detail?.substringBefore(" · "))
+            assertEquals("1.2 GB", state.inMemory(totalBytes = 1_200_000_000)?.detail?.substringBefore(" · "))
+            lease.release()
         }
 
     @Test fun aWaitThatIsCancelledHoldsNothing() =

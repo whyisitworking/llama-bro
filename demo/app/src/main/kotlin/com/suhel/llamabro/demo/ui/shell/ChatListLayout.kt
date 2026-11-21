@@ -18,8 +18,8 @@ import com.suhel.llamabro.demo.designsystem.components.BottomTab
 import com.suhel.llamabro.demo.designsystem.components.ChatRow
 import com.suhel.llamabro.demo.designsystem.components.DemoFab
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
-import com.suhel.llamabro.demo.designsystem.components.EmptyLine
 import com.suhel.llamabro.demo.designsystem.components.ListHomeScreen
+import com.suhel.llamabro.demo.designsystem.components.Notice
 import com.suhel.llamabro.demo.designsystem.components.SearchField
 import com.suhel.llamabro.demo.designsystem.components.TopBar
 import com.suhel.llamabro.demo.designsystem.components.TopBarTitle
@@ -86,7 +86,7 @@ fun ChatListContent(
         header = {
             SearchField(search, onSearch, "Search chats", Modifier.fillMaxWidth())
             if (chats.isEmpty()) {
-                EmptyLine(if (search.isBlank()) "No chats yet. Start one." else "No chats match.")
+                Notice(if (search.isBlank()) "No chats yet. Start one." else "No chats match.")
             }
         },
         modifier = modifier.statusBarsPadding(),

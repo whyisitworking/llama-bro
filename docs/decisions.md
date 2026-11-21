@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D115 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D131 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -75,7 +75,7 @@ its amendments to know what holds now.
 | [D44](#d44-hub-deviations-after-review-one-download-at-a-time) Hub deviations after review; one download at a time | 2026-11-09 | [D89](#d89-hub-downloads-after-w5s-reviews-files-in-the-plans-order-one-writer-per-blob-by-canonical-path-deletes-one-at-a-time-reclaim-never-fails-a-download) |
 | [D47](#d47-a-resumed-partial-is-verified-by-re-reading-it) A resumed partial is verified by re-reading it | 2026-11-10 | |
 | [D64](#d64-one-call-from-a-hugging-face-name-to-a-loaded-model-through-an-open-modelsource-what-is-on-the-phone-loads-without-the-network) One call from a Hugging Face name to a loaded model, through an open `ModelSource`; what is on… | 2026-11-15 | [D71](#d71-typedt-and-downloadprogress-live-in-core), [D75](#d75-the-fetched-source-interface-the-workers-hub-from-a-workerfactory-and-a-separate-hub-test-module), [D89](#d89-hub-downloads-after-w5s-reviews-files-in-the-plans-order-one-writer-per-blob-by-canonical-path-deletes-one-at-a-time-reclaim-never-fails-a-download), [D107](#d107-the-hub-loads-and-lists-installed-copies-only-a-copy-without-an-installed-record-is-not-on-the-phone) |
-| [D68](#d68-search-on-the-hub-in-llamabro-hub-grouping-re-uploads-with-recommended-sampling-where-the-hub-has-it) Search on the Hub in `llamabro-hub`, grouping re-uploads, with recommended sampling where the… | 2026-11-15 | [D79](#d79-recommended-sampling-returns-the-files-values-and-the-base-models-labelled) |
+| [D68](#d68-search-on-the-hub-in-llamabro-hub-grouping-re-uploads-with-recommended-sampling-where-the-hub-has-it) Search on the Hub in `llamabro-hub`, grouping re-uploads, with recommended sampling where the… | 2026-11-15 | [D79](#d79-recommended-sampling-returns-the-files-values-and-the-base-models-labelled), [D127](#d127-hugging-face-search-is-paged-with-paging-3-over-room-in-the-hubs-order-shaped-by-the-hubs-own-criteria) |
 | [D75](#d75-the-fetched-source-interface-the-workers-hub-from-a-workerfactory-and-a-separate-hub-test-module) The fetched-source interface, the worker's hub from a WorkerFactory, and a separate hub test module | 2026-11-15 | |
 | [D79](#d79-recommended-sampling-returns-the-files-values-and-the-base-models-labelled) Recommended sampling returns the file's values and the base model's, labelled | 2026-11-15 | |
 | [D89](#d89-hub-downloads-after-w5s-reviews-files-in-the-plans-order-one-writer-per-blob-by-canonical-path-deletes-one-at-a-time-reclaim-never-fails-a-download) Hub downloads after W5's reviews: files in the plan's order, one writer per blob by canonical… | 2026-11-17 | [D106](#d106-create-compares-settings-not-the-logger-or-token-provider-hub-locks-key-by-canonical-path-saves-read-version-3-only), [D107](#d107-the-hub-loads-and-lists-installed-copies-only-a-copy-without-an-installed-record-is-not-on-the-phone) |
@@ -140,17 +140,33 @@ its amendments to know what holds now.
 | [D58](#d58-the-chat-moves-with-material-3s-motion) The chat moves with Material 3's motion | 2026-11-14 | |
 | [D59](#d59-the-person-controls-the-models-memory-a-notification-only-while-a-reply-runs-in-the-background) The person controls the model's memory; a notification only while a reply runs in the background | 2026-11-14 | |
 | [D60](#d60-each-model-starts-from-its-cards-sampling-a-chat-can-change-it-again-and-a-reply-has-a-length-limit-with-continue) Each model starts from its card's sampling, a chat can change it again, and a reply has a length… | 2026-11-14 | [D78](#d78-the-demo-lets-the-person-choose-the-context-length-and-the-reply-length) |
-| [D69](#d69-the-demo-goes-neutral-near-black-on-amoled-with-the-new-icons-warmth-only-in-the-orb) The demo goes neutral, near-black on AMOLED, with the new icon's warmth only in the orb | 2026-11-15 | [D73](#d73-indigo-smaller-send-and-think-circles) |
+| [D69](#d69-the-demo-goes-neutral-near-black-on-amoled-with-the-new-icons-warmth-only-in-the-orb) The demo goes neutral, near-black on AMOLED, with the new icon's warmth only in the orb | 2026-11-15 | [D73](#d73-indigo-smaller-send-and-think-circles), [D117](#d117-the-demos-shared-components-take-the-models-pages-visual-system-colour-roles-notices-large-text-one-button-height), [D125](#d125-geist-type-one-monochrome-accent-and-one-selection-outline) |
 | [D72](#d72-the-demo-offers-a-choice-of-chip-in-settings--memory) The demo offers a choice of chip in Settings › Memory | 2026-11-15 | |
-| [D73](#d73-indigo-smaller-send-and-think-circles) Indigo, smaller send and Think circles | 2026-11-15 | |
+| [D73](#d73-indigo-smaller-send-and-think-circles) Indigo, smaller send and Think circles | 2026-11-15 | [D125](#d125-geist-type-one-monochrome-accent-and-one-selection-outline) |
 | [D74](#d74-the-demo-parses-markdown-with-commonmark-java-and-its-gfm-extensions) The demo parses markdown with commonmark-java and its GFM extensions | 2026-11-15 | [D108](#d108-streaming-markdown-re-parses-from-the-last-top-level-block-lists-and-tables-are-not-resumed-row-by-row) |
 | [D76](#d76-the-demo-takes-voice-messages-for-models-that-hear-sent-as-audio-with-no-transcription) The demo takes voice messages for models that hear, sent as audio with no transcription | 2026-11-15 | |
-| [D77](#d77-section-labels-line-up-with-the-text-under-them-the-sidebars-actions-move-to-one-row-of-icons-its-chats-to-48-dp-rows) Section labels line up with the text under them; the sidebar's actions move to one row of icons,… | 2026-11-15 | |
+| [D77](#d77-section-labels-line-up-with-the-text-under-them-the-sidebars-actions-move-to-one-row-of-icons-its-chats-to-48-dp-rows) Section labels line up with the text under them; the sidebar's actions move to one row of icons,… | 2026-11-15 | [D126](#d126-the-sidebar-is-a-quiet-list-a-name-a-search-timed-rows-and-labelled-places) |
 | [D78](#d78-the-demo-lets-the-person-choose-the-context-length-and-the-reply-length) The demo lets the person choose the context length and the reply length | 2026-11-15 | |
 | [D100](#d100-the-demos-voice-mode-a-full-screen-view-entered-from-the-message-bar-hold-to-talk-saved-as-an-ordinary-chat) The demo's voice mode: a full-screen view entered from the message bar, hold to talk, saved as… | 2026-11-18 | [D109](#d109-captions-of-the-users-words-move-to-the-app-it-transcribes-its-own-recording-of-each-turn) |
-| [D101](#d101-the-demos-fit-is-a-formula-on-file-sizes-against-half-the-phones-total-ram-no-network-read-no-free-memory-reading) The demo's fit is a formula on file sizes against half the phone's total RAM; no network read,… | 2026-11-19 | |
+| [D101](#d101-the-demos-fit-is-a-formula-on-file-sizes-against-half-the-phones-total-ram-no-network-read-no-free-memory-reading) The demo's fit is a formula on file sizes against half the phone's total RAM; no network read,… | 2026-11-19 | [D116](#d116-one-models-screen-replaces-get-models-and-the-library-a-rows-fit-is-guessed-from-the-search-list-and-drawn-as-a-pace-figure) |
 | [D108](#d108-streaming-markdown-re-parses-from-the-last-top-level-block-lists-and-tables-are-not-resumed-row-by-row) Streaming markdown re-parses from the last top-level block; lists and tables are not resumed row… | 2026-11-19 | |
 | [D113](#d113-the-design-system-rule-is-tokens-anywhere-enforced-by-a-lint-rule-on-the-syntax-tree) The design-system rule is "tokens anywhere", enforced by a lint rule on the syntax tree | 2026-11-19 | |
+| [D116](#d116-one-models-screen-replaces-get-models-and-the-library-a-rows-fit-is-guessed-from-the-search-list-and-drawn-as-a-pace-figure) One Models screen replaces Get models and the library; a row's fit is guessed from the search list and drawn as a pace figure | 2026-11-20 | [D130](#d130-the-models-page-is-one-page-offline-first-first-run-is-its-empty-state-labels-name-the-quant-a-download-is-the-pinned-ring-panel) |
+| [D117](#d117-the-demos-shared-components-take-the-models-pages-visual-system-colour-roles-notices-large-text-one-button-height) The demo's shared components take the Models page's visual system: colour roles, notices, large text, one button height | 2026-11-20 | [D122](#d122-the-cards-original-look-is-back-no-edges-the-original-surfaces-and-selection) |
+| [D118](#d118-the-model-card-is-one-view-drawn-from-local-data-shown-once-every-local-read-has-answered-its-foot-one-button-tall) The model card is one view drawn from local data, shown once every local read has answered, its foot one button tall | 2026-11-20 | [D119](#d119-text-fades-through-the-models-page-is-one-list-the-expandable-sheet-has-one-owner-of-its-height) |
+| [D119](#d119-text-fades-through-the-models-page-is-one-list-the-expandable-sheet-has-one-owner-of-its-height) Text fades through; the Models page is one list; the expandable sheet has one owner of its height | 2026-11-20 | [D120](#d120-lists-move-in-one-order-exit-then-place-then-enter-one-function-per-fact-on-the-models-page), [D122](#d122-the-cards-original-look-is-back-no-edges-the-original-surfaces-and-selection) |
+| [D120](#d120-lists-move-in-one-order-exit-then-place-then-enter-one-function-per-fact-on-the-models-page) Lists move in one order, exit then place then enter; one function per fact on the Models page | 2026-11-20 | [D121](#d121-one-file-has-one-fit-a-download-records-its-model-bytes-a-sheets-growth-is-one-motion), [D122](#d122-the-cards-original-look-is-back-no-edges-the-original-surfaces-and-selection) |
+| [D121](#d121-one-file-has-one-fit-a-download-records-its-model-bytes-a-sheets-growth-is-one-motion) One file has one fit; a download records its model bytes; a sheet's growth is one motion | 2026-11-20 | [D122](#d122-the-cards-original-look-is-back-no-edges-the-original-surfaces-and-selection), [D123](#d123-the-models-pages-rows-and-card-are-ultra-subtle) |
+| [D122](#d122-the-cards-original-look-is-back-no-edges-the-original-surfaces-and-selection) The cards' original look is back: no edges, the original surfaces and selection | 2026-11-21 | |
+| [D123](#d123-the-models-pages-rows-and-card-are-ultra-subtle) The Models page's rows and card are ultra subtle | 2026-11-21 | [D131](#d131-a-softer-neutral-palette-cool-grey-light-dimmed-dark-replies) |
+| [D124](#d124-the-models-page-follows-the-size-choice-with-no-push-off-the-fold) The model's page follows the size choice with no push off the fold | 2026-11-21 | |
+| [D125](#d125-geist-type-one-monochrome-accent-and-one-selection-outline) Geist type, one monochrome accent and one selection outline | 2026-11-21 | |
+| [D126](#d126-the-sidebar-is-a-quiet-list-a-name-a-search-timed-rows-and-labelled-places) The sidebar is a quiet list: a name, a search, timed rows and labelled places | 2026-11-21 | |
+| [D127](#d127-hugging-face-search-is-paged-with-paging-3-over-room-in-the-hubs-order-shaped-by-the-hubs-own-criteria) Hugging Face search is paged with Paging 3 over Room, in the Hub's order, shaped by the Hub's own criteria | 2026-11-21 | [D128](#d128-the-searchs-filters-are-a-plain-sheet-whose-choices-apply-at-once-a-dot-and-one-named-line-say-when-they-arent-the-defaults) |
+| [D128](#d128-the-searchs-filters-are-a-plain-sheet-whose-choices-apply-at-once-a-dot-and-one-named-line-say-when-they-arent-the-defaults) The search's filters are a plain sheet whose choices apply at once; a dot and one named line say when they aren't the defaults | 2026-11-21 | |
+| [D129](#d129-the-demos-state-is-derived-a-mutable-holder-is-only-a-source) The demo's state is derived; a mutable holder is only a source | 2026-11-21 | |
+| [D130](#d130-the-models-page-is-one-page-offline-first-first-run-is-its-empty-state-labels-name-the-quant-a-download-is-the-pinned-ring-panel) The Models page is one page, offline first: first run is its empty state, labels name the quant, a download is the pinned ring panel | 2026-11-20 | |
+| [D131](#d131-a-softer-neutral-palette-cool-grey-light-dimmed-dark-replies) A softer neutral palette: cool-grey light, dimmed dark replies | 2026-11-21 | |
 
 **Repository and process**
 
@@ -1087,3 +1103,509 @@ Status: Decided (2026-11-19)
 Context: A few failures were typed by matching words in an error message: the bridge's refusal of an attachment (`attachment "<n>" …`, and its audio-format line, to which Kotlin appended advice), and three of upstream's (an undecodable picture or clip, a missing projector, an input past the batch). A reworded message would quietly turn into a plain `ServerError`.
 Decision: The bridge's attachment refusal carries `"lb_code": "attachment"` beside upstream's error fields, with its advice in the message itself, and the SDK reads the code (`InvalidRequest.code`). Upstream gives no code for its three, so their words stay matched, as named constants in `ErrorMapping`; `UpstreamMessagesTest` checks each against the pinned llama.cpp source, so an upgrade that rewords one fails the check.
 Consequences: Upgrading llama.cpp can fail `UpstreamMessagesTest`; the fix is the new words in `ErrorMapping`. Kotlin no longer rewrites the bridge's messages.
+
+### D116. One Models screen replaces Get models and the library; a row's fit is guessed from the search list and drawn as a pace figure
+
+Status: Decided (2026-11-20)
+
+Context: Finding and keeping models was split over two screens that each told half the story. A row showed a download only if it was started from that row in this visit; the model sheet always said "Get", even for a model that was downloading or installed; search rows carried a guessed line and no word on who made the model, what it could do, or that an embedding model cannot chat; and a row's fit cost one tree call per row, arriving late or never. Design: [models-screen.md](design/models-screen.md).
+Decision: One **Models** screen (sidebar, the chat's "Get more models", first run's search) shows Downloading, On this phone and Suggested for this phone, or search results in their place, with a thin loading slot that never shifts the list. Every row and card takes its state from the repository (`downloading`, `state(key)`, `library`), never from the visit. The card follows that state (downloading or paused, on the phone with "Chat with" and "Get another size", not here with the sizes, failed with "Try again") and shows the model's Hugging Face page, read through the new `LlamaBroHub.modelCard`. A row has a name, a fit symbol, the maker, capability icons and a count, and no description. The SDK's search reports facts only (task, tags, a GGUF summary with parameter count, architecture, context length and whether a chat template exists, in the same request); the demo guesses a row's Recommended size from the parameter count (5.2 bits per weight, an image reader 28.5% of it, F175) and passes it through `Fits.quick` unchanged, then replaces the guess with the exact fit when a card has read the files; both count every parameter for memory and only the active ones of a mixture-of-experts model for speed, so opening a card doesn't change its row. On the Models screen and its card, fit is drawn as pace figures, never as words (the chat's model switcher and first run's pick sheet keep their words): `sprint` runs great, `directions_run` runs well, `elderly` is slow, a drawn kneeling figure is too big, `block` can't chat; the words are each symbol's content description and its long-press tooltip.
+Consequences: Amends D101's presentation (the formula is unchanged; labels are shown as symbols). `GET_MODELS`, `GetModelsViewModel`, the library screen and its view model, `ModelDiscovery.quickFit`'s per-row tree call and `SearchRows.plainLine` are gone; `SearchRepo` and `LlamaBroHub` gain public members (`.api` diffs), among them `LlamaBroHub.baseModel(repo)`, the repo's `base_model:quantized:` tag. A card opened from a row that names no original (a model on the phone or downloading that the catalog doesn't know, or a search row the Hub gave none) makes one `baseModel` request to show the original's page and its maker; a failure falls back to the repo's own page. A model with no chat template, or an embedding or reranking task, shows the no-entry symbol and a card without Get. Rulings made during the build, each a departure from the design as first written:
+- The sheet's "pull up to full screen" is approximated: it opens at most 560 dp tall and goes full height once its content is scrolled up, because Material's `ModalBottomSheet` has fixed anchors.
+- `FitSymbol` keeps a 20 dp long-press target. The accessibility semantics carry the words; the tooltip is a finger aid, so the target was not enlarged.
+- `CatalogEntry.about` is kept, because first run's pick sheet still shows it; the Models card shows the model's page instead.
+- Images inside a model page's HTML are dropped and HTML tables flatten to text; markdown images show their alt text. No image loader was added.
+- The thresholds in `Fit.kt` are unchanged: F175 shows that the guess gives the same labels as the real sizes for the catalog models on the budgets checked, so the "mostly wrong" reading is not explained by the size guess.
+The sidebar drawer with no chats also shows "No chats yet. Start one.", as the Chat list layout already did.
+
+### D117. The demo's shared components take the Models page's visual system: colour roles, notices, large text, one button height
+
+Status: Decided (2026-11-20)
+
+Context: The Models audit (docs/design/models-audit.md) traced most of its findings to the shared components, not the
+screens: one treatment carried several meanings (solid accent chips beside the download bar, sand for both "slow" and
+"failed"), errors and empty lists spoke in the hero serif, and nothing had a layout past font scale 1, so at 2x the
+name was what got cut (systemic causes 5-7; M6, M8, M12, M16, R4, R7, R9, R12, S14, S16, S17, S23, S24). The Models
+page design (docs/design/models-page.md §5) sets the visual system; it lands in `:demo:designsystem`, so the chat,
+settings and voice screens take it too.
+
+Decision:
+- **Colour roles.** The too-big ink is no dimmer than muted: `#5A5A5F` light (6.9:1 on the surface, muted 6.6:1) and
+  `#AAAAB0` dark (7.5:1, muted 7.3:1), was `#6E6E73` / `#8C8C92`. In dark the surface moves a step off the canvas,
+  `#1A1A1A` (was `#141414`), so a sheet stands off the scrim, and the hairline to `#2E2E2E` (was `#222222`). Cards,
+  fields and the text area draw a hairline edge, which holds 1.2:1 on the canvas and on a sheet's surface in both
+  themes. Material's error container is the plain surface with the danger ink; `onErrorContainer` is no longer the
+  sand. Status labels are a tonal `StatusPill` (accent on the soft accent); `EdgeChip` draws as one, never solid.
+- **Notices.** `Notice` is an error, empty list or no-results line: one muted bodyMedium line at the inner inset with
+  its action as an inline quiet button. The chat list's and the sidebar's "No chats yet. Start one." and "No chats
+  match." are notices at the top of the list, no longer centred serif lines. `EmptyLine` stays for the empty chat's
+  greeting only.
+- **Large text.** `isLargeText()` is font scale 1.3 or more. `ListRow` keeps its title's words: below large text its
+  trailing text and `end` marks (a chip, a fit) stay at the end and a long title wraps beside them; at large text they
+  move under the title. A `control` slot (a switch, "Unload") stays at the end at every scale, the title wrapping
+  beside it; `SectionLabel` wraps and
+  puts its action under it; the quant table stacks from the same scale; the fit symbol and capability icons grow with
+  the font, up to 32 dp and 24 dp. Labels that can be cut ellipsise.
+- **Buttons.** One height, `DemoSize.button` (48 dp), for the primary and quiet buttons, bordered or not (the primary
+  was 56 dp, a bordered quiet one 40 dp).
+- **Segmented switch.** The chosen segment keeps its raised fill and gains a hairline edge in the accent, 3:1 or more
+  on the track in both themes (WCAG 1.4.11); a fill alone could not reach it without turning it into a primary.
+- **Search loading.** `SearchField(loading)` sweeps a muted band along its own bottom edge, so nothing outside the field
+  moves and the accent stays for the primary action and a download's bar.
+
+Consequences: Amends D69's palette (the table in demo design §8.6 is updated). Every card, grouped list and field in the
+app gains a hairline edge; dark-theme surfaces are a step lighter; primary buttons are 8 dp shorter and bordered quiet
+buttons 8 dp taller; `EdgeChip` ("Default" in the model switcher, "On this phone" and "Recommended" on the model card)
+turns tonal. The design system's unit tests now include Compose tests under Robolectric (native graphics), so text
+layout at a given font scale is checked on the host.
+
+### D118. The model card is one view drawn from local data, shown once every local read has answered, its foot one button tall
+
+Status: Decided (2026-11-20)
+
+Context: The card re-expanded up to five times while it opened, renamed a download "Recommended" when the listing
+landed, and changed the action under the thumb when a download started or ended (models audit S1, S3, S7, S10, S18).
+The Models page design (docs/design/models-page.md §4) fixes the card's anatomy and asks for a final first frame from
+local data; Room's flows emit a moment after the sheet is composed, and the hub's state of an installed model reads
+`Absent` until its plan is read.
+
+Decision:
+
+- **One view.** `ModelSheetViewModel.view` is one `combine` of the library, the queue, the download's state and record
+  and the Hub's cached files, page and facts (`HubCard`, `ModelLibrary`), with the person's mode, pick and "Get another
+  size". The derivation is a pure function (`CardViews`), so the card is tested without Room or a hub.
+- **The sheet shows once every local read has answered.** `view` is null until the library, the queue, the download's
+  state and record and the cached files, page and facts have each emitted once (Room only, never the network); the
+  route composes the sheet from then on, so its first frame is final from the cache. The reserved shapes (three blank
+  sizes, the maker's line) appear only when the cache truly holds nothing; a maker's line held once drawn stays. The
+  page is parsed apart from the other inputs, off the main thread. A catalog model's Get names the catalog's file
+  until the listing lands, unless the card opened on another size than Recommended; then Get waits for the listing.
+- **One total, one order.** The state line and the ring panel read `DownloadViews.totalOf`: the record's size, else
+  the row's, else the hub's total. The card follows the row's own file when it is queued, else the repo's first.
+- **One notice.** A listing, page or facts that failed with nothing cached show one notice in the choice's place
+  with one Try again, which asks again for each that failed; the page part says nothing of its own.
+- **The foot is one button tall in every state.** Get, the ring panel (`DownloadPanel` is now `DemoSize.button` tall,
+  not 64 dp), "Start a chat" beside "Get another size", and the can't-chat line each fill 48 dp, so the pinned foot is
+  exactly 64 dp; at large font the two buttons stack and the foot grows rather than clips. A cancel that couldn't stop
+  the work is said under the state line, not in the foot.
+- **One failure sentence.** `Limits.forDownload` says what stopped and why ("The connection dropped.") and never
+  "paused" for a failure; the row's panel and the card's read it.
+
+Consequences: Amends nothing; implements §4 of the design. A library row takes its maker from the cached repo facts
+when the catalog doesn't know it. The page's leading heading is matched as `Names.key` reads a
+repo's name, after any HTML logos, so "# Qwen3.5-4B-GGUF" under "Qwen3.5 4B" is dropped. The app's unit tests gain
+Compose tests under Robolectric (the card's top holds while its page lands; its foot is 64 dp in every state).
+
+### D119. Text fades through; the Models page is one list; the expandable sheet has one owner of its height
+
+Status: Decided (2026-11-20)
+
+Context: The acceptance audit of the rebuilt Models page and card on the test phone (frame by frame) found text
+double-exposed by crossfades ("Downloading · Q4_K_M" over "Paused · Q4_K_M", two section labels through each other,
+the chat's greeting over the Models rows), items that enter into a slot another still leaves, a sheet that rose above
+its final top and then dropped 500 px, "Get another size" snapping the sheet under the status bar in one frame, and
+a page that waited ~800 ms on the phone's facts before drawing what it already knew.
+
+Decision:
+
+- **Text never crossfades.** `FadeThrough` (design system) composes one value at a time: the old words fade out in
+  `DemoMotion.TEXT_OUT_MILLIS` (90 ms), then the new fade in over `TEXT_IN_MILLIS` (120 ms); instant with animations
+  off. State words, pills, the ring panel's lines, the card's state line and foot, the choice's Basic/Advanced body and
+  the top bar's Back use it. Navigation fades through the same way (`screenEnter`, `screenExit`). Icons and fills may
+  still crossfade.
+- **One list across both modes.** The Models page is one `LazyColumn` built by `modelsItems`, a pure function, with
+  stable keys (labels by text, rows by file, Hub rows prefixed); search narrows browse's own groups under the same
+  labels, so a row in both modes is one item that stays. A later duplicate key is dropped before layout, so
+  overlapping data can never crash the page. Items move with `listItemMotion`: a leaving item fades out first, an
+  arriving one waits that long, placement and a row's own size change share `rowSizeSpec`, rows draw above labels.
+- **One owner of the sheet's height.** An expandable `DemoSheet` is `DemoSize.sheetCompactHeight` tall (or the screen,
+  if less) from its first frame, whatever its content; scrolled, it animates to the status bar's edge. It no longer
+  re-expands when its content's height changes (plain sheets still do, F118). The scrim is drawn from the sheet's own
+  offset, so it leaves with the sheet; a closing card keeps the view it had.
+- **First paint from local data.** The page's browse emits once the library and the queue are read, without waiting for
+  the phone's facts; the suggestions, chosen by fit, join under them when the facts land. The catalog's cached Hub
+  facts are read in the same flow as the catalog (no null first value). The card waits for the facts (local), so its
+  fit line is in its first frame.
+
+Consequences: Amends D118 (the card's state line is null while a download runs: the ring panel alone describes it,
+the maintainer's call) and the models-page design §2-§5. Search no longer lists catalog models that don't run well here
+under its local groups; they come from Hugging Face's part like any other upload (Hub ordering and paging unchanged).
+"Stopped" is the one failure word.
+
+
+### D120. Lists move in one order, exit then place then enter; one function per fact on the Models page
+
+Status: Decided (2026-11-20)
+
+Context: The Models page's acceptance round 2 (a reviewer's capture and the
+test phone). D119's list motion delayed only arrivals, so a row that moved started at once and slid over rows
+still fading out or already fading in (Gemma 3 4B over LFM3 when the query cleared). One model also read three ways:
+the row, the switcher and the card each figured its fit from different bytes (the switcher and a row on the phone took
+speed from the whole download, the card from the model file), makers came through two maps ("Alibaba Qwen" and
+"Qwen"), the file on the phone showed its model file's size in the state line and the listing's size in its tier,
+and progress was written three ways ("922 MB of 3.4 GB", "0.9 GB has arrived").
+
+Decision:
+
+- **Exit, place, enter.** The design system's `listItemMotion` is the one list policy: a leaving item fades out over
+  `TEXT_OUT_MILLIS`; items that stay move only after it (`listPlaceSpec`: `STANDARD_MILLIS`, delayed by the fade-out);
+  an arriving item fades in once they are placed (`listEnterSpec`). A row's own size change (`rowSizeSpec`) is the place
+  step, so neighbours never lag or lead it. Parts that come and go (`Unfold`, a row's download footer) follow the same
+  order: they fade before they fold, and unfold before their content fades in, from halfway. A mode change on the
+  Models page starts the list at its top, and search lists its suggestions in browse's order, so focusing the field
+  moves no row.
+- **A fade-through draws the last value shown.** `FadeThrough` keeps its shown value current while the key matches, so
+  the words fading out are the newest of their kind; `rememberFadeThrough` lets the ring panel draw its arc from the
+  same value as its words.
+- **One function per fact.** Fit: `Fits.quick(wholeBytes, modelBytes, facts)` everywhere, with a library model's
+  image reader recorded (`LibraryModel.readerBytes`: the catalog's, else the cached listing's for its quant) so a row on
+  the phone, the switcher and the card agree. Maker: `Names.maker` keyed by the Hub owner, spelled as the catalog spells
+  makers ("Alibaba Qwen"), with `Names.makerOf` letting the catalog's maker win. Size: the file on the phone's own
+  (model and reader), shown alike in the state line, its tier and its row; a guess whenever a parameter count is known.
+  Progress: `Format.arrived`, both numbers in the total's unit (the maintainer's choice), in the panel, the row and
+  the cancel dialog. Hub rows are stored with the Hub's own name and cleaned when read.
+
+Consequences: amends D119's list motion and the models-page design §2-§5 and §7. Every list move now starts 90 ms
+after the change; arrivals appear 340 ms after it. A failed download keeps the bytes that had arrived
+(`DownloadStatus.Failed` carries them), so "Stopped" shows a frozen ring and "0.9 of 3.4 GB kept".
+
+### D121. One file has one fit; a download records its model bytes; a sheet's growth is one motion
+
+Status: Decided (2026-11-20)
+
+Context: The Models page's acceptance round 5 (a reviewer's reading of round 4, and the phone's results).
+D120's one fit formula was fed different bytes for one file: a download row took its speed from the whole download
+(the record kept only the total), a file on the phone and the switcher read a mixture-of-experts model's speed from
+every weight while the Hub row and the card read its active share, and the page kept one fit per model, so a
+suggestion, its download in another quant and the landed file showed whichever row asked first. "Get another size" at
+twice the font scrolled, then the sheet grew: two motions; Advanced brought nothing into view.
+
+Decision:
+
+- **One file, one fit.** `download_record` keeps the model file's bytes beside the total (database version 6, an
+  auto-migration with a default of 0, read as "not known": the row falls back to the catalog's file or the total).
+  `Fits.speedBytes` is the one speed share: the model file's bytes times a mixture-of-experts model's active
+  parameters over all of them, both from the repo's name (`Qwen3-30B-A3B` reads a tenth), else the Hub's counts; 1 for
+  any other model. Every fit (the row's guess, a download row, the file on the phone, the switcher, the card's sizes)
+  goes through it. The page keeps a fit per file (`ModelEntry.listKey`), and a card's exact fit stands only over a Hub
+  row's guess, the row whose size is that file's.
+- **A sheet grows before it scrolls.** An expandable sheet gives its content a `SheetGrowth`; a part a person's action
+  opens is revealed by `SheetReveal`: when it isn't wholly in view the sheet grows to its full height with its scroll
+  held, while the part unfolds, and only then the least scroll brings it into view if it still isn't.
+- **The switcher is drawn as the page** (the maintainer's choice): `DemoSheet(canvas = true)` puts the page's ground under the
+  sheet's contents, which are drawn as on the page; `ModelRow`'s info action sits on line 2 under the fit symbol, its
+  48 dp target over the lines, so the row keeps the page's height and right edges.
+
+Consequences: amends D120 and the models-page design §1, §4 and §7. The phone's version-5 database migrates with its
+chats and its downloads' records; a record kept before version 6 shows its download row's speed from the catalog's
+file or the total until it lands. A Hub model named with an active count but no total keeps the Hub's count for its
+row and card, and its file on the phone (which has only its name) reads all its weights for speed.
+
+### D122. The cards' original look is back: no edges, the original surfaces and selection
+
+Status: Decided (2026-11-21)
+
+Context: D117 gave cards, the search field and the text area a hairline edge and lifted the dark surface to `#1A1A1A`
+and its hairline to `#2E2E2E`; the D119 build thinned the selected outline to 1.5 dp and the D120 build gave the
+search field a focus edge; D121 put the model switcher on the page's canvas so its cards were the page's. On
+2026-11-21 the maintainer reverted these: the edged cards looked like a cheap edit from a photo app, and the original
+fills without edges read better.
+
+Decision:
+
+- Cards, the search field and the text area are their fill alone, with no edge, in both themes; the field has no
+  focus edge (its clear action stays).
+- Dark surface `#141414` and hairline `#222222` again; the selected card, tier or quant is outlined 2 dp in the
+  accent.
+- The model switcher is the sheet's own surface again, its cards on the canvas colour as on any sheet; its info action
+  stays under the fit symbol.
+- The download ring's own track (`ringTrack`) stays: it still holds 1.5:1 on the original surface, where the soft
+  accent is 1.2:1.
+
+Consequences: amends D117, D119, D120 and D121; the rest of D117 (the too-big ink, notices, large text, one button height)
+stands. The demo design's colour table follows.
+
+
+### D123. The Models page's rows and card are ultra subtle
+
+Status: Decided (2026-11-21)
+
+Context: on 2026-11-21 the maintainer found the model card "extremely cluttered, without any hierarchy, a lot of
+information clumped together", the three-line rows "lopsided", and the words beside the icons redundant ("why write
+'thinks first' when there is already a thinking icon? The less text there is, the better. Keep things ultra
+subtle."). The mockup `docs/design/mockups/models-subtle.html` was approved as "exactly what I wanted", with the card
+colours and edges of D122 unchanged.
+
+Decision:
+
+- A model row is two lines: the name (16 sp Regular), and one muted line of "maker · size" and the capability icons;
+  the fit symbol is centred on both lines (the switcher's info action just before it). Rows carry no last use and no
+  download count, except a Hugging Face result's as line 2's quietest item; "Default", "Current" and "On phone" are a
+  small soft mark, never a pill. Rows are a little roomier (18 dp inset, 16 dp corners, 12 dp apart).
+- The Models page's section labels are sentence case, Regular and soft, with no tracking; its title is Light and a
+  step larger (24 sp); the search field's hint is soft.
+- The card: the name in the serif at 24 sp Regular; one quiet line of the maker, the capability icons with no words
+  and the fit symbol; after a clear gap the state line in muted bodyMedium; the size choice in Regular; after a larger
+  gap the model's page, muted and small with soft Regular headings and quiet links, under a soft "About", ending with
+  its source ("Source: owner/repo"). GitHub note boxes, badge rows and link-only lines are left out of the page. The
+  foot's buttons are Regular; "Get another size" is "Another size", bordered by the hairline.
+- The capability icons are Material Symbols Outlined at weight 300, soft; the fit symbols keep their filled shapes
+  and colours.
+- New tokens: the `soft` ink (`#717171` light, `#808080` dark, at least 4.5:1 on the canvas and the surface) and the
+  roles `cardTitle`, `screenTitleLight`, `titleRegular`, `quietLabel` and `pageBody`; quiet variants of `SectionLabel`,
+  `TopBarTitle`, `SegmentedSwitch`, `PrimaryButton` and `QuietButton`. The words of each capability stay for screen
+  readers.
+
+Consequences: amends the models-page design §3, §4 and §5 (supersedes their typography and line content) and the
+round-5 placement of the switcher's info action (the fit column keeps the page's right edge). Other screens
+keep their labels, titles and buttons; the soft field hint and the light outline icons apply wherever those parts show.
+
+### D124. The model's page follows the size choice with no push off the fold
+
+Status: Decided (2026-11-21)
+
+Context: card 8's guard (`KeepOffTheFold`) pushed the page's "About" below the sheet's compact height whenever it would
+have shown with fewer than two of the page's lines above the pinned foot, so it never read as the foot's caption. The
+push was figured from the compact height and stayed once the sheet was open: the maintainer saw a large hole between the
+sizes and the page.
+
+Decision: the page follows the choice at the column's one gap in every state. The guard, the sheet's fold local and
+their test are removed. At the compact height "About" may sit just above the foot; the foot's hairline, drawn while
+content runs under it, keeps the two apart.
+
+Consequences: supersedes the earlier review note on this placement.
+
+### D125. Geist type, one monochrome accent and one selection outline
+
+Status: Decided (2026-11-21)
+
+Context: the maintainer found the violet send accent (D73) wrong for the app, and the Get button too bright in dark and too
+stark in light, since the accent was the ink itself. The system sans read plain beside the serif of the card's name. The
+outline of a chosen size card ("Recommended") was a 2 dp accent border, while the chosen segment of the switch ("Basic")
+had a 1 dp hairline edge: two looks for one meaning.
+
+Decision:
+
+- Geist (SIL OFL, bundled as a variable font in `res/font/geist.ttf`, licence in `res/raw/geist_ofl.txt`) is the app's
+  sans, at weights 300, 400 and 500. Source Serif 4 stays on the hero roles and the card's name; code stays monospace.
+  A reply's running text gets its own role, `replyBody`, 16 sp on a 26 sp line, a little looser than `body` (16/24);
+  it is off the 4 dp grid by the maintainer's choice. The model's page keeps `pageBody` (13/24).
+- The UI is monochrome: one quiet primary tone, `accent` `#3A3A3D` light and `#C8C8CD` dark, with `onAccent` `#FBFBFC`
+  and `#161618`. `sendAccent` and `onSendAccent` are removed; send, stop, Think on, the mic, the voice buttons and the
+  download ring use `accent`, as do Get, Start a chat and every primary button. The fit symbols' green and amber (and
+  Remove's red) are the only colour, because they carry meaning; a second hue for actions carried none.
+- One selection outline: `DemoSize.selectedStroke` (2 dp) in `accent`, drawn on the chosen thing's own shape, for a
+  selected card, a size or quant row, a layout choice and the switch's chosen segment (quiet or not).
+
+Consequences: supersedes D73's indigo and the colour table of demo design §8.6 for the primary. The accent is a step
+softer than the ink (10:1 or more on the canvas and the surface in both themes), still well over 4.5:1 for links and
+text actions. The radio mark's ring and a focused field's border keep the same 2 dp stroke. The model switcher's
+current row has no outline (it is marked "Current"), so it is unchanged.
+
+### D126. The sidebar is a quiet list: a name, a search, timed rows and labelled places
+
+Status: Decided (2026-11-21)
+
+Context: the maintainer found the drawer too bare, and the history's spacing poor: titles only, 13 sp labels tight on the
+rows under them, nothing at the top, and three bare icons at the foot (Settings and Models as glyphs, New chat in a
+tonal circle, D77) whose meaning a reader had to guess. Of three directions drawn at true size (a quiet list, two-line
+rows with the model, the model first), the maintainer chose A, "Quiet list": the least change that fixes the bareness and the
+spacing.
+
+Decision:
+
+- The head: "Llama Bro" in the serif at Regular weight (`DemoType.sidebarTitle`, 22/28) on the 24 dp line, and New
+  chat as a 48 dp ink icon at its end (`DrawerHead`). Then the search field, "Search chats", wired to the shell's
+  existing chat search, 16 dp from the sides; with a query and no match the list's place says "No chats match.".
+- The history (`GroupedLazyList` of `LineRow`s): quiet sentence-case labels (`SectionLabel` quiet: 13 sp, soft), 24 dp
+  above a group (8 dp for the first) and 4 dp under the label's 20 sp line; each chat one line, the title in
+  `DemoType.rowLine` (15/20 Regular) and its time from `ChatListFormat.rowTime` (12 sp, soft) at the end; rows 12 dp
+  from the drawer's edges with 12 dp inside, so the labels and the titles share a 24 dp line; the open chat on the
+  `accentSoft` fill with 12 dp corners, no outline and no tick.
+- The foot (`DrawerFoot`): a hairline, then Models and Settings as labelled 48 dp rows (`NavRow`: a muted icon, the
+  name, and a soft note at the end, "3 on this phone"). Each is one button for a screen reader, "Models, 3 on this
+  phone" ("Models" before the library is read) and "Settings", so the visible words are not read twice.
+  `DrawerActions` is removed. The head and the foot keep `traversalIndex = -1`, so a screen reader reaches them before
+  the chats.
+
+Consequences: amends D77 (its foot of icons and its ticked rows) and replaces the drawer of demo design §4.2. Departures
+from the approved mockup: a row is at least 48 dp, not 44, as every tappable thing is one touch target (Material, WCAG
+2.5.8; the instrumented accessibility checks enforce it); the search is the design system's field (56 dp, the surface
+with its soft shadow, D122), not a 44 dp pill on a fill, so the sidebar's search looks like every other; the label sits
+4 dp over its rows under a 20 sp line rather than 6 dp under a tighter one, the same space to the eye on the 4 dp grid;
+the foot keeps 16 dp under its last row, not 18. The icons are the app's 24 dp glyphs, not 22.
+
+### D127. Hugging Face search is paged with Paging 3 over Room, in the Hub's order, shaped by the Hub's own criteria
+
+Status: Decided (2026-11-21)
+
+Context: Search asked the Hub for one page of 40 GGUF uploads, most downloaded first, and ranked the rows whose own
+name had the query first (M27); a newcomer searching "qwen" saw 27B models the phone can't run, and nothing past the
+first page. The maintainer chose Android's Paging 3, offline first, with the Hub's own filters (docs/design/models-search.md).
+
+Decision:
+
+- **The SDK passes the Hub's criteria.** `SearchOptions` gains `minParameters`/`maxParameters` (`num_parameters`),
+  `hideGated` (`gated=false`) and `SearchSort.Newest` (`createdAt`); `SearchCursor.value` is the Hub's cursor as text,
+  so an app can keep it across process death, and the hub follows a cursor only on its own endpoint. The SDK decides
+  nothing: the app chooses the filters.
+- **Pages live in Room.** Version 7, an automatic migration from 6 (version 6 is installed on the test phone, so
+  its schema stays as it shipped: changing it in place would change its identity hash and Room would refuse to open
+  the database; `ShippedSchemasTest` holds every shipped version's hash), adds
+  `hub_result` (a row per model per search, keyed by the query with its filters and the model's group key, with the
+  Hub's position of its first appearance) and `hub_search_page` (the next cursor per search), and drops the one-page
+  `hub_search`. A `Pager` reads `hub_result`; a `RemoteMediator` refreshes page one in place when a search opens (after
+  the field's 350 ms debounce, so typing on cancels it unasked) and appends the next page with the stored cursor. A
+  later page's upload of a model already listed merges into its row where it stands (downloads summed, uploads joined,
+  the row's own upload kept so its key doesn't change).
+- **The Hub's order stands.** Rows are never reordered on the phone, so M27's ranking goes: a page arriving would
+  reshuffle the list.
+- **Fits this phone by default** (F176), gated repos always hidden, and the filters (sort, size, sees images) kept in
+  the settings; the local matches are never filtered.
+
+Consequences: amends D68's search (the app's use of it) and the models-page design §2 (Search mode). The page shows
+the stored rows while the first page is fetched and keeps them on a failure; "No matches" is said only when the local
+part lists nothing either, since the Hub's rows the local part lists are left out before the page sees them. The
+page's one list draws the Hub's rows lazily from `LazyPagingItems` below the local matches, so nearing the end asks
+for the next page; a next page that fails leaves the rows and says "Couldn't load more." under them with Try again,
+which retries that page, while one loading shows nothing, so the list doesn't move. The filter sheet follows.
+
+### D128. The search's filters are a plain sheet whose choices apply at once; a dot and one named line say when they aren't the defaults
+
+Status: Decided (2026-11-21)
+
+Context: D127 built the filters (sort, size, sees images) in the settings and the paged search, and left their sheet
+to a later step; the models-search design §5 fixes what it offers, not its layout. Two cases were
+left open: on a phone whose "Fits this phone" cap (F176) is under any real model, every search said "No models
+match. Try a shorter name.", blaming the name; and the page's first frame could show rows stored under the default
+filters before the saved ones were read.
+
+Decision:
+
+- **The action.** A filter icon (Material's `tune`) in the search field's own trailing slot, after the clear ✕, in
+  both modes, muted. While any filter differs from its default it carries a dot in the accent (`IconAction`'s `mark`),
+  which a screen reader hears as "Changed". No word beside it.
+- **The sheet** is a plain `DemoSheet` (it fits without growing; its body scrolls at large font): "Search filters"
+  with Reset at its end (enabled only off the defaults), the sort and the size as `ChoiceChips` (the one selection
+  outline, D125; five sorts don't fit a segmented switch), "Sees images" as a `SwitchRow` whose caveat is its one muted
+  line, and Done. Each choice applies at once and is saved, so the list behind follows and a swipe away keeps it; the
+  only state the sheet holds is what the range's two fields hold.
+- **A custom range** is two numbers of billions of parameters, From and To ("1.5" or "1,5"), checked as typed: both
+  numbers, both more than 0, From no more than To. A valid range applies at once; an invalid one is never applied, the
+  last valid range stays searched, and one muted line says why and what is still searched ("From must be no more than
+  To. Still 1–8 B."). Choosing Custom searches 1 to 4 billion at once, the fields' own range if they hold a valid one.
+- **The page's line.** When a filter differs from its default and the Hub is asked, the "From Hugging Face" label
+  stays, even over no rows, with one muted line naming only the changed filters ("Newest · Any size · Sees images")
+  and Reset, so the way back is always at hand. The defaults are never spelled out.
+- **Nothing fits.** Under "Fits this phone", a cap below 100 million parameters (`Guess.SMALLEST_MODEL`: the smallest
+  GGUF chat models are about 135 million, SmolLM2 135M) matches nothing, a cap of 0 included: the Hub isn't asked, and
+  the Hub's part says "No model is small enough for this phone." with "Any size".
+- **The saved filters first.** The Hub's request waits until the settings' filters are read (the view model's
+  `savedFilters` is null until then), so no row stored under the defaults shows first and no page is fetched for them.
+
+Consequences: completes D127 and the models-search design §5. The design system gains `ChoiceChips`, `SwitchRow`,
+`NumberField`, `SectionNote`'s action, `SearchField`'s trailing slot, `IconAction`'s mark and the Filter icon, each
+in the gallery's samples.
+
+### D129. The demo's state is derived; a mutable holder is only a source
+
+Status: Decided (2026-11-21)
+
+Context: the maintainer asked for the whole demo to lean declarative: no state copied by hand
+from one holder to another, and no several variables read together to infer one state. A pass over `demo/app` and
+`demo/designsystem` found the code mostly there already; the exceptions were the chat bar's four flow-to-snapshot
+mirrors, a second voice phase variable kept only to see the listening edge, and counters kept in `var`s inside flow
+builders and `update` lambdas.
+
+Decision:
+
+- **A `MutableStateFlow` or `mutableStateOf` is a source**: the person's input (a query, a picked mode, a dialog's
+  target), an outside event (a recorder's take, a refresh's status, an invalidation counter for a store nothing can
+  observe), or an engine's own state machine (ChatEngine's turn, ModelHost's loads, the download queue's steps). Each
+  has a one-line comment saying why it is a source. Everything else is composed from sources with operators
+  (`combine`, `map`, `flatMapLatest`, `runningFold`/`runningReduce`, `stateIn` with `WhileSubscribed(5_000)` or
+  `Eagerly` where the holder must run without a screen) and exposed read-only (`asStateFlow`).
+- **No hand-copied mirrors.** Where snapshot state must be derived synchronously with flows (the chat bar, whose
+  draft is written in the keystroke's own call), the flows are combined into one value and bridged once.
+- **Edges and counts in a flow are folds** (`runningFold`, `drop`/`filter` on a `snapshotFlow`), not `var`s beside
+  the collector; a claim on a shared set is one atomic `getAndUpdate`.
+- **Compose's local state stays local**: `remember { mutableStateOf }` for ephemeral UI (a pressed row, a draft, a
+  measured size, an open sheet). Independent modals keep a state each, so a late dismiss of one never closes another.
+
+Consequences: the kept sources are inputs (queries, focus, picked modes, dialogs' questions, actions' outcomes),
+outside events (the recorder's take, the player's clip, the voice session, refresh status, the hub's answers,
+invalidation counters for stores nothing can observe) and the state machines of ChatEngine, ModelHost and
+ModelRepository's download queue, which their tests cover. A chat's model is one `ModelChoice` (unknown, none,
+chosen), not a key and a flag; a chat's rows take the layout setting as a flow, not a copy written in by an effect.
+
+### D130. The Models page is one page, offline first: first run is its empty state, labels name the quant, a download is the pinned ring panel
+
+Status: Decided (2026-11-20); built (2026-11-21)
+
+Context: D116's merged Models screen told the truth but jittered and overwhelmed on the phone. The models audit
+(docs/design/models-audit.md; its measured jitter is F177) found a card that re-expanded up to five times while it
+opened, storage that pushed the list down after every open, one model drawn four ways, and first run as a second,
+weaker models page whose picks could include a model too big for the phone. The maintainer asked that every model card
+behave the same, that the layout never jitter and that nothing load repeatedly. Design:
+[models-page.md](design/models-page.md); its search: [models-search.md](design/models-search.md).
+
+Decision:
+
+- **One page.** Models is the only place for models. First run and its pick sheet are gone: a fresh install starts on
+  the Models page's empty state, an intro line and "What's a model?", which teaches the five fit symbols. Browse lists
+  Downloading, On this phone (storage is its note) and Suggested for this phone (catalog models that run great or well
+  here, best first). Search narrows the same groups in place the moment the field is focused, with Hugging Face's rows
+  under them.
+- **Offline first.** `HubRepository` keeps every fact the Hub gives in Room (search results, a repo's facts, its
+  listing, its page, recent searches) and shows it at once. A screen or a card refreshes what it shows when it opens,
+  never on a timer, and a refresh changes text in place, never the layout. Get records the download's name, maker and
+  total in `download_record`, so its heading and progress are final from the first frame.
+- **Labels name the quant.** A label that says which file is downloading, on the phone or about to be got names its
+  quant ("Q4_K_M", or the upload's own variant, "UD-Q4_K_XL"); Smaller, Recommended and Best quality are only the
+  Basic choice's titles (the maintainer's call).
+- **One row, one card.** `ModelRow` is every model's row: suggestions, results, downloads, models on the phone and the
+  chat's switcher. Every model opens one card whose parts sit in the same place in every state, their heights reserved
+  from the first frame.
+- **The pinned ring panel.** A download is described in one place, the card's pinned foot (one button tall in every
+  state): a ring of progress around Pause, Resume, an hourglass or Try again, two lines, and a quiet ✕ (the maintainer
+  chose it from three sketches). The row's footer is the same panel at row size.
+- **The design's §7 calls.** One size everywhere, what the download takes (the model file and its image reader); a
+  search row's size is the guess from its parameter count, written "about 3.4 GB", until the card has read the files;
+  a fresh install keeps `seenFirstRun`, and the first Get while it is false opens the waiting chat; a row moves with
+  its state as one animated item, and a Hub row for a model listed locally is left out; the switcher uses `ModelRow`
+  with "Current"; a Basic tier the upload lacks stays as a disabled row, "Not in this upload".
+
+Consequences: amends D116 (its screen, first run's entry to it, its card) and supersedes the models-screen design. The
+departures made while it was built are their own records: the shared visual system (D117), the card's one view (D118),
+fade-through, one list and the sheet's one height (D119), list motion and one function per fact (D120), one fit per
+file (D121), the original card look (D122), the ultra subtle rows and card (D123), no push off the fold (D124), Geist
+and the monochrome accent (D125), the sidebar (D126), paging and filters (D127, D128) and derived state (D129). Each
+audit finding is marked fixed or ruled out in the audit. The final build's frame-by-frame recapture on the phone is
+the maintainer's.
+
+### D131. A softer neutral palette: cool-grey light, dimmed dark replies
+
+Status: Decided (2026-11-21)
+
+Context: on the phone the maintainer found the chat's text too bright and the light theme too white (a `#FAFAFA` canvas,
+white surfaces and near-black `#0D0D0D` ink). Of two directions, "Neutral, Apple-like" cool greys and a warm paper
+tone, they chose the neutral one. D123's soft ink had been figured on the old canvas, so the new canvas needed its
+contrast checked again.
+
+Decision:
+
+- **Light.** canvas `#F2F2F5`, surface `#FBFBFC`, ink `#1D1D1F`, muted `#65656A`, soft `#6E6E73`, hairline `#E3E3E8`,
+  bubble `#E6E6EB`, accentSoft `#E8E8ED`, tooBigTint `#E6E6EB`.
+- **Dark.** canvas `#0B0B0C`, surface `#161618`, ink `#E3E3E6`, muted `#98989D`, soft `#808085`, hairline `#242426`,
+  bubble `#222224`, accentSoft `#28282B`.
+- **A new role, `reply`,** for the assistant's reply body in the chat: `#2C2C2E` light, `#CFCFD4` dark, a step softer
+  than the ink so a long reply reads calmer. Its headings and bold stay the ink.
+- **Contrast.** Light muted is `#65656A`, darker than the first draft's `#6E6E73`, so a disabled button's label (on the
+  hairline, 4.53:1) and the time on the user's bubble (4.66:1) keep 4.5:1. Soft is `#6E6E73` (4.54:1 on the canvas,
+  4.9:1 on the surface), because the draft's `#717176` was 4.34:1 on the canvas. Dark soft is 5.0:1 on the canvas and
+  4.6:1 on the surface; `reply` is over 11:1 in both themes. `TokensTest` holds these floors.
+
+Consequences: amends D123's `soft` values (`#717171` and `#808080` there) and the neutral values of demo design §8.6,
+which follows `Tokens.kt`. The fit tints and inks and `danger` are unchanged. This change also set the accent to the
+new ink (`#1D1D1F` and `#E3E3E6`); D125 later changed `accent` and `onAccent` to the monochrome tone it records, so
+read those two from D125.

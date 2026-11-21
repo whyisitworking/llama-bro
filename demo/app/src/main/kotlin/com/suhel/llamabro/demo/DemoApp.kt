@@ -33,12 +33,14 @@ open class DemoApp :
     }
 
     /**
-     * Starts the recovery of interrupted replies on the container's scope (the engine's first turn waits for it), and
-     * gives the model's memory back while the app sits in the background.
+     * Starts the recovery of interrupted replies on the container's scope (the engine's first turn waits for it), reads
+     * the phone's facts in the background so the Models page and a model's card have them when they open, and gives the
+     * model's memory back while the app sits in the background.
      */
     protected open fun onStartup() {
         ContainerFactory.onStart(this)
         container.recoverInterrupted()
+        container.readDeviceFacts()
         forgetOldDownloads()
         ProcessLifecycleOwner.get().lifecycle.addObserver(release)
         ProcessLifecycleOwner.get().lifecycle.addObserver(replyKeeper)

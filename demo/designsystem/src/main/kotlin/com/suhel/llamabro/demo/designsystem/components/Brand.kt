@@ -85,7 +85,10 @@ fun Greeting(text: String, modifier: Modifier = Modifier, textAlign: TextAlign =
     Text(text, modifier, color = LocalDemoColors.current.ink, style = DemoType.displayHero, textAlign = textAlign)
 }
 
-/** The serif line of an empty state ("What's on your mind?"). */
+/**
+ * The serif greeting of an empty chat ("What's on your mind?"), and nothing else: an error, an empty list or a search
+ * with no results is a [Notice], one plain line where the content would be.
+ */
 @Composable
 fun EmptyLine(text: String, modifier: Modifier = Modifier) {
     Text(

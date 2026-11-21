@@ -8,7 +8,7 @@ import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ChatSummary
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
-import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.ModelLibrary
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +24,7 @@ import java.time.ZoneId
 class ShellViewModel(
     private val chatRepository: ChatRepository,
     settings: SettingsRepository,
-    models: ModelRepository,
+    models: ModelLibrary,
     private val clock: () -> Long = System::currentTimeMillis,
     private val zone: ZoneId = ZoneId.systemDefault(),
     /** Keeps the drawer's search across process death. */
@@ -45,9 +45,15 @@ class ShellViewModel(
             .map { it.theme }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), ThemeMode.System)
 
+    /** Whether first run has been seen; null until the settings are read. The Models page's intro starts from it. */
+    val seenFirstRun: StateFlow<Boolean?> =
+        settings.settings
+            .map<_, Boolean?> { it.seenFirstRun }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
+
     /**
-     * Whether the app starts on first run: nothing seen yet and no model on the phone. Null until both are known; the
-     * shell reads it once, for the start destination.
+     * Whether the app starts on first run, the Models page's empty state: nothing seen yet and no model on the phone.
+     * Null until both are known; the shell reads it once, for the start destination.
      */
     val startsWithFirstRun: StateFlow<Boolean?> =
         combine(
@@ -56,6 +62,7 @@ class ShellViewModel(
         ) { seen, empty -> !seen && empty }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
 
+    // user input: the drawer's search, kept across process death
     private val query = savedState.getMutableStateFlow(QUERY_KEY, "")
     val searchText: StateFlow<String> = query
 
@@ -70,10 +77,11 @@ class ShellViewModel(
             .map { ChatListFormat.group(it, clock(), zone) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), emptyList())
 
-    val modelCount: StateFlow<Int> =
+    /** How many models are on the phone; null until the library is read, so the drawer never says "0" first. */
+    val modelCount: StateFlow<Int?> =
         models.library
-            .map { it.size }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), 0)
+            .map<_, Int?> { it.size }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
 
     fun search(q: String) {
         query.value = q

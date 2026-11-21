@@ -18,10 +18,13 @@ data class CatalogEntry(
     val key: HfModel,
     val realName: String,
     val maker: String,
-    val line: String,
+    /** The original the upload was quantized from (the Hub's `base_model`): its page is the model's page. */
+    val baseModel: String,
     val about: String,
     val thinks: Boolean,
     val sees: Boolean,
+    /** The Hub's parameter count for the repo's GGUF (`gguf.total`, F175). */
+    val parameters: Long,
     val modelBytes: Long,
     val mmprojBytes: Long,
     /**
@@ -48,12 +51,13 @@ object Catalog {
             key = HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M"),
             realName = "Qwen3.5 0.8B",
             maker = "Alibaba Qwen",
-            line = "Tiny and quick, for everyday questions",
+            baseModel = "Qwen/Qwen3.5-0.8B",
             about =
                 "Quick and light, it answers in a blink and can look at pictures. " +
                     "Long or tricky questions can trip it up.",
             thinks = true,
             sees = true,
+            parameters = 752_393_024,
             modelBytes = 532_517_120,
             mmprojBytes = 207_346_528,
             sampling =
@@ -67,12 +71,13 @@ object Catalog {
             key = HfModel.parse("unsloth/gemma-3-4b-it-qat-GGUF:Q4_K_M"),
             realName = "Gemma 3 4B",
             maker = "Google",
-            line = "A careful writer, good with tone",
+            baseModel = "google/gemma-3-4b-it-qat-q4_0-unquantized",
             about =
                 "Writes with care and a good ear for tone, and can look at pictures. " +
                     "It is a little slower, and very long chats can use up its memory.",
             thinks = false,
             sees = true,
+            parameters = 3_880_263_168,
             modelBytes = 2_489_894_016,
             mmprojBytes = 851_251_456,
             sampling = CardSampling(Knobs.of(Temperature to 1f, TopP to 0.95f, TopK to 64f, MinP to 0f)),
@@ -82,12 +87,13 @@ object Catalog {
             key = HfModel.parse("unsloth/Qwen3.5-4B-GGUF:Q4_K_M"),
             realName = "Qwen3.5 4B",
             maker = "Alibaba Qwen",
-            line = "Thinks things through before answering",
+            baseModel = "Qwen/Qwen3.5-4B",
             about =
                 "Works a problem through step by step before it answers, and can look at pictures. " +
                     "It takes longer to start replying.",
             thinks = true,
             sees = true,
+            parameters = 4_205_751_296,
             modelBytes = 2_740_937_888,
             mmprojBytes = 675_569_344,
             sampling = CardSampling(thinking = qwenThinking, answering = qwenAnswering),
@@ -97,12 +103,13 @@ object Catalog {
             key = HfModel.parse("unsloth/Llama-3.2-3B-Instruct-GGUF:Q4_K_M"),
             realName = "Llama 3.2 3B",
             maker = "Meta",
-            line = "Meta's all-rounder, friendly and fast",
+            baseModel = "meta-llama/Llama-3.2-3B-Instruct",
             about =
                 "A friendly all-rounder for chat, writing and quick help. " +
                     "It can't look at pictures and doesn't think out loud.",
             thinks = false,
             sees = false,
+            parameters = 3_212_749_888,
             modelBytes = 2_019_377_600,
             mmprojBytes = 0,
             sampling = CardSampling(Knobs.of(Temperature to 0.6f, TopP to 0.9f)),
@@ -112,12 +119,13 @@ object Catalog {
             key = HfModel.parse("unsloth/Qwen3.5-9B-GGUF:Q4_K_M"),
             realName = "Qwen3.5 9B",
             maker = "Alibaba Qwen",
-            line = "Smarter, but heavy for this phone",
+            baseModel = "Qwen/Qwen3.5-9B",
             about =
                 "Gives the most thoughtful answers of the suggestions, and can look at pictures. " +
                     "It is heavy for this phone, so it replies slowly and keeps less of a long chat in mind.",
             thinks = true,
             sees = true,
+            parameters = 8_953_803_264,
             modelBytes = 5_680_522_464,
             mmprojBytes = 921_705_024,
             sampling = CardSampling(thinking = qwenThinking, answering = qwenAnswering),
@@ -128,12 +136,13 @@ object Catalog {
             key = HfModel.parse("ggml-org/LFM3-Omni-2B-GGUF:Q4_K_M"),
             realName = "LFM3 Omni 2B",
             maker = "Liquid AI",
-            line = "Talks with you: a voice conversation on the phone",
+            baseModel = "LiquidAI/LFM3-Omni-2B",
             about =
                 "Listens and answers out loud, with captions, and can chat by text too. " +
                     "It is small, so its answers are short and simple.",
             thinks = false,
             sees = false,
+            parameters = 1_728_801_600,
             modelBytes = 1_099_630_048,
             mmprojBytes = 506_842_432,
             // the card decodes text greedily (`generation_config.json`: temperature 0, top_k 1); its speech sampling

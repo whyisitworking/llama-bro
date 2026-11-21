@@ -2,6 +2,8 @@ package com.suhel.llamabro.demo.testing
 
 import androidx.test.platform.app.InstrumentationRegistry
 import com.suhel.llamabro.demo.AppContainer
+import com.suhel.llamabro.demo.models.SearchFilters
+import com.suhel.llamabro.demo.models.SizeFilter
 import kotlinx.coroutines.runBlocking
 import leakcanary.DetectLeaksAfterTestSuccess
 import org.junit.rules.ExternalResource
@@ -25,6 +27,9 @@ class TestAppRule(
         StrictViolations.reset()
         container = app.use(config?.invoke() ?: TestConfig.fresh(clock))
         if (seenFirstRun) runBlocking { container.settings.markFirstRunSeen() }
+        // the fake Hub lists most repos without a parameter count, which a parameter range leaves out as the Hub does
+        // (F176): search asks for any size, so a listed repo is found
+        runBlocking { container.settings.setSearchFilters(SearchFilters(size = SizeFilter.Any)) }
     }
 
     override fun after() {

@@ -78,6 +78,7 @@ class ModelHost(
     private val source: suspend (HfModel) -> ModelSource,
     private val scope: CoroutineScope,
 ) {
+    // engine's own source: the load state machine
     private val _state = MutableStateFlow<HostState>(HostState.Idle)
     val state: StateFlow<HostState> = _state.asStateFlow()
 
@@ -100,7 +101,10 @@ class ModelHost(
 
         @Volatile var failed = false
 
-        /** The leases on this load not yet released; taken under the host's lock, and only while it is `current`. */
+        /**
+         * The leases on this load not yet released; taken under the host's lock, and only while it is `current`. The
+         * host's own source: leases are taken and released here.
+         */
         val holders = MutableStateFlow(0)
 
         /**

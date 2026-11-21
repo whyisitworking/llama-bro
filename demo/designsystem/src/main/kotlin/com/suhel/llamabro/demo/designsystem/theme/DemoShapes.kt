@@ -20,6 +20,9 @@ object DemoShapes {
     val radiusTail = 6.dp
 
     val card = RoundedCornerShape(12.dp)
+
+    /** A model row (D123): a step rounder than a card, as the "ultra subtle" design draws it. */
+    val row = RoundedCornerShape(radiusLarge)
     val sheet = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     val chip = RoundedCornerShape(8.dp)
     val composer = RoundedCornerShape(28.dp)

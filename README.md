@@ -81,4 +81,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Design questions start in [docs/architec
 ## License
 
 Apache License 2.0, see [LICENSE](LICENSE). Built on [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT). The
-demo bundles Source Serif 4 under the SIL Open Font License (`demo/designsystem/src/main/res/raw/source_serif_4_ofl.txt`).
+demo bundles Geist and Source Serif 4 under the SIL Open Font License (`demo/designsystem/src/main/res/raw/geist_ofl.txt`,
+`demo/designsystem/src/main/res/raw/source_serif_4_ofl.txt`).

@@ -8,6 +8,7 @@ import com.suhel.llamabro.hub.DraftRequest
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubException
 import com.suhel.llamabro.hub.PlanOptions
+import com.suhel.llamabro.hub.SearchPage
 import com.suhel.llamabro.hub.SearchSort
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.flow.collect
@@ -99,6 +100,39 @@ class FakeLlamaBroHubTest {
         }
 
     @Test
+    fun modelCardServesTheScriptedReadme() =
+        runBlocking {
+            val fake =
+                FakeLlamaBroHub {
+                    repo("Qwen/Qwen3-4B") { readme = "---\nlicense: mit\n---\n# Qwen" }
+                    repo("Qwen/Bare") { generationConfig("""{"temperature":0.6}""") }
+                }
+            assertEquals("# Qwen", fake.hub.modelCard("Qwen/Qwen3-4B"))
+            assertNull(fake.hub.modelCard("Qwen/Bare"))
+            assertNull(fake.hub.modelCard("Qwen/Missing"))
+        }
+
+    @Test
+    fun baseModelIsTheQuantizedFromTag() =
+        runBlocking {
+            val fake =
+                FakeLlamaBroHub {
+                    repo(qwen) {
+                        baseModel = "Qwen/Qwen3-4B"
+                        gguf("Qwen3-4B-Q4_K_M.gguf")
+                    }
+                    repo("someone/Plain-GGUF") { gguf("Plain-Q4_K_M.gguf") }
+                }
+            assertEquals("Qwen/Qwen3-4B", fake.hub.baseModel(qwen))
+            assertNull("no tag, no original", fake.hub.baseModel("someone/Plain-GGUF"))
+            expect<HubException.NotFound> { fake.hub.baseModel("nobody/missing-GGUF") }
+            val invalid = runCatching { fake.hub.baseModel("not a repo") }.exceptionOrNull()
+            assertTrue("an invalid repo id: $invalid", invalid is IllegalArgumentException)
+            fake.offline = true
+            assertTrue(expect<HubException.Network> { fake.hub.baseModel(qwen) }.unreachable)
+        }
+
+    @Test
     fun scriptedSearchIsReturned() =
         runBlocking {
             val fake =
@@ -161,6 +195,51 @@ class FakeLlamaBroHubTest {
             )
             val unsloth = fake.hub.search("") { author = "unsloth" }
             assertEquals(listOf(qwen), unsloth.results.flatMap { result -> result.repos.map { it.id } })
+        }
+
+    @Test
+    fun searchFiltersByParametersHidesGatedAndSortsByCreation() =
+        runBlocking {
+            val fake =
+                FakeLlamaBroHub {
+                    repo("a/Small-GGUF") {
+                        parameters = 1_000_000_000
+                        gguf("Small-Q4_K_M.gguf")
+                    }
+                    repo("b/Big-GGUF") {
+                        parameters = 9_000_000_000
+                        downloads = 10
+                        gguf("Big-Q4_K_M.gguf")
+                    }
+                    repo("c/Unknown-GGUF") { gguf("Unknown-Q4_K_M.gguf") }
+                    repo("d/Locked-GGUF") {
+                        parameters = 2_000_000_000
+                        gated = true
+                        gguf("Locked-Q4_K_M.gguf")
+                    }
+                }
+
+            fun ids(page: SearchPage) = page.results.map { it.id }.sorted()
+
+            assertEquals(
+                "a repo with no listed count is left out of a range",
+                listOf("a/Small-GGUF", "d/Locked-GGUF"),
+                ids(fake.hub.search("") { maxParameters = 4_000_000_000 }),
+            )
+            assertEquals(listOf("b/Big-GGUF"), ids(fake.hub.search("") { minParameters = 4_000_000_000 }))
+            assertEquals(
+                listOf("a/Small-GGUF", "b/Big-GGUF", "c/Unknown-GGUF"),
+                ids(fake.hub.search("") { hideGated = true }),
+            )
+            assertEquals(
+                "the newest repo first",
+                "d/Locked-GGUF",
+                fake.hub
+                    .search("") { sort = SearchSort.Newest }
+                    .results
+                    .first()
+                    .id,
+            )
         }
 
     @Test

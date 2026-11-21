@@ -37,7 +37,7 @@ class SamplingStore(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val clock: () -> Long = { System.nanoTime() / NANOS_PER_MILLI },
 ) {
-    /** The hub's answers so far, by model; a model not here has none yet. */
+    /** The hub's answers so far, by model; a model not here has none yet. An outside event: the network answers. */
     private val answers = MutableStateFlow<Map<HfModel, HubCard>>(emptyMap())
 
     /** When each model's last lookup started: one in flight or failed recently is not started again. */

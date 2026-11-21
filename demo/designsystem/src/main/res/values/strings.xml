@@ -47,4 +47,14 @@
     <string name="ds_voice_stop">Stop the reply</string>
     <string name="ds_voice_replay">Play the reply</string>
     <string name="ds_voice_replay_stop">Stop playing the reply</string>
+    <string name="ds_resume">Resume</string>
+    <string name="ds_try_again">Try again</string>
+    <string name="ds_cancel">Cancel</string>
+    <string name="ds_clear">Clear</string>
+    <string name="ds_download_downloading">Downloading</string>
+    <string name="ds_download_waiting">Waiting</string>
+    <string name="ds_download_paused">Paused</string>
+    <string name="ds_download_stopped">Stopped</string>
+    <!-- A download panel's first line: the stage, then the file's quant ("Downloading · Q4_K_M"). -->
+    <string name="ds_download_line">%1$s · %2$s</string>
 </resources>

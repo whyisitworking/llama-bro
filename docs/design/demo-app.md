@@ -21,8 +21,8 @@ It has to work for two kinds of person: someone who has never heard of a model o
 
 **Features.**
 
-- First run with three suggested models, plain-language descriptions and a chat that is usable before the download ends.
-- Get models: search over Hugging Face, one fixed list of suggestions, and a model sheet with plain sizes (Basic) or every quantisation (Advanced), each shown with how it runs on this phone before anything is downloaded.
+- First run as the Models page's empty state: suggested models that run well here, a plain "What's a model?", and a chat that is usable before the download ends (D130).
+- Models: one screen for what is downloading, what is on the phone and what to get: search over Hugging Face, a fixed list of suggestions, and a model sheet that follows the model's state, with plain sizes (Basic) or every quantisation (Advanced), each shown with how it runs on this phone before anything is downloaded.
 - Downloads that continue in the background, survive process death and resume where they stopped, verified by hash (D40, D47).
 - Chat with streaming replies, markdown and code blocks, a folded thought ("Thought for 8 s"), Think levels, image input for models that can see, voice messages for models that hear (D76), stop, edit, regenerate, copy, share, and a divider when the model changes mid-chat.
 - Custom instructions applied to every chat, a default model, an optional Hugging Face token for gated models, and storage management.
@@ -58,12 +58,8 @@ It has to work for two kinds of person: someone who has never heard of a model o
 
 ## 4. The experience
 
-### 4.1 First run
-
-1. **Arrive.** A small warm orb (amber to rose), a greeting by time of day, one line: "Pick a mind to talk to. It lives on this phone: private, and it works offline.", a search bar, and **Picked for your phone** with a **What's a model?** link that opens a two-line plain answer. Three suggestions (Qwen3.5 0.8B, Gemma 3 4B, Qwen3.5 4B), each with its plain line, its size in GB and a fit word. No icons.
-2. **A closer look (a sheet).** The model's name and maker, what it is good at and its honest limits, a fit line, four facts (thinking, images, memory, download size and time), **Get <name>**, and "From Hugging Face".
-3. **Talk right away.** Tapping Get opens the chat at once. The download shows as a ring with a percentage beside the model's name in the top bar (D50); the person can type the first message now and it is held until the model is ready ("<Name> will answer the moment it's here"). Leaving the app keeps the download going, with a notification.
-4. **It wakes, then answers.** While the model loads, a fine accent line under the top bar fills as the load goes on: the accent over a soft accent track, like the download ring, from the SDK's load progress. Before the first report it sweeps; there is no spinner and no number. Then the held message is answered. With animations turned off the line jumps to each value, and the sweep is static.
+First run is no longer a screen of its own: it is the Models page's empty state, in §4.3 (D130). §4.1 is left
+unused so that the other sections keep their numbers.
 
 ### 4.2 Two layouts
 
@@ -71,9 +67,13 @@ Chosen in Settings, Appearance, each shown as a small preview. Sidebar is the de
 
 **Sidebar.**
 
-- Home is a new chat. The drawer holds the chats grouped by date (Today, This week, Earlier), each a dense one-line row 48 dp tall with the open chat ticked and a long title ellipsized; under them, above a hairline and the navigation bar, one row of actions: Settings and Models as icons at the start, and New chat (Material's `add_comment`) at the end in a tonal circle, the drawer's one strong action, under the thumb (D77). Each is a 48 dp target; a screen reader says "Settings", "Models, 2 on this phone" (the count is spoken, not shown) and "New chat", and reaches them before the chats: the drawer is one traversal group with its actions first. The first icon starts on the rows' 16 dp text line and the circle ends on their tick line.
+- Home is a new chat. The drawer (D126, "Quiet list") reads top to bottom: the app's name, "Llama Bro", in the serif (`sidebarTitle`, 22 sp Regular) on a 24 dp inset, with New chat (Material's `add_comment`, in the ink) as a 48 dp icon at its end; the search field, "Search chats", 16 dp from the sides and 12 dp under the name, which filters the history by title and message text and says "No chats match." when nothing does; then the chats grouped by date (Today, This week, Earlier). A group's label is quiet (13 sp, soft, sentence case), 24 dp under the group above (8 dp under the search for the first) and close on its rows. A chat is one line, at least 48 dp tall: the title (15 sp Regular, `rowLine`, ellipsized) and the chat's time at the end (12 sp, soft: the time today, the weekday this week, else the date), 12 dp inside the row and 12 dp from the drawer's edges, so the labels and the titles start on one 24 dp line; the open chat lies on the soft accent fill with 12 dp corners, no outline and no tick. Long press opens Rename and Delete. With no chats at all the head, the search and the foot stay and "No chats yet. Start one." stands where the list would be. At the foot, under a hairline, two labelled 48 dp rows: Models (its icon, "Models", and "N on this phone" soft at the end) and Settings. A screen reader hears each place as one button, "Models, 2 on this phone" (or "Models" before the library is read) and "Settings", and reaches the head and the foot before the chats: the drawer is one traversal group with those two first.
 - A new chat opens with the default model: the last model used, unless one was pinned with "Use for new chats". An empty chat shows the small orb, "What's on your mind?" and starter chips.
-- Tapping the model's name in the top bar opens a sheet listing the models on the phone, the default outlined with a **Default** chip, and **Get more models**. Switching mid-chat keeps the conversation and adds a quiet "Switched to <Name>" divider.
+- Tapping the model's name in the top bar opens the model switcher: the models on the phone as the Models page's rows
+  (§4.3), "Current" on the chat's model and "Default" on the one for new chats as line 2's small soft mark, the fit as
+  its symbol, an info action beside the symbol that opens the model's card, and **Get more models** at the end. A tap
+  switches the chat's model; a long press sets "Use for new chats". A new chat with no model chosen is titled "Choose a
+  model". Switching mid-chat keeps the conversation and adds a quiet "Switched to <Name>" divider.
 - Sent messages are in a soft neutral bubble on the right; the model writes on the page, full width, with its small actions under the reply.
 
 **Chat list.**
@@ -86,13 +86,84 @@ Thinking folds, code, images, edit, regenerate, share, copy and the model divide
 
 ### 4.3 Finding models and the library
 
-- **Get models** is a search bar over Hugging Face and one fixed list, **Suggested for this phone**, hardcoded: Qwen3.5 0.8B, Gemma 3 4B, Qwen3.5 4B, Llama 3.2 3B, Qwen3.5 9B and LFM3 Omni 2B, in that order, each with a fit word and a plain line. Queries under two characters show the suggestions instead; a longer query is debounced by 350 ms.
-- **Results** are models, not repositories: uploads of the same model collapse into one row, represented by the repository with the most downloads. A row shows the fit word, a plain line, "Thinks" (known only for the suggested models) and "Sees images" (from the pipeline tag), and the download count.
-- **The model sheet** shows the name, then repository and maker, a short description, and a Basic and Advanced switch:
-  - **Basic:** three sizes in plain words with no quantisation names: **Smaller** ("a little less sharp"), **Recommended** (preselected, "the best balance") and **Best quality** ("near-original, slower"), each with size and fit. Recommended is Q4_K_M where it exists, else UD-Q4_K_XL, else the largest Q4; Smaller is the largest file under 75% of Recommended; Best quality is Q8_0, else Q6_K, else the largest. A tier with no matching file is hidden.
-  - **Advanced:** every quantisation in equal-height rows with aligned columns (quantisation, size, how it runs here), the selected row outlined with a Recommended label inside it, and the image reader as a matching row marked "Included".
-  - The button names the model (Basic) or the quantisation (Advanced) and the time or total size.
-- **Library (Models):** storage used and free, each model with its last use, the default outlined with a Default chip, swipe to remove (after asking), a Downloading section, and Get more models.
+One **Models** page (D116, D130) is the only place for models. It opens from the sidebar's Models row (D126), the
+chat list's Models tab and the switcher's "Get more models", and a fresh install starts on it. Design:
+[models-page.md](models-page.md) and, for search's paging and filters, [models-search.md](models-search.md); the
+departures made while building are D117-D129. It shows what the phone already knows from its first frame (Room), and
+a fresh answer from Hugging Face changes words in place, never the layout (F177).
+
+- **A fresh install** (first run). While first run hasn't been seen and nothing is on the phone, the app starts on
+  Models, in either layout. One muted line stands over the field, "Pick a model to talk to. It runs on this phone,
+  private and offline.", with **What's a model?**: two plain lines and the five fit symbols with their words. The first
+  Get then starts the download and opens a new chat on that model at once, and first run is seen; searching doesn't
+  mark it seen, and every later Get stays on the page. In that chat the download is a ring with a percentage beside the
+  model's name in the top bar (D50); the first message can be typed now and is held until the model is ready ("<Name>
+  will answer the moment it's here"); leaving the app keeps the download going, with a notification. While the model
+  loads, a fine accent line under the top bar fills with the SDK's load progress (a sweep before the first report, no
+  spinner and no number, still with animations off); then the held message is answered.
+- **Browse**, top to bottom: the title "Models" (light, with Back when something is under it), the intro on a fresh
+  install, the search field, then **Downloading**, **On this phone** (its note is the storage, "6.1 GB · 120 GB free";
+  none with no models) and **Suggested for this phone**: the catalog's models (Qwen3.5 0.8B, Gemma 3 4B, Qwen3.5 4B,
+  Llama 3.2 3B, Qwen3.5 9B, LFM3 Omni 2B) that run great or well here and aren't taken, best first; when none does, one
+  line says the phone is short on memory and names the smallest. Labels are quiet and in sentence case. An empty group
+  is hidden. A failed remove or cancel is one plain line under the field, closed by its own OK.
+- **Search** starts the moment the field is focused, before any typing, in place on the same list: the intro folds
+  away, recent searches show as chips while the field is empty, and browse's own groups stay under the same labels,
+  narrowed to the query as it is typed (every catalog model whose name matches, whatever its fit). After two characters
+  and 350 ms, Hugging Face is asked; its rows come under **From Hugging Face**, a page at a time in the Hub's order,
+  hiding gated repos, sized to fit this phone by default (F176), and the next page loads near the end (D127). The
+  field's own bottom edge is the one loading line. A failure, offline or no match is one plain line under that label
+  with its action inline, the local matches staying above it; a next page that fails says "Couldn't load more." with
+  Try again. The field's filter action opens a plain sheet of sort, size and "Sees images", applied at once; a dot on
+  it, and one line under the label naming the changed filters with Reset, say when they aren't the defaults (D128).
+  Back, or clearing and leaving the field, returns to browse at the list's top. Results are models, not
+  repositories: uploads of one model collapse into one row, and a Hub row for a model listed above is left out.
+- **One row** (`ModelRow`, D123) for every model: the name (16 sp Regular, in the ink, never the first thing cut) over
+  one muted line, "maker · size" and the capability icons (light outline, soft, no words: Thinks, Talks, Sees images,
+  Writes code), then, quietest, a Hub row's downloads ("· 1.2M downloads") and a state's small soft mark ("· Default",
+  "· On phone"); the fit symbol is centred on the right. The size is what the download takes, the model file and its
+  image reader, one size everywhere; a Hub row's is "about 3.4 GB", guessed from its parameter count (F175), until a
+  card has read its files. A download adds a footer, the ring panel at row size (below). A model on the phone swipes to
+  remove, after asking. A row moves with its state as one animated item (Suggested to Downloading to On this phone).
+  At font scale 1.3 and up the fit symbol moves under the name and the icons and marks take their own line.
+- **The fit symbol** (D116, D101): `sprint` runs great, `directions_run` runs well, `elderly` is slow here, a kneeling
+  figure is too big, `block` can't chat. A 20 dp box, reserved, growing with the font to 32 dp; the words are its
+  content description and long-press tooltip, and no Models row shows them as text. One function gives every fit
+  (`Fits.quick`: the whole size for memory, the model file's active share for speed), so a model's row, switcher row
+  and card agree, one fit per file (D121).
+- **Can't chat**: a model with no chat template, or an embedding or reranking model, shows the no-entry symbol, no
+  capability icons and its name in the ink. Its card says why in its state line and offers no Get.
+- **The model card** opens from any row, the same sheet for every model, drawn once every local read has answered so
+  its first frame is final (D118). It opens at its compact height (560 dp, or the screen's) whatever its content, and
+  grows to the status bar's edge only when scrolled or pulled up, or when "Another size" needs the room (D119, D121).
+  Top to bottom, each part in the same place in every state:
+  - the name in the serif (24 sp Regular), and one quiet line: the maker, the capability icons and the fit symbol;
+  - the state line, muted: "Not on this phone", "On this phone · Q4_K_M · 3.4 GB" or "Not for chat: this is an
+    embedding model"; none while a download runs, as the foot says it;
+  - the size choice, Basic or Advanced, when getting is possible. **Basic**: **Smaller**, **Recommended** (preselected)
+    and **Best quality**, each with its quant and size under the title ("Q4_K_M · 3.4 GB"), its fit symbol and a radio
+    mark; Recommended is Q4_K_M where it exists, else UD-Q4_K_XL, else the largest Q4; Smaller is the largest file under
+    75% of Recommended; Best quality is Q8_0, else Q6_K, else the largest; a tier the upload lacks stays, disabled, "Not
+    in this upload". **Advanced**: every quant in the sheet's one scroll, its fit column titled "Runs here",
+    "Recommended" and "On phone" as words under the quant, and the image reader as one flat row, "Included". A size on
+    the phone shows its own size and can't be picked. Offline, a catalog model's own file is its Recommended tier and
+    the others say "Needs the network", with one notice and Try again;
+  - after a larger gap, the model's page: a quiet "About", then the original model's Hugging Face page (the base
+    model's `README.md`, else the repository's own) without its front matter, muted and small, its headings soft, its
+    note boxes, badge rows and link-only lines left out, and its source at the end ("Source: owner/repo"). Images are
+    dropped; tables span the width and scroll sideways. Nothing shows while it is unknown;
+  - the pinned foot, one button tall in every state, the page scrolling under it: **Get** naming the file ("Get Q4_K_M
+    · 3.4 GB · about 8 min"); during a download, the **ring panel**: the progress as a ring around Pause (Resume when
+    paused, an hourglass while waiting, Try again when stopped), two lines ("Downloading · Q4_K_M" over "0.9 of 3.4 GB
+    · 4 min left"; "Stopped" in the danger ink over the reason and the bytes kept) and a quiet ✕ that asks first past
+    300 MB; on the phone, **Start a chat** and the bordered **Another size**, which unfolds the choice with one line
+    ("Q4_K_M is already on this phone.") and Done. A foot that changes kind fades through. At large font the foot grows
+    rather than cut.
+  - Labels name the quant, never a tier: Smaller, Recommended and Best quality are only Basic's titles. Every
+    progress figure is one string in the total's unit ("0.9 of 3.4 GB", "35 of 740 MB").
+- **Motion** (D119, D120): words that change in place fade through (out, then in), never crossfade; lists move exit,
+  then place, then enter; a part that comes or goes folds with its height; screens fade through; every closing action
+  slides the sheet down first. All instant with animations off.
 
 ### 4.4 Chat
 
@@ -147,9 +218,9 @@ How a model picks its words starts from what its makers recommend and can be cha
 
 A spoken conversation with a model that talks (D95, D100), drawn in [mockups/voice-mode.html](mockups/voice-mode.html). The previous context of the chat is not given to the spoken conversation: upstream's realtime conversation takes the person's text but not the model's earlier replies, so each time voice mode opens (and after leaving the screen), the model starts the conversation afresh, while the chat keeps every turn. A chat that already has messages says so quietly above the words: "Voice starts fresh: it doesn't see the messages above." The typed chat afterwards sees every voice turn, since it is rebuilt from the stored messages. The voice mode holds the model as a reply does, so it is never freed under a conversation; leaving the screen lets it go.
 
-- **Getting there.** For a model that speaks, an empty message bar puts the voice button (Material's `graphic_eq`) in Send's slot, filled with the send indigo, and the voice-message mic (D76) sits just before it. Typing turns the slot back into Send. The app learns that a model speaks from `ModelInfo.voices` when it loads and remembers that for its next load, as it does for hearing.
+- **Getting there.** For a model that speaks, an empty message bar puts the voice button (Material's `graphic_eq`) in Send's slot, filled with the accent (D125), and the voice-message mic (D76) sits just before it. Typing turns the slot back into Send. The app learns that a model speaks from `ModelInfo.voices` when it loads and remembers that for its next load, as it does for hearing.
 - **The voice view.** Full screen over the chat. A top bar with a close at the start and the model's name and voice centred (`titleSmall` over `bodySmall`). The orb at the voice view's size in the upper middle, with one muted `label` line under it: "Tap or hold to talk", "Listening", "Thinking" or "Speaking". Under that, the person's last words in muted `bodyMedium`, then the reply's caption in `voiceCaption`, its older lines muted and fading at the top. At the bottom, the talk button (an 80 dp tonal circle with the mic glyph), centred, and while the model speaks a 48 dp tonal Stop at its start. A hint under the controls says how to talk now: "Tap to start, or hold while you talk", "Tap to send", "Release to send" or "Talk to interrupt".
-- **Talking.** Tap or hold: a tap starts a turn that the next tap sends ("Tap to send"), and a press held past 400 ms (Material's long-press timeout) sends on release ("Release to send"). The button fills with the send indigo while it listens. Pressing it while the model speaks stops the reply and listens ("Talk to interrupt"). There is no hands-free mode: upstream's realtime conversation has no turn detection at b12479 (`turn_detection` is always null), and the maintainer chose not to add one by a patch or in the app (2026-11-19). Stop ends the reply. Close ends voice mode and returns to the chat.
+- **Talking.** Tap or hold: a tap starts a turn that the next tap sends ("Tap to send"), and a press held past 400 ms (Material's long-press timeout) sends on release ("Release to send"). The button fills with the accent while it listens. Pressing it while the model speaks stops the reply and listens ("Talk to interrupt"). There is no hands-free mode: upstream's realtime conversation has no turn detection at b12479 (`turn_detection` is always null), and the maintainer chose not to add one by a patch or in the app (2026-11-19). Stop ends the reply. Close ends voice mode and returns to the chat.
 - **The orb in each state.** Ready: still. Listening: it swells with the voice's level and a hairline ring spreads from it. Thinking (about 0.3 s, F170): a soft highlight turns inside it. Speaking: it moves with the reply's speech. With animations off it holds still in every state, and the state line carries the meaning.
 - **What is saved.** Each turn is an ordinary message: the person's as a voice bubble (D76) with its caption under it in muted `bodyMedium` when captions are on, the reply as its text with a speaker action among its actions that replays its speech. The chat goes on by typing.
 - **Settings.** Settings › Voice: the voice, from the model's list (the first by default), and captions of the person's words (on by default; they load the model with two slots, D99). The spoken language follows the phone's when the model has it, else English. The built-in answering instruction comes first, the custom instructions after it (F166).
@@ -157,18 +228,18 @@ A spoken conversation with a model that talks (D95, D100), drawn in [mockups/voi
 
 ## 5. Model naming
 
-A model has one name, its own, on every surface that names it: first run, Get models, the model sheet, the switcher, Default model, the library, the chat's top bar, the dividers and the notifications ("Qwen3.5 0.8B", "Gemma 3 4B", "Qwen3.5 4B"). The plain line under a name says what it is for ("Tiny and quick, for everyday questions"). Another file of the same repository in another size keeps the name; its size says which. The library lists one entry per downloaded file. Decided (2026-11-12, D50).
+A model has one name, its own, on every surface that names it: Models, the model card, the switcher, Default model, the chat's top bar, the dividers and the notifications ("Qwen3.5 0.8B", "Gemma 3 4B", "Qwen3.5 4B"). Another file of the same repository in another size keeps the name; its size says which. The library lists one entry per downloaded file. Decided (2026-11-12, D50).
 
-The suggested models, with the plain line shown under each (the catalog also pins file sizes and a maker):
+The suggested models (the catalog also pins file sizes and a maker; the plain line each once carried is gone, since D116 shows the model's own page instead):
 
-| Model | Plain line | Thinks | Sees images | Talks |
-|---|---|---|---|---|
-| Qwen3.5 0.8B | Tiny and quick, for everyday questions | yes | yes | no |
-| Gemma 3 4B | A careful writer, good with tone | no | yes | no |
-| Qwen3.5 4B | Thinks things through before answering | yes | yes | no |
-| Llama 3.2 3B | Meta's all-rounder, friendly and fast | no | no | no |
-| Qwen3.5 9B | Smarter, but heavy for this phone | yes | yes | no |
-| LFM3 Omni 2B | Talks with you: a voice conversation on the phone | no | no | yes |
+| Model | Thinks | Sees images | Talks |
+| --- | --- | --- | --- |
+| Qwen3.5 0.8B | yes | yes | no |
+| Gemma 3 4B | no | yes | no |
+| Qwen3.5 4B | yes | yes | no |
+| Llama 3.2 3B | no | no | no |
+| Qwen3.5 9B | yes | yes | no |
+| LFM3 Omni 2B | no | no | yes |
 
 A catalog entry is keyed by repository and quantisation, but its name applies to every upload of that repository, so a size the picker recommends instead of the catalog's own file is not listed under a second name (F112). Search rows that are not in the catalog take their name from the repository and a plain line from the parameter count in the name: under 1.5B "Tiny and quick, for everyday questions", under 5B "Balanced, a good all-rounder", under 10B "Smarter, but heavy for a phone", otherwise "Needs a computer, not a phone", and "A model from <author>" when the size is unknown.
 
@@ -184,7 +255,7 @@ A catalog entry is keyed by repository and quantisation, but its name applies to
   and one paused before it started reads Paused with Resume. The Hub checks every file's SHA-256 before it enters the
   cache and re-hashes a resumed partial (D40, D47). The library lists a model once every one of its files is on the
   phone (`hub.source` reads it from disk); a model whose image reader is still arriving stays under Downloading.
-- Progress shows on the row it was started from (a thin bar, percentage and time left), in the library under Downloading (megabytes done of total, speed, time left, Pause and cancel), in the chat's top bar beside the model's name, and as a notification outside the app. Cancel deletes the partial; Pause keeps it.
+- Progress shows on the model's row in Models wherever the download was started (a thin bar and the percentage, or Queued, or Paused), under Downloading (megabytes done of total, speed, time left, Pause and cancel), in the chat's top bar beside the model's name, and as a notification outside the app. Cancel deletes the partial; Pause keeps it.
 - The estimated time on a button is the size divided by 8 MB/s, rounded up to minutes ("about 3 min", "under a minute"); the real download measured about 10 MB/s on Wi-Fi (F93).
 - A failed download becomes a plain line with an action (section 9); saving a token restarts the downloads refused for want of one, also after the app was restarted (the refusal is remembered).
 
@@ -194,7 +265,7 @@ A catalog entry is keyed by repository and quantisation, but its name applies to
 
 Every model, size and file is shown with one fit word, coloured, never a card tint.
 
-- **Memory** is a formula, the same everywhere: lists, the model sheet for every size and quant, the first-run picks and their sheet (D101). A model may use half the phone's total RAM, read once from the SDK's CPU device (`devices()`, its `memoryTotal`); against that budget the app sets the model file plus its encoder (mmproj), what is downloaded and later held in memory. Nothing reads free memory and nothing reads GGUF headers over the network, so a model's label doesn't move between two looks. The encoder's size comes from the catalog for a model it knows and otherwise from the Hub's listing (`Quantization.encoderBytes`, the encoder the Hub fetches with that quant). The suggestions and first-run picks ship with their sizes, so the first screen needs no network.
+- **Memory** is a formula, the same everywhere: lists, the model card for every size and quant, the switcher (D101). A model may use half the phone's total RAM, read once from the SDK's CPU device (`devices()`, its `memoryTotal`); against that budget the app sets the model file plus its encoder (mmproj), what is downloaded and later held in memory. Nothing reads free memory and nothing reads GGUF headers over the network, so a model's label doesn't move between two looks. The encoder's size comes from the catalog for a model it knows and otherwise from the Hub's listing (`Quantization.encoderBytes`, the encoder the Hub fetches with that quant). The catalog's suggestions ship with their sizes, so the first screen needs no network.
 - **Context room** is the headroom left in the budget after the model and its encoder: at least 1.5 GiB is large, at least 0.5 GiB normal, anything above zero small, none when they do not fit.
 - **Speed** cannot be measured before a download. Decoding is memory-bound, so tokens per second is about a constant per chip divided by the model's size in bytes, with constants taken from measurements on the test phone: 42e9 for the NPU, 26e9 for the GPU, 30e9 for the CPU (F67, F78, F27).
 - **Words:** **Runs great** (large room and at least 20 tokens a second), **Runs well**, **Slow here** (small room or under 8 tokens a second), **Too big** (does not fit).
@@ -220,27 +291,36 @@ The system lives in `demo/designsystem`. Its values are Material 3's wherever Ma
 
 ### 8.1 Character
 
-Calm, classy, a little alive. Depth and restraint over softness or loudness. A neutral near-white in light mode and an AMOLED near-black in dark mode, both untinted (D69). Colour is kept for meaning and for one living moment, the orb. A classic serif only for hero moments; a clean sans everywhere else. Soft shadows and generous but not floaty spacing. Motion only where it earns its place, quiet and quick (§8.11): sheets, the download ring, the wake-up hairline, the thinking fold, and in the chat what arrives, leaves or changes in place.
+Calm, classy, a little alive. Depth and restraint over softness or loudness. A cool grey near-white in light mode and a near-black in dark mode, with no hue (D69, D125). Colour is kept for meaning and for one living moment, the orb. A classic serif, Source Serif 4, for hero moments, a model card's name and the sidebar's title; Geist, a clean sans, everywhere else (D125). Soft shadows and generous but not floaty spacing. Motion only where it earns its place, quiet and quick (§8.11): sheets, the download ring, the wake-up hairline, the thinking fold, and in the chat what arrives, leaves or changes in place.
 
 ### 8.2 Type
 
-Material 3 roles, a screen naming a role and never a size. Each role carries size, line height, weight, tracking and face; every line height is a multiple of 4.
+Material 3 roles, a screen naming a role and never a size. Each role carries size, line height, weight, tracking and face; every line height is a multiple of 4, but `replyBody`'s, chosen by eye (D125). The sans is Geist (SIL OFL, bundled as a variable font, `res/font/geist.ttf`, at weights 300, 400 and 500), the serif Source Serif 4, and code the system monospace (D125).
 
 | Role | Size / line | Weight | Face | Use |
 |---|---|---|---|---|
-| `displayHero` | 28 / 36 | Medium | Serif | first-run greeting, the empty-chat line |
-| `sheetTitle` | 22 / 28 | Medium | Serif | a model sheet's title |
-| `screenTitle` | 22 / 28 | Medium | Sans | a top bar's title, "Chats" |
-| `title` | 16 / 24 | Medium | Sans | a row's or card's title |
-| `titleSmall` | 14 / 20 | Medium | Sans | the model's name under a top bar, a group heading inside a card |
-| `body` | 16 / 24 | Regular | Sans | message text, descriptions, field text |
-| `bodyMedium` | 14 / 20 | Regular | Sans | a row's subtitle, a card's description; code in monospace |
-| `bodySmall` | 12 / 16 | Regular | Sans | a reply's meta line, a card's facts, captions |
-| `label` | 14 / 20 | Medium | Sans | a button's or chip's text |
-| `labelSmall` | 12 / 16 | Medium | Sans | an upper-case section label, a badge |
-| `voiceCaption` | 22 / 28 | Regular | Sans | the reply's caption in voice mode, read at arm's length (D100) |
+| `displayHero` | 28 / 36 | Medium | Serif | the empty-chat line |
+| `sheetTitle` | 22 / 28 | Medium | Serif | a sheet's title |
+| `cardTitle` | 24 / 32 | Regular | Serif | a model card's name (D123) |
+| `sidebarTitle` | 22 / 28 | Regular | Serif | "Llama Bro" at the head of the sidebar (D126) |
+| `screenTitle` | 22 / 28 | Medium | Geist | a top bar's title, "Chats" |
+| `screenTitleLight` | 24 / 32 | Light | Geist | the Models page's title (D123) |
+| `title` | 16 / 24 | Medium | Geist | a row's or card's title |
+| `titleRegular` | 16 / 24 | Regular | Geist | a model row's name, a quiet button's label (D123) |
+| `titleSmall` | 14 / 20 | Medium | Geist | the model's name under a top bar, a group heading inside a card |
+| `body` | 16 / 24 | Regular | Geist | the user's messages, descriptions, field text |
+| `replyBody` | 16 / 26 | Regular | Geist | a reply's running text (D125) |
+| `rowLine` | 15 / 20 | Regular | Geist | a one-line row of a long list, the sidebar's chats and places (D126) |
+| `bodyMedium` | 14 / 20 | Regular | Geist | a row's subtitle, a card's description, a state line |
+| `quietLabel` | 13 / 20 | Regular | Geist | a quiet sentence-case section label, a model page's headings and "About" (D123) |
+| `pageBody` | 13 / 24 | Regular | Geist | a model's page under its card (D123) |
+| `bodySmall` | 12 / 16 | Regular | Geist | a reply's meta line, a row's second line, captions |
+| `label` | 14 / 20 | Medium | Geist | a button's or chip's text |
+| `labelSmall` | 12 / 16 | Medium | Geist | an upper-case section label, a status pill |
+| `voiceCaption` | 22 / 28 | Regular | Geist | the reply's caption in voice mode, read at arm's length (D100) |
+| `code` | 14 / 20 | Regular | Monospace | code blocks and inline code |
 
-The serif is for the two hero roles only (the first-run greeting and the empty-chat line, and a model sheet's title); every screen title, row and label is sans. There is no role below 12 sp. Body text is 16 sp.
+The serif is for the hero roles only (the empty-chat line and a sheet's title), a model card's name (D123) and the sidebar's title (D126); every screen title, row and label is Geist. There is no role below 12 sp. Body text is 16 sp.
 
 ### 8.3 Spacing and the gutter
 
@@ -260,7 +340,7 @@ The gutter is 16 dp everywhere, measured from the edge of a content column that 
 
 ### 8.4 Layout primitives
 
-Screens and sheets are assembled from primitives that own the gutter and the gaps and that take content, never padding: `Screen`, `Sheet`, `Section`, `Stack` and `Inline` (gaps from the named steps only), with `BottomBar`, `MessageColumn`, `Centered`, `ScrollStack` and `LazyStack` for specific jobs. A sheet is the 48 dp handle area, then content on the gutter, ending 16 dp above the bottom inset with no dead space; its primary action is a 56 dp ink button. A sheet whose content grows after it opens re-expands so that its content stays on screen (F118).
+Screens and sheets are assembled from primitives that own the gutter and the gaps and that take content, never padding: `Screen`, `Sheet`, `Section`, `Stack` and `Inline` (gaps from the named steps only), with `BottomBar`, `MessageColumn`, `Centered`, `ScrollStack` and `LazyStack` for specific jobs. A sheet is the 48 dp handle area, then content on the gutter, ending 16 dp above the bottom inset with no dead space; its primary action is a 48 dp accent button (D117, D125). A plain sheet whose content grows after it opens re-expands so that its content stays on screen (F118); an expandable sheet, a model's card, is its compact height (560 dp, or the screen's) from its first frame and grows to the status bar's edge only when scrolled or pulled up, or when a part the person opens needs the room (D119, D121).
 
 ### 8.5 Controls and shapes
 
@@ -272,10 +352,10 @@ Every size a component uses comes from `DemoSize` (heights, widths, icon sizes, 
 | Row's leading icon / avatar | 24 / 40 dp |
 | Top app bar | 64 dp |
 | Navigation bar | 80 dp with labels; the selected tab's indicator is a 64 × 32 dp pill |
-| Button, medium / small | 56 / 40 dp |
+| Button, primary or quiet, bordered or not | 48 dp, one height (D117) |
 | Search bar and text field | 56 dp |
 | Chip | 32 dp |
-| Tag (a quant name, "Recommended", "Default") | 20 dp pill, 8 dp each side |
+| Status pill (a download's state outside the Models page; tonal, D117) | 20 dp pill, 8 dp each side |
 | Segmented switch | 48 dp: 40 dp segments in a 4 dp inset, the track's corner the segment's plus the inset |
 | Sheet's drag handle | 32 × 4 dp in a 48 dp area |
 | Divider | 1 dp |
@@ -293,7 +373,7 @@ Every size a component uses comes from `DemoSize` (heights, widths, icon sizes, 
 
 ### 8.6 Colour
 
-One primary: the **ink** (D69). Primary buttons (Get, Save, New chat), the floating button, the selected border, progress and the selected navigation item are ink, and what sits on them is the on-accent colour (white in light, near-black in dark). With no hue to tell states apart, a second signal does it: links and unbordered text actions ("Unload", "Reset to the model's defaults") are underlined. Two buttons are the exception (D73): the message bar's **send** (and stop, while a reply comes) and **Think on** are filled with the **send accent**, an indigo taken from the icon's night and violet mane, with the on-send-accent glyph (white in light, near-black in dark); an ink circle there read too heavy and too stark. Nothing else uses the indigo. The fit words and Remove keep their colours and are the only hues that carry meaning, besides the orb. Contrast is 4.5:1 for every text pair and 3:1 for large text (18 sp, or 14 sp bold) and icons, in both themes, checked by a unit test.
+The palette is a cool grey light theme and a dimmed dark one (the values in the table, from `Tokens.kt`). One primary, monochrome (D69, D125): the **accent**, a quiet grey a step off the ink. Primary buttons (Get, Start a chat, Save, New chat), the floating button, the message bar's send, stop and Think on, the mic and voice buttons, every selected outline, progress and the selected navigation item are the accent, and what sits on them is the on-accent colour (near-white in light, near-black in dark). With no hue to tell states apart, a second signal does it: links and unbordered text actions ("Unload", "Reset to the model's defaults") are underlined. D73's indigo send accent is gone (D125). The fit words and Remove keep their colours and are the only hues that carry meaning, besides the orb. Contrast is 4.5:1 for every text pair and 3:1 for large text (18 sp, or 14 sp bold) and icons, in both themes, checked by a unit test.
 
 A scrim (behind the drawer, behind a sheet) is the theme's darkest token: the canvas at 50% in dark, the ink at 30% in light. Never the ink in dark, which would lay a light veil over a dark page (F131).
 
@@ -301,23 +381,23 @@ New chat is a speech bubble with a plus (Material's `add_comment`), the sign mes
 
 | Token | Light | Dark |
 |---|---|---|
-| Canvas | `#FAFAFA` | `#0A0A0A` |
-| Surface | `#FFFFFF` | `#141414` |
-| Ink | `#0D0D0D` | `#ECECEC` |
-| Muted text | `#5D5D5D` | `#A8A8A8` |
-| Hairline | `#E5E5E5` | `#222222` |
-| User bubble | `#EFEFEF` | `#1E1E1E` |
-| Primary (accent, the ink) | `#0D0D0D` | `#ECECEC` |
-| On accent | `#FFFFFF` | `#0A0A0A` |
-| Accent soft | `#EBEBEB` | `#262626` |
-| Send accent (send, stop, Think on; D73) | `#4F5BD5` | `#8E9BFF` |
-| On send accent | `#FFFFFF` | `#0A0A0A` |
+| Canvas | `#F2F2F5` | `#0B0B0C` |
+| Surface (cards and fields are their fill alone, D122) | `#FBFBFC` | `#161618` |
+| Ink | `#1D1D1F` | `#E3E3E6` |
+| Reply (a reply's running text; its headings and bold are the ink) | `#2C2C2E` | `#CFCFD4` |
+| Muted text | `#65656A` | `#98989D` |
+| Soft text (the least important text, capability icons, D123) | `#6E6E73` | `#808085` |
+| Hairline (dividers; cards and fields have no edge, D122) | `#E3E3E8` | `#242426` |
+| User bubble | `#E6E6EB` | `#222224` |
+| Primary (accent; every strong action and selected outline, D125) | `#3A3A3D` | `#C8C8CD` |
+| On accent | `#FBFBFC` | `#161618` |
+| Accent soft | `#E8E8ED` | `#28282B` |
 | Fit: runs great (text) | `#3E5641` | `#A9C3AA` |
 | Fit: slow here (text) | `#73572F` | `#D3B588` |
-| Fit: too big (text) | `#6E6E73` | `#8C8C92` |
+| Fit: too big (text; no dimmer than muted, D117) | `#5A5A5F` | `#AAAAB0` |
 | Danger ("Remove") | `#A23B2F` | `#E59A90` |
 
-The orb is the app's one spark of colour: a radial gradient from amber `#FDB969` at its lit point (34% across, 28% down) to rose `#C35F5A` at the edge, the same in both themes, with a soft rose-tinted shadow. It is about 56 dp on the first screen and 40 dp in an empty chat. It takes the warm end of the icon; the icon's violet stays in the icon. Everything else is neutral so that the orb and the fit words are the only colour on a screen (D69), besides the indigo of send and Think on (D73), which marks the bar's two acting buttons and no state or meaning.
+The orb is the app's one spark of colour: a radial gradient from amber `#FDB969` at its lit point (34% across, 28% down) to rose `#C35F5A` at the edge, the same in both themes, with a soft rose-tinted shadow. It is about 56 dp on the first screen and 40 dp in an empty chat. It takes the warm end of the icon; the icon's violet stays in the icon. Everything else is neutral so that the orb and the fit words are the only colour on a screen (D69, D125).
 
 The launcher icon is adaptive: the llama on a flat night background `#02011E`, scaled into the 66 dp safe zone, with a one-colour themed layer traced from the llama's outline. The splash shows the icon on the canvas, so no other colour flashes before the first screen.
 
@@ -325,8 +405,8 @@ The launcher icon is adaptive: the llama on a flat night background `#02011E`, s
 
 Every state is one signal:
 
-- **Selected** is a 2 dp ink border for a card that is one choice among cards (a size, a file, a model in the switcher, a layout), and an ink check at the end of a row that is one choice inside a grouped list (the Think levels, the default model, the open chat in the drawer). A segmented switch raises its chosen segment. Nothing else means selected; an "included" file is not outlined. A selected row exposes the `selected` semantic.
-- **Fit** is a coloured word, never a card tint. **Recommended** is a label inside the card. **Disabled** is ink at 38% on a surface at 12%, still readable as a label.
+- **Selected** is the one selection outline (D125), 2 dp in the accent on the chosen thing's own shape: a card that is one choice among cards (a size or quant, a layout) and a segmented switch's chosen segment, which is also raised. A row that is one choice inside a grouped list (the Think levels, the default model) has an ink check at its end; the open chat in the drawer lies on the soft accent fill (D126); the switcher's current model is marked "Current", not outlined. Nothing else means selected; an "included" file is not outlined. A selected row exposes the `selected` semantic.
+- **Fit** is a coloured word, never a card tint; on the Models page, its card and the model switcher it is a symbol in its colour (D116). **Recommended** is a label inside the card. **Disabled** is ink at 38% on a surface at 12%, still readable as a label.
 - Every string a person reads starts with a capital ("Used today", "Paused"); a count or time that begins with a figure is left as it is.
 
 ### 8.8 The message bar
@@ -334,8 +414,8 @@ Every state is one signal:
 The text over a row of buttons, in one outlined surface (1 dp hairline, 28 dp corner). The text (`body`) starts 16 dp from the edge and 16 dp below the top, and grows to six lines; it capitalises the start of each sentence. The buttons' circles sit 14 dp under it (8 dp of padding and the 6 dp each circle leaves in its target). The row holds three 36 dp circles with 20 dp glyphs (D73) in 48 dp targets, 10 dp from the bar's bottom and sides so that they are concentric with the corner (18 + 10 = 28). The targets stay where the 40 dp circles had them, 4 dp from the bar's edge, so each circle's centre stays 28 dp in and the bar's height is unchanged; the circles' gaps grow by the 4 dp they lost (12 dp apart, 14 dp under the text, where 40 dp circles were 8 and 12):
 
 - **+** at the start, tonal (the hairline's fill, an ink glyph).
-- At the end, the **Think** lightbulb (only for a model that can think; tonal when off, filled with the send accent when on) and **send**, 12 dp apart.
-- **Send** is a tonal circle with a muted glyph that does nothing while there is no text and no photo, filled with the send accent (indigo, `#4F5BD5` / `#8E9BFF`, §8.6) when it can act, and a stop button on the same fill while a reply is coming (D49). The glyph on the indigo is 5.5:1 in light and 7.8:1 in dark. For a model that hears, an empty text field shows the **mic** in its place instead (D76); with photos attached and no text, the mic sits just before Send, 12 dp apart like Think, so photos alone can still be sent. The mic appears once the model has said it hears on a load, and the app remembers that for its next load.
+- At the end, the **Think** lightbulb (only for a model that can think; tonal when off, filled with the accent when on) and **send**, 12 dp apart.
+- **Send** is a tonal circle with a muted glyph that does nothing while there is no text and no photo, filled with the accent (§8.6, D125) when it can act, and a stop button on the same fill while a reply is coming (D49). The on-accent glyph is 11:1 on it in both themes. For a model that hears, an empty text field shows the **mic** in its place instead (D76); with photos attached and no text, the mic sits just before Send, 12 dp apart like Think, so photos alone can still be sent. The mic appears once the model has said it hears on a load, and the app remembers that for its next load.
 
 **Recording** (D76). A tap on the mic turns the text area into a live waveform of the input level with a timer; **✕** takes the + slot and discards, **↑** takes Send's slot and sends. The timer turns ink in the last 10 s before the 2-minute stop. Starting and stopping are announced, and with animations off the waveform holds still.
 
@@ -345,7 +425,7 @@ A one-line bar is about 91 dp tall. Decided (2026-11-12, D50): Think is a lightb
 
 ### 8.9 Rows, groups and settings
 
-A model offered to get (first run, Get models) is one `ModelCard` everywhere: the name in `title` with how it runs here at the end of the same line (the fit word in its ink), the plain line under it in muted `bodyMedium`, and the facts in `bodySmall` (size, Thinks, Sees images, On this phone, downloads). A row's title is `title` on every row and card, whether or not it has a subtitle (`bodyMedium` in muted ink). Trailing text sits on the padding edge, never mid-row; a row that opens a page ends in a 24 dp chevron. Settings, About and Storage are grouped cards: a 12 dp-cornered card per group, a 1 dp divider inset 16 dp between its rows, a chevron on rows that open a page, and a section label above each group, on the text of the rows under it (section 8.3, D77). Buttons are pills; a bordered one is outlined and 40 dp tall; a destructive one is drawn in the danger ink.
+A model is one `ModelRow` everywhere it is listed (the Models page, the model switcher; D123, §4.3): the name in `titleRegular` over one muted `bodySmall` line, "maker · size" with the soft capability icons and marks, and the fit symbol centred on the right. Any other row's title is `title`, whether or not it has a subtitle (`bodyMedium` in muted ink). Trailing text sits on the padding edge, never mid-row; a row that opens a page ends in a 24 dp chevron. Settings, About and Storage are grouped cards: a 12 dp-cornered card per group, a 1 dp divider inset 16 dp between its rows, a chevron on rows that open a page, and a section label above each group, on the text of the rows under it (section 8.3, D77). Buttons are pills, all 48 dp tall (D117); a bordered one is outlined by the hairline; a destructive one is drawn in the danger ink.
 
 ### 8.10 Chat details
 
@@ -365,7 +445,7 @@ Material 3's durations and easings (D58), in `DemoMotion`; a screen never names 
 | The thought's chevron | turns a quarter as the fold opens (250 ms) |
 | A note, a problem, the editing line | unfolds from its top and fades in (300 ms); folds away and fades (150 ms), still showing its words |
 | Back to the latest | grows from 80% and fades in (300 ms), like Material's floating button; leaves in 150 ms |
-| Send and stop | the icons cross-fade (200 ms); the fill (tonal to indigo) and glyph colours ease when there is something to send (250 ms) |
+| Send and stop | the icons cross-fade (200 ms); the fill (tonal to the accent) and glyph colours ease when there is something to send (250 ms) |
 
 Tokens are not animated one by one: a reply arrives at reading speed, and per-token fades would make it shimmer. With animations off (the system's animator duration scale at 0) every transition is instant and the loops (wake sweep, dots, shimmer) hold still.
 

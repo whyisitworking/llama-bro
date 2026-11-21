@@ -34,7 +34,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -62,6 +64,15 @@ data class StreamingItem(
     val thinking: Boolean,
 )
 
+/** What the message bar takes from the engine and the recorder: Think, a reply coming, hearing, talking, a take. */
+private data class BarInputs(
+    val think: ThinkLevel? = null,
+    val busy: Boolean = false,
+    val hears: Boolean = false,
+    val talks: Boolean = false,
+    val take: Take? = null,
+)
+
 /** The message bar's text and what is attached to it, apart from the list so typing never touches the messages. */
 @Immutable
 data class ComposerDraft(val text: String = "", val attachments: List<String> = emptyList(), val editing: Int? = null)
@@ -72,7 +83,8 @@ data class ComposerDraft(val text: String = "", val attachments: List<String> = 
  */
 class ChatViewModel(
     val handle: ChatEngine.ChatHandle,
-    initialStyle: MessageStyle,
+    /** How the rows are laid out, as the layout setting says (Settings › Layout can change it while a chat is open). */
+    private val styles: Flow<MessageStyle>,
     private val saveImage: suspend (Uri) -> String,
     private val discardImages: suspend (List<String>) -> Unit,
     private val zone: ZoneId = ZoneId.systemDefault(),
@@ -103,19 +115,17 @@ class ChatViewModel(
 
     private val builders = MessageStyle.entries.associateWith(::itemsFor)
 
-    private val styleFlow = MutableStateFlow(initialStyle)
-
-    /** The layout can change while a chat is open (Settings > Layout): the rows follow it. */
-    fun setStyle(style: MessageStyle) {
-        styleFlow.value = style
-    }
-
     // eagerly: the engine handle this view model owns runs for as long as the chat is open, with or without a screen
     private val eager = SharingStarted.Eagerly
 
     /** The rows of the list, without the reply that is still being written. */
     val rows: StateFlow<List<ChatItem>> =
-        combine(handle.messages, handle.model, handle.name, styleFlow) { messages, model, name, style ->
+        combine(
+            handle.messages,
+            handle.model,
+            handle.name,
+            styles.distinctUntilChanged(),
+        ) { messages, model, name, style ->
             val waiting =
                 when (model) {
                     is ChatModelState.Downloading -> name
@@ -264,13 +274,14 @@ class ChatViewModel(
                 }
         }.stateIn(viewModelScope, eager, null)
 
+    // the person's actions' outcome (a photo that couldn't be used, a message that couldn't be stored): an input
     private val _problem = MutableStateFlow<String?>(null)
 
     /**
      * A plain line above the bar when a picked photo can't be used or a message couldn't be stored; the next successful
      * pick or send clears it.
      */
-    val problem: StateFlow<String?> = _problem
+    val problem: StateFlow<String?> = _problem.asStateFlow()
 
     /** Everything the screen draws apart from the reply being written and the message bar, derived in one place. */
     val uiState: StateFlow<ChatScreenState> =
@@ -301,36 +312,34 @@ class ChatViewModel(
     private val draftLock = Any()
     val composer: State<ComposerDraft> = draft
 
-    /** The model's Think level and whether a reply is coming, copied from the engine for the bar. */
-    private val barFlags = mutableStateOf<Pair<ThinkLevel?, Boolean>>(null to false)
-
-    /** Whether the model hears, and the voice message being recorded, copied for the bar (D76). */
-    private val hearsNow = mutableStateOf(false)
-    private val talksNow = mutableStateOf(false)
-    private val take = mutableStateOf<Take?>(null)
+    /**
+     * What the bar takes from the engine and the recorder, combined into one value and held as snapshot state: the one
+     * bridge from those flows, so [composerState] is derived with the draft in the keystroke's own call.
+     */
+    private val barInputs = mutableStateOf(BarInputs())
 
     /** What the design system's message bar draws, derived synchronously from the draft (no Think bulb: null). */
     val composerState: State<ComposerState> =
         derivedStateOf {
             val d = draft.value
-            val (think, busy) = barFlags.value
+            val bar = barInputs.value
             ComposerState(
                 text = d.text,
                 canAttach = d.editing == null,
-                think = think,
-                busy = busy,
+                think = bar.think,
+                busy = bar.busy,
                 hasAttachment = d.attachments.isNotEmpty(),
-                canRecord = voice != null && hearsNow.value && d.editing == null,
-                recording = take.value?.let(::recordingState),
-                canTalk = voiceMode.available && talksNow.value && d.editing == null,
+                canRecord = voice != null && bar.hears && d.editing == null,
+                recording = bar.take?.let(::recordingState),
+                canTalk = voiceMode.available && bar.talks && d.editing == null,
             )
         }
 
     init {
-        viewModelScope.launch { combine(handle.think, handle.busy, ::Pair).collect { barFlags.value = it } }
-        viewModelScope.launch { hears.collect { hearsNow.value = it } }
-        viewModelScope.launch { talks.collect { talksNow.value = it } }
-        voice?.let { v -> viewModelScope.launch { v.take.collect { take.value = it } } }
+        viewModelScope.launch {
+            combine(handle.think, handle.busy, hears, talks, voice?.take ?: flowOf(null), ::BarInputs)
+                .collect { barInputs.value = it }
+        }
         // a new chat's id, once its first message made it: the restored screen reopens it instead of a blank chat
         viewModelScope.launch { handle.chatId.collect { if (it != 0L) savedState[CHAT_ID_KEY] = it } }
     }

@@ -26,12 +26,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,6 +68,8 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 
 /** Where a voice conversation is (D100): waiting for the person, hearing them, before the reply, or speaking it. */
 enum class VoicePhase { Ready, Listening, Thinking, Speaking }
@@ -149,12 +153,7 @@ fun VoiceView(
             ) { notice() }
         }
         // a tap starts a turn that the next tap sends; a hold sends on release (D100): the button keeps which one
-        var tapped by remember { mutableStateOf(false) }
-        var last by remember { mutableStateOf(state.phase) }
-        LaunchedEffect(state.phase) {
-            if (last == VoicePhase.Listening && state.phase != VoicePhase.Listening) tapped = false
-            last = state.phase
-        }
+        var tapped by rememberTurnTapped(state.phase)
         VoiceControls(state.phase, tapped, { tapped = it }, actions)
         Text(
             stringResource(hint(state.phase, tapped)),
@@ -244,6 +243,23 @@ private fun VoiceWords(note: String?, userWords: String?, caption: String, modif
     }
 }
 
+/**
+ * Whether the turn was started by a tap ([TalkButton]): set by the button, and forgotten as the turn leaves
+ * [VoicePhase.Listening] (sent, stopped or failed), so the next turn starts as a hold again.
+ */
+@Composable
+internal fun rememberTurnTapped(phase: VoicePhase): MutableState<Boolean> {
+    val tapped = remember { mutableStateOf(false) }
+    val listening by rememberUpdatedState(phase == VoicePhase.Listening)
+    LaunchedEffect(Unit) {
+        snapshotFlow { listening }
+            .drop(1)
+            .filter { !it }
+            .collect { tapped.value = false }
+    }
+    return tapped
+}
+
 /** The line under the controls: how to talk now. */
 private fun hint(phase: VoicePhase, tapped: Boolean): Int =
     when (phase) {
@@ -271,7 +287,7 @@ private fun VoiceControls(phase: VoicePhase, tapped: Boolean, onTapped: (Boolean
 }
 
 /**
- * The talk button (D100): an 80 dp tonal circle with the mic, filled with the send accent while [held] (listening),
+ * The talk button (D100): an 80 dp tonal circle with the mic, filled with the accent while [held] (listening),
  * with a soft halo of it. Two ways to talk: hold it and release to send, or tap it to start and tap again to send. A
  * press shorter than [TAP_MILLIS] is a tap: the turn goes on ([tapped], kept by the caller through [onTapped]) until
  * the next press ends it. A screen reader taps it once to start and once to send.
@@ -292,7 +308,7 @@ fun TalkButton(
     val isTapped by rememberUpdatedState(tapped)
     val setTapped by rememberUpdatedState(onTapped)
     val label = stringResource(if (held) R.string.ds_voice_talk_send else R.string.ds_voice_talk_start)
-    val halo = colors.sendAccent.copy(alpha = HALO_ALPHA)
+    val halo = colors.accent.copy(alpha = HALO_ALPHA)
     Box(
         modifier
             .padding(DemoSpacing.block)
@@ -300,7 +316,7 @@ fun TalkButton(
             .drawBehind {
                 if (held) drawCircle(halo, radius = size.minDimension / 2 + DemoSpacing.compact.toPx())
             }.clip(CircleShape)
-            .background(if (held) colors.sendAccent else colors.hairline)
+            .background(if (held) colors.accent else colors.hairline)
             .semantics {
                 role = Role.Button
                 contentDescription = label
@@ -331,7 +347,7 @@ fun TalkButton(
         Icon(
             DemoIcons.Mic,
             contentDescription = null,
-            tint = if (held) colors.onSendAccent else colors.ink,
+            tint = if (held) colors.onAccent else colors.ink,
             modifier = Modifier.size(DemoSize.talkGlyph),
         )
     }

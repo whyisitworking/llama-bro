@@ -190,7 +190,7 @@ class ChatScreenTest {
                                 wentToModels =
                                     true
                             }),
-                            style = style,
+                            styleOverride = style,
                         )
                     }
                 }
@@ -627,16 +627,36 @@ class ChatScreenTest {
 
     // ---- the model switcher ----------------------------------------------------------------------
 
-    @Test fun switcherListsLibraryWithDefaultChip() {
+    @Test fun switcherSaysCurrentOnTheChatsModelAndDefaultOnThePinnedOne() {
+        // the chat runs swift while new chats use deep: each row's state word says which (models-page design §7)
         onPhone(swift, deep)
         runBlocking { app.container.settings.pinDefault(deep.toString()) }
-        show()
+        val id =
+            runBlocking {
+                app.container.chats.createChat(swift.toString()).also {
+                    app.container.chats.append(it, NewMessage(MessageKind.User, "a question"))
+                }
+            }
+        show(chatId = id)
         compose.onNodeWithTag("model_title").performClick()
         compose.settleWindow()
         waitFor("On this phone", ignoreCase = true)
-        waitFor("Qwen3.5 0.8B")
-        waitFor("Qwen3.5 4B")
-        waitFor("Default")
+        val inSwitcher = hasAnyAncestor(hasTestTag("switcher"))
+        compose.waitUntil(5_000) {
+            compose
+                .onAllNodes(hasText("Qwen3.5 0.8B") and hasText("Current") and inSwitcher)
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        compose.onNode(hasText("Qwen3.5 4B") and hasText("Default") and inSwitcher).assertExists()
+        // the fit is a symbol, its words only what a screen reader says, on every row
+        val fitWords = listOf("Runs great", "Runs well", "Slow here", "Too big")
+        for (name in listOf("Qwen3.5 0.8B", "Qwen3.5 4B")) {
+            val fit = fitWords.map { hasContentDescription(it) }.reduce { x, y -> x or y }
+            compose.onNode(hasText(name) and fit and inSwitcher).assertExists()
+        }
+        compose.onAllNodesWithText("Runs great").assertCountEquals(0)
+        compose.onNodeWithContentDescription("About Qwen3.5 4B").assertIsDisplayed()
         compose.onNodeWithText("Get more models").assertIsDisplayed()
     }
 
@@ -658,7 +678,7 @@ class ChatScreenTest {
         )
     }
 
-    @Test fun switcherGetMoreOpensGetModels() {
+    @Test fun switcherGetMoreOpensModels() {
         onPhone(swift)
         show()
         compose.onNodeWithTag("model_title").performClick()

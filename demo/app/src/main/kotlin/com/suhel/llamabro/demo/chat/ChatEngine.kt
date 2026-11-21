@@ -49,6 +49,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -201,9 +202,28 @@ internal suspend fun rememberSenses(settings: SettingsRepository, key: HfModel, 
     if (settings.talkingModels.first()[key.toString()].orEmpty() != voices) settings.setVoices(key.toString(), voices)
 }
 
+/**
+ * What a chat knows of its model: not looked up yet ([Unknown]), looked up with none chosen ([None]: a new chat and no
+ * model for new chats), or [Chosen], by the lookup, the first send or a switch.
+ */
+internal sealed interface ModelChoice {
+    data object Unknown : ModelChoice
+
+    data object None : ModelChoice
+
+    data class Chosen(val key: HfModel) : ModelChoice
+}
+
+/** The choice once the lookup found [found]: a key the first send or a switch chose meanwhile stands. */
+internal fun ModelChoice.lookedUp(found: HfModel?): ModelChoice =
+    this as? ModelChoice.Chosen ?: found?.let(ModelChoice::Chosen) ?: ModelChoice.None
+
+/** The chosen model's key; null while unknown or when none is chosen. */
+internal val ModelChoice.key: HfModel? get() = (this as? ModelChoice.Chosen)?.key
+
 /** What the chat's model state is derived from. */
 private data class ModelInputs(
-    val key: HfModel?,
+    val choice: ModelChoice,
     val library: List<LibraryModel>?,
     val host: HostState,
     val heard: Set<String>,
@@ -252,9 +272,15 @@ sealed interface ChatModelState {
 
     data class Missing(val name: String) : ChatModelState
 
+    /** A new chat with no model chosen yet (none by default, none last used): nothing is loading. */
+    data object NoModel : ChatModelState
+
     /** The model is on its way but the download stopped: [failure] says why (a token, the network, the disk). */
     data class DownloadFailed(val name: String, val failure: DownloadFailure) : ChatModelState
 }
+
+/** A new chat's header before any model is chosen: what the title's switcher is for. */
+internal const val NO_MODEL_TITLE = "Choose a model"
 
 /**
  * Drives chats through the SDK's `Conversation`. Room is the source of truth: a conversation is rebuilt from stored
@@ -283,7 +309,7 @@ class ChatEngine(
      */
     private val card: (HfModel) -> CardSampling? = { Catalog.byRepo(it.repo)?.sampling },
 ) {
-    /** Turns under way in every chat, from the load to the end of the reply. */
+    /** Turns under way in every chat, from the load to the end of the reply: the engine's own count, in and out. */
     private val activeTurns = MutableStateFlow(0)
 
     /**
@@ -408,8 +434,12 @@ class ChatEngine(
         java.util.concurrent.ConcurrentHashMap
             .newKeySet()
 
-    /** [chatId] 0 is a new chat: it is created with the first message. */
-    fun open(chatId: Long): ChatHandle = ChatHandle(chatId).also { open += it }
+    /**
+     * [chatId] 0 is a new chat: it is created with the first message, on [startModel] when one is given (a model card's
+     * "Chat with"), else on the model for new chats. [startModel] is only held in memory until then, so a new chat
+     * left without a message leaves no chat behind; it is ignored for a chat that exists.
+     */
+    fun open(chatId: Long, startModel: HfModel? = null): ChatHandle = ChatHandle(chatId, startModel).also { open += it }
 
     /**
      * Stops every reply under way, keeping what arrived, as Stop would: the reply notification's Stop, and Android's
@@ -429,7 +459,7 @@ class ChatEngine(
         }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    inner class ChatHandle internal constructor(initialChatId: Long) {
+    inner class ChatHandle internal constructor(initialChatId: Long, private val startModel: HfModel? = null) {
         /**
          * One thread at a time for everything this handle runs: [running], [conversation] and [conversationKey] are
          * plain fields, read and written only on it, so a turn, a stop and an edit never see each other half done.
@@ -451,6 +481,7 @@ class ChatEngine(
             hs.cancel()
         }
 
+        // engine's own source: a new chat gets its id with its first message
         private val _chatId = MutableStateFlow(initialChatId)
         val chatId: StateFlow<Long> = _chatId.asStateFlow()
 
@@ -459,60 +490,82 @@ class ChatEngine(
                 .flatMapLatest { if (it == 0L) emptyFlow() else chats.messages(it) }
                 .stateIn(hs, SharingStarted.Eagerly, emptyList())
 
+        // engine's own source: the turn writes the reply as it streams
         private val _streaming = MutableStateFlow<StreamingReply?>(null)
         val streaming: StateFlow<StreamingReply?> = _streaming.asStateFlow()
 
+        // engine's own source: the turn marks itself under way
         private val _busy = MutableStateFlow(false)
         val busy: StateFlow<Boolean> = _busy.asStateFlow()
 
+        // engine's own source: the turn's refusals and failures
         private val _limit = MutableStateFlow<Limit?>(null)
         val limit: StateFlow<Limit?> = _limit.asStateFlow()
 
+        // user input and engine: the Think level chosen, null for a model that can't think
         private val _think = MutableStateFlow<ThinkLevel?>(null)
 
         /** Null when the model can't think. */
         val think: StateFlow<ThinkLevel?> = _think.asStateFlow()
 
-        private val modelKey = MutableStateFlow<HfModel?>(null)
+        // the engine's own source: written by the lookup, the first send and a switch
+        private val choice = MutableStateFlow<ModelChoice>(ModelChoice.Unknown)
         private val library: StateFlow<List<LibraryModel>?> =
             models.library.stateIn(hs, SharingStarted.Eagerly, null)
 
         /** The model this chat uses (null until it is known), for the switcher's check mark. */
-        val current: StateFlow<HfModel?> = modelKey.asStateFlow()
+        val current: StateFlow<HfModel?> =
+            choice
+                .map { it.key }
+                .distinctUntilChanged()
+                .stateIn(hs, SharingStarted.Eagerly, null)
 
-        /** The model's name for the header, whatever state it is in; empty until the model is known. */
+        /**
+         * The model's name for the header, whatever state it is in; empty until the model is looked up, then
+         * [NO_MODEL_TITLE] for a new chat with no model chosen, which left the header blank.
+         */
         val name: StateFlow<String> =
-            combine(modelKey, library) { key, lib ->
-                key?.let { k -> lib?.firstOrNull { it.key == k }?.name ?: displayName(k) }.orEmpty()
+            combine(choice, library) { chosen, lib ->
+                when (chosen) {
+                    ModelChoice.Unknown -> ""
+                    ModelChoice.None -> NO_MODEL_TITLE
+                    is ModelChoice.Chosen -> lib?.firstOrNull { it.key == chosen.key }?.name ?: displayName(chosen.key)
+                }
             }.stateIn(hs, SharingStarted.Eagerly, "")
 
         val model: StateFlow<ChatModelState> =
             combine(
-                modelKey,
+                choice,
                 library,
                 host.state,
                 settings.hearingModels,
                 settings.talkingModels,
-            ) { key, lib, hostState, heard, talking -> ModelInputs(key, lib, hostState, heard, talking.keys) }
-                .flatMapLatest { inputs ->
-                    val key = inputs.key
-                    val lib = inputs.library
-                    val hostState = inputs.host
-                    if (key == null || lib == null) {
+            ) { chosen, lib, hostState, heard, talking ->
+                ModelInputs(chosen, lib, hostState, heard, talking.keys)
+            }.flatMapLatest { inputs ->
+                val key = inputs.choice.key
+                val lib = inputs.library
+                val hostState = inputs.host
+                when {
+                    // looked up and none chosen: nothing to load, so no wake line
+                    key == null -> {
+                        if (inputs.choice == ModelChoice.None) flowOf(ChatModelState.NoModel) else emptyFlow()
+                    }
+
+                    lib == null -> {
                         emptyFlow()
-                    } else {
+                    }
+
+                    else -> {
                         val name = lib.firstOrNull { it.key == key }?.name ?: displayName(key)
                         if (lib.none { it.key == key }) {
-                            models.state(key).let { status ->
-                                kotlinx.coroutines.flow.flow { status.collect { emit(missingOrDownloading(name, it)) } }
-                            }
+                            models.state(key).map { missingOrDownloading(name, it) }
                         } else {
-                            kotlinx.coroutines.flow.flowOf(
-                                readyOrWaking(key, name, hostState, inputs.heard, inputs.talking),
-                            )
+                            flowOf(readyOrWaking(key, name, hostState, inputs.heard, inputs.talking))
                         }
                     }
-                }.stateIn(hs, SharingStarted.Eagerly, ChatModelState.Waking())
+                }
+            }.stateIn(hs, SharingStarted.Eagerly, ChatModelState.Waking())
 
         private val turn = Mutex()
 
@@ -537,7 +590,8 @@ class ChatEngine(
 
         init {
             hs.launch {
-                modelKey.value = initialModelKey()
+                val found = initialModelKey()
+                choice.update { it.lookedUp(found) }
                 syncThink()
             }
             // a model that arrives (a download finishes) answers what was held
@@ -546,7 +600,7 @@ class ChatEngine(
             // its first reply has them as the later ones do; never before, since the lookup would then read the file's
             // header over the network (D64); it runs in the background and never holds a turn
             hs.launch {
-                combine(modelKey.filterNotNull(), library.filterNotNull()) { key, lib ->
+                combine(current.filterNotNull(), library.filterNotNull()) { key, lib ->
                     key.takeIf { lib.any { model -> model.key == key } }
                 }.filterNotNull()
                     .distinctUntilChanged()
@@ -566,7 +620,8 @@ class ChatEngine(
             // a chat deleted from the drawer takes nothing more: its rows would point at a chat that is gone
             if (_busy.value || deleting) return false
             if (text.isBlank() && images.isEmpty() && voice == null) return false
-            val key = modelKey.value ?: initialModelKey()?.also { modelKey.value = it } ?: return false
+            val key =
+                choice.value.key ?: initialModelKey()?.also { choice.value = ModelChoice.Chosen(it) } ?: return false
             val names = images.take(MAX_IMAGES)
             val ready = model.value as? ChatModelState.Ready
             // the model's own answer once it is loaded; until then what the catalog says about it
@@ -612,7 +667,7 @@ class ChatEngine(
                 val before = messages.value
                 chats.truncateFrom(id, position)
                 invalidate()
-                modelToRestate(before, position, modelKey.value)?.let {
+                modelToRestate(before, position, choice.value.key)?.let {
                     chats.append(id, switchNotice(it, displayName(it), clock()))
                 }
                 chats.update(user.id, MessageChange(state = MessageState.Held))
@@ -631,7 +686,7 @@ class ChatEngine(
                 val old = before.firstOrNull { it.position == position } ?: return@launch
                 chats.truncateFrom(id, position)
                 invalidate()
-                modelToRestate(before, position, modelKey.value)?.let {
+                modelToRestate(before, position, choice.value.key)?.let {
                     chats.append(id, switchNotice(it, displayName(it), clock()))
                 }
                 chats.append(
@@ -656,11 +711,12 @@ class ChatEngine(
                 if (deleting) return@launch
                 // an empty chat has no model to switch from: choosing one just sets it, with no divider
                 val switching = isSwitch(messages.value)
-                val id = ensureChat() ?: return@launch
-                // the in-memory model changes first, so a message sent right after is answered by the new one
+                // the in-memory model changes first, so a message sent right after is answered by the new one, and a
+                // new chat with no model yet is created on the one chosen
                 invalidate()
                 _limit.value = null
-                modelKey.value = key
+                choice.value = ModelChoice.Chosen(key)
+                val id = ensureChat() ?: return@launch
                 syncThink()
                 if (switching) chats.append(id, switchNotice(key, displayName(key), clock()))
                 chats.setModel(id, key.toString())
@@ -705,7 +761,7 @@ class ChatEngine(
                 turn.withLock {
                     while (!deleting) {
                         val id = _chatId.value.takeIf { it != 0L } ?: return@withLock
-                        val key = modelKey.value ?: return@withLock
+                        val key = choice.value.key ?: return@withLock
                         val lib = library.value ?: return@withLock
                         if (lib.none { it.key == key }) return@withLock
                         val held =
@@ -823,7 +879,7 @@ class ChatEngine(
                 turn.withLock {
                     if (deleting) return@withLock
                     val id = _chatId.value.takeIf { it != 0L } ?: return@withLock
-                    val key = modelKey.value ?: return@withLock
+                    val key = choice.value.key ?: return@withLock
                     val rows = chats.messages(id).first()
                     val reply = rows.lastOrNull()?.takeIf { it.position == position && canContinue(it, key) }
                     val user = rows.lastOrNull { it.kind == MessageKind.User && it.position < position }
@@ -950,6 +1006,7 @@ class ChatEngine(
 
         private suspend fun initialModelKey(): HfModel? {
             val id = _chatId.value
+            if (id == 0L && startModel != null) return startModel
             val stored = if (id != 0L) chats.modelKey(id) else settings.settings.first().modelForNewChat()
             return stored?.let { runCatching { HfModel.parse(it) }.getOrNull() }
         }
@@ -960,29 +1017,30 @@ class ChatEngine(
          */
         suspend fun voiceChat(): VoiceChat? {
             val id = ensureChat() ?: return null
-            val key = modelKey.value ?: return null
+            val key = choice.value.key ?: return null
             return VoiceChat(id, key, displayName(key))
         }
 
         /** Creates the chat on the first message; null when no model is known yet. */
         private suspend fun ensureChat(): Long? {
             _chatId.value.takeIf { it != 0L }?.let { return it }
-            val key = modelKey.value ?: initialModelKey()?.also { modelKey.value = it } ?: return null
+            val key =
+                choice.value.key ?: initialModelKey()?.also { choice.value = ModelChoice.Chosen(it) } ?: return null
             return chats.createChat(key.toString()).also { _chatId.value = it }
         }
 
         private fun syncThink(info: ModelInfo? = null) {
-            val key = modelKey.value ?: return
+            val key = choice.value.key ?: return
             val catalog = Catalog.byKey(key)
             val can = if (info != null) Thinking.canThink(info, catalog) else catalog?.thinks == true
             _think.update { current -> if (can) current ?: ThinkLevel.Off else null }
         }
 
-        private fun currentName(): String = modelKey.value?.let(::displayName) ?: "This model"
+        private fun currentName(): String = choice.value.key?.let(::displayName) ?: "This model"
 
         /** Starts the model's download again after a failure; what had arrived is kept. */
         fun retryDownload() {
-            modelKey.value?.let(models::get)
+            choice.value.key?.let(models::get)
         }
 
         private fun visionModelName(): String? =

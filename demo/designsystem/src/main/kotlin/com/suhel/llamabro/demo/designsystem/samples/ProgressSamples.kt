@@ -3,6 +3,7 @@ package com.suhel.llamabro.demo.designsystem.samples
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import com.suhel.llamabro.demo.designsystem.components.DownloadRing
+import com.suhel.llamabro.demo.designsystem.components.LoadingSlot
 import com.suhel.llamabro.demo.designsystem.components.StorageBar
 import com.suhel.llamabro.demo.designsystem.components.ThinBar
 import com.suhel.llamabro.demo.designsystem.components.TopBar
@@ -29,6 +30,8 @@ internal fun ProgressSamples() {
         StillHairline()
         WakeHairline(active = true, progress = 0.6f)
         WakeHairline(active = false)
+        LoadingSlot(active = true)
+        LoadingSlot(active = false)
         ThinBar(0.42f)
         Text("6.1 GB used · 120 GB free", color = c.muted, style = DemoType.bodySmall)
         StorageBar(used = 6_100_000_000, total = 19_700_000_000)

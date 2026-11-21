@@ -18,7 +18,18 @@ object Fits {
         return FitView(Fit.label(room, speed), Fit.wordsPerSecond(speed))
     }
 
+    /**
+     * The bytes a token of [repo]'s model file of [modelBytes] reads: all of them, or a mixture-of-experts model's
+     * active share ([Guess.activeShare]; [parameters] and [activeParameters] the Hub's counts, when it gave them).
+     */
+    fun speedBytes(modelBytes: Long, repo: String, parameters: Long? = null, activeParameters: Long? = null): Long =
+        (modelBytes * Guess.activeShare(repo.substringAfter('/'), parameters, activeParameters)).toLong()
+
+    /** A model on the phone: its whole size for memory, its model file for speed, as every other row's fit. */
+    fun quick(model: LibraryModel, facts: DeviceFacts): FitView =
+        quick(model.totalBytes, speedBytes(model.sizeBytes, model.key.repo), facts)
+
     /** A catalog entry's estimate, from the sizes it ships with. */
     fun quick(entry: CatalogEntry, facts: DeviceFacts): FitView =
-        quick(entry.modelBytes + entry.mmprojBytes, entry.modelBytes, facts)
+        quick(entry.modelBytes + entry.mmprojBytes, speedBytes(entry.modelBytes, entry.key.repo), facts)
 }

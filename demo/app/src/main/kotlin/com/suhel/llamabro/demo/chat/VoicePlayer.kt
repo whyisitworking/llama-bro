@@ -30,7 +30,7 @@ interface VoicePlayer {
 
     /** Plays nothing: for screens and tests that have no voice messages. */
     object None : VoicePlayer {
-        override val clip: StateFlow<PlayingClip?> = MutableStateFlow(null)
+        override val clip: StateFlow<PlayingClip?> = MutableStateFlow<PlayingClip?>(null).asStateFlow()
 
         override fun toggle(messageId: Long, file: File) = Unit
 
@@ -43,6 +43,7 @@ interface VoicePlayer {
  * every [tickMillis] while playing.
  */
 class MediaVoicePlayer(private val scope: CoroutineScope, private val tickMillis: Long = 50) : VoicePlayer {
+    // external event: MediaPlayer's playback and its progress
     private val _clip = MutableStateFlow<PlayingClip?>(null)
     override val clip: StateFlow<PlayingClip?> = _clip.asStateFlow()
 

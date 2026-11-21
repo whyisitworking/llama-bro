@@ -10,45 +10,45 @@ import kotlin.math.pow
 class TokensTest {
     @Test
     fun lightMatchesTheSpecTable() {
-        assertEquals(Color(0xFFFAFAFA), Light.canvas)
-        assertEquals(Color(0xFFFFFFFF), Light.surface)
-        assertEquals(Color(0xFF0D0D0D), Light.ink)
-        assertEquals(Color(0xFF5D5D5D), Light.muted)
-        assertEquals(Color(0xFFE5E5E5), Light.hairline)
-        assertEquals(Color(0xFFEFEFEF), Light.bubble)
-        assertEquals(Color(0xFF0D0D0D), Light.accent)
-        assertEquals(Color(0xFFFFFFFF), Light.onAccent)
-        assertEquals(Color(0xFFEBEBEB), Light.accentSoft)
-        assertEquals(Color(0xFF4F5BD5), Light.sendAccent)
-        assertEquals(Color(0xFFFFFFFF), Light.onSendAccent)
+        assertEquals(Color(0xFFF2F2F5), Light.canvas)
+        assertEquals(Color(0xFFFBFBFC), Light.surface)
+        assertEquals(Color(0xFF1D1D1F), Light.ink)
+        assertEquals(Color(0xFF2C2C2E), Light.reply)
+        assertEquals(Color(0xFF65656A), Light.muted)
+        assertEquals(Color(0xFF6E6E73), Light.soft)
+        assertEquals(Color(0xFFE3E3E8), Light.hairline)
+        assertEquals(Color(0xFFE6E6EB), Light.bubble)
+        assertEquals(Color(0xFF3A3A3D), Light.accent)
+        assertEquals(Color(0xFFFBFBFC), Light.onAccent)
+        assertEquals(Color(0xFFE8E8ED), Light.accentSoft)
         assertEquals(Color(0xFFEDF0EC), Light.greatTint)
         assertEquals(Color(0xFF3E5641), Light.greatInk)
         assertEquals(Color(0xFFF3EEE5), Light.slowTint)
         assertEquals(Color(0xFF73572F), Light.slowInk)
-        assertEquals(Color(0xFFEFEFEF), Light.tooBigTint)
-        assertEquals(Color(0xFF6E6E73), Light.tooBigInk)
+        assertEquals(Color(0xFFE6E6EB), Light.tooBigTint)
+        assertEquals(Color(0xFF5A5A5F), Light.tooBigInk)
         assertEquals(Color(0xFFA23B2F), Light.danger)
     }
 
     @Test
     fun darkMatchesTheSpecTable() {
-        assertEquals(Color(0xFF0A0A0A), Dark.canvas)
-        assertEquals(Color(0xFF141414), Dark.surface)
-        assertEquals(Color(0xFFECECEC), Dark.ink)
-        assertEquals(Color(0xFFA8A8A8), Dark.muted)
-        assertEquals(Color(0xFF222222), Dark.hairline)
-        assertEquals(Color(0xFF1E1E1E), Dark.bubble)
-        assertEquals(Color(0xFFECECEC), Dark.accent)
-        assertEquals(Color(0xFF0A0A0A), Dark.onAccent)
-        assertEquals(Color(0xFF262626), Dark.accentSoft)
-        assertEquals(Color(0xFF8E9BFF), Dark.sendAccent)
-        assertEquals(Color(0xFF0A0A0A), Dark.onSendAccent)
+        assertEquals(Color(0xFF0B0B0C), Dark.canvas)
+        assertEquals(Color(0xFF161618), Dark.surface)
+        assertEquals(Color(0xFFE3E3E6), Dark.ink)
+        assertEquals(Color(0xFFCFCFD4), Dark.reply)
+        assertEquals(Color(0xFF98989D), Dark.muted)
+        assertEquals(Color(0xFF808085), Dark.soft)
+        assertEquals(Color(0xFF242426), Dark.hairline)
+        assertEquals(Color(0xFF222224), Dark.bubble)
+        assertEquals(Color(0xFFC8C8CD), Dark.accent)
+        assertEquals(Color(0xFF161618), Dark.onAccent)
+        assertEquals(Color(0xFF28282B), Dark.accentSoft)
         assertEquals(Color(0xFF1A1F1B), Dark.greatTint)
         assertEquals(Color(0xFFA9C3AA), Dark.greatInk)
         assertEquals(Color(0xFF221E18), Dark.slowTint)
         assertEquals(Color(0xFFD3B588), Dark.slowInk)
         assertEquals(Color(0xFF1E1E21), Dark.tooBigTint)
-        assertEquals(Color(0xFF8C8C92), Dark.tooBigInk)
+        assertEquals(Color(0xFFAAAAB0), Dark.tooBigInk)
         assertEquals(Color(0xFFE59A90), Dark.danger)
     }
 
@@ -67,7 +67,10 @@ class TokensTest {
         for ((name, c) in listOf("light" to Light, "dark" to Dark)) {
             for (ground in listOf(c.canvas, c.surface)) {
                 assertTrue("$name ink on $ground", contrast(c.ink, ground) >= 4.5)
+                assertTrue("$name reply on $ground", contrast(c.reply, ground) >= 4.5)
                 assertTrue("$name muted on $ground", contrast(c.muted, ground) >= 4.5)
+                // D123: the soft grey of the least important text (a section label, a row's mark) is still body text
+                assertTrue("$name soft on $ground", contrast(c.soft, ground) >= 4.5)
                 assertTrue("$name accent (link, selected) on $ground", contrast(c.accent, ground) >= 4.5)
                 assertTrue("$name 'runs great' on $ground", contrast(c.greatInk, ground) >= 4.5)
                 assertTrue("$name 'slow here' on $ground", contrast(c.slowInk, ground) >= 4.5)
@@ -78,22 +81,70 @@ class TokensTest {
             assertTrue("$name label of a disabled button", contrast(c.muted, c.hairline) >= 4.5)
             assertTrue("$name accent on its soft fill", contrast(c.accent, c.accentSoft) >= 4.5)
             assertTrue("$name ink on the user's bubble", contrast(c.ink, c.bubble) >= 4.5)
+            assertTrue("$name reply on a bubble", contrast(c.reply, c.bubble) >= 4.5)
             assertTrue("$name muted (the time) on the user's bubble", contrast(c.muted, c.bubble) >= 4.5)
         }
     }
 
     @Test
-    fun theSendAccentHoldsItsGlyphAndStandsOnTheBar() {
-        // D73: the send and Think-on glyph on the indigo is 5.5:1 in light and 7.8:1 in dark, above text's 4.5:1 though
-        // only an icon's 3:1 is required; the circle itself, a control's boundary, is at least 3:1 on the bar's surface
-        // and on the canvas
-        val glyph = mapOf("light" to 5.54, "dark" to 7.81)
+    fun theAccentIsAQuietToneOffTheInk() {
+        // D125: the one primary tone fills the send and voice circles too (D73's indigo is gone), so a filled circle is
+        // a control's boundary, at least 3:1 on the bar's surface and on the canvas; and it is a step softer than the
+        // ink, so the Get button is neither too bright in dark nor too stark in light
         for ((name, c) in listOf("light" to Light, "dark" to Dark)) {
-            val onIndigo = contrast(c.onSendAccent, c.sendAccent)
-            assertEquals("$name glyph on the send accent", glyph.getValue(name), onIndigo, 0.01)
-            assertTrue("$name glyph on the send accent", onIndigo >= 4.5)
             for (ground in listOf(c.canvas, c.surface)) {
-                assertTrue("$name send accent on $ground", contrast(c.sendAccent, ground) >= 3.0)
+                assertTrue("$name accent on $ground", contrast(c.accent, ground) >= 3.0)
+                assertTrue(
+                    "$name accent under the ink on $ground",
+                    contrast(c.accent, ground) < contrast(c.ink, ground),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun tooBigInkIsNoDimmerThanMuted() {
+        // R9: the too-big figure was the faintest mark on a card; it is a fit, so it reads at least as well as muted text
+        for ((name, c) in listOf("light" to Light, "dark" to Dark)) {
+            for (ground in listOf(c.canvas, c.surface)) {
+                assertTrue("$name too big on $ground", contrast(c.tooBigInk, ground) >= 4.5)
+                assertTrue(
+                    "$name too big is dimmer than muted on $ground",
+                    contrast(c.tooBigInk, ground) >= contrast(c.muted, ground),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun aDownloadRingsTrackStandsOffTheSurface() {
+        // the soft accent track was 1.2:1 or less on the dark sheet; a frozen ring vanished
+        for ((name, c) in listOf("light" to Light, "dark" to Dark)) {
+            assertTrue("$name ring track on the surface", contrast(c.ringTrack, c.surface) >= 1.5)
+            assertTrue("$name ring track on the canvas", contrast(c.ringTrack, c.canvas) >= 1.5)
+        }
+    }
+
+    @Test
+    fun theReplyIsAStepSofterThanTheInk() {
+        // a reply's body reads calmer than its headings and bold, which stay the ink
+        for ((name, c) in listOf("light" to Light, "dark" to Dark)) {
+            for (ground in listOf(c.canvas, c.surface)) {
+                assertTrue("$name reply under the ink on $ground", contrast(c.reply, ground) < contrast(c.ink, ground))
+                assertTrue("$name reply over muted on $ground", contrast(c.reply, ground) > contrast(c.muted, ground))
+            }
+        }
+    }
+
+    @Test
+    fun softIsAStepFainterThanMuted() {
+        // D123: three inks, ink over muted over soft, so the least important text reads last
+        for ((name, c) in listOf("light" to Light, "dark" to Dark)) {
+            for (ground in listOf(c.canvas, c.surface)) {
+                assertTrue(
+                    "$name soft is no fainter step on $ground",
+                    contrast(c.soft, ground) < contrast(c.muted, ground),
+                )
             }
         }
     }

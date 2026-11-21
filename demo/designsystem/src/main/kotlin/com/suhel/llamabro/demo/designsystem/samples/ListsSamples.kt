@@ -10,41 +10,59 @@ import com.suhel.llamabro.demo.designsystem.components.CardTint
 import com.suhel.llamabro.demo.designsystem.components.ChatRow
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DialogCard
-import com.suhel.llamabro.demo.designsystem.components.DownloadRow
-import com.suhel.llamabro.demo.designsystem.components.EdgeChip
-import com.suhel.llamabro.demo.designsystem.components.FitText
-import com.suhel.llamabro.demo.designsystem.components.Gap
+import com.suhel.llamabro.demo.designsystem.components.FitLevel
 import com.suhel.llamabro.demo.designsystem.components.GroupedLazyList
 import com.suhel.llamabro.demo.designsystem.components.GroupedList
-import com.suhel.llamabro.demo.designsystem.components.Inline
-import com.suhel.llamabro.demo.designsystem.components.LibraryRow
+import com.suhel.llamabro.demo.designsystem.components.LineRow
 import com.suhel.llamabro.demo.designsystem.components.ListEntry
 import com.suhel.llamabro.demo.designsystem.components.ListGroup
 import com.suhel.llamabro.demo.designsystem.components.ListRow
+import com.suhel.llamabro.demo.designsystem.components.ModelRow
+import com.suhel.llamabro.demo.designsystem.components.NavRow
+import com.suhel.llamabro.demo.designsystem.components.Notice
 import com.suhel.llamabro.demo.designsystem.components.QuantHeader
 import com.suhel.llamabro.demo.designsystem.components.QuantRow
-import com.suhel.llamabro.demo.designsystem.components.RowCard
 import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.SectionLabel
+import com.suhel.llamabro.demo.designsystem.components.SectionNote
 import com.suhel.llamabro.demo.designsystem.components.SheetFrame
+import com.suhel.llamabro.demo.designsystem.components.StatusPill
 import com.suhel.llamabro.demo.designsystem.components.SwipeToRemove
+import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 
 /**
- * Section labels, the drawer's rows, the switcher sheet, the chat list, the quant table, the library and a download.
+ * Section labels, notes (one with an action), notices, a status pill, the drawer's places and rows, the chat list and
+ * the chat rows; the switcher sheet and the quant table are [ListsSheetSamples].
  */
 @Composable
 internal fun ListsSamples() {
     SampleFrame {
         SectionLabel("Picked for your phone", action = "What's a model?", onAction = {})
+        SectionLabel("On this phone", note = "6.1 GB · 120 GB free")
+        // the Models page's quiet label (D123)
+        SectionLabel("On this phone", note = "6.1 GB · 120 GB free", quiet = true)
+        SectionNote("Changing this reloads the model.")
+        // a label's note with its way back: the search's filters, named, and Reset (models-search design §5)
+        SectionLabel("From Hugging Face", quiet = true)
+        SectionNote("Newest · Any size · Sees images", action = "Reset")
+        Notice("Couldn't reach Hugging Face.", action = "Try again")
+        Notice("No models match \"llama 70b\".")
+        StatusPill("On this phone")
         GroupedList {
             row { ListRow("Models", leading = DemoIcons.Models, trailing = "3 on this phone", onClick = {}) }
         }
+        // the sidebar's places and history (D126)
+        NavRow(DemoIcons.Models, "Models", onClick = {}, note = "3 on this phone")
+        LineRow("Explain mixture of experts", trailing = "11:02 am")
         GroupedLazyList(
             listOf(
                 ListGroup(
                     "Today",
-                    listOf(ListEntry(1, "Portfolio bio", true), ListEntry(2, "Monstera brown edges", false)),
+                    listOf(
+                        ListEntry(1, "Portfolio bio", true, "2:14 pm"),
+                        ListEntry(2, "Monstera brown edges", false, "9:40 am"),
+                    ),
                 ),
             ),
             onClick = {},
@@ -62,49 +80,42 @@ internal fun ListsSamples() {
             ChatRow("S", "Monstera brown edges", "8:02", "You: what about the soil?", fromUser = true)
             ChatRow("D", "CV for the design role", "Tue", "Deep: The 2021 gap reads fine if you…", fromUser = false)
         }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            LibraryRow("Qwen3.5 0.8B", "Qwen3.5 0.8B · 0.7 GB", "Used today", onClick = {})
-            LibraryRow("Gemma 3 4B", "Gemma 3 4B · 2.5 GB", "Used today", defaultLabel = "Default", onClick = {})
-            LibraryRow("Deep", "Qwen3.5 4B · 2.8 GB", "2 weeks ago", onClick = {})
-        }
-        SectionLabel("Downloading")
-        DownloadRow(
-            title = "Qwen3.5 0.8B",
-            fraction = 0.42f,
-            detail = "310 of 740 MB · 9.8 MB/s",
-            timeLeft = "about 40 s",
-            actionLabel = "Pause",
-            onAction = {},
-            cancelLabel = "Cancel",
-            onCancel = {},
-        )
     }
 }
 
-/** The switcher sheet of everyday.html and the Advanced quant table of models.html. */
+/** The chat's model switcher (models-page design §7) and the Advanced quant table of models.html. */
 @Composable
 internal fun ListsSheetSamples() {
     SampleFrame {
         SheetFrame {
             Section("On this phone") {
-                RowCard(selected = false, onClick = {}) {
-                    ListRow("Qwen3.5 0.8B", subtitle = "Qwen3.5 0.8B", end = { FitText("Runs great", CardTint.Great) })
-                }
-                RowCard(selected = true, onClick = {}) {
-                    ListRow(
-                        "Gemma 3 4B",
-                        subtitle = "Gemma 3 4B",
-                        end = {
-                            Inline(Gap.Block) {
-                                EdgeChip("Default")
-                                FitText("Runs well", CardTint.Plain)
-                            }
-                        },
-                    )
-                }
-                RowCard(selected = false, onClick = {}) {
-                    ListRow("Deep", subtitle = "Qwen3.5 4B", end = { FitText("A bit slow", CardTint.Slow) })
-                }
+                // the chat's model says "Current", the one new chats use "Default"; the info action opens its card
+                ModelRow(
+                    "Qwen3.5 0.8B",
+                    FitLevel.Great,
+                    "Runs great",
+                    maker = "Qwen",
+                    size = "0.6 GB",
+                    state = "Current",
+                    capabilities = listOf(DemoIcons.CapabilityThinks to "Thinks"),
+                    fact = null,
+                    onClick = {},
+                    onLongClick = {},
+                    onInfo = {},
+                )
+                ModelRow(
+                    "Gemma 3 4B",
+                    FitLevel.Well,
+                    "Runs well",
+                    maker = "Google",
+                    size = "3.4 GB",
+                    state = "Default",
+                    capabilities = listOf(DemoIcons.CapabilityImages to "Sees images"),
+                    fact = null,
+                    onClick = {},
+                    onLongClick = {},
+                    onInfo = {},
+                )
             }
             GroupedList {
                 row { ListRow("Get more models", leading = DemoIcons.Plus, chevron = true, onClick = {}) }
@@ -137,16 +148,27 @@ private fun ListsSheetPreview() = DemoTheme { ListsSheetSamples() }
 @Composable
 internal fun RemovalSamples() {
     SampleFrame {
-        SwipeToRemove(label = "Remove", onRemove = {}) {
-            LibraryRow("Deep", "Qwen3.5 4B · 2.8 GB", "2 weeks ago", onClick = {})
+        SwipeToRemove(label = "Remove", onRemove = {}, shape = DemoShapes.row) {
+            ModelRow(
+                "Qwen3.5 4B",
+                FitLevel.Well,
+                "Runs well",
+                maker = "Qwen",
+                size = "2.8 GB",
+                state = null,
+                capabilities = listOf(DemoIcons.CapabilityThinks to "Thinks"),
+                fact = null,
+                onClick = {},
+            )
         }
         DialogCard(
-            title = "Remove Deep?",
+            title = "Remove Qwen3.5 4B?",
             text = "This frees 2.8 GB. You can get it again from Hugging Face.",
             confirmLabel = "Remove",
             onConfirm = {},
             dismissLabel = "Keep",
             onDismiss = {},
+            danger = true,
         )
     }
 }

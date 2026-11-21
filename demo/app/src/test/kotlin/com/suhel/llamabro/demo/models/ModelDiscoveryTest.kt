@@ -1,6 +1,5 @@
 package com.suhel.llamabro.demo.models
 
-import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.hub.HubException
 import com.suhel.llamabro.hub.testing.FakeLlamaBroHub
 import kotlinx.coroutines.runBlocking
@@ -59,8 +58,7 @@ class ModelDiscoveryTest {
                 gguf("gemma-3-4b-it-Q4_K_M.gguf")
             }
         }
-    private val discovery =
-        ModelDiscovery(fake.hub) { DeviceFacts(8L shl 30, DeviceKind.Npu) }
+    private val discovery = ModelDiscovery(fake.hub)
 
     @After fun close() = fake.close()
 
@@ -95,21 +93,44 @@ class ModelDiscoveryTest {
         assertEquals(15L, foo.downloads)
         assertTrue(foo.sees)
         assertEquals("foo-1b", foo.groupKey)
+        // the busier upload doesn't see, the other does: the row's icon follows what it says, so its fit counts a reader
+        assertEquals(listOf(Capability.SeesImages), foo.capabilities)
+    }
+
+    @Test fun aMergedRowCanDoWhatAnyOfItsUploadsCanInARowsOrder() {
+        val busier =
+            SearchModel(
+                groupKey = "x",
+                name = "X",
+                repo = "a/X-GGUF",
+                author = "a",
+                downloads = 100,
+                sees = false,
+                catalog = null,
+                capabilities = listOf(Capability.Coding),
+            )
+        val other =
+            busier.copy(
+                repo = "b/X-GGUF",
+                downloads = 1,
+                sees = true,
+                capabilities = listOf(Capability.SeesImages, Capability.Thinks),
+            )
+        val row = SearchRows.merge(listOf(busier, other)).single()
+        assertEquals("a/X-GGUF", row.repo)
+        assertTrue(row.sees)
+        assertEquals(listOf(Capability.Thinks, Capability.SeesImages, Capability.Coding), row.capabilities)
+    }
+
+    @Test fun theOriginalOfAnUploadIsTheHubsTag() {
+        assertEquals("google/gemma-3-4b-it", runBlocking { discovery.baseModel("unsloth/gemma-3-4b-it-GGUF") })
+        assertNull(runBlocking { discovery.baseModel("alice/Foo-1B-GGUF") })
     }
 
     @Test fun seesImagesFromPipelineTag() {
         // the catalog says what a model it knows does; for any other the Hub's task says it
         assertTrue(search("gemma").single().sees)
         assertFalse(search("tiny").single().sees)
-    }
-
-    @Test fun plainLineFromParameterCount() {
-        val lines = search("someone").associate { it.repo to it.line }
-        assertEquals("Tiny and quick, for everyday questions", lines.getValue("someone/Tiny-0.5B-GGUF"))
-        assertEquals("Smarter, but heavy for a phone", lines.getValue("someone/Mid-7B-GGUF"))
-        assertEquals("A model from someone", lines.getValue("someone/Mystery-GGUF"))
-        assertEquals("Balanced, a good all-rounder", SearchRows.plainLine("Phi-4-mini-3.8B", "microsoft"))
-        assertEquals("Needs a computer, not a phone", SearchRows.plainLine("Llama-3.3-70B", "meta"))
     }
 
     @Test fun filesListEveryQuantisationOnceWithoutTheImageReader() {
@@ -128,17 +149,78 @@ class ModelDiscoveryTest {
         assertEquals(0L, without.single().encoderBytes)
     }
 
-    @Test fun aQuickFitCountsTheRecommendedFilesEncoder() {
-        val phone = DeviceFacts(8L shl 30, DeviceKind.Npu)
-        // alone the file leaves room in 8 GiB; with its encoder, none (D101)
-        val big = RepoFile("Big-Q4_K_M.gguf", "Q4_K_M", 8_000_000_000, encoderBytes = 900_000_000)
-        val sized =
-            object : ModelDiscovery(fake.hub, { phone }) {
-                override suspend fun files(repo: String): List<RepoFile> = listOf(big)
-            }
-        val fit = runBlocking { sized.quickFit("someone/Big-GGUF", catalog = null) }
-        assertEquals(Fits.quick(8_900_000_000, 8_000_000_000, phone), fit)
-        assertEquals(FitLabel.TooBig, fit?.label)
+    @Test fun makerIsTheOwnerOfTheOriginal() {
+        fake.repo("someone/Qwen2.5-Coder-7B-GGUF") {
+            baseModel = "Qwen/Qwen2.5-Coder-7B"
+            gguf("Qwen2.5-Coder-7B-Q4_K_M.gguf")
+        }
+        assertEquals("Alibaba Qwen", search("coder").single().maker)
+        assertNull(search("mystery").single().maker)
+        assertEquals("Alibaba Qwen", search("qwen3.5").single().maker)
+    }
+
+    @Test fun capabilitiesComeFromTaskTagsAndName() {
+        fake.repo("someone/Coder-7B-GGUF") { gguf("Coder-7B-Q4_K_M.gguf") }
+        fake.repo("someone/Tagged-7B-GGUF") {
+            tags = listOf("code")
+            gguf("Tagged-7B-Q4_K_M.gguf")
+        }
+        fake.repo("someone/Looker-7B-GGUF") {
+            task = "image-text-to-text"
+            gguf("Looker-7B-Q4_K_M.gguf")
+        }
+        fake.repo("someone/Vec-GGUF") {
+            task = "sentence-similarity"
+            gguf("Vec-Q4_K_M.gguf")
+        }
+        fake.repo("someone/Encoder-GGUF") {
+            architecture = "nomic-bert"
+            parameters = 137_000_000
+            gguf("Encoder-Q4_K_M.gguf")
+        }
+        val rows = search("someone").associateBy { it.repo }
+        assertEquals(listOf(Capability.Coding), rows.getValue("someone/Coder-7B-GGUF").capabilities)
+        assertEquals(listOf(Capability.Coding), rows.getValue("someone/Tagged-7B-GGUF").capabilities)
+        assertEquals(listOf(Capability.SeesImages), rows.getValue("someone/Looker-7B-GGUF").capabilities)
+        assertEquals(listOf(Capability.Embeddings), rows.getValue("someone/Vec-GGUF").capabilities)
+        assertEquals(listOf(Capability.Embeddings), rows.getValue("someone/Encoder-GGUF").capabilities)
+        // the catalog says what its models do, in display order
+        val omni = Catalog.suggested.first { it.talks }
+        fake.repo(omni.key.repo) { gguf("LFM3-Omni-2B-Q4_K_M.gguf") }
+        assertEquals(listOf(Capability.Talks), search("omni").single().capabilities)
+        val qwen = search("qwen3.5").single()
+        assertEquals(listOf(Capability.Thinks, Capability.SeesImages), qwen.capabilities)
+    }
+
+    @Test fun aModelWithoutAChatTemplateCannotChat() {
+        fake.repo("someone/Bare-7B-GGUF") {
+            parameters = 7_000_000_000
+            chatTemplate = false
+            gguf("Bare-7B-Q4_K_M.gguf")
+        }
+        assertFalse(search("bare").single().canChat)
+        assertTrue(search("tiny").single().canChat)
+    }
+
+    @Test fun anEmbeddingModelWithATemplateCannotChat() {
+        fake.repo("Qwen/Qwen3-Embedding-0.6B-GGUF") {
+            architecture = "qwen3"
+            parameters = 600_000_000
+            gguf("Qwen3-Embedding-0.6B-Q4_K_M.gguf")
+        }
+        assertFalse(search("embedding").single().canChat)
+    }
+
+    @Test fun parametersAndActiveParametersComeFromTheHubsHeader() {
+        fake.repo("someone/Big-35B-A3B-GGUF") {
+            architecture = "qwen35moe"
+            parameters = 35_000_000_000
+            gguf("Big-35B-A3B-Q4_K_M.gguf")
+        }
+        val row = search("big").single()
+        assertEquals(35_000_000_000L, row.parameters)
+        assertEquals(3_000_000_000L, row.activeParameters)
+        assertNull(search("tiny").single().activeParameters)
     }
 
     @Test fun anOfflineSearchSaysSo() {
@@ -162,21 +244,24 @@ class ModelDiscoveryTest {
         }
     }
 
-    @Test fun boundariesOfThePlainLine() {
-        assertEquals("Tiny and quick, for everyday questions", SearchRows.plainLine("Foo-1.4B", "x"))
-        assertEquals("Balanced, a good all-rounder", SearchRows.plainLine("Foo-1.5B", "x"))
-        assertEquals("Balanced, a good all-rounder", SearchRows.plainLine("Foo-4.9b", "x"))
-        assertEquals("Smarter, but heavy for a phone", SearchRows.plainLine("Foo-5B", "x"))
-        assertEquals("Needs a computer, not a phone", SearchRows.plainLine("Foo-10B", "x"))
-        assertEquals("Needs a computer, not a phone", SearchRows.plainLine("Qwen3-30B-A3B", "x"))
-        assertEquals("A model from x", SearchRows.plainLine("Foo", "x"))
-    }
-
-    @Test fun displayNameKeepsCasingAndSpacesTheSeparators() {
-        assertEquals("Qwen3 30B A3B", SearchRows.displayName("Qwen3-30B-A3B"))
-        assertEquals("TinyLlama 1.1B Chat v1.0", SearchRows.displayName("TinyLlama-1.1B-Chat-v1.0"))
-        assertEquals("Phi 4 mini", SearchRows.displayName("phi_4-mini"))
-    }
+    @Test fun uploadsOfOneModelDifferingInPackagingWordsAreOneRow() =
+        runBlocking {
+            val hub =
+                FakeLlamaBroHub {
+                    repo("x/gemma-4-E4B-it-qat-q4_0-unquantized-GGUF") {
+                        downloads = 5
+                        gguf("gemma-4-E4B-it-Q4_K_M.gguf")
+                    }
+                    repo("y/gemma-4-E4B-it-GGUF") {
+                        downloads = 9
+                        gguf("gemma-4-E4B-it-Q4_K_M.gguf")
+                    }
+                }
+            val rows = ModelDiscovery(hub.hub).search("gemma-4")
+            assertEquals(1, rows.size)
+            assertEquals("Gemma 4 E4B", rows.single().displayName)
+            assertEquals(2, rows.single().repos.size)
+        }
 
     @Test fun emptyResultsAreEmptyNotError() = assertEquals(emptyList<SearchModel>(), search("zzzzzz"))
 
@@ -185,15 +270,14 @@ class ModelDiscoveryTest {
         val known =
             SearchModel(
                 groupKey = "x",
-                displayName = deep.realName,
+                name = deep.realName,
                 repo = deep.key.repo,
                 author = "unsloth",
                 downloads = 10,
                 sees = true,
-                line = deep.line,
                 catalog = deep,
             )
-        val busier = known.copy(displayName = "X", repo = "someone/X-GGUF", downloads = 100, line = "?", catalog = null)
+        val busier = known.copy(name = "X", repo = "someone/X-GGUF", downloads = 100, catalog = null)
         val row = SearchRows.merge(listOf(busier, known)).single()
         assertEquals(known.copy(downloads = 110), row)
     }

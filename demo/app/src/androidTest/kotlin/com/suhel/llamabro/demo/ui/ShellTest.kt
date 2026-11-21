@@ -30,7 +30,9 @@ import com.suhel.llamabro.demo.data.AppLayout
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.NewMessage
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
+import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.testing.TestAppRule
+import com.suhel.llamabro.demo.testing.TestConfig
 import com.suhel.llamabro.demo.testing.demoRules
 import com.suhel.llamabro.demo.testing.withAccessibilityChecks
 import kotlinx.coroutines.runBlocking
@@ -45,7 +47,12 @@ import org.junit.rules.RuleChain
  */
 @OptIn(ExperimentalTestApi::class)
 class ShellTest {
-    private val app = TestAppRule()
+    /**
+     * The fake hub: the real one reads the app's own model folder, which on a phone holds whatever models are on it,
+     * so "nothing downloaded in a fresh app" held only on an empty phone (the drawer said "Models, 3 on this phone").
+     */
+    private val hub = TestHub()
+    private val app = TestAppRule(config = { TestConfig.fresh(hub = hub.hub) })
     private val compose = createEmptyComposeRule()
 
     @get:Rule val rules: RuleChain = RuleChain.outerRule(demoRules(app)).around(compose)
@@ -55,6 +62,7 @@ class ShellTest {
 
     @After fun closeApp() {
         if (::scenario.isInitialized) scenario.close()
+        hub.close()
     }
 
     private val swift = "unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M"
@@ -209,13 +217,21 @@ class ShellTest {
         }
     }
 
+    @Test fun anEmptyDrawerSaysNoChatsYet() {
+        waitForShell()
+        openDrawer()
+        compose
+            .onNode(hasText("No chats yet. Start one.") and hasAnyAncestor(hasTestTag("drawer")))
+            .assertIsDisplayed()
+    }
+
     @Test fun drawerShowsModelsCountAndGroups() {
         seedChat("Portfolio bio")
         waitForShell()
         openDrawer()
 
-        // the drawer's actions are icons at its foot: what a screen reader says names them (and the chat's top bar has
-        // a New chat of its own)
+        // New chat is an icon at the drawer's head, Models and Settings labelled rows at its foot, each one node whose
+        // spoken label names it (and the chat's top bar has a New chat of its own)
         fun inDrawer(description: String) = hasContentDescription(description) and hasAnyAncestor(hasTestTag("drawer"))
         compose.onNode(inDrawer("New chat")).assertIsDisplayed()
         compose.onNode(inDrawer("Models, 0 on this phone")).assertIsDisplayed() // nothing downloaded in a fresh app
@@ -227,7 +243,7 @@ class ShellTest {
                 inDrawer("New chat") and
                     hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.TraversalIndex, -1f)),
             ).assertExists()
-        compose.onNodeWithText("TODAY").assertIsDisplayed()
+        compose.onNodeWithText("Today").assertIsDisplayed()
         compose.onNodeWithText("Portfolio bio").assertIsDisplayed()
     }
 
@@ -347,9 +363,10 @@ class ShellTest {
         compose.onNodeWithText("Settings").performClick()
         compose.onNodeWithText("About").performScrollTo().performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("about"), 10_000)
-        for (text in listOf("Version", "MIT licence", "Source Serif 4", "SIL Open Font Licence 1.1")) {
+        for (text in listOf("Version", "MIT licence", "Geist", "Source Serif 4")) {
             compose.onNodeWithText(text).assertIsDisplayed()
         }
+        compose.onAllNodesWithText("SIL Open Font Licence 1.1").assertCountEquals(2) // the two bundled fonts
         compose.onAllNodesWithText("llama.cpp").assertCountEquals(2) // the build, and its licence
     }
 }

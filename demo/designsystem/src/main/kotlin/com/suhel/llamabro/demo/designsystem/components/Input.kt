@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -31,10 +32,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -47,11 +54,16 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 
 /**
- * A single-line field on the surface with the soft shadow: a 56 dp pill (Material's search bar) with a 24 dp
- * [icon] at its start, 16 dp from the edge and 16 dp from the text. A search ("Search any model", "Search chats")
- * keeps the magnifier; a field for something else names its own icon (the token's key).
+ * A single-line field on the surface with the soft shadow and no edge (D122): a 56 dp pill (Material's search bar)
+ * with a 24 dp [icon] at its start, 16 dp from the edge and 16 dp from the text. A search ("Search any model", "Search
+ * chats") keeps the magnifier; a field for something else names its own icon (the token's key). While [loading], a
+ * band sweeps along the field's own bottom edge, the sweep of [LoadingSlot], drawn inside the field so nothing around
+ * it moves; it is muted, as the accent is kept for the primary action and a download's bar.
+ * With animations off the band holds still in the middle. [trailing] is the field's own action at its end, after
+ * the clear ✕ (a search's filters, an [IconAction]); it stays whether or not there is text, so typing moves nothing.
  */
 @Composable
 fun SearchField(
@@ -62,15 +74,33 @@ fun SearchField(
     onSearch: (() -> Unit)? = null,
     icon: ImageVector = DemoIcons.Search,
     secret: Boolean = false,
+    loading: Boolean = false,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val colors = LocalDemoColors.current
     val shape = CircleShape
+    val sweep = if (loading && !animationsDisabled()) rememberLoop(DemoMotion.SWEEP_MILLIS) else null
     Row(
         modifier
             .softShadow(shape, colors)
             .clip(shape)
             .background(colors.surface)
-            .heightIn(min = DemoSize.field)
+            .then(
+                if (loading) {
+                    Modifier
+                        .semantics { stateDescription = "Loading" }
+                        .drawWithContent {
+                            drawContent()
+                            val line = DemoSize.trackThin.toPx()
+                            val band = size.width * DemoMotion.SWEEP_WIDTH_FRACTION
+                            val start =
+                                sweep?.let { -band + it.value * (size.width + band) } ?: ((size.width - band) / 2)
+                            drawRect(colors.muted, Offset(start, size.height - line), Size(band, line))
+                        }
+                } else {
+                    Modifier
+                },
+            ).heightIn(min = DemoSize.field)
             .padding(horizontal = DemoSpacing.item),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(DemoSpacing.item),
@@ -98,11 +128,76 @@ fun SearchField(
             keyboardActions = KeyboardActions(onSearch = { onSearch?.invoke() }),
             decorationBox = { field ->
                 Box {
-                    if (value.isEmpty()) Text(placeholder, color = colors.muted, style = DemoType.body, maxLines = 1)
+                    // the hint is the field's least important text: soft, so typed words read over it (D123)
+                    if (value.isEmpty()) Text(placeholder, color = colors.soft, style = DemoType.body, maxLines = 1)
                     field()
                 }
             },
         )
+        // whenever there is text, a quiet ✕ clears it; a secret keeps no such shortcut
+        val clear = value.isNotEmpty() && !secret
+        if (clear || trailing != null) {
+            // the field's actions sit together, their 48 dp targets touching rather than an item's gap apart, and
+            // the last glyph keeps the field's inset as the leading icon does: the target's own inset isn't added twice
+            Row(
+                Modifier.offset(x = (DemoSize.target - DemoSize.icon) / 2),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (clear) {
+                    IconAction(
+                        DemoIcons.Close,
+                        stringResource(R.string.ds_clear),
+                        { onValueChange("") },
+                        muted = true,
+                        small = true,
+                    )
+                }
+                trailing?.invoke()
+            }
+        }
+    }
+}
+
+/**
+ * A short number with its unit ("1.5" B): a [DemoSize.target]-tall box on a hairline outline, the [label] ("From")
+ * in the soft ink while it is empty, the [unit] muted at its end, and the decimal keyboard ending with Done. It
+ * only takes text; what the number must be is the caller's to say, in a line under it.
+ */
+@Composable
+fun NumberField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    unit: String,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalDemoColors.current
+    val shape = DemoShapes.chip
+    Row(
+        modifier
+            .clip(shape)
+            .border(DemoSize.hairline, colors.hairline, shape)
+            .heightIn(min = DemoSize.target)
+            .padding(horizontal = DemoSpacing.compact),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(DemoSpacing.block),
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.weight(1f).semantics { contentDescription = label },
+            singleLine = true,
+            textStyle = DemoType.body.copy(color = colors.ink),
+            cursorBrush = SolidColor(colors.accent),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+            decorationBox = { field ->
+                Box {
+                    if (value.isEmpty()) Text(label, color = colors.soft, style = DemoType.body, maxLines = 1)
+                    field()
+                }
+            },
+        )
+        Text(unit, color = colors.muted, style = DemoType.body, maxLines = 1)
     }
 }
 
@@ -195,8 +290,8 @@ data class VoiceActions(
  * at the end, a **Think** icon (when the model can think) just left of send (stop while a reply is coming). All
  * three are 36 dp circles with 20 dp glyphs in 48 dp targets, 10 dp from the bar's edge and 12 dp from each other, so
  * they sit concentric with the corner (18 + 10 = 28). Think is a lightbulb: a quiet circle when off, filled with the
- * send accent when on (its level is in its description and in the menu it opens); send is quiet while there is nothing
- * to send and filled with the send accent when it can act (D73).
+ * accent when on (its level is in its description and in the menu it opens); send is quiet while there is nothing
+ * to send and filled with the accent when it can act (D73, D125).
  * The bar is as wide as its parent: a screen puts it on the gutter.
  *
  * [attachments], when there are any, sit inside the bar above the text: the bar grows to hold them, so a picture reads
@@ -269,11 +364,11 @@ fun Composer(
             if (state.think != null) {
                 val on = state.think != ThinkLevel.Off
                 BarIconButton(onClick = onThink) {
-                    BarCircle(if (on) colors.sendAccent else colors.hairline) {
+                    BarCircle(if (on) colors.accent else colors.hairline) {
                         Icon(
                             DemoIcons.Think,
                             contentDescription = thinkLabel(state.think),
-                            tint = if (on) colors.onSendAccent else colors.ink,
+                            tint = if (on) colors.onAccent else colors.ink,
                             modifier = Modifier.size(DemoSize.barGlyph),
                         )
                     }
@@ -292,11 +387,11 @@ private fun BarEnd(state: ComposerState, voice: VoiceActions, onSend: () -> Unit
     when {
         recording != null -> {
             BarIconButton(onClick = voice.onSend) {
-                BarCircle(colors.sendAccent) {
+                BarCircle(colors.accent) {
                     Icon(
                         DemoIcons.Send,
                         contentDescription = stringResource(R.string.ds_send_recording),
-                        tint = colors.onSendAccent,
+                        tint = colors.onAccent,
                         modifier = Modifier.size(DemoSize.barGlyph),
                     )
                 }
@@ -307,11 +402,11 @@ private fun BarEnd(state: ComposerState, voice: VoiceActions, onSend: () -> Unit
             // a model that talks: the voice-message mic just before the voice-mode button (D100)
             if (state.showsMic) BarButton(DemoIcons.Mic, stringResource(R.string.ds_record), voice.onRecord)
             BarIconButton(onClick = voice.onTalk) {
-                BarCircle(colors.sendAccent) {
+                BarCircle(colors.accent) {
                     Icon(
                         DemoIcons.VoiceMode,
                         contentDescription = stringResource(R.string.ds_voice_mode),
-                        tint = colors.onSendAccent,
+                        tint = colors.onAccent,
                         modifier = Modifier.size(DemoSize.barGlyph),
                     )
                 }
@@ -357,22 +452,22 @@ private fun MessageField(
     )
 }
 
-/** Send, which fills with the send accent when it can act and cross-fades into stop while a reply is coming (D73). */
+/** Send, which fills with the accent when it can act and cross-fades into stop while a reply is coming (D73, D125). */
 @Composable
 private fun SendButton(state: ComposerState, onSend: () -> Unit, onStop: () -> Unit) {
     val colors = LocalDemoColors.current
     val busy = state.busy
     BarIconButton(onClick = if (busy) onStop else onSend, enabled = state.canAct) {
-        // filled with the send accent when it can act; the hairline's tonal circle with muted ink when there
+        // filled with the accent when it can act; the hairline's tonal circle with muted ink when there
         // is nothing to send. The fill eases between the two, and send cross-fades into stop, so it changes
         // in place
         val fill by animateColorAsState(
-            if (state.canAct) colors.sendAccent else colors.hairline,
+            if (state.canAct) colors.accent else colors.hairline,
             tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard),
             label = "send fill",
         )
         val tint by animateColorAsState(
-            if (state.canAct) colors.onSendAccent else colors.muted,
+            if (state.canAct) colors.onAccent else colors.muted,
             tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard),
             label = "send tint",
         )

@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import com.suhel.llamabro.demo.models.Catalog
+import com.suhel.llamabro.demo.ui.models.MODELS_INTRO
 import org.junit.Test
 
 /** A model the fake Hugging Face keeps behind a token. */
@@ -17,9 +18,8 @@ class GatedJourney : Journey(seenFirstRun = false) {
 
     @Test fun gatedModelNeedsAToken() {
         world.downloads.gated += swift
-        seeTag("pick_card")
-        tap("Qwen3.5 0.8B")
-        tap("Get Qwen3.5 0.8B")
+        see(MODELS_INTRO) // a fresh install starts on Models
+        getFromModels("Qwen3.5 0.8B")
 
         // the download is refused: the chat says so in one line, with a button for what to do
         seeTag("chat_screen")

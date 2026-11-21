@@ -386,7 +386,8 @@ fun HeldNote(text: String, modifier: Modifier = Modifier) {
 
 /**
  * An honest limit, said once in one plain line with its fix (demo design §4.4): the [text] and, when there is one,
- * an [action] button. With [onDismiss] the line is a note the person can close: a small ✕ at its end.
+ * an [action] button. With [onDismiss] the line is a note the person can close: a small ✕ at its end. Two actions, or
+ * one at large font ([isLargeText]), sit on their own row under the line.
  */
 @Composable
 fun LimitLine(
@@ -409,8 +410,9 @@ fun LimitLine(
                 bottom = DemoSpacing.block,
             ),
     ) {
-        if (secondAction != null && action != null) {
-            // two actions do not fit beside the line: the line, then the actions on the end of their own row
+        // two actions do not fit beside the line, nor one at large font, where beside it the words get a column a few
+        // letters wide: the line, then the actions on the end of their own row
+        if (action != null && (secondAction != null || isLargeText())) {
             Column {
                 Text(
                     text,
@@ -418,10 +420,17 @@ fun LimitLine(
                     color = colors.ink,
                     style = DemoType.bodyMedium,
                 )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    QuietButton(text = secondAction, onClick = onSecondAction)
-                    Spacer(Modifier.width(DemoSpacing.block))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (secondAction != null) {
+                        QuietButton(text = secondAction, onClick = onSecondAction)
+                        Spacer(Modifier.width(DemoSpacing.block))
+                    }
                     QuietButton(text = action, onClick = onAction)
+                    if (onDismiss != null) DismissAction(onDismiss)
                 }
             }
         } else {
@@ -431,28 +440,36 @@ fun LimitLine(
                     Spacer(Modifier.width(DemoSpacing.block))
                     QuietButton(text = action, onClick = onAction)
                 }
-                if (onDismiss != null) {
-                    IconAction(
-                        DemoIcons.Close,
-                        stringResource(R.string.ds_dismiss),
-                        onDismiss,
-                        muted = true,
-                        small = true,
-                    )
-                }
+                if (onDismiss != null) DismissAction(onDismiss)
             }
         }
     }
 }
 
-/** Starter prompts of an empty chat ("Plan my week"), as soft chips; tapping one hands its text to [onPick]. */
+/** The small muted ✕ that closes a [LimitLine] note. */
+@Composable
+private fun DismissAction(onDismiss: () -> Unit) {
+    IconAction(DemoIcons.Close, stringResource(R.string.ds_dismiss), onDismiss, muted = true, small = true)
+}
+
+/**
+ * Starter prompts of an empty chat ("Plan my week"), or the recent searches over the Models page's results, as soft
+ * chips; tapping one hands its text to [onPick]. [centered] for the empty chat's middle; a list's chips start where
+ * its rows do.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun StarterChips(items: List<String>, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
+fun StarterChips(
+    items: List<String>,
+    onPick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    centered: Boolean = true,
+) {
     val colors = LocalDemoColors.current
     FlowRow(
         modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(DemoSpacing.block, Alignment.CenterHorizontally),
+        horizontalArrangement =
+            Arrangement.spacedBy(DemoSpacing.block, if (centered) Alignment.CenterHorizontally else Alignment.Start),
     ) {
         for (item in items) {
             Box(

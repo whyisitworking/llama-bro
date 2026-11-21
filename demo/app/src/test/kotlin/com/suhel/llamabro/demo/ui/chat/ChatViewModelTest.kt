@@ -34,6 +34,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -105,7 +108,7 @@ class ChatViewModelTest {
 
     private suspend fun viewModel(
         model: HfModel = swift,
-        style: MessageStyle = MessageStyle.Open,
+        styles: Flow<MessageStyle> = flowOf(MessageStyle.Open),
         saved: SavedStateHandle = SavedStateHandle(),
         chatId: Long = 0,
         recorder: VoiceRecorder? = null,
@@ -116,7 +119,7 @@ class ChatViewModelTest {
         settings.setLastModel(model.toString())
         return ChatViewModel(
             engine.open(chatId),
-            style,
+            styles,
             saveImage = { "pic.jpg" },
             discardImages = {},
             savedState = saved,
@@ -517,7 +520,7 @@ class ChatViewModelTest {
             val vm =
                 ChatViewModel(
                     engine.open(0),
-                    MessageStyle.Open,
+                    flowOf(MessageStyle.Open),
                     { "x" },
                     { deleted += it },
                     savedState = SavedStateHandle(),
@@ -591,12 +594,14 @@ class ChatViewModelTest {
     @Test fun theLayoutCanChangeWhileAChatIsOpen() =
         runBlocking {
             reply("hello")
-            val vm = viewModel(style = MessageStyle.Open)
+            // the layout setting, as the settings hold it
+            val styles = MutableStateFlow(MessageStyle.Open)
+            val vm = viewModel(styles = styles)
             vm.onText("hi")
             vm.send()
             until("answered") { vm.rows.value.any { it is ReplyItem } }
             assertTrue(vm.rows.value.none { it is DayItem })
-            vm.setStyle(MessageStyle.Bubbles)
+            styles.value = MessageStyle.Bubbles
             until("day label and times") {
                 vm.rows.value.any { it is DayItem } &&
                     (vm.rows.value.first { it is UserItem } as UserItem).time != null
@@ -633,7 +638,7 @@ class ChatViewModelTest {
             val vm =
                 ChatViewModel(
                     engine.open(0),
-                    MessageStyle.Open,
+                    flowOf(MessageStyle.Open),
                     { "x" },
                     { deleted += it },
                     savedState = SavedStateHandle(),

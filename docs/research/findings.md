@@ -1,7 +1,11 @@
 # Findings
 
-> **Related:** the SDK v2 design document (decisions D*), the phase plans, and the experiment results in [`research/p0/results/`](../../research/p0/results/session1.md).
-> **Status:** living document, updated 2026-11-19 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174)
+> **Related:** the [decision records](../decisions.md) (`D<n>`), the [research history](history.md), which summarises each phase, and the experiments under [`research/`](../../research/).
+> **Status:** living document, updated 2026-11-22 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179)
+
+Labels such as P1, PA, PF, PD and PH name the project's phases, and W1 to W9 the workstreams of a phase; the
+[research history](history.md#summary-of-the-phases) summarises each. "Task <n>", "T<n>" and "Feeds:" name the steps
+of a phase's plan that a finding fed; the plans themselves were working documents and are not kept here.
 
 A finding is something learned from a measurement or from reading upstream source. Every finding has a stable ID
 (`F<n>`, numbered in the order found, never reused). Other documents cite findings by ID, for example "per F10".
@@ -1826,12 +1830,115 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** The SDK default is the file's values, else llama-server's. No per-model values are hard-coded in the SDK.
 - **Feeds:** D18, design §3.3, PD (a model catalog with card values).
 
+## Model rows from the search list (F175)
+
+### F175. Recommended-file size from parameter count: a Q4_K_M file takes 5.2 bits per weight, an image reader adds 28.5% of it, and that sizes every catalog file within 9%
+
+- **Finding:** The Hub's search list reports each GGUF repo's parameter count (`gguf.total`, `expand[]=gguf`), so a
+  row's Recommended file can be sized with no tree call. Over the catalog's six Q4_K_M files, `modelBytes * 8 /
+  parameters` averages 5.200 bits per weight (5.03 to 5.66), and for the four that see images `mmprojBytes / modelBytes`
+  averages 0.285 (0.16 to 0.39). The guess is within 8.2% of every catalog file (Qwen3.5 0.8B is lowest, 8.2% under).
+  With these two numbers, the fit label from the guess equals the label from the real sizes for every catalog model in
+  three cases (with `Fit.kt`'s thresholds as they are; the budget is half the RAM, D101): the NPU on an 8 GiB phone
+  (4 GiB budget), the NPU on a 12 GiB phone (6 GiB budget), and the CPU on an 8 GiB phone (4 GiB budget). No other
+  budget or chip was checked.
+
+  | Model (repo `gguf.total`) | Parameters | Q4_K_M file | Bits per weight | Image reader | Reader share | Guess vs file |
+  |---|---|---|---|---|---|---|
+  | Qwen3.5 0.8B | 752,393,024 | 532,517,120 | 5.662 | 207,346,528 | 0.389 | -8.2% |
+  | Gemma 3 4B (QAT) | 3,880,263,168 | 2,489,894,016 | 5.133 | 851,251,456 | 0.342 | +1.3% |
+  | Qwen3.5 4B | 4,205,751,296 | 2,740,937,888 | 5.214 | 675,569,344 | 0.246 | -0.3% |
+  | Llama 3.2 3B | 3,212,749,888 | 2,019,377,600 | 5.028 | none | none | +3.4% |
+  | Qwen3.5 9B | 8,953,803,264 | 5,680,522,464 | 5.075 | 921,705,024 | 0.162 | +2.5% |
+  | LFM3 Omni 2B | 1,728,801,600 | 1,099,630,048 | 5.089 | 506,842,432 (audio, not counted) | none | +2.2% |
+
+  The smallest model has the most bits per weight (probably its embedding table, a large share of a small model and kept wide; not measured).
+  A mixture-of-experts name carries its active parameters (`Qwen3.6-35B-A3B`: `A3B`, three billion), which set the
+  speed while all parameters set the memory.
+- **Evidence:** `curl -sg "https://huggingface.co/api/models/<repo>?expand[]=gguf"` for each catalog repo on
+  2026-11-20 (`gguf.total`, `gguf.architecture`); file sizes are the catalog's, pinned 2026-11-10;
+  `GuessTest.recommendedSizeIsWithinFifteenPercentOfEveryCatalogFile`.
+- **Means:** The demo guesses a search row's fit from `Guess` (`BITS_PER_WEIGHT = 5.2`, `READER_SHARE = 0.285`); the
+  sheet still reads the real file sizes once a row is opened. Both numbers are fitted on six models of three families
+  and one quantisation, so a model far from them (a model with a very large vocabulary, an MoE with shared experts) can
+  be off by more; the sheet's real sizes correct it.
+- **Feeds:** `docs/design/models-screen.md` ("A row's fit, from the search list alone"), D101, D116.
+
+## The search's "Fits this phone" cap (F176)
+
+### F176. "Fits this phone" is a parameter cap of budget × 8 / 5.2: about 6.6 billion on an 8 GiB phone, 9.9 billion on a 12 GiB one; the Hub filters on each upload's own count and accepts it as a plain number
+
+- **Finding:** A row's fit label is Too big exactly when its file leaves no headroom in the memory budget
+  (`Fit.roomFromSize`: headroom ≤ 0), and a search row's file is guessed from its parameter count at 5.2 bits per
+  weight (F175). So for a model that reads no images the largest count that isn't Too big is the largest `P` with
+  `P × 5.2 / 8 < budget`, about `budget × 1.538`: 6,607,641,993 for a 4 GiB budget (an 8 GiB phone, D101), about
+  9.91 billion for 6 GiB (12 GiB), about 13.2 billion for 8 GiB (16 GiB). `Guess.fitCap` finds it by a binary search
+  over `Guess.fit` itself rather than the closed form, so the cap and the row's symbol can't disagree on a text model.
+  A model that sees images needs its reader too (28.5% of the file, F175), so it fits only to about `cap / 1.285`
+  (5.1 billion on an 8 GiB phone); between that and the cap it is listed and shows Too big, rather than a text model
+  that runs being hidden. The Hub's `num_parameters` filter takes the cap as a plain integer (`max:4000000000` returned
+  the same five results as `max:4B`, and `min:1000000000,max:4000000000` the same as `min:1B,max:4B`) and filters on
+  each upload's reported count, which is sometimes wrong: `max:4B` for "qwen" listed a 27B upload that reports
+  460,730,096 parameters. An upload that reports no count is outside any range: of the first 100 GGUF repos for
+  "lora", 2 list no `gguf.total`, and with `num_parameters=max:1000000000000` none of the 100 does.
+- **Evidence:** `GuessTest.theFitCapIsTheLargestParameterCountThatIsNotTooBig` (the cap is not Too big and one more is,
+  on NPU 4 GiB and 6 GiB, CPU 4 GiB and a 300 MB budget); `curl -sg "https://huggingface.co/api/models?search=qwen&
+  filter=gguf&gated=false&num_parameters=<range>&sort=downloads&direction=-1&limit=5&expand[]=gguf"` for `max:4B`,
+  `max:4000000000`, `max:6.6B`, `min:1B,max:4B` and `min:1000000000,max:4000000000`, and for "lora" (`limit=100`)
+  with and without a range, on 2026-11-20.
+- **Means:** The search sends `num_parameters=max:<Guess.fitCap(facts)>` for "Fits this phone" (models-search design
+  §3); the SDK writes counts as plain integers. A mislabelled upload passes the filter and shows the fit its own count
+  gives, as it would unfiltered; the card's real file sizes correct it. An upload with no count is found only with
+  "Any size" (the fake Hub leaves it out of a range too, so the instrumented tests search with any size).
+- **Feeds:** `docs/design/models-search.md` §3, D101, D127, F175.
+
+## The Models page's measured jitter (F177)
+
+### F177. The merged Models screen moved after its first frame on every open: its card re-expanded up to five times over ~0.9 s and the list dropped ~20 dp when storage landed; the rebuilt card rises once into its compact height on the phone, one size per file
+
+- **Finding:** The models audit captured the merged Models screen (D116) on the phone: every state in light and dark
+  at font scale 1 and 2, and four transitions frame by frame (16 ms), in the order the view models emit. Measured:
+    - Opening a model card, the sheet re-expanded up to five times (the repository's state, the maker, the listing,
+      the page, a download landing) and showed only its header and a loading bar for ~0.9 s (S3); the maker came
+      ~1.7 s late (S13); "Downloading Q4_K_M · 0.7 GB" became "Downloading Recommended · 0.7 GB" when the listing
+      landed (S1).
+    - Opening the screen, ~400 ms of empty screen, then storage landed after the library and every row dropped ~20 dp
+      (M3). Typing a query left the groups up ~1 s, then replaced the body in one frame (M2).
+    - A download row's height changed in one frame with its state, 270, 312, 270 and 347 px (R1); starting a download
+      dropped everything under it ~70 dp (M17).
+
+  The rebuilt page (D130) was accepted on release builds on the phone, recorded at 30 fps, then 60 fps:
+    - Round 1: the card rose above its final top, then dropped ~500 px in one frame (A2); an uncached card
+      opened at its header's height (A3); its fit line came ~300 ms and its maker ~200 ms after the sheet (A4); the
+      page's first paint waited ~800 ms.
+    - Round 2: 1893 captured frames, none blank; the card opened at its compact height with its page in view
+      (A3 fixed); the card still rose to near full height, then dropped into the compact height within ~50 ms (B4,
+      frames 8-11); focusing the empty field dropped two suggestions (B1, frames 112-116); Hub rows were renamed ~1 s
+      after showing (B2); leaving search, a row slid through another for ~150 ms and the list came back scrolled one
+      row (B3, frames 376-383); one file read 2.8 GB in the card's header and 3.2 GB in its size (B5).
+    - Round 4 (60 fps): the card rises without a drop into its compact height (B4 fixed); one size, 3.2 GB,
+      in the row and the card (B5 fixed).
+- **Evidence:** [models-audit.md](../design/models-audit.md) (the capture of 2026-11-20 and its critics); the
+  models-page plan's acceptance rounds on the test phone (A1-A8, B1-B5), whose scratch capture test and frames were
+  deleted, uncommitted, at the maintainer's request; host Compose tests under Robolectric for the card's top holding while
+  its page lands and its foot staying one height in every state (D118).
+- **Means:** The jitter came from screens drawing each flow as it arrived, with nothing cached (the audit's systemic
+  causes 2-4). The card's one view from local data (D118), its compact height from the first frame and the page's first
+  paint from local data (D119), and one list motion and one function per fact (D120, D121) answer it. B1-B3 were fixed
+  in code in round 4 (D120) and not recorded again; the final build's frame-by-frame recapture is the maintainer's.
+  Two notes stay parked: a first window on another phone could still rise then drop (from code reading), and the
+  opening spring settles ~1 dp past its top (Material's own motion).
+- **Feeds:** D118, D119, D120, D121, D130, [models-audit.md](../design/models-audit.md).
+
 ---
 
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F177 | The merged Models screen's card re-expanded up to five times over ~0.9 s and its list dropped ~20 dp when storage landed; the rebuilt card rises once into its compact height on the phone (B4 fixed), one size per file (B5) | D118-D121, D130, models audit |
+| F176 | "Fits this phone" caps the parameter count at budget × 8 / 5.2 (6.6 billion on an 8 GiB phone), from the same guess as the fit symbol; the Hub filters on each upload's reported count and takes the cap as a plain number | models search design, D101, D127, F175 |
+| F175 | A Q4_K_M file takes 5.2 bits per weight, an image reader 28.5% more: the Hub's parameter count sizes every catalog file within 9% and gives the same fit label in the three cases checked (NPU 4 GiB and 6 GiB budget, CPU 4 GiB) | models screen design, D101, D116 |
 | F174 | ggml-vulkan on the Adreno 830 at b12479: Qualcomm's upstream fixes and our patch (research `vk1`-`vk4`) make it run correctly (q4_K vec4 load, submission caps, no flash attention); 4x slower prefill than the CPU, 14x slower than OpenCL | D31, D23, D32, F64 |
 | F173 | Patch 0008's guard holds for a male voice, Q8_0, es, de, ja (500 replies): all runaways stopped, clean replies lose at most a last word after a 3 s pause (2 in de); es runs away 11%, ja 49%; de/fr/ja/zh speech barely intelligible; thresholds unchanged | D95, D96, F166, F167 |
 | F172 | Two fit measurements at once crashed the app: upstream's `common_fit_log_scope` swaps the process-wide log callback; the bridge now measures one at a time (8-thread host test: 3/3 crash before, 5/5 pass after) | D101, F58, F88 |

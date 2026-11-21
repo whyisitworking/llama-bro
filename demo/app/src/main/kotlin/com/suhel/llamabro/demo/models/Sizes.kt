@@ -1,5 +1,7 @@
 package com.suhel.llamabro.demo.models
 
+import kotlinx.serialization.Serializable
+
 enum class SizeTier { Smaller, Recommended, Best }
 
 /**
@@ -7,6 +9,7 @@ enum class SizeTier { Smaller, Recommended, Best }
  * all its shards, [encoderBytes] the encoder (mmproj) the hub fetches with it, 0 for none. The hub's tag drops
  * Unsloth's `UD-` prefix (upstream's tag rule), so `UD-` is optional below.
  */
+@Serializable
 data class RepoFile(val path: String, val quant: String, val bytes: Long, val encoderBytes: Long = 0)
 
 /** The three sizes the sheet's Basic view offers. */

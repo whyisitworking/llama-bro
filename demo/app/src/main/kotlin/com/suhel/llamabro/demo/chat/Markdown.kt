@@ -5,6 +5,7 @@ import com.suhel.llamabro.demo.designsystem.components.MarkdownAlignment
 import com.suhel.llamabro.demo.designsystem.components.MarkdownBlock
 import com.suhel.llamabro.demo.designsystem.components.MarkdownBlocks
 import com.suhel.llamabro.demo.designsystem.components.MarkdownSpan
+import com.suhel.llamabro.demo.models.Names
 import org.commonmark.ext.autolink.AutolinkExtension
 import org.commonmark.ext.gfm.strikethrough.Strikethrough
 import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
@@ -20,6 +21,7 @@ import org.commonmark.node.HardLineBreak
 import org.commonmark.node.Heading
 import org.commonmark.node.HtmlBlock
 import org.commonmark.node.HtmlInline
+import org.commonmark.node.Image
 import org.commonmark.node.IndentedCodeBlock
 import org.commonmark.node.Link
 import org.commonmark.node.LinkReferenceDefinition
@@ -39,7 +41,8 @@ import org.commonmark.node.ListItem as CmListItem
 /**
  * A reply's markdown, parsed by commonmark-java with the GFM tables, strikethrough and bare-URL links (D74), into the
  * design system's blocks. Images show their alt text, HTML shows as typed, and maths is left as text. An open fence
- * runs to the end as code, so a streaming reply never flashes raw backticks.
+ * runs to the end as code, so a streaming reply never flashes raw backticks. A model's page ([parsePage]) is read the
+ * same way, but its HTML is flattened to its text.
  */
 object Markdown {
     private val parser =
@@ -54,6 +57,31 @@ object Markdown {
 
     /** Parses all of [text]. */
     fun parse(text: String): MarkdownBlocks = parse(text, null)
+
+    /**
+     * Parses a model's page (its `README.md`, models-screen design "The card"). Pages lean on HTML for centred logos,
+     * badges and link rows; the app draws no HTML, so a block of it becomes its text, a paragraph per HTML paragraph,
+     * and inline tags go, leaving their words. Images keep their alt text: the app has no image loader (D116). A
+     * leading heading that only repeats [dropHeading] (the model's name, already the sheet's title) is left out: the
+     * first heading before any text of the page's own, after the HTML logos and badges many pages open with, read as
+     * [Names.key] reads a repo's name and without separators, so "# Qwen3.5-4B-GGUF" goes under "Qwen3.5 4B" (models
+     * audit S5). What a page carries for GitHub rather than for a reader is left out first ([PageNoise], D123): its
+     * note and warning boxes, and paragraphs or HTML blocks that are only links or badge images.
+     */
+    fun parsePage(text: String, dropHeading: String? = null): MarkdownBlocks =
+        trace("Markdown.parsePage") {
+            val document = parser.parse(text)
+            PageNoise.strip(document)
+            if (dropHeading != null) {
+                val first =
+                    generateSequence(document.firstChild) { it.next }.firstOrNull { it !is HtmlBlock } as? Heading
+                if (first != null && bare(MarkdownTree.Page.plainText(first)) == bare(dropHeading)) first.unlink()
+            }
+            MarkdownBlocks(MarkdownTree.Page.children(document))
+        }
+
+    /** [name] as a model's key, without separators: "Qwen3.5-4B-GGUF" and "qwen3.5 4b" read alike. */
+    private fun bare(name: String): String = Names.key(name).filter { it.isLetterOrDigit() }
 
     /**
      * Parses [text], the previous reply's text plus more. Only the top-level block the old text's last line may still
@@ -109,7 +137,7 @@ object Markdown {
         var node = document.firstChild
         while (node != null) {
             val start = from + lineStart(node)
-            for (block in MarkdownTree.blocks(node)) out.add(block, start)
+            for (block in MarkdownTree.Reply.blocks(node)) out.add(block, start)
             node = node.next
         }
         return out.parsed(whole)
@@ -150,44 +178,81 @@ private fun lineStart(node: Node): Int {
     return span.inputIndex - span.columnIndex
 }
 
-/** Maps commonmark's tree into the design system's blocks. */
-private object MarkdownTree {
-    /** Link targets a tap may open: the web and mail. Others (intent:, tel:, file:, content:, deep links) stay text. */
-    private val safeSchemes = setOf("http", "https", "mailto")
+/** Maps commonmark's tree into the design system's blocks: a reply's HTML as typed, a [page]'s flattened to text. */
+private class MarkdownTree(private val page: Boolean) {
+    companion object {
+        val Reply = MarkdownTree(page = false)
+        val Page = MarkdownTree(page = true)
 
-    fun hasDefinition(node: Node): Boolean = node is LinkReferenceDefinition || kids(node).any(::hasDefinition)
+        /** Link targets a tap may open: the web and mail. Others (intent:, tel:, file:, deep links) stay text. */
+        private val safeSchemes = setOf("http", "https", "mailto")
+
+        fun hasDefinition(node: Node): Boolean = node is LinkReferenceDefinition || kids(node).any(::hasDefinition)
+
+        private fun kids(node: Node): Sequence<Node> = generateSequence(node.firstChild) { it.next }
+    }
 
     /** The design system's blocks for one parsed block: none, one, or a list's items. */
     fun blocks(node: Node): List<MarkdownBlock> =
         when (node) {
-            is Paragraph -> listOf(MarkdownBlock.Paragraph(spans(node)))
+            is Paragraph -> {
+                listOf(MarkdownBlock.Paragraph(spans(node)))
+            }
 
-            is Heading -> listOf(MarkdownBlock.Heading(node.level, spans(node)))
+            is Heading -> {
+                listOf(MarkdownBlock.Heading(node.level, spans(node)))
+            }
 
-            is FencedCodeBlock -> listOf(MarkdownBlock.Code(language(node.info), node.literal.removeSuffix("\n")))
+            is FencedCodeBlock -> {
+                listOf(MarkdownBlock.Code(language(node.info), node.literal.removeSuffix("\n")))
+            }
 
-            is IndentedCodeBlock -> listOf(MarkdownBlock.Code(null, node.literal.removeSuffix("\n")))
+            is IndentedCodeBlock -> {
+                listOf(MarkdownBlock.Code(null, node.literal.removeSuffix("\n")))
+            }
 
-            is CmList -> items(node)
+            is CmList -> {
+                items(node)
+            }
 
             // a quote that holds only a link reference definition shows nothing
-            is BlockQuote -> children(node).let { if (it.isEmpty()) emptyList() else listOf(MarkdownBlock.Quote(it)) }
+            is BlockQuote -> {
+                children(node).let { if (it.isEmpty()) emptyList() else listOf(MarkdownBlock.Quote(it)) }
+            }
 
-            is ThematicBreak -> listOf(MarkdownBlock.Rule)
+            is ThematicBreak -> {
+                listOf(MarkdownBlock.Rule)
+            }
 
-            is TableBlock -> listOf(table(node))
+            is TableBlock -> {
+                listOf(table(node))
+            }
 
-            // shown as typed: the app renders no HTML
-            is HtmlBlock -> listOf(MarkdownBlock.Paragraph(listOf(MarkdownSpan(node.literal.trimEnd('\n')))))
+            is HtmlBlock -> {
+                html(node)
+            }
 
-            is LinkReferenceDefinition -> emptyList()
+            is LinkReferenceDefinition -> {
+                emptyList()
+            }
 
-            else -> children(node)
+            else -> {
+                children(node)
+            }
         }
 
-    private fun children(node: Node): List<MarkdownBlock> = kids(node).flatMap(::blocks).toList()
+    fun children(node: Node): List<MarkdownBlock> = kids(node).flatMap(::blocks).toList()
 
-    private fun kids(node: Node): Sequence<Node> = generateSequence(node.firstChild) { it.next }
+    /** A heading's words as it would show them, without their styles. */
+    fun plainText(node: Heading): String = spans(node).joinToString("") { it.text }
+
+    /** A reply's HTML shows as typed (the app draws no HTML); a page's is its text, a paragraph per HTML paragraph. */
+    private fun html(node: HtmlBlock): List<MarkdownBlock> =
+        if (page) {
+            PageHtml.paragraphs(node.literal).map { MarkdownBlock.Paragraph(listOf(MarkdownSpan(it))) }
+        } else {
+            listOf(MarkdownBlock.Paragraph(listOf(MarkdownSpan(node.literal.trimEnd('\n')))))
+        }
 
     /** The first word of a fence's info string, as GFM reads it: "kotlin" of "kotlin title=x". */
     private fun language(info: String?): String? =
@@ -257,27 +322,52 @@ private object MarkdownTree {
         var node = parent.firstChild
         while (node != null) {
             when (node) {
-                is Text -> add(out, node.literal, marks, code = false)
+                is Text -> {
+                    add(out, node.literal, marks, code = false)
+                }
 
-                is Code -> add(out, node.literal, marks, code = true)
+                is Code -> {
+                    add(out, node.literal, marks, code = true)
+                }
 
-                is SoftLineBreak -> add(out, " ", marks, code = false)
+                is SoftLineBreak -> {
+                    add(out, " ", marks, code = false)
+                }
 
-                is HardLineBreak -> add(out, "\n", marks, code = false)
+                is HardLineBreak -> {
+                    add(out, "\n", marks, code = false)
+                }
 
-                // shown as typed: the app renders no HTML
-                is HtmlInline -> add(out, node.literal, marks, code = false)
+                // a reply's shows as typed (the app renders no HTML); a page's tags go, a line break stays one
+                is HtmlInline -> {
+                    add(
+                        out,
+                        if (page) PageHtml.inline(node.literal) else node.literal,
+                        marks,
+                        code = false,
+                    )
+                }
 
-                is Emphasis -> inline(node, marks.copy(italic = true), out)
+                is Emphasis -> {
+                    inline(node, marks.copy(italic = true), out)
+                }
 
-                is StrongEmphasis -> inline(node, marks.copy(bold = true), out)
+                is StrongEmphasis -> {
+                    inline(node, marks.copy(bold = true), out)
+                }
 
-                is Strikethrough -> inline(node, marks.copy(strike = true), out)
+                is Strikethrough -> {
+                    inline(node, marks.copy(strike = true), out)
+                }
 
-                is Link -> inline(node, marks.copy(link = node.destination.takeIf(::safe)), out)
+                is Link -> {
+                    inline(node, marks.copy(link = node.destination.takeIf(::safe)), out)
+                }
 
                 // an image shows its alt text, the image's children, plainly
-                else -> inline(node, marks, out)
+                else -> {
+                    inline(node, marks, out)
+                }
             }
             node = node.next
         }
@@ -295,4 +385,90 @@ private object MarkdownTree {
             out += span
         }
     }
+}
+
+/** A model page's HTML as plain text: tags, comments, scripts and styles go; entities are read; paragraphs are kept. */
+private object PageHtml {
+    private val dropped =
+        Regex("<!--.*?-->|<(script|style)\\b.*?</\\1\\s*>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+    private val breaks =
+        Regex(
+            "</?(p|div|br|h[1-6]|li|ul|ol|tr|table|center|details|summary|blockquote|pre|hr)\\b[^>]*>",
+            RegexOption.IGNORE_CASE,
+        )
+    private val tag = Regex("<[^>]*>")
+    private val lineBreak = Regex("<br\\b[^>]*>", RegexOption.IGNORE_CASE)
+    private val paragraph = Regex("\\n\\s*\\n")
+    private val space = Regex("\\s+")
+    private val entities =
+        // `&amp;` last, so "&amp;lt;" reads as "&lt;", not "<"
+        listOf("&lt;" to "<", "&gt;" to ">", "&quot;" to "\"", "&#39;" to "'", "&nbsp;" to " ", "&amp;" to "&")
+
+    /** The text of a block of HTML, a paragraph per block element, blanks left out. */
+    fun paragraphs(html: String): List<String> =
+        decode(tag.replace(breaks.replace(dropped.replace(html, ""), "\n\n"), ""))
+            .split(paragraph)
+            .map { it.replace(space, " ").trim() }
+            .filter { it.isNotEmpty() }
+
+    /** An inline tag's text: a line break stays one, any other tag is nothing. */
+    fun inline(html: String): String = if (lineBreak.matches(html)) "\n" else ""
+
+    private fun decode(text: String): String = entities.fold(text) { acc, (entity, char) -> acc.replace(entity, char) }
+}
+
+/**
+ * What a model's page carries for GitHub and not for a reader (D123: the less text, the better): a note
+ * box ("> [!Note]" and its kin), a paragraph that is only links or badge images (a row of badges, a bare link line),
+ * and a block of HTML that is only links and images (a centred logo, a badge row). Top-level blocks only: a link inside
+ * a list or a sentence is the page's own.
+ */
+private object PageNoise {
+    private val alert =
+        Regex("^\\s*\\[!(note|tip|important|warning|caution)]", RegexOption.IGNORE_CASE)
+    private val separators = Regex("[\\s|·•,/–—-]*")
+    private val linksAndImages =
+        Regex("<a\\b[^>]*>.*?</a\\s*>|<img\\b[^>]*>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+    private val linkOrImage = Regex("<(a|img)\\b", RegexOption.IGNORE_CASE)
+    private val tag = Regex("<[^>]*>|&nbsp;")
+
+    fun strip(document: Node) {
+        generateSequence(document.firstChild) { it.next }.toList().filter(::isNoise).forEach(Node::unlink)
+    }
+
+    private fun isNoise(node: Node): Boolean =
+        when (node) {
+            is BlockQuote -> (node.firstChild as? Paragraph)?.let { alert.containsMatchIn(literal(it)) } == true
+            is Paragraph -> onlyLinks(node)
+            is HtmlBlock -> linkOrImage.containsMatchIn(node.literal) && onlyLinks(node.literal)
+            else -> false
+        }
+
+    /** A paragraph of nothing but links and images, with at most spaces, breaks and separators between them. */
+    private fun onlyLinks(paragraph: Paragraph): Boolean {
+        var links = 0
+        var node = paragraph.firstChild
+        while (node != null) {
+            when (node) {
+                is Link, is Image -> links++
+                is Text -> if (!separators.matches(node.literal)) return false
+                is HtmlInline -> if (linkOrImage.containsMatchIn(node.literal)) links++
+                is SoftLineBreak, is HardLineBreak -> Unit
+                else -> return false
+            }
+            node = node.next
+        }
+        return links > 0
+    }
+
+    /** HTML whose text, once its links and images are gone, is nothing but separators. */
+    private fun onlyLinks(html: String): Boolean = separators.matches(tag.replace(linksAndImages.replace(html, ""), ""))
+
+    /** The text a paragraph's own words spell, without their marks. */
+    private fun literal(node: Node): String =
+        if (node is Text) {
+            node.literal
+        } else {
+            generateSequence(node.firstChild) { it.next }.joinToString("", transform = ::literal)
+        }
 }

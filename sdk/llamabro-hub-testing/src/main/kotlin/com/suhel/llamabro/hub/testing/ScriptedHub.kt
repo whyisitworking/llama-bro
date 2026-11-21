@@ -68,10 +68,13 @@ internal class ScriptedHub(endpoint: String) : Transport {
     fun publish(id: String, repo: FakeLlamaBroHub.Repo) {
         synchronized(lock) {
             val order = ++commits
-            val commit = Commit("%040x".format(Locale.ROOT, order), order, repo, repo.files.toList())
+            val commit = Commit("%040x".format(Locale.ROOT, order), order, repo, repo.files.toList() + readmeOf(repo))
             repos.getOrPut(id) { mutableListOf() } += commit
         }
     }
+
+    private fun readmeOf(repo: FakeLlamaBroHub.Repo): List<ScriptedFile> =
+        listOfNotNull(repo.readme?.let { ScriptedFile("README.md", it.toByteArray(Charsets.UTF_8)) })
 
     /**
      * Makes the next download of [path] in [repo] stop halfway: its body sends the first half, completes the returned
@@ -203,11 +206,16 @@ internal class ScriptedHub(endpoint: String) : Transport {
         }
     }
 
-    /** `api/models?search=…&author=…&pipeline_tag=…&sort=…&limit=…`, paged through a `Link` header. */
+    /**
+     * `api/models?search=…&author=…&pipeline_tag=…&num_parameters=min:…,max:…&gated=false&sort=…&limit=…`, paged
+     * through a `Link` header. A repo with no listed parameter count is outside any range.
+     */
     private fun search(url: String, params: Map<String, String>): Response {
         val query = params["search"].orEmpty().lowercase()
         val author = params["author"]?.lowercase()
         val images = params["pipeline_tag"] == IMAGE_TASK
+        val range = parameterRange(params["num_parameters"])
+        val hideGated = params["gated"] == "false"
         val found =
             repos.entries
                 .map { (id, history) -> id to history.last() }
@@ -215,7 +223,9 @@ internal class ScriptedHub(endpoint: String) : Transport {
                     commit.files.any { it.isGguf } &&
                         query in id.lowercase() &&
                         (author == null || id.substringBefore('/').lowercase() == author) &&
-                        (!images || commit.repo.takesImages)
+                        (!images || commit.repo.takesImages) &&
+                        (range == null || commit.repo.parameters?.let { it in range } == true) &&
+                        (!hideGated || !commit.repo.gated)
                 }.sortedWith(order(params["sort"]))
         val offset = params["cursor"]?.toIntOrNull() ?: 0
         val limit = params["limit"]?.toIntOrNull() ?: found.size
@@ -232,11 +242,25 @@ internal class ScriptedHub(endpoint: String) : Transport {
         return answer(url, HTTP_OK, items.toString(), link)
     }
 
-    /** The Hub's orders, most first; trending reads as downloads and a later commit as more recently updated. */
+    /** When [id] was created: its first commit's order. */
+    private fun firstOrder(id: String): Int = repos[id]?.first()?.order ?: 0
+
+    /** `min:1000,max:4000` (either part optional) as a range; null when absent. */
+    private fun parameterRange(value: String?): LongRange? {
+        if (value == null) return null
+        val parts = value.split(',').associate { it.substringBefore(':') to it.substringAfter(':').toLong() }
+        return (parts["min"] ?: 0L)..(parts["max"] ?: Long.MAX_VALUE)
+    }
+
+    /**
+     * The Hub's orders, most first; trending reads as downloads, a later commit as more recently updated, and a repo
+     * scripted later as newer.
+     */
     private fun order(sort: String?): Comparator<Pair<String, Commit>> =
         when (sort) {
             "likes" -> compareByDescending { it.second.repo.likes }
             "lastModified" -> compareByDescending { it.second.order }
+            "createdAt" -> compareByDescending { firstOrder(it.first) }
             else -> compareByDescending { it.second.repo.downloads }
         }
 
@@ -245,12 +269,23 @@ internal class ScriptedHub(endpoint: String) : Transport {
             put("id", id)
             put("downloads", commit.repo.downloads)
             put("likes", commit.repo.likes)
-            put("pipeline_tag", if (commit.repo.takesImages) IMAGE_TASK else "text-generation")
+            put(
+                "pipeline_tag",
+                commit.repo.task ?: if (commit.repo.takesImages) IMAGE_TASK else "text-generation",
+            )
             putJsonArray("tags") {
                 if (commit.files.any { it.isGguf }) add(JsonPrimitive("gguf"))
+                commit.repo.tags.forEach { add(JsonPrimitive(it)) }
                 commit.repo.baseModel?.let { base ->
                     add(JsonPrimitive("base_model:$base"))
                     add(JsonPrimitive("base_model:quantized:$base"))
+                }
+            }
+            commit.repo.parameters?.let { parameters ->
+                putJsonObject("gguf") {
+                    put("total", parameters)
+                    put("architecture", commit.repo.architecture)
+                    if (commit.repo.chatTemplate) put("chat_template", "{{ messages }}")
                 }
             }
         }

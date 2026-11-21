@@ -22,6 +22,7 @@ class VoiceModeHolder(
     private val chat: suspend () -> VoiceChat?,
     private val hasMessages: () -> Boolean,
 ) {
+    // user input: voice mode opened or closed; it owns the open conversation
     private val _open = MutableStateFlow<OpenVoice?>(null)
     val open: StateFlow<OpenVoice?> = _open.asStateFlow()
 

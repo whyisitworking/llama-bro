@@ -58,6 +58,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 /** Resolves and caches Hugging Face models under an app-private directory. */
+@Suppress("TooManyFunctions") // the public facade: each function is one operation of the API
 public class LlamaBroHub internal constructor(
     internal val config: HubConfig,
     internal val cacheDir: File,
@@ -169,15 +170,20 @@ public class LlamaBroHub internal constructor(
      *
      * @throws HubException.Network when the Hub can't be reached, [HubException.RateLimited] or
      * [HubException.Unauthorized] when it refuses.
-     * @throws IllegalArgumentException if [SearchOptions.limit] is out of range.
+     * @throws IllegalArgumentException if [SearchOptions.limit] is out of range, or the parameter range is negative or
+     * empty.
      */
     public suspend fun search(query: String, configure: SearchOptions.() -> Unit = {}): SearchPage {
         val url = searches.firstPage(query, SearchOptions().apply(configure))
         return searches.page(operationTransport(), url)
     }
 
-    /** The page after the one [next] came with; failures as the first page's. */
-    public suspend fun search(next: SearchCursor): SearchPage = searches.page(operationTransport(), next.url)
+    /**
+     * The page after the one [next] came with; failures as the first page's.
+     *
+     * @throws IllegalArgumentException if [next] is not on this hub's endpoint.
+     */
+    public suspend fun search(next: SearchCursor): SearchPage = searches.next(operationTransport(), next)
 
     /**
      * The GGUF files of [repo] (`owner/name`) at its newest commit: each quantisation once with its bytes (split files
@@ -189,6 +195,28 @@ public class LlamaBroHub internal constructor(
      */
     public suspend fun files(repo: String): RepoFiles =
         searches.files(Resolver(config.endpoint, cacheDir, operationTransport(), storage, look = true), repo)
+
+    /**
+     * The model card of [repo] (the original model's repo, not a GGUF upload's): its `README.md` at `main` as
+     * markdown, with the YAML front matter removed, or null when the repo has none. At most 512 KiB are read. The
+     * token goes only to the endpoint's host (F82).
+     *
+     * @throws HubException.Network when the Hub can't be reached, [HubException.RateLimited] or
+     * [HubException.Unauthorized] when it refuses (a gated repo without a token).
+     * @throws IllegalArgumentException if [repo] is not a repo id.
+     */
+    public suspend fun modelCard(repo: String): String? = searches.modelCard(operationTransport(), repo)
+
+    /**
+     * The original model [repo] (`owner/name`, usually a GGUF upload) was quantized from: its `base_model:quantized:`
+     * tag, or null when the repo has none. A fact the Hub states; nothing is guessed from names. One request; the
+     * token goes only to the endpoint's host (F82).
+     *
+     * @throws HubException.NotFound, [HubException.Unauthorized], [HubException.RateLimited] or
+     * [HubException.Network] as [files] does.
+     * @throws IllegalArgumentException if [repo] is not a valid repo id.
+     */
+    public suspend fun baseModel(repo: String): String? = searches.baseModelOf(operationTransport(), repo)
 
     /**
      * The sampling recommended for [model] from both places the Hub can hold it, each null when absent (D68, D79):

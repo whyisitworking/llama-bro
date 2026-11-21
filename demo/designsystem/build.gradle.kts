@@ -11,6 +11,14 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true }
+    testOptions {
+        // the components' host tests run Compose under Robolectric, which reads the module's resources
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            // Robolectric on a current JDK reaches into java.base's internals
+            it.jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -51,10 +59,17 @@ dependencies {
     debugImplementation(libs.androidx.activity.compose)
 
     testImplementation(libs.junit)
+    // host Compose tests of the components (layout at large font, notices, ellipsis), under Robolectric
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.androidx.junit)
+    testImplementation(libs.robolectric)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    // Compose's ui-test brings espresso 3.5, whose InputManager reflection fails on Android 17.
+    androidTestImplementation(libs.androidx.espresso.core)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

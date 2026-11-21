@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.room.Room
+import androidx.room.withTransaction
 import androidx.work.WorkManager
 import androidx.work.WorkerFactory
 import com.suhel.llamabro.LlamaBro
@@ -28,6 +29,7 @@ import com.suhel.llamabro.demo.data.TokenStore
 import com.suhel.llamabro.demo.data.db.ChatDatabase
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.DownloadScheduler
+import com.suhel.llamabro.demo.models.HubRepository
 import com.suhel.llamabro.demo.models.ModelDiscovery
 import com.suhel.llamabro.demo.models.ModelNotifications
 import com.suhel.llamabro.demo.models.ModelRepository
@@ -45,6 +47,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.io.File
 
@@ -99,7 +102,8 @@ class AppContainer(
     val chats: ChatRepository = ChatRepository(database.chatDao(), images, clock, audio)
     val settings: SettingsRepository = SettingsRepository(settingsStore)
     val host: ModelHost = ModelHost(llamaBro, { hub.installedModel(it) }, scope)
-    val models: ModelRepository = ModelRepository(hub, settings, scheduler, scope, host, chats.lastUsed())
+    val models: ModelRepository =
+        ModelRepository(hub, settings, scheduler, scope, host, chats.lastUsed(), recordsDao = database.hubCacheDao())
 
     /**
      * A reply left `Streaming` by a dead process becomes `Stopped` (Review focus 2). Once per process, before the
@@ -142,7 +146,7 @@ class AppContainer(
         }
 
     /** The loaded model as Settings › Memory and the model sheet show it, with Unload (D59). */
-    val memory: ModelMemory by lazy { ModelMemory(host, engine) }
+    val memory: ModelMemory by lazy { ModelMemory(host, engine, models.library) }
 
     /**
      * Each model's and each chat's sampling values (D60), with the hub's for models the catalog lacks (D79), looked up
@@ -152,7 +156,17 @@ class AppContainer(
 
     /** The SDK's search, a repo's files and a model's fit; the phone tests pass a fake in [discoveryOverride]. */
     val discovery: ModelDiscovery =
-        discoveryOverride ?: ModelDiscovery(hub) { deviceFacts() }
+        discoveryOverride ?: ModelDiscovery(hub)
+
+    /** The Hub's facts kept in Room (docs/design/models-page.md §1): screens read it and refresh on open. */
+    val hubCache: HubRepository =
+        HubRepository(
+            discovery,
+            database.hubCacheDao(),
+            scope,
+            { writes -> database.withTransaction { writes() } },
+            clock,
+        )
 
     /**
      * Creates the SDK's download worker on this container's hub (D75), so a download runs with the app's token and
@@ -172,6 +186,15 @@ class AppContainer(
                 .first()
                 .chip.kind,
         )
+
+    /**
+     * Reads the phone's facts once, in the background, as the app starts: they are local, but the first read asks
+     * the SDK for its devices (~800 ms on the phone), and the Models page and a model's card wait for them to draw
+     * their fit.
+     */
+    fun readDeviceFacts() {
+        scope.launch(Dispatchers.Default) { deviceFacts() }
+    }
 
     /** For tests that build a container per test: stops DataStore's scope and closes the database. */
     fun close() {
