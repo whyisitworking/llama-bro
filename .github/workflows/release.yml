@@ -58,16 +58,16 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
           docker image prune --all --force > /dev/null
           df -h /
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "25"
       - name: NDK and CMake
         run: .github/scripts/android-packages.sh "ndk;${NDK}" "cmake;${CMAKE}"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
 
       # a tag names the version; a manual run is 0.0.0 with the commit; the run number keeps every build's code higher
       - name: Version
@@ -113,7 +113,7 @@ jobs:
         if: always()
         run: rm -f "${RUNNER_TEMP}/upload.jks"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llama-bro-demo-${{ steps.version.outputs.name }}
           path: out/
@@ -147,16 +147,16 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
           docker image prune --all --force > /dev/null
           df -h /
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "25"
       - name: NDK and CMake
         run: .github/scripts/android-packages.sh "ndk;${NDK}" "cmake;${CMAKE}"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
 
       # a published version can never change, so the tag must name exactly the version the build stamps
       - name: The tag is the SDK's version
@@ -199,7 +199,7 @@ jobs:
             unset ORG_GRADLE_PROJECT_signingInMemoryKey ORG_GRADLE_PROJECT_signingInMemoryKeyPassword
           fi
           ./gradlew -p sdk publishToMavenLocal
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: github.ref_type != 'tag'
         with:
           name: llama-bro-sdk-maven-local
