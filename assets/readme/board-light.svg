@@ -1,0 +1,296 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 1510" width="1040" height="1510" role="img" aria-labelledby="title desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+<title id="title">Llama Bro's benchmark</title>
+<desc id="desc">Reply and prompt speed of six models on the NPU, GPU and CPU, and embedding and rerank throughput. Writing, up to 64 tokens; LFM2.5 230M on NPU 171 t/s; LFM2.5 230M on GPU 136 t/s; LFM2.5 230M on CPU 149 t/s; Qwen3.5 0.8B on NPU 53.4 t/s; Qwen3.5 0.8B on GPU 48.6 t/s; Qwen3.5 0.8B on CPU 46.8 t/s; LFM3 1.7B on NPU 34.1 t/s; LFM3 1.7B on GPU 33.5 t/s; LFM3 1.7B on CPU 32.6 t/s; Llama 3.2 3B on NPU 21.2 t/s; Llama 3.2 3B on GPU 17.0 t/s; Llama 3.2 3B on CPU 6.3 t/s; Gemma 3 4B on NPU 14.2 t/s; Gemma 3 4B on GPU 12.5 t/s; Gemma 3 4B on CPU 7.9 t/s; Qwen3.5 4B on NPU 15.3 t/s; Qwen3.5 4B on GPU 14.1 t/s; Qwen3.5 4B on CPU 11.5 t/s; Reading, 512-token prompt; LFM2.5 230M on NPU 7,299 t/s; LFM2.5 230M on GPU 2,243 t/s; LFM2.5 230M on CPU 168 t/s; Qwen3.5 0.8B on NPU 2,174 t/s; Qwen3.5 0.8B on GPU 531 t/s; Qwen3.5 0.8B on CPU 259 t/s; LFM3 1.7B on NPU 1,682 t/s; LFM3 1.7B on GPU 348 t/s; LFM3 1.7B on CPU 143 t/s; Llama 3.2 3B on NPU 1,392 t/s; Llama 3.2 3B on GPU 202 t/s; Llama 3.2 3B on CPU 69.2 t/s; Gemma 3 4B on NPU 172 t/s; Gemma 3 4B on GPU 152 t/s; Gemma 3 4B on CPU 48.6 t/s; Qwen3.5 4B on NPU 646 t/s; Qwen3.5 4B on GPU 126 t/s; Qwen3.5 4B on CPU 45.0 t/s; Search models, sentences per second; bge-small embed on NPU 108 sentences/s; bge-small embed on GPU 46.2 sentences/s; bge-small embed on CPU 41.6 sentences/s; jina-tiny rerank on NPU 227 sentences/s; jina-tiny rerank on GPU 106 sentences/s; jina-tiny rerank on CPU 69.4 sentences/s. Prompt reading and reply writing speed of Qwen3.5 4B and LFM3-Omni 2B on the NPU, GPU and CPU. Reading the prompt, 2,048 tokens; Qwen3.5 4B on NPU 934 t/s; Qwen3.5 4B on GPU 188 t/s; Qwen3.5 4B on CPU 64.5 t/s; LFM3-Omni 2B on NPU 2,358 t/s; LFM3-Omni 2B on GPU 490 t/s; LFM3-Omni 2B on CPU 167 t/s; Writing the reply, up to 128 tokens; Qwen3.5 4B on NPU 15.3 t/s; Qwen3.5 4B on GPU 15.1 t/s; Qwen3.5 4B on CPU 12.1 t/s; LFM3-Omni 2B on NPU 36.3 t/s; LFM3-Omni 2B on GPU 38.4 t/s; LFM3-Omni 2B on CPU 33.0 t/s. Reply writing speed with and without speculative drafting. JSON extraction, 1.1× slower with DFlash; Without 15.4 t/s; Drafted 14.0 t/s; Code edit, 8.0× faster with n-gram and MTP; Without 14.9 t/s; Drafted 120 t/s. Model load time per chip, the time to stop a reply, to the first spoken audio, and to come back to a chat. Qwen3.5 4B on NPU 5.2 s; Qwen3.5 4B on GPU 40.3 s; Qwen3.5 4B on CPU 7.9 s; LFM3-Omni 2B on NPU 2.2 s; LFM3-Omni 2B on GPU 9.6 s; LFM3-Omni 2B on CPU 2.8 s; Stop a reply 85 ms; First spoken audio 378 ms; Back to a 3,000-token chat 8.3 s; Back to a 3,000-token chat 5.1 s.</desc>
+<defs><linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7B44F6"/><stop offset="1" stop-color="#F7883F"/></linearGradient></defs>
+<rect x="0.5" y="0.5" width="1039" height="1509" rx="16" fill="#FBFBFC" stroke="#E3E3E8"/>
+<g transform="translate(0 0)">
+<text x="32" y="54" font-size="24" fill="#1D1D1F" font-weight="600">Every size, every chip</text>
+<text x="32" y="82" font-size="17" fill="#65656A">Six models from 230M to 4B, tokens per second</text>
+<text x="32" y="134" font-size="18" fill="#1D1D1F" font-weight="600">Writing<tspan dx="15.12" fill="#65656A" font-weight="400">up to 64 tokens</tspan></text>
+<text x="159.18" y="170" font-size="16" fill="#65656A" font-weight="600">NPU</text>
+<text x="268.787" y="170" font-size="16" fill="#65656A" font-weight="600">GPU</text>
+<text x="378.393" y="170" font-size="16" fill="#65656A" font-weight="600">CPU</text>
+<path d="M32 182.5L488 182.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="208" font-size="17" fill="#1D1D1F" font-weight="600">LFM2.5<tspan fill="#65656A" font-weight="400"> 230M</tspan></text>
+<text x="159.18" y="206" font-size="17" fill="#1D1D1F" font-weight="600">171</text>
+<rect x="159.18" y="214" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="159.18" y="214" width="93.6067" height="5" rx="2" fill="url(#accent)"/>
+<text x="268.787" y="206" font-size="17" fill="#1D1D1F" font-weight="600">136</text>
+<rect x="268.787" y="214" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="268.787" y="214" width="74.4137" height="5" rx="2" fill="#8E8E93"/>
+<text x="378.393" y="206" font-size="17" fill="#1D1D1F" font-weight="600">149</text>
+<rect x="378.393" y="214" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="378.393" y="214" width="81.7619" height="5" rx="2" fill="#8E8E93"/>
+<path d="M32 228.5L488 228.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="254" font-size="17" fill="#1D1D1F" font-weight="600">Qwen3.5<tspan fill="#65656A" font-weight="400"> 0.8B</tspan></text>
+<text x="159.18" y="252" font-size="17" fill="#1D1D1F" font-weight="600">53.4</text>
+<rect x="159.18" y="260" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="159.18" y="260" width="29.2829" height="5" rx="2" fill="url(#accent)"/>
+<text x="268.787" y="252" font-size="17" fill="#1D1D1F" font-weight="600">48.6</text>
+<rect x="268.787" y="260" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="268.787" y="260" width="26.6508" height="5" rx="2" fill="#8E8E93"/>
+<text x="378.393" y="252" font-size="17" fill="#1D1D1F" font-weight="600">46.8</text>
+<rect x="378.393" y="260" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="378.393" y="260" width="25.6637" height="5" rx="2" fill="#8E8E93"/>
+<path d="M32 274.5L488 274.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="300" font-size="17" fill="#1D1D1F" font-weight="600">LFM3<tspan fill="#65656A" font-weight="400"> 1.7B</tspan></text>
+<text x="159.18" y="298" font-size="17" fill="#1D1D1F" font-weight="600">34.1</text>
+<rect x="159.18" y="306" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="159.18" y="306" width="18.6994" height="5" rx="2" fill="url(#accent)"/>
+<text x="268.787" y="298" font-size="17" fill="#1D1D1F" font-weight="600">33.5</text>
+<rect x="268.787" y="306" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="268.787" y="306" width="18.3704" height="5" rx="2" fill="#8E8E93"/>
+<text x="378.393" y="298" font-size="17" fill="#1D1D1F" font-weight="600">32.6</text>
+<rect x="378.393" y="306" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="378.393" y="306" width="17.8768" height="5" rx="2" fill="#8E8E93"/>
+<path d="M32 320.5L488 320.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="346" font-size="17" fill="#1D1D1F" font-weight="600">Llama 3.2<tspan fill="#65656A" font-weight="400"> 3B</tspan></text>
+<text x="159.18" y="344" font-size="17" fill="#1D1D1F" font-weight="600">21.2</text>
+<rect x="159.18" y="352" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="159.18" y="352" width="11.6254" height="5" rx="2" fill="url(#accent)"/>
+<text x="268.787" y="344" font-size="17" fill="#1D1D1F" font-weight="600">17.0</text>
+<rect x="268.787" y="352" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="268.787" y="352" width="9.32228" height="5" rx="2" fill="#8E8E93"/>
+<text x="378.393" y="344" font-size="17" fill="#1D1D1F" font-weight="600">6.3</text>
+<rect x="378.393" y="352" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="378.393" y="352" width="4" height="5" rx="2" fill="#8E8E93"/>
+<path d="M32 366.5L488 366.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="392" font-size="17" fill="#1D1D1F" font-weight="600">Gemma 3<tspan fill="#65656A" font-weight="400"> 4B</tspan></text>
+<text x="159.18" y="390" font-size="17" fill="#1D1D1F" font-weight="600">14.2</text>
+<rect x="159.18" y="398" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="159.18" y="398" width="7.78685" height="5" rx="2" fill="url(#accent)"/>
+<text x="268.787" y="390" font-size="17" fill="#1D1D1F" font-weight="600">12.5</text>
+<rect x="268.787" y="398" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="268.787" y="398" width="6.85462" height="5" rx="2" fill="#8E8E93"/>
+<text x="378.393" y="390" font-size="17" fill="#1D1D1F" font-weight="600">7.9</text>
+<rect x="378.393" y="398" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="378.393" y="398" width="4.33212" height="5" rx="2" fill="#8E8E93"/>
+<path d="M32 412.5L488 412.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="438" font-size="17" fill="#1D1D1F" font-weight="600">Qwen3.5<tspan fill="#65656A" font-weight="400"> 4B</tspan></text>
+<text x="159.18" y="436" font-size="17" fill="#1D1D1F" font-weight="600">15.3</text>
+<rect x="159.18" y="444" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="159.18" y="444" width="8.39005" height="5" rx="2" fill="url(#accent)"/>
+<text x="268.787" y="436" font-size="17" fill="#1D1D1F" font-weight="600">14.1</text>
+<rect x="268.787" y="444" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="268.787" y="444" width="7.73201" height="5" rx="2" fill="#8E8E93"/>
+<text x="378.393" y="436" font-size="17" fill="#1D1D1F" font-weight="600">11.5</text>
+<rect x="378.393" y="444" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="378.393" y="444" width="6.30625" height="5" rx="2" fill="#8E8E93"/>
+<path d="M32 458.5L488 458.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="504" font-size="18" fill="#1D1D1F" font-weight="600">Reading<tspan dx="15.12" fill="#65656A" font-weight="400">512-token prompt</tspan></text>
+<text x="159.18" y="540" font-size="16" fill="#65656A" font-weight="600">NPU</text>
+<text x="268.787" y="540" font-size="16" fill="#65656A" font-weight="600">GPU</text>
+<text x="378.393" y="540" font-size="16" fill="#65656A" font-weight="600">CPU</text>
+<path d="M32 552.5L488 552.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="578" font-size="17" fill="#1D1D1F" font-weight="600">LFM2.5<tspan fill="#65656A" font-weight="400"> 230M</tspan></text>
+<text x="159.18" y="576" font-size="17" fill="#1D1D1F" font-weight="600">7,299</text>
+<rect x="159.18" y="584" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="159.18" y="584" width="93.6067" height="5" rx="2" fill="url(#accent)"/>
+<text x="268.787" y="576" font-size="17" fill="#1D1D1F" font-weight="600">2,243</text>
+<rect x="268.787" y="584" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="268.787" y="584" width="28.7651" height="5" rx="2" fill="#8E8E93"/>
+<text x="378.393" y="576" font-size="17" fill="#1D1D1F" font-weight="600">168</text>
+<rect x="378.393" y="584" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="378.393" y="584" width="4" height="5" rx="2" fill="#8E8E93"/>
+<path d="M32 598.5L488 598.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="624" font-size="17" fill="#1D1D1F" font-weight="600">Qwen3.5<tspan fill="#65656A" font-weight="400"> 0.8B</tspan></text>
+<text x="159.18" y="622" font-size="17" fill="#1D1D1F" font-weight="600">2,174</text>
+<rect x="159.18" y="630" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="159.18" y="630" width="27.8776" height="5" rx="2" fill="url(#accent)"/>
+<text x="268.787" y="622" font-size="17" fill="#1D1D1F" font-weight="600">531</text>
+<rect x="268.787" y="630" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="268.787" y="630" width="6.81133" height="5" rx="2" fill="#8E8E93"/>
+<text x="378.393" y="622" font-size="17" fill="#1D1D1F" font-weight="600">259</text>
+<rect x="378.393" y="630" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="378.393" y="630" width="4" height="5" rx="2" fill="#8E8E93"/>
+<path d="M32 644.5L488 644.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="670" font-size="17" fill="#1D1D1F" font-weight="600">LFM3<tspan fill="#65656A" font-weight="400"> 1.7B</tspan></text>
+<text x="159.18" y="668" font-size="17" fill="#1D1D1F" font-weight="600">1,682</text>
+<rect x="159.18" y="676" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="159.18" y="676" width="21.5664" height="5" rx="2" fill="url(#accent)"/>
+<text x="268.787" y="668" font-size="17" fill="#1D1D1F" font-weight="600">348</text>
+<rect x="268.787" y="676" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="268.787" y="676" width="4.46308" height="5" rx="2" fill="#8E8E93"/>
+<text x="378.393" y="668" font-size="17" fill="#1D1D1F" font-weight="600">143</text>
+<rect x="378.393" y="676" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="378.393" y="676" width="4" height="5" rx="2" fill="#8E8E93"/>
+<path d="M32 690.5L488 690.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="716" font-size="17" fill="#1D1D1F" font-weight="600">Llama 3.2<tspan fill="#65656A" font-weight="400"> 3B</tspan></text>
+<text x="159.18" y="714" font-size="17" fill="#1D1D1F" font-weight="600">1,392</text>
+<rect x="159.18" y="722" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="159.18" y="722" width="17.8523" height="5" rx="2" fill="url(#accent)"/>
+<text x="268.787" y="714" font-size="17" fill="#1D1D1F" font-weight="600">202</text>
+<rect x="268.787" y="722" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="268.787" y="722" width="4" height="5" rx="2" fill="#8E8E93"/>
+<text x="378.393" y="714" font-size="17" fill="#1D1D1F" font-weight="600">69.2</text>
+<rect x="378.393" y="722" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="378.393" y="722" width="4" height="5" rx="2" fill="#8E8E93"/>
+<path d="M32 736.5L488 736.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="762" font-size="17" fill="#1D1D1F" font-weight="600">Gemma 3<tspan fill="#65656A" font-weight="400"> 4B</tspan></text>
+<text x="159.18" y="760" font-size="17" fill="#1D1D1F" font-weight="600">172</text>
+<rect x="159.18" y="768" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="159.18" y="768" width="4" height="5" rx="2" fill="url(#accent)"/>
+<text x="268.787" y="760" font-size="17" fill="#1D1D1F" font-weight="600">152</text>
+<rect x="268.787" y="768" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="268.787" y="768" width="4" height="5" rx="2" fill="#8E8E93"/>
+<text x="378.393" y="760" font-size="17" fill="#1D1D1F" font-weight="600">48.6</text>
+<rect x="378.393" y="768" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="378.393" y="768" width="4" height="5" rx="2" fill="#8E8E93"/>
+<path d="M32 782.5L488 782.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="808" font-size="17" fill="#1D1D1F" font-weight="600">Qwen3.5<tspan fill="#65656A" font-weight="400"> 4B</tspan></text>
+<text x="159.18" y="806" font-size="17" fill="#1D1D1F" font-weight="600">646</text>
+<rect x="159.18" y="814" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="159.18" y="814" width="8.29004" height="5" rx="2" fill="url(#accent)"/>
+<text x="268.787" y="806" font-size="17" fill="#1D1D1F" font-weight="600">126</text>
+<rect x="268.787" y="814" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="268.787" y="814" width="4" height="5" rx="2" fill="#8E8E93"/>
+<text x="378.393" y="806" font-size="17" fill="#1D1D1F" font-weight="600">45.0</text>
+<rect x="378.393" y="814" width="93.6067" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="378.393" y="814" width="4" height="5" rx="2" fill="#8E8E93"/>
+<path d="M32 828.5L488 828.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="874" font-size="18" fill="#1D1D1F" font-weight="600">Search models<tspan dx="15.12" fill="#65656A" font-weight="400">sentences per second</tspan></text>
+<text x="183.32" y="910" font-size="16" fill="#65656A" font-weight="600">NPU</text>
+<text x="284.88" y="910" font-size="16" fill="#65656A" font-weight="600">GPU</text>
+<text x="386.44" y="910" font-size="16" fill="#65656A" font-weight="600">CPU</text>
+<path d="M32 922.5L488 922.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="948" font-size="17" fill="#1D1D1F" font-weight="600">bge-small<tspan fill="#65656A" font-weight="400"> embed</tspan></text>
+<text x="183.32" y="946" font-size="17" fill="#1D1D1F" font-weight="600">108</text>
+<rect x="183.32" y="954" width="85.56" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="183.32" y="954" width="40.5939" height="5" rx="2" fill="url(#accent)"/>
+<text x="284.88" y="946" font-size="17" fill="#1D1D1F" font-weight="600">46.2</text>
+<rect x="284.88" y="954" width="85.56" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="284.88" y="954" width="17.4135" height="5" rx="2" fill="#8E8E93"/>
+<text x="386.44" y="946" font-size="17" fill="#1D1D1F" font-weight="600">41.6</text>
+<rect x="386.44" y="954" width="85.56" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="386.44" y="954" width="15.6797" height="5" rx="2" fill="#8E8E93"/>
+<path d="M32 968.5L488 968.5" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="994" font-size="17" fill="#1D1D1F" font-weight="600">jina-tiny<tspan fill="#65656A" font-weight="400"> rerank</tspan></text>
+<text x="183.32" y="992" font-size="17" fill="#1D1D1F" font-weight="600">227</text>
+<rect x="183.32" y="1000" width="85.56" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="183.32" y="1000" width="85.56" height="5" rx="2" fill="url(#accent)"/>
+<text x="284.88" y="992" font-size="17" fill="#1D1D1F" font-weight="600">106</text>
+<rect x="284.88" y="1000" width="85.56" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="284.88" y="1000" width="40.0662" height="5" rx="2" fill="#8E8E93"/>
+<text x="386.44" y="992" font-size="17" fill="#1D1D1F" font-weight="600">69.4</text>
+<rect x="386.44" y="1000" width="85.56" height="5" rx="2" fill="#E6E6EB"/>
+<rect x="386.44" y="1000" width="26.158" height="5" rx="2" fill="#8E8E93"/>
+<path d="M32 1014.5L488 1014.5" stroke="#E3E3E8" stroke-width="1"/>
+</g>
+<g transform="translate(0 1034)">
+<text x="32" y="54" font-size="24" fill="#1D1D1F" font-weight="600">Drafting</text>
+<text x="32" y="82" font-size="17" fill="#65656A">Qwen3.5 4B on the NPU, writing tokens per second</text>
+<text x="32" y="134" font-size="18" fill="#1D1D1F" font-weight="600">JSON extraction<tspan dx="15.12" fill="#65656A" font-weight="400">1.1× slower with DFlash</tspan></text>
+<text x="32" y="173" font-size="17" fill="#1D1D1F">Without</text>
+<path data-arm="json-off" d="M114.64 158h34.2429a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-34.2429z" fill="#8E8E93"/>
+<text x="160.883" y="173" font-size="17" fill="#1D1D1F" font-weight="600">15.4<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<text x="32" y="205" font-size="17" fill="#1D1D1F">Drafted</text>
+<path data-arm="json-dflash" d="M114.64 190h30.7662a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-30.7662z" fill="#8E8E93"/>
+<text x="157.406" y="205" font-size="17" fill="#1D1D1F" font-weight="600">14.0<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<path d="M115.14 152L115.14 216" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="254" font-size="18" fill="#1D1D1F" font-weight="600">Code edit<tspan dx="15.12" fill="#65656A" font-weight="400">8.0× faster with n-gram and MTP</tspan></text>
+<text x="32" y="293" font-size="17" fill="#1D1D1F">Without</text>
+<path data-arm="edit-off" d="M114.64 278h33.0012a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-33.0012z" fill="#8E8E93"/>
+<text x="159.641" y="293" font-size="17" fill="#1D1D1F" font-weight="600">14.9<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<text x="32" y="325" font-size="17" fill="#1D1D1F">Drafted</text>
+<path data-arm="edit-ngram-mtp" d="M114.64 310h293.003a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-293.003z" fill="url(#accent)"/>
+<text x="419.643" y="325" font-size="17" fill="#1D1D1F" font-weight="600">120<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<path d="M115.14 272L115.14 336" stroke="#E3E3E8" stroke-width="1"/>
+</g>
+<g transform="translate(520 0)">
+<text x="32" y="54" font-size="24" fill="#1D1D1F" font-weight="600">Speed on each chip</text>
+<text x="32" y="82" font-size="17" fill="#65656A">Tokens per second, more is better</text>
+<text x="32" y="134" font-size="18" fill="#1D1D1F" font-weight="600">Reading the prompt<tspan dx="15.12" fill="#65656A" font-weight="400">2,048 tokens</tspan></text>
+<text x="32" y="171" font-size="16" fill="#65656A" font-weight="600">Qwen3.5 4B</text>
+<text x="32" y="201" font-size="17" fill="#1D1D1F">NPU</text>
+<path data-arm="qwen-npu" d="M82.68 186h122.152a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-122.152z" fill="#8E8E93"/>
+<text x="216.832" y="201" font-size="17" fill="#1D1D1F" font-weight="600">934<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<text x="32" y="233" font-size="17" fill="#1D1D1F">GPU</text>
+<path data-arm="qwen-gpu" d="M82.68 218h21.371a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-21.371z" fill="#8E8E93"/>
+<text x="116.051" y="233" font-size="17" fill="#1D1D1F" font-weight="600">188<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<text x="32" y="265" font-size="17" fill="#1D1D1F">CPU</text>
+<path data-arm="qwen-cpu" d="M82.68 250h4.71368a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-4.71368z" fill="#8E8E93"/>
+<text x="99.3937" y="265" font-size="17" fill="#1D1D1F" font-weight="600">64.5<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<path d="M83.18 180L83.18 276" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="303" font-size="16" fill="#65656A" font-weight="600">LFM3-Omni 2B</text>
+<text x="32" y="333" font-size="17" fill="#1D1D1F">NPU</text>
+<path data-arm="lfm-npu" d="M82.68 318h314.61a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-314.61z" fill="url(#accent)"/>
+<text x="409.29" y="333" font-size="17" fill="#1D1D1F" font-weight="600">2,358<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<text x="32" y="365" font-size="17" fill="#1D1D1F">GPU</text>
+<path data-arm="lfm-gpu" d="M82.68 350h62.1429a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-62.1429z" fill="#8E8E93"/>
+<text x="156.823" y="365" font-size="17" fill="#1D1D1F" font-weight="600">490<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<text x="32" y="397" font-size="17" fill="#1D1D1F">CPU</text>
+<path data-arm="lfm-cpu" d="M82.68 382h18.507a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-18.507z" fill="#8E8E93"/>
+<text x="113.187" y="397" font-size="17" fill="#1D1D1F" font-weight="600">167<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<path d="M83.18 312L83.18 408" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="446" font-size="18" fill="#1D1D1F" font-weight="600">Writing the reply<tspan dx="15.12" fill="#65656A" font-weight="400">up to 128 tokens</tspan></text>
+<text x="32" y="483" font-size="16" fill="#65656A" font-weight="600">Qwen3.5 4B</text>
+<text x="32" y="513" font-size="17" fill="#1D1D1F">NPU</text>
+<path data-arm="qwen-npu" d="M82.68 498h122.946a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-122.946z" fill="#8E8E93"/>
+<text x="217.626" y="513" font-size="17" fill="#1D1D1F" font-weight="600">15.3<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<text x="32" y="545" font-size="17" fill="#1D1D1F">GPU</text>
+<path data-arm="qwen-gpu" d="M82.68 530h121.287a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-121.287z" fill="#8E8E93"/>
+<text x="215.967" y="545" font-size="17" fill="#1D1D1F" font-weight="600">15.1<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<text x="32" y="577" font-size="17" fill="#1D1D1F">CPU</text>
+<path data-arm="qwen-cpu" d="M82.68 562h96.3953a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-96.3953z" fill="#8E8E93"/>
+<text x="191.075" y="577" font-size="17" fill="#1D1D1F" font-weight="600">12.1<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<path d="M83.18 492L83.18 588" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="615" font-size="16" fill="#65656A" font-weight="600">LFM3-Omni 2B</text>
+<text x="32" y="645" font-size="17" fill="#1D1D1F">NPU</text>
+<path data-arm="lfm-npu" d="M82.68 630h297.186a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-297.186z" fill="#8E8E93"/>
+<text x="391.866" y="645" font-size="17" fill="#1D1D1F" font-weight="600">36.3<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<text x="32" y="677" font-size="17" fill="#1D1D1F">GPU</text>
+<path data-arm="lfm-gpu" d="M82.68 662h314.61a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-314.61z" fill="url(#accent)"/>
+<text x="409.29" y="677" font-size="17" fill="#1D1D1F" font-weight="600">38.4<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<text x="32" y="709" font-size="17" fill="#1D1D1F">CPU</text>
+<path data-arm="lfm-cpu" d="M82.68 694h269.805a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-269.805z" fill="#8E8E93"/>
+<text x="364.485" y="709" font-size="17" fill="#1D1D1F" font-weight="600">33.0<tspan fill="#65656A" font-weight="400"> t/s</tspan></text>
+<path d="M83.18 624L83.18 720" stroke="#E3E3E8" stroke-width="1"/>
+</g>
+<g transform="translate(520 752)">
+<text x="32" y="54" font-size="24" fill="#1D1D1F" font-weight="600">Waiting times</text>
+<text x="32" y="82" font-size="17" fill="#65656A">Less is better</text>
+<text x="32" y="134" font-size="18" fill="#1D1D1F" font-weight="600">Loading the model</text>
+<text x="32" y="171" font-size="16" fill="#65656A" font-weight="600">Qwen3.5 4B</text>
+<text x="32" y="201" font-size="17" fill="#1D1D1F">NPU</text>
+<path data-arm="qwen-npu" d="M197.94 186h24.8472a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-24.8472z" fill="#8E8E93"/>
+<text x="234.787" y="201" font-size="17" fill="#1D1D1F" font-weight="600">5.2<tspan fill="#65656A" font-weight="400"> s</tspan></text>
+<text x="32" y="233" font-size="17" fill="#1D1D1F">GPU</text>
+<path data-arm="qwen-gpu" d="M197.94 218h218.441a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-218.441z" fill="#8E8E93"/>
+<text x="428.381" y="233" font-size="17" fill="#1D1D1F" font-weight="600">40.3<tspan fill="#65656A" font-weight="400"> s</tspan></text>
+<text x="32" y="265" font-size="17" fill="#1D1D1F">CPU</text>
+<path data-arm="qwen-cpu" d="M197.94 250h39.5552a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-39.5552z" fill="#8E8E93"/>
+<text x="249.495" y="265" font-size="17" fill="#1D1D1F" font-weight="600">7.9<tspan fill="#65656A" font-weight="400"> s</tspan></text>
+<path d="M198.44 180L198.44 276" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="303" font-size="16" fill="#65656A" font-weight="600">LFM3-Omni 2B</text>
+<text x="32" y="333" font-size="17" fill="#1D1D1F">NPU</text>
+<path data-arm="lfm-npu" d="M197.94 318h7.98609a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-7.98609z" fill="#8E8E93"/>
+<text x="217.926" y="333" font-size="17" fill="#1D1D1F" font-weight="600">2.2<tspan fill="#65656A" font-weight="400"> s</tspan></text>
+<text x="32" y="365" font-size="17" fill="#1D1D1F">GPU</text>
+<path data-arm="lfm-gpu" d="M197.94 350h48.7642a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-48.7642z" fill="#8E8E93"/>
+<text x="258.704" y="365" font-size="17" fill="#1D1D1F" font-weight="600">9.6<tspan fill="#65656A" font-weight="400"> s</tspan></text>
+<text x="32" y="397" font-size="17" fill="#1D1D1F">CPU</text>
+<path data-arm="lfm-cpu" d="M197.94 382h11.7128a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-11.7128z" fill="#8E8E93"/>
+<text x="221.653" y="397" font-size="17" fill="#1D1D1F" font-weight="600">2.8<tspan fill="#65656A" font-weight="400"> s</tspan></text>
+<path d="M198.44 312L198.44 408" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="446" font-size="18" fill="#1D1D1F" font-weight="600">Stopping and speaking</text>
+<text x="32" y="485" font-size="17" fill="#1D1D1F">Stop a reply</text>
+<path data-arm="stop" d="M197.94 470h46.0198a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-46.0198z" fill="#8E8E93"/>
+<text x="255.96" y="485" font-size="17" fill="#1D1D1F" font-weight="600">85<tspan fill="#65656A" font-weight="400"> ms</tspan></text>
+<text x="32" y="517" font-size="17" fill="#1D1D1F">First spoken audio</text>
+<path data-arm="voice" d="M197.94 502h218.441a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-218.441z" fill="#8E8E93"/>
+<text x="428.381" y="517" font-size="17" fill="#1D1D1F" font-weight="600">378<tspan fill="#65656A" font-weight="400"> ms</tspan></text>
+<path d="M198.44 464L198.44 528" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="566" font-size="18" fill="#1D1D1F" font-weight="600">Back to a 3,000-token chat</text>
+<text x="32" y="605" font-size="17" fill="#1D1D1F">Read it again</text>
+<path data-arm="restore" d="M197.94 590h218.441a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-218.441z" fill="#8E8E93"/>
+<text x="428.381" y="605" font-size="17" fill="#1D1D1F" font-weight="600">8.3<tspan fill="#65656A" font-weight="400"> s</tspan></text>
+<text x="32" y="637" font-size="17" fill="#1D1D1F">Restore its slot</text>
+<path data-arm="restore" d="M197.94 622h132.355a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-132.355z" fill="url(#accent)"/>
+<text x="342.295" y="637" font-size="17" fill="#1D1D1F" font-weight="600">5.1<tspan fill="#65656A" font-weight="400"> s</tspan></text>
+<path d="M198.44 584L198.44 648" stroke="#E3E3E8" stroke-width="1"/>
+</g>
+<path d="M520.5 32L520.5 1400" stroke="#E3E3E8" stroke-width="1"/>
+<path d="M32 1436L1008 1436" stroke="#E3E3E8" stroke-width="1"/>
+<text x="32" y="1462" font-size="15" fill="#65656A">OnePlus 13 · Snapdragon 8 Elite · Android 17 · 2026-11-21</text>
+<text x="32" y="1484" font-size="15" fill="#65656A">Llama Bro 03878c39 · llama.cpp b12479 · one run per arm</text>
+</svg>

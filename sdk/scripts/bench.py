@@ -10,7 +10,7 @@ merge takes every .jsonl file as BenchDeviceTest lines (one per arm and round; t
 writes the median and the [min, max] range of each number, `extra` included. It refuses lines or METAs from
 different builds (sdkCommit, llamaCppBuild) and names them.
 
-charts writes stats, speed, drafting, latency and ladder, each as -light.svg and -dark.svg. With no results file it draws the
+charts writes stats, speed, drafting, latency, ladder and board (the four charts in one card), each as -light.svg and -dark.svg. With no results file it draws the
 same images in the "awaiting run" state.
 
 check-readme reads every marker of the form
@@ -234,6 +234,12 @@ class Drawing:
     def line(self, x1, y1, x2, y2, colour="edge"):
         self.parts.append(f'<path d="M{x1:g} {y1:g}L{x2:g} {y2:g}" stroke="${colour}" stroke-width="1"/>')
 
+    def place(self, x, y, other):
+        """Another drawing's parts at (x, y): one card holding several charts, one palette and one gradient."""
+        self.parts.append(f'<g transform="translate({x:g} {y:g})">')
+        self.parts.extend(other.parts)
+        self.parts.append("</g>")
+
     def render(self, width, height, title, desc, theme):
         body = "\n".join(self.parts)
         svg = (
@@ -256,13 +262,19 @@ def header(d, title, subtitle):
     return PAD + 84
 
 
-def footer(d, y, results, notes, method):
+# off while the board draws its charts: the board has one footer for all of them
+FOOTERS = [True]
+
+
+def footer(d, y, results, notes, method, width=WIDTH):
     y += 4
     for note in notes:
         # a caption, not a log: the whole reason stays in results.json
         d.text(PAD, y + 16, fit(" ".join(ANSI.sub("", note).split()), 15, WIDTH - 2 * PAD), 15, "muted")
         y += 24
-    d.line(PAD, y + 8, WIDTH - PAD, y + 8)
+    if not FOOTERS[0]:
+        return y + 8
+    d.line(PAD, y + 8, width - PAD, y + 8)
     if results is None:
         lines = ["Awaiting the benchmark run.", "Every number here comes from one run of the SDK on a phone."]
     else:
@@ -271,7 +283,7 @@ def footer(d, y, results, notes, method):
         lines = [f"{phone} · {soc} · Android {m['android']} · {m['date']}",
                  f"Llama Bro {m['sdkCommit']} · llama.cpp {m['llamaCppBuild']} · {method}"]
     for i, s in enumerate(lines):
-        d.text(PAD, y + 34 + 22 * i, fit(s, 15, WIDTH - 2 * PAD), 15, "muted" if i or results else "ink",
+        d.text(PAD, y + 34 + 22 * i, fit(s, 15, width - 2 * PAD), 15, "muted" if i or results else "ink",
                weight=600 if results is None and i == 0 else 400)
     return y + 34 + 22 * (len(lines) - 1) + PAD - 6
 
@@ -493,6 +505,45 @@ def chart_ladder(results):
                                                          "Awaiting the benchmark run.")
 
 
+BOARD_ARMS = [f"{p}-{c}" for p, _ in MODELS for c, _ in CHIPS] + [f"{p}-{c}" for p, _, _ in LADDER + BATCHES
+                                                                   for c, _ in CHIPS] + \
+    ["json-off", "json-dflash", "edit-off", "edit-ngram-mtp", "stop", "voice", "restore"]
+
+
+def chart_board(results, columns=2):
+    """The four charts as one card with one footer: two columns for a wide README, one for a phone, where a second
+    column's text would be too small to read. The columns are split where their heights come out closest."""
+    FOOTERS[0] = False
+    try:
+        charts = [draw(results)[:4] for draw in (chart_ladder, chart_speed, chart_drafting, chart_latency)]
+    finally:
+        FOOTERS[0] = True
+    if columns == 1:
+        stacks = [charts]
+    else:
+        # the ladder heads the first column; the rest keep their order, split to even the columns' heights
+        rest = charts[1:]
+        splits = [([charts[0]] + [c for i, c in enumerate(rest) if i in left],
+                   [c for i, c in enumerate(rest) if i not in left])
+                  for left in ({0}, {1}, {2}, {0, 1}, {0, 2}, {1, 2})]
+        stacks = min(splits, key=lambda s: abs(sum(c[1] for c in s[0]) - sum(c[1] for c in s[1])))
+    d = Drawing()
+    width = WIDTH * len(stacks)
+    bottom = 0
+    for col, stack in enumerate(stacks):
+        y = 0
+        for chart, height, _, _ in stack:
+            # each chart opens with its own title, which separates it from the one above
+            d.place(col * WIDTH, y, chart)
+            y += height
+        bottom = max(bottom, y)
+    for col in range(1, len(stacks)):
+        d.line(col * WIDTH + 0.5, PAD, col * WIDTH + 0.5, bottom - PAD)
+    height = footer(d, bottom - 8, results, [], results and rounds_word(results, BOARD_ARMS), width)
+    desc = " ".join(c[3] for c in charts)
+    return d, height, "Llama Bro's benchmark", desc, width
+
+
 def chart_stats(results, columns=4):
     """The headline numbers: a 1x4 strip for wide screens, or 2x2 for a phone, where a strip's labels would be
     too small to read."""
@@ -535,7 +586,7 @@ def charts(results_path, out):
     out.mkdir(parents=True, exist_ok=True)
     images = (("stats", chart_stats), ("stats-narrow", lambda r: chart_stats(r, columns=2)),
               ("speed", chart_speed), ("drafting", chart_drafting), ("latency", chart_latency),
-              ("ladder", chart_ladder))
+              ("ladder", chart_ladder), ("board", chart_board), ("board-narrow", lambda r: chart_board(r, 1)))
     for name, draw in images:
         d, height, title, desc, *width = draw(results)
         for theme in THEMES:

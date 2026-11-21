@@ -66,22 +66,10 @@ A script checks each figure on this page against the run's results
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/ladder-dark.svg">
-    <img src="assets/readme/ladder-light.svg" width="49%" align="top" alt="Table chart, tokens per second: six models from LFM2.5 230M to Qwen3.5 4B writing a reply and reading a 512-token prompt on the NPU, the GPU and the CPU, the fastest chip of each model marked; and bge-small embeddings and jina-reranker-tiny reranking in sentences per second on each chip">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/speed-dark.svg">
-    <img src="assets/readme/speed-light.svg" width="49%" align="top" alt="Bar chart, tokens per second, more is better: how fast Qwen3.5 4B and LFM3-Omni 2B read a 2,048-token prompt and write a reply of up to 128 tokens on the NPU, the GPU and the CPU">
-  </picture>
-</p>
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/drafting-dark.svg">
-    <img src="assets/readme/drafting-light.svg" width="49%" align="top" alt="Bar chart, Qwen3.5 4B on the NPU, writing tokens per second with drafting off and on: a JSON extraction with a DFlash draft model, and a code edit with n-gram drafting and MTP">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/latency-dark.svg">
-    <img src="assets/readme/latency-light.svg" width="49%" align="top" alt="Bar chart of waiting times, less is better: loading the model on each chip, stopping a reply, the first spoken audio, and coming back to a chat of about 3,000 tokens, from loading the model to the next answer, by reading it again or by restoring its saved slot">
+    <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="assets/readme/board-narrow-dark.svg">
+    <source media="(max-width: 600px)" srcset="assets/readme/board-narrow-light.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/board-dark.svg">
+    <img src="assets/readme/board-light.svg" width="100%" alt="The benchmark in four charts. Every size, every chip: six models from LFM2.5 230M to Qwen3.5 4B writing and reading on the NPU, GPU and CPU, the fastest chip of each marked, with bge-small embeddings and jina-reranker-tiny reranking. Speed on each chip: Qwen3.5 4B and LFM3-Omni 2B reading a 2,048-token prompt and writing up to 128 tokens. Drafting: Qwen3.5 4B on the NPU with and without drafting, for a JSON extraction with DFlash and a code edit with n-gram drafting and MTP. Waiting times: model load per chip, stopping a reply, the first spoken audio, and coming back to a 3,000-token chat by reading it again or restoring its saved slot">
   </picture>
 </p>
 

@@ -20,10 +20,10 @@ FIXTURES = HERE / "fixtures" / "bench"
 LINES = FIXTURES / "lines.jsonl"
 META = FIXTURES / "meta.json"
 SVG = "{http://www.w3.org/2000/svg}"
-IMAGES = ["stats", "stats-narrow", "speed", "drafting", "latency", "ladder"]
+IMAGES = ["stats", "stats-narrow", "speed", "drafting", "latency", "ladder", "board", "board-narrow"]
 # a phone's README column, and the smallest text that reads there: body text 10 CSS px, footers and footnotes 9
 PHONE_WIDTH = 343
-WIDE_ONLY = {"stats"}  # the 1x4 strip; phones get stats-narrow
+WIDE_ONLY = {"stats", "board"}  # the 1x4 strip and the two-column board; phones get the -narrow ones
 
 
 def bench(*args, env=None):
@@ -210,7 +210,7 @@ class BenchTest(unittest.TestCase):
             self.assertEqual(run.returncode, 0, run.stderr)
         texts = [out.read_text()] + [run.stdout + run.stderr for run in runs]
         texts += [path.read_text() for path in sorted(self.tmp.glob("*/*.svg"))]
-        self.assertEqual(len(texts), 4 + 24)
+        self.assertEqual(len(texts), 4 + 32)
         for text in texts:
             self.assertNotIn(serial, text)
             self.assertNotIn(home, text)
@@ -268,6 +268,18 @@ class BenchTest(unittest.TestCase):
         self.assertEqual(ladder.count('fill="url(#accent)"'), 14)
         self.assertIn("Gemma 3 4B on NPU: unsupported op GLU", ladder)
         self.assertIn("one run per arm", ladder)
+
+    def test_board_holds_the_four_charts_with_one_footer(self):
+        self.merged()
+        out = self.charts(self.tmp / "results.json")
+        for name, columns in (("board", 2), ("board-narrow", 1)):
+            board = (out / f"{name}-light.svg").read_text()
+            root = ET.fromstring(board)
+            self.assertEqual(int(root.get("viewBox").split()[2]), 520 * columns, name)
+            for title in ("Every size, every chip", "Speed on each chip", "Drafting", "Waiting times"):
+                self.assertIn(title, board, name)
+            self.assertEqual(board.count("llama.cpp b9123"), 1, f"{name}: one footer for the four charts")
+            self.assertEqual(board.count('id="accent"'), 1, f"{name}: one gradient")
 
     def test_text_is_legible_on_a_phone(self):
         self.merged()
