@@ -8,6 +8,9 @@ cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see
 Records are never renumbered or rewritten: a later record that changes one says "Amends D<n>", and the index below
 lists those amendments beside each record, so the current state of a decision is the record plus its amendments. A
 new record goes at the end, with a row in the index under its area and a link in the rows of the records it amends.
+
+Phase labels (P0, P1, PA, P2, PF, P3, PD, PH) and workstream labels (W1 to W9) are summarised in the
+[research history](./research/history.md#summary-of-the-phases).
 Where a decision was made before the dated record-keeping began, the date is that of the first design document
 (2026-11-03). "Upstream" is llama.cpp at the pinned build (`b12479` since D93; `b12352` from D52; `b12052` before),
 "llama-server" is its server tool, and `tools/ui` is the web client that ships with it.
@@ -918,7 +921,7 @@ Consequences: A text turn after three voice notes on LFM3-Omni-2B reaches its fi
 
 Status: Decided (2026-11-17)
 
-Context: `DevicePolicy.Auto` tries the NPU, then the GPU, then the CPU (D24, D32), and its fallback catches load failures. Only one phone was ever tested (OnePlus 13: Hexagon v79, Adreno 830), yet the v73-v85 skeletons ship; a backend that computes wrong output (F120, F71) or aborts in native code is not caught, and an abort ends the app's process (D5). The W9 step 5 review proposed using the NPU and GPU under `Auto` only on verified chips; the maintainer decided against it (2026-11-17).
+Context: `DevicePolicy.Auto` tries the NPU, then the GPU, then the CPU (D24, D32), and its fallback catches load failures. Only one phone was ever tested (OnePlus 13: Hexagon v79, Adreno 830), yet the v73-v85 skeletons ship; a backend that computes wrong output (F120, F71) or aborts in native code is not caught, and an abort ends the app's process (D5). The W9 step 5 review proposed using the NPU and GPU under `Auto` only on verified chips; the user decided against it (2026-11-17).
 Decision: `Auto` stays open: NPU, then GPU, then CPU on every chip, as before. The documentation says plainly that one phone is verified and which chips that covers, so an app can choose `Prefer` or `Only(Cpu)` for chips it hasn't tested.
 Consequences: Apps get the NPU's speed on every supported Snapdragon by default, at the risk of wrong output or a crash on an untested chip until more phones are verified. Widening verification (a device-farm session running `device-contract` and the vision test) stays on the release list.
 
@@ -1704,9 +1707,12 @@ Not confirmed, and the maintainer's to settle before the first upload; nothing h
 
 - Whether the Hexagon SDK's licence allows redistributing binaries built with it, and anything of the SDK's own they
   contain (generated stubs, runtime code the toolchain links into a skeleton), in a public Maven artifact. `NOTICE`
-  already marks this. Until it is settled, `llamabro-hexagon` should stay out of an upload.
+  already marks this. Until it is settled, `llamabro-hexagon` should stay out of an upload. *Read in F179
+  (2026-11-22): upstream llama.cpp's official releases ship the same files built the same way; the SDK agreement's own
+  text is still unread. The maintainer decided on 2026-11-22 to publish `llamabro-hexagon` on that precedent.*
 - Whether the Snapdragon toolchain image, and the OpenCL headers and library in it, put any term on what is built with
-  them, for `llamabro-opencl`.
+  them, for `llamabro-opencl`. *Read in F179: it links the phone's `libOpenCL.so` and compiles in only Khronos's
+  Apache 2.0 headers; upstream ships the same library.*
 - Whether the AARs should carry the notices themselves. The MIT licence asks that its notice accompany copies of the
   software; today `LICENSE` and `NOTICE` are in the repository and the POM names only Apache 2.0, and no AAR has a
   licence file inside.

@@ -2,8 +2,9 @@
 
 How a version of the SDK gets to Maven Central, for the maintainer. The build side is one convention plugin,
 `llamabro.publish` in `sdk/build-logic` ([D133](decisions.md#d133-the-sdk-is-published-to-maven-central-through-the-central-portal-with-the-vanniktech-plugin));
-this page is the part done by hand. Nothing here runs in CI, and the build never releases by itself: an upload is a
-deployment that waits in the Central Portal until it is published or dropped there.
+this page is the part done by hand. The upload runs from a laptop or from the release workflow on a version tag
+(below); either way the build never releases by itself: an upload is a deployment that waits in the Central Portal
+until it is published or dropped there.
 
 A published version cannot be changed or removed. Check the staged files before pressing Publish.
 
@@ -55,14 +56,32 @@ The Gradle signing plugin's key ring file works too, in place of the three `sign
 With no key set, nothing is signed: `publishToMavenLocal` and every check work without one, and an upload to Maven
 Central fails before it starts.
 
+## Releasing from GitHub
+
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) does steps 3 and 4 below on a version tag, after
+CI's checks pass, and also releases the demo app (see [CONTRIBUTING.md](../CONTRIBUTING.md#releasing-the-demo-app)). It
+needs four repository secrets: `MAVEN_CENTRAL_USERNAME` and `MAVEN_CENTRAL_PASSWORD` (the user token),
+`SIGNING_KEY` (the armoured private key) and `SIGNING_KEY_PASSWORD`.
+
+```bash
+gh secret set MAVEN_CENTRAL_USERNAME
+gh secret set MAVEN_CENTRAL_PASSWORD
+gpg --export-secret-keys --armor <KEYID> | gh secret set SIGNING_KEY
+gh secret set SIGNING_KEY_PASSWORD
+```
+
+The tag must be the catalog's version exactly (`2.0.0-alpha`), or the job stops before building. Steps 1 and 2 stay
+yours; after the run, go on at step 5. A manual run of the workflow uploads nothing: it publishes to the runner's local
+repository and keeps the files as an artifact, signed when the key is set.
+
 ## Releasing a version
 
 Docker must be running: the two backend modules are built in Qualcomm's toolchain image (see
 [CONTRIBUTING.md](../CONTRIBUTING.md#setup)). Run one Gradle command at a time.
 
 1. Set the version in `gradle/libs.versions.toml`, move the entry in [release-notes.md](release-notes.md) from
-   unreleased to that version, and commit. Confirm the open licence item in [`NOTICE`](../NOTICE) for
-   `llamabro-hexagon` is settled (D133).
+   unreleased to that version, and commit. The Hexagon licence item of D133 is decided (publish), on the reading in
+   [F179](research/findings.md#f179-the-hexagon-skeletons-carry-only-llamacpps-code-fastrpc-glue-generated-by-qualcomms-idl-compiler-and-inline-code-from-the-sdks-headers-upstream-llamacpp-publishes-the-same-files-in-its-official-releases).
 2. Run the checks: `sdk/scripts/check.sh`, and `ANDROID_SERIAL=<serial> sdk/scripts/check.sh --device`.
 3. Look at exactly what would be uploaded, signed, without uploading:
 

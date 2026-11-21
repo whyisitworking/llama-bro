@@ -56,6 +56,31 @@ it with `./gradlew -p sdk :<module>:apiDump`, committing the `.api` file with th
    A host memory bound that moves is checked against the one upstream commit that moved it (F164).
 6. Record a finding for the upgrade (what changed for the SDK, what was re-measured) and a decision for the new pin.
 
+## Releasing the demo app
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) runs CI's checks, then builds the demo's minified
+release APK signed with the upload key in the repository's secrets. A version tag makes a GitHub release with the APK
+and its SHA-256; a manual run (Actions, Release, Run workflow) keeps it as a workflow artifact. The version name is
+the tag; the version code is 1000 plus the run number, so it only grows. Google Play uploads are made by hand.
+
+```bash
+git tag 2.0.0-alpha && git push origin 2.0.0-alpha
+```
+
+Every release build signs with the upload key when these four Gradle properties are set, on the maintainer's machine in
+`~/.gradle/gradle.properties`: `LLAMABRO_UPLOAD_STORE_FILE` (the keystore's path), `LLAMABRO_UPLOAD_STORE_PASSWORD`,
+`LLAMABRO_UPLOAD_KEY_ALIAS` and `LLAMABRO_UPLOAD_KEY_PASSWORD`. Without them it signs with the debug key, so anyone's
+release build still installs. The workflow sets the same properties from four repository secrets:
+`LLAMABRO_KEYSTORE_BASE64` (the output of `base64 -i upload.jks`), `LLAMABRO_KEYSTORE_PASSWORD`, `LLAMABRO_KEY_ALIAS`
+and `LLAMABRO_KEY_PASSWORD`. The key itself is made once and kept outside the repository:
+
+```bash
+keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 4096 -validity 10000
+```
+
+With Play App Signing, Google keeps the key that signs what users install and this one only proves an upload is yours;
+if it is lost, Play support can register a new one.
+
 ## Principles
 
 - **Upstream is the baseline.** Behaviour and defaults follow llama.cpp's `llama-server` at the pinned build; differences

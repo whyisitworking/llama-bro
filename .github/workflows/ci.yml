@@ -8,6 +8,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # the release workflow runs these jobs first, as its gate
+  workflow_call:
 
 permissions:
   contents: read

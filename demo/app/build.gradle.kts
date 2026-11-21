@@ -1,3 +1,15 @@
+// A release build signs with the upload key these Gradle properties name when all four are set: on the maintainer's
+// machine from ~/.gradle/gradle.properties, in the release workflow as ORG_GRADLE_PROJECT_<name> from its
+// secrets. Otherwise it signs with the debug key, so anyone's release build still installs.
+val releaseSigning: List<String>? =
+    listOf(
+        "LLAMABRO_UPLOAD_STORE_FILE",
+        "LLAMABRO_UPLOAD_STORE_PASSWORD",
+        "LLAMABRO_UPLOAD_KEY_ALIAS",
+        "LLAMABRO_UPLOAD_KEY_PASSWORD",
+    ).map { providers.gradleProperty(it).orNull.orEmpty() }
+        .takeIf { values -> values.all { it.isNotEmpty() } }
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -14,8 +26,9 @@ android {
         applicationId = "com.suhel.llamabro.demo"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        // the release workflow passes the tag's version and a code that grows with every run
+        versionCode = providers.gradleProperty("demo.versionCode").orNull?.toInt() ?: 1
+        versionName = providers.gradleProperty("demo.versionName").orNull ?: "1.0"
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "com.suhel.llamabro.demo.testing.DemoTestRunner"
     }
@@ -39,6 +52,17 @@ android {
         buildConfig = true
     }
 
+    signingConfigs {
+        if (releaseSigning != null) {
+            create("release") {
+                storeFile = file(releaseSigning[0])
+                storePassword = releaseSigning[1]
+                keyAlias = releaseSigning[2]
+                keyPassword = releaseSigning[3]
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // the coverage gate (scripts/coverage.py) reads what the unit tests and the device tests cover together
@@ -46,11 +70,11 @@ android {
             enableAndroidTestCoverage = true
         }
         release {
-            // minified like a real release; signed with the debug key so it installs here
+            // minified like a real release; the release key when one is given, the debug key otherwise
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 

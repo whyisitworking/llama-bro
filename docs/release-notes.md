@@ -4,7 +4,7 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
 ([findings](research/findings.md)); the [architecture](architecture.md) has the full design and the
 [SDK README](../sdk/README.md) the examples.
 
-## 2.0.0-alpha (unreleased)
+## 2.0.0-alpha
 
 A rewrite of 1.x: llama-server's core runs in-process behind a C API, and the Kotlin API is built on it. Code written
 for 1.x needs changes throughout; this entry lists what an app meets, by area.

@@ -20,9 +20,12 @@ libc++_shared.so (in llamabro), the C++ runtime from the Android NDK
   Apache License 2.0 with LLVM Exceptions. Copyright the LLVM Project contributors.
 
 The Hexagon NPU skeletons (libggml-htp-v*.so, in llamabro-hexagon)
-  Built from llama.cpp's MIT ggml-hexagon sources with Qualcomm's Hexagon SDK and toolchain.
-  NOT YET CONFIRMED: the Hexagon SDK's licence terms for redistributing binaries built with it
-  have to be checked, and this entry updated, before llamabro-hexagon is published.
+  Built from llama.cpp's MIT ggml-hexagon sources with Qualcomm's Hexagon SDK 6.7 in Qualcomm's public
+  toolchain image (ghcr.io/snapdragon-toolchain/arm64-android:v0.8). They contain FastRPC glue generated
+  by the SDK's IDL compiler and inline code from the SDK's headers, Copyright Qualcomm Technologies, Inc.;
+  the DSP runtime they call is the phone's own and is not included. They run only on Qualcomm Hexagon
+  DSPs. llama.cpp's official releases distribute the same files built the same way
+  (docs/research/findings.md, F179).
 
 Kotlin and Android libraries the SDK and the demo depend on
 -----------------------------------------------------------
