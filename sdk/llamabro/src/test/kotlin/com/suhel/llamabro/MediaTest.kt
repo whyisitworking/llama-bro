@@ -1,5 +1,6 @@
 package com.suhel.llamabro
 
+import com.suhel.llamabro.chat.AudioFormat
 import com.suhel.llamabro.chat.ChatRequest
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.Message
@@ -172,7 +173,7 @@ class MediaTest {
                     "Three",
                     Content.Image(MediaSource.file(CAT.path), "image/png"),
                     Content.Audio(MediaSource.bytes(WAV)),
-                    Content.Audio(MediaSource.Descriptor { FD }, "audio/flac"),
+                    Content.Audio(MediaSource.Descriptor { FD }, AudioFormat.Flac),
                 ).toList()
             val saved = Json.parseToJsonElement(chat.toJson()).jsonObject
             val content =
@@ -191,6 +192,21 @@ class MediaTest {
                 """{"type":"audio","mime":"audio/flac","data":"${Base64.getEncoder().encodeToString(FLAC)}"}""",
                 content[3].toString(),
             )
+        }
+
+    /** Conversations saved before [AudioFormat] stored any accepted MIME spelling; they restore to its format. */
+    @Test
+    fun aSavedClipsMimeTypeRestoresAsItsFormat() =
+        runTest {
+            val (engine, model) = setup()
+            engine.model.script(Replies.text("a"))
+            val chat = model.conversation()
+            chat.send("Listen", Content.Audio(MediaSource.bytes(WAV))).toList()
+            val older = chat.toJson().replace("\"audio/wav\"", "\"audio/x-wav\"")
+            val restored = model.restoreConversation(older)
+            val clip =
+                (restored.messages.value.first() as Message.User).content.filterIsInstance<Content.Audio>().single()
+            assertEquals(AudioFormat.Wav, clip.format)
         }
 
     @Test
@@ -288,10 +304,9 @@ class MediaTest {
             val chat = model.conversation()
             val clips =
                 listOf(
-                    Content.Audio(MediaSource.bytes(M4A), "audio/mp4"),
+                    // a file in another format is refused by its first bytes too (aClipFileInAnotherFormat…)
+                    Content.Audio(MediaSource.bytes(M4A)),
                     Content.Audio(MediaSource.bytes(ADTS)),
-                    Content.Audio(MediaSource.file("/clips/note.m4a"), "audio/mp4"),
-                    Content.Audio(MediaSource.file("/clips/note.aac"), "audio/aac"),
                 )
             for (clip in clips) {
                 val error = runCatching { chat.send("hi", clip).toList() }.exceptionOrNull()

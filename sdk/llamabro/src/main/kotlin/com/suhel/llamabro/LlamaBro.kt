@@ -42,7 +42,9 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
      * @throws LlamaBroException.ModelLoadFailed
      * @throws LlamaBroException.DeviceUnavailable with [DevicePolicy.Only] when no device of that kind could load it
      *   (or none is in the app), or when every device [DevicePolicy.Auto] or [DevicePolicy.Prefer] tried failed.
-     * @throws LlamaBroException.InvalidRequest if the runtime was already initialised in this process with another
+     * @throws IllegalArgumentException if [ModelConfig.memoryReserveMib] is negative, or [Speculative.DFlash] is set
+     *   on a [ModelSource.file] with no draft.
+     * @throws IllegalStateException if the runtime was already initialised in this process with another
      *   [LlamaBroConfig].
      * @throws Exception whatever a [RemoteModelSource]'s [RemoteModelSource.fetch] throws, unchanged: for the hub's
      *   `hub.model(…)` a `HubException` (`Network` when it is offline with nothing installed, `Unauthorized`,
@@ -71,7 +73,7 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
      * It moves with free memory, so it's a hint, not a promise. Null where the SDK can't read the phone's memory
      * (a test engine).
      *
-     * @throws LlamaBroException.InvalidRequest if [ModelConfig.memoryReserveMib] is negative.
+     * @throws IllegalArgumentException if [ModelConfig.memoryReserveMib] is negative.
      */
     public suspend fun memoryBudgetBytes(configure: ModelConfig.() -> Unit = {}): Long? =
         runtime.memoryBudgetBytes(ModelConfig().apply(configure))
@@ -98,7 +100,7 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
          * Runs no native code, so it's cheap on the main thread: the native runtime starts in the first [loadModel]
          * or [devices].
          *
-         * @throws LlamaBroException.InvalidRequest if the process's runtime was created with other settings.
+         * @throws IllegalStateException if the process's runtime was created with other settings.
          */
         public fun create(context: Context, config: LlamaBroConfig = LlamaBroConfig.Default): LlamaBro =
             create(config) {
@@ -131,11 +133,9 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
                     createdConfig = config
                 }
             }
-            if (!sameSettings(checkNotNull(createdConfig), config)) {
-                throw LlamaBroException.InvalidRequest(
-                    "LlamaBro.create: the runtime already exists with $createdConfig; it can't be created again with " +
-                        "$config. The native runtime is one per process: create the config once and share the object.",
-                )
+            check(sameSettings(checkNotNull(createdConfig), config)) {
+                "LlamaBro.create: the runtime already exists with $createdConfig; it can't be created again with " +
+                    "$config. The native runtime is one per process: create the config once and share the object."
             }
             return existing
         }

@@ -1,6 +1,7 @@
 package com.suhel.llamabro.hub
 
 import android.content.Context
+import androidx.annotation.CheckResult
 import com.suhel.llamabro.DownloadPhase
 import com.suhel.llamabro.DownloadProgress
 import com.suhel.llamabro.InternalLlamaBroApi
@@ -374,6 +375,7 @@ public class LlamaBroHub internal constructor(
      * the model while it runs stops it and ends the flow with a [HubException.Network] that is not retryable, so a
      * background worker doesn't fetch the deleted model again. Any other exception is a bug, passed through as it is.
      */
+    @CheckResult
     public fun download(model: HfModel, configure: PlanOptions.() -> Unit = {}): Flow<DownloadProgress> {
         val options = PlanOptions().apply(configure)
         val key = plans.key(model, options)

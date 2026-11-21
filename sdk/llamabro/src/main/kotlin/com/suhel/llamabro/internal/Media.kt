@@ -3,6 +3,7 @@ package com.suhel.llamabro.internal
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.MediaSource
 import com.suhel.llamabro.ModelInfo
+import com.suhel.llamabro.chat.AudioFormat
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.spi.EngineAttachment
@@ -18,17 +19,17 @@ internal object Media {
 
     private const val FORMATS = "WAV, MP3 or FLAC, the formats llama.cpp decodes; record WAV or convert it first"
 
-    /** `input_audio.format` by MIME type; upstream ignores it ("it's redundant"), but OpenAI's shape has it. */
+    /** A saved clip's MIME type as its format; conversations saved before [AudioFormat] stored the type. */
     private val audioFormats =
         mapOf(
-            "audio/wav" to "wav",
-            "audio/x-wav" to "wav",
-            "audio/wave" to "wav",
-            "audio/vnd.wave" to "wav",
-            "audio/mpeg" to "mp3",
-            "audio/mp3" to "mp3",
-            "audio/flac" to "flac",
-            "audio/x-flac" to "flac",
+            "audio/wav" to AudioFormat.Wav,
+            "audio/x-wav" to AudioFormat.Wav,
+            "audio/wave" to AudioFormat.Wav,
+            "audio/vnd.wave" to AudioFormat.Wav,
+            "audio/mpeg" to AudioFormat.Mp3,
+            "audio/mp3" to AudioFormat.Mp3,
+            "audio/flac" to AudioFormat.Flac,
+            "audio/x-flac" to AudioFormat.Flac,
         )
 
     /** Every picture and clip in [messages] is one [info]'s model can read, in a format llama.cpp decodes. */
@@ -54,21 +55,20 @@ internal object Media {
                 }
 
                 is Content.Audio -> {
-                    checkAudio(info, c.source, c.mimeType)
+                    checkAudio(info, c.source)
                 }
             }
         }
     }
 
-    /** A clip [info]'s model can hear: a WAV, MP3 or FLAC type, and for bytes, a WAV, MP3 or FLAC header. */
-    fun checkAudio(info: ModelInfo, source: MediaSource, mimeType: String) {
+    /** A clip [info]'s model can hear: for bytes, a WAV, MP3 or FLAC header (its [AudioFormat] is one by type). */
+    fun checkAudio(info: ModelInfo, source: MediaSource) {
         if (!info.supportsAudio) {
             throw LlamaBroException.InvalidRequest(
                 "audio needs a model that hears, and this one doesn't (ModelInfo.supportsAudio is false): load an " +
                     "audio model with its audio encoder (ModelSource.file(path) { mmproj = … })",
             )
         }
-        audioFormat(mimeType)
         // a descriptor is checked natively, where it is read (the same check, upstream's is_audio_file); so is a file,
         // and a conversation checks a file's first bytes before adding its message too (checkFile)
         if (source is MediaSource.Bytes && !isAudio(source.bytes)) {
@@ -76,8 +76,11 @@ internal object Media {
         }
     }
 
-    /** `wav`, `mp3` or `flac` for [mimeType]. */
-    fun audioFormat(mimeType: String): String =
+    /** `input_audio.format`: upstream ignores it ("it's redundant"), but OpenAI's shape has it. */
+    fun wireFormat(format: AudioFormat): String = format.name.lowercase()
+
+    /** A saved clip's format from the MIME type it was stored with. */
+    fun audioFormatOf(mimeType: String): AudioFormat =
         audioFormats[mimeType.substringBefore(';').trim().lowercase()]
             ?: throw LlamaBroException.InvalidRequest("audio is $mimeType; it must be $FORMATS")
 

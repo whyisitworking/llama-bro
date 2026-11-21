@@ -275,7 +275,7 @@ The three levels share one engine. A beginner uses `Conversation` and still reac
 
 `LlamaBro` is the process runtime. Its members (D6, D24, D42):
 
-- `LlamaBro.create(context, config)`: the first call creates the process's runtime; a later call with the same settings returns the same object, keeping the first call's logger, and different settings throw `InvalidRequest` before anything is built (D70, D106). A `LlamaBroConfig` holds the log level, the logger and `npuPolling` (the NPU backend polls for its results; off by default, as upstream, D90); the log level and polling are its settings. With no logger the core logs to logcat as `llamabro` (D66). This works the same in a fresh process started by a job or worker only if that worker passes the same config: keep the config on the `Application` or in the DI graph and pass it from workers, or `create(context)` throws `InvalidRequest` against a UI process's config, or runs with a different logger in a fresh one.
+- `LlamaBro.create(context, config)`: the first call creates the process's runtime; a later call with the same settings returns the same object, keeping the first call's logger, and different settings throw `IllegalStateException` before anything is built, as the hub's `create` does (D70, D106, D136). A `LlamaBroConfig` holds the log level, the logger and `npuPolling` (the NPU backend polls for its results; off by default, as upstream, D90); the log level and polling are its settings. With no logger the core logs to logcat as `llamabro` (D66). This works the same in a fresh process started by a job or worker only if that worker passes the same config: keep the config on the `Application` or in the DI graph and pass it from workers, or `create(context)` throws `IllegalStateException` against a UI process's config, or runs with a different logger in a fresh one.
 - `loadModel(source, configure)`: a `suspend` function that returns a `Model`.
 - `estimateFit(source, configure)`: a `FitEstimate` for a model and configuration without loading it (section 9.4).
 - `memoryBudgetBytes(configure)`: the budget `ContextSize.Auto` would use now, before side files, for labelling models in a list without planning each one.
@@ -293,7 +293,7 @@ The three levels share one engine. A beginner uses `Conversation` and still reac
 - `loadReport` (`LoadReport`): which device and backend were chosen, every attempt, the context size and why, and the speculative mode and why (section 8.3).
 - `chat(request)`, `conversation(...)`, `restoreConversation(json)` and `rawRequest(endpoint, json)`.
 - `embed(text)`, `embed(texts)` and `embed(vararg content)`, which return `FloatArray`s with a `Normalization` that mirrors upstream's `embd_normalize` (`None`, `MaxAbsInt16`, `Taxicab`, `Euclidean` by default, `PNorm(p)`), and `rerank(query, documents, topN)`, which returns `Ranked(index, score)` best first (D65). They read the `embeddings` route as base64 and the `rerank` route. Each checks the model's `task` first and throws `InvalidRequest` naming the task to load with, before any request. `embed(vararg content)` sends pictures and clips as chat does, placeholders with the files beside the request, which the bridge fills in the embeddings body's content parts (D84); a clip gets chat's `supportsAudio` and format checks.
-- `transcribe(source, language, prompt, options)`, which returns `Typed<String>`: `Value(text)`, or `Incomplete(Length, textSoFar)` when the reply is as long as `maxTokens`, since upstream's transcription response has no finish reason (D84). It checks the task and `info.supportsAudio` first.
+- `transcribe(source, language, prompt, options)`, which returns a `Transcript(text, truncated)`: `truncated` when the reply is as long as `maxTokens`, since upstream's transcription response has no finish reason (D84, D136). It checks the task and `info.supportsAudio` first.
 - `voiceSession { … }`, a spoken conversation through upstream's `/v1/realtime` in memory (D95, D97, D98): it suspends until the server has taken the setup (`VoiceConfig`: voice, language, instructions, output modalities, a reply cap, the input rate, `extra`; nothing set for the app) and returns a `VoiceSession` with `append(ShortArray)`, `commit(respond = true)`, `respond`, `sendText`, `cancelReply`, `sendRaw`, `close` and a hot `events` flow of `VoiceEvent`s: the turn committed, the reply's start, its text (the captions) and speech (16-bit PCM at `outputSampleRate`), its end, refused events, and every other event as `Other`. Upstream sends no transcript of the user's words in a conversation (F169), and the session adds none: an app that captions them transcribes its own recording of each turn with `transcribe`, on a second slot while the reply is made (D109, F170). It checks the task, `info.supportsAudio` and, for captions, the slots first.
 - `close()`, which returns at once and frees the model in the background, and `closeAndJoin()`, which waits for the memory to be released. Freed memory returns to the system on Android (F49).
 
@@ -452,7 +452,7 @@ llama-server never compacts or edits a conversation. With context shift off (the
 
 Compaction is a client feature, and `Conversation` copies the web client's algorithm exactly (D13, F26):
 
-1. It is started by the caller; there is no automatic threshold (`canCompact()`, `compact()`).
+1. It is started by the caller (`canCompact()`, `compact()`), as in the web client, or, with `autoCompact = true` on the conversation, once by the SDK when a send meets `ContextExceeded`: it compacts with the defaults and sends again in the same flow, the summary not streamed as the reply (D136). There is no threshold before the context is full.
 2. A step is a user message, or an assistant message together with its tool results, so a cut never separates a tool call from its result. The last `preservedSteps` (default 10) stay word for word.
 3. The summary request reuses the prefix the server already has cached and adds a summarisation instruction, so only the instruction is new work.
 4. The summary is stored as a compaction node at the end of the history, with a kept-step count. The full history stays visible, but the model sees only the system prompt, a note that the conversation was compacted with the summary, the preserved steps and anything newer.
@@ -470,7 +470,7 @@ Errors are a sealed `LlamaBroException`. Applications catch them; only the SDK c
 
 | Exception | Meaning |
 |---|---|
-| `InvalidRequest` | The request or configuration is invalid, including a runtime configuration conflict |
+| `InvalidRequest` | The request is invalid: a picture or clip the model can't take, a missing file, a body llama-server refuses |
 | `ContextExceeded(promptTokens, contextSize)` | The prompt does not fit; both numbers come from llama-server and are null if it omits one |
 | `InputTooLong(tokens, limit)` | An embedding or rerank input is longer than the batch (`microBatchSize`), which it must fit since such inputs can't be split. Upstream sends it as a server error whose message alone has the numbers; the SDK reads them (D65) |
 | `NotSupported` | The model or build cannot do it, for example embeddings without an embedding model |
@@ -651,7 +651,7 @@ val hub = LlamaBroHub.create(context, config)       // one hub per cache folder 
 val ref = HfModel("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")  // or "org/repo", or "org/repo#dir/file.gguf"
 
 val fit   = llama.estimateFit(hub.model(ref))         // does it fit this phone now? (cached files, else headers only)
-val model = llama.loadModel(hub.model(ref)) { speculative = Speculative.Auto }   // fetches if needed, then loads
+val model = llama.loadModel(hub.model(ref))           // fetches if needed, then loads
 hub.hasUpdate(ref)                                    // an online look at the newest commit; changes nothing
 
 val plan = hub.plan(ref) { mmproj = true }           // files, roles, sizes, digests, offline flag

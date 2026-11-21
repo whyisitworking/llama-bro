@@ -1,6 +1,5 @@
 package com.suhel.llamabro
 
-import com.suhel.llamabro.chat.FinishReason
 import com.suhel.llamabro.chat.RequestOptions
 import com.suhel.llamabro.internal.ChatJson
 import com.suhel.llamabro.internal.ErrorMapping
@@ -17,28 +16,28 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * What is said in [source] (`POST /v1/audio/transcriptions`), on a model that hears ([ModelInfo.supportsAudio]):
- * [Typed.Value] with the text, or [Typed.Incomplete] with `Length` and the text so far when it was cut at `maxTokens`
- * (D63, D71, D84). Upstream's transcription response has no finish reason, so `Incomplete` is inferred from the reply
- * having as many tokens as `maxTokens` (`output_tokens >= max_tokens`); with no `maxTokens`, a transcript stopped by
- * the context's end is a `Value`. [language] (e.g. `"fr"`) and [prompt] (words to expect, or the model's instruction
- * in place of its own) are upstream's; [options]' sampling and `extra` apply, as llama-server runs it as a chat
- * request.
+ * What is said in [source] (`POST /v1/audio/transcriptions`), on a model that hears ([ModelInfo.supportsAudio]): a
+ * [Transcript] with the text, [Transcript.truncated] when it was cut at `maxTokens` (D63, D84, D136). Upstream's
+ * transcription response has no finish reason, so a cut is inferred from the reply having as many tokens as
+ * `maxTokens` (`output_tokens >= max_tokens`); with no `maxTokens`, a transcript stopped by the context's end is not
+ * truncated. [language] (e.g. `"fr"`) and [prompt] (words to expect, or the model's instruction in place of its own)
+ * are upstream's; [options]' sampling and `extra` apply, as llama-server runs it as a chat request.
  *
  * The clip must be WAV, MP3 or FLAC, the formats llama.cpp decodes. A file or descriptor is read natively during the
  * call, off the caller's thread; the app may close a descriptor once this returns.
  *
- * @throws LlamaBroException.InvalidRequest if the model doesn't hear, was loaded for another task, or the clip is
- *   missing, unreadable or in another format; no transcription is made. Engine failures stay exceptions too.
+ * @throws LlamaBroException.InvalidRequest if the model doesn't hear, or the clip is missing, unreadable or in another
+ *   format; no transcription is made. Engine failures stay exceptions too.
+ * @throws IllegalStateException if the model was loaded for another task ([ModelTask]).
  */
 public suspend fun Model.transcribe(
     source: MediaSource,
     language: String? = null,
     prompt: String? = null,
     options: RequestOptions.Builder.() -> Unit = {},
-): Typed<String> {
+): Transcript {
     requireTask<ModelTask.Generate>("transcribe", "ModelTask.Generate")
-    Media.checkAudio(info, source, WAV)
+    Media.checkAudio(info, source)
     val body = transcriptionBody(RequestOptions(options), language, prompt)
     val attachment = Media.attachment("file", WAV, source)
     val reply = request(Endpoint.Transcriptions, body.toString(), listOf(attachment))
@@ -51,12 +50,11 @@ public suspend fun Model.transcribe(
     // upstream's transcription response has no finish reason (to_json_oaicompat_asr): a reply as long as the limit
     // was cut there
     val limit = (body["max_tokens"] as? JsonPrimitive)?.content?.toIntOrNull()
-    return if (limit != null && written != null && written >= limit) {
-        Typed.Incomplete(FinishReason.Length, text)
-    } else {
-        Typed.Value(text, text, null)
-    }
+    return Transcript(text, truncated = limit != null && written != null && written >= limit)
 }
+
+/** What [transcribe] heard: the [text], and whether it was cut at `maxTokens` before the clip's end ([truncated]). */
+public data class Transcript(public val text: String, public val truncated: Boolean = false)
 
 /**
  * The form fields, as upstream reads a multipart upload (convert_transcriptions_to_chatcmpl): `stream`, `max_tokens`

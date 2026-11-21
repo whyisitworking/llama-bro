@@ -14,8 +14,12 @@ public class ModelConfig internal constructor() {
     /** Tokens of context (`n_ctx`). */
     public var contextSize: ContextSize = ContextSize.Auto
 
-    /** Speculative decoding: off by default ([Speculative.Auto]); the app opts in to a drafting mode. */
-    public var speculative: Speculative = Speculative.Auto
+    /**
+     * Speculative decoding: [Speculative.Off] by default, as upstream; the app opts in to a drafting mode. Drafting
+     * with a model of its own ([Speculative.DFlash]) also needs that model's file on the source:
+     * `ModelSource.file(path) { draft = … }`. The source names the files; this config says how to run them.
+     */
+    public var speculative: Speculative = Speculative.Off
 
     /** Which chip runs the model; [DevicePolicy.Auto] picks the fastest that loads ([Model.loadReport] says which). */
     public var devicePolicy: DevicePolicy = DevicePolicy.Auto
@@ -93,9 +97,7 @@ public class ModelConfig internal constructor() {
     internal var progressListener: ((LoadProgress) -> Unit)? = null
 
     internal fun validateReserve() {
-        if (memoryReserveMib < 0) {
-            throw LlamaBroException.InvalidRequest("memoryReserveMib must be at least 0, was $memoryReserveMib")
-        }
+        require(memoryReserveMib >= 0) { "memoryReserveMib must be at least 0, was $memoryReserveMib" }
     }
 
     /**
@@ -106,10 +108,8 @@ public class ModelConfig internal constructor() {
         validateReserve()
         when (source) {
             is FileSource -> {
-                if (speculative is Speculative.DFlash && source.draft == null) {
-                    throw LlamaBroException.InvalidRequest(
-                        "Speculative.DFlash needs ModelSource.file(path) { draft = … }",
-                    )
+                require(speculative !is Speculative.DFlash || source.draft != null) {
+                    "Speculative.DFlash needs ModelSource.file(path) { draft = … }"
                 }
             }
 
@@ -231,10 +231,10 @@ public class ModelConfig internal constructor() {
         )
     }
 
-    /** `Auto` is off on every chip (F67). */
+    /** Off sends no setting: upstream's plain decoding (F67). */
     private fun JsonObjectBuilder.putSpeculative() {
         when (val s = speculative) {
-            Speculative.Off, Speculative.Auto -> {
+            Speculative.Off -> {
                 Unit
             }
 
@@ -323,15 +323,11 @@ public sealed interface ContextSize {
 /** Speculative decoding ([ModelConfig.speculative]). [Model.loadReport] says what runs and why. */
 public sealed interface Speculative {
     /**
-     * The default: no speculative decoding, as upstream. Kept apart from [Off] so a later llama.cpp can turn it on
-     * where it wins; measured, it wins nowhere for prose (MTP is slower on the CPU and the NPU, F67), and drafting
-     * aborts the GPU backend. [Model.loadReport] gives the reason for the chip. For structured output (JSON, tool
-     * calls) on the NPU, [Mtp] with `draftMax = 4` decodes about 1.5× faster (F68); for replies that copy their
-     * input, [Ngram].
+     * None, the default, as upstream: measured, drafting wins nowhere for prose (MTP is slower on the CPU and the NPU,
+     * F67), and it aborts the GPU backend. [Model.loadReport] gives the reason for the chip. For structured output
+     * (JSON, tool calls) on the NPU, [Mtp] with `draftMax = 4` decodes about 1.5× faster (F68); for replies that copy
+     * their input, [Ngram].
      */
-    public data object Auto : Speculative
-
-    /** None. */
     public data object Off : Speculative
 
     /**

@@ -65,7 +65,7 @@ public data class Ranked(public val index: Int, public val score: Float)
 /**
  * The embedding vector of [text] (`POST /v1/embeddings`), on a model loaded with [ModelTask.Embedding].
  *
- * @throws LlamaBroException.InvalidRequest if the model was loaded for another task; no request is made.
+ * @throws IllegalStateException if the model was loaded for another task; no request is made.
  * @throws LlamaBroException.InputTooLong if [text] is longer than the batch; the SDK doesn't split it.
  */
 public suspend fun Model.embed(text: String, normalization: Normalization = Normalization.Euclidean): FloatArray =
@@ -89,7 +89,7 @@ public suspend fun Model.embed(
     normalization: Normalization = Normalization.Euclidean,
 ): FloatArray {
     requireTask<ModelTask.Embedding>("embed", "ModelTask.Embedding()")
-    content.forEach { if (it is Content.Audio) Media.checkAudio(info, it.source, it.mimeType) }
+    content.forEach { if (it is Content.Audio) Media.checkAudio(info, it.source) }
     val media = Attachments()
     val input = buildJsonObject { put("content", JsonArray(content.map { ChatJson.part(it, media) })) }
     return try {
@@ -103,7 +103,7 @@ public suspend fun Model.embed(
  * [documents] ordered by relevance to [query], best first (`POST /v1/rerank`), on a model loaded with
  * [ModelTask.Rerank]. [topN] keeps only the best; null keeps all. Each document is read with the query as one input.
  *
- * @throws LlamaBroException.InvalidRequest if the model was loaded for another task; no request is made.
+ * @throws IllegalStateException if the model was loaded for another task; no request is made.
  * @throws LlamaBroException.InputTooLong if the query and a document together are longer than the batch.
  */
 public suspend fun Model.rerank(query: String, documents: List<String>, topN: Int? = null): List<Ranked> {
@@ -151,11 +151,7 @@ private suspend fun Model.embedInput(
 }
 
 internal inline fun <reified T : ModelTask> Model.requireTask(call: String, loadWith: String) {
-    if (task !is T) {
-        throw LlamaBroException.InvalidRequest(
-            "$call needs a model loaded with task = $loadWith; this one was loaded with ModelTask.$task",
-        )
-    }
+    check(task is T) { "$call needs a model loaded with task = $loadWith; this one was loaded with ModelTask.$task" }
 }
 
 /** llama-server's base64 is the vector's memory, in the machine's byte order: little-endian on every target. */

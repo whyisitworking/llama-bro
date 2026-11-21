@@ -1,5 +1,6 @@
 package com.suhel.llamabro.conversation
 
+import androidx.annotation.CheckResult
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.chat.ToolCall
@@ -33,6 +34,7 @@ public object Compaction {
  * @throws IllegalStateException if no step lies before the preserved ones (nothing to compact), or a tool call of
  *   the last reply still has no result (waiting for approval, or a manual tool): approve, deny or answer it first.
  */
+@CheckResult
 public fun Conversation.compact(
     preservedSteps: Int = Compaction.DEFAULT_PRESERVED_STEPS,
     instruction: String = Compaction.DEFAULT_PROMPT,

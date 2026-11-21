@@ -19203,9 +19203,6 @@ PLcom/suhel/llamabro/ModelSource$Companion$$ExternalSyntheticLambda0;->invoke(Lj
 PLcom/suhel/llamabro/ModelTask$Generate;-><clinit>()V
 PLcom/suhel/llamabro/ModelTask$Generate;-><init>()V
 PLcom/suhel/llamabro/ModelTask$Generate;->equals(Ljava/lang/Object;)Z
-PLcom/suhel/llamabro/Speculative$Auto;-><clinit>()V
-PLcom/suhel/llamabro/Speculative$Auto;-><init>()V
-PLcom/suhel/llamabro/Speculative$Auto;->equals(Ljava/lang/Object;)Z
 PLcom/suhel/llamabro/Speculative$Off;-><clinit>()V
 PLcom/suhel/llamabro/Speculative$Off;-><init>()V
 PLcom/suhel/llamabro/chat/ChatEvent$ContentDelta;-><init>(Ljava/lang/String;)V

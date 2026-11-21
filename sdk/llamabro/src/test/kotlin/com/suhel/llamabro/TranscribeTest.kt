@@ -1,6 +1,5 @@
 package com.suhel.llamabro
 
-import com.suhel.llamabro.chat.FinishReason
 import com.suhel.llamabro.spi.EngineAttachment
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -38,12 +37,12 @@ class TranscribeTest {
     private fun body(r: FakeRequest): JsonObject = Json.parseToJsonElement(r.body) as JsonObject
 
     @Test
-    fun transcribeReturnsValue() =
+    fun transcribeReturnsTheText() =
         runTest {
             val (engine, model) = setup()
             answer(engine, "Hello there.", 4)
             assertEquals(
-                Typed.Value("Hello there.", "Hello there.", null),
+                Transcript("Hello there."),
                 model.transcribe(MediaSource.file("/clips/note.wav")),
             )
             val r = engine.model.requests.single()
@@ -86,12 +85,12 @@ class TranscribeTest {
         }
 
     @Test
-    fun transcribeCutIsIncomplete() =
+    fun transcribeCutAtTheLimitIsTruncated() =
         runTest {
             val (engine, model) = setup()
             answer(engine, "Hello th", 4)
             assertEquals(
-                Typed.Incomplete(FinishReason.Length, "Hello th"),
+                Transcript("Hello th", truncated = true),
                 model.transcribe(MediaSource.file("/clips/note.wav")) { sampling { maxTokens = 4 } },
             )
         }
@@ -150,7 +149,7 @@ class TranscribeTest {
             assertTrue(engine.model.requests.isEmpty())
             val (_, embedder) = setup(task = ModelTask.Embedding())
             val task = runCatching { embedder.transcribe(MediaSource.file("/a.wav")) }.exceptionOrNull()
-            assertTrue("$task", task is LlamaBroException.InvalidRequest)
+            assertTrue("$task", task is IllegalStateException)
             assertTrue(task!!.message!!, task.message!!.contains("ModelTask.Generate"))
         }
 }

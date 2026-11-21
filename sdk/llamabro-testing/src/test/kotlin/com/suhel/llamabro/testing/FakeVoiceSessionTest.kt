@@ -188,6 +188,18 @@ class FakeVoiceSessionTest {
         }
 
     @Test
+    fun aVoiceTheModelDoesntHaveIsRefusedBeforeTheSessionOpens() =
+        runBlocking {
+            val model = fake { voices = listOf("female", "male") }.model()
+            val error =
+                assertThrows(IllegalArgumentException::class.java) {
+                    runBlocking { model.voiceSession { voice = "robot" } }
+                }
+            assertTrue(error.message!!, error.message!!.contains("[female, male]"))
+            model.closeAndJoin()
+        }
+
+    @Test
     fun aModelThatCantHoldTheConversationFailsAtOpen() =
         runBlocking {
             val deaf = FakeLlamaBro().model()
@@ -195,7 +207,7 @@ class FakeVoiceSessionTest {
             deaf.closeAndJoin()
 
             val embedder = fake().model(ModelTask.Embedding())
-            assertThrows(LlamaBroException.InvalidRequest::class.java) { runBlocking { embedder.voiceSession() } }
+            assertThrows(IllegalStateException::class.java) { runBlocking { embedder.voiceSession() } }
             embedder.closeAndJoin()
         }
 

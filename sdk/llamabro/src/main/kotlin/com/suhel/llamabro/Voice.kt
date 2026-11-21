@@ -27,12 +27,20 @@ import kotlinx.serialization.json.intOrNull
  * done; closing the model ends it too.
  *
  * @throws LlamaBroException.NotSupported if the model doesn't hear.
- * @throws LlamaBroException.InvalidRequest if it was loaded for another task, or the server refused the setup (a
- *   model that can't hold a conversation, an unknown voice), with upstream's message.
+ * @throws LlamaBroException.InvalidRequest if the server refused the setup (a model that can't hold a conversation),
+ *   with upstream's message.
+ * @throws IllegalArgumentException if [VoiceConfig.Builder.voice] isn't one of [ModelInfo.voices].
+ * @throws IllegalStateException if the model was loaded for another task ([ModelTask]).
  */
 public suspend fun Model.voiceSession(configure: VoiceConfig.Builder.() -> Unit = {}): VoiceSession {
     val config = VoiceConfig(configure)
     checkCanTalk()
+    // a model's voices are its own names: a typo is caught here, not as noise or a refusal from the server
+    config.voice?.let { voice ->
+        require(info.voices.isEmpty() || voice in info.voices) {
+            "voice \"$voice\" isn't one this model speaks with; ModelInfo.voices: ${info.voices}"
+        }
+    }
     val update = RealtimeJson.sessionUpdate(config)
     val opened = CompletableDeferred<VoiceSession>()
     val events = Channel<VoiceEvent>(Channel.UNLIMITED)

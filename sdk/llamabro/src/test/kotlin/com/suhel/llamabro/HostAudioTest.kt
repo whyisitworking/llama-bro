@@ -177,17 +177,12 @@ class HostAudioTest {
                 FileInputStream(clip).use { stream ->
                     model.transcribe(MediaSource.Descriptor { fdOf(stream.fd) }, options = transcription)
                 }
-            val text =
-                when (byPath) {
-                    is Typed.Value -> byPath.value
-                    is Typed.Incomplete -> byPath.text
-                    is Typed.Invalid -> error("a transcript is never Invalid: $byPath")
-                }
+            val text = byPath.text
             assertTrue("a transcript: $byPath", text.isNotEmpty())
             assertEquals(byPath, byBytes)
             assertEquals(byPath, byDescriptor)
             val withLanguage = model.transcribe(MediaSource.file(clip.path), language = "en", options = transcription)
-            assertFalse(withLanguage is Typed.Invalid)
+            assertTrue("a transcript: $withLanguage", withLanguage.text.isNotEmpty())
         }
 
     @Test
@@ -217,7 +212,7 @@ class HostAudioTest {
             assertTrue(sending.isCancelled)
 
             val after = model.transcribe(MediaSource.file(clip.path), options = transcription)
-            assertFalse("$after", after is Typed.Invalid)
+            assertTrue("$after", after.text.isNotEmpty())
         }
 
     @Test

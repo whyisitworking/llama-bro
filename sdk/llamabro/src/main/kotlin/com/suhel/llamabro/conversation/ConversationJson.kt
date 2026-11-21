@@ -5,6 +5,7 @@ import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.chat.ToolCall
 import com.suhel.llamabro.internal.ChatJson
+import com.suhel.llamabro.internal.Media
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -136,7 +137,8 @@ internal object ConversationJson {
 
                 is Content.Audio -> {
                     put("type", "audio")
-                    media(c.mimeType, c.source, read)
+                    // saved as its MIME type, as before AudioFormat, so older and newer saves read alike
+                    media(c.format.mimeType, c.source, read)
                 }
             }
         }
@@ -177,7 +179,7 @@ internal object ConversationJson {
                         when (p.str("type")) {
                             "text" -> Content.Text(p.need("text"))
                             "image" -> Content.Image(mediaSource(p), p.need("mime"))
-                            "audio" -> Content.Audio(mediaSource(p), p.need("mime"))
+                            "audio" -> Content.Audio(mediaSource(p), Media.audioFormatOf(p.need("mime")))
                             else -> throw IllegalArgumentException("unknown content type: ${p.str("type")}")
                         }
                     },

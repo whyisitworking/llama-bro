@@ -18,9 +18,23 @@ public sealed interface Content {
     }
 
     /**
-     * Speech or sound, for a model that hears ([com.suhel.llamabro.ModelInfo.supportsAudio]). WAV, MP3 or FLAC only,
-     * the formats llama.cpp decodes; the SDK converts nothing, so record WAV or convert first. [mimeType] names the
-     * format: `audio/wav`, `audio/mpeg` or `audio/flac`.
+     * Speech or sound, for a model that hears ([com.suhel.llamabro.ModelInfo.supportsAudio]), in one of the formats
+     * llama.cpp decodes ([AudioFormat]); the SDK converts nothing, so record WAV or convert first.
      */
-    public data class Audio(public val source: MediaSource, public val mimeType: String = "audio/wav") : Content
+    public data class Audio(public val source: MediaSource, public val format: AudioFormat = AudioFormat.Wav) :
+        Content {
+        /** A clip already in memory. */
+        public constructor(bytes: ByteArray, format: AudioFormat = AudioFormat.Wav) :
+            this(MediaSource.bytes(bytes), format)
+    }
+}
+
+/** The audio formats llama.cpp decodes, and so the only ones a [Content.Audio] can be. */
+public enum class AudioFormat(
+    /** The MIME type the request names it by. */
+    public val mimeType: String,
+) {
+    Wav("audio/wav"),
+    Mp3("audio/mpeg"),
+    Flac("audio/flac"),
 }

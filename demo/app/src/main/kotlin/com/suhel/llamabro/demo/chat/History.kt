@@ -2,6 +2,7 @@ package com.suhel.llamabro.demo.chat
 
 import androidx.tracing.trace
 import com.suhel.llamabro.MediaSource
+import com.suhel.llamabro.chat.AudioFormat
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.demo.data.MessageKind
@@ -96,7 +97,7 @@ object History {
             val content =
                 buildList<Content> {
                     images.forEach { add(Content.Image(MediaSource.file(it.path), "image/jpeg")) }
-                    if (hears) voices.forEach { add(Content.Audio(MediaSource.file(it.file.path), "audio/wav")) }
+                    if (hears) voices.forEach { add(Content.Audio(MediaSource.file(it.file.path), AudioFormat.Wav)) }
                     if (words.isNotEmpty()) add(Content.Text(words))
                 }
             return Message.user(*content.toTypedArray())

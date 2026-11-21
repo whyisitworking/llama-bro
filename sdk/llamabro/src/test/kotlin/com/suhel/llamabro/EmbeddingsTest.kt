@@ -248,7 +248,7 @@ class EmbeddingsTest {
                 { m.embed(Content.Text("x")) },
             )) {
                 val e = runCatching { call() }.exceptionOrNull()
-                assertTrue("$e", e is LlamaBroException.InvalidRequest)
+                assertTrue("$e", e is IllegalStateException)
                 assertTrue(e!!.message, e.message!!.contains("ModelTask.Embedding"))
                 assertTrue(e.message, e.message!!.contains("ModelTask.Generate"))
             }
@@ -261,7 +261,7 @@ class EmbeddingsTest {
             val engine = FakeEngine()
             val m = model(engine, ModelTask.Embedding(Pooling.Mean))
             val e = runCatching { m.rerank("q", listOf("d")) }.exceptionOrNull()
-            assertTrue("$e", e is LlamaBroException.InvalidRequest)
+            assertTrue("$e", e is IllegalStateException)
             assertTrue(e!!.message, e.message!!.contains("ModelTask.Rerank"))
             assertTrue(e.message, e.message!!.contains("ModelTask.Embedding"))
             assertTrue("no request made", engine.model.requests.isEmpty())
@@ -269,7 +269,7 @@ class EmbeddingsTest {
             // and a reranker can't embed
             val r = model(FakeEngine(), ModelTask.Rerank)
             val e2 = runCatching { r.embed("x") }.exceptionOrNull()
-            assertTrue("$e2", e2 is LlamaBroException.InvalidRequest && e2.message!!.contains("ModelTask.Embedding"))
+            assertTrue("$e2", e2 is IllegalStateException && e2.message!!.contains("ModelTask.Embedding"))
         }
 
     @Test

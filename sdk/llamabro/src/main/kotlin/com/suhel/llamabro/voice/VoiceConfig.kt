@@ -54,9 +54,10 @@ public class VoiceConfig internal constructor(
 
     /** Mutable scope of `Model.voiceSession { }` and [copy]; it starts from the current config. */
     public class Builder internal constructor(from: VoiceConfig) {
+        /** One of [com.suhel.llamabro.ModelInfo.voices]: each model names its own; another one is refused at once. */
         public var voice: String? = from.voice
 
-        /** The language the reply is spoken in. */
+        /** The language the reply is spoken in, as an ISO 639-1 code such as `"en"` or `"fr"`. */
         public var language: String? = from.language
         public var instructions: String? = from.instructions
 

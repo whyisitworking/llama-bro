@@ -3,7 +3,6 @@ package com.suhel.llamabro.demo.chat
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.MediaSource
 import com.suhel.llamabro.Model
-import com.suhel.llamabro.Typed
 import com.suhel.llamabro.transcribe
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -42,11 +41,7 @@ class TurnCaptions(
 
     private suspend fun caption(clip: File): String? =
         try {
-            when (val heard = model.transcribe(MediaSource.file(clip.path))) {
-                is Typed.Value -> heard.value
-                is Typed.Incomplete -> heard.text
-                is Typed.Invalid -> null
-            }?.trim()
+            model.transcribe(MediaSource.file(clip.path)).text.trim()
         } catch (expected: LlamaBroException) {
             null
         }

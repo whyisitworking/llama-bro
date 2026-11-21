@@ -199,8 +199,8 @@ class RemoteModelSourceTest {
             val remote = FakeRemote(engine, local = FakeRemote(engine))
             try {
                 testLlamaBro(engine).loadModel(remote)
-                fail("expected InvalidRequest")
-            } catch (_: LlamaBroException.InvalidRequest) {
+                fail("expected IllegalStateException")
+            } catch (_: IllegalStateException) {
             }
             assertTrue(engine.loadConfigs.isEmpty())
         }
@@ -215,8 +215,8 @@ class RemoteModelSourceTest {
             val noDraft = FakeRemote(engine)
             try {
                 testLlamaBro(engine).loadModel(noDraft) { speculative = Speculative.DFlash() }
-                fail("expected InvalidRequest")
-            } catch (_: LlamaBroException.InvalidRequest) {
+                fail("expected IllegalArgumentException")
+            } catch (_: IllegalArgumentException) {
             }
             assertEquals(1, noDraft.fetches)
         }

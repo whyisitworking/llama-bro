@@ -84,7 +84,7 @@ class FitEstimateTest {
                 }
             }
             fail("DFlash needs a draft")
-        } catch (error: LlamaBroException.InvalidRequest) {
+        } catch (error: IllegalArgumentException) {
             assertTrue(error.message!!.contains("draft ="))
         }
         assertTrue(fake.initConfigs.isEmpty())

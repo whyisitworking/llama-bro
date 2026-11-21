@@ -685,13 +685,6 @@ public abstract interface class com/suhel/llamabro/RemoteModelSource : com/suhel
 public abstract interface class com/suhel/llamabro/Speculative {
 }
 
-public final class com/suhel/llamabro/Speculative$Auto : com/suhel/llamabro/Speculative {
-	public static final field INSTANCE Lcom/suhel/llamabro/Speculative$Auto;
-	public fun equals (Ljava/lang/Object;)Z
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
-}
-
 public final class com/suhel/llamabro/Speculative$DFlash : com/suhel/llamabro/Speculative {
 	public fun <init> ()V
 	public fun <init> (I)V
@@ -741,6 +734,20 @@ public final class com/suhel/llamabro/Speculative$Off : com/suhel/llamabro/Specu
 public final class com/suhel/llamabro/TranscribeKt {
 	public static final fun transcribe (Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/MediaSource;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun transcribe$default (Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/MediaSource;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class com/suhel/llamabro/Transcript {
+	public fun <init> (Ljava/lang/String;Z)V
+	public synthetic fun <init> (Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Z
+	public final fun copy (Ljava/lang/String;Z)Lcom/suhel/llamabro/Transcript;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/Transcript;Ljava/lang/String;ZILjava/lang/Object;)Lcom/suhel/llamabro/Transcript;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getText ()Ljava/lang/String;
+	public final fun getTruncated ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public abstract interface class com/suhel/llamabro/Typed {
@@ -794,6 +801,16 @@ public final class com/suhel/llamabro/TypedKt {
 public final class com/suhel/llamabro/VoiceKt {
 	public static final fun voiceSession (Lcom/suhel/llamabro/Model;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun voiceSession$default (Lcom/suhel/llamabro/Model;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class com/suhel/llamabro/chat/AudioFormat : java/lang/Enum {
+	public static final field Flac Lcom/suhel/llamabro/chat/AudioFormat;
+	public static final field Mp3 Lcom/suhel/llamabro/chat/AudioFormat;
+	public static final field Wav Lcom/suhel/llamabro/chat/AudioFormat;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getMimeType ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lcom/suhel/llamabro/chat/AudioFormat;
+	public static fun values ()[Lcom/suhel/llamabro/chat/AudioFormat;
 }
 
 public abstract interface class com/suhel/llamabro/chat/ChatEvent {
@@ -914,14 +931,16 @@ public abstract interface class com/suhel/llamabro/chat/Content {
 }
 
 public final class com/suhel/llamabro/chat/Content$Audio : com/suhel/llamabro/chat/Content {
-	public fun <init> (Lcom/suhel/llamabro/MediaSource;Ljava/lang/String;)V
-	public synthetic fun <init> (Lcom/suhel/llamabro/MediaSource;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/suhel/llamabro/MediaSource;Lcom/suhel/llamabro/chat/AudioFormat;)V
+	public synthetic fun <init> (Lcom/suhel/llamabro/MediaSource;Lcom/suhel/llamabro/chat/AudioFormat;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> ([BLcom/suhel/llamabro/chat/AudioFormat;)V
+	public synthetic fun <init> ([BLcom/suhel/llamabro/chat/AudioFormat;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lcom/suhel/llamabro/MediaSource;
-	public final fun component2 ()Ljava/lang/String;
-	public final fun copy (Lcom/suhel/llamabro/MediaSource;Ljava/lang/String;)Lcom/suhel/llamabro/chat/Content$Audio;
-	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/Content$Audio;Lcom/suhel/llamabro/MediaSource;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/chat/Content$Audio;
+	public final fun component2 ()Lcom/suhel/llamabro/chat/AudioFormat;
+	public final fun copy (Lcom/suhel/llamabro/MediaSource;Lcom/suhel/llamabro/chat/AudioFormat;)Lcom/suhel/llamabro/chat/Content$Audio;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/chat/Content$Audio;Lcom/suhel/llamabro/MediaSource;Lcom/suhel/llamabro/chat/AudioFormat;ILjava/lang/Object;)Lcom/suhel/llamabro/chat/Content$Audio;
 	public fun equals (Ljava/lang/Object;)Z
-	public final fun getMimeType ()Ljava/lang/String;
+	public final fun getFormat ()Lcom/suhel/llamabro/chat/AudioFormat;
 	public final fun getSource ()Lcom/suhel/llamabro/MediaSource;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
@@ -1410,9 +1429,11 @@ public final class com/suhel/llamabro/conversation/Conversation {
 
 public final class com/suhel/llamabro/conversation/Conversation$Builder {
 	public final fun defaults (Lkotlin/jvm/functions/Function1;)V
+	public final fun getAutoCompact ()Z
 	public final fun getDefaults ()Lcom/suhel/llamabro/chat/RequestOptions;
 	public final fun getMaxTurns ()I
 	public final fun getPreEncodeAfterReply ()Z
+	public final fun setAutoCompact (Z)V
 	public final fun setDefaults (Lcom/suhel/llamabro/chat/RequestOptions;)V
 	public final fun setMaxTurns (I)V
 	public final fun setPreEncodeAfterReply (Z)V

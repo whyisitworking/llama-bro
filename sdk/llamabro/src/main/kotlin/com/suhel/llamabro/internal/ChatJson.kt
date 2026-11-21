@@ -298,8 +298,8 @@ internal object ChatJson {
                 buildJsonObject {
                     put("type", "input_audio")
                     putJsonObject("input_audio") {
-                        put("data", media.url(c.source, c.mimeType))
-                        put("format", Media.audioFormat(c.mimeType))
+                        put("data", media.url(c.source, c.format.mimeType))
+                        put("format", Media.wireFormat(c.format))
                     }
                 }
             }

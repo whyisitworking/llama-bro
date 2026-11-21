@@ -4,62 +4,86 @@ Run a GGUF model on an Android phone with llama.cpp's own server core in-process
 templates, tool calls, reasoning, prompt cache and sampling as `llama-server`, without HTTP. Kotlin only
 (coroutines and `Flow`). Package `com.suhel.llamabro`.
 
-> From Maven Central: `implementation(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))`, then
-> `implementation("io.github.whyisitworking:llamabro")`, plus `llamabro-hexagon` and `llamabro-opencl` for the NPU and
-> GPU and the other modules as needed, with no version of their own (the BOM keeps them matched, D135).
-> arm64-v8a, Android 10 (API 29) and up. Kotlin 2.2 or later: the SDK is built with Kotlin 2.3, whose metadata a
-> 2.2 compiler still reads (D82). `llamabro-typed-ksp` needs KSP 2.3 or later.
+```kotlin
+implementation(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))   // one version for every module
+implementation("io.github.whyisitworking:llamabro")
+implementation("io.github.whyisitworking:llamabro-hexagon")   // optional: the Snapdragon NPU
+implementation("io.github.whyisitworking:llamabro-opencl")    // optional: the Adreno GPU
+```
+
+arm64-v8a, Android 10 (API 29) and up, Kotlin 2.2 or later (the SDK is built with Kotlin 2.3, whose metadata a 2.2
+compiler reads). `llamabro-typed-ksp` needs KSP 2.3 or later.
 
 ## Five minutes: a chat screen
 
-Keep the model in a `ViewModel` so rotation doesn't reload it, and take `LlamaBro` as a parameter so tests can
-pass a fake. Nothing here blocks the main thread.
+Keep the model in a `ViewModel` so rotation doesn't reload it, and take `LlamaBro` as a parameter so tests can pass a
+fake. Nothing here blocks the main thread.
 
 ```kotlin
 class ChatViewModel(private val llama: LlamaBro, private val path: String) : ViewModel() {
     private var model: Model? = null
-    var chat: Conversation? = null; private set
-    val loading = MutableStateFlow<Float?>(0f)
+    private val _chat = MutableStateFlow<Conversation?>(null)
+    val chat: StateFlow<Conversation?> = _chat                 // null while the model loads
 
     init {
         viewModelScope.launch {
-            val m =
-                llama.loadModel(ModelSource.file(path)) {
-                    onProgress { if (it is LoadProgress.Loading) loading.value = it.fraction }
-                }
-            model = m
-            chat = m.conversation(system = "You are a helpful assistant.")
-            loading.value = null
+            val m = llama.loadModel(ModelSource.file(path)).also { model = it }
+            _chat.value = m.conversation(system = "You are a helpful assistant.") {
+                autoCompact = true                             // summarise older turns when the context fills
+            }
         }
     }
 
-    fun send(text: String) = viewModelScope.launch {
-        val c = chat ?: return@launch
-        try {
-            c.send(text).collect()                 // the UI shows c.messages and c.reply (the streaming reply)
-        } catch (e: LlamaBroException.ContextExceeded) {
-            if (c.canCompact()) { c.compact().collect(); c.resume().collect() }   // summarise older turns, answer again
+    fun send(text: String) {
+        val chat = chat.value ?: return
+        viewModelScope.launch {
+            chat.send(text).collect()                          // a Flow: nothing is sent until it is collected
         }
     }
 
-    override fun onCleared() { model?.close() }   // returns at once; memory is freed in the background
+    override fun onCleared() {
+        model?.close()                                         // returns at once; memory is freed in the background
+    }
 }
 
 // in the factory: ChatViewModel(LlamaBro.create(application), path)
 ```
 
-`Conversation` keeps the history the way llama.cpp's web UI (`tools/ui`) does. Observe:
+The screen observes the conversation's state:
 
-- `messages`: the history; `reply`: the assistant message while it streams, null otherwise.
-- `isBusy`, and `contextUsage` (tokens used of the context).
-- `ask(text)` returns a `Typed<String>`: `Typed.Value` (the text and the reasoning), or `Typed.Incomplete` with its
-  `reason`: `Length` (cut at the output limit), `TurnLimit`, `ToolCallsPending` (continue with `resume()`, after
-  `addToolResult` for tools without a handler) or `ToolAborted` (a tool threw `LbToolAbort`). `valueOrNull()` gives the
-  value or null.
-- `regenerate()` (and `askAgain()`, the same collected as `ask` is), `endReasoning()` (stop thinking now), `toJson()`
-  and `model.restoreConversation(json)`.
+```kotlin
+@Composable
+fun ChatScreen(vm: ChatViewModel) {
+    val chat = vm.chat.collectAsState().value ?: return Loading()
+    val messages by chat.messages.collectAsState()   // the history
+    val reply by chat.reply.collectAsState()         // the assistant message while it streams, else null
+    val busy by chat.isBusy.collectAsState()
+    // draw messages, then reply; disable the send button while busy
+}
+```
 
-The demo chat app ([demo](../demo)) is this, with a full UI; its `ChatEngine` is the part that talks to `Conversation`.
+`send` returns a cold `Flow`: it does nothing until collected, and Android Studio warns when its result is unused.
+Collect it to stream the reply's events (below), or call `ask(text)`, which collects for you and returns the reply.
+`contextUsage` says how many tokens of the context are used. The demo chat app ([demo](../demo)) is this with a full
+UI; its `ChatEngine` is the part that talks to `Conversation`.
+
+### What each call does
+
+| You want to | Streaming (`Flow<ChatEvent>`, collect it) | The result (`suspend`) |
+|---|---|---|
+| Send a message | `send(text, attachments)` | `ask(text, attachments)`: `Typed<String>` |
+| Get a typed reply | | `ask<T>(text)`: `Typed<T>` (see Typed output) |
+| Replace the last reply | `regenerate()` | `askAgain()`, `askAgain<T>()` |
+| Continue after an error, a turn limit or tool results | `resume()` | |
+| Run or refuse a tool call waiting for approval | `approve(callId)`, `deny(callId, reason)` | |
+| Summarise older turns | `compact()` (or `autoCompact = true`) | |
+| Stop the model thinking and make it answer | | `endReasoning()` |
+| Save and restore | | `toJson()`, `model.restoreConversation(json)` |
+
+`Typed.Value` holds the reply (`value`, its `text` and `reasoning`); `Typed.Incomplete` says why it isn't complete
+(`reason`: `Length`, cut at the output limit; `TurnLimit`; `ToolCallsPending`, continue with `resume()` after
+`addToolResult`; `ToolAborted`, a tool threw `LbToolAbort`); `valueOrNull()` gives the value or null. One operation
+runs at a time: a second while one is running fails with `LlamaBroException.Busy`.
 
 ## Tools
 
@@ -127,55 +151,50 @@ metrics, LoRA adapters and more. `rawRequest` sends JSON only, so a transcriptio
 
 ## Pictures and speech
 
-A model loaded with its encoder (`ModelSource.file(path) { mmproj = encoderPath }`) sees pictures
-(`model.info.supportsVision`), hears audio (`model.info.supportsAudio`), or both. Pictures and clips come from a
-`MediaSource` (D84), however the app holds them:
+Load a model with its encoder (`ModelSource.file(path) { mmproj = encoderPath }`); `model.info.supportsVision` and
+`supportsAudio` say what it takes. A picture or a clip comes from a `MediaSource`, however the app holds it:
 
-- `MediaSource.file(path)`: a file on the phone, read natively on every request that sends it, so it must stay there;
+- `MediaSource.file(path)`: a file on the phone, read natively on every request that sends it, so keep it there;
 - `MediaSource.descriptor(pfd)`: an open `ParcelFileDescriptor`, such as a `content://` URI from the photo picker or a
-  recorder, read natively from its start and left open for the app to close;
-- `MediaSource.bytes(bytes)`: bytes in memory, copied once into native memory.
-
-A file or descriptor never enters the Java heap, and Kotlin never writes base64: the request carries a placeholder and
-the native side writes the data URL llama-server reads. In a conversation a descriptor is read once into bytes when its
-message is added, off the main thread; later turns and `toJson` use those bytes, so the app may close the descriptor as
-soon as the message is in `messages`, and a descriptor in a `history` you start a conversation from is read once, by its
-first request or by `toJson`, whichever comes first. A file must exist when its message is added (otherwise
-`InvalidRequest` naming the path, and nothing is added), and a descriptor must be open until then: a closed one is
-`InvalidRequest` too. `toJson` saves a file as its path (restore it on the same phone) and bytes as base64. If a
-restored chat's file is gone, its requests fail with `InvalidRequest` naming the path; start a conversation from its
-`messages` with that part removed or replaced (`model.conversation(system, history = …)`). Each turn re-sends the whole
-history, earlier media included; the server's cache keeps the model from re-reading it, but its decoding repeats.
+  recorder;
+- `MediaSource.bytes(bytes)`, or the shorthand `Content.Image(bytes)` and `Content.Audio(bytes)`: bytes in memory.
 
 ```kotlin
+chat.send("What is in this picture?", Content.Image(MediaSource.file(photo.path), "image/png")).collect { … }
+
 // a voice note: ask about it in a chat…
 context.contentResolver.openFileDescriptor(voiceNoteUri, "r")!!.use { pfd ->
-    chat.send("Reply to this voice note.", Content.Audio(MediaSource.descriptor(pfd), "audio/wav")).collect { … }
+    chat.send("Reply to this voice note.", Content.Audio(MediaSource.descriptor(pfd), AudioFormat.Wav)).collect { … }
 }
 // …or only write down what it says
-when (val text = model.transcribe(MediaSource.file(recording.path), language = "en")) {
-    is Typed.Value -> showTranscript(text.value)
-    is Typed.Incomplete -> showTranscript(text.text + "…")   // cut at maxTokens
-    is Typed.Invalid -> Unit                                  // never for a transcript
-}
-
-chat.send("What is in this picture?", Content.Image(MediaSource.file(photo.path), "image/png"))
+val transcript = model.transcribe(MediaSource.file(recording.path), language = "en")
+showTranscript(if (transcript.truncated) transcript.text + "…" else transcript.text)   // truncated: cut at maxTokens
 ```
 
-Audio must be WAV, MP3 or FLAC (`audio/wav`, `audio/mpeg`, `audio/flac`), the formats llama.cpp decodes; the SDK
-converts nothing, so an app that records AAC or Opus records WAV instead (`AudioRecord` gives PCM) or converts first.
-Pictures are decoded by llama.cpp's stb_image: JPEG, PNG, BMP and GIF (its first frame), and the rarer TGA, PSD, HDR,
-PIC and PNM. HEIC, the iPhone's and many Android cameras' format, is not supported, and neither is WebP (upstream
-decodes it only through an `ffmpeg` binary, which an Android app doesn't have): ask the photo picker or camera for
-JPEG, or convert first (`Bitmap.compress`). Another audio format (by MIME type, and by the first bytes of a file or
-bytes, and of a descriptor's, which is read before its message is added), a missing file, an unreadable descriptor, or
-a picture or clip for a model that can't see or hear it throws `InvalidRequest` naming the problem, before anything is
-added to the chat. A picture only llama.cpp can judge (HEIC or WebP) fails the send's first request with
-`InvalidRequest`; then the message is taken out of the chat again, so the next send works. Any other failure keeps the
-message, for `resume()`. `transcribe(source, language,
-prompt, options)` returns `Typed.Value(text)`, or `Typed.Incomplete(Length, textSoFar)` when cut at `maxTokens`;
-`prompt` is upstream's (words to expect, or an instruction in place of the model's own), and `options`' sampling
-applies.
+**Formats.** A clip is `AudioFormat.Wav`, `Mp3` or `Flac`, the formats llama.cpp decodes; the SDK converts nothing,
+so record WAV (`AudioRecord` gives PCM) or convert first. Pictures can be JPEG, PNG, BMP or GIF (its first frame), and
+the rarer TGA, PSD, HDR, PIC and PNM. HEIC and WebP are not supported: ask the photo picker or camera for JPEG, or
+convert with `Bitmap.compress`.
+
+**What to know:**
+
+- A picture or clip that fails a check is never added to the chat: the send fails with `InvalidRequest` naming the
+  problem. The checks are a missing file, a closed or unreadable descriptor, audio whose first bytes aren't WAV, MP3
+  or FLAC, and a model that can't see or hear it.
+- A picture only llama.cpp can judge (HEIC, WebP) fails the send's first request with `InvalidRequest` and is taken
+  out of the chat again, so the next send works. Any other failure keeps the message, for `resume()`.
+- A descriptor is read into bytes when its message is added, off the main thread, so you may close it once the
+  message is in `messages`. In a `history` you start a conversation from, it is read by the first request or
+  `toJson`, whichever comes first.
+- A file or descriptor never enters the Java heap, and Kotlin never writes base64: the native side writes the data
+  URL llama-server reads.
+- `toJson` saves a file as its path (restore it on the same phone) and bytes as base64. If a restored chat's file is
+  gone, its requests fail with `InvalidRequest` naming the path; start a conversation from its `messages` with that
+  part removed or replaced (`model.conversation(system, history = …)`).
+- Each turn sends the whole history again, earlier media included: the server's cache keeps the model from reading
+  it again, but its decoding repeats.
+- `transcribe(source, language, prompt, options)`: `prompt` is upstream's (words to expect, or an instruction in place
+  of the model's own), and `options`' sampling applies.
 
 ### A spoken conversation
 
@@ -208,16 +227,18 @@ voice.cancelReply()  // the user taps stop
 voice.close()        // hang up
 ```
 
-`model.info.voices` lists the voices a model speaks with (`supportsSpeech` when there are any). The SDK sets nothing in the session for you: without a voice, a language and an instruction to answer, LFM3-Omni can
-speak noise for minutes or read the question back (F166). Upstream sends no transcript of the user's words in a
-conversation. To caption them, keep each turn's recording and pass it to `transcribe`; loaded with `parallelSlots = 2`,
-the model transcribes it on the second slot while the reply is made, about 0.3 s later to the first audio on the
-phone (F170, D109). Other realtime events arrive as `VoiceEvent.Other`, and `sendRaw` sends any client event.
+`model.info.voices` lists the voices a model speaks with (`supportsSpeech` when there are any); `voice` must be one of
+them, or `voiceSession` throws `IllegalArgumentException` at once. The SDK sets nothing else in the session for you:
+without a voice, a language and an instruction to answer, LFM3-Omni can speak noise for minutes or read the question
+back. Upstream sends no transcript of the user's words in a conversation. To caption them, keep each turn's recording
+and pass it to `transcribe`; loaded with `parallelSlots = 2`, the model transcribes it on the second slot while the
+reply is made, about 0.3 s later to the first audio on the phone. Other realtime events arrive as `VoiceEvent.Other`,
+and `sendRaw` sends any client event.
 
 ## Embeddings and rerank
 
 An embedding model turns text into vectors and a reranker scores documents against a query, each loaded for its task
-(D65). Private semantic search is a few calls; the similarity is yours to write, here a cosine:
+. Private semantic search is a few calls; the similarity is yours to write, here a cosine:
 
 ```kotlin
 val embedder = llama.loadModel(ModelSource.file(bgePath)) { task = ModelTask.Embedding(Pooling.Mean) }
@@ -244,12 +265,12 @@ throws `InvalidRequest` with llama-server's reason. Pictures and clips come from
 (above): a file or descriptor is read natively, and a clip gets chat's checks. Each input, and each query with a
 document, is read in one batch: past `microBatchSize` (512 tokens) the call throws `InputTooLong(tokens, limit)`, and
 the SDK neither splits the text nor raises the batch. Calling `embed` or `rerank` on a model loaded for another task
-throws `InvalidRequest` naming the task to load with. Per-token vectors (`Pooling.None`) stay raw, through
+throws `IllegalStateException` naming the task to load with. Per-token vectors (`Pooling.None`) stay raw, through
 `Endpoint.EmbeddingsNative`.
 
 ## Typed output and tools
 
-Typed replies and typed tools are an optional library over kotlinx.serialization (D63):
+Typed replies and typed tools are an optional library over kotlinx.serialization:
 
 ```kotlin
 implementation("io.github.whyisitworking:llamabro-typed")
@@ -259,10 +280,10 @@ implementation("io.github.whyisitworking:llamabro-typed")
 Properties keep their declaration order, which is the order the model writes them in, required ones first: declare a
 reasoning field before the answer. A property with a default is optional. An integer is held to its Kotlin type's
 range (`Byte`, `Short`, `Int` and the unsigned types; a `Long` is unbounded), so the model can't write a number that
-doesn't decode (D88). Add `@LbDescription`, `@LbRange` (integers, intersected with the type's range), `@LbLength` and
+doesn't decode. Add `@LbDescription`, `@LbRange` (integers, intersected with the type's range), `@LbLength` and
 `@LbPattern` (strings) and `@LbItems` (lists); decimals take no bounds, since the grammar ignores them.
 
-`@LbPattern` is sent as written, and llama.cpp turns only a subset of regex into grammar (F158). A pattern must be
+`@LbPattern` is sent as written, and llama.cpp turns only a subset of regex into grammar. A pattern must be
 anchored (`^…$`) and use literal characters, `.`, classes such as `[a-z]`, groups, `|` and repetition. Anything else
 (an unanchored pattern, `\d`, `\w`, `\p{…}`, lookarounds, POSIX classes) is dropped: the field takes any string, and
 only llama.cpp's log says so. A malformed pattern (unbalanced parentheses) fails the request with `InvalidRequest`; for
@@ -284,7 +305,7 @@ data class Review(
 
 Ask for a reply as that class with `ask<T>` in a conversation, or `generate<T>` for one reply with no history. The
 model writes the fields in the order they are declared, so `reasoning` comes before `stars`: the model works out its
-verdict in words first and the number follows from it (F143). Declared after, the number would be written first and
+verdict in words first and the number follows from it. Declared after, the number would be written first and
 the reasoning would only justify it.
 
 ```kotlin
@@ -301,13 +322,13 @@ The schema is checked before any request, so a type without one throws `IllegalA
 `options` that set a `responseFormat`. A `responseFormat` in the conversation's defaults is replaced by the typed
 call's, while one set in this call's `options` is refused. Think on works, but the grammar applies only after the
 thinking, so the model thinks without knowing the format: it reasons as if replying to a chat. With no budget, Qwen3.5
-4B thought for 114 s on the phone before writing correct JSON, and 0.8B ran out of tokens (F151). For typed calls,
-turn Think off or set a thinking budget (`reasoning { budgetTokens = 256 }`), and phrase the prompt as the task
-("Extract the person from: …"); a reasoning field in the class gives the model room to think inside the JSON. A typed turn keeps the conversation's tools in the prompt but cannot call them, and stores the JSON as
-the assistant message, so later turns see what the model wrote. Pass `serializer =` and `json =` to use a
-`KSerializer` or a `Json` of your own; the schema and the decoding both follow that `Json`. `askAgain<T>()` replaces the
-last reply as `regenerate()` does, under the same schema; a plain `regenerate()` after a typed `ask` sends no schema,
-since a call's options are its own (D88).
+4B thought for 114 s on the phone before writing correct JSON, and 0.8B ran out of tokens. For typed calls, turn Think
+off or set a thinking budget (`reasoning { budgetTokens = 256 }`), and phrase the prompt as the task ("Extract the
+person from: …"); a reasoning field in the class gives the model room to think inside the JSON. A typed turn keeps the
+conversation's tools in the prompt but cannot call them, and stores the JSON as the assistant message, so later turns
+see what the model wrote. Pass `serializer =` and `json =` to use a `KSerializer` or a `Json` of your own; the schema
+and the decoding both follow that `Json`. `askAgain<T>()` replaces the last reply as `regenerate()` does, under the same
+schema; a plain `regenerate()` after a typed `ask` sends no schema, since a call's options are its own.
 
 A typed tool takes a `@Serializable` arguments class and returns a value. Its parameters' schema is the arguments
 class's `typedSchema`, so the same annotations describe and bound them. The handler is a suspending lambda that
@@ -331,7 +352,7 @@ val chat = model.conversation { toolbox(toolboxOf(forecast, sendEmail)) }
 Inside `conversation { }`, `tool<A, R>(name, description) { … }` makes the tool and registers it in one step.
 
 A `String` result is sent as is (a null `String?` as `null`), `Unit` or `Unit?` as `Done`, anything else as JSON with
-every field, also those at their default (D88); the model sees no schema for a result, so say what it means in the
+every field, also those at their default; the model sees no schema for a result, so say what it means in the
 description. Arguments that don't decode send
 `Error: invalid arguments: <reason>` and the loop goes on, so the model can retry, but only kotlinx-serialization's own
 decode errors (`missing field 'days'`, bad JSON, a custom serializer's `SerializationException`) give their reason.
@@ -345,7 +366,7 @@ that aren't an object. The handler runs where the agent loop calls it: move bloc
 
 ### Annotated toolboxes
 
-Tools can also be methods of a class of yours, written once with annotations and checked when the app builds (D61).
+Tools can also be methods of a class of yours, written once with annotations and checked when the app builds.
 Add the KSP processor and the kotlinx.serialization compiler plugin, which compiles the arguments classes it writes:
 
 ```kotlin
@@ -366,9 +387,9 @@ Mark the class `@LbToolbox` and each tool `@LbTool("description")`. A method tak
 kotlinx.serialization writes (a primitive, `String`, an enum, a `@Serializable` class, a built-in collection of them),
 or carry a type-use `@Serializable(with = …)`, which the generated class keeps; `@SerialName` can't go on a parameter
 (Kotlin allows it on properties only), so a JSON name other than the parameter's needs the arguments class. Bounds
-(`@LbRange`, `@LbLength`, `@LbPattern`, `@LbItems`) and defaults other than `null` need the arguments class too. The name is the method's in snake_case
-unless `@LbTool(name = …)` gives one, after the toolbox's `prefix`. A `suspend` method runs where the loop calls it;
-any other runs on `Dispatchers.IO`, so a blocking call is safe.
+(`@LbRange`, `@LbLength`, `@LbPattern`, `@LbItems`) and defaults other than `null` need the arguments class too. The
+name is the method's in snake_case unless `@LbTool(name = …)` gives one, after the toolbox's `prefix`. A `suspend`
+method runs where the loop calls it; any other runs on `Dispatchers.IO`, so a blocking call is safe.
 
 ```kotlin
 @LbToolbox
@@ -411,16 +432,19 @@ class) in a unit test.
 
 ## Errors
 
-A call or flow fails with a `LlamaBroException`, with the underlying error as its `cause`:
-`InvalidRequest`, `ContextExceeded` (prompt and context sizes), `InputTooLong` (an embedding or rerank input past the
-batch), `NotSupported`, `Unavailable`, `ServerError` (also a reply the SDK couldn't read, with status 200),
-`ModelLoadFailed` (`reason` `FileNotFound`, `InsufficientMemory` or `Other`, with llama.cpp's own reason in the
-message), `DeviceUnavailable` (`DevicePolicy.Only` couldn't be met), `ModelClosed`, `CompactionTruncated`, and `Busy`
-(a second send on a busy conversation).
+Two kinds, as in Kotlin itself:
 
-Using the API wrongly is the one exception, as in Kotlin's own `require` and `check`: an invalid argument throws
-`IllegalArgumentException` and a call made in the wrong state `IllegalStateException`, each listed under the function's
-`@throws`.
+- **Something failed at run time**: a `LlamaBroException`, sealed, with the underlying error as its `cause`.
+  `InvalidRequest` (a picture, clip, file or request body that can't be sent), `ContextExceeded` (prompt and context
+  sizes), `InputTooLong` (an embedding or rerank input past the batch), `NotSupported`, `Unavailable`, `ServerError`
+  (also a reply the SDK couldn't read, with status 200), `ModelLoadFailed` (`reason` `FileNotFound`,
+  `InsufficientMemory` or `Other`, with llama.cpp's own reason in the message), `DeviceUnavailable`
+  (`DevicePolicy.Only` couldn't be met), `ModelClosed`, `CompactionTruncated`, and `Busy` (a second operation on a busy
+  conversation). Catch these.
+- **The API used wrongly**: `IllegalArgumentException` for a bad argument (a negative `memoryReserveMib`,
+  `Speculative.DFlash` with no draft file, a voice the model doesn't have) and `IllegalStateException` for the wrong
+  state (`LlamaBro.create` with another config than the first one, `embed` on a chat model, `compact` with nothing to
+  compact), each listed under the function's `@throws`. Fix the code rather than catching these.
 
 ## Testing your app
 
@@ -445,14 +469,14 @@ Tool handlers can be tested alone with `JsonArgs.parse("""{"city":"Paris"}""")`.
 `embed` and `rerank` take their answers from their own queue: `embeddings(vector, …)` gives one vector per input,
 `ranking(score, …)` one score per document in the documents' order (answered best first and cut at `topN`, as
 llama-server does), and `inputTooLong(tokens)` the batch error. `embedRequests` and `rerankRequests` keep the bodies.
-`transcribe` takes `transcript(text, cut = false)` from the same queue, and `transcribeRequests` keeps its fields. A
-voice session answers each asked-for reply with the next `voiceReply { text("…"); audio(pcm) }`, and `voiceEvents`
-keeps every client event it was sent. The fake model neither sees nor hears until you set `supportsVision` or `supportsAudio` before loading, as a text model
-on the phone refuses pictures and clips.
+`transcribe` takes `transcript(text, truncated = false)` from the same queue, and `transcribeRequests` keeps its fields.
+A voice session answers each asked-for reply with the next `voiceReply { text("…"); audio(pcm) }`, and `voiceEvents`
+keeps every client event it was sent. The fake model neither sees nor hears until you set `supportsVision` or
+`supportsAudio` before loading, as a text model on the phone refuses pictures and clips.
 
 With the hub, add `testImplementation("io.github.whyisitworking:llamabro-hub-testing")`. `FakeLlamaBroHub` is the real
 `LlamaBroHub` over a scripted Hugging Face Hub and a temporary folder, so search, files, downloads, `hasUpdate`,
-recommended sampling and the installed copy behave as in the app, with no network (D70, D75):
+recommended sampling and the installed copy behave as in the app, with no network:
 
 ```kotlin
 val fakeHub = FakeLlamaBroHub {
@@ -482,28 +506,31 @@ and stays the one that loads. Pass `repo =` for a draft from another repo.
 ## Loading
 
 ```kotlin
-llama.loadModel(ModelSource.file(path)) {
-    contextSize = ContextSize.Fixed(8192)    // default ContextSize.Auto, see "Context size"
+llama.loadModel(ModelSource.file(path) { mmproj = encoderPath }) {   // the source: which files
+    contextSize = ContextSize.Fixed(8192)    // the config: how to run them (default ContextSize.Auto, see below)
     onProgress { p -> … }                    // LoadProgress.Loading(fraction); Fetching(download) for a remote source
 }
 ```
 
+The source names the files (the model, its encoder `mmproj`, a DFlash `draft`); the load config says how to run them
+(`contextSize`, `devicePolicy`, `encoderDevice`, `speculative`, `task`, the caches).
+
 A `RemoteModelSource` (the hub's, or an app's own) is fetched first, reporting `LoadProgress.Fetching`, and its local
-files then load as any file would; `estimateFit` on one reads only its headers (D64, D75).
+files then load as any file would; `estimateFit` on one reads only its headers.
 
 `model.info` gives the context size, vision and audio support, template capabilities and the GGUF's metadata.
 `model.close()` returns at once; `closeAndJoin()` waits until the memory is freed. Loading the next model waits for
 a previous close, so two models never share memory. Configure the process-wide runtime (log level, logger) with
 `LlamaBro.create(context, config)`. The logger is attached before native initialisation, so
 llama.cpp and ggml lines reach it from the first call; llama-server's own lines (`SRV_*`, `SLT_*`) do not yet, because
-they go to stderr, which Android discards (F22). With none, the core logs to logcat as `llamabro` and the hub as
-`llamabro-hub`, at `Warn` and above by default; to silence them, pass a logger that drops lines (D66).
+they go to stderr, which Android discards. With none, the core logs to logcat as `llamabro` and the hub as
+`llamabro-hub`, at `Warn` and above by default; to silence them, pass a logger that drops lines.
 
 ### Dependency injection
 
 `LlamaBro.create(context, config)` is the entry point, and there is one runtime per process. The first call creates it;
 a later call with the same settings returns the same object (keeping the first logger), and different settings throw
-`InvalidRequest` at once (D70, D106). A DI container's singleton scope is the natural home; with Hilt:
+`IllegalStateException` at once. A DI container's singleton scope is the natural home; with Hilt:
 
 ```kotlin
 @Module
@@ -517,14 +544,14 @@ object LlamaBroModule {
 ```
 
 The config also holds `npuPolling`, off by default as in upstream: `LlamaBroConfig { npuPolling = true }` has the NPU
-backend poll for the NPU's results instead of sleeping, which keeps the waiting CPU core awake. Chat on the NPU runs 4-7%
-faster and speech about 30% faster, but the chip runs hotter while busy (D86, D90). Patch 0007 keeps the polls from
-flooding logcat with the DSP library's errors (F162).
+backend poll for the NPU's results instead of sleeping, which keeps the waiting CPU core awake. Chat on the NPU runs
+4-7% faster and speech about 30% faster, but the chip runs hotter while busy. Patch 0007 keeps the polls from flooding
+logcat with the DSP library's errors.
 
 The SDK has no DI dependency; without a container, call `LlamaBro.create(context)` where you need it. Keep the config
 on your `Application` or in the DI graph and pass it from every entry point, workers and job services included: a
-fresh process that calls `create(context)` with the default config throws `InvalidRequest` if the UI's process used
-another, or logs through a different logger.
+fresh process that calls `create(context)` with the default config throws `IllegalStateException` if the UI's process
+used another, or logs through a different logger.
 
 Three more load settings, each a llama-server flag:
 
@@ -588,9 +615,9 @@ putting it in the cache. `hub.progress(ref)` gives a `StateFlow<DownloadState>` 
 files live in the app's private `noBackupFilesDir/llamabro/hub` by default; they stay across app restarts and cannot
 be read by other apps. Set `cacheDir` in `HubConfig` to another app-private directory if you want a specific location.
 
-`LlamaBroHub.create(context, config)` gives one hub per cache folder (D70). The same folder with an equal `HubConfig`
+`LlamaBroHub.create(context, config)` gives one hub per cache folder. The same folder with an equal `HubConfig`
 returns the same hub, keeping the first hub's logger and token provider; a different endpoint or progress interval for
-that folder throws `IllegalStateException` naming the folder (D106). Hubs on different folders coexist, so an app can
+that folder throws `IllegalStateException` naming the folder. Hubs on different folders coexist, so an app can
 move its models without a restart. In a DI singleton scope, provide the hub next to the runtime:
 
 ```kotlin
@@ -627,7 +654,7 @@ storage and integrity failures. Its `retryable` flag tells a background worker w
 ### Background downloads
 
 The optional `llamabro-hub-work` runs a download as WorkManager work that outlives the app's process, so the hub
-itself doesn't depend on `androidx.work` (D64, D75):
+itself doesn't depend on `androidx.work`:
 
 ```kotlin
 implementation("io.github.whyisitworking:llamabro-hub-work")
@@ -732,7 +759,7 @@ llama.loadModel(ModelSource.file(path)) { contextSize = ContextSize.Fixed(8192) 
 - **`UpTo(n)`** does the same with your ceiling, for long documents; **`Fixed(n)`** takes exactly `n` and fails if it
   can't be allocated.
 - If even 4096 tokens don't fit, the model loads anyway at 4096 tokens and `model.loadReport.memoryWarning` says how
-  much it needed and how much was free (D57): the check can't see the memory Android frees by closing background apps,
+  much it needed and how much was free: the check can't see the memory Android frees by closing background apps,
   so it doubts models that run. Set `memoryCheck = MemoryCheck.Refuse` to fail with `ModelLoadFailed`
   (`InsufficientMemory`) instead. `model.loadReport.contextSize` and `contextReason` say what was picked and why, e.g.
   "the ceiling of 16384 tokens fits: 4527 MiB of 5291 MiB available".
@@ -750,7 +777,7 @@ By default (`DevicePolicy.Auto`) a model loads on the NPU, else the GPU, else th
 `model.loadReport` says where it runs and why the others weren't used; `llama.backends()` lists what loaded.
 Only one phone is verified so far: a OnePlus 13 (Snapdragon 8 Elite, Hexagon v79, Adreno 830). On a chip you haven't
 tested, a backend that gives wrong output or crashes is not caught by the fallback, so test your target phones or
-choose `Prefer` or `Only(DeviceKind.Cpu)` for them (D92).
+choose `Prefer` or `Only(DeviceKind.Cpu)` for them.
 
 ```kotlin
 llama.loadModel(ModelSource.file(path)) {
@@ -797,9 +824,21 @@ llama.loadModel(ModelSource.file(path)) { speculative = Speculative.Ngram() }
 llama.loadModel(ModelSource.file(path)) { speculative = Speculative.Ngram(then = Speculative.Mtp(draftMax = 4)) }
 ```
 
+DFlash drafts with a small model of its own, so it needs that model's file on the source as well as the setting:
+
+```kotlin
+llama.loadModel(ModelSource.file(path) { draft = draftPath }) { speculative = Speculative.DFlash() }
+llama.loadModel(hub.model(ref) { draft = DraftRequest.dflash() }) { speculative = Speculative.DFlash() }   // the hub
+```
+
+Measure it before you ship it: at llama.cpp b12479 a DFlash draft no longer speeds up JSON on the NPU (14.0 tokens a
+second against 15.4 without), where an earlier build gave 2.3×. Without a draft file, `loadModel` throws
+`IllegalArgumentException`; `speculative` is `Speculative.Off` by default.
+
 ## How it works
 
-The SDK runs llama-server's `server_context` and calls its route handlers directly (no sockets): same output,
-speed and memory as the `llama-server` binary. `sdk/scripts/check.sh` proves it on every change by sending the
-same requests to both and requiring identical answers. Design, decisions and measurements:
-[docs/architecture.md](../docs/architecture.md), [docs/decisions.md](../docs/decisions.md) and [docs/research/findings.md](../docs/research/findings.md).
+The SDK runs llama-server's `server_context` and calls its route handlers directly (no sockets): same output, speed and
+memory as the `llama-server` binary. `sdk/scripts/check.sh` proves it on every change by sending the same requests to
+both and requiring identical answers. Design, decisions and measurements:
+[docs/architecture.md](../docs/architecture.md), [docs/decisions.md](../docs/decisions.md) and
+[docs/research/findings.md](../docs/research/findings.md).

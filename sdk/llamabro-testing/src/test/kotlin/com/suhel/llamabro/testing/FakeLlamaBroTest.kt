@@ -10,6 +10,7 @@ import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.ModelTask
 import com.suhel.llamabro.Ranked
+import com.suhel.llamabro.Transcript
 import com.suhel.llamabro.Typed
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Content
@@ -291,18 +292,15 @@ class FakeLlamaBroTest {
                     supportsAudio = true
                     reply { content("You asked about the weather.") }
                     transcript("What's the weather?")
-                    transcript("What's the", cut = true)
+                    transcript("What's the", truncated = true)
                 }
             val model = fake.llamaBro.loadModel(ModelSource.file("/omni.gguf"))
             val reply = model.conversation().ask("What did I say?", Content.Audio(MediaSource.bytes(wav)))
             assertEquals("You asked about the weather.", (reply as Typed.Value).value)
             assertTrue(fake.chatRequests.single().contains("lb-attachment:0"))
+            assertEquals(Transcript("What's the weather?"), model.transcribe(MediaSource.file("/a.wav")))
             assertEquals(
-                Typed.Value("What's the weather?", "What's the weather?", null),
-                model.transcribe(MediaSource.file("/a.wav")),
-            )
-            assertEquals(
-                Typed.Incomplete(FinishReason.Length, "What's the"),
+                Transcript("What's the", truncated = true),
                 model.transcribe(MediaSource.bytes(wav), language = "en") { sampling { maxTokens = 3 } },
             )
             assertTrue(fake.transcribeRequests[1].contains("\"language\":\"en\""))
@@ -318,7 +316,7 @@ class FakeLlamaBroTest {
             val fake =
                 FakeLlamaBro {
                     supportsAudio = true
-                    transcript("What's the", cut = true)
+                    transcript("What's the", truncated = true)
                 }
             val model = fake.llamaBro.loadModel(ModelSource.file("/omni.gguf"))
             val e = runCatching { model.transcribe(MediaSource.file("/a.wav")) }.exceptionOrNull()

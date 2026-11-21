@@ -183,12 +183,12 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
     }
 
     /**
-     * Queues the next `Model.transcribe`'s text. [cut] ends it at the request's `maxTokens`, so `transcribe` gives
-     * `Typed.Incomplete` with `Length`; a cut one sent without `maxTokens` fails that `transcribe` with a
+     * Queues the next `Model.transcribe`'s text. [truncated] ends it at the request's `maxTokens`, so `transcribe`
+     * gives a `Transcript` with `truncated`; a truncated one sent without `maxTokens` fails that `transcribe` with a
      * `LlamaBroException.ServerError` saying to set it.
      */
-    public fun transcript(text: String, cut: Boolean = false) {
-        synchronized(lock) { taskQueue += TaskAnswer.Transcript(text, cut) }
+    public fun transcript(text: String, truncated: Boolean = false) {
+        synchronized(lock) { taskQueue += TaskAnswer.Transcript(text, truncated) }
     }
 
     /**

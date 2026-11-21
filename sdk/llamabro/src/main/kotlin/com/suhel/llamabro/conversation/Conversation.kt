@@ -1,5 +1,6 @@
 package com.suhel.llamabro.conversation
 
+import androidx.annotation.CheckResult
 import com.suhel.llamabro.Endpoint
 import com.suhel.llamabro.InternalLlamaBroApi
 import com.suhel.llamabro.LlamaBroException
@@ -51,6 +52,7 @@ import java.util.IdentityHashMap
  * [deny] (or `compact`) while another runs ([isBusy]) fails with [LlamaBroException.Busy]; creating the flow never
  * throws.
  */
+@Suppress("TooManyFunctions") // the public facade: each function is one operation of the conversation (D136)
 public class Conversation internal constructor(
     private val model: Model,
     private val system: String?,
@@ -115,6 +117,7 @@ public class Conversation internal constructor(
      * the message, so [resume] can send it again.
      * @param options changes the [Builder.defaults] for this send's requests only (every turn of its tool loop).
      */
+    @CheckResult
     public fun send(
         text: String,
         vararg attachments: Content,
@@ -131,7 +134,7 @@ public class Conversation internal constructor(
             val user = Message.User(read)
             append(user)
             try {
-                runTurns(this, opts)
+                turns(opts)
             } catch (e: LlamaBroException.InvalidRequest) {
                 // media no Kotlin check knows (a HEIC picture, say) failed the first request before any token: the
                 // message would fail every later one, so it leaves the chat, unless something came after it
@@ -161,9 +164,10 @@ public class Conversation internal constructor(
      * have (D62): after `Done(ToolAborted)` it runs the aborted call again. It stops with `Done(ToolCallsPending)`,
      * without asking the model, at a call that needs approval or when a call without a handler still has no result.
      */
+    @CheckResult
     public fun resume(options: RequestOptions.Builder.() -> Unit = {}): Flow<ChatEvent> {
         val opts = config.defaults.copy(options)
-        return exclusive { runTurns(this, opts) }
+        return exclusive { turns(opts) }
     }
 
     /**
@@ -172,6 +176,7 @@ public class Conversation internal constructor(
      * @param options changes the [Builder.defaults] for this flow's requests only, as [resume]'s does.
      * @throws IllegalArgumentException (when collected) if [callId] isn't [pendingApproval]'s id.
      */
+    @CheckResult
     public fun approve(callId: String, options: RequestOptions.Builder.() -> Unit = {}): Flow<ChatEvent> {
         val opts = config.defaults.copy(options)
         return exclusive {
@@ -181,7 +186,7 @@ public class Conversation internal constructor(
                 emitStop(FinishReason.ToolAborted, null, abort)
                 return@exclusive
             }
-            runTurns(this, opts, from = index + 1)
+            turns(opts, from = index + 1)
         }
     }
 
@@ -191,6 +196,7 @@ public class Conversation internal constructor(
      * @param options changes the [Builder.defaults] for this flow's requests only, as [resume]'s does.
      * @throws IllegalArgumentException (when collected) if [callId] isn't [pendingApproval]'s id.
      */
+    @CheckResult
     public fun deny(
         callId: String,
         reason: String? = null,
@@ -200,7 +206,7 @@ public class Conversation internal constructor(
         return exclusive {
             val (index, call) = approvalFor(callId)
             answer(this, call, ToolOutcome.Result("Error: ${reason ?: "denied by the user"}"))
-            runTurns(this, opts, from = index + 1)
+            turns(opts, from = index + 1)
         }
     }
 
@@ -209,6 +215,7 @@ public class Conversation internal constructor(
      * tools/ui's regenerate does. The request repeats the original's messages, so the server's cache covers them.
      * @throws IllegalStateException (when collected) if there is no user message, or a compaction follows it.
      */
+    @CheckResult
     public fun regenerate(options: RequestOptions.Builder.() -> Unit = {}): Flow<ChatEvent> {
         val opts = config.defaults.copy(options)
         return exclusive {
@@ -220,7 +227,7 @@ public class Conversation internal constructor(
             }
             // atomic, as toJson may replace a history descriptor meanwhile (which never changes the list's size)
             _messages.update { it.subList(0, lastUser + 1) }
-            runTurns(this, opts)
+            turns(opts)
         }
     }
 
@@ -280,6 +287,15 @@ public class Conversation internal constructor(
         /** Pre-encode the history after each reply (tools/ui "Pre-fill KV cache after response", default off). */
         public var preEncodeAfterReply: Boolean = false
 
+        /**
+         * When a send, resume, regenerate, approve or deny finds the history too long for the context
+         * (`ContextExceeded`), [compact] it with the defaults and send again, once, in the same flow (default off, as
+         * tools/ui leaves it to the person). The summary isn't streamed as the reply: it appears in [messages] as a
+         * [Message.Compaction]. When there is nothing to compact ([canCompact] is false) or the history is still too
+         * long, the flow fails with `ContextExceeded` as it would without this.
+         */
+        public var autoCompact: Boolean = false
+
         internal val registry = ToolRegistry()
 
         /**
@@ -322,7 +338,16 @@ public class Conversation internal constructor(
     /** tools/ui stores/chat/index.svelte.ts compaction (see [compact]). */
     internal fun compactInternal(preservedSteps: Int, instruction: String): Flow<ChatEvent> {
         require(preservedSteps >= 0) { "preservedSteps must be >= 0" }
-        return exclusive {
+        return exclusive { compactNow(preservedSteps, instruction, streamSummary = true) }
+    }
+
+    /** The compaction itself, inside an operation; [streamSummary] false keeps the summary out of the flow. */
+    private suspend fun FlowCollector<ChatEvent>.compactNow(
+        preservedSteps: Int,
+        instruction: String,
+        streamSummary: Boolean,
+    ) {
+        run {
             val unanswered = unansweredToolCalls(_messages.value)
             check(unanswered.isEmpty()) {
                 "can't compact: tool calls ${unanswered.map {
@@ -344,7 +369,7 @@ public class Conversation internal constructor(
                     when (ev) {
                         is ChatEvent.ContentDelta -> {
                             summary.append(ev.delta)
-                            emit(ev)
+                            if (streamSummary) emit(ev)
                         }
 
                         is ChatEvent.Done -> {
@@ -352,7 +377,7 @@ public class Conversation internal constructor(
                         }
 
                         else -> {
-                            emit(ev)
+                            if (streamSummary) emit(ev)
                         }
                     }
                 }
@@ -364,9 +389,20 @@ public class Conversation internal constructor(
             if (d.reason == FinishReason.Length) throw LlamaBroException.CompactionTruncated()
             if (summary.isNotBlank()) {
                 append(Message.Compaction(summary.toString(), preservedSteps))
-                startPreEncode()
+                if (streamSummary) startPreEncode()
             }
-            emit(d)
+            if (streamSummary) emit(d)
+        }
+    }
+
+    /** [runTurns], with one compaction and retry on `ContextExceeded` when [Builder.autoCompact] is on. */
+    private suspend fun FlowCollector<ChatEvent>.turns(options: RequestOptions, from: Int = 0) {
+        try {
+            runTurns(this, options, from)
+        } catch (e: LlamaBroException.ContextExceeded) {
+            if (!config.autoCompact || !canCompact()) throw e
+            compactNow(Compaction.DEFAULT_PRESERVED_STEPS, Compaction.DEFAULT_PROMPT, streamSummary = false)
+            runTurns(this, options)
         }
     }
 
@@ -822,7 +858,7 @@ private inline fun List<Content>.withDescriptorsRead(read: (MediaSource.Descript
 
                 else -> {
                     replaced = true
-                    Content.Audio(MediaSource.bytes(bytes), (c as Content.Audio).mimeType)
+                    Content.Audio(MediaSource.bytes(bytes), (c as Content.Audio).format)
                 }
             }
         }

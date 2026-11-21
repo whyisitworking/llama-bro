@@ -97,7 +97,7 @@ class DeviceChoiceDeviceTest {
             },
         )
         assertTrue(r.toString(), r.contextSize <= ContextSize.AUTO_CEILING)
-        // Speculative.Auto leaves Qwen3.5's MTP head off on every chip (F67)
+        // the default, Speculative.Off, leaves Qwen3.5's MTP head off on every chip (F67)
         assertEquals(r.toString(), Speculative.Off, r.speculative)
         assertTrue(r.toString(), r.speculativeReason.startsWith("off: MTP"))
     }

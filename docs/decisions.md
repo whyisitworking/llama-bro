@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D135 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D136 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -53,11 +53,11 @@ its amendments to know what holds now.
 | [D81](#d81-typed-tools-that-return-nothing-send-done-one-shot-generation-is-typed-only-the-processors-build-errors-are-tested-with-kctfork) Typed tools that return nothing send "Done"; one-shot generation is typed only; the processor's… | 2026-11-16 | |
 | [D82](#d82-the-sdk-compiles-with-the-catalogs-kotlin-apps-need-kotlin-22-or-later) The SDK compiles with the catalog's Kotlin; apps need Kotlin 2.2 or later | 2026-11-16 | |
 | [D83](#d83-typed-tool-arguments-follow-d62-strictly-an-lbtoolerrors-cause-reaches-the-app) Typed tool arguments follow D62 strictly; an LbToolError's cause reaches the app | 2026-11-16 | [D88](#d88-typed-output-and-tools-after-w6s-review-integer-bounds-by-default-askagain-valueornull-results-with-every-field) |
-| [D84](#d84-audio-and-images-reach-the-model-from-a-file-a-descriptor-or-bytes-the-bridge-writes-chat-medias-base64-transcribe-returns-typedstring) Audio and images reach the model from a file, a descriptor or bytes; the bridge writes chat… | 2026-11-16 | [D87](#d87-a-chats-path-attachments-reach-llama-server-as-file-links-in-the-sdks-media-folder-bytes-and-descriptors-keep-base64) |
+| [D84](#d84-audio-and-images-reach-the-model-from-a-file-a-descriptor-or-bytes-the-bridge-writes-chat-medias-base64-transcribe-returns-typedstring) Audio and images reach the model from a file, a descriptor or bytes; the bridge writes chat… | 2026-11-16 | [D87](#d87-a-chats-path-attachments-reach-llama-server-as-file-links-in-the-sdks-media-folder-bytes-and-descriptors-keep-base64), [D136](#d136-an-api-pass-for-the-first-release-flows-that-warn-auto-compaction-misuse-as-kotlin-exceptions-typed-audio-and-transcripts) |
 | [D87](#d87-a-chats-path-attachments-reach-llama-server-as-file-links-in-the-sdks-media-folder-bytes-and-descriptors-keep-base64) A chat's path attachments reach llama-server as file:// links in the SDK's media folder; bytes… | 2026-11-17 | |
 | [D88](#d88-typed-output-and-tools-after-w6s-review-integer-bounds-by-default-askagain-valueornull-results-with-every-field) Typed output and tools after W6's review: integer bounds by default, `askAgain`, `valueOrNull`,… | 2026-11-17 | |
 | [D102](#d102-public-value-types-are-data-classes-builder-built-requests-and-configurations-keep-their-builders) Public value types are data classes; builder-built requests and configurations keep their builders | 2026-11-19 | |
-| [D103](#d103-one-error-rule-a-call-or-flow-fails-with-a-llamabroexception-only-misuse-throws-kotlins-own-exceptions) One error rule: a call or flow fails with a `LlamaBroException`; only misuse throws Kotlin's own… | 2026-11-19 | |
+| [D103](#d103-one-error-rule-a-call-or-flow-fails-with-a-llamabroexception-only-misuse-throws-kotlins-own-exceptions) One error rule: a call or flow fails with a `LlamaBroException`; only misuse throws Kotlin's own… | 2026-11-19 | [D136](#d136-an-api-pass-for-the-first-release-flows-that-warn-auto-compaction-misuse-as-kotlin-exceptions-typed-audio-and-transcripts) |
 | [D104](#d104-the-engine-and-backend-seams-are-a-spi-package-internal-is-kotlin-internal) The engine and backend seams are a `spi` package; `internal` is Kotlin-internal | 2026-11-19 | |
 | [D105](#d105-api-shape-a-sealed-modelsource-internal-speech-endpoints-long-seeds-typedtext-no-jvm-annotations) API shape: a sealed `ModelSource`, internal speech endpoints, `Long` seeds, `Typed.text`, no… | 2026-11-19 | |
 | [D106](#d106-create-compares-settings-not-the-logger-or-token-provider-hub-locks-key-by-canonical-path-saves-read-version-3-only) `create` compares settings, not the logger or token provider; hub locks key by canonical path;… | 2026-11-19 | |
@@ -184,6 +184,7 @@ its amendments to know what holds now.
 | [D133](#d133-the-sdk-is-published-to-maven-central-through-the-central-portal-with-the-vanniktech-plugin) The SDK is published to Maven Central through the Central Portal, with the vanniktech plugin | 2026-11-21 | [D135](#d135-a-bom-llamabro-bom-keeps-every-module-on-one-version) |
 | [D134](#d134-arm64-v8a-is-the-only-abi) arm64-v8a is the only ABI | 2026-11-22 | |
 | [D135](#d135-a-bom-llamabro-bom-keeps-every-module-on-one-version) A BOM, `llamabro-bom`, keeps every module on one version | 2026-11-22 | |
+| [D136](#d136-an-api-pass-for-the-first-release-flows-that-warn-auto-compaction-misuse-as-kotlin-exceptions-typed-audio-and-transcripts) An API pass for the first release: flows that warn, auto-compaction, misuse as Kotlin exceptions, typed audio and transcripts | 2026-11-22 | |
 
 ---
 
@@ -1778,3 +1779,47 @@ implementation("io.github.whyisitworking:llamabro")
 Consequences: the README, the SDK guide and the architecture guide install through the BOM. A new published module
 needs one line in the BOM's list as well as in `sdk/modules.gradle.kts`. Checked against the local repository: the
 BOM's POM lists all nine at `2.0.0-alpha`, and a project that names only the BOM's version resolves a module to it.
+
+### D136. An API pass for the first release: flows that warn, auto-compaction, misuse as Kotlin exceptions, typed audio and transcripts
+
+Status: Decided (2026-11-22). Amends D84 and D103.
+
+Context: before publishing 2.0.0-alpha, a read of the SDK from an app developer's side found eight places where the API
+or its guide invited mistakes: `send` returned a cold `Flow` that does nothing until collected, with nothing to say so;
+every app had to handle `ContextExceeded` by hand (`canCompact`, `compact`, `resume`), and the guide's first example
+swallowed the case where nothing could be compacted; the same misuse threw `IllegalStateException` from the hub but
+`LlamaBroException.InvalidRequest` from the core (`create` with another config, a negative `memoryReserveMib`, DFlash
+without a draft, `embed` on a chat model), against D103's own rule; `Speculative.Auto` and `Speculative.Off` both meant
+off; DFlash wasn't in the guide; audio formats were MIME strings and `voice` a free string, so a typo failed late;
+`transcribe` returned `Typed<String>` whose `Invalid` can't happen; and the guide's first example kept the conversation
+in a variable a screen can't observe. A published version can't change, so the API was settled first.
+
+Decision:
+
+- **`@CheckResult` on every public function that returns a cold `Flow`** (`Conversation.send`, `resume`, `regenerate`,
+  `approve`, `deny`, `compact`, `Model.chat`, `rawRequest`, `LlamaBroHub.download`). Android lint then reports an
+  unused result; checked on the demo, where `chat.send("hello")` alone is reported as `CheckResult`. The names stay:
+  a suspending `send` would hide the events the agent loop streams.
+- **`Conversation.Builder.autoCompact`**, off by default as tools/ui leaves compaction to the person. On, a send,
+  resume, regenerate, approve or deny that meets `ContextExceeded` compacts once with the defaults and sends again in the
+  same flow; the summary is not streamed as the reply and appears in `messages` as a `Message.Compaction`. With nothing
+  to compact, or still too long, the flow fails as before.
+- **Misuse throws Kotlin's exceptions in every module**, as D103 says: `IllegalStateException` for `LlamaBro.create`
+  with another config (and the native runtime's own "already initialized"), `embed`, `rerank`, `transcribe` or
+  `voiceSession` on a model loaded for another task, and a `RemoteModelSource` that hands back a remote source;
+  `IllegalArgumentException` for a negative `memoryReserveMib`, `Speculative.DFlash` without a draft file, and a `voice`
+  that isn't in `ModelInfo.voices`. `InvalidRequest` is kept for what the data or llama-server refuses.
+- **`Speculative.Auto` is removed**; `Speculative.Off` is the default and keeps `Auto`'s report, the chip's reason
+  drafting is off.
+- **`Content.Audio(source, format: AudioFormat)`**, with `Wav`, `Mp3` and `Flac`, the formats llama.cpp decodes, and a
+  `Content.Audio(bytes)` constructor as `Content.Image` has. A saved conversation still stores the MIME type, so older
+  saves restore. Picture MIME types stay strings: llama.cpp reads a picture's format from its bytes.
+- **`transcribe` returns a `Transcript(text, truncated)`**; the fake's `transcript(text, truncated)` follows.
+- **The SDK guide** opens with a chat screen that keeps the conversation in a `StateFlow`, uses `autoCompact`, and says
+  that a flow must be collected; a table lists what each conversation call does, streaming and suspending; media rules
+  follow their example as a short list; DFlash is documented with its file on the source; the errors section separates
+  run-time failures from misuse; decision and finding numbers are left to the design documents.
+
+Consequences: callers that caught `InvalidRequest` for these misuses, matched `Speculative.Auto`, passed a MIME string
+to `Content.Audio` or matched `transcribe`'s `Typed` change once; the demo, the fakes and the tests did. The `.api`
+dumps record the new shape.

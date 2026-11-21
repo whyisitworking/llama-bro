@@ -1,6 +1,7 @@
 package com.suhel.llamabro.demo.chat
 
 import com.suhel.llamabro.MediaSource
+import com.suhel.llamabro.chat.AudioFormat
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.demo.data.MessageKind
@@ -90,7 +91,7 @@ class HistoryTest {
         val user = history.single() as Message.User
         val audio = user.content.filterIsInstance<Content.Audio>().single()
         assertEquals(MediaSource.file("/data/audio/a.wav"), audio.source)
-        assertEquals("audio/wav", audio.mimeType)
+        assertEquals(AudioFormat.Wav, audio.format)
         assertTrue(user.content.none { it is Content.Text })
     }
 

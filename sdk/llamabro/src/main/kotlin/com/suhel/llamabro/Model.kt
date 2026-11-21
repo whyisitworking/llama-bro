@@ -1,5 +1,6 @@
 package com.suhel.llamabro
 
+import androidx.annotation.CheckResult
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.ChatRequest
 import com.suhel.llamabro.chat.Message
@@ -89,6 +90,7 @@ public class Model internal constructor(
      *
      * @param params path and query parameters, e.g. `id_slot` and `action` for [Endpoint.SlotsAction].
      */
+    @CheckResult
     public fun rawRequest(
         endpoint: Endpoint,
         jsonBody: String,
@@ -397,6 +399,7 @@ public class Model internal constructor(
  * A typed chat completion (level 2). Always streams; emits [ChatEvent]s
  * ending with exactly one `Done`. Errors fail the flow with a [LlamaBroException].
  */
+@CheckResult
 public fun Model.chat(request: ChatRequest): Flow<ChatEvent> = chatInternal(request, null)
 
 /** [Model.chat], reporting the stream's completion id as soon as it's known (Conversation.endReasoning). */

@@ -26,8 +26,16 @@ for 1.x needs changes throughout; this entry lists what an app meets, by area.
 - **Entry points.** `LlamaBro.create(context, config)` and `LlamaBroHub.create(context, config)`, once per process (a DI
   singleton). An equal config returns the same object, a different one throws; the logger and token provider are not
   compared (D70, D106). Your logger sees native init; with none, lines go to logcat as `llamabro` (D66).
-- **One error rule** (D103): a call or a flow fails only with a `LlamaBroException`; misuse (a bad argument, a closed
-  model) throws `IllegalArgumentException` or `IllegalStateException`.
+- **One error rule** (D103, D136): a call or a flow fails only with a `LlamaBroException`; misuse throws
+  `IllegalArgumentException` (a bad argument: a negative `memoryReserveMib`, DFlash without a draft file, a voice the
+  model doesn't have) or `IllegalStateException` (the wrong state: `create` with another config, `embed` on a chat
+  model), in the core and the hub alike.
+- **Flows warn when unused** (D136): `send`, `resume`, `regenerate`, `approve`, `deny`, `compact`, `Model.chat`,
+  `rawRequest` and `hub.download` return cold flows, marked `@CheckResult`, so Android Studio flags a call that is never
+  collected.
+- **A conversation can compact itself** (D136): with `autoCompact = true`, a send that meets `ContextExceeded`
+  summarises the older turns and answers in the same flow. Off by default, as in tools/ui.
+- **`Speculative.Off` is the default**, and the only "off" (D136); `loadReport` says why drafting is off on the chip.
 - **Value types are data classes** (D102); requests and configurations are built with their builders.
 - **Shape** (D105): `ModelSource` is sealed; seeds are `Long?`; `Typed.text` holds a typed reply's raw text. The engine
   and backend seams live in `com.suhel.llamabro.spi`, marked `@InternalLlamaBroApi` (D104).
@@ -42,7 +50,10 @@ for 1.x needs changes throughout; this entry lists what an app meets, by area.
   package (D84). A file attachment is read while the request runs, so keep it until the reply ends (D87). Media reach
   llama-server as `file://` links, about 100 ms faster a turn than base64 (F157); each process has its own media folder.
   A picture or clip that fails is removed from the chat when its first request fails, so the chat isn't wedged.
-- **`embed`, `rerank` and `transcribe`** are typed calls in core (D65, D84).
+- **`embed`, `rerank` and `transcribe`** are typed calls in core (D65, D84). `transcribe` returns a
+  `Transcript(text, truncated)` (D136).
+- **Audio formats are typed** (D136): `Content.Audio(source, AudioFormat.Wav)` with `Wav`, `Mp3` or `Flac`, the formats
+  llama.cpp decodes, and `Content.Audio(bytes)` beside `Content.Image(bytes)`.
 
 ### Tools and typed output
 
@@ -61,7 +72,7 @@ for 1.x needs changes throughout; this entry lists what an app meets, by area.
   upstream's `/v1/realtime` conversation in memory, with no port; its events equal llama-server's over a WebSocket
   (F168). `append` the microphone's 16-bit PCM, `commit()` each turn, and collect `events` for the reply's captions and
   speech; `cancelReply`, `close` and `sendRaw` round it out. The SDK sets nothing for the app: LFM3-Omni needs a voice,
-  a language and an instruction (F166). `ModelInfo.voices` lists the voices a model speaks with (D100).
+  a language and an instruction (F166). `ModelInfo.voices` lists the voices a model speaks with (D100); another `voice` is refused before the session opens (D136).
 - **Captions of the user's words** are the app's: it transcribes its own recording of each turn with `transcribe`
   (D109); upstream sends no transcript (F169).
 - **On the phone's NPU** a reply's first audio comes 0.3 s after the commit and a cancel stops it within 80 ms (F170).

@@ -133,7 +133,7 @@ class RuntimeTest {
         }
 
     @Test
-    fun configMismatchThrowsInvalidRequestOnFirstUse() {
+    fun configMismatchThrowsIllegalStateOnFirstUse() {
         val engine = FakeEngine()
         engine.initResult = { config ->
             if (engine.initConfigs.size > 1 && config != engine.initConfigs.first()) {
@@ -152,7 +152,7 @@ class RuntimeTest {
                     ).loadModel(ModelSource.file("/m.gguf"))
                 }
             }.exceptionOrNull()
-        assertTrue("$err", err is LlamaBroException.InvalidRequest && "different LlamaBroConfig" in err.message!!)
+        assertTrue("$err", err is IllegalStateException && "different LlamaBroConfig" in err.message!!)
     }
 
     @Test

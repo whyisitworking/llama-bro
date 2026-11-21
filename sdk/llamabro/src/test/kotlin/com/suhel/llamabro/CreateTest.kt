@@ -55,7 +55,7 @@ class CreateTest {
     fun createWithADifferentNpuPollingThrows() {
         LlamaBro.create(LlamaBroConfig.Default) { testLlamaBro() }
         val error =
-            assertThrows(LlamaBroException.InvalidRequest::class.java) {
+            assertThrows(IllegalStateException::class.java) {
                 LlamaBro.create(LlamaBroConfig { npuPolling = true }) { testLlamaBro() }
             }
         assertTrue(error.message!!.contains("npuPolling=true"))
@@ -67,7 +67,7 @@ class CreateTest {
         val engine = FakeEngine()
         var built = false
         val error =
-            assertThrows(LlamaBroException.InvalidRequest::class.java) {
+            assertThrows(IllegalStateException::class.java) {
                 LlamaBro.create(LlamaBroConfig { logLevel = LogLevel.Debug }) {
                     built = true
                     testLlamaBro(engine)
@@ -97,7 +97,7 @@ class CreateTest {
         val first = LlamaBro.create(config) { testLlamaBro(engine, config) }
         runBlocking { first.devices() }
         val callsBefore = engine.calls.size
-        assertThrows(LlamaBroException.InvalidRequest::class.java) {
+        assertThrows(IllegalStateException::class.java) {
             LlamaBro.create(LlamaBroConfig { logLevel = LogLevel.Error }) { testLlamaBro(engine) }
         }
         engine.logListener!!(3, "after the refusal\n")

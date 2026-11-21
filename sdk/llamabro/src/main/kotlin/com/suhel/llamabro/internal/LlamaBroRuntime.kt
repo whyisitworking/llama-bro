@@ -136,16 +136,11 @@ internal class LlamaBroRuntime(
                 } catch (ignored: Exception) {
                     null
                 }
-            // LB_ERR_ALREADY_INITIALIZED (2): another LlamaBroConfig was used first in this process
-            throw LlamaBroException.InvalidRequest(
-                if (status == 2) {
-                    "LlamaBro is already initialized with a different LlamaBroConfig: ${ErrorMapping.nativeMessage(
-                        error,
-                    )}"
-                } else {
-                    "LlamaBro runtime init failed: ${ErrorMapping.nativeMessage(error)}"
-                },
-            )
+            // LB_ERR_ALREADY_INITIALIZED (2): another LlamaBroConfig was used first in this process, a misuse
+            check(status != 2) {
+                "LlamaBro is already initialized with a different LlamaBroConfig: ${ErrorMapping.nativeMessage(error)}"
+            }
+            throw LlamaBroException.InvalidRequest("LlamaBro runtime init failed: ${ErrorMapping.nativeMessage(error)}")
         }
     }
 
@@ -657,15 +652,11 @@ internal class LlamaBroRuntime(
     private val shutdownScope = CoroutineScope(SupervisorJob() + ioDispatcher)
 }
 
-/** What decodes and why: what the app set, or for [Speculative.Auto] why it is off on this chip. */
+/** What decodes and why: what the app set, or for [Speculative.Off] why it is off on this chip. */
 private fun speculativeOf(requested: Speculative, kind: DeviceKind, source: ModelSource): Pair<Speculative, String> {
     val result =
         when (requested) {
             Speculative.Off -> {
-                Speculative.Off to "off: set by the app"
-            }
-
-            Speculative.Auto -> {
                 Speculative.Off to "off: ${MtpPolicy.reason(kind)}"
             }
 
@@ -736,10 +727,8 @@ private const val SETTLE_STILL_BYTES = 32L * BYTES_PER_MIB
 
 /** What a [RemoteModelSource] hands back must be local files: a second remote hop isn't followed. */
 private fun requireLocal(local: ModelSource, by: String) {
-    if (local !is FileSource) {
-        throw LlamaBroException.InvalidRequest(
-            "RemoteModelSource.$by must give local files (ModelSource.file), not ${local::class.java.name}",
-        )
+    check(local is FileSource) {
+        "RemoteModelSource.$by must give local files (ModelSource.file), not ${local::class.java.name}"
     }
 }
 

@@ -177,7 +177,7 @@ class ContextFitTest {
             try {
                 LlamaBro(runtime(e, 8 * gib)).loadModel(ModelSource.file("/m.gguf")) { memoryReserveMib = -1 }
                 fail("a negative reserve is refused")
-            } catch (ex: LlamaBroException.InvalidRequest) {
+            } catch (ex: IllegalArgumentException) {
                 assertTrue(ex.message!!.contains("memoryReserveMib"))
             }
         }

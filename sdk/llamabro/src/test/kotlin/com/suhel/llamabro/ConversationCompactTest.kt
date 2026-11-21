@@ -1,5 +1,6 @@
 package com.suhel.llamabro
 
+import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.conversation.Compaction
 import com.suhel.llamabro.conversation.compact
@@ -84,6 +85,66 @@ class ConversationCompactTest {
                 c.send("u2").toList()
                 c.send("u3").toList()
             }
+
+    /** Chat requests answer from [replies] in order; a reply of null is a context overflow. */
+    private fun FakeEngine.answers(vararg replies: List<String>?) {
+        val queue = ArrayDeque(replies.toList())
+        model.onRequest = { r ->
+            when {
+                r.endpoint == "chat" && isPreEncode(r.body) -> {
+                    r.chunk("{}")
+                }
+
+                r.endpoint == "chat" -> {
+                    val next = queue.removeFirst()
+                    if (next ==
+                        null
+                    ) {
+                        r.chunk(Replies.exceed(9000, 8192), status = 400)
+                    } else {
+                        next.forEach { r.chunk(it) }
+                    }
+                }
+
+                else -> {
+                    r.chunk("{}")
+                }
+            }
+            r.done()
+        }
+    }
+
+    @Test
+    fun autoCompactSummarisesAndAnswersInTheSameSend() =
+        runTest {
+            val engine = FakeEngine()
+            val model = testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf"))
+            val turns = (1..6).map { Replies.text("a$it") }.toTypedArray()
+            engine.answers(*turns, null, Replies.text("the summary"), Replies.text("the answer"))
+            val chat = model.conversation { autoCompact = true }
+            (1..6).forEach { chat.send("u$it").toList() }
+            val events = chat.send("u7").toList()
+            // the summary is history, not the reply: only the answer streams
+            assertEquals(
+                "the answer",
+                events.filterIsInstance<ChatEvent.ContentDelta>().joinToString("") { it.delta },
+            )
+            assertEquals(1, events.filterIsInstance<ChatEvent.Done>().size)
+            assertTrue(chat.messages.value.any { it == Message.Compaction("the summary", 10) })
+            assertEquals(Message.Assistant("the answer"), chat.messages.value.last())
+        }
+
+    @Test
+    fun autoCompactWithNothingToCompactStillFails() =
+        runTest {
+            val engine = FakeEngine()
+            val model = testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf"))
+            engine.answers(null)
+            val chat = model.conversation { autoCompact = true }
+            val e = runCatching { chat.send("a very long document").toList() }.exceptionOrNull()
+            assertTrue("$e", e is LlamaBroException.ContextExceeded)
+            assertEquals(Message.user("a very long document"), chat.messages.value.last())
+        }
 
     @Test
     fun summaryRequestSharesChatPrefix() =

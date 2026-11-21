@@ -189,7 +189,7 @@ class ModelConfigTest {
             assertEquals(Speculative.Mtp(2), mtp.loadReport.speculative)
             assertEquals("MTP: set by the app", mtp.loadReport.speculativeReason)
             val off = testLlamaBro().loadModel(ModelSource.file("/m.gguf")) { speculative = Speculative.Off }
-            assertEquals("off: set by the app", off.loadReport.speculativeReason)
+            assertTrue(off.loadReport.speculativeReason, off.loadReport.speculativeReason.startsWith("off: "))
         }
 
     @Test
@@ -238,7 +238,7 @@ class ModelConfigTest {
             try {
                 testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf")) { speculative = Speculative.DFlash() }
                 throw AssertionError("DFlash without a draft loaded")
-            } catch (error: LlamaBroException.InvalidRequest) {
+            } catch (error: IllegalArgumentException) {
                 assertEquals("Speculative.DFlash needs ModelSource.file(path) { draft = … }", error.message)
             }
             assertTrue(engine.loadConfigs.isEmpty())
