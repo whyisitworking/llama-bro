@@ -123,11 +123,17 @@ jobs:
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >
-          gh release create "${GITHUB_REF_NAME}" out/*
-          --title "Llama Bro ${GITHUB_REF_NAME}"
-          --generate-notes
-          --verify-tag
+        # the notes are the version's section of docs/release-notes.md, else GitHub's list of changes
+        run: |
+          awk -v v="## ${GITHUB_REF_NAME}" '$0 == v {on = 1; next} on && /^## / {exit} on' docs/release-notes.md > notes.md
+          if [ -s notes.md ]; then
+            printf '\nInstall: `implementation("io.github.whyisitworking:llamabro:%s")` from Maven Central.\n' \
+              "${GITHUB_REF_NAME}" >> notes.md
+            notes=(--notes-file notes.md)
+          else
+            notes=(--generate-notes)
+          fi
+          gh release create "${GITHUB_REF_NAME}" out/* --title "Llama Bro ${GITHUB_REF_NAME}" "${notes[@]}" --verify-tag
 
   sdk:
     name: SDK to the Maven Central Portal
