@@ -11,11 +11,14 @@ import com.suhel.llamabro.Endpoint
 import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
+import com.suhel.llamabro.ModelTask
 import com.suhel.llamabro.Speculative
 import com.suhel.llamabro.chat
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.ChatRequest
 import com.suhel.llamabro.chat.Message
+import com.suhel.llamabro.embed
+import com.suhel.llamabro.rerank
 import com.suhel.llamabro.voice.VoiceEvent
 import com.suhel.llamabro.voice.VoiceSession
 import com.suhel.llamabro.voiceSession
@@ -75,6 +78,13 @@ import kotlin.math.roundToLong
  * issuing the cancel until `GET /slots` (`is_processing` of every slot) says the engine is idle, polled every few
  * milliseconds, and `cancelReturnMs`, the time `cancelAndJoin` took to return, which is only the app's side. A slot
  * that never goes idle within 30 s fails the arm.
+ *
+ * The ladder arms (`ladder-<model>-<chip>`, [LADDER]) run six models from 230M to 4B parameters on each chip with a
+ * short request, [LADDER_DOCUMENT_TOKENS] tokens of the document and at most [LADDER_REPLY_TOKENS] reply tokens, so the
+ * README can show how speed falls with size on every chip. The `embed-<chip>` arms load bge-small as an embedding
+ * model and embed [BATCH] sentences of the document in one request; the `rerank-<chip>` arms load jina-reranker-tiny
+ * and rank the same sentences against one question. Both send one request first to warm the chip, then time a second:
+ * `itemsPerSecond` is the sentences over its seconds, `batchMs` its time.
  */
 @RunWith(AndroidJUnit4::class)
 class BenchDeviceTest {
@@ -120,7 +130,8 @@ class BenchDeviceTest {
                 },
             ) {
                 devicePolicy = DevicePolicy.Only(arm.device)
-                contextSize = ContextSize.Fixed(CONTEXT)
+                contextSize = ContextSize.Fixed(arm.context)
+                task = arm.task
                 speculative = arm.speculative
                 // every request sets cache_prompt false, so the cache would only take memory the draft needs (F88)
                 ramCacheMib = 0
@@ -139,6 +150,7 @@ class BenchDeviceTest {
             return when (arm.workload) {
                 Workload.Stop -> loaded.copy(extra = stop(model, arm))
                 Workload.Voice -> voice(model, loaded)
+                Workload.Embed, Workload.Rerank -> loaded.copy(extra = batch(model, arm))
                 else -> reply(model, arm, loaded)
             }
         } finally {
@@ -156,6 +168,28 @@ class BenchDeviceTest {
             predictedTps = timings.predictedPerSecond.rounded(),
             draftAccepted = timings.draftAccepted,
         )
+    }
+
+    /** One warm-up request, then one timed: [BATCH] sentences embedded, or ranked against one question. */
+    private suspend fun batch(model: Model, arm: Arm): Map<String, Double> {
+        val sentences =
+            asset("document.txt")
+                .split(Regex("(?<=[.!?])\\s+"))
+                .map { it.trim() }
+                .filter { it.length > MIN_SENTENCE }
+                .take(BATCH)
+        check(sentences.size == BATCH) { "the document has ${sentences.size} sentences, not $BATCH" }
+        val send: suspend () -> Unit =
+            if (arm.workload == Workload.Embed) {
+                { check(model.embed(sentences).size == BATCH) { "fewer vectors than sentences" } }
+            } else {
+                { check(model.rerank(RERANK_QUERY, sentences).size == BATCH) { "fewer scores than sentences" } }
+            }
+        send()
+        val started = SystemClock.elapsedRealtime()
+        send()
+        val ms = (SystemClock.elapsedRealtime() - started).coerceAtLeast(1).toDouble()
+        return mapOf("batchMs" to ms, "itemsPerSecond" to (BATCH * MS_PER_SECOND / ms).rounded())
     }
 
     /** Cancels the reply [STOP_AFTER_MS] after its first token; returns `stopMs` and `cancelReturnMs`. */
@@ -199,7 +233,8 @@ class BenchDeviceTest {
         val prompt =
             when (arm.workload) {
                 Workload.Summarise, Workload.Stop -> {
-                    "${firstTokens(model, asset("document.txt"))}\n\nSummarise the document above."
+                    val document = firstTokens(model, asset("document.txt"), arm.documentTokens)
+                    "$document\n\nSummarise the document above."
                 }
 
                 Workload.Json -> {
@@ -214,8 +249,8 @@ class BenchDeviceTest {
                         "```kotlin\n${asset("edit.kt")}```"
                 }
 
-                Workload.Voice -> {
-                    error("the voice arm sends no chat")
+                Workload.Voice, Workload.Embed, Workload.Rerank -> {
+                    error("the ${arm.name} arm sends no chat")
                 }
             }
         return ChatRequest {
@@ -229,10 +264,10 @@ class BenchDeviceTest {
         }
     }
 
-    /** The first [DOCUMENT_TOKENS] tokens of [text] as the model counts them, so every model reads as much. */
-    private suspend fun firstTokens(model: Model, text: String): String {
+    /** The first [count] tokens of [text] as the model counts them, so every model reads as much. */
+    private suspend fun firstTokens(model: Model, text: String, count: Int): String {
         val tokens = call(model, Endpoint.Tokenize, buildJsonObject { put("content", text) })
-        val cut = JsonArray(tokens.getValue("tokens").jsonArray.take(DOCUMENT_TOKENS))
+        val cut = JsonArray(tokens.getValue("tokens").jsonArray.take(count))
         return call(model, Endpoint.Detokenize, buildJsonObject { put("tokens", cut) })
             .getValue("content")
             .jsonPrimitive.content
@@ -344,9 +379,12 @@ class BenchDeviceTest {
         val speculative: Speculative = Speculative.Off,
         val draft: String? = null,
         val projector: String? = null,
+        val documentTokens: Int = DOCUMENT_TOKENS,
+        val context: Int = CONTEXT,
+        val task: ModelTask = ModelTask.Generate,
     )
 
-    private enum class Workload { Summarise, Json, Edit, Stop, Voice }
+    private enum class Workload { Summarise, Json, Edit, Stop, Voice, Embed, Rerank }
 
     /** One line of bench.jsonl; a field an arm doesn't measure is null. */
     @Serializable
@@ -372,10 +410,29 @@ class BenchDeviceTest {
         const val LFM = "LFM3-Omni-2B-Q4_K_M.gguf"
         const val LFM_PROJECTOR = "mmproj-LFM3-Omni-2B-Q8_0.gguf"
         const val QUESTION_CLIP = "bench-question.pcm"
+        const val EMBEDDER = "bge-small-f16.gguf"
+        const val RERANKER = "jina-reranker-tiny-f16.gguf"
+
+        /** The ladder's models, smallest first: the arm name's middle part, and the file. */
+        val LADDER =
+            listOf(
+                "lfm230m" to "LFM2.5-230M-Q4_K_M.gguf",
+                "qwen08b" to "Qwen3.5-0.8B-Q4_K_M.gguf",
+                "lfm17b" to "LFM3-1.7B-Q4_K_M.gguf",
+                "llama3b" to "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+                "gemma4b" to "gemma-3-4b-it-qat-UD-Q4_K_XL.gguf",
+                "qwen4b" to QWEN,
+            )
 
         const val CONTEXT = 8192
         const val DOCUMENT_TOKENS = 2048
         const val SUMMARY_TOKENS = 128
+        const val LADDER_DOCUMENT_TOKENS = 512
+        const val LADDER_REPLY_TOKENS = 64
+        const val SMALL_CONTEXT = 512
+        const val BATCH = 32
+        const val MIN_SENTENCE = 20
+        const val RERANK_QUERY = "How much will it cost to raise the quay?"
         const val STRUCTURED_TOKENS = 256
         const val STOP_AFTER_MS = 500L
         const val IDLE_TIMEOUT_MS = 30_000L
@@ -386,14 +443,54 @@ class BenchDeviceTest {
         const val MS_PER_SECOND = 1000.0
         const val TENTHS = 10.0
 
+        val CHIPS = mapOf("npu" to DeviceKind.Npu, "gpu" to DeviceKind.Gpu, "cpu" to DeviceKind.Cpu)
+
         fun chips(prefix: String, model: String) =
-            mapOf("npu" to DeviceKind.Npu, "gpu" to DeviceKind.Gpu, "cpu" to DeviceKind.Cpu).map { (suffix, kind) ->
-                Arm("$prefix-$suffix", model, kind, Workload.Summarise, SUMMARY_TOKENS)
+            CHIPS.map { (suffix, kind) -> Arm("$prefix-$suffix", model, kind, Workload.Summarise, SUMMARY_TOKENS) }
+
+        val LADDER_ARMS =
+            LADDER.flatMap { (key, model) ->
+                CHIPS.map { (suffix, kind) ->
+                    Arm(
+                        "ladder-$key-$suffix",
+                        model,
+                        kind,
+                        Workload.Summarise,
+                        LADDER_REPLY_TOKENS,
+                        documentTokens = LADDER_DOCUMENT_TOKENS,
+                    )
+                }
+            }
+
+        val BATCH_ARMS =
+            CHIPS.flatMap { (suffix, kind) ->
+                listOf(
+                    Arm(
+                        "embed-$suffix",
+                        EMBEDDER,
+                        kind,
+                        Workload.Embed,
+                        0,
+                        context = SMALL_CONTEXT,
+                        task = ModelTask.Embedding(),
+                    ),
+                    Arm(
+                        "rerank-$suffix",
+                        RERANKER,
+                        kind,
+                        Workload.Rerank,
+                        0,
+                        context = SMALL_CONTEXT,
+                        task = ModelTask.Rerank,
+                    ),
+                )
             }
 
         val ARMS =
             chips("qwen", QWEN) +
                 chips("lfm", LFM) +
+                LADDER_ARMS +
+                BATCH_ARMS +
                 listOf(
                     // the SDK passes a draft to llama-server only for Speculative.DFlash, so json-off loads none
                     Arm("json-off", QWEN, DeviceKind.Npu, Workload.Json, STRUCTURED_TOKENS),

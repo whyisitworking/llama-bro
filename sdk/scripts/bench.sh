@@ -10,9 +10,11 @@
 #            `restore` arm); needs Qwen3.5 4B and its DFlash draft (read by json-dflash only), and for voice LFM3-Omni 2B
 #            and its projector, and macOS `say` and `afconvert` for its question clip (without them the voice arm is
 #            skipped with a printed reason, and the LFM3-Omni files are not needed)
+#   ladder   six models from 230M to 4B on the NPU, GPU and CPU, each with a short request (ladder-<model>-<chip>), then
+#            embeddings with bge-small and reranking with jina-reranker-tiny on each chip (embed-<chip>, rerank-<chip>)
 #
-# One round runs every arm of the mode once; the arm order reverses in every second round, so no arm always runs on
-# the warmest or the coolest phone. The two modes accumulate in a work folder, so after both, results.json holds every
+# One round (one by default) runs every arm of the mode once; the arm order reverses in every second round, so no arm always runs on
+# the warmest or the coolest phone. The modes accumulate in a work folder, so after all three, results.json holds every
 # arm. results.json and the charts are replaced only when a mode finished completely: a mode that stops early (a
 # missing model, a phone that does not cool, a phone that drops off adb) leaves both as they were, and keeps every line
 # measured so far in the work folder ($mode.jsonl.partial, named in the stop message). An arm whose instrumentation
@@ -24,14 +26,14 @@
 # counts the runs that went well and the runs that failed, and names any arm that failed in every round. A command
 # that fails where the script has no message of its own stops it with the line it stopped at.
 #
-# Both modes must be measured on one build: the build is the last commit that touched sdk/ (with -dirty when sdk/ has
+# Every mode must be measured on one build: the build is the last commit that touched sdk/ (with -dirty when sdk/ has
 # uncommitted changes) and llama.cpp's build (llamaCppBuild: the submodule's latest reachable tag, such as b12479, or
 # its short commit hash when no tag is reachable, as in a shallow clone of the submodule), so committing results or
-# docs between the modes does not change it. A mode refuses to start when the other mode's kept lines are from another
+# docs between the modes does not change it. A mode refuses to start when another mode's kept lines are from another
 # build.
 #
-# usage: ANDROID_SERIAL=<serial> sdk/scripts/bench.sh speed|extras   (ANDROID_SERIAL may be left out with one phone)
-# env:   LB_BENCH_ROUNDS         rounds per arm (default 3)
+# usage: ANDROID_SERIAL=<serial> sdk/scripts/bench.sh speed|extras|ladder   (ANDROID_SERIAL may be left out with one phone)
+# env:   LB_BENCH_ROUNDS         rounds per arm (default 1)
 #        LB_BENCH_MODELS_DIR     where the model files are on this machine: folders separated by colons, searched in
 #                                order (default ~/Downloads/llamabro-test:~/Downloads:~/llamabro-models); a file
 #                                already in the app's files on the phone is not pushed again unless its size differs
@@ -51,11 +53,11 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 mode="${1:-}"
 case "$mode" in
-    speed | extras) ;;
-    *) echo "usage: ANDROID_SERIAL=<serial> sdk/scripts/bench.sh speed|extras" >&2; exit 2 ;;
+    speed | extras | ladder) ;;
+    *) echo "usage: ANDROID_SERIAL=<serial> sdk/scripts/bench.sh speed|extras|ladder" >&2; exit 2 ;;
 esac
 
-rounds="${LB_BENCH_ROUNDS:-3}"
+rounds="${LB_BENCH_ROUNDS:-1}"
 case "$rounds" in '' | *[!0-9]* | 0) echo "LB_BENCH_ROUNDS must be a positive whole number" >&2; exit 2 ;; esac
 models_dirs="${LB_BENCH_MODELS_DIR:-$HOME/Downloads/llamabro-test:$HOME/Downloads:$HOME/llamabro-models}"
 cool_interval="${LB_BENCH_COOL_INTERVAL:-10}"
@@ -73,6 +75,9 @@ QWEN_DRAFT=Qwen3.5-4B-DFlash-Q8_0.gguf
 LFM=LFM3-Omni-2B-Q4_K_M.gguf
 LFM_PROJECTOR=mmproj-LFM3-Omni-2B-Q8_0.gguf
 CLIP=bench-question.pcm
+LADDER_FILES="LFM2.5-230M-Q4_K_M.gguf Qwen3.5-0.8B-Q4_K_M.gguf LFM3-1.7B-Q4_K_M.gguf Llama-3.2-3B-Instruct-Q4_K_M.gguf gemma-3-4b-it-qat-UD-Q4_K_XL.gguf $QWEN"
+EMBEDDER=bge-small-f16.gguf
+RERANKER=jina-reranker-tiny-f16.gguf
 # F170's question
 QUESTION="Can you tell me a short story about a lighthouse keeper who finds a message in a bottle?"
 
@@ -246,19 +251,27 @@ fi
 if [ -n "$(git -C "$root" status --porcelain -- sdk 2> /dev/null || true)" ]; then
     sdk_commit="$sdk_commit-dirty"
 fi
-# the other mode's kept lines must be from this build: found out now, not after an hour of phone time
-other=extras; [ "$mode" = speed ] || other=speed
-if [ -f "$work/$other.jsonl" ]; then
+# the other modes' kept lines must be from this build: found out now, not after an hour of phone time
+for other in speed extras ladder; do
+    [ "$other" != "$mode" ] && [ -f "$work/$other.jsonl" ] || continue
     kept="$(py build "$work/$other.jsonl")"
     if [ "$kept" != "$sdk_commit $llama_build" ]; then
-        die "the $other lines in $work were measured on build ${kept% *} with llama.cpp ${kept#* }, this run is build $sdk_commit with llama.cpp $llama_build. Measure both modes on one build: delete $work/$other.jsonl and run sdk/scripts/bench.sh $other again after this one"
+        die "the $other lines in $work were measured on build ${kept% *} with llama.cpp ${kept#* }, this run is build $sdk_commit with llama.cpp $llama_build. Measure every mode on one build: delete $work/$other.jsonl and run sdk/scripts/bench.sh $other again after this one"
     fi
-fi
+done
 
 # the arms of the mode, and the files they read
 if [ "$mode" = speed ]; then
     arms="qwen-npu qwen-gpu qwen-cpu lfm-npu lfm-gpu lfm-cpu"
     needs="$QWEN $LFM"
+elif [ "$mode" = ladder ]; then
+    arms=""
+    for m in lfm230m qwen08b lfm17b llama3b gemma4b qwen4b; do
+        for c in npu gpu cpu; do arms="$arms ladder-$m-$c"; done
+    done
+    for c in npu gpu cpu; do arms="$arms embed-$c rerank-$c"; done
+    arms="${arms# }"
+    needs="$LADDER_FILES $EMBEDDER $RERANKER"
 else
     arms="json-off json-dflash edit-off edit-ngram-mtp stop voice restore"
     needs="$QWEN $QWEN_DRAFT $LFM $LFM_PROJECTOR"
@@ -449,5 +462,8 @@ mv "$tmp/results.json" "$out_dir/results.json"
 cp "$tmp"/charts/*.svg "$charts_dir/"
 rm -rf "$tmp"
 echo "$mode finished: $tally; wrote $out_dir/results.json and the charts in $charts_dir"
-[ "$mode" = speed ] && echo "next: sdk/scripts/bench.sh extras" || true
+case "$mode" in
+    speed) echo "next: sdk/scripts/bench.sh extras" ;;
+    extras) echo "next: sdk/scripts/bench.sh ladder" ;;
+esac
 exit 0
