@@ -2,9 +2,10 @@ plugins {
     alias(libs.plugins.android.library)
     id("llamabro.library")
     id("llamabro.api-check")
+    id("llamabro.publish")
 }
 
-group = "io.github.whyisitworking"
+description = "FakeLlamaBroHub: Llama Bro's hub over a scripted Hub and disk, for an app's JVM tests."
 
 // FakeLlamaBroHub for apps' JVM tests (D70, D75): the real hub over a scripted Hub and disk. A module of its own so
 // that apps without the hub never get it, as llamabro-testing is for the core (D27).

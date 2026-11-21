@@ -2,9 +2,11 @@ plugins {
     alias(libs.plugins.android.library)
     id("llamabro.library")
     id("llamabro.api-check")
+    id("llamabro.publish")
 }
 
-group = "io.github.whyisitworking"
+description =
+    "Runs llama.cpp's llama-server core in-process on Android behind a Kotlin API: chat, conversations, tools, media, embeddings and speech."
 
 android {
     namespace = "com.suhel.llamabro"

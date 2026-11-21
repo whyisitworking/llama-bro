@@ -5,9 +5,10 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     // for the tests only: AnnotatedToolboxTest runs a toolbox the real processor wrote (D61)
     alias(libs.plugins.ksp)
+    id("llamabro.publish")
 }
 
-group = "io.github.whyisitworking"
+description = "Typed output and typed tools for Llama Bro, over kotlinx.serialization."
 
 // Typed output and typed tools over kotlinx.serialization (D63): the schema converter and its annotations. A module of
 // its own so that core's public API never mentions kotlinx.serialization.

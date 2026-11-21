@@ -8,6 +8,7 @@
 | [research/history.md](research/history.md) | How the SDK got here, phase by phase, and what is still open |
 | [release-notes.md](release-notes.md) | What changed for apps in each phase: breaking changes, new API, speed-ups and fixes |
 | [testing.md](testing.md) | The verification gates, what each proves, what it needs, and the performance budgets |
+| [publishing.md](publishing.md) | How a version of the SDK is staged, checked and released on Maven Central, and the one-time setup |
 | [design/demo-app.md](design/demo-app.md) | The demo app's design reference: experience, naming, limits, design system |
 | [design/mockups/](design/mockups/README.md) | The HTML mockups the demo app was built from |
 | [../research/README.md](../research/README.md) | The experiments behind the findings: scripts, method and raw results |

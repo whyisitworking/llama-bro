@@ -1,9 +1,10 @@
 plugins {
     alias(libs.plugins.android.library)
     id("llamabro.library")
+    id("llamabro.publish")
 }
 
-group = "io.github.whyisitworking"
+description = "The optional OpenCL (Adreno GPU) backend for Llama Bro."
 
 // The OpenCL GPU backend: libllamabro-ggml-opencl.so with upstream's Adreno kernels, built in
 // Qualcomm's image by sdk/native/scripts/build-backends.sh. Being on the classpath is enough (F61).

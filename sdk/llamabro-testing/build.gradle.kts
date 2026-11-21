@@ -2,9 +2,10 @@ plugins {
     alias(libs.plugins.android.library)
     id("llamabro.library")
     id("llamabro.api-check")
+    id("llamabro.publish")
 }
 
-group = "io.github.whyisitworking"
+description = "FakeLlamaBro: Llama Bro's Kotlin layer over a scripted engine, for an app's JVM tests."
 
 // FakeLlamaBro for apps' JVM tests (D27): the real llamabro Kotlin layer over a scripted engine, no native code
 android {

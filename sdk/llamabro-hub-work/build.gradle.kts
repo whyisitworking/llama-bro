@@ -2,9 +2,10 @@ plugins {
     alias(libs.plugins.android.library)
     id("llamabro.library")
     id("llamabro.api-check")
+    id("llamabro.publish")
 }
 
-group = "io.github.whyisitworking"
+description = "A WorkManager worker that runs Llama Bro's hub downloads in the background."
 
 android {
     namespace = "com.suhel.llamabro.hub.work"

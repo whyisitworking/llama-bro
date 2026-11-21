@@ -16,6 +16,9 @@ The libraries llama.cpp vendors and builds in: cpp-httplib (MIT), nlohmann/json 
 stb_image (MIT or public domain), miniaudio (MIT-0 or public domain)
   Licences in their headers under sdk/native/third_party/llama.cpp/vendor/.
 
+libc++_shared.so (in llamabro), the C++ runtime from the Android NDK
+  Apache License 2.0 with LLVM Exceptions. Copyright the LLVM Project contributors.
+
 The Hexagon NPU skeletons (libggml-htp-v*.so, in llamabro-hexagon)
   Built from llama.cpp's MIT ggml-hexagon sources with Qualcomm's Hexagon SDK and toolchain.
   NOT YET CONFIRMED: the Hexagon SDK's licence terms for redistributing binaries built with it

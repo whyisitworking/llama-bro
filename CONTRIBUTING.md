@@ -77,6 +77,13 @@ it with `./gradlew -p sdk :<module>:apiDump`, committing the `.api` file with th
 4. Run the checks above. Commit with a message whose first line is `area: what is true now` (`hub: …`, `demo: …`) and whose body says why.
 5. Open a pull request describing the change, how you verified it, and anything you could not verify.
 
+## Publishing
+
+The SDK's modules are published to Maven Central by the maintainer, by hand. Every published module applies the
+`llamabro.publish` convention (`sdk/build-logic`), which sets its coordinates, POM and signing; a new module adds that
+plugin and a `description`. `./gradlew -p sdk publishToMavenLocal` shows what would be uploaded and needs no key or
+account. The setup, the properties and the release steps are in [docs/publishing.md](docs/publishing.md).
+
 ## Reporting a problem
 
 Open an issue with the device and Android version, the model and quantization, what you ran, and the log. For a wrong or

@@ -2,9 +2,10 @@ plugins {
     alias(libs.plugins.android.library)
     id("llamabro.library")
     id("llamabro.api-check")
+    id("llamabro.publish")
 }
 
-group = "io.github.whyisitworking"
+description = "Model search and resumable downloads from the Hugging Face Hub for Llama Bro."
 
 android {
     namespace = "com.suhel.llamabro.hub"

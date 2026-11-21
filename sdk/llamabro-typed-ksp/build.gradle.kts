@@ -1,8 +1,9 @@
 plugins {
     kotlin("jvm")
+    id("llamabro.publish")
 }
 
-group = "io.github.whyisitworking"
+description = "The KSP processor for Llama Bro's typed tools: turns an @LbToolbox class into a toolbox."
 
 // The annotation processor for typed tools (D61, D63): it turns an @LbToolbox class into an asToolbox() extension
 // built on llamabro-typed's tool(…). A JVM library that apps add with `ksp(…)`; it reads the annotations by name, so it

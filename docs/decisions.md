@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D132 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D133 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -178,6 +178,7 @@ its amendments to know what holds now.
 | [D4](#d4-distribution) Distribution | 2026-11-03 | |
 | [D21](#d21-verification) Verification | 2026-11-04 | |
 | [D132](#d132-the-readme-shows-two-demo-screens-the-no-screenshots-rule-keeps-one-exception) The README shows two demo screens; the no-screenshots rule keeps one exception | 2026-11-21 | |
+| [D133](#d133-the-sdk-is-published-to-maven-central-through-the-central-portal-with-the-vanniktech-plugin) The SDK is published to Maven Central through the Central Portal, with the vanniktech plugin | 2026-11-21 | |
 
 ---
 
@@ -1641,3 +1642,81 @@ Decision:
 Consequences: amends the no-screenshots line of `CLAUDE.md`. `CONTRIBUTING.md`'s rule names personal and
 machine-specific data, not screenshots, and is unchanged. The images are retaken by hand when the chat or voice
 screens change enough that they no longer match the app.
+
+### D133. The SDK is published to Maven Central through the Central Portal, with the vanniktech plugin
+
+Status: Decided (2026-11-21). Nothing is published yet: the build side is in place and proven against the local Maven
+repository; the first upload is the maintainer's, by hand ([publishing.md](publishing.md)).
+
+Context: D4 distributes the SDK as prebuilt AARs on Maven Central under D2's group, and no module had a version, a
+publication, a POM or signing. Sonatype shut the old OSSRH staging host down on 2025-06-30; uploads now go to the
+Central Portal (central.sonatype.com), which has no official Gradle plugin and lists community ones. Central requires,
+for every artifact, a sources jar and a javadoc jar (a placeholder is accepted), a `.asc` signature and checksums, and
+a POM with name, description, URL, licence, developer and SCM. Two ways were weighed:
+
+- **Gradle's `maven-publish` and `signing`, plus a Portal upload plugin** (GradleUp's nmcp, or JReleaser). Each
+  Android module would declare its release variant's publication with sources and javadoc jars, the POM and the
+  signing rule by hand in the conventions, and the upload would come from a second plugin.
+- **`com.vanniktech.maven.publish`.** One plugin that sets up the Android and Kotlin/JVM publications, the jars, the
+  POM DSL, signing from an in-memory key and the Portal upload, with a manual release as its default. It is on the
+  Portal's list, and it is what most Android libraries publish with.
+
+Decision:
+
+- **The vanniktech plugin, 0.37.0, its base variant** (`com.vanniktech.maven.publish.base`), applied by one
+  convention, `llamabro.publish` in `sdk/build-logic`. The base plugin configures nothing from Gradle properties by
+  itself, so everything a release depends on is written in the convention. It asks for Gradle 9.0, AGP 8.13 and
+  Kotlin 2.2; the SDK builds with Gradle 9.6, AGP 9.5.1 and its built-in Kotlin, newer than the plugin's tested AGP
+  (9.2.1), and its publications are checked here rather than assumed (below).
+- **Coordinates.** `io.github.whyisitworking:<module>:<version>`: the group is set by the convention, the artifact is
+  the module's name, and the version is the catalog's `llamabro` entry in `gradle/libs.versions.toml`, the one file
+  both builds (the repository's and `sdk/`'s) read. It is `2.0.0-alpha`, the first version of the release notes.
+- **What a module publishes.** The release variant only (`AndroidSingleVariantLibrary`; `KotlinJvm` for
+  `llamabro-typed-ksp`), with a sources jar and an empty javadoc jar. KDoc reaches an IDE through the sources jar;
+  Dokka would add a plugin and a build step to every module for an HTML copy of it, and can be added later without
+  changing a coordinate.
+- **The POM** is written once: the module's name, its own `description` (a module without one fails the build), the
+  project URL `https://github.com/whyisitworking/llama-bro`, the Apache License 2.0, the developer and the SCM.
+- **Signing.** Publications are signed when a key is configured (`signingInMemoryKey`, or the signing plugin's
+  `signing.keyId`) and left unsigned when none is, so `publishToMavenLocal`, the checks and CI need no key. With no key
+  the upload's first task fails before it reads a credential, so an unsigned upload cannot start.
+- **No secret in the repository.** The Portal token (`mavenCentralUsername`, `mavenCentralPassword`) and the key
+  (`signingInMemoryKey`, `signingInMemoryKeyPassword`, optionally `signingInMemoryKeyId`) are Gradle properties, from
+  `~/.gradle/gradle.properties` or `ORG_GRADLE_PROJECT_<name>` in the environment.
+- **A release is two steps, the second by hand.** `publishToMavenCentral` uploads a deployment that the Portal
+  validates and holds; the maintainer publishes or drops it there. The build never asks for an automatic release. A
+  published version is immutable.
+
+What the artifacts carry under other terms than the SDK's Apache License 2.0, as read from the build and the published
+core AAR:
+
+- **`llamabro`:** `libllamabro*.so`, compiled from llama.cpp and ggml (MIT) with the patches of `sdk/native/patches/`
+  and the libraries llama.cpp vendors (cpp-httplib, nlohmann/json, stb_image, miniaudio), and the NDK's
+  `libc++_shared.so` (LLVM, Apache License 2.0 with LLVM exceptions). `NOTICE` lists them.
+- **`llamabro-opencl`:** `libllamabro-ggml-opencl.so`, llama.cpp's OpenCL backend and Adreno kernels (MIT), compiled in
+  Qualcomm's Snapdragon toolchain image against that image's OpenCL headers and `libOpenCL.so`. No OpenCL library is
+  shipped; the phone's own is used.
+- **`llamabro-hexagon`:** `libllamabro-ggml-hexagon.so` and five HTP skeletons (`libggml-htp-v73` to `v85`), built from
+  llama.cpp's MIT sources with the Hexagon SDK inside the same image: the ARM library compiles in a stub the SDK's
+  `qaic` generates and includes its headers (F34), and the skeletons are linked by its toolchain.
+
+Not confirmed, and the maintainer's to settle before the first upload; nothing here is a legal reading:
+
+- Whether the Hexagon SDK's licence allows redistributing binaries built with it, and anything of the SDK's own they
+  contain (generated stubs, runtime code the toolchain links into a skeleton), in a public Maven artifact. `NOTICE`
+  already marks this. Until it is settled, `llamabro-hexagon` should stay out of an upload.
+- Whether the Snapdragon toolchain image, and the OpenCL headers and library in it, put any term on what is built with
+  them, for `llamabro-opencl`.
+- Whether the AARs should carry the notices themselves. The MIT licence asks that its notice accompany copies of the
+  software; today `LICENSE` and `NOTICE` are in the repository and the POM names only Apache 2.0, and no AAR has a
+  licence file inside.
+
+Consequences: `./gradlew -p sdk publishToMavenLocal` produces what an upload would. Checked on 2026-11-21 for all
+nine modules: each has its AAR or jar, sources and javadoc jars, a complete POM and Gradle module metadata; an `api`
+dependency is `compile` scope and an `implementation` one `runtime`; modules depend on each other by coordinates; the
+backend AARs carry their libraries (and `llamabro-hexagon` its five skeletons); and an Android app outside the
+repository compiled against the core, hub, hub-work, typed and testing modules from `mavenLocal()`, with the core's
+native libraries in its APK. Not exercised: a signed publication (no key exists yet) and the upload itself. The modules' `group` line moved into the
+convention, and the composite build that the demo and the README's quick start use still substitutes by group and name.
+Splitting the SDK into its own repository (D1) would change the POM's URLs and nothing else here. Implements D4 with
+D2's group.

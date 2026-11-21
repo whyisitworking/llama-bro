@@ -1,9 +1,10 @@
 plugins {
     alias(libs.plugins.android.library)
     id("llamabro.library")
+    id("llamabro.publish")
 }
 
-group = "io.github.whyisitworking"
+description = "The optional Qualcomm Hexagon NPU backend for Llama Bro."
 
 // The NPU backend: libllamabro-ggml-hexagon.so and the HTP skeletons, built in Qualcomm's image
 // by sdk/native/scripts/build-backends.sh. Being on the classpath is enough: the core finds it through the manifest.

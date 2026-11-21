@@ -1,4 +1,6 @@
 [versions]
+# the SDK's version: every published module's (llamabro.publish, D133); docs/release-notes.md names it too
+llamabro = "2.0.0-alpha"
 agp = "9.5.1"
 # Android Lint ships with AGP: its version is AGP's plus 23.0.0
 lint = "32.5.1"
@@ -38,6 +40,8 @@ leakcanary = "2.14"
 # the demo's markdown (D74)
 commonmark = "0.32.0"
 bcv = "0.18.1"
+# publishing to Maven Central through the Central Portal (D133)
+mavenPublish = "0.37.0"
 # BCV's own worker classpath pins asm 9.6 (BinaryCompatibilityValidatorPlugin)
 bcvAsm = "9.6"
 
@@ -115,6 +119,7 @@ lint-api = { group = "com.android.tools.lint", name = "lint-api", version.ref = 
 lint-checks = { group = "com.android.tools.lint", name = "lint-checks", version.ref = "lint" }
 lint-tests = { group = "com.android.tools.lint", name = "lint-tests", version.ref = "lint" }
 
+maven-publish-plugin = { group = "com.vanniktech", name = "gradle-maven-publish-plugin", version.ref = "mavenPublish" }
 android-gradle-api = { group = "com.android.tools.build", name = "gradle-api", version.ref = "agp" }
 
 [plugins]
