@@ -114,9 +114,10 @@ class VoiceConversationTest {
 
     private suspend fun rows(chatId: Long): List<StoredMessage> = chats.messages(chatId).first()
 
-    /** Holds the talk button for about half a second of speech. */
+    /** Holds the talk button for half a second of speech: ten 50 ms blocks, well over a tap. */
     private suspend fun say(voice: VoiceConversation) {
         mic.reads.set(0)
+        mic.allow(10)
         voice.talkStart()
         until("the microphone is heard") { mic.reads.get() >= 10 }
         voice.talkEnd()
@@ -179,9 +180,12 @@ class VoiceConversationTest {
             val (chatId, voice) = conversation()
             voice.open()
             until("open") { voice.ui.value.voice != null }
+            // one 50 ms block at most, under a fifth of a second however late the release is handled
+            mic.allow(1)
             voice.talkStart()
             voice.talkEnd()
-            delay(200)
+            // Ready after the microphone closed is the tap's end; a turn would have gone to Thinking with a row
+            until("the tap is over") { mic.closedOnce && voice.ui.value.phase == VoicePhase.Ready }
             assertTrue(rows(chatId).isEmpty())
             assertTrue("input_audio_buffer.commit" !in sentTypes())
             assertEquals(VoicePhase.Ready, voice.ui.value.phase)
@@ -192,17 +196,12 @@ class VoiceConversationTest {
         runBlocking {
             fake.loadMillis = 400
             val (chatId, voice) = conversation()
+            mic.allow(1)
             voice.talkStart()
             voice.talkEnd()
             until("the model is held and the turn is over") {
-                System.err.println(
-                    "replying=${engine.replying.value} closed=${mic.closedOnce} reads=${mic.reads.get()} " +
-                        "ui=${voice.ui.value} limit=${voice.limit.value} host=${host.state.value}",
-                )
-                engine.replying.value && mic.closedOnce
+                engine.replying.value && mic.closedOnce && voice.ui.value.phase == VoicePhase.Ready
             }
-            delay(200)
-            assertEquals(VoicePhase.Ready, voice.ui.value.phase)
             assertTrue(rows(chatId).isEmpty())
             voice.close()
         }
@@ -291,10 +290,18 @@ class VoiceConversationTest {
         assertEquals("en", VoiceConversation.spokenLanguage(Locale.forLanguageTag("hi-IN")))
     }
 
-    /** A microphone giving a quiet tone in 50 ms blocks until it is closed. */
+    /**
+     * A microphone giving a quiet tone in 50 ms blocks until it is closed, but only as many as the test [allow]s: how
+     * long a press lasts is then the test's choice, not the speed of the machine running it.
+     */
     private class ScriptedMic : SampleSource {
         override val rate = 16_000
         val reads = AtomicInteger()
+        private val allowed = AtomicInteger()
+
+        fun allow(blocks: Int) {
+            allowed.set(blocks)
+        }
 
         @Volatile private var closed = false
 
@@ -304,7 +311,11 @@ class VoiceConversationTest {
 
         override fun read(buffer: ShortArray): Int {
             if (closed) return -1
-            Thread.sleep(5)
+            if (allowed.getAndUpdate { maxOf(it - 1, 0) } == 0) {
+                // an empty read, as AudioRecord gives, so the reader still notices it was cancelled
+                Thread.sleep(5)
+                return 0
+            }
             reads.incrementAndGet()
             buffer.fill(500)
             return buffer.size

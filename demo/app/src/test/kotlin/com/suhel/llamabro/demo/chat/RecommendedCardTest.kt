@@ -29,6 +29,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.thread
 
 /** A model the catalog lacks starts from the hub's recommended sampling (D60, D79): the file's, else the base model's. */
 class RecommendedCardTest {
@@ -145,11 +146,13 @@ class RecommendedCardTest {
                     asked.incrementAndGet()
                     awaitCancellation()
                 }
-            val started = System.nanoTime()
-            assertNull("nothing is sent: the file's own values apply", store.card(other))
-            assertNull(store.card(other))
-            val tookMillis = (System.nanoTime() - started) / 1_000_000
-            assertTrue("the turn didn't wait: $tookMillis ms", tookMillis < 500)
+            // the lookup never returns, so a card() that waited for it would still be blocked when the join gives up;
+            // card() isn't a suspend function, so a thread rather than withTimeout, which couldn't interrupt it
+            var cards: List<CardSampling?>? = null
+            val turn = thread { cards = listOf(store.card(other), store.card(other)) }
+            turn.join(5_000)
+            assertFalse("the turn waited for the lookup", turn.isAlive)
+            assertEquals("nothing is sent: the file's own values apply", listOf(null, null), cards)
             withTimeout(5_000) { while (asked.get() == 0) delay(10) }
             assertEquals("one lookup under way, not one per turn", 1, asked.get())
         }

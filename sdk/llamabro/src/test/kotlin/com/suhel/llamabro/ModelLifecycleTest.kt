@@ -116,10 +116,10 @@ class ModelLifecycleTest {
     @Test
     fun closeReturnsBeforeEngineFinishes() {
         val s = SlowClose()
-        val t0 = System.nanoTime()
-        s.model.close()
-        val ms = (System.nanoTime() - t0) / 1_000_000
-        assertTrue("close() blocked for $ms ms", ms < 100)
+        // the native close can't finish until the gate opens, so a close() that returns at all didn't wait for it
+        val caller = thread { s.model.close() }
+        caller.join(5_000)
+        assertFalse("close() waited for the native close", caller.isAlive)
         assertTrue("the native close never started", s.closing.await(5, TimeUnit.SECONDS))
         assertFalse(s.engine.model.closed)
         s.release.countDown()

@@ -8,12 +8,15 @@ import com.suhel.llamabro.demo.data.db.HubRepoEntity
 import com.suhel.llamabro.hub.testing.FakeLlamaBroHub
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -123,10 +126,11 @@ class HubRepositoryTest {
     @Test fun twoConcurrentRefreshesOfOneRepoAskOnce() =
         runBlocking {
             gate = CompletableDeferred()
-            val one = async(Dispatchers.Default) { repository.refreshFiles("a/b") }
-            val two = async(Dispatchers.Default) { repository.refreshFiles("A/B") }
-            while (filesCalls.get() == 0) Thread.sleep(5)
-            Thread.sleep(50)
+            // UNDISPATCHED: each refresh runs here up to its await, so both have joined the one request before the
+            // gate opens, rather than the second arriving after the first had finished
+            val one = async(start = CoroutineStart.UNDISPATCHED) { repository.refreshFiles("a/b") }
+            val two = async(start = CoroutineStart.UNDISPATCHED) { repository.refreshFiles("A/B") }
+            withTimeout(5_000) { while (filesCalls.get() == 0) delay(5) }
             assertTrue(repository.files("a/b").first().refreshing)
             gate!!.complete(Unit)
             one.await()

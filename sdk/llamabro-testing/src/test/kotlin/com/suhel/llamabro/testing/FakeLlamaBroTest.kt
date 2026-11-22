@@ -236,7 +236,9 @@ class FakeLlamaBroTest {
     fun cancellingALoadStopsIt() =
         runBlocking {
             val fake = FakeLlamaBro()
-            fake.loadMillis = 2_000
+            // the fake loads in four sleeps, checking for a cancel after each: a stopped load returns within one sleep
+            // (2 s), and one that ignored the cancel sleeps on for most of the 8 s, so the bound sits between the two
+            fake.loadMillis = 8_000
             var outcome: Throwable? = null
             val job =
                 launch(Dispatchers.Default) {
@@ -248,7 +250,7 @@ class FakeLlamaBroTest {
             job.join()
             val ms = (System.nanoTime() - cancelledAt) / 1_000_000
             assertTrue("$outcome", outcome is CancellationException)
-            assertTrue("loadModel returned $ms ms after the cancel", ms < 1_000)
+            assertTrue("loadModel returned $ms ms after the cancel", ms < 7_500)
             assertEquals(0, fake.openModels)
 
             fake.loadMillis = 0

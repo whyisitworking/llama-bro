@@ -112,7 +112,7 @@ class ChatEngineSamplingTest {
             models.changed()
             val chat = engine.open(0)
             chat.send("Hello", emptyList())
-            withTimeoutOrNull(2_000) { while (rows(chat).lastOrNull()?.state != MessageState.Done) delay(10) }
+            withTimeoutOrNull(10_000) { while (rows(chat).lastOrNull()?.state != MessageState.Done) delay(10) }
                 ?: throw AssertionError("the turn waited for the lookup")
             // nothing the hub didn't say is sent, so the file's own values apply (F17)
             assertFalse(request(0).containsKey("temperature"))

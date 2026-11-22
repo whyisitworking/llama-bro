@@ -128,9 +128,8 @@ class ChatEngineStartTest {
             val chat = engine.open(0)
             chat.switchModel(deep) // at once: the lookup of the default may not have answered yet
             until("the chat's model is the one chosen") { chat.current.value == deep }
-            delay(300)
+            until("the chat is named for it") { chat.name.value == "Qwen3.5 4B" }
             assertEquals("the lookup's default doesn't replace the switch", deep, chat.current.value)
-            assertEquals("Qwen3.5 4B", chat.name.value)
             chat.close()
         }
 

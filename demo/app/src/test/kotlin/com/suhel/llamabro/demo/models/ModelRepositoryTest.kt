@@ -91,13 +91,15 @@ class ModelRepositoryTest {
     @Test fun getEnqueuesOnce() {
         val repo = repository()
         repo.get(swift)
-        scheduler.awaitEnqueued(swift)
+        repo.settle()
+        assertEquals(listOf(swift), scheduler.enqueued)
     }
 
     @Test fun getOfACachedModelDoesNotEnqueue() {
         testHub.install(swift)
-        repository().get(swift)
-        Thread.sleep(200) // the repository asks the hub off this thread; a wrong start would have shown by now
+        val repo = repository()
+        repo.get(swift)
+        repo.settle() // the Get's step, which asks the hub, has run
         assertTrue(scheduler.enqueued.isEmpty())
     }
 
@@ -332,7 +334,7 @@ class ModelRepositoryTest {
             scheduler.awaitEnqueued(swift)
             repo.get(other)
             repo.downloadingIs(listOf(other, swift).sortedBy { it.toString() })
-            delay(300)
+            repo.settle()
             assertEquals("one download at a time (D44)", listOf(swift), scheduler.enqueued)
             testHub.install(swift) // the worker completes the first
             scheduler.awaitEnqueued(swift, other)
@@ -345,12 +347,12 @@ class ModelRepositoryTest {
             for (key in listOf(swift, other, third)) settings.addPendingDownload(key.toString())
             settings.setDownloadPaused(third.toString(), true)
             scheduler.scheduled(swift)
-            repository()
-            delay(300)
+            val repo = repository()
+            repo.settle() // the restore has run
             assertEquals("the running one carries on; nothing else starts", emptyList<HfModel>(), scheduler.enqueued)
             scheduler.endWork(swift)
             scheduler.awaitEnqueued(other) // the waiting one starts by itself; the paused one stays paused
-            delay(200)
+            repo.settle()
             assertEquals(listOf(other), scheduler.enqueued)
         }
 
@@ -400,7 +402,7 @@ class ModelRepositoryTest {
             // the next launch: a new repository over the same settings and WorkManager
             scheduler.enqueued.clear()
             val next = repository()
-            delay(300)
+            next.settle() // the restore has run
             assertEquals("nothing starts unasked (D64)", emptyList<HfModel>(), scheduler.enqueued)
             assertEquals(listOf(swift), next.downloading.first())
             next.get(swift) // Resume starts it
@@ -436,7 +438,7 @@ class ModelRepositoryTest {
             repo.pause(swift)
             repo.get(swift) // Resume, tapped at once
             scheduler.awaitEnqueued(swift, other)
-            delay(300)
+            repo.settle()
             assertEquals("one download at a time", listOf(other), scheduler.running)
         }
 

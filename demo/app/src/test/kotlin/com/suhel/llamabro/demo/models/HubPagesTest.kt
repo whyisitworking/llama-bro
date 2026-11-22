@@ -23,7 +23,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -57,9 +56,13 @@ class HubPagesTest {
     private var offline = false
     private var gate: CompletableDeferred<Unit>? = null
 
+    /** When the Hub was last asked for a page, by [System.nanoTime]. */
+    @Volatile private var askedAtNanos = 0L
+
     private val discovery =
         object : ModelDiscovery(FakeLlamaBroHub { }.hub) {
             override suspend fun searchPage(query: HubQuery, cursor: String?): SearchRowsPage {
+                askedAtNanos = System.nanoTime()
                 asked += cursor
                 gate?.await()
                 if (offline) throw IOException("offline")
@@ -218,12 +221,14 @@ class HubPagesTest {
     @Test fun theFirstPageIsAskedOnlyAfterTheDebounce() =
         runBlocking {
             hubPages[null] = SearchRowsPage(listOf(row("B")), next = null)
+            val start = System.nanoTime()
             val load =
                 async(Dispatchers.Default) { mediator(refreshAfterMillis = 400).load(LoadType.REFRESH, nothingLoaded) }
-            delay(100)
-            assertTrue("inside the debounce: not asked yet", asked.isEmpty())
             load.await()
             assertEquals(listOf<String?>(null), asked)
+            // a lower bound: a slow machine can only ask later, never inside the debounce
+            val waitedMillis = (askedAtNanos - start) / 1_000_000
+            assertTrue("asked $waitedMillis ms after opening, inside the 400 ms debounce", waitedMillis >= 400)
         }
 
     @Test fun fetchingIsTrueWhileAPageIsAsked(): Unit =

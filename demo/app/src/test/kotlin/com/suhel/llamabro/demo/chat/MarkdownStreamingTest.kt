@@ -6,9 +6,13 @@ import org.junit.Test
 /**
  * A long reply arriving a few characters at a time, as the chat parses it while it streams: the median parse per
  * append stays inside the budget of docs/design/demo-app.md §10 (0.5 ms on the phone; the host is faster, so this
- * catches a parser that re-reads the whole reply, not a small regression).
+ * catches a parser that re-reads the whole reply, not a small regression). A CI runner is a shared machine several
+ * times slower and noisier than a developer's, so there the budget is four times wider: re-reading the whole reply
+ * costs far more than that, and the phone's own budget is measured on the phone (`demo/scripts/check.sh --perf`).
  */
 class MarkdownStreamingTest {
+    private val budgetMs = if (System.getenv("CI") == "true") 4 * PHONE_BUDGET_MS else PHONE_BUDGET_MS
+
     private val reply =
         buildString {
             repeat(6) { n ->
@@ -59,16 +63,21 @@ class MarkdownStreamingTest {
 
     @Test fun medianParsePerAppendIsWithinTheBudget() {
         val medianMs = median("mixed reply", reply)
-        assertTrue("median $medianMs ms", medianMs <= 0.5)
+        assertTrue("median $medianMs ms, budget $budgetMs ms", medianMs <= budgetMs)
     }
 
     @Test fun aLongListCostsNoMoreThanAShortOne() {
         val medianMs = median("one long list", longList)
-        assertTrue("median $medianMs ms", medianMs <= 0.5)
+        assertTrue("median $medianMs ms, budget $budgetMs ms", medianMs <= budgetMs)
     }
 
     @Test fun aLongTableStaysWithinTheBudget() {
         val medianMs = median("one long table", longTable)
-        assertTrue("median $medianMs ms", medianMs <= 0.5)
+        assertTrue("median $medianMs ms, budget $budgetMs ms", medianMs <= budgetMs)
+    }
+
+    private companion object {
+        /** docs/design/demo-app.md §10: the median parse per append on the phone. */
+        const val PHONE_BUDGET_MS = 0.5
     }
 }

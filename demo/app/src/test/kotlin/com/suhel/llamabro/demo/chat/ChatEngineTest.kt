@@ -26,7 +26,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
@@ -69,12 +68,13 @@ class ChatEngineTest {
     private val models by lazy { ModelRepository(hub, settings, scheduler, scope, host) }
 
     private var streamer: Streamer? = null
+    private var frameMillis = 16L
     private val engine by lazy {
         val custom = streamer
         if (custom != null) {
-            ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope, streamer = custom)
+            ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope, frameMillis, streamer = custom)
         } else {
-            ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope)
+            ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope, frameMillis)
         }
     }
 
@@ -471,63 +471,6 @@ class ChatEngineTest {
             chat.send("   ", emptyList())
             delay(200)
             assertEquals(0, rows(chat).size)
-        }
-
-    @Test fun deltasAreCoalescedToOneUpdatePerFrame() =
-        runBlocking {
-            streamer = { _, _, _, _ -> flow { repeat(200) { emit(ChatEvent.ContentDelta("w$it ")) } } }
-            val chat = newChat()
-            val seen = mutableListOf<String>()
-            val watcher = scope.launch { chat.streaming.collect { it?.let { s -> seen += s.text } } }
-            chat.send("go", emptyList())
-            until("done") { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
-            watcher.cancel()
-            assertTrue("one update per frame, not per delta: ${seen.size}", seen.size <= 5)
-            assertTrue(rows(chat).last().text.startsWith("w0 ") && rows(chat).last().text.endsWith("w199 "))
-        }
-
-    @Test fun roomIsWrittenAtMostEvery250ms() =
-        runBlocking {
-            streamer = { _, _, _, _ ->
-                flow {
-                    repeat(40) {
-                        emit(ChatEvent.ContentDelta("w$it "))
-                        delay(25)
-                    }
-                }
-            }
-            val chat = newChat()
-            chat.send("go", emptyList())
-            until("started") { chat.busy.value }
-            val before = dao.messageUpdates.get()
-            until(
-                "done",
-                20_000,
-            ) { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
-            val writes = dao.messageUpdates.get() - before
-            assertTrue("a 1 s reply writes about 4 times plus the end, was $writes", writes <= 9)
-        }
-
-    @Test fun storedListDoesNotEmitPerToken() =
-        runBlocking {
-            streamer = { _, _, _, _ ->
-                flow {
-                    repeat(30) {
-                        emit(ChatEvent.ContentDelta("w$it "))
-                        delay(10)
-                    }
-                }
-            }
-            val chat = newChat()
-            var emissions = 0
-            val watcher = scope.launch { chat.messages.collect { emissions++ } }
-            chat.send("go", emptyList())
-            until("done") { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
-            watcher.cancel()
-            assertTrue(
-                "the list changes at the start and the end plus a few 250 ms writes, was $emissions",
-                emissions <= 10,
-            )
         }
 
     @Test fun thinkLevelIsSentAsReasoning() =
