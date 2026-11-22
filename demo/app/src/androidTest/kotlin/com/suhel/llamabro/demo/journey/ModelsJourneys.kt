@@ -53,7 +53,7 @@ class ModelsJourneys : Journey() {
 
         world.downloads.advance(writer)
         tapDescription("Pause") // the ring's control
-        see("Paused")
+        see("Paused · ", substring = true) // the ring's line: "Paused · Q4_K_M"
         shot("2-paused")
         tapDescription("Resume")
         seeDescription("Pause")

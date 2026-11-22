@@ -2,6 +2,8 @@ package com.suhel.llamabro.demo.journey
 
 import android.graphics.drawable.ColorDrawable
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
@@ -53,9 +55,24 @@ class WalkJourneys : Journey() {
         for (node in nodes) {
             var container = node.parent
             while (container != null && !container.config.contains(DsGutterContainerKey)) container = container.parent
-            assertTrue("$name: an area on the gutter has no container", container != null)
-            assertEquals("$name: left gutter", gutter, node.boundsInRoot.left - container!!.boundsInRoot.left, 1f)
-            assertEquals("$name: right gutter", gutter, container.boundsInRoot.right - node.boundsInRoot.right, 1f)
+            // the area by what a reader can find it by: its tag, else its text
+            val which =
+                node.config.getOrNull(SemanticsProperties.TestTag)
+                    ?: node.config.getOrNull(SemanticsProperties.Text)?.joinToString()
+                    ?: "an untagged area at ${node.boundsInRoot}"
+            assertTrue("$name: $which on the gutter has no container", container != null)
+            assertEquals(
+                "$name: $which, left gutter",
+                gutter,
+                node.boundsInRoot.left - container!!.boundsInRoot.left,
+                1f,
+            )
+            assertEquals(
+                "$name: $which, right gutter",
+                gutter,
+                container.boundsInRoot.right - node.boundsInRoot.right,
+                1f,
+            )
         }
     }
 

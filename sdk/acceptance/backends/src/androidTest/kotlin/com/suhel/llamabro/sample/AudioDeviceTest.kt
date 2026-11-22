@@ -9,7 +9,6 @@ import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.MediaSource
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
-import com.suhel.llamabro.Typed
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.conversation
@@ -134,8 +133,7 @@ class AudioDeviceTest {
                     }
                 }
             log("transcribe (file): ${ms(started)} ms: $transcript")
-            val text = (transcript as? Typed.Value)?.value
-            assertTrue("a transcript: $transcript", !text.isNullOrBlank())
+            assertTrue("a transcript: $transcript", transcript.text.isNotBlank())
 
             val fromDescriptor =
                 ParcelFileDescriptor.open(clip, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->

@@ -20,6 +20,7 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.accessibility.disableAccessibilityChecks
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -172,6 +173,10 @@ class ModelsTest {
 
     private fun waitFor(text: String, substring: Boolean = false) =
         compose.waitUntilAtLeastOneExists(hasText(text, substring = substring), 15_000)
+
+    /** The card is open on [name]: its header, which only the card has, names the model. */
+    private fun waitForCardOf(name: String) =
+        compose.waitUntilAtLeastOneExists(hasText(name) and hasAnyAncestor(hasTestTag("card_header")), 15_000)
 
     private fun openPhi() {
         listBoth()
@@ -352,9 +357,14 @@ class ModelsTest {
         showModels()
         search("qwen")
         // the line is Hugging Face's part, under the local matches (models-page design §2): a scroll down the list
+        // the scroll is the test finding the line, not a person's tap: it starts while the keyboard still settles, when
+        // a frame can clip the field's targets short of 48 dp. The checks come back for the settled screen.
+        compose.disableAccessibilityChecks()
         compose.waitUntil(15_000) {
             runCatching { compose.onNodeWithTag("model_list").performScrollToNode(hasText(OFFLINE_LINE)) }.isSuccess
         }
+        compose.waitForIdle()
+        compose.withAccessibilityChecks()
         waitFor(OFFLINE_LINE)
         // the suggestions are kept: the rows above the keyboard are on screen (the rest are a scroll away)
         assertTrue(
@@ -382,7 +392,8 @@ class ModelsTest {
                 hasText("Q4_K_M ·", substring = true) and hasAnyAncestor(hasTestTag("tier_Recommended")),
                 useUnmergedTree = true,
             ).assertIsDisplayed()
-        compose.onNodeWithText("bartowski/phi-4-mini-GGUF").assertIsDisplayed() // the repo on its own line
+        // the header names the model; the repo is the page's source at its end, shown only with a page (D123)
+        compose.onNode(hasText("Phi 4 mini") and hasAnyAncestor(hasTestTag("card_header"))).assertIsDisplayed()
         shots.capture("basic")
     }
 
@@ -626,8 +637,8 @@ class ModelsTest {
         showModels()
         waitFor("Qwen3.5 0.8B")
         compose.onNodeWithTag("library_model").performClick()
-        // the card's header names the repo, which the row never shows
-        waitFor("unsloth/Qwen3.5-0.8B-GGUF", substring = true)
+        // the card opens on its header; the repo is the page's source at its end, shown only with a page (D123)
+        waitForCardOf("Qwen3.5 0.8B")
     }
 
     @Test fun aModelOnThePhoneOffersAChat() {
@@ -741,7 +752,7 @@ class ModelsTest {
         waitFor("Downloading")
         // the name's line: the ring's Pause and the ✕ in the footer keep their own taps
         compose.onNodeWithTag("download_row").performTouchInput { click(percentOffset(0.5f, 0.1f)) }
-        waitFor("unsloth/gemma-3-4b-it-qat-GGUF", substring = true)
+        compose.waitUntilAtLeastOneExists(hasTestTag("card_header"), 15_000)
     }
 
     @Test fun swipeToRemoveAsksFirst() {

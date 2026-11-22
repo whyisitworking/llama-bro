@@ -86,9 +86,9 @@ class RealDownloadJourneys : Journey(seenFirstRun = false, asksForNotifications 
         FakeHubServer.slow(mibPerSecond = FAST_MIB_PER_SECOND)
         tapDescription("Chats")
         tapDrawerModels()
-        see("DOWNLOADING")
-        tap("Resume")
-        gone("DOWNLOADING", timeoutMillis = DOWNLOAD_WAIT) // the model is on the phone
+        see("Downloading") // the section's label
+        tapDescription("Resume") // the ring's control
+        gone("Downloading", timeoutMillis = DOWNLOAD_WAIT) // the section goes: the model is on the phone
         tapDescription("Back")
         see("Hello from Qwen3.5 0.8B") // and the question that waited for it is answered
         // the file that was arriving is asked for again from where it stopped (the next file, the image reader, starts at 0)
