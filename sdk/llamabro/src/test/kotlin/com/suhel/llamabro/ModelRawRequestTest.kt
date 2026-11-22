@@ -189,6 +189,7 @@ class ModelRawRequestTest {
             m.close()
             val e = withTimeout(5_000) { result.await() }
             assertTrue("$e", e is LlamaBroException.ModelClosed)
+            m.closeAndJoin() // close() returned at once; the native shutdown finishes in the background (D136)
             assertTrue(engine.model.closed)
             assertTrue(
                 engine.model.requests
