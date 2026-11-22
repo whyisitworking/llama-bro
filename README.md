@@ -17,9 +17,10 @@
 <p align="center">
   <a href="#the-numbers">The numbers</a> ·
   <a href="#why-llama-bro">Why Llama Bro</a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="demo/README.md">The demo app</a> ·
-  <a href="docs/README.md">Docs</a>
+  <a href="#get-started">Get started</a> ·
+  <a href="#modules">Modules</a> ·
+  <a href="#the-demo-app">The demo app</a> ·
+  <a href="#documentation">Docs</a>
 </p>
 
 <p align="center">
@@ -176,29 +177,58 @@ the GPU, else the CPU, skipping any that fails; `loadReport` says where it runs 
 llama.cpp's own dry run ([§9](docs/architecture.md#9-memory-fit-and-contextsizeauto),
 [D33](docs/decisions.md#d33-contextsizeauto-fits-all-memory)).
 
-## Quick start
+## Get started
+
+Android 10 (API 29) and up, arm64-v8a, Kotlin 2.2 or later
+([D82](docs/decisions.md#d82-the-sdk-compiles-with-the-catalogs-kotlin-apps-need-kotlin-22-or-later)).
+What changed in each version is in the [release notes](docs/release-notes.md).
+
+### 1. Add the SDK
+
+Import the BOM once, then list the modules you use without a version. The BOM adds no code: it keeps every Llama Bro
+module at the same version, which the backends need, since they load native libraries built with the core's.
 
 ```kotlin
 // app/build.gradle.kts
-implementation(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))   // one version for every module
-implementation("io.github.whyisitworking:llamabro")
-implementation("io.github.whyisitworking:llamabro-hexagon")   // optional: the Snapdragon NPU
-implementation("io.github.whyisitworking:llamabro-opencl")    // optional: the Adreno GPU
+dependencies {
+    // the BOM: one version for every Llama Bro module
+    implementation(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))
+
+    // the modules, without versions
+    implementation("io.github.whyisitworking:llamabro")           // the engine, always
+    implementation("io.github.whyisitworking:llamabro-hexagon")   // optional: the Snapdragon NPU
+    implementation("io.github.whyisitworking:llamabro-opencl")    // optional: the Adreno GPU
+}
 ```
 
-arm64-v8a, Android 10 (API 29) and up, Kotlin 2.2 or later
-([D82](docs/decisions.md#d82-the-sdk-compiles-with-the-catalogs-kotlin-apps-need-kotlin-22-or-later));
-[release notes](docs/release-notes.md).
+<details>
+<summary>Without the BOM</summary>
+
+Give every module the same version:
+
+```kotlin
+implementation("io.github.whyisitworking:llamabro:2.0.0-alpha")
+implementation("io.github.whyisitworking:llamabro-hexagon:2.0.0-alpha")
+```
+
+</details>
+
+### 2. Chat with a model
 
 ```kotlin
 val llama = LlamaBro.create(application)
-val model = llama.loadModel(ModelSource.file(path))
+val model = llama.loadModel(ModelSource.file(path))   // a .gguf file on the phone
 val chat = model.conversation(system = "You are a helpful assistant.")
-chat.send("Hello").collect()          // observe chat.messages and chat.reply
+
+chat.send("Hello").collect()   // streams the reply: chat.reply while it is written, chat.messages after
+val answer = chat.ask("Now say it in French.").valueOrNull()   // or wait for the whole reply
+
 model.close()
 ```
 
-By its Hugging Face name, with a typed reply (`llamabro-hub`, `llamabro-typed`):
+### 3. Load by name, get a typed reply
+
+With `llamabro-hub` and `llamabro-typed` added, and the `org.jetbrains.kotlin.plugin.serialization` plugin applied:
 
 ```kotlin
 val hub = LlamaBroHub.create(application)
@@ -208,24 +238,45 @@ val model = llama.loadModel(hub.model("unsloth/Qwen3.5-4B-GGUF:Q4_K_M"))   // do
 val review = model.generate<Review>("The battery lasts two days, but the screen scratches.").valueOrNull()
 ```
 
-The [SDK guide](sdk/README.md) covers a full chat screen, tools, voice, embeddings, the Hub, backends and errors.
+The [SDK guide](sdk/README.md) goes on from here: a full chat screen, tools, voice, embeddings, the Hub, backends and
+errors.
 
-## What's inside
+## Modules
 
-| Module | What it does |
-|---|---|
-| `llamabro` | The core: load a model, chat, `Conversation` with the tool loop and compaction, embeddings, rerank, transcription, a realtime voice session, and every llama-server route as raw JSON |
-| `llamabro-hub` | Hugging Face search, and downloads that resume and are checked against the published SHA-256 ([D40](docs/decisions.md#d40-every-download-is-hashed)); a model loads by name and offline once on the phone ([D64](docs/decisions.md#d64-one-call-from-a-hugging-face-name-to-a-loaded-model-through-an-open-modelsource-what-is-on-the-phone-loads-without-the-network)) |
-| `llamabro-hub-work` | A WorkManager download that outlives the app's process |
-| `llamabro-typed`, `llamabro-typed-ksp` | Replies and tools typed by `@Serializable` classes, held to their JSON schema by llama.cpp's grammar; annotated toolboxes checked when the app builds ([D63](docs/decisions.md#d63-typed-output-and-typed-tools-share-one-module-llamabro-typed-a-typed-reply-is-a-typedt)) |
-| `llamabro-hexagon`, `llamabro-opencl` | The Hexagon NPU and Adreno GPU backends, optional |
-| `llamabro-testing`, `llamabro-hub-testing` | `FakeLlamaBro` and `FakeLlamaBroHub`: the real API over a scripted engine and Hub, for your JVM tests |
+All under `io.github.whyisitworking`, all versioned by `llamabro-bom`.
 
-The [demo chat app](demo/README.md) finds, downloads and runs models, with pictures, voice notes, a captioned voice
-mode, thinking levels and two layouts. [`docs/`](docs/README.md) holds the
-[architecture](docs/architecture.md), every [decision](docs/decisions.md) (`D<n>`) and
-[measurement](docs/research/findings.md) (`F<n>`) behind it, and the [testing guide](docs/testing.md);
-[`research/`](research/README.md) holds the experiments.
+| Module | Add it for | Configuration |
+|---|---|---|
+| `llamabro` | The core: load a model, chat, `Conversation` with the tool loop and compaction, embeddings, rerank, transcription, a realtime voice session, and every llama-server route as raw JSON | `implementation` |
+| `llamabro-hexagon` | The Snapdragon Hexagon NPU backend | `implementation` |
+| `llamabro-opencl` | The Adreno GPU backend | `implementation` |
+| `llamabro-hub` | Hugging Face search, and downloads that resume and are checked against the published SHA-256 ([D40](docs/decisions.md#d40-every-download-is-hashed)); a model loads by name, and offline once on the phone ([D64](docs/decisions.md#d64-one-call-from-a-hugging-face-name-to-a-loaded-model-through-an-open-modelsource-what-is-on-the-phone-loads-without-the-network)) | `implementation` |
+| `llamabro-hub-work` | A WorkManager download that outlives the app's process | `implementation` |
+| `llamabro-typed` | Replies and tools typed by `@Serializable` classes, held to their JSON schema by llama.cpp's grammar ([D63](docs/decisions.md#d63-typed-output-and-typed-tools-share-one-module-llamabro-typed-a-typed-reply-is-a-typedt)) | `implementation` |
+| `llamabro-typed-ksp` | Annotated toolboxes, checked when the app builds | `ksp`, with the BOM again as `ksp(platform(…))` |
+| `llamabro-testing`, `llamabro-hub-testing` | `FakeLlamaBro` and `FakeLlamaBroHub`: the real API over a scripted engine and Hub, for your JVM tests | `testImplementation` |
+
+`ksp` is a configuration of its own, so the BOM on `implementation` doesn't reach it:
+
+```kotlin
+ksp(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))
+ksp("io.github.whyisitworking:llamabro-typed-ksp")
+```
+
+## The demo app
+
+A [chat app](demo/README.md) built on the SDK: it finds, downloads and runs models, with pictures, voice notes, a
+captioned voice mode, thinking levels, and two layouts (a sidebar of chats, or a messaging-style list). Install the
+[latest APK](https://github.com/whyisitworking/llama-bro/releases/latest/download/llama-bro-demo.apk), or build
+`:demo:app` from source.
+
+## Documentation
+
+- [SDK guide](sdk/README.md): the API, task by task.
+- [Architecture](docs/architecture.md): how the engine, backends and memory fit work.
+- [Decisions](docs/decisions.md) (`D<n>`) and [findings](docs/research/findings.md) (`F<n>`): every choice and the
+  measurement behind it. The code cites them.
+- [Testing](docs/testing.md): what each check proves. [`research/`](research/README.md) holds the experiments.
 
 ## Known issues
 

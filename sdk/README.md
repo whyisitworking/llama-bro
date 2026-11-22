@@ -5,7 +5,8 @@ templates, tool calls, reasoning, prompt cache and sampling as `llama-server`, w
 (coroutines and `Flow`). Package `com.suhel.llamabro`.
 
 ```kotlin
-implementation(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))   // one version for every module
+implementation(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))   // the BOM: one version for every module
+
 implementation("io.github.whyisitworking:llamabro")
 implementation("io.github.whyisitworking:llamabro-hexagon")   // optional: the Snapdragon NPU
 implementation("io.github.whyisitworking:llamabro-opencl")    // optional: the Adreno GPU
@@ -377,6 +378,7 @@ plugins {
 
 dependencies {
     implementation("io.github.whyisitworking:llamabro-typed")
+    ksp(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))   // ksp doesn't see the BOM on implementation
     ksp("io.github.whyisitworking:llamabro-typed-ksp")
 }
 ```
