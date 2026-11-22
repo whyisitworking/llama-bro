@@ -104,9 +104,9 @@ class ScriptedDownloads(private val hub: TestHub) : DownloadScheduler {
 
     override suspend fun isScheduled(model: HfModel): Boolean = work.value[model] == true
 
-    override fun ends(model: HfModel): Flow<Unit> =
+    override fun ends(model: HfModel, seenRunning: Boolean): Flow<Unit> =
         flow {
-            var live = false
+            var live = seenRunning
             work.collect {
                 val now = it[model]
                 if (now == true) {

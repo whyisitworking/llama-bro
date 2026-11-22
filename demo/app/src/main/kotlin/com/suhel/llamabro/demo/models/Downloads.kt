@@ -126,8 +126,10 @@ interface DownloadScheduler {
     /**
      * Emits each time [model]'s work, once seen queued or running, has ended: succeeded, failed (the worker gave up)
      * or cancelled (the notification's Cancel, say). A retry between tries is still queued, so it is not an end.
+     * [seenRunning] says the caller already saw the work queued or running ([isScheduled]), so work found finished at
+     * the first look ended in between, and that is an end too.
      */
-    fun ends(model: HfModel): Flow<Unit>
+    fun ends(model: HfModel, seenRunning: Boolean = false): Flow<Unit>
 }
 
 /**
@@ -149,7 +151,7 @@ class WorkDownloadScheduler(private val manager: Lazy<WorkManager>) : DownloadSc
 
     override suspend fun isScheduled(model: HfModel): Boolean = infos(model).first().any { !it.state.isFinished }
 
-    override fun ends(model: HfModel): Flow<Unit> = workEnds(infos(model))
+    override fun ends(model: HfModel, seenRunning: Boolean): Flow<Unit> = workEnds(infos(model), seenRunning)
 
     private fun infos(model: HfModel) = manager.value.getWorkInfosForUniqueWorkFlow(downloadWorkName(model))
 }
@@ -157,11 +159,12 @@ class WorkDownloadScheduler(private val manager: Lazy<WorkManager>) : DownloadSc
 /**
  * [DownloadScheduler.ends] over one unique work's states as WorkManager emits them: an end once every entry is
  * finished after one was seen queued or running. A retry goes back to queued, so it is not an end, and an entry that
- * had already finished before the first emission (an old run kept under the name) is not one either.
+ * had already finished before the first emission (an old run kept under the name) is not one either, unless
+ * [seenRunning]: the work was seen queued or running before this watch began, so finished now means it ended since.
  */
-internal fun workEnds(infos: Flow<List<WorkInfo>>): Flow<Unit> =
+internal fun workEnds(infos: Flow<List<WorkInfo>>, seenRunning: Boolean = false): Flow<Unit> =
     infos
-        .runningFold(WorkWatch()) { watch, now ->
+        .runningFold(WorkWatch(live = seenRunning)) { watch, now ->
             when {
                 now.any { !it.state.isFinished } -> WorkWatch(live = true)
                 watch.live && now.isNotEmpty() -> WorkWatch(ended = true)

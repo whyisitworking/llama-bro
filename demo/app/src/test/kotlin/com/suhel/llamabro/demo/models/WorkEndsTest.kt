@@ -19,7 +19,8 @@ class WorkEndsTest {
 
     private fun info(id: UUID, state: State) = WorkInfo(id, state, emptySet())
 
-    private fun ends(vararg emissions: List<WorkInfo>): Int = runBlocking { workEnds(flowOf(*emissions)).toList().size }
+    private fun ends(vararg emissions: List<WorkInfo>, seenRunning: Boolean = false): Int =
+        runBlocking { workEnds(flowOf(*emissions), seenRunning).toList().size }
 
     @Test fun aCancelAfterARunIsOneEnd() =
         assertEquals(
@@ -59,4 +60,9 @@ class WorkEndsTest {
         )
 
     @Test fun nothingUnderTheNameIsNotAnEnd() = assertEquals(0, ends(listOf(info(first, State.RUNNING)), emptyList()))
+
+    @Test fun workSeenRunningThatIsFinishedAtTheFirstLookEndedInBetween() {
+        assertEquals(1, ends(listOf(info(first, State.SUCCEEDED)), seenRunning = true))
+        assertEquals("not seen running: an old run kept under the name", 0, ends(listOf(info(first, State.SUCCEEDED))))
+    }
 }

@@ -43,5 +43,5 @@ object NoDownloads : DownloadScheduler {
 
     override suspend fun isScheduled(model: HfModel): Boolean = false
 
-    override fun ends(model: HfModel): Flow<Unit> = emptyFlow()
+    override fun ends(model: HfModel, seenRunning: Boolean): Flow<Unit> = emptyFlow()
 }

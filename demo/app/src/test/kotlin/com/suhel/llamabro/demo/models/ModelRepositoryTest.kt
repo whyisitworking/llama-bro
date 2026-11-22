@@ -356,6 +356,16 @@ class ModelRepositoryTest {
             assertEquals(listOf(other), scheduler.enqueued)
         }
 
+    @Test fun aRestoredDownloadWhoseWorkEndsBeforeItIsWatchedStillMovesTheQueueOn() =
+        runBlocking<Unit> {
+            for (key in listOf(swift, other)) settings.addPendingDownload(key.toString())
+            scheduler.scheduled(swift)
+            // the 0.8B's work is seen running at the restart, and ends before the repository starts watching it
+            scheduler.afterIsScheduled = { if (it == swift) scheduler.endWork(swift) }
+            repository()
+            scheduler.awaitEnqueued(other)
+        }
+
     @Test fun aRestartWithNothingRunningStartsTheFirstWaiting() =
         runBlocking<Unit> {
             settings.addPendingDownload(other.toString())

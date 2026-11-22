@@ -286,11 +286,15 @@ class FakeScheduler : DownloadScheduler {
         work.update { it + (model to false) }
     }
 
-    override suspend fun isScheduled(model: HfModel): Boolean = work.value[model] == true
+    /** Runs after [isScheduled] answers, before its caller goes on: work that ends just after it was seen running. */
+    var afterIsScheduled: (HfModel) -> Unit = {}
 
-    override fun ends(model: HfModel): Flow<Unit> =
+    override suspend fun isScheduled(model: HfModel): Boolean =
+        (work.value[model] == true).also { afterIsScheduled(model) }
+
+    override fun ends(model: HfModel, seenRunning: Boolean): Flow<Unit> =
         flow {
-            var live = false
+            var live = seenRunning
             work.collect {
                 val now = it[model]
                 if (now == true) {

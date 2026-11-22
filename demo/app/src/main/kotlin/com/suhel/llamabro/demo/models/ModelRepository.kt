@@ -210,9 +210,10 @@ class ModelRepository(
 
     /**
      * One hand-over of [model] to the worker. An end is tied to the run it came from, so the late end of a run a Pause
-     * stopped can't end the run a Resume started after it (both are the same model's work).
+     * stopped can't end the run a Resume started after it (both are the same model's work). A [restored] run's work was
+     * seen running when the app started, so its end is seen even if it came before the watch did.
      */
-    private data class Run(val model: HfModel, val number: Long)
+    private data class Run(val model: HfModel, val number: Long, val restored: Boolean = false)
 
     private val waiting = mutableListOf<HfModel>()
 
@@ -310,7 +311,7 @@ class ModelRepository(
             val scheduled = scheduler.isScheduled(key)
             when {
                 scheduled && active.value == null -> {
-                    active.value = Run(key, ++runs)
+                    active.value = Run(key, ++runs, restored = true)
                 }
 
                 scheduled -> {
@@ -434,7 +435,7 @@ class ModelRepository(
                 .filterNotNull()
                 .flatMapLatest { run ->
                     merge(
-                        scheduler.ends(run.model).map { false },
+                        scheduler.ends(run.model, seenRunning = run.restored).map { false },
                         hub.progress(run.model).filter { it == DownloadState.Complete }.map { true },
                     ).map { completed -> run to completed }
                 }.collect { (run, completed) -> step { ended(run, completed) } }
