@@ -2,6 +2,8 @@ package com.suhel.llamabro.demo.chat
 
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,7 +44,11 @@ interface VoicePlayer {
  * [VoicePlayer] on Android's `MediaPlayer`, called on the main thread; the file is read off it, and the progress moves
  * every [tickMillis] while playing.
  */
-class MediaVoicePlayer(private val scope: CoroutineScope, private val tickMillis: Long = 50) : VoicePlayer {
+class MediaVoicePlayer(
+    private val scope: CoroutineScope,
+    private val tickMillis: Long = 50,
+    private val io: CoroutineDispatcher = Dispatchers.IO,
+) : VoicePlayer {
     // external event: MediaPlayer's playback and its progress
     private val _clip = MutableStateFlow<PlayingClip?>(null)
     override val clip: StateFlow<PlayingClip?> = _clip.asStateFlow()
@@ -71,12 +77,16 @@ class MediaVoicePlayer(private val scope: CoroutineScope, private val tickMillis
         _clip.value = PlayingClip(messageId, playing = true, progress = 0f)
         opening =
             scope.launch(Dispatchers.Main) {
-                // not cancellable, so a player prepared after a cancel is still released below
-                val next = withContext(Dispatchers.IO + NonCancellable) { prepared(file) }
-                if (!isActive) {
-                    next?.release() // let go while it opened
-                    return@launch
+                var opened: MediaPlayer? = null
+                try {
+                    // not cancellable, so the file is opened to the end; but once cancelled, withContext throws on its
+                    // way back instead of returning, so the player it opened is let go here
+                    withContext(io + NonCancellable) { opened = prepared(file) }
+                } catch (cancelled: CancellationException) {
+                    opened?.release()
+                    throw cancelled
                 }
+                val next = opened
                 if (next == null) {
                     _clip.value = null
                     return@launch

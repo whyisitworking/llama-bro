@@ -1,3 +1,5 @@
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
+
 // A release build signs with the upload key these Gradle properties name when all four are set: on the maintainer's
 // machine from ~/.gradle/gradle.properties, in the release workflow as ORG_GRADLE_PROJECT_<name> from its
 // secrets. Otherwise it signs with the debug key, so anyone's release build still installs.
@@ -41,6 +43,12 @@ android {
         unitTests.all {
             // Robolectric on a current JDK reaches into java.base's internals
             it.jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
+            // Robolectric loads the app's classes through its own class loader, which JaCoCo skips unless told:
+            // without this a Robolectric test counts for nothing in the coverage report
+            it.extensions.configure<JacocoTaskExtension> {
+                isIncludeNoLocationClasses = true
+                excludes = listOf("jdk.internal.*")
+            }
         }
         // no window animations while instrumented tests run: an accessibility check made during an activity's or a
         // sheet's window animation reads a 48 dp target scaled down. Compose's own motion is unaffected

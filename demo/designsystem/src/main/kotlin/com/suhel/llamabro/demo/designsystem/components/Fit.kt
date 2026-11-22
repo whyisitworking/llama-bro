@@ -199,7 +199,8 @@ fun ModelFactsLine(
         (listOfNotNull(maker) + capabilities.map { it.second } + listOfNotNull(fitDescription.takeIf { fit != null }))
             .joinToString(", ")
     FlowRow(
-        modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = spoken },
+        // with nothing known yet the line says nothing: an empty label would be a stop a screen reader can't speak
+        modifier.fillMaxWidth().clearAndSetSemantics { if (spoken.isNotEmpty()) contentDescription = spoken },
         horizontalArrangement = Arrangement.spacedBy(DemoSpacing.block),
         verticalArrangement = Arrangement.spacedBy(DemoSpacing.inline),
         itemVerticalAlignment = Alignment.CenterVertically,

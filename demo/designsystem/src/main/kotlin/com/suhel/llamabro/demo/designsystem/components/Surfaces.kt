@@ -446,15 +446,22 @@ private fun ExpandableBody(
                     .onGloballyPositioned { growth.viewport = it.boundsInRoot() }
                     .edgeFade({ scroll.canScrollForward })
                     .verticalScroll(scroll)
-                    .padding(horizontal = DemoSpacing.gutter)
-                    .gutterEdge()
-                    // the page's end keeps an item's gap from the foot's hairline
-                    .padding(bottom = if (pinned != null) Gap.Item.size else 0.dp)
                     .testTag(DsTags.SHEET_SCROLL),
-                Arrangement.spacedBy(Gap.Item.size),
             ) {
-                CompositionLocalProvider(LocalSheetGrowth provides growth) {
-                    content()
+                // the gutter's mark on a node of its own, inside the padding: on the scroll's node it would merge into
+                // the scroll's semantics and be measured from the sheet's edge, as the plain sheet's isn't
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = DemoSpacing.gutter)
+                        .gutterEdge()
+                        // the page's end keeps an item's gap from the foot's hairline
+                        .padding(bottom = if (pinned != null) Gap.Item.size else 0.dp),
+                    Arrangement.spacedBy(Gap.Item.size),
+                ) {
+                    CompositionLocalProvider(LocalSheetGrowth provides growth) {
+                        content()
+                    }
                 }
             }
             if (pinned != null) SheetFoot(pinned, ruled = { scroll.canScrollForward })
