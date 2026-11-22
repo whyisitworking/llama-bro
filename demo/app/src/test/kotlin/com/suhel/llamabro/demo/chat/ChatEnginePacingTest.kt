@@ -1,18 +1,14 @@
 package com.suhel.llamabro.demo.chat
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
-import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
-import com.suhel.llamabro.demo.data.NewMessage
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
-import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.models.Catalog
-import com.suhel.llamabro.demo.models.DownloadFailure
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.TestHub
@@ -30,10 +26,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test

@@ -37,7 +37,10 @@ def unused(text: str) -> list[str]:
 
 def main() -> int:
     root = sys.argv[1] if len(sys.argv) > 1 else "."
-    files = subprocess.check_output(["git", "-C", root, "ls-files", "*.kt", "*.kts"], text=True).split()
+    # new files not yet added count too, so a pass here is a pass on CI once they are committed
+    files = subprocess.check_output(
+        ["git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "*.kt", "*.kts"], text=True
+    ).split()
     bad = 0
     for path in files:
         with open(f"{root}/{path}", encoding="utf-8") as f:
