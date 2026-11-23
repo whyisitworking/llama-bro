@@ -38,6 +38,12 @@ class SettingsRepositoryTest {
         return SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { file })
     }
 
+    /**
+     * Closes every open store and waits until each has let go of the file, as a process restart does: DataStore
+     * refuses a second store on a file another still holds, so a plain cancel races the next open.
+     */
+    private suspend fun restart() = scopes.forEach { checkNotNull(it.coroutineContext[Job]).cancelAndJoin() }
+
     @After fun stop() = scopes.forEach { it.cancel() }
 
     @Test fun defaultsAreSidebarSystemNoModelsEmptyInstructionsNotSeen() =
@@ -59,8 +65,7 @@ class SettingsRepositoryTest {
             val chosen =
                 SearchFilters(SearchOrder.Newest, SizeFilter.Range(1_000_000_000, 4_000_000_000), seesImages = true)
             first.setSearchFilters(chosen)
-            // the first store is closed before the next opens the file, as a process restart does
-            scopes.forEach { checkNotNull(it.coroutineContext[Job]).cancelAndJoin() }
+            restart()
             assertEquals(chosen, repository().settings.first().searchFilters)
         }
 
@@ -128,7 +133,7 @@ class SettingsRepositoryTest {
             first.setLayout(AppLayout.ChatList)
             first.setInstructions("about", "style")
             first.markFirstRunSeen()
-            scopes.forEach { it.cancel() }
+            restart()
             val second = repository().settings.first()
             assertEquals(AppLayout.ChatList, second.layout)
             assertEquals("about", second.instructionsAbout)
@@ -152,7 +157,7 @@ class SettingsRepositoryTest {
             assertTrue(first.settings.first().captionYou)
             first.setVoice("male")
             first.setCaptionYou(false)
-            scopes.forEach { it.cancel() }
+            restart()
             val again = repository()
             assertEquals("male", again.settings.first().voice)
             assertFalse(again.settings.first().captionYou)
@@ -182,7 +187,7 @@ class SettingsRepositoryTest {
             assertEquals(ChipChoice.Automatic, first.settings.first().chip)
             first.setChip(ChipChoice.Gpu)
             assertEquals(ChipChoice.Gpu, first.settings.first().chip)
-            scopes.forEach { it.cancel() }
+            restart()
             assertEquals(ChipChoice.Gpu, repository().settings.first().chip)
         }
 
