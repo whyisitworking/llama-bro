@@ -1,10 +1,17 @@
 package com.suhel.llamabro.demo.models
 
+import com.suhel.llamabro.hub.HfModel
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /** The cleaned names and makers a row shows (docs/design/models-page.md §3). */
 class NamesTest {
+    @Test fun aModelHasOneNameForAnyUploadOfItsRepo() {
+        // the catalog's name for any quant of a repo it knows, else the shown repo name (D50)
+        assertEquals("Qwen3.5 0.8B", Names.of(HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:IQ4_XS")))
+        assertEquals("Gemma 4 E4B", Names.of(HfModel.parse("someone/gemma-4-E4B-it-qat-q4_0-unquantized-GGUF:Q4_0")))
+    }
+
     @Test fun packagingWordsAreDropped() {
         assertEquals("Gemma 4 E4B", Names.display("gemma-4-E4B-it-qat-q4_0-unquantized-GGUF"))
         assertEquals("Qwen3.5 4B", Names.display("Qwen3.5-4B-GGUF"))

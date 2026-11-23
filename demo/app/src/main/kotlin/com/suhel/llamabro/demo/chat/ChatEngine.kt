@@ -26,6 +26,7 @@ import com.suhel.llamabro.demo.models.DownloadFailure
 import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -409,13 +410,19 @@ class ChatEngine(
     suspend fun holdForVoice(key: HfModel, name: String, slots: Int, limit: MutableStateFlow<Limit?>): VoiceHold? {
         activeTurns.update { it + 1 }
         var lease: ModelHost.Lease? = null
+        var handedOver = false
         try {
-            lease = load(key, name, limit, slots)
-            lease?.let { rememberSenses(settings, key, it.model.info) }
+            lease = load(key, name, limit, slots) ?: return null
+            rememberSenses(settings, key, lease.model.info)
+            handedOver = true
         } finally {
-            if (lease == null) activeTurns.update { it - 1 }
+            // no model, or a throw after the load: the caller gets no hold to release, so nothing may stay held
+            if (!handedOver) {
+                lease?.release()
+                activeTurns.update { it - 1 }
+            }
         }
-        val held = lease ?: return null
+        val held = checkNotNull(lease)
         return VoiceHold(held.model) {
             held.release()
             activeTurns.update { it - 1 }
@@ -543,13 +550,14 @@ class ChatEngine(
          * [NO_MODEL_TITLE] for a new chat with no model chosen, which left the header blank.
          */
         val name: StateFlow<String> =
-            combine(choice, library) { chosen, lib ->
-                when (chosen) {
-                    ModelChoice.Unknown -> ""
-                    ModelChoice.None -> NO_MODEL_TITLE
-                    is ModelChoice.Chosen -> lib?.firstOrNull { it.key == chosen.key }?.name ?: displayName(chosen.key)
-                }
-            }.stateIn(hs, SharingStarted.Eagerly, "")
+            choice
+                .map { chosen ->
+                    when (chosen) {
+                        ModelChoice.Unknown -> ""
+                        ModelChoice.None -> NO_MODEL_TITLE
+                        is ModelChoice.Chosen -> Names.of(chosen.key)
+                    }
+                }.stateIn(hs, SharingStarted.Eagerly, "")
 
         val model: StateFlow<ChatModelState> =
             combine(
@@ -575,7 +583,7 @@ class ChatEngine(
                     }
 
                     else -> {
-                        val name = lib.firstOrNull { it.key == key }?.name ?: displayName(key)
+                        val name = Names.of(key)
                         if (lib.none { it.key == key }) {
                             models.state(key).map { missingOrDownloading(name, it) }
                         } else {
@@ -686,7 +694,7 @@ class ChatEngine(
                 chats.truncateFrom(id, position)
                 invalidate()
                 modelToRestate(before, position, choice.value.key)?.let {
-                    chats.append(id, switchNotice(it, displayName(it), clock()))
+                    chats.append(id, switchNotice(it, Names.of(it), clock()))
                 }
                 chats.update(user.id, MessageChange(state = MessageState.Held))
                 pump()
@@ -705,7 +713,7 @@ class ChatEngine(
                 chats.truncateFrom(id, position)
                 invalidate()
                 modelToRestate(before, position, choice.value.key)?.let {
-                    chats.append(id, switchNotice(it, displayName(it), clock()))
+                    chats.append(id, switchNotice(it, Names.of(it), clock()))
                 }
                 chats.append(
                     id,
@@ -736,7 +744,7 @@ class ChatEngine(
                 choice.value = ModelChoice.Chosen(key)
                 val id = ensureChat() ?: return@launch
                 syncThink()
-                if (switching) chats.append(id, switchNotice(key, displayName(key), clock()))
+                if (switching) chats.append(id, switchNotice(key, Names.of(key), clock()))
                 chats.setModel(id, key.toString())
                 settings.setLastModel(key.toString())
                 pump()
@@ -812,7 +820,7 @@ class ChatEngine(
             var lease: ModelHost.Lease? = null
             try {
                 beforeTurn()
-                val held = load(key, displayName(key), _limit) ?: return
+                val held = load(key, Names.of(key), _limit) ?: return
                 lease = held
                 val loaded = held.model
                 syncThink(loaded.info)
@@ -923,7 +931,7 @@ class ChatEngine(
             var lease: ModelHost.Lease? = null
             try {
                 beforeTurn()
-                val held = load(key, displayName(key), _limit) ?: return
+                val held = load(key, Names.of(key), _limit) ?: return
                 lease = held
                 val loaded = held.model
                 syncThink(loaded.info)
@@ -1036,7 +1044,7 @@ class ChatEngine(
          */
         suspend fun holdModel(): VoiceHold? {
             val key = choice.value.key ?: return null
-            return holdForVoice(key, displayName(key), 1, _limit)
+            return holdForVoice(key, Names.of(key), 1, _limit)
         }
 
         /**
@@ -1046,7 +1054,7 @@ class ChatEngine(
         suspend fun voiceChat(): VoiceChat? {
             val id = ensureChat() ?: return null
             val key = choice.value.key ?: return null
-            return VoiceChat(id, key, displayName(key))
+            return VoiceChat(id, key, Names.of(key))
         }
 
         /** Creates the chat on the first message; null when no model is known yet. */
@@ -1064,7 +1072,7 @@ class ChatEngine(
             _think.update { current -> if (can) current ?: ThinkLevel.Off else null }
         }
 
-        private fun currentName(): String = choice.value.key?.let(::displayName) ?: "This model"
+        private fun currentName(): String = choice.value.key?.let(Names::of) ?: "This model"
 
         /** Starts the model's download again after a failure; what had arrived is kept. */
         fun retryDownload() {
@@ -1073,11 +1081,6 @@ class ChatEngine(
 
         private fun visionModelName(): String? =
             library.value?.firstOrNull { Catalog.byKey(it.key)?.sees == true }?.name
-
-        private fun displayName(key: HfModel): String =
-            library.value?.firstOrNull { it.key == key }?.name
-                ?: Catalog.byRepo(key.repo)?.realName
-                ?: key.repo.substringAfter('/').removeSuffix("-GGUF")
     }
 
     private companion object {

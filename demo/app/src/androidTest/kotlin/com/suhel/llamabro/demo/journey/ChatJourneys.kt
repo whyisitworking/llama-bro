@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.demo.models.Catalog
+import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.demo.models.RepoFile
 import com.suhel.llamabro.hub.HfModel
 import org.junit.Assert.assertEquals
@@ -183,8 +184,8 @@ class ChatJourneys : Journey() {
         // a model that cannot see: the picture is kept, and one plain line says why
         world.engine.supportsVision = false
         openSwitcher()
-        tap(Catalog.nameOf(llama))
-        see("Switched to ${Catalog.nameOf(llama)}")
+        tap(Names.of(llama))
+        see("Switched to ${Names.of(llama)}")
         tapDescription("Add a photo")
         robot.pickFirstPhoto()
         seeDescription("Attached photo")

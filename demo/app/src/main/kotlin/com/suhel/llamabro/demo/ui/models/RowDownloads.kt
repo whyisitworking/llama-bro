@@ -1,8 +1,8 @@
 package com.suhel.llamabro.demo.ui.models
 
-import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.models.ModelLibrary
+import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,7 +65,7 @@ class RowDownloads(
     fun cancel(key: HfModel) {
         val cancelled = models.cancel(key)
         scope.launch {
-            if (!cancelled.await()) onProblem("Couldn't cancel the download of ${Catalog.nameOf(key)}. Try again.")
+            if (!cancelled.await()) onProblem("Couldn't cancel the download of ${Names.of(key)}. Try again.")
         }
     }
 

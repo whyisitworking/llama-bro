@@ -5,7 +5,7 @@ import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.StoredMessage
 import com.suhel.llamabro.demo.designsystem.components.MarkdownBlocks
-import com.suhel.llamabro.demo.models.Catalog
+import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.hub.HfModel
 import java.io.File
 import java.text.NumberFormat
@@ -187,7 +187,7 @@ class ChatItems(
         fun rate(perSecond: Double) = String.format(locale, "%.1f tokens/s", perSecond)
         return buildList {
             m.modelKey
-                ?.let { key -> runCatching { Catalog.nameOf(HfModel.parse(key)) }.getOrNull() }
+                ?.let { key -> runCatching { Names.of(HfModel.parse(key)) }.getOrNull() }
                 ?.let { add(ReplyDetail("Model", it)) }
             s?.device?.let { add(ReplyDetail("Ran on", it)) }
             val words = speed(m.wordsPerSecond)

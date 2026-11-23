@@ -12,9 +12,8 @@
 
 #include <atomic>
 #include <dlfcn.h>
-#include <chrono>
+#include <condition_variable>
 #include <memory>
-#include <thread>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -28,6 +27,7 @@ namespace {
 struct log_entry {
     lb_log_cb cb;
     void * user;
+    int calls = 0;  // threads inside cb now; guarded by runtime_state::log_mtx
 };
 
 struct runtime_state {
@@ -38,10 +38,11 @@ struct runtime_state {
 
     std::mutex log_mtx;
     std::shared_ptr<log_entry> log;                   // guarded by log_mtx; calls hold their own copy
+    std::condition_variable log_idle;                 // notified when a call of any entry returns
     ggml_log_level last_level = GGML_LOG_LEVEL_INFO;  // for GGML_LOG_LEVEL_CONT lines
 };
 
-thread_local int t_log_depth = 0;  // > 0 while this thread is inside the app's log callback
+thread_local const log_entry * t_log_entry = nullptr;  // the entry whose callback this thread is inside, if any
 thread_local std::string * t_capture = nullptr;  // lb_error_capture on this thread, if any
 
 runtime_state & state() {
@@ -75,6 +76,7 @@ void log_trampoline(ggml_log_level level, const char * text, void * /*user*/) {
     auto & s = state();
     const ggml_log_level raw = level;
     std::shared_ptr<log_entry> entry;
+    bool call = false;
     {
         std::lock_guard<std::mutex> lk(s.log_mtx);
         if (level == GGML_LOG_LEVEL_CONT) {
@@ -83,16 +85,24 @@ void log_trampoline(ggml_log_level level, const char * text, void * /*user*/) {
             s.last_level = level;
         }
         entry = s.log;
+        call = entry && common_log_get_verbosity(level) <= common_log_get_verbosity_thold();
+        if (call) entry->calls++;  // counted under the lock, so lb_runtime_set_log sees it before it swaps
     }
     if (t_capture && level == GGML_LOG_LEVEL_ERROR && text) t_capture->append(text);
-    if (!entry || !entry->cb) {
+    if (!entry) {
         common_log_default_callback(raw, text, nullptr);
         return;
     }
-    if (common_log_get_verbosity(level) > common_log_get_verbosity_thold()) return;
-    t_log_depth++;
+    if (!call) return;
+    const log_entry * outer = t_log_entry;
+    t_log_entry = entry.get();
     entry->cb(entry->user, to_lb_level(level), text);
-    t_log_depth--;
+    t_log_entry = outer;
+    {
+        std::lock_guard<std::mutex> lk(s.log_mtx);
+        entry->calls--;
+    }
+    s.log_idle.notify_all();
 }
 
 const char * device_type_name(enum ggml_backend_dev_type t) {
@@ -445,17 +455,17 @@ lb_status lb_runtime_init(const char * config_json, char ** error_json) {
 
 void lb_runtime_set_log(lb_log_cb cb, void * user) {
     auto & s = state();
-    std::shared_ptr<log_entry> old;
     {
-        std::lock_guard<std::mutex> lk(s.log_mtx);
-        old = std::move(s.log);
+        std::unique_lock<std::mutex> lk(s.log_mtx);
+        std::shared_ptr<log_entry> old = std::move(s.log);
         if (cb) s.log = std::make_shared<log_entry>(log_entry{cb, user});
-    }
-    // Wait for calls of the old callback on other threads, so the caller may release the old `user` on return.
-    // A call on this thread (set_log from inside the callback) holds one more copy and finishes after we return.
-    if (old) {
-        const long own = t_log_depth > 0 ? 1 : 0;
-        while (old.use_count() > 1 + own) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        // Wait for calls of the old callback on other threads, so the caller may release the old `user` on return:
+        // the count drops under the same mutex, which orders those calls before this return. A call on this thread
+        // (set_log from inside the old callback) is still running and finishes after we return.
+        if (old) {
+            const int own = t_log_entry == old.get() ? 1 : 0;
+            s.log_idle.wait(lk, [&] { return old->calls <= own; });
+        }
     }
     llama_log_set(log_trampoline, nullptr);  // without a callback it forwards to llama.cpp's default
 }

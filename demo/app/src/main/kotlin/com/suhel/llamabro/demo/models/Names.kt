@@ -1,7 +1,15 @@
 package com.suhel.llamabro.demo.models
 
+import com.suhel.llamabro.hub.HfModel
+
 /** How the app names a model and its maker from what the Hub calls them (docs/design/models-page.md §3). */
 object Names {
+    /**
+     * The one name a model has on every surface (D50): the catalog's name for any upload of its repo, else [display]
+     * of the repo's name.
+     */
+    fun of(key: HfModel): String = Catalog.byRepo(key.repo)?.realName ?: display(key.repo.substringAfter('/'))
+
     /**
      * `gemma-4-E4B-it-qat-q4_0-unquantized-GGUF` becomes `Gemma 4 E4B`: the upload's packaging words (GGUF, the
      * quantisation, QAT) and the instruction-tuning words (`it`, `Instruct`) dropped, separators to spaces, parameter

@@ -126,7 +126,7 @@ class ModelRepository(
                 .map { entry ->
                     LibraryModel(
                         key = entry.model,
-                        name = Catalog.byRepo(entry.model.repo)?.realName ?: tidy(entry.model),
+                        name = Names.of(entry.model),
                         sizeBytes = entry.sizeBytes,
                         lastUsed = used[entry.model.toString()],
                         isDefault = entry.model.toString() == defaultKey,
@@ -471,8 +471,6 @@ class ModelRepository(
     private suspend fun awaitStopped(model: HfModel) {
         withTimeoutOrNull(STOP_WAIT_MILLIS) { hub.progress(model).first { it !is DownloadState.Downloading } }
     }
-
-    private fun tidy(model: HfModel): String = model.repo.substringAfter('/').removeSuffix("-GGUF")
 
     private companion object {
         /** Builder's call, settled here: a cancelled transfer stops within a second or two. */

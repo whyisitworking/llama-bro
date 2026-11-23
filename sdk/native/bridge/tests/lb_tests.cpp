@@ -210,6 +210,43 @@ static std::string junk_file() {
     return path;
 }
 
+// lb_runtime_set_log returns only once calls of the old callback on other threads have returned, so the caller may
+// free the old `user` (JNI deletes its global reference). The callback stays busy after it is let go: a set_log that
+// didn't wait would see it unfinished.
+static std::atomic<bool> g_slow_entered{false};
+static std::atomic<bool> g_slow_release{false};
+static std::atomic<bool> g_slow_finished{false};
+static void slow_logger(void *, lb_log_level, const char *) {
+    if (g_slow_entered.exchange(true)) return;  // only the first call is slow
+    while (!g_slow_release.load()) std::this_thread::yield();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    g_slow_finished = true;
+}
+
+static void set_log_waits_for_calls_on_other_threads() {
+    init_runtime();
+    lb_runtime_set_log(slow_logger, nullptr);
+    const std::string junk = junk_file();
+    std::thread loader([&] {
+        lb_model * model = nullptr;
+        char * err = nullptr;
+        const json cfg = {{"model_path", junk}, {"n_ctx", 512}};
+        lb_model_load(cfg.dump().c_str(), nullptr, nullptr, &model, &err);
+        lb_string_free(err);
+    });
+    while (!g_slow_entered.load()) std::this_thread::yield();
+    bool finished_at_return = false;
+    std::thread swapper([&] {
+        lb_runtime_set_log(nullptr, nullptr);
+        finished_at_return = g_slow_finished.load();
+    });
+    g_slow_release = true;
+    swapper.join();
+    loader.join();
+    std::remove(junk.c_str());
+    LB_CHECK(finished_at_return);
+}
+
 static void log_callback_can_reenter() {
     init_runtime();
     lb_runtime_set_log(swap_logger_inside_callback, nullptr);
@@ -225,7 +262,7 @@ static void log_callback_can_reenter() {
 }
 
 static void version_names_build() {
-    LB_CHECK(std::strstr(lb_version(), "b12653") != nullptr);
+    LB_CHECK(std::string(lb_version()) == "llamabro " LB_TEST_VERSION " llama.cpp b12653");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2322,6 +2359,7 @@ int main(int argc, char ** argv) {
         {"backend_path_env_ignored", backend_path_env_ignored},
         {"version_names_build", version_names_build},
         {"log_callback_can_reenter", log_callback_can_reenter},
+        {"set_log_waits_for_calls_on_other_threads", set_log_waits_for_calls_on_other_threads},
         {"model_load_auto_ctx", model_load_auto_ctx},
         {"auto_ctx_cap_is_per_slot", auto_ctx_cap_is_per_slot},
         {"props_build_info_names_llama_build", props_build_info_names_llama_build},

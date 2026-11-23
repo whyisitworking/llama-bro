@@ -1,7 +1,7 @@
 package com.suhel.llamabro.demo.ui.shell
 
 import com.suhel.llamabro.demo.data.ChatSummary
-import com.suhel.llamabro.demo.models.Catalog
+import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.hub.HfModel
 import java.time.Instant
 import java.time.ZoneId
@@ -58,8 +58,7 @@ object ChatListFormat {
         return if (chat.lastFromUser) "You: $last" else "${modelName(chat.modelKey)}: $last"
     }
 
-    fun modelName(modelKey: String): String =
-        runCatching { Catalog.nameOf(HfModel.parse(modelKey)) }.getOrDefault("Model")
+    fun modelName(modelKey: String): String = runCatching { Names.of(HfModel.parse(modelKey)) }.getOrDefault("Model")
 
     fun avatarLetter(modelKey: String): String =
         modelName(modelKey).firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "?"

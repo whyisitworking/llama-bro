@@ -159,11 +159,6 @@ object Catalog {
 
     fun byKey(key: HfModel): CatalogEntry? = suggested.firstOrNull { it.key == key }
 
-    /**
-     * The name to show for [key]: the model's own name from the catalog, else the repo's.
-     */
-    fun nameOf(key: HfModel): String = byRepo(key.repo)?.realName ?: key.repo.substringAfter('/').removeSuffix("-GGUF")
-
     /** The entry for any upload of this repo, whatever the tag. */
     fun byRepo(repo: String): CatalogEntry? = suggested.firstOrNull { it.key.repo.equals(repo, ignoreCase = true) }
 }

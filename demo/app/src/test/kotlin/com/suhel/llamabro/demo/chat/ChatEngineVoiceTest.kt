@@ -1,6 +1,8 @@
 package com.suhel.llamabro.demo.chat
 
+import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.Preferences
 import com.suhel.llamabro.MediaSource
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Content
@@ -21,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
@@ -28,11 +31,13 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.IOException
 
 /** Voice messages through the engine (D76): who may take one, and how it reaches the model. */
 class ChatEngineVoiceTest {
@@ -44,9 +49,18 @@ class ChatEngineVoiceTest {
     private val fake = FakeLlamaBro()
     private val testHub = TestHub()
     private val hub get() = testHub.hub
+
+    /** Set to make every settings write fail, as a full disk does. */
+    @Volatile private var writesFail = false
     private val settings by lazy {
+        val store = PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "settings.preferences_pb") }
         SettingsRepository(
-            PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "settings.preferences_pb") },
+            object : DataStore<Preferences> by store {
+                override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences {
+                    if (writesFail) throw IOException("disk full")
+                    return store.updateData(transform)
+                }
+            },
         )
     }
     private val chats by lazy {
@@ -66,7 +80,8 @@ class ChatEngineVoiceTest {
     }
 
     @After fun stop() {
-        runBlocking { host.release() }
+        // bounded: a lease left held would make this wait for good instead of failing the test
+        runBlocking { withTimeoutOrNull(5_000) { host.release() } }
         scope.cancel()
         testHub.close()
     }
@@ -118,5 +133,25 @@ class ChatEngineVoiceTest {
             // this repository has no audio store, so the stored name is the file's whole path
             assertEquals(MediaSource.file("a.wav"), audio.source)
             assertEquals(1_000L, rows(chat)[2].voice?.millis)
+        }
+
+    @Test fun aVoiceHoldThatFailsAfterTheLoadLeavesNothingHeld() =
+        runBlocking {
+            fake.supportsAudio = true
+            testHub.install(swift)
+            models.changed()
+            writesFail = true // the model's senses can't be recorded
+            val failure = runCatching { engine.holdForVoice(swift, "Qwen", 1, MutableStateFlow(null)) }
+            assertTrue(failure.exceptionOrNull() is IOException)
+            // a turn still counted says false; a lease still held never lets the model close
+            assertEquals(true, withTimeoutOrNull(5_000) { engine.releaseModelIfIdle() })
+        }
+
+    @Test fun aVoiceHoldWithNoModelLeavesNothingCounted() =
+        runBlocking {
+            val limit = MutableStateFlow<Limit?>(null)
+            assertNull(engine.holdForVoice(swift, "Qwen", 1, limit)) // not installed: the load fails with a line
+            assertTrue(limit.value != null)
+            assertTrue("a turn is still counted", engine.releaseModelIfIdle())
         }
 }

@@ -1,8 +1,8 @@
 package com.suhel.llamabro.demo.chat
 
-import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.LibraryModel
+import com.suhel.llamabro.demo.models.Names
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -41,7 +41,7 @@ fun HostState.loaded(): HostState.Ready? = this as? HostState.Ready ?: (this as?
 fun HostState.inMemory(totalBytes: Long? = null): InMemory? =
     loaded()?.let { ready ->
         InMemory(
-            Catalog.nameOf(ready.key),
+            Names.of(ready.key),
             listOf(
                 Format.sizeInGb(totalBytes?.takeIf { it > 0 } ?: ready.model.info.sizeBytes),
                 ready.model.loadReport.device.label,

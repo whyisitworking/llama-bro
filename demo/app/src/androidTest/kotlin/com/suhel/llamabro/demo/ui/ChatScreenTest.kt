@@ -716,7 +716,7 @@ class ChatScreenTest {
     @Test fun thinkBulbHiddenWhenTheModelCantThink() {
         onPhone(plain)
         show()
-        waitFor("Message ${com.suhel.llamabro.demo.models.Catalog.nameOf(plain)}")
+        waitFor("Message ${com.suhel.llamabro.demo.models.Names.of(plain)}")
         compose.onAllNodesWithContentDescription("Think", substring = true).assertCountEquals(0)
     }
 

@@ -109,7 +109,6 @@ data class ModelEntry(
         /** A model on the phone: its own files' size, when it was last used, whether new chats use it. */
         fun of(model: LibraryModel) =
             ofKey(model.key, model.name).copy(
-                name = cleanName(model.key),
                 maker = Catalog.byRepo(model.key.repo)?.maker,
                 // the one size: the file on the phone and its image reader; the model file alone for the fit's speed
                 size = SizeText.Exact(model.totalBytes, model.sizeBytes),
@@ -124,9 +123,9 @@ data class ModelEntry(
          * the first frame after a restart), else the catalog's for the same file.
          */
         fun downloading(key: HfModel, record: DownloadRecord?): ModelEntry {
-            val known = ofKey(key, cleanName(key))
+            val known = ofKey(key, Names.of(key))
             return known.copy(
-                name = record?.name ?: cleanName(key),
+                name = record?.name ?: Names.of(key),
                 // the catalog's maker wins over the one recorded (P2-3); the recorded one through the one map
                 maker = Catalog.byRepo(key.repo)?.maker ?: record?.maker?.let(Names::maker) ?: known.maker,
                 // the model file alone for the fit's speed, as recorded at Get; a record from before
@@ -164,10 +163,6 @@ data class ModelEntry(
             (entry.key ?: entry.catalog?.key)?.toString()?.lowercase() ?: "repo:${entry.repo.lowercase()}"
 
         private fun keyOf(repo: String) = Names.key(repo.substringAfter('/'))
-
-        /** The catalog's name for the repo, any quant of it, else the repo's name without upload tokens (M25). */
-        private fun cleanName(key: HfModel): String =
-            Catalog.byRepo(key.repo)?.realName ?: Names.display(key.repo.substringAfter('/'))
 
         /**
          * The Recommended file's size from the parameter count, with the reader for a model that sees (F175); the

@@ -9,7 +9,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(LB_LLAMA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/build/llama.cpp" CACHE PATH "Patched llama.cpp copy (prepare-llama.sh)")
 # not a cache entry: a build directory made before an upgrade must not keep the old name
 set(LB_LLAMA_BUILD "b12653")
-set(LB_VERSION "0.1.0" CACHE STRING "llamabro version")
+# The SDK's version, read from the version catalog every published module takes it from (D133), so lb_version() names
+# the release it ships in. Not a cache entry, for the same reason as LB_LLAMA_BUILD. The backends' Docker build
+# (build-backends.sh) sees only sdk/native and builds no libllamabro, so it goes without.
+set(lb_catalog "${CMAKE_CURRENT_SOURCE_DIR}/../../gradle/libs.versions.toml")
+if(EXISTS "${lb_catalog}")
+    file(STRINGS "${lb_catalog}" lb_version_line REGEX "^llamabro = \"")
+    string(REGEX REPLACE "^llamabro = \"([^\"]+)\".*" "\\1" LB_VERSION "${lb_version_line}")
+    if(NOT LB_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+")
+        message(FATAL_ERROR "no llamabro version in ${lb_catalog}")
+    endif()
+elseif(NOT LB_BACKENDS)
+    message(FATAL_ERROR "${lb_catalog} not found: libllamabro needs the SDK's version")
+endif()
 option(LB_BUILD_TESTS "Build host tests, lb-run and llama-server" OFF)
 # On by default for Android packaging; host builds keep upstream's names, so the contract test's llama-server
 # finds its backends exactly as upstream does.
@@ -184,6 +196,7 @@ if(LB_BUILD_TESTS)
     set_target_properties(lb-test-backend PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     add_dependencies(lb-tests lb-test-backend)
     target_compile_definitions(lb-tests PRIVATE "LB_TEST_BACKEND_FILE=\"$<TARGET_FILE_NAME:lb-test-backend>\"")
+    target_compile_definitions(lb-tests PRIVATE "LB_TEST_VERSION=\"${LB_VERSION}\"")
 
     add_executable(lb-run bridge/tools/lb-run.cpp)
     target_include_directories(lb-run PRIVATE bridge/src)
