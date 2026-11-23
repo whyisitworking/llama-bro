@@ -1861,6 +1861,8 @@ upstream's message. The SDK has no pause detection and no fallback: both are the
 the app's here. `FakeLlamaBro` scripts all three outcomes (`streamsAudio`, `transcribesLive`, `transcription`).
 Consequences: On the host, upstream's tiny LFM3 test model transcribes live; the per-commit path is covered by the
 fake only. An app dictating on a model that is refused transcribes pieces with `transcribe`, as the demo does.
+`prompt` is no vocabulary hint: upstream puts it in place of the model's own instruction except on VibeVoice-ASR
+(`common_chat_get_asr_prompt`, `asr_user_text`), so the demo sends none.
 
 ### D139. Speech is upstream's `/v1/audio/speech`, streamed as WAV and handed out as PCM pieces
 

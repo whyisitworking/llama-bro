@@ -245,7 +245,6 @@ makes the audio since the last one an item, and `finish` ends the input:
 ```kotlin
 val dictation = model.transcriptionSession {
     language = "en"
-    prompt = "Llama Bro, GGUF, Qwen"   // words the speech may hold, such as names
 }
 launch {
     dictation.events.collect { event ->
@@ -267,7 +266,9 @@ template (LFM3, Voxtral Realtime) the session is `live`: text streams while the 
 realtime conversations without one is transcribed per commit, so commit at the speaker's pauses to keep the text close
 behind them; the SDK detects no pauses, as llama-server doesn't. Any other model that hears, such as Qwen3-ASR, is
 refused with `NotSupported`: transcribe its recording, or pieces of it, with `transcribe` instead, as upstream's web
-client does. `language` and `prompt` reach a session that isn't live; upstream's live path reads neither.
+client does. `language` and `prompt` reach a session that isn't live; upstream's live path reads neither. `prompt` is
+upstream's, as for `transcribe`: on most models it replaces the model's own instruction, so leave it unset unless the
+model reads it as context (VibeVoice-ASR).
 
 ### Speech
 

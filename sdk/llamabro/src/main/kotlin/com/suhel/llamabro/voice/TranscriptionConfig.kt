@@ -10,7 +10,10 @@ package com.suhel.llamabro.voice
 public class TranscriptionConfig internal constructor(
     /** The language spoken, as an ISO 639-1 code such as `"en"`; null lets the model tell. */
     public val language: String?,
-    /** Words the speech may hold, such as names, as upstream's `prompt` (#32507): a hint, not an instruction. */
+    /**
+     * Upstream's `prompt` (#32507), as `transcribe` takes it: on most models it replaces the model's own instruction
+     * (`asr_user_text`); only a model whose template takes context (VibeVoice-ASR) reads it as extra information.
+     */
     public val prompt: String?,
     /** The rate of the PCM given to `TranscriptionSession.append`; null is the model's own. */
     public val inputSampleRate: Int?,
