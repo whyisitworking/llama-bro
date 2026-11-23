@@ -92,7 +92,8 @@ class HistoryTest {
         val audio = user.content.filterIsInstance<Content.Audio>().single()
         assertEquals(MediaSource.file("/data/audio/a.wav"), audio.source)
         assertEquals(AudioFormat.Wav, audio.format)
-        assertTrue(user.content.none { it is Content.Text })
+        // asked to reply to it, not to describe the recording
+        assertEquals(listOf(Content.Text(History.VOICE_REPLY)), user.content.filterIsInstance<Content.Text>())
     }
 
     @Test fun aModelThatCantHearGetsANoteForEachVoiceMessage() {
@@ -115,7 +116,7 @@ class HistoryTest {
         val captioned = voiceRow(0, "a.wav").copy(text = "Tell me a story.")
         val heard = History.forModel(listOf(captioned), hears = true).single() as Message.User
         assertEquals(1, heard.content.filterIsInstance<Content.Audio>().size)
-        assertTrue(heard.content.none { it is Content.Text })
+        assertEquals(listOf(Content.Text(History.VOICE_REPLY)), heard.content.filterIsInstance<Content.Text>())
         val rows = listOf(captioned, row(1, MessageKind.Assistant, "Once upon a time."), voiceRow(2, "b.wav"))
         assertEquals(
             listOf("U:Tell me a story.", "A:Once upon a time.", "U:${History.VOICE_PLACEHOLDER}"),

@@ -30,6 +30,13 @@ object History {
      */
     const val VOICE_PLACEHOLDER = "(A voice message was sent here; this model can't hear it.)"
 
+    /**
+     * What goes beside a voice message to a model that hears: the person expects a reply to what they said, while a
+     * model given a recording alone may describe it instead (LFM3 Omni does). Unseen: the bubble stays a voice message,
+     * and a voice-mode caption is still never sent beside its audio. Plain words, for a small model.
+     */
+    const val VOICE_REPLY = "Reply to this voice message."
+
     /** [user]'s message for the model: its pictures and voice message as files, then its text (D76, D84). */
     fun userMessage(user: StoredMessage, hears: Boolean): Message = PendingUser.of(user).toMessage(hears)
 
@@ -88,10 +95,10 @@ object History {
     private class PendingUser(val text: String, val images: List<File>, val voices: List<Spoken>) {
         fun toMessage(hears: Boolean): Message {
             val words =
-                if (hears || voices.isEmpty()) {
-                    text
-                } else {
-                    joinText(voices.joinToString("\n\n") { it.caption.ifEmpty { VOICE_PLACEHOLDER } }, text)
+                when {
+                    voices.isEmpty() -> text
+                    !hears -> joinText(voices.joinToString("\n\n") { it.caption.ifEmpty { VOICE_PLACEHOLDER } }, text)
+                    else -> text.ifEmpty { VOICE_REPLY }
                 }
             if (images.isEmpty() && (voices.isEmpty() || !hears)) return Message.user(words)
             val content =
