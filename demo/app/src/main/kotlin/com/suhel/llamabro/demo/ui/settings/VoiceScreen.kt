@@ -9,20 +9,37 @@ import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.SectionNote
+import java.util.Locale
 
 /**
- * What Settings › Voice shows (D100): the voices to choose from, the one chosen, and whether the person is captioned.
+ * What Settings › Voice shows (D100, D140): the voices to choose from, the one chosen, whether the person is captioned,
+ * the language dictation listens for (null: the model tells), and the phone's own language, offered as the one choice.
  */
-data class VoiceSettingsState(val voices: List<String>, val voice: String?, val captionYou: Boolean)
+data class VoiceSettingsState(
+    val voices: List<String>,
+    val voice: String?,
+    val captionYou: Boolean,
+    val dictationLanguage: String? = null,
+    val phoneLanguage: PhoneLanguage = PhoneLanguage.current(),
+)
+
+/** The phone's language as dictation is told it ([code], ISO 639-1) and as the row names it. */
+data class PhoneLanguage(val code: String, val name: String) {
+    companion object {
+        fun current(locale: Locale = Locale.getDefault()): PhoneLanguage =
+            PhoneLanguage(locale.language, locale.getDisplayLanguage(locale).replaceFirstChar { it.uppercase(locale) })
+    }
+}
 
 @Composable
 fun VoiceScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     val settings by viewModel.state.collectAsStateWithLifecycle()
     val voices by viewModel.voices.collectAsStateWithLifecycle()
     VoiceContent(
-        VoiceSettingsState(voices, settings.voice, settings.captionYou),
+        VoiceSettingsState(voices, settings.voice, settings.captionYou, settings.dictationLanguage),
         onVoice = viewModel::setVoice,
         onCaption = viewModel::setCaptionYou,
+        onDictationLanguage = viewModel::setDictationLanguage,
         onBack = onBack,
     )
 }
@@ -38,6 +55,7 @@ fun VoiceContent(
     onVoice: (String) -> Unit,
     onCaption: (Boolean) -> Unit,
     onBack: () -> Unit,
+    onDictationLanguage: (String?) -> Unit = {},
 ) {
     SettingsPage("Voice", onBack, Modifier.testTag("voice_settings")) {
         Section("Voice") {
@@ -76,6 +94,27 @@ fun VoiceContent(
                     )
                 }
             }
+        }
+        Section("Dictation") {
+            GroupedList {
+                row {
+                    ListRow(
+                        "Automatic",
+                        subtitle = "The model tells which language you speak",
+                        selected = state.dictationLanguage == null,
+                        onClick = { onDictationLanguage(null) },
+                    )
+                }
+                row {
+                    ListRow(
+                        state.phoneLanguage.name,
+                        subtitle = "Your phone's language",
+                        selected = state.dictationLanguage == state.phoneLanguage.code,
+                        onClick = { onDictationLanguage(state.phoneLanguage.code) },
+                    )
+                }
+            }
+            SectionNote("Tap the mic in a chat to dictate; hold it to send a voice message.")
         }
     }
 }

@@ -240,11 +240,22 @@ internal fun SamplingModelPreview(
 internal class VoiceSettingsStates : PreviewParameterProvider<VoiceSettingsState> {
     override val values =
         sequenceOf(
-            VoiceSettingsState(listOf("female", "male"), voice = null, captionYou = true),
-            VoiceSettingsState(listOf("female", "male"), voice = "male", captionYou = false),
-            VoiceSettingsState(emptyList(), voice = null, captionYou = true),
+            VoiceSettingsState(Voices, voice = null, captionYou = true, phoneLanguage = PreviewLanguage),
+            VoiceSettingsState(
+                Voices,
+                voice = "male",
+                captionYou = false,
+                dictationLanguage = "en",
+                phoneLanguage = PreviewLanguage,
+            ),
+            VoiceSettingsState(emptyList(), voice = null, captionYou = true, phoneLanguage = PreviewLanguage),
         )
 }
+
+/** The previews' phone language, so they don't follow the machine's. */
+private val PreviewLanguage = PhoneLanguage("en", "English")
+
+private val Voices = listOf("female", "male")
 
 @DemoScreenPreviews
 @Composable

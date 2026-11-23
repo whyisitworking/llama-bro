@@ -23,7 +23,7 @@ data class DictationShown(val preparing: Boolean, val dictation: DictationState)
  */
 class DictationComposer(
     private val scope: CoroutineScope,
-    /** A hold on the chat's model (`ChatHandle.holdForDictation`); null when it can't be had. */
+    /** A hold on the chat's model (`ChatHandle.holdModel`); null when it can't be had. */
     private val hold: suspend () -> VoiceHold?,
     /** A dictation over the held model, in the language the person chose (null: the model tells). */
     private val newDictation: (Model, String?) -> Dictation,

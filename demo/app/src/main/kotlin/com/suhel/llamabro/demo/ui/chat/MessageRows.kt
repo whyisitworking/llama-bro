@@ -58,6 +58,12 @@ class MessageActions(
     val toggleVoice: (messageId: Long, file: File) -> Unit = { _, _ -> },
     /** The voice message playing or paused now; read where a bubble is drawn, so playing redraws that bubble only. */
     val playing: () -> PlayingClip? = { null },
+    /** Whether the model speaks, so a reply can be read aloud (D141). */
+    val canReadAloud: () -> Boolean = { false },
+    /** Reads a reply aloud, or stops it (D141). */
+    val readAloud: (messageId: Long, text: String) -> Unit = { _, _ -> },
+    /** The reply being read aloud now, or null. */
+    val reading: () -> Long? = { null },
 )
 
 @Composable
@@ -133,7 +139,8 @@ private fun ReplyContent(item: ReplyItem, style: MessageStyle, actions: MessageA
     }
     if (showActions && item.failure == null) {
         ReplyActions {
-            item.speech?.let { speech ->
+            val speech = item.speech
+            if (speech != null) {
                 // a spoken reply plays again (D100): the speaker in ink while it plays
                 val playing = actions.playing()?.let { it.messageId == item.id && it.playing } == true
                 IconAction(
@@ -141,6 +148,16 @@ private fun ReplyContent(item: ReplyItem, style: MessageStyle, actions: MessageA
                     if (playing) "Stop playing the reply" else "Play the reply",
                     { actions.toggleVoice(item.id, speech) },
                     muted = !playing,
+                    small = true,
+                )
+            } else if (actions.canReadAloud()) {
+                // a typed reply on a model that speaks is read aloud (D141): the speaker in ink while it reads
+                val reading = actions.reading() == item.id
+                IconAction(
+                    DemoIcons.Speaker,
+                    if (reading) "Stop reading the reply" else "Read the reply aloud",
+                    { actions.readAloud(item.id, item.text) },
+                    muted = !reading,
                     small = true,
                 )
             }

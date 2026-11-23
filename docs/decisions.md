@@ -155,6 +155,7 @@ its amendments to know what holds now.
 | [D78](#d78-the-demo-lets-the-person-choose-the-context-length-and-the-reply-length) The demo lets the person choose the context length and the reply length | 2026-11-15 | |
 | [D100](#d100-the-demos-voice-mode-a-full-screen-view-entered-from-the-message-bar-hold-to-talk-saved-as-an-ordinary-chat) The demo's voice mode: a full-screen view entered from the message bar, hold to talk, saved as… | 2026-11-18 | [D109](#d109-captions-of-the-users-words-move-to-the-app-it-transcribes-its-own-recording-of-each-turn) |
 | [D140](#d140-the-demo-dictates-a-tap-on-the-mic-writes-speech-into-the-message-bar-a-hold-records-a-voice-message) The demo dictates: a tap on the mic writes speech into the message bar, a hold records a voice message | 2026-11-23 | |
+| [D141](#d141-the-demo-reads-a-typed-reply-aloud-on-a-model-that-speaks) The demo reads a typed reply aloud on a model that speaks | 2026-11-23 | |
 | [D101](#d101-the-demos-fit-is-a-formula-on-file-sizes-against-half-the-phones-total-ram-no-network-read-no-free-memory-reading) The demo's fit is a formula on file sizes against half the phone's total RAM; no network read,… | 2026-11-19 | [D116](#d116-one-models-screen-replaces-get-models-and-the-library-a-rows-fit-is-guessed-from-the-search-list-and-drawn-as-a-pace-figure) |
 | [D108](#d108-streaming-markdown-re-parses-from-the-last-top-level-block-lists-and-tables-are-not-resumed-row-by-row) Streaming markdown re-parses from the last top-level block; lists and tables are not resumed row… | 2026-11-19 | |
 | [D113](#d113-the-design-system-rule-is-tokens-anywhere-enforced-by-a-lint-rule-on-the-syntax-tree) The design-system rule is "tokens anywhere", enforced by a lint rule on the syntax tree | 2026-11-19 | |
@@ -1902,3 +1903,17 @@ at each pause on a per-commit session, pieces over `transcribe` otherwise, then 
 it isn't released under it. No `prompt` is sent (D138). The language comes from a setting (null: the model tells).
 Consequences: Amends D76. A model that hears but streams no audio (Qwen3-ASR, Qwen3.5) dictates in pieces of about
 3 s. Upstream's speech gain for quiet microphones (`gain.ts`) is not ported.
+
+### D141. The demo reads a typed reply aloud on a model that speaks
+
+Status: Decided (2026-11-23)
+
+Context: LM Studio Bionic reads replies aloud and Ollama now speaks (Phonon). The demo already replays voice mode's
+spoken replies (D100); a typed reply had no speech. `Model.speak` (D139) speaks text on a model that talks.
+Decision: A reply on a model that speaks shows the speaker action; a tap reads it with `Model.speak` in the voice
+chosen in Settings › Voice (left out when the model hasn't it), played through voice mode's `SpeechOutput` as it is
+made, and a second tap stops it. Markdown is read as plain words: code blocks left out, links as their text, list
+bullets and marks dropped. The chat's model is held while it reads (`ChatHandle.holdModel`, shared with dictation).
+Leaving the screen stops it. Settings › Voice also gets dictation's language (D140): Automatic, or the phone's own.
+Consequences: Only models that speak (LFM3-Omni here) offer it; a model without a voice of its own, or one whose
+speech settings differ, is spoken with upstream's defaults.

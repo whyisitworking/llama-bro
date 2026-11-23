@@ -16,6 +16,8 @@ import com.suhel.llamabro.demo.chat.Dictation
 import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.Limits
 import com.suhel.llamabro.demo.chat.Markdown
+import com.suhel.llamabro.demo.chat.ReadAloud
+import com.suhel.llamabro.demo.chat.SpeechOutput
 import com.suhel.llamabro.demo.chat.StreamingReply
 import com.suhel.llamabro.demo.chat.Take
 import com.suhel.llamabro.demo.chat.Transcripts
@@ -118,6 +120,10 @@ class ChatViewModel(
     /** Whether the mic's one-time hint still shows, and its "seen" (D140). */
     micHint: Flow<Boolean> = flowOf(false),
     onMicHintSeen: suspend () -> Unit = {},
+    /** Where read-aloud speech plays, at a rate (D141); null where there is no speaker (most tests). */
+    speech: ((rate: Int) -> SpeechOutput)? = null,
+    /** The voice chosen in Settings › Voice, for read-aloud. */
+    chosenVoice: suspend () -> String? = { null },
 ) : ViewModel() {
     private val parsed = HashMap<Long, Pair<String, MarkdownBlocks>>()
 
@@ -253,7 +259,7 @@ class ChatViewModel(
         dictationStart?.let { start ->
             DictationComposer(
                 viewModelScope,
-                hold = handle::holdForDictation,
+                hold = handle::holdModel,
                 newDictation = start,
                 language = dictationLanguage,
                 canDictate = {
@@ -264,6 +270,15 @@ class ChatViewModel(
                 problem = { _problem.value = it },
             )
         }
+
+    /** Reads replies aloud on a model that speaks (D141); null without a speaker. */
+    val readAloud: ReadAloud? =
+        speech?.let { out ->
+            ReadAloud(viewModelScope, handle::holdModel, chosenVoice, out, problem = { _problem.value = it })
+        }
+
+    /** The reply being read aloud, or null (always null without a speaker). */
+    val reading: StateFlow<Long?> = readAloud?.reading ?: MutableStateFlow(null)
 
     /** The bar's voice messages (D76); null without a microphone. */
     val voice: VoiceComposer? =
@@ -547,6 +562,7 @@ class ChatViewModel(
         val left = draft.value.attachments
         voiceMode.close()
         dictation?.discard()
+        readAloud?.stop()
         handle.close()
         player.release()
         if (left.isNotEmpty()) background.launch { discardImages(left) }

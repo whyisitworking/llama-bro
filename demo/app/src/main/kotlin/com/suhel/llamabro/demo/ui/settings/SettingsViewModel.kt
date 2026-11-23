@@ -153,6 +153,9 @@ class SettingsViewModel(
 
     fun setCaptionYou(caption: Boolean) = viewModelScope.launch { settings.setCaptionYou(caption) }.let { }
 
+    fun setDictationLanguage(language: String?) =
+        viewModelScope.launch { settings.setDictationLanguage(language) }.let { }
+
     // a counter, not a value: every write asks the store again, so what is shown is what is stored
     private val tokenWrites = MutableStateFlow(0)
 

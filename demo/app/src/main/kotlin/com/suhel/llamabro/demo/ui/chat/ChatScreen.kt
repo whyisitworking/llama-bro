@@ -135,6 +135,9 @@ fun ChatScreen(
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(vm::attach) }
     val voice = rememberVoiceActions(vm.voice, vm.dictation, vm.voiceMode::open)
     val playing = vm.player.clip.collectAsStateWithLifecycle()
+    val reading = vm.reading.collectAsStateWithLifecycle()
+    val talks = vm.talks.collectAsStateWithLifecycle()
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { vm.readAloud?.stop() }
 
     val messageActions =
         remember(vm) {
@@ -159,6 +162,9 @@ fun ChatScreen(
                 openPhoto = { position, index -> photo = OpenPhoto(position, index) },
                 toggleVoice = vm.player::toggle,
                 playing = { playing.value },
+                canReadAloud = { vm.readAloud != null && talks.value },
+                readAloud = { id, text -> vm.readAloud?.toggle(id, text) },
+                reading = { reading.value },
             )
         }
     val actions =
@@ -320,6 +326,12 @@ private fun chatViewModel(
         },
         micHint = container.settings.settings.map { !it.seenMicHint },
         onMicHintSeen = { container.settings.setSeenMicHint() },
+        speech = container.speech,
+        chosenVoice = {
+            container.settings.settings
+                .first()
+                .voice
+        },
     )
 }
 
