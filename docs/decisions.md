@@ -73,7 +73,7 @@ its amendments to know what holds now.
 | [D39](#d39-the-hub-is-a-kotlin-port-of--hf) The hub is a Kotlin port of -hf | 2026-11-07 | |
 | [D40](#d40-every-download-is-hashed) Every download is hashed | 2026-11-07 | |
 | [D41](#d41-dflash-ships-with-the-hub) DFlash ships with the hub | 2026-11-07 | |
-| [D42](#d42-a-fit-check-before-download-search-stays-in-the-app) A fit check before download; search stays in the app | 2026-11-07 | |
+| [D42](#d42-a-fit-check-before-download-search-stays-in-the-app) A fit check before download; search stays in the app | 2026-11-07 |  [D68](#d68-search-on-the-hub-in-llamabro-hub-grouping-re-uploads-with-recommended-sampling-where-the-hub-has-it), [D110](#d110-hub-search-and-recommended-sampling-stay-in-the-hub-as-a-deliberate-exception-to-expose-llama-server) |
 | [D43](#d43-how-downloads-are-tested) How downloads are tested | 2026-11-07 | |
 | [D44](#d44-hub-deviations-after-review-one-download-at-a-time) Hub deviations after review; one download at a time | 2026-11-09 | [D89](#d89-hub-downloads-after-w5s-reviews-files-in-the-plans-order-one-writer-per-blob-by-canonical-path-deletes-one-at-a-time-reclaim-never-fails-a-download) |
 | [D47](#d47-a-resumed-partial-is-verified-by-re-reading-it) A resumed partial is verified by re-reading it | 2026-11-10 | |
@@ -122,7 +122,7 @@ its amendments to know what holds now.
 
 | Decision | Date | Amended by |
 |---|---|---|
-| [D37](#d37-text-to-speech-is-out-of-10) Text to speech is out of 1.0 | 2026-11-06 | [D95](#d95-voice-mode-is-a-realtime-conversation-with-one-omni-model-through-upstreams-v1realtime-on-an-in-memory-connection) |
+| [D37](#d37-text-to-speech-is-out-of-10) Text to speech is out of 1.0 | 2026-11-06 | [D95](#d95-voice-mode-is-a-realtime-conversation-with-one-omni-model-through-upstreams-v1realtime-on-an-in-memory-connection), [D139](#d139-speech-is-upstreams-v1audiospeech-streamed-as-wav-and-handed-out-as-pcm-pieces) |
 | [D85](#d85-interactive-voice-mode-is-its-own-phase-after-ph) Interactive voice mode is its own phase after PH | 2026-11-16 | |
 | [D95](#d95-voice-mode-is-a-realtime-conversation-with-one-omni-model-through-upstreams-v1realtime-on-an-in-memory-connection) Voice mode is a realtime conversation with one omni model, through upstream's `/v1/realtime` on… | 2026-11-18 | |
 | [D96](#d96-patch-0008-ends-lfm3-speech-that-runs-past-its-text) Patch 0008 ends LFM3 speech that runs past its text | 2026-11-18 | [D98](#d98-the-kotlin-voice-session-a-suspending-open-a-handle-with-sends-typed-events-with-a-raw-escape-hatch) |
@@ -488,6 +488,7 @@ Status: Decided (2026-11-06)
 Context: Qwen3-TTS 1.7B speaks clearly but below real time on every chip, its codec aborts on the NPU, and `rawRequest` returns strings, so the SDK cannot return audio bytes (F74).
 Decision: Text to speech does not ship in 1.0; it is revisited after a llama.cpp or hardware change. Backend sampling also stays as it is, per request and off by default, since it gained nothing (F70).
 Consequences: A byte-returning request and a way to keep the multimodal projector on the CPU would be needed first (F74). To be revisited by the voice-mode phase after PH (D85), now that LFM3-Omni-2B speaks faster than real time on the phone (F154). Amended by D95, which brings speech output in through a realtime voice conversation.
+Superseded by D139: `Model.speak` ships text to speech through upstream's `/v1/audio/speech`.
 
 ### D38. The CPU path runs without OpenMP
 
@@ -528,6 +529,7 @@ Status: Decided (2026-11-07)
 Context: An app wants to tell a person whether a model fits before downloading gigabytes, while llama.cpp has no model search.
 Decision: The hub provides a pre-download estimate from llama.cpp's own projection (D33), run on the GGUF header fetched with an HTTP `Range` request (F84). Model search is not added, because it is one Hugging Face API call any app can make and falls outside the scope rule.
 Consequences: If the projection had failed in a spike, the estimate would have been file size plus the context cache computed from header metadata, labelled as such.
+Superseded by D68 and D110 for search: the hub searches the Hub after all.
 
 ### D43. How downloads are tested
 

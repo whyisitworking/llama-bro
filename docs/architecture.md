@@ -856,15 +856,14 @@ Deliberately not part of the SDK, with the reason:
 |---|---|
 | Deciding which calls need approval, and gating (policy) | Application policy (D11); the SDK only pauses (D62, §6.2) |
 | Scheduling, background execution and notifications for downloads | The application's choice of executor (D9) |
-| Model search and recommendations | One Hugging Face API call any app can make; llama.cpp has no search (D42). The SDK provides the fit estimate instead |
+| Model recommendations | Which model suits an app is the app's choice; the hub searches the Hub and estimates fit (D68, D110, §12) but ranks nothing for the app |
 | An out-of-process or HTTP server mode | In-process only (D5) |
 | Router mode | Needs subprocesses; load several `Model`s instead |
 | llama-server's built-in tools and MCP | Kotlin tools cover the need |
 | Context shift | Not supported for multimodal or hybrid models; compaction is a client feature (D13) |
-| Automatic compaction | `Conversation` compacts when asked, as the web client does; `contextUsage` lets an app set its own threshold |
+| Compaction before the context is full | `Conversation` compacts when asked, as the web client does, or once a send meets `ContextExceeded` with `autoCompact` (D136); `contextUsage` lets an app set its own threshold |
 | Low-level control (logits, KV edits, Kotlin samplers, per-token callbacks) | Outside llama-server's surface |
-| Vulkan | Fails on the test phone's GPU driver (D31, F64) |
-| Text to speech | Below real time on every chip, and `rawRequest` cannot return audio bytes (D37, F74) |
+| Vulkan | Fails on the test phone's GPU driver at the pin; with upstream's pending fixes it runs, but slower than the CPU (D31, D112, F64, F174) |
 | Training and fine-tuning | Outside llama-server's surface |
 | Build-from-source consumption | Prebuilt AARs only (D4) |
 | Platforms other than Android `arm64-v8a` | Flutter and Kotlin Multiplatform bindings over the C API are planned for later; the C API is kept stable for them |
