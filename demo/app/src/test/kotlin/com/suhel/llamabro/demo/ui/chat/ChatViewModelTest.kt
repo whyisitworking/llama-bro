@@ -353,6 +353,8 @@ class ChatViewModelTest {
             // the chat's rows go behind the handle's back: the database refuses the message (a foreign key)
             val id = chats.createChat(swift.toString())
             val vm = viewModel(chatId = id)
+            // the handle looks its chat's model up as it opens: deleted first, it finds none and the send just stops
+            until("the chat's model") { vm.handle.current.value == swift }
             chats.delete(id)
             vm.onText("Hi there")
             vm.send()
