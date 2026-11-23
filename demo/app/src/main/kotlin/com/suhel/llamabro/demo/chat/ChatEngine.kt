@@ -159,12 +159,16 @@ internal fun readyOrWaking(
         }
 
         else -> {
+            // not loaded: what its last load showed, else the catalog's word for any quant of the repo, so a suggested
+            // model that talks shows the mic and voice mode before its first load (a model that talks hears)
+            val catalog = Catalog.byRepo(key.repo)
+            val catalogTalks = catalog?.talks == true
             ChatModelState.Ready(
                 name,
-                Catalog.byKey(key)?.sees ?: false,
-                Catalog.byKey(key)?.thinks ?: false,
-                hears = key.toString() in heard,
-                talks = key.toString() in talking,
+                catalog?.sees ?: false,
+                catalog?.thinks ?: false,
+                hears = key.toString() in heard || catalogTalks,
+                talks = key.toString() in talking || catalogTalks,
             )
         }
     }
