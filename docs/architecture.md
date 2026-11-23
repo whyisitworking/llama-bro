@@ -38,7 +38,7 @@ The SDK adds two kinds of things on top of llama-server:
 
 ### 1.2 The baseline is upstream
 
-The baseline for every behaviour and default is upstream llama.cpp at the pinned build `b12479` (D93): llama-server (`tools/server`) and its web client, Llama Chat (`ui/apps/chat`; `tools/ui` before b12479, and still called `tools/ui` in this document). A behaviour or default that differs from upstream must win an A/B test on a device against the upstream behaviour. Ideas are judged by measured results, not by where they came from (D10, D18). Examples of where upstream won: the sampler order and penalty behaviour (D18, F12-F15), and the sleep mode, which the SDK keeps off because a failed reload aborts the process.
+The baseline for every behaviour and default is upstream llama.cpp at the pinned build `b12653` (D137): llama-server (`tools/server`) and its web client, Llama Chat (`ui/apps/chat`; `tools/ui` before b12479, and still called `tools/ui` in this document). A behaviour or default that differs from upstream must win an A/B test on a device against the upstream behaviour. Ideas are judged by measured results, not by where they came from (D10, D18). Examples of where upstream won: the sampler order and penalty behaviour (D18, F12-F15), and the sleep mode, which the SDK keeps off because a failed reload aborts the process.
 
 The SDK deviates from upstream in these places, each justified by a measurement or a decision:
 
@@ -48,7 +48,7 @@ The SDK deviates from upstream in these places, each justified by a measurement 
 | Weights loaded without mmap (`--load-mode none`) | One resident copy of the weights instead of two (D30, F58-F60) |
 | A memory-based `ContextSize.Auto` | Upstream's fit misjudges a phone (D33, F66) |
 | No OpenMP on the CPU path | Same speed, smaller AAR (D38, F77) |
-| Seven patches ([register](../sdk/native/patches/README.md)): 0001 a one-line Hexagon gate for delta-net with MTP (D80), 0002 upstream PR #30432 (a NEON path for BF16 dot products) until it merges (D55), 0003 a load that can be stopped (D67), 0004 the prompt cache's SWA rule on hybrid memory (D91), 0005 LFM3-Omni's speech depthformer with no CPU op on the NPU, 0007 Hexagon's no-block poll on Android (D86, D90), 0008 an end for LFM3 speech that runs past its text (D96) | Faster prompt processing for hybrid models with MTP, drifting no more than upstream's own switch (F149); a 5x faster BF16 image encoder on the phone's CPU (F127); a cancelled load returns in about a second (F148); voice-note chats on the LFM3 family reuse their cache (F153); speech output on the NPU alone (F155, F156); polling without flooding logcat (F162); captioned speech that never ends is stopped (F167) |
+| Six patches ([register](../sdk/native/patches/README.md)): 0001 a one-line Hexagon gate for delta-net with MTP (D80), 0002 upstream PR #30432 (a NEON path for BF16 dot products) until it merges (D55), 0003 a load that can be stopped (D67), 0005 LFM3-Omni's speech depthformer with no CPU op on the NPU, 0007 Hexagon's no-block poll on Android (D86, D90), 0008 an end for LFM3 speech that runs past its text (D96) | Faster prompt processing for hybrid models with MTP, drifting no more than upstream's own switch (F149); a 5x faster BF16 image encoder on the phone's CPU (F127); a cancelled load returns in about a second (F148); speech output on the NPU alone (F155, F156); polling without flooding logcat (F162); captioned speech that never ends is stopped (F167) |
 | A failed tool's exception text stays out of the prompt unless it is an `LbToolError` | The exception may hold private data (D62, D83) |
 | What is on the phone loads with no network request; `cached()` lists only selections that load | A load never downloads unasked (D64, D89) |
 | One file at a time per download, in the plan's order | One transfer is about 2.1x faster than four on a phone (D44, F89, D89) |
@@ -81,7 +81,7 @@ The engine runs in the application's process (D5). There is no local HTTP server
  |  C API (llamabro.h)      |
  |  C++ bridge              |        also: llamabro-typed (+ -ksp), llamabro-hub-work
  |                          |        test-only: llamabro-testing, llamabro-hub-testing
- |  llama.cpp b12479        |
+ |  llama.cpp b12653        |
  +--------------------------+
 ```
 
@@ -189,7 +189,7 @@ The alternative, a custom pipeline over `libllama`, would give full control but 
 ## 4. Request path
 
 ```
- Kotlin                               native                                 llama.cpp b12479
+ Kotlin                               native                                 llama.cpp b12653
  ------                               ------                                 ----------------
  model.chat(request)
    |  ChatRequest -> JSON body

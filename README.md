@@ -11,7 +11,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-7B44F6" alt="License: Apache-2.0"></a>
   <a href="sdk/build-logic/src/main/kotlin/llamabro.library.gradle.kts"><img src="https://img.shields.io/badge/Android-API%2029%2B-7B44F6" alt="Android API 29 and up"></a>
   <a href="sdk/llamabro/build.gradle.kts"><img src="https://img.shields.io/badge/ABI-arm64--v8a-7B44F6" alt="ABI: arm64-v8a"></a>
-  <a href="docs/decisions.md#d93-llamacpp-is-pinned-at-b12479-upstream-master-on-2026-11-17"><img src="https://img.shields.io/badge/llama.cpp-b12479-7B44F6" alt="llama.cpp build b12479"></a>
+  <a href="docs/decisions.md#d137-llamacpp-is-pinned-at-b12653-upstream-master-on-2026-11-23"><img src="https://img.shields.io/badge/llama.cpp-b12653-7B44F6" alt="llama.cpp build b12653"></a>
 </p>
 
 <p align="center">

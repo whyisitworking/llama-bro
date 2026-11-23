@@ -12,7 +12,7 @@ new record goes at the end, with a row in the index under its area and a link in
 Phase labels (P0, P1, PA, P2, PF, P3, PD, PH) and workstream labels (W1 to W9) are summarised in the
 [research history](./research/history.md#summary-of-the-phases).
 Where a decision was made before the dated record-keeping began, the date is that of the first design document
-(2026-11-03). "Upstream" is llama.cpp at the pinned build (`b12479` since D93; `b12352` from D52; `b12052` before),
+(2026-11-03). "Upstream" is llama.cpp at the pinned build (`b12653` since D137; `b12479` from D93; `b12352` from D52; `b12052` before),
 "llama-server" is its server tool, and `tools/ui` is the web client that ships with it.
 
 ## Index
@@ -90,7 +90,7 @@ its amendments to know what holds now.
 
 | Decision | Date | Amended by |
 |---|---|---|
-| [D10](#d10-llamacpp-version-and-patches) llama.cpp version and patches | 2026-11-04 | [D52](#d52-llamacpp-is-pinned-at-b12352), [D55](#d55-upstream-pr-30432-is-carried-as-a-patch-until-it-merges), [D67](#d67-cancelling-a-load-aborts-its-weight-reading-through-a-carried-patch), [D80](#d80-patch-0001-becomes-a-one-line-hexagon-gate-instead-of-the-delta-net-headtail-split), [D91](#d91-patch-0004-the-prompt-caches-swa-rule-applies-only-to-memory-that-can-be-partly-removed), [D93](#d93-llamacpp-is-pinned-at-b12479-upstream-master-on-2026-11-17) |
+| [D10](#d10-llamacpp-version-and-patches) llama.cpp version and patches | 2026-11-04 | [D52](#d52-llamacpp-is-pinned-at-b12352), [D55](#d55-upstream-pr-30432-is-carried-as-a-patch-until-it-merges), [D67](#d67-cancelling-a-load-aborts-its-weight-reading-through-a-carried-patch), [D80](#d80-patch-0001-becomes-a-one-line-hexagon-gate-instead-of-the-delta-net-headtail-split), [D91](#d91-patch-0004-the-prompt-caches-swa-rule-applies-only-to-memory-that-can-be-partly-removed), [D93](#d93-llamacpp-is-pinned-at-b12479-upstream-master-on-2026-11-17), [D137](#d137-llamacpp-is-pinned-at-b12653-upstream-master-on-2026-11-23) |
 | [D12](#d12-inference-engine) Inference engine | 2026-11-03 | |
 | [D17](#d17-phone-defaults) Phone defaults | 2026-11-03 | |
 | [D20](#d20-native-packaging) Native packaging | 2026-11-04 | |
@@ -110,9 +110,10 @@ its amendments to know what holds now.
 | [D80](#d80-patch-0001-becomes-a-one-line-hexagon-gate-instead-of-the-delta-net-headtail-split) Patch 0001 becomes a one-line Hexagon gate instead of the delta-net head/tail split | 2026-11-15 | |
 | [D86](#d86-the-npu-polls-for-its-results-by-default-llamabroconfignpupolling-and-two-patches-make-speech-on-the-npu-fast) The NPU polls for its results by default (`LlamaBroConfig.npuPolling`), and two patches make… | 2026-11-17 | [D90](#d90-npu-polling-goes-back-to-upstreams-default-off-and-the-speech-output-patches-move-to-the-voice-mode-phase), [D94](#d94-patch-0006-rides-on-upstreams-two-output-flags-an-output-that-asks-for-embeddings-only-skips-the-lm-head), [D111](#d111-patch-0006-is-dropped-speech-computes-the-text-head-on-every-frame-again) |
 | [D90](#d90-npu-polling-goes-back-to-upstreams-default-off-and-the-speech-output-patches-move-to-the-voice-mode-phase) NPU polling goes back to upstream's default (off), and the speech-output patches move to the… | 2026-11-17 | |
-| [D91](#d91-patch-0004-the-prompt-caches-swa-rule-applies-only-to-memory-that-can-be-partly-removed) Patch 0004: the prompt cache's SWA rule applies only to memory that can be partly removed | 2026-11-16 | |
+| [D91](#d91-patch-0004-the-prompt-caches-swa-rule-applies-only-to-memory-that-can-be-partly-removed) Patch 0004: the prompt cache's SWA rule applies only to memory that can be partly removed | 2026-11-16 | [D137](#d137-llamacpp-is-pinned-at-b12653-upstream-master-on-2026-11-23) |
 | [D92](#d92-auto-keeps-trying-the-npu-and-the-gpu-on-every-qualcomm-chip-only-one-phone-is-verified) `Auto` keeps trying the NPU and the GPU on every Qualcomm chip; only one phone is verified | 2026-11-17 | |
-| [D93](#d93-llamacpp-is-pinned-at-b12479-upstream-master-on-2026-11-17) llama.cpp is pinned at b12479 (upstream master on 2026-11-17) | 2026-11-17 | |
+| [D93](#d93-llamacpp-is-pinned-at-b12479-upstream-master-on-2026-11-17) llama.cpp is pinned at b12479 (upstream master on 2026-11-17) | 2026-11-17 | [D137](#d137-llamacpp-is-pinned-at-b12653-upstream-master-on-2026-11-23) |
+| [D137](#d137-llamacpp-is-pinned-at-b12653-upstream-master-on-2026-11-23) llama.cpp is pinned at b12653 (upstream master on 2026-11-23) | 2026-11-23 | |
 | [D94](#d94-patch-0006-rides-on-upstreams-two-output-flags-an-output-that-asks-for-embeddings-only-skips-the-lm-head) Patch 0006 rides on upstream's two output flags: an output that asks for embeddings only skips… | 2026-11-18 | [D111](#d111-patch-0006-is-dropped-speech-computes-the-text-head-on-every-frame-again) |
 | [D111](#d111-patch-0006-is-dropped-speech-computes-the-text-head-on-every-frame-again) Patch 0006 is dropped: speech computes the text head on every frame again | 2026-11-19 | |
 | [D112](#d112-the-vulkan-recipe-leaves-the-live-build-for-researchvulkan-adreno) The Vulkan recipe leaves the live build for research/vulkan-adreno | 2026-11-19 | |
@@ -1823,3 +1824,18 @@ Decision:
 Consequences: callers that caught `InvalidRequest` for these misuses, matched `Speculative.Auto`, passed a MIME string
 to `Content.Audio` or matched `transcribe`'s `Typed` change once; the demo, the fakes and the tests did. The `.api`
 dumps record the new shape.
+
+### D137. llama.cpp is pinned at b12653 (upstream master on 2026-11-23)
+
+Status: Decided (2026-11-23)
+
+Context: The maintainer asked what upstream had added since b12479 and to upgrade. Upstream's tag b12653
+(`7d9b931df`, 174 commits later) fixes the Qwen3-ASR audio tail, LFM2.5-VL's template detection, two realtime bugs, a
+sticky NaN in recurrent state and two reads of untrusted input, and its #32434 fixes the bug patch 0004 carried (D91),
+with an equivalent rule at the call to `get_reuse`. At that tag the contract is identical on the Mac and the phone's
+NPU and every device gate passes (F180).
+Decision: The submodule moves to `7d9b931df`, named b12653. Patch 0004 is dropped; 0001, 0002, 0003, 0005, 0007 and
+0008 ship unchanged. Amends D10 and D93, and retires D91's patch: its rule now comes from upstream.
+Consequences: Statements measured at b12479 (the README's benchmark, F178) stay as measured until retested. Patch
+0001's gain and upstream's OpenCL and CPU speed changes are not re-measured (F180). Upstream's realtime transcription
+session and its speech options (voice, speaker reference, speed) are now reachable for the SDK to type.

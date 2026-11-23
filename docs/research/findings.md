@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the [decision records](../decisions.md) (`D<n>`), the [research history](history.md), which summarises each phase, and the experiments under [`research/`](../../research/).
-> **Status:** living document, updated 2026-11-22 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179)
+> **Status:** living document, updated 2026-11-23 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180)
 
 Labels such as P1, PA, PF, PD and PH name the project's phases, and W1 to W9 the workstreams of a phase; the
 [research history](history.md#summary-of-the-phases) summarises each. "Task <n>", "T<n>" and "Feeds:" name the steps
@@ -1999,10 +1999,50 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   its code owner's approval. That is strong precedent, not the licence text: written confirmation can only come from
   the SDK agreement or from Qualcomm. NOTICE says what the files contain and where the precedent is (D133).
 
+## The b12653 upgrade (F180)
+
+### F180. The upgrade to b12653: the contract still holds on the Mac and the NPU, and upstream's own fix replaces patch 0004
+
+- **Finding:** At b12653 (`7d9b931df`, upstream's tag on 2026-11-23, 174 commits after b12479) the SDK matches
+  upstream llama-server on every contract case on the Mac and on the phone's NPU. Six of the seven patches apply
+  unchanged; 0004 does not, and is no longer needed: #32434 (`52975342f`, "slot_sched: fix lora and recurrent") gives
+  `server_prompt::get_reuse` an `n_swa_reuse` of 0 for recurrent and hybrid models (`server-context.cpp`), the same
+  rule as 0004 (0 for memory that cannot be partly removed) on every model we ship: the LFM3 family is hybrid, Gemma 3
+  (SWA, partly removable) and full-attention models are neither and keep `n_swa`. Its "drop when" named
+  `get_reuse`'s threshold, which is unchanged; the fix sits at the call. No other patch's "drop when" is met: #30432
+  (0002) is still open, Hexagon's delta-net gate is still `K == 1` (0001), the server has no hook to stop a load
+  (0003; upstream's new load cancel is the web client's), `lfm3a-gen.cpp` and `htp-drv.cpp` are untouched (0005, 0007).
+- **What changed for the SDK:** the build is named b12653 (`LB_LLAMA_BUILD`, the version tests, the hub's user agent and
+  golden, the demo's About row); `build_info` is `b12653-7d9b931`. The code the bridge copies or ports is unchanged:
+  `server.cpp`'s `ex_wrapper` and `server_prepare_params` (now with a router branch the bridge doesn't take), the
+  routes `server_register_routes` adds, the backend loader (`ggml-backend-reg.cpp`) and `is_audio_file`
+  (`mtmd-helper.cpp`). `common_params_parse_ex` now refuses `--ignore-eos` with a grammar, which model config cannot
+  set. `/v1/realtime` adds a `prompt` to `"transcription"` sessions (#32507) and full duplex for Moshi-type models
+  (#32491), with no new event type, so `RealtimeLink` needs nothing. Fixes the SDK gets with the pin: the Qwen3-ASR
+  audio tail (#32697), LFM2.5-VL template detection (#32843), the realtime sleep state and transcription prompt
+  (#32567, #32507), a sticky NaN in recurrent state (#31913), lazy grammar on bare JSON tool calls (#32497),
+  token-aware chat parsing (#29307), `reasoning_effort = none` passed to templates that list it (#32763), untrusted
+  GGUF enums and a grammar overflow (#32641, #32551), buffered reads on EIO (#32545). New speech models (Kokoro,
+  Qwen3-TTS reference mode, drama3 voice cloning, VoxCPM2, tiny-voca) add `MTMD_GEN_AUDIO_TYPE_*` values only.
+- **Evidence:** `sdk/scripts/check.sh` ALL PASS on the host: the contract 76/76 identical on Qwen3.5 4B with its
+  projector, 75/75 on Llama 3.2 3B, 12/12 on upstream's audio test model; hub and `tools-ui` goldens unchanged; the
+  five `hybrid_swa_cache_*` native tests, which fail without the fix (F153), pass without 0004;
+  `omni_tts_same_audio_as_upstream` unchanged. `--device` on the OnePlus 13: device contract 76/76 identical on
+  `HTP0`; `device-speech` 19.84 s of audio in 10.36 s, 1.91 times real time (one run, temperature not controlled;
+  about 2.0 at b12479 without 0006, D111); acceptance full flavor 14 of 15, the 15th the tolerated F27, cpu, gpu and
+  noskel 5 of 5, and the minified builds; hub-device and hub-resume. The acceptance app's model files had been wiped
+  with its data and were pushed again before the passing run.
+- **Means:** the pin moves to b12653 with six patches (D137). Not re-measured: patch 0001's prefill gain (+67% at
+  b12479, F163); upstream's OpenCL changes (a q4_k GEMM for speculative verify #32716, f16 flash attention with the
+  GQA head folded #32631, dp4a for KQ #32577) and CPU changes (`mul_mat_one_chunk`'s access pattern #30846, threaded
+  GET_ROWS #32514, the audio FFT #32815) need a phone A/B before they count (D10).
+- **Feeds:** D10, D91, D93, D137, F153, F163.
+
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F180 | The upgrade to b12653: contract identical on the Mac and the NPU (76/76); upstream #32434 fixes 0004's bug, so 0004 is dropped; six patches apply unchanged | D10, D91, D93, D137, F153, F163 |
 | F179 | The Hexagon skeletons hold llama.cpp's code, qaic-generated FastRPC glue and inline SDK-header code (headers marked Qualcomm proprietary); the SDK agreement is not public; llama.cpp's official b12479 release ships the same files from the same image, approved by the ggml-hexagon code owner | D133, D93 |
 | F178 | The README's run, 37 arms on the OnePlus 13 at b12479: the NPU fastest for all six ladder models (230M-4B); code edit 8.0× with n-gram + MTP; DFlash JSON now 0.9× off (F73: 2.3×); first voice audio 0.38 s; stop 85 ms | F73, F72, F170, F63, F69 |
 | F177 | The merged Models screen's card re-expanded up to five times over ~0.9 s and its list dropped ~20 dp when storage landed; the rebuilt card rises once into its compact height on the phone (B4 fixed), one size per file (B5) | D118-D121, D130, models audit |
