@@ -10,6 +10,11 @@ on:
   workflow_dispatch:
   # the release workflow runs these jobs first, as its gate
   workflow_call:
+    inputs:
+      skip-demo-apk:
+        description: Skip the debug demo APK; the release workflow builds the release one itself
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -109,5 +114,7 @@ jobs:
         run: ./gradlew :demo:designsystem:testDebugUnitTest :demo:app:testDebugUnitTest
       - name: Demo lint
         run: ./gradlew :demo:app:lintDebug :demo:designsystem:lintDebug
+      # inputs is empty outside workflow_call, so every other trigger builds it
       - name: Demo APK
+        if: ${{ !inputs.skip-demo-apk }}
         run: ./gradlew :demo:app:assembleDebug

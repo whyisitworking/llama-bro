@@ -1,8 +1,10 @@
-# A release: CI's checks as the gate, then two jobs.
-#   demo  the demo app's minified release APK, signed with the upload key in this repository's secrets, attached to a
-#         GitHub release for a version tag (Google Play uploads are made by hand, from the maintainer's machine)
-#   sdk   the SDK's nine modules and its BOM, signed and uploaded to the Maven Central Portal as a deployment that waits there:
-#         nothing is public until the maintainer presses Publish in the Portal (D133, docs/publishing.md)
+# A release: CI's checks as the gate, then three jobs.
+#   demo            the demo app's minified release APK, signed with the upload key in this repository's secrets (Google
+#                   Play uploads are made by hand, from the maintainer's machine)
+#   sdk             the SDK's nine modules and its BOM, signed and uploaded to the Maven Central Portal as a deployment that
+#                   waits there: nothing is public until the maintainer presses Publish in the Portal (D133, docs/publishing.md)
+#   github-release  for a version tag, once both succeeded: the GitHub release with the APK, a pre-release when the version
+#                   has a suffix (-alpha, -beta, -rc); a rerun updates the release it finds
 #
 #   git tag 2.0.0-alpha && git push origin 2.0.0-alpha   both; the tag must be the catalog's llamabro version
 #   Actions > Release > Run workflow                     the demo's APK and the SDK's signed local publication as
@@ -42,14 +44,15 @@ jobs:
   checks:
     name: CI
     uses: ./.github/workflows/ci.yml
+    with:
+      # the demo job builds the real APK
+      skip-demo-apk: true
 
   demo:
     name: Demo release APK
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    permissions:
-      contents: write
     steps:
       # the demo includes the NPU and GPU backends, whose native libraries build in Qualcomm's toolchain image (CI's
       # backends-and-demo job does the same)
@@ -118,22 +121,6 @@ jobs:
           name: llama-bro-demo-${{ steps.version.outputs.name }}
           path: out/
           if-no-files-found: error
-
-      - name: GitHub release
-        if: github.ref_type == 'tag'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        # the notes are the version's section of docs/release-notes.md, else GitHub's list of changes
-        run: |
-          awk -v v="## ${GITHUB_REF_NAME}" '$0 == v {on = 1; next} on && /^## / {exit} on' docs/release-notes.md > notes.md
-          if [ -s notes.md ]; then
-            printf '\nInstall: `implementation("io.github.whyisitworking:llamabro:%s")` from Maven Central.\n' \
-              "${GITHUB_REF_NAME}" >> notes.md
-            notes=(--notes-file notes.md)
-          else
-            notes=(--generate-notes)
-          fi
-          gh release create "${GITHUB_REF_NAME}" out/* --title "Llama Bro ${GITHUB_REF_NAME}" "${notes[@]}" --verify-tag
 
   sdk:
     name: SDK to the Maven Central Portal
@@ -205,3 +192,50 @@ jobs:
           name: llama-bro-sdk-maven-local
           path: ~/.m2/repository/io/github/whyisitworking/
           if-no-files-found: error
+
+  # Last, so a release appears only once both the APK and the Maven Central upload succeeded; rerunnable, since a rerun
+  # of a failed job finds the release a previous attempt made (as 2.0.0-alpha's did)
+  github-release:
+    name: GitHub release
+    needs: [demo, sdk]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: docs/release-notes.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: llama-bro-demo-${{ github.ref_name }}
+          path: out/
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # the notes are the version's section of docs/release-notes.md, else GitHub's list of changes; a version with a
+        # pre-release suffix (2.0.0-alpha, 2.1.0-rc1) is a pre-release, which GitHub's releases/latest never points at
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            *-*) prerelease=true ;;
+            *) prerelease=false ;;
+          esac
+          if gh release view "${GITHUB_REF_NAME}" > /dev/null 2>&1; then
+            # a rerun replaces the files and keeps the notes, which may have been edited by hand since
+            gh release upload "${GITHUB_REF_NAME}" out/* --clobber
+            gh release edit "${GITHUB_REF_NAME}" --prerelease="${prerelease}"
+            exit 0
+          fi
+          awk -v v="## ${GITHUB_REF_NAME}" '$0 == v {on = 1; next} on && /^## / {exit} on' docs/release-notes.md > notes.md
+          if [ -s notes.md ]; then
+            # shellcheck disable=SC2016 # the backticks are Markdown
+            printf '\nInstall: `implementation("io.github.whyisitworking:llamabro:%s")` from Maven Central.\n' \
+              "${GITHUB_REF_NAME}" >> notes.md
+            notes=(--notes-file notes.md)
+          else
+            notes=(--generate-notes)
+          fi
+          gh release create "${GITHUB_REF_NAME}" out/* --title "Llama Bro ${GITHUB_REF_NAME}" "${notes[@]}" \
+            --prerelease="${prerelease}" --verify-tag
