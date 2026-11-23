@@ -1012,6 +1012,15 @@ class ChatEngine(
         }
 
         /**
+         * A hold on the chat's model for dictation (D140), loaded as for a turn (one slot), so a send after it finds the
+         * model as it was; null with no model chosen or when it didn't load, [limit] then saying why.
+         */
+        suspend fun holdForDictation(): VoiceHold? {
+            val key = choice.value.key ?: return null
+            return holdForVoice(key, displayName(key), 1, _limit)
+        }
+
+        /**
          * Voice mode's chat (D100): this one, created now if it is new, with its model and the model's name; null when
          * no model is known yet.
          */

@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -50,6 +51,71 @@ data class RecordingState(
     val live: Boolean,
     val nearEnd: Boolean = false,
 )
+
+/**
+ * Dictation in the message bar (D140): the [text] heard so far (it streams in, or comes a piece at each pause), the
+ * input [levels] and the [elapsed] time. [preparing] while the model gets ready and nothing is heard yet; [listening]
+ * while the microphone is on, false once stopped while the last text comes in.
+ */
+@Immutable
+data class DictationBar(
+    val text: String,
+    val levels: List<Float>,
+    val elapsed: String,
+    val listening: Boolean,
+    val preparing: Boolean = false,
+)
+
+/**
+ * What replaces the message bar's text while dictating (D140): the words so far in body type (up to six lines, as the
+ * field), and under them a strip of the input levels with the time. Before any word, a muted line says what is
+ * happening. It announces itself once when it starts; the words are read when they settle, not while they stream.
+ */
+@Composable
+internal fun DictationLine(state: DictationBar, modifier: Modifier = Modifier) {
+    val colors = LocalDemoColors.current
+    val still = animationsDisabled()
+    val status =
+        stringResource(
+            when {
+                state.preparing -> R.string.ds_dictation_preparing
+                state.listening -> R.string.ds_dictating
+                else -> R.string.ds_dictation_finishing
+            },
+        )
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(DemoSpacing.inline)) {
+        if (state.text.isBlank()) {
+            Text(
+                status,
+                color = colors.muted,
+                style = DemoType.body,
+                maxLines = 1,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        } else {
+            Text(state.text, color = colors.ink, style = DemoType.body, maxLines = DICTATION_LINES)
+        }
+        Row(
+            Modifier.clearAndSetSemantics { contentDescription = "$status, ${state.elapsed}" },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(DemoSpacing.item),
+        ) {
+            val levels = if (state.listening && still) emptyList() else state.levels
+            Canvas(Modifier.weight(1f).height(DemoSize.levelHeight)) {
+                drawLevels(
+                    levels,
+                    ink = if (state.listening) colors.ink else colors.muted,
+                    played = colors.ink,
+                    fit = false,
+                )
+            }
+            Text(state.elapsed, color = colors.muted, style = DemoType.label, maxLines = 1)
+        }
+    }
+}
+
+/** As many lines as the message field shows. */
+private const val DICTATION_LINES = 6
 
 /**
  * A voice message in the chat (D76): its recorded [levels] (0 to 1, any count, drawn across a fixed width), its

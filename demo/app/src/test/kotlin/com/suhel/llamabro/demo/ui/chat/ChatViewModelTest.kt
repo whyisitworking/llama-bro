@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.demo.chat.ChatEngine
+import com.suhel.llamabro.demo.chat.Dictation
 import com.suhel.llamabro.demo.chat.FakeChatDao
 import com.suhel.llamabro.demo.chat.LimitAction
 import com.suhel.llamabro.demo.chat.ModelHost
@@ -37,6 +38,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -54,6 +56,8 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.io.IOException
 import java.util.Collections
+
+private const val QUIET_BLOCKS = 4
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModelTest {
@@ -113,6 +117,7 @@ class ChatViewModelTest {
         chatId: Long = 0,
         recorder: VoiceRecorder? = null,
         voiceMode: ((VoiceChat) -> VoiceConversation)? = null,
+        dictating: Int? = null,
     ): ChatViewModel {
         testHub.install(model)
         models.changed()
@@ -126,8 +131,33 @@ class ChatViewModelTest {
             background = scope,
             recorder = recorder,
             voiceModeStart = voiceMode,
+            dictationStart =
+                dictating?.let { blocks ->
+                    { model, language ->
+                        Dictation(model, steadyVoice(blocks), File(folder.root, "dictation.wav"), scope, language)
+                    }
+                },
+            micHint = settings.settings.map { !it.seenMicHint },
+            onMicHintSeen = { settings.setSeenMicHint() },
         ).also(viewModels::add)
     }
+
+    /** A source that hears a steady voice for [blocks] reads of 50 ms, after a moment of quiet, then stops. */
+    private fun steadyVoice(blocks: Int): () -> SampleSource =
+        {
+            object : SampleSource {
+                var reads = 0
+                override val rate = 16_000
+
+                override fun read(buffer: ShortArray): Int {
+                    if (reads++ >= blocks + QUIET_BLOCKS) return -1
+                    buffer.fill(if (reads > QUIET_BLOCKS) 4_000 else 0)
+                    return buffer.size
+                }
+
+                override fun close() = Unit
+            }
+        }
 
     /** Voice mode that never loads a model: enough to see it open and close (D100). */
     private fun voiceModeFor(started: MutableList<VoiceChat>): (VoiceChat) -> VoiceConversation =
@@ -219,6 +249,49 @@ class ChatViewModelTest {
                     .isNotEmpty()
             }
             assertFalse(quiet.composerState.value.canTalk)
+        }
+
+    @Test fun dictationWritesTheWordsAfterWhatWasTypedAndTheHintGoes() =
+        runBlocking {
+            fake.supportsAudio = true
+            fake.streamsAudio = true
+            fake.transcription("call the bank tomorrow.")
+            settings.setHears(swift.toString(), true)
+            val vm = viewModel(recorder = microphone(1), dictating = 10)
+            until("the mic and its hint") { vm.composerState.value.showsMic && vm.composerState.value.micHint }
+            vm.onText("Remind me to")
+            vm.dictation!!.start()
+            until("listening") { vm.composerState.value.dictation != null }
+            // the mic leaves while dictating: neither a voice message nor voice mode can start
+            assertFalse(vm.composerState.value.showsMic)
+            until("the voice was heard") {
+                vm.dictation!!
+                    .shown.value
+                    ?.dictation
+                    ?.millis == 500L + QUIET_BLOCKS * 50
+            }
+            vm.dictation!!.finish()
+            until("the words in the draft") { vm.composer.value.text == "Remind me to call the bank tomorrow." }
+            until("the bar is back") { vm.composerState.value.dictation == null }
+            until("the hint is gone") { !vm.composerState.value.micHint }
+        }
+
+    @Test fun discardingADictationLeavesTheDraftAsItWas() =
+        runBlocking {
+            fake.supportsAudio = true
+            fake.streamsAudio = true
+            settings.setHears(swift.toString(), true)
+            val vm = viewModel(recorder = microphone(1), dictating = 400)
+            until("the mic") { vm.composerState.value.canRecord }
+            vm.onText("Hello")
+            vm.dictation!!.start()
+            until("listening") {
+                vm.composerState.value.dictation
+                    ?.preparing == false
+            }
+            vm.dictation!!.discard()
+            until("the bar is back") { vm.composerState.value.dictation == null }
+            assertEquals("Hello", vm.composer.value.text)
         }
 
     @Test fun aRecordingIsSentAsAVoiceMessageAndLeavesTheBar() =

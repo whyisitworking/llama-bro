@@ -23,6 +23,13 @@
     <string name="ds_close_photo">Close photo</string>
     <string name="ds_photo_unavailable">This photo can\'t be shown.</string>
     <string name="ds_record">Record a voice message</string>
+    <string name="ds_dictate">Dictate</string>
+    <string name="ds_dictating">Listening</string>
+    <string name="ds_dictation_preparing">Getting ready</string>
+    <string name="ds_dictation_finishing">Writing it down</string>
+    <string name="ds_discard_dictation">Discard the dictation</string>
+    <string name="ds_finish_dictation">Done</string>
+    <string name="ds_mic_hint">Hold for a voice message</string>
     <string name="ds_recording">Recording</string>
     <string name="ds_recording_stopped">Recording stopped</string>
     <string name="ds_discard_recording">Discard the recording</string>

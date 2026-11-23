@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import com.suhel.llamabro.demo.designsystem.components.Composer
 import com.suhel.llamabro.demo.designsystem.components.ComposerState
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
+import com.suhel.llamabro.demo.designsystem.components.DictationBar
 import com.suhel.llamabro.demo.designsystem.components.Gap
 import com.suhel.llamabro.demo.designsystem.components.IconAction
 import com.suhel.llamabro.demo.designsystem.components.Inline
@@ -14,6 +15,7 @@ import com.suhel.llamabro.demo.designsystem.components.RecordingState
 import com.suhel.llamabro.demo.designsystem.components.SearchField
 import com.suhel.llamabro.demo.designsystem.components.TextArea
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
+import com.suhel.llamabro.demo.designsystem.components.VoiceActions
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 
 /**
@@ -99,11 +101,35 @@ internal fun InputSamples() {
             ),
             "Message Omni",
         )
+        // dictation (D140): a tap dictates, a hold records; the line says so until the mic is first used
+        SampleComposer(
+            ComposerState("", canAttach = true, think = null, busy = false, canRecord = true, micHint = true),
+            "Message Omni",
+            DictatingVoice,
+        )
+        SampleComposer(
+            dictating(DictationBar("", emptyList(), "0:00", listening = true, preparing = true)),
+            "Message Omni",
+        )
+        SampleComposer(
+            dictating(DictationBar("Remind me to call the bank tomorrow", SampleLevels, "0:04", listening = true)),
+            "Message Omni",
+        )
+        SampleComposer(
+            dictating(DictationBar("Remind me to call the bank tomorrow", SampleLevels, "0:06", listening = false)),
+            "Message Omni",
+        )
     }
 }
 
+private fun dictating(bar: DictationBar) =
+    ComposerState("", canAttach = true, think = null, busy = false, canRecord = true, dictation = bar)
+
+/** Voice actions with dictation, so the mic takes a tap and a hold. */
+private val DictatingVoice = VoiceActions({}, {}, {}, onDictate = {})
+
 @Composable
-private fun SampleComposer(state: ComposerState, placeholder: String) {
+private fun SampleComposer(state: ComposerState, placeholder: String, voice: VoiceActions = DictatingVoice) {
     Composer(
         state = state,
         placeholder = placeholder,
@@ -113,6 +139,7 @@ private fun SampleComposer(state: ComposerState, placeholder: String) {
         onAttach = {},
         onThink = {},
         modifier = Modifier.fillMaxWidth(),
+        voice = voice,
     )
 }
 

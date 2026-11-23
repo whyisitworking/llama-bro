@@ -8,20 +8,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.suhel.llamabro.Model
 import com.suhel.llamabro.demo.chat.ChatEngine
 import com.suhel.llamabro.demo.chat.ChatModelState
 import com.suhel.llamabro.demo.chat.ClosedNotes
+import com.suhel.llamabro.demo.chat.Dictation
 import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.Limits
 import com.suhel.llamabro.demo.chat.Markdown
 import com.suhel.llamabro.demo.chat.StreamingReply
 import com.suhel.llamabro.demo.chat.Take
+import com.suhel.llamabro.demo.chat.Transcripts
 import com.suhel.llamabro.demo.chat.VoiceChat
 import com.suhel.llamabro.demo.chat.VoiceConversation
 import com.suhel.llamabro.demo.chat.VoicePlayer
 import com.suhel.llamabro.demo.chat.VoiceRecorder
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.designsystem.components.ComposerState
+import com.suhel.llamabro.demo.designsystem.components.DictationBar
 import com.suhel.llamabro.demo.designsystem.components.MarkdownBlocks
 import com.suhel.llamabro.demo.designsystem.components.RecordingState
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
@@ -71,6 +75,8 @@ private data class BarInputs(
     val hears: Boolean = false,
     val talks: Boolean = false,
     val take: Take? = null,
+    val dictation: DictationShown? = null,
+    val micHint: Boolean = false,
 )
 
 /** The message bar's text and what is attached to it, apart from the list so typing never touches the messages. */
@@ -105,6 +111,13 @@ class ChatViewModel(
     val player: VoicePlayer = VoicePlayer.None,
     /** Starts voice mode in a chat (D100); null where there is no microphone (most tests). */
     voiceModeStart: ((VoiceChat) -> VoiceConversation)? = null,
+    /** Starts a dictation over a held model in a language (D140); null where there is no microphone (most tests). */
+    dictationStart: ((Model, String?) -> Dictation)? = null,
+    /** The language dictation listens for, as Settings › Voice says (null: the model tells). */
+    dictationLanguage: suspend () -> String? = { null },
+    /** Whether the mic's one-time hint still shows, and its "seen" (D140). */
+    micHint: Flow<Boolean> = flowOf(false),
+    onMicHintSeen: suspend () -> Unit = {},
 ) : ViewModel() {
     private val parsed = HashMap<Long, Pair<String, MarkdownBlocks>>()
 
@@ -235,6 +248,23 @@ class ChatViewModel(
 
     private val sending = Mutex()
 
+    /** The bar's dictation (D140); null without a microphone. */
+    val dictation: DictationComposer? =
+        dictationStart?.let { start ->
+            DictationComposer(
+                viewModelScope,
+                hold = handle::holdForDictation,
+                newDictation = start,
+                language = dictationLanguage,
+                canDictate = {
+                    hears.value && !handle.busy.value && voice?.take?.value == null && draft.value.editing == null
+                },
+                onText = { heard -> updateDraft { it.copy(text = Transcripts.insert(it.text, heard)) } },
+                onUsed = { background.launch { onMicHintSeen() } },
+                problem = { _problem.value = it },
+            )
+        }
+
     /** The bar's voice messages (D76); null without a microphone. */
     val voice: VoiceComposer? =
         recorder?.let { r ->
@@ -242,7 +272,7 @@ class ChatViewModel(
                 r,
                 handle,
                 viewModelScope,
-                canRecord = { hears.value && draft.value.editing == null },
+                canRecord = { hears.value && draft.value.editing == null && dictation?.shown?.value == null },
                 sending = sending,
                 photos = { draft.value.attachments },
                 onSent = { sent ->
@@ -332,12 +362,18 @@ class ChatViewModel(
                 canRecord = voice != null && bar.hears && d.editing == null,
                 recording = bar.take?.let(::recordingState),
                 canTalk = voiceMode.available && bar.talks && d.editing == null,
+                dictation = bar.dictation?.let(::dictationBar),
+                micHint = bar.micHint,
             )
         }
 
     init {
         viewModelScope.launch {
-            combine(handle.think, handle.busy, hears, talks, voice?.take ?: flowOf(null), ::BarInputs)
+            combine(
+                combine(handle.think, handle.busy, hears, talks, voice?.take ?: flowOf(null), ::BarInputs),
+                dictation?.shown ?: flowOf(null),
+                micHint,
+            ) { inputs, dictating, hint -> inputs.copy(dictation = dictating, micHint = hint) }
                 .collect { barInputs.value = it }
         }
         // a new chat's id, once its first message made it: the restored screen reopens it instead of a blank chat
@@ -510,6 +546,7 @@ class ChatViewModel(
         // recording nobody sent
         val left = draft.value.attachments
         voiceMode.close()
+        dictation?.discard()
         handle.close()
         player.release()
         if (left.isNotEmpty()) background.launch { discardImages(left) }
@@ -524,6 +561,16 @@ class ChatViewModel(
                 clipLength(take.millis),
                 live = take.live,
                 nearEnd = take.live && take.millis >= VoiceRecorder.LIMIT_MILLIS - VoiceRecorder.NEAR_END_MILLIS,
+            )
+
+        /** The bar's view of a dictation (D140): its words, levels and time, and its stage. */
+        fun dictationBar(shown: DictationShown): DictationBar =
+            DictationBar(
+                text = shown.dictation.text,
+                levels = shown.dictation.levels,
+                elapsed = clipLength(shown.dictation.millis),
+                listening = shown.dictation.listening,
+                preparing = shown.preparing,
             )
 
         /** The chat route's own argument name, so in a back-stack entry the saved id overrides the route's 0. */

@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.suhel.llamabro.demo.AppContainer
+import com.suhel.llamabro.demo.chat.Dictation
 import com.suhel.llamabro.demo.chat.LimitAction
 import com.suhel.llamabro.demo.chat.MediaVoicePlayer
 import com.suhel.llamabro.demo.chat.Thinking
@@ -59,6 +60,7 @@ import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -131,7 +133,7 @@ fun ChatScreen(
     var shareRequest by rememberSaveable(stateSaver = ShareRequestSaver) { mutableStateOf<ShareCardContent?>(null) }
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(vm::attach) }
-    val voice = rememberVoiceActions(vm.voice, vm.voiceMode::open)
+    val voice = rememberVoiceActions(vm.voice, vm.dictation, vm.voiceMode::open)
     val playing = vm.player.clip.collectAsStateWithLifecycle()
 
     val messageActions =
@@ -302,6 +304,22 @@ private fun chatViewModel(
                 clock = container.clock,
             )
         },
+        dictationStart = { model, language ->
+            Dictation(
+                model,
+                container.microphone,
+                container.audio.file(container.audio.newName()),
+                container.appScope,
+                language,
+            )
+        },
+        dictationLanguage = {
+            container.settings.settings
+                .first()
+                .dictationLanguage
+        },
+        micHint = container.settings.settings.map { !it.seenMicHint },
+        onMicHintSeen = { container.settings.setSeenMicHint() },
     )
 }
 
@@ -341,43 +359,54 @@ private fun limitAction(
  * The voice-mode button asks the same way, then opens voice mode with [onTalk] (D100); refused, the same line.
  */
 @Composable
-private fun rememberVoiceActions(voice: VoiceComposer?, onTalk: () -> Unit): VoiceActions {
+private fun rememberVoiceActions(
+    voice: VoiceComposer?,
+    dictation: DictationComposer?,
+    onTalk: () -> Unit,
+): VoiceActions {
     val context = LocalContext.current
-    var talkAsked by remember { mutableStateOf(false) }
+    var asked by remember { mutableStateOf(MicUse.Record) }
     val ask =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            val forTalk = talkAsked
-            talkAsked = false
             when {
-                granted && forTalk -> onTalk()
-                granted -> voice?.start()
-                else -> voice?.refused()
+                !granted -> voice?.refused()
+                asked == MicUse.Talk -> onTalk()
+                asked == MicUse.Dictate -> dictation?.start()
+                else -> voice?.start()
             }
         }
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { voice?.pause() }
-    return remember(voice, context, ask, onTalk) {
-        val talk = {
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        voice?.pause()
+        dictation?.finish()
+    }
+    return remember(voice, dictation, context, ask, onTalk) {
+        val withMicrophone = { use: MicUse, go: () -> Unit ->
             if (hasMicrophone(context)) {
-                onTalk()
+                go()
             } else {
-                talkAsked = true
+                asked = use
                 ask.launch(Manifest.permission.RECORD_AUDIO)
             }
         }
+        val talk = { withMicrophone(MicUse.Talk, onTalk) }
         if (voice == null) {
             VoiceActions({}, {}, {}, onTalk = talk)
         } else {
             VoiceActions(
-                onRecord = {
-                    if (hasMicrophone(context)) voice.start() else ask.launch(Manifest.permission.RECORD_AUDIO)
-                },
+                onRecord = { withMicrophone(MicUse.Record, voice::start) },
                 onDiscard = voice::discard,
                 onSend = voice::send,
                 onTalk = talk,
+                onDictate = dictation?.let { d -> { withMicrophone(MicUse.Dictate, d::start) } },
+                onFinishDictation = { dictation?.finish() },
+                onDiscardDictation = { dictation?.discard() },
             )
         }
     }
 }
+
+/** What the microphone permission was asked for. */
+private enum class MicUse { Record, Talk, Dictate }
 
 private fun hasMicrophone(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED

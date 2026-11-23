@@ -150,10 +150,11 @@ its amendments to know what holds now.
 | [D72](#d72-the-demo-offers-a-choice-of-chip-in-settings--memory) The demo offers a choice of chip in Settings › Memory | 2026-11-15 | |
 | [D73](#d73-indigo-smaller-send-and-think-circles) Indigo, smaller send and Think circles | 2026-11-15 | [D125](#d125-geist-type-one-monochrome-accent-and-one-selection-outline) |
 | [D74](#d74-the-demo-parses-markdown-with-commonmark-java-and-its-gfm-extensions) The demo parses markdown with commonmark-java and its GFM extensions | 2026-11-15 | [D108](#d108-streaming-markdown-re-parses-from-the-last-top-level-block-lists-and-tables-are-not-resumed-row-by-row) |
-| [D76](#d76-the-demo-takes-voice-messages-for-models-that-hear-sent-as-audio-with-no-transcription) The demo takes voice messages for models that hear, sent as audio with no transcription | 2026-11-15 | |
+| [D76](#d76-the-demo-takes-voice-messages-for-models-that-hear-sent-as-audio-with-no-transcription) The demo takes voice messages for models that hear, sent as audio with no transcription | 2026-11-15 | [D140](#d140-the-demo-dictates-a-tap-on-the-mic-writes-speech-into-the-message-bar-a-hold-records-a-voice-message) |
 | [D77](#d77-section-labels-line-up-with-the-text-under-them-the-sidebars-actions-move-to-one-row-of-icons-its-chats-to-48-dp-rows) Section labels line up with the text under them; the sidebar's actions move to one row of icons,… | 2026-11-15 | [D126](#d126-the-sidebar-is-a-quiet-list-a-name-a-search-timed-rows-and-labelled-places) |
 | [D78](#d78-the-demo-lets-the-person-choose-the-context-length-and-the-reply-length) The demo lets the person choose the context length and the reply length | 2026-11-15 | |
 | [D100](#d100-the-demos-voice-mode-a-full-screen-view-entered-from-the-message-bar-hold-to-talk-saved-as-an-ordinary-chat) The demo's voice mode: a full-screen view entered from the message bar, hold to talk, saved as… | 2026-11-18 | [D109](#d109-captions-of-the-users-words-move-to-the-app-it-transcribes-its-own-recording-of-each-turn) |
+| [D140](#d140-the-demo-dictates-a-tap-on-the-mic-writes-speech-into-the-message-bar-a-hold-records-a-voice-message) The demo dictates: a tap on the mic writes speech into the message bar, a hold records a voice message | 2026-11-23 | |
 | [D101](#d101-the-demos-fit-is-a-formula-on-file-sizes-against-half-the-phones-total-ram-no-network-read-no-free-memory-reading) The demo's fit is a formula on file sizes against half the phone's total RAM; no network read,… | 2026-11-19 | [D116](#d116-one-models-screen-replaces-get-models-and-the-library-a-rows-fit-is-guessed-from-the-search-list-and-drawn-as-a-pace-figure) |
 | [D108](#d108-streaming-markdown-re-parses-from-the-last-top-level-block-lists-and-tables-are-not-resumed-row-by-row) Streaming markdown re-parses from the last top-level block; lists and tables are not resumed row… | 2026-11-19 | |
 | [D113](#d113-the-design-system-rule-is-tokens-anywhere-enforced-by-a-lint-rule-on-the-syntax-tree) The design-system rule is "tokens anywhere", enforced by a lint rule on the syntax tree | 2026-11-19 | |
@@ -1882,3 +1883,22 @@ upstream as its form file. Nothing is set for the app; upstream refuses what a m
 scripts speech (`speech(pcm, sampleRate)`, `speechRequests`).
 Consequences: `/tts` stays internal. On the host, upstream's tiny LFM3 speaks at 24 kHz, a seed repeats the speech
 exactly, and a speaker reference is taken; `speed` is refused there, as upstream refuses it.
+
+### D140. The demo dictates: a tap on the mic writes speech into the message bar, a hold records a voice message
+
+Status: Decided (2026-11-23)
+
+Context: D76 gave the demo voice messages, not dictation. The maintainer asked for dictation as good as LM Studio's
+and Ollama's, with the SDK held to llama-server's features (D138). Upstream's web client, Llama Chat (#32531,
+`ui/lib/voice/src`), dictates by detecting pauses itself and opening a realtime transcription session, falling back to
+`/v1/audio/transcriptions` piece by piece for a model without one, then transcribing the whole clip once more.
+Decision: A tap on the mic dictates; a hold records a voice message (D76, amended), with a long-press buzz and both
+actions named for TalkBack; a one-time line by the mic ("Hold for a voice message") goes once either is used. While
+dictating, the bar shows the words as they come, the levels and the time, with discard and done. The demo ports
+Llama Chat's speech and pause detectors, transcript cleaning and session flow (`Pauses.kt`, `Transcripts.kt`,
+`Dictation.kt`) with upstream's numbers and test cases: live text on a model upstream transcribes live (LFM3), a piece
+at each pause on a per-commit session, pieces over `transcribe` otherwise, then one pass over the whole recording
+(up to 2 minutes) when it was cut. The words go after what was typed. The chat's model is held while dictating, so
+it isn't released under it. No `prompt` is sent (D138). The language comes from a setting (null: the model tells).
+Consequences: Amends D76. A model that hears but streams no audio (Qwen3-ASR, Qwen3.5) dictates in pieces of about
+3 s. Upstream's speech gain for quiet microphones (`gain.ts`) is not ported.

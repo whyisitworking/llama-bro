@@ -7,6 +7,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +38,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -47,6 +50,8 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import com.suhel.llamabro.demo.designsystem.R
 import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
@@ -254,27 +259,39 @@ data class ComposerState(
     val canRecord: Boolean = false,
     val recording: RecordingState? = null,
     val canTalk: Boolean = false,
+    /** Dictation under way (D140): its words and levels replace the field until it is done. */
+    val dictation: DictationBar? = null,
+    /** The one-time line by the mic that a hold records a voice message (D140). */
+    val micHint: Boolean = false,
 ) {
     /** Send can act: there is something to send (text or a photo), or a reply is coming and the button is stop. */
     val canAct: Boolean get() = busy || text.isNotBlank() || hasAttachment
 
     /** The mic shows: the model hears, nothing is typed, no reply is coming and nothing is being recorded. */
-    val showsMic: Boolean get() = canRecord && recording == null && !busy && text.isEmpty()
+    val showsMic: Boolean get() = canRecord && recording == null && dictation == null && !busy && text.isEmpty()
 
     /**
      * The voice-mode button shows in send's place (D100): the model speaks, and there is nothing to send, no reply is
      * coming and nothing is being recorded.
      */
-    val showsTalk: Boolean get() = canTalk && recording == null && !busy && text.isEmpty() && !hasAttachment
+    val showsTalk: Boolean
+        get() = canTalk && recording == null && dictation == null && !busy && text.isEmpty() && !hasAttachment
 }
 
-/** What the message bar's voice controls do (D76): start recording, throw the recording away, or send it. */
+/**
+ * What the message bar's voice controls do: record a voice message, throw the recording away, or send it (D76); talk
+ * (D100); dictate, finish or discard the dictation (D140). With [onDictate], a tap on the mic dictates and a hold
+ * records; without it, a tap records.
+ */
 @Immutable
 data class VoiceActions(
     val onRecord: () -> Unit,
     val onDiscard: () -> Unit,
     val onSend: () -> Unit,
     val onTalk: () -> Unit = {},
+    val onDictate: (() -> Unit)? = null,
+    val onFinishDictation: () -> Unit = {},
+    val onDiscardDictation: () -> Unit = {},
 ) {
     companion object {
         val None = VoiceActions({}, {}, {})
@@ -344,10 +361,11 @@ fun Composer(
                         // under the text, and the bar keeps the height it had with 40 dp circles
                         bottom = DemoSpacing.block,
                     )
-            if (recording != null) {
-                RecordingLine(recording, textPadding)
-            } else {
-                MessageField(state, placeholder, onTextChange, textPadding)
+            val dictation = state.dictation
+            when {
+                recording != null -> RecordingLine(recording, textPadding)
+                dictation != null -> DictationLine(dictation, textPadding)
+                else -> MessageField(state, placeholder, onTextChange, textPadding)
             }
         }
         // 4 dp round the 48 dp targets: a 36 dp circle is 10 dp from the bar's bottom, start and end
@@ -357,10 +375,24 @@ fun Composer(
         ) {
             if (recording != null) {
                 BarButton(DemoIcons.Close, stringResource(R.string.ds_discard_recording), voice.onDiscard)
+            } else if (state.dictation != null) {
+                BarButton(DemoIcons.Close, stringResource(R.string.ds_discard_dictation), voice.onDiscardDictation)
             } else if (state.canAttach) {
                 BarButton(DemoIcons.Plus, stringResource(R.string.ds_attach), onAttach)
             }
-            Spacer(Modifier.weight(1f))
+            if (state.micHint && state.showsMic && voice.onDictate != null) {
+                Text(
+                    stringResource(R.string.ds_mic_hint),
+                    color = colors.muted,
+                    style = DemoType.label,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.weight(1f).padding(horizontal = DemoSpacing.block),
+                )
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
             if (state.think != null) {
                 val on = state.think != ThinkLevel.Off
                 BarIconButton(onClick = onThink) {
@@ -384,7 +416,21 @@ fun Composer(
 private fun BarEnd(state: ComposerState, voice: VoiceActions, onSend: () -> Unit, onStop: () -> Unit) {
     val colors = LocalDemoColors.current
     val recording = state.recording
+    val dictation = state.dictation
     when {
+        dictation != null -> {
+            BarIconButton(onClick = voice.onFinishDictation, enabled = dictation.listening) {
+                BarCircle(if (dictation.listening) colors.accent else colors.hairline) {
+                    Icon(
+                        DemoIcons.Check,
+                        contentDescription = stringResource(R.string.ds_finish_dictation),
+                        tint = if (dictation.listening) colors.onAccent else colors.muted,
+                        modifier = Modifier.size(DemoSize.barGlyph),
+                    )
+                }
+            }
+        }
+
         recording != null -> {
             BarIconButton(onClick = voice.onSend) {
                 BarCircle(colors.accent) {
@@ -400,7 +446,7 @@ private fun BarEnd(state: ComposerState, voice: VoiceActions, onSend: () -> Unit
 
         state.showsTalk -> {
             // a model that talks: the voice-message mic just before the voice-mode button (D100)
-            if (state.showsMic) BarButton(DemoIcons.Mic, stringResource(R.string.ds_record), voice.onRecord)
+            if (state.showsMic) MicButton(voice)
             BarIconButton(onClick = voice.onTalk) {
                 BarCircle(colors.accent) {
                     Icon(
@@ -414,11 +460,11 @@ private fun BarEnd(state: ComposerState, voice: VoiceActions, onSend: () -> Unit
         }
 
         state.showsMic && !state.hasAttachment -> {
-            BarButton(DemoIcons.Mic, stringResource(R.string.ds_record), voice.onRecord)
+            MicButton(voice)
         }
 
         else -> {
-            if (state.showsMic) BarButton(DemoIcons.Mic, stringResource(R.string.ds_record), voice.onRecord)
+            if (state.showsMic) MicButton(voice)
             SendButton(state, onSend, onStop)
         }
     }
@@ -480,6 +526,47 @@ private fun SendButton(state: ComposerState, onSend: () -> Unit, onStop: () -> U
                     modifier = Modifier.size(DemoSize.barGlyph),
                 )
             }
+        }
+    }
+}
+
+/**
+ * The mic: with dictation (D140), a tap dictates and a hold records a voice message, with a long-press buzz; both are
+ * named for TalkBack ("Dictate", and "Record a voice message" as the long-press action). Without it, a tap records.
+ */
+@Composable
+private fun MicButton(voice: VoiceActions) {
+    val dictate = voice.onDictate
+    if (dictate == null) {
+        BarButton(DemoIcons.Mic, stringResource(R.string.ds_record), voice.onRecord)
+        return
+    }
+    val colors = LocalDemoColors.current
+    val haptics = LocalHapticFeedback.current
+    Box(
+        Modifier
+            .minimumInteractiveComponentSize()
+            .size(DemoSize.barCircle)
+            .clip(CircleShape)
+            .combinedClickable(
+                role = Role.Button,
+                onClickLabel = stringResource(R.string.ds_dictate),
+                onLongClickLabel = stringResource(R.string.ds_record),
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    voice.onRecord()
+                },
+                onClick = dictate,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        BarCircle(colors.hairline) {
+            Icon(
+                DemoIcons.Mic,
+                contentDescription = stringResource(R.string.ds_dictate),
+                tint = colors.ink,
+                modifier = Modifier.size(DemoSize.barGlyph),
+            )
         }
     }
 }

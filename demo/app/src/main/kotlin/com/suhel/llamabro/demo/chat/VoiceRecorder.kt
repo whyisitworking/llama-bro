@@ -130,23 +130,17 @@ class VoiceRecorder(
     private class Pcm(private val out: RandomAccessFile, private val rate: Int) {
         /** One level's worth of samples, read into by the source. */
         val buffer = ShortArray(rate / LEVELS_PER_SECOND)
-        private val bytes = ByteArray(buffer.size * 2)
         private var samples = 0L
 
         val millis: Long get() = samples * MILLIS_PER_SECOND / rate
 
         init {
             out.setLength(0)
-            out.write(ByteArray(WAV_HEADER))
+            out.write(ByteArray(Wav.HEADER))
         }
 
         fun write(n: Int) {
-            for (i in 0 until n) {
-                val sample = buffer[i].toInt()
-                bytes[2 * i] = sample.toByte()
-                bytes[2 * i + 1] = (sample shr Byte.SIZE_BITS).toByte()
-            }
-            out.write(bytes, 0, 2 * n)
+            out.write(Wav.bytes(buffer, n))
             samples += n
         }
 
@@ -196,7 +190,6 @@ class VoiceRecorder(
         /** How many levels a sent voice message keeps for its bubble. */
         const val BUBBLE_LEVELS = 64
 
-        private const val WAV_HEADER = 44
         private const val MILLIS_PER_SECOND = 1_000L
         private const val QUIET_DB = 50.0
         private const val DB_PER_DECADE = 20.0
@@ -220,27 +213,8 @@ class VoiceRecorder(
 
         /** The 44-byte header of a PCM WAV file: 16-bit mono at [rate], [samples] long. */
         internal fun writeHeader(out: RandomAccessFile, rate: Int, samples: Long) {
-            val data = samples * 2
-            val header =
-                java.nio.ByteBuffer
-                    .allocate(WAV_HEADER)
-                    .order(java.nio.ByteOrder.LITTLE_ENDIAN)
-                    .put("RIFF".toByteArray())
-                    .putInt((36 + data).toInt())
-                    .put("WAVE".toByteArray())
-                    .put("fmt ".toByteArray())
-                    .putInt(16)
-                    .putShort(1)
-                    .putShort(1)
-                    .putInt(rate)
-                    .putInt(rate * 2)
-                    .putShort(2)
-                    .putShort(16)
-                    .put("data".toByteArray())
-                    .putInt(data.toInt())
-                    .array()
             out.seek(0)
-            out.write(header)
+            out.write(Wav.header(rate, samples))
         }
     }
 }

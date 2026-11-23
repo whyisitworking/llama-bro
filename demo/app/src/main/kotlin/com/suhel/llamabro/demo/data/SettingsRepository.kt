@@ -97,6 +97,10 @@ data class AppSettings(
     val voice: String? = null,
     /** Voice mode captions what the person says (D99, D100); it then loads the model with two slots. */
     val captionYou: Boolean = true,
+    /** The language dictation listens for (D140), an ISO 639-1 code; null lets the model tell. */
+    val dictationLanguage: String? = null,
+    /** The person has dictated or recorded once, so the mic's "hold for a voice message" line is gone (D140). */
+    val seenMicHint: Boolean = false,
     /** What Hugging Face search asks for (models-search design §5), remembered across launches. */
     val searchFilters: SearchFilters = SearchFilters(),
 )
@@ -130,6 +134,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 replyLength = ReplyLength.entries.firstOrNull { it.name == p[REPLY_LENGTH] } ?: ReplyLength.Automatic,
                 voice = p[VOICE],
                 captionYou = p[CAPTION_YOU] ?: true,
+                dictationLanguage = p[DICTATION_LANGUAGE],
+                seenMicHint = p[SEEN_MIC_HINT] ?: false,
                 searchFilters = searchFiltersOf(p),
             )
         }
@@ -224,6 +230,14 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         store.edit { it[CAPTION_YOU] = caption }
     }
 
+    suspend fun setDictationLanguage(language: String?) {
+        store.edit { if (language == null) it.remove(DICTATION_LANGUAGE) else it[DICTATION_LANGUAGE] = language }
+    }
+
+    suspend fun setSeenMicHint() {
+        store.edit { it[SEEN_MIC_HINT] = true }
+    }
+
     /**
      * The models (by key) that spoke on their last load, with their voices (`ModelInfo.voices`), so a chat shows the
      * voice-mode button before its model is loaded again and Settings › Voice can list the voices (D100), as for
@@ -316,6 +330,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val TALKING_MODELS = stringSetPreferencesKey("talking_models")
         val VOICE = stringPreferencesKey("voice")
         val CAPTION_YOU = booleanPreferencesKey("caption_you")
+        val DICTATION_LANGUAGE = stringPreferencesKey("dictation_language")
+        val SEEN_MIC_HINT = booleanPreferencesKey("seen_mic_hint")
 
         /** A talking model's entry: its key, a tab, then its voices separated by commas. */
         const val VOICES_AFTER = "\t"
