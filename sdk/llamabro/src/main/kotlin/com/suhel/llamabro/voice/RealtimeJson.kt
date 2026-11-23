@@ -68,7 +68,39 @@ internal object RealtimeJson {
         return event("input_audio_buffer.append") { put("audio", Base64.encode(bytes)) }
     }
 
+    /**
+     * The `session.update` upstream's client sends once a transcription session is created (realtime.ts
+     * handleSessionCreated): a transcription session, which switches a model that holds realtime conversations to
+     * transcribing per commit, with the input rate, language and prompt when set.
+     */
+    fun transcriptionUpdate(config: TranscriptionConfig): String {
+        val session =
+            buildJsonObject {
+                put("type", "transcription")
+                putJsonObject("audio") {
+                    putJsonObject("input") {
+                        config.inputSampleRate?.let { rate ->
+                            putJsonObject("format") {
+                                put("type", "audio/pcm")
+                                put("rate", rate)
+                            }
+                        }
+                        if (config.language != null || config.prompt != null) {
+                            putJsonObject("transcription") {
+                                config.language?.let { put("language", it) }
+                                config.prompt?.let { put("prompt", it) }
+                            }
+                        }
+                    }
+                }
+            }
+        return event("session.update") { put("session", session) }
+    }
+
     val commit: String = event("input_audio_buffer.commit") {}
+
+    /** Ends the input (`final: true`, server-context.cpp ws_realtime): the rest becomes the last item. */
+    val commitFinal: String = event("input_audio_buffer.commit") { put("final", true) }
     val respond: String = event("response.create") {}
     val cancel: String = event("response.cancel") {}
 
@@ -134,6 +166,34 @@ internal object RealtimeJson {
 
             else -> {
                 VoiceEvent.Other(type, text)
+            }
+        }
+    }
+
+    /** The typed transcription event for [event], or [TranscriptionEvent.Other] with [text]. */
+    fun decodeTranscription(event: JsonObject, text: String): TranscriptionEvent {
+        val type = type(event)
+        val item = event.string("item_id").orEmpty()
+        return when (type) {
+            "input_audio_buffer.committed" -> {
+                TranscriptionEvent.Committed(item)
+            }
+
+            "conversation.item.input_audio_transcription.delta" -> {
+                TranscriptionEvent.Text(item, event.string("delta").orEmpty())
+            }
+
+            "conversation.item.input_audio_transcription.completed" -> {
+                TranscriptionEvent.Done(item, event.string("transcript").orEmpty())
+            }
+
+            "error" -> {
+                val error = event["error"] as? JsonObject ?: JsonObject(emptyMap())
+                TranscriptionEvent.Error(error.string("type").orEmpty(), error.string("message").orEmpty())
+            }
+
+            else -> {
+                TranscriptionEvent.Other(type, text)
             }
         }
     }

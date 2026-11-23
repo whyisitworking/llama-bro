@@ -136,7 +136,7 @@ class HostVoiceTest {
             assertFalse(session.commit())
         }
 
-    private companion object {
+    internal companion object {
         const val CONTEXT = 4096
         const val REPLY_TOKENS = 32
         const val SEED = 42L

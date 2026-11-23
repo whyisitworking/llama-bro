@@ -236,6 +236,39 @@ and pass it to `transcribe`; loaded with `parallelSlots = 2`, the model transcri
 reply is made, about 0.3 s later to the first audio on the phone. Other realtime events arrive as `VoiceEvent.Other`,
 and `sendRaw` sends any client event.
 
+### Live transcription
+
+`transcriptionSession` writes speech down as it is spoken, through upstream's `/v1/realtime` with
+`intent=transcription`, set up as upstream's own web client does. The app sends the microphone's audio; each `commit`
+makes the audio since the last one an item, and `finish` ends the input:
+
+```kotlin
+val dictation = model.transcriptionSession {
+    language = "en"
+    prompt = "Llama Bro, GGUF, Qwen"   // words the speech may hold, such as names
+}
+launch {
+    dictation.events.collect { event ->
+        when (event) {
+            is TranscriptionEvent.Text -> field.showPartial(event.itemId, event.delta)
+            is TranscriptionEvent.Done -> field.settle(event.itemId, event.transcript)
+            is TranscriptionEvent.Error -> showError(event.message)
+            else -> Unit
+        }
+    }
+}
+dictation.append(buffer, 0, read)    // 16-bit mono PCM at dictation.inputSampleRate
+dictation.commit()                   // at a pause, in a session that isn't live
+dictation.finish()                   // the user stops; close after the last Done
+```
+
+Upstream transcribes this way only on a model with a streaming audio encoder. With a transcription prompt in its
+template (LFM3, Voxtral Realtime) the session is `live`: text streams while the audio arrives. A model that holds
+realtime conversations without one is transcribed per commit, so commit at the speaker's pauses to keep the text close
+behind them; the SDK detects no pauses, as llama-server doesn't. Any other model that hears, such as Qwen3-ASR, is
+refused with `NotSupported`: transcribe its recording, or pieces of it, with `transcribe` instead, as upstream's web
+client does. `language` and `prompt` reach a session that isn't live; upstream's live path reads neither.
+
 ## Embeddings and rerank
 
 An embedding model turns text into vectors and a reranker scores documents against a query, each loaded for its task

@@ -130,6 +130,7 @@ its amendments to know what holds now.
 | [D98](#d98-the-kotlin-voice-session-a-suspending-open-a-handle-with-sends-typed-events-with-a-raw-escape-hatch) The Kotlin voice session: a suspending open, a handle with sends, typed events with a raw escape… | 2026-11-18 | [D99](#d99-the-voice-session-captions-the-users-words-when-asked-on-a-second-slot-while-the-reply-is-made) |
 | [D99](#d99-the-voice-session-captions-the-users-words-when-asked-on-a-second-slot-while-the-reply-is-made) The voice session captions the user's words when asked, on a second slot, while the reply is made | 2026-11-18 | [D109](#d109-captions-of-the-users-words-move-to-the-app-it-transcribes-its-own-recording-of-each-turn) |
 | [D109](#d109-captions-of-the-users-words-move-to-the-app-it-transcribes-its-own-recording-of-each-turn) Captions of the user's words move to the app: it transcribes its own recording of each turn | 2026-11-19 | |
+| [D138](#d138-live-transcription-is-upstreams-realtime-transcription-session-set-up-as-its-web-client-does-the-sdk-detects-no-pauses) Live transcription is upstream's realtime transcription session; the SDK detects no pauses | 2026-11-23 | |
 
 **Demo app**
 
@@ -1839,3 +1840,23 @@ Decision: The submodule moves to `7d9b931df`, named b12653. Patch 0004 is droppe
 Consequences: Statements measured at b12479 (the README's benchmark, F178) stay as measured until retested. Patch
 0001's gain and upstream's OpenCL and CPU speed changes are not re-measured (F180). Upstream's realtime transcription
 session and its speech options (voice, speaker reference, speed) are now reachable for the SDK to type.
+
+### D138. Live transcription is upstream's realtime transcription session, set up as its web client does; the SDK detects no pauses
+
+Status: Decided (2026-11-23)
+
+Context: The maintainer asked for dictation in the demo (tap the mic to dictate, hold to record a voice message) and
+for the SDK to stay within llama-server's features. At b12653 llama-server transcribes live on `/v1/realtime` with
+`intent=transcription`: live for a model with a streaming audio encoder and a transcription prompt (LFM3, Voxtral
+Realtime: `SERVER_TASK_TYPE_TRANSCRIBE_RT`), per commit for a model that holds realtime conversations once the client
+switches the session to `"transcription"` (#32507 added its `prompt`), and refused for any other (Qwen3-ASR,
+Qwen3.5). Its `turn_detection` is always null. Upstream's web client, Llama Chat (#32531), detects pauses itself and
+falls back to `/v1/audio/transcriptions` for a refused model.
+Decision: `Model.transcriptionSession { language; prompt; inputSampleRate }` opens that session the way Llama Chat
+does (`ui/lib/voice/src/realtime.ts`): `intent=transcription`, then a `session.update` to a transcription session.
+`TranscriptionSession` has `live`, `append`, `commit`, `finish` (a commit with `final: true`), `sendRaw` and typed
+`TranscriptionEvent`s (`Committed`, `Text`, `Done`, `Error`, `Other`). A refused model throws `NotSupported` with
+upstream's message. The SDK has no pause detection and no fallback: both are the client's in upstream, so they are
+the app's here. `FakeLlamaBro` scripts all three outcomes (`streamsAudio`, `transcribesLive`, `transcription`).
+Consequences: On the host, upstream's tiny LFM3 test model transcribes live; the per-commit path is covered by the
+fake only. An app dictating on a model that is refused transcribes pieces with `transcribe`, as the demo does.
