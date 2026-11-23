@@ -159,7 +159,7 @@ bool read_path(const char * path, raw_buffer & out, std::string & err) {
     return e == 0;
 }
 
-// WAV, MP3 or FLAC by their first bytes: the formats llama.cpp decodes (b12479 tools/mtmd/mtmd-helper.cpp
+// WAV, MP3 or FLAC by their first bytes: the formats llama.cpp decodes (b12653 tools/mtmd/mtmd-helper.cpp
 // audio_helpers::is_audio_file); anything else it would try as an image. One addition, as Kotlin's Media.isAudio: an
 // MPEG sync word must also be layer I-III, since an ADTS AAC header has the sync word with layer bits 00, passes
 // upstream's check, then fails to decode.

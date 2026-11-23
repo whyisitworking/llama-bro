@@ -32,7 +32,7 @@ typedef bool (*lb_progress_cb)(void * user, float progress);
 // Called on the request's own thread.
 typedef void (*lb_request_cb)(void * user, lb_event event, int http_status, const char * data, size_t len);
 
-const char * lb_version(void);                                         // "llamabro <ver> llama.cpp b12479"
+const char * lb_version(void);                                         // "llamabro <ver> llama.cpp b12653"
 void lb_string_free(char * s);                                         // frees every char* this API returns
 
 // config: {"backend_dir": "<dir>", "log_level": "warn", "backends": [...]}, all optional. The CPU backend is loaded by

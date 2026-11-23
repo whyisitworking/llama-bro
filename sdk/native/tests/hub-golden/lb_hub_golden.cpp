@@ -5,7 +5,7 @@
 #include "gguf.h"
 
 static common_json cases_json() {
-    common_json result = {{"llama_cpp", "b12479"}};
+    common_json result = {{"llama_cpp", "b12653"}};
     result["plan_cases"] = common_json::array();
     for (const auto & c : plan_cases) {
         result["plan_cases"].push_back({

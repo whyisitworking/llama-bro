@@ -34,7 +34,7 @@ internal fun RowsSamples() {
             Section("About") {
                 GroupedList {
                     row { ListRow("Version", trailing = "1.0") }
-                    row { ListRow("llama.cpp", trailing = "b12479") }
+                    row { ListRow("llama.cpp", trailing = "b12653") }
                 }
             }
             GroupedList {

@@ -225,7 +225,7 @@ static void log_callback_can_reenter() {
 }
 
 static void version_names_build() {
-    LB_CHECK(std::strstr(lb_version(), "b12479") != nullptr);
+    LB_CHECK(std::strstr(lb_version(), "b12653") != nullptr);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -257,8 +257,8 @@ static void props_build_info_names_llama_build() {
     lb_model * model = load_test_model({{"n_ctx", 512}});
     const std::string build_info = model_info(model).at("props").value("build_info", "");
     std::fprintf(stderr, "build_info: %s\n", build_info.c_str());
-    LB_CHECK(build_info.find("b12479") != std::string::npos);
-    LB_CHECK(build_info.find("d92ea9b") != std::string::npos);
+    LB_CHECK(build_info.find("b12653") != std::string::npos);
+    LB_CHECK(build_info.find("7d9b931") != std::string::npos);
     lb_model_free(model);
 }
 
@@ -1893,9 +1893,9 @@ static void embeddings_placeholder_replaced() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Prompt cache on hybrid memory with SWA layers (F153, patch 0004). tinyLFM3 mixes full-attention, sliding-window and
-// recurrent layers, as LFM3 does. Without the patch, llama-server restores only the checkpoint before the last user
-// message, so each turn processes that whole message again (its audio too)
+// Prompt cache on hybrid memory with SWA layers (F153; patch 0004 until upstream's own fix in b12653, F180). tinyLFM3
+// mixes full-attention, sliding-window and recurrent layers, as LFM3 does. Without the fix, llama-server restores only
+// the checkpoint before the last user message, so each turn processes that whole message again (its audio too)
 // ---------------------------------------------------------------------------------------------
 
 // a user message of some 150 tokens, different every turn

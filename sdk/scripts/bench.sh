@@ -27,7 +27,7 @@
 # that fails where the script has no message of its own stops it with the line it stopped at.
 #
 # Every mode must be measured on one build: the build is the last commit that touched sdk/ (with -dirty when sdk/ has
-# uncommitted changes) and llama.cpp's build (llamaCppBuild: the submodule's latest reachable tag, such as b12479, or
+# uncommitted changes) and llama.cpp's build (llamaCppBuild: the submodule's latest reachable tag, such as b12653, or
 # its short commit hash when no tag is reachable, as in a shallow clone of the submodule), so committing results or
 # docs between the modes does not change it. A mode refuses to start when another mode's kept lines are from another
 # build.
