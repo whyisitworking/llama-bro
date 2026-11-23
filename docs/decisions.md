@@ -131,6 +131,7 @@ its amendments to know what holds now.
 | [D99](#d99-the-voice-session-captions-the-users-words-when-asked-on-a-second-slot-while-the-reply-is-made) The voice session captions the user's words when asked, on a second slot, while the reply is made | 2026-11-18 | [D109](#d109-captions-of-the-users-words-move-to-the-app-it-transcribes-its-own-recording-of-each-turn) |
 | [D109](#d109-captions-of-the-users-words-move-to-the-app-it-transcribes-its-own-recording-of-each-turn) Captions of the user's words move to the app: it transcribes its own recording of each turn | 2026-11-19 | |
 | [D138](#d138-live-transcription-is-upstreams-realtime-transcription-session-set-up-as-its-web-client-does-the-sdk-detects-no-pauses) Live transcription is upstream's realtime transcription session; the SDK detects no pauses | 2026-11-23 | |
+| [D139](#d139-speech-is-upstreams-v1audiospeech-streamed-as-wav-and-handed-out-as-pcm-pieces) Speech is upstream's `/v1/audio/speech`, streamed as WAV and handed out as PCM pieces | 2026-11-23 | |
 
 **Demo app**
 
@@ -1860,3 +1861,22 @@ upstream's message. The SDK has no pause detection and no fallback: both are the
 the app's here. `FakeLlamaBro` scripts all three outcomes (`streamsAudio`, `transcribesLive`, `transcription`).
 Consequences: On the host, upstream's tiny LFM3 test model transcribes live; the per-commit path is covered by the
 fake only. An app dictating on a model that is refused transcribes pieces with `transcribe`, as the demo does.
+
+### D139. Speech is upstream's `/v1/audio/speech`, streamed as WAV and handed out as PCM pieces
+
+Status: Decided (2026-11-23)
+
+Context: The demo is to read replies aloud, as LM Studio Bionic and Ollama (Phonon) do. llama-server speaks on
+`/v1/audio/speech` (`handle_tts_impl`) with a voice, a speaker reference to clone (`speaker_ref`, #32438, #32586),
+`speed` (Kokoro, #32413), a seed and the other TTS fields, and streams the audio with `stream_format: "audio"`.
+Upstream's `/props` doesn't give the speech's rate; a streamed WAV carries it in its one header (unknown sizes, then
+PCM, checked on the host at b12653). The SDK's request flow carried text only.
+Decision: `Model.speak(text) { voice; speakerReference; speakerReferenceText; language; speed; seed; temperature;
+maxFrames; extra }` returns a cold `Flow<SpeechAudio>` (`sampleRate`, `channels`, 16-bit `pcm`). It asks for streamed
+WAV and reads its header for the rate. The internal request flow carries bytes, with a mode that passes chunks
+through; the bridge uploads a speech request's attachments as files, as a transcription's, so `speaker_ref` reaches
+upstream as its form file. Nothing is set for the app; upstream refuses what a model doesn't take. A voice not in
+`ModelInfo.voices`, or a voice with a speaker reference, is misuse (`IllegalArgumentException`, D136). `FakeLlamaBro`
+scripts speech (`speech(pcm, sampleRate)`, `speechRequests`).
+Consequences: `/tts` stays internal. On the host, upstream's tiny LFM3 speaks at 24 kHz, a seed repeats the speech
+exactly, and a speaker reference is taken; `speed` is refused there, as upstream refuses it.

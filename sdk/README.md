@@ -269,6 +269,26 @@ behind them; the SDK detects no pauses, as llama-server doesn't. Any other model
 refused with `NotSupported`: transcribe its recording, or pieces of it, with `transcribe` instead, as upstream's web
 client does. `language` and `prompt` reach a session that isn't live; upstream's live path reads neither.
 
+### Speech
+
+A model that speaks (LFM3-Omni, Kokoro, Qwen3-TTS) reads text aloud through upstream's `/v1/audio/speech`. The speech
+streams as it is made, as 16-bit PCM pieces with their rate:
+
+```kotlin
+val track = …   // an AudioTrack made at the first piece's sampleRate
+model.speak(reply.text) {
+    voice = "female"   // one of model.info.voices; or speakerReference = MediaSource.file(clip) to clone a voice
+    language = "en"
+    maxFrames = 2000   // a bound on speech that runs on
+}.collect { audio -> track.write(audio.pcm, 0, audio.pcm.size) }
+```
+
+Collecting the flow runs the request, and cancelling it stops the speech. As with the voice session, the SDK sets
+nothing for you: an unset field keeps the model's default, and a setting the model doesn't take (`speed` on LFM3) is
+refused with upstream's message as `InvalidRequest`. A voice that isn't in `model.info.voices`, or a voice and a
+speaker reference together, throw `IllegalArgumentException` at once. `extra` reaches upstream's other fields, such as
+`loudness`, `cfg_scale` or `flow_steps`.
+
 ## Embeddings and rerank
 
 An embedding model turns text into vectors and a reranker scores documents against a query, each loaded for its task

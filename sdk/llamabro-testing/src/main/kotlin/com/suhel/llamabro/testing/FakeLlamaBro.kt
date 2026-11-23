@@ -82,6 +82,8 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
     private val voiceQueue = ArrayDeque<VoiceReply>()
     private val voice = mutableListOf<String>()
     private val transcriptionQueue = ArrayDeque<String>()
+    private val speechQueue = ArrayDeque<Pair<ShortArray, Int>>()
+    private val speech = mutableListOf<String>()
 
     /**
      * How long each model load takes, reported as progress in four steps. A `loadModel` cancelled meanwhile
@@ -118,6 +120,9 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
      * `input_audio_buffer.append`, `input_audio_buffer.commit`, `response.create`, …), in order.
      */
     public val voiceEvents: List<String> get() = synchronized(lock) { voice.toList() }
+
+    /** The body of every speech request (`Model.speak`), as JSON, in order. */
+    public val speechRequests: List<String> get() = synchronized(lock) { speech.toList() }
 
     /** The [LlamaBro] to hand to the code under test. */
     public val llamaBro: LlamaBro =
@@ -185,6 +190,14 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
      */
     public fun transcription(text: String) {
         synchronized(lock) { transcriptionQueue += text }
+    }
+
+    /**
+     * Queues the speech for the next `Model.speak`: [pcm], 16-bit mono at [sampleRate], streamed as upstream streams
+     * WAV (a header, then the samples in two pieces). With none queued the request fails as a server error.
+     */
+    public fun speech(pcm: ShortArray, sampleRate: Int = 24000) {
+        synchronized(lock) { speechQueue += pcm.copyOf() to sampleRate }
     }
 
     /** Queues the vectors for the next `Model.embed`: one per input, in the inputs' order. */
@@ -397,6 +410,10 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
                     send(200, "{}")
                 }
 
+                "speech" -> {
+                    speak(text, sink)
+                }
+
                 "realtime" -> {
                     val intent = paramsJson?.let { Json.parseToJsonElement(it) as? JsonObject }?.get("intent")
                     return if ((intent as? JsonPrimitive)?.content == "transcription") {
@@ -438,6 +455,37 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
                 is Scripted.Error -> send(next.status, next.body)
                 is Scripted.Stream -> stream(next.reply).forEach { send(200, it) }
             }
+        }
+
+        /** Upstream's streamed WAV (handle_tts_impl): a header with unknown sizes, then the samples. */
+        private fun speak(body: String, sink: RequestSink) {
+            val next =
+                synchronized(lock) {
+                    speech += body
+                    speechQueue.removeFirstOrNull()
+                }
+            if (next == null) {
+                sink.onChunk(500, serverError("FakeLlamaBro: no speech scripted").toByteArray(Charsets.UTF_8))
+                return
+            }
+            val (pcm, rate) = next
+            val header = ByteBuffer.allocate(WAV_HEADER).order(ByteOrder.LITTLE_ENDIAN)
+            header.put("RIFF".toByteArray()).putInt(-1).put("WAVE".toByteArray())
+            header
+                .put("fmt ".toByteArray())
+                .putInt(16)
+                .putShort(1)
+                .putShort(1)
+                .putInt(rate)
+            header.putInt(rate * 2).putShort(2).putShort(16)
+            header.put("data".toByteArray()).putInt(-1)
+            sink.onChunk(200, header.array())
+            val bytes = ByteBuffer.allocate(pcm.size * 2).order(ByteOrder.LITTLE_ENDIAN)
+            pcm.forEach { bytes.putShort(it) }
+            val all = bytes.array()
+            val half = all.size / 2
+            if (half > 0) sink.onChunk(200, all.copyOfRange(0, half))
+            if (all.size > half) sink.onChunk(200, all.copyOfRange(half, all.size))
         }
 
         private fun task(endpoint: String, body: String, send: (Int, String) -> Unit) {
@@ -729,6 +777,9 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
     }
 
     private companion object {
+        /** A WAV header's bytes: RIFF, fmt and data. */
+        private const val WAV_HEADER = 44
+
         /** Upstream's error type for a commit with no audio. */
         private const val COMMIT_EMPTY = "input_audio_buffer_commit_empty"
 

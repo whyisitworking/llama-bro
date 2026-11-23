@@ -220,10 +220,11 @@ step_e2e() {
     for _ in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" > /dev/null && break; sleep 1; done
     # HostEmbeddingTest: typed embed and rerank on upstream's test models (D65); HostAudioTest: speech input through
     # the public API (D84); HostVoiceTest: the voice session (D95, D97); HostTranscriptionTest: live transcription
-    # (D138); none needs a server
+    # (D138); HostSpeechTest: speech (D139); none needs a server
     gradle :llamabro:testDebugUnitTest --tests 'com.suhel.llamabro.HostNative*' \
         --tests 'com.suhel.llamabro.HostEmbeddingTest' --tests 'com.suhel.llamabro.HostAudioTest' \
-        --tests 'com.suhel.llamabro.HostVoiceTest' --tests 'com.suhel.llamabro.HostTranscriptionTest' --rerun-tasks -i \
+        --tests 'com.suhel.llamabro.HostVoiceTest' --tests 'com.suhel.llamabro.HostTranscriptionTest' \
+        --tests 'com.suhel.llamabro.HostSpeechTest' --rerun-tasks -i \
         -Pllamabro.host.lib="$native/build/host/bin" -Pllamabro.host.server="http://127.0.0.1:$port" \
         -Pllamabro.host.model="$model" ${mmproj:+-Pllamabro.host.mmproj="$mmproj"} \
         -Pllamabro.host.models="$LB_TEST_MODELS_DIR" -Pllamabro.host.clip="$LB_TEST_CLIP"

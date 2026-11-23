@@ -70,6 +70,15 @@ namespace {
 
 constexpr const char * kPlaceholder = "lb-attachment:";
 constexpr const char * kTranscriptions = "transcriptions";
+constexpr const char * kSpeech = "speech";
+constexpr const char * kTts = "tts";
+
+// the routes whose handler reads uploaded files (req.files): a transcription's clip, and speech's speaker_ref
+// (server-context.cpp handle_tts_impl), which the bridge passes as the upload's files, not data URLs in the body
+bool takes_uploads(const std::string & route) {
+    return route == std::string("/") + kTranscriptions || route == std::string("/") + kSpeech ||
+           route == std::string("/") + kTts;
+}
 constexpr const char * kRealtime = "realtime";
 
 std::atomic<int> g_live_attachments{0};
@@ -323,11 +332,11 @@ void run_request(lb_model * m, lb_request * r, server_http_context::handler_t ha
                  std::vector<attachment> atts, std::string att_error, media_links links) {
     bool cancelled = false;
     {
-        // the attachments become what upstream's handler reads: the upload's files for a transcription, data URLs in
-        // the body for the rest. A bad attachment is a bad request, answered as ex_wrapper answers one (400), with
-        // "lb_code": "attachment" so the SDK knows it by its code rather than by its words
+        // the attachments become what upstream's handler reads: the upload's files for a transcription or speech, data
+        // URLs in the body for the rest. A bad attachment is a bad request, answered as ex_wrapper answers one (400),
+        // with "lb_code": "attachment" so the SDK knows it by its code rather than by its words
         std::map<std::string, uploaded_file> files;
-        const bool transcription = path == std::string("/") + kTranscriptions;
+        const bool uploads = takes_uploads(path);
         auto prepare = [&](const server_http_req &) -> server_http_res_ptr {
             if (!att_error.empty()) {
                 json error_data = format_error_response(att_error, ERROR_TYPE_INVALID_REQUEST);
@@ -337,7 +346,7 @@ void run_request(lb_model * m, lb_request * r, server_http_context::handler_t ha
                 res->data = safe_json_to_str({{ "error", error_data }});
                 return res;
             }
-            if (!transcription) {
+            if (!uploads) {
                 if (takes_chat_messages(path)) write_placeholders(body, atts, false);
                 if (takes_embedding_content(path)) write_placeholders(body, atts, true);
                 atts.clear();  // in the body now, or not wanted by this route
@@ -346,7 +355,7 @@ void run_request(lb_model * m, lb_request * r, server_http_context::handler_t ha
         };
         const server_http_req no_req{ {}, {}, {}, {}, {}, {}, r->should_stop };
         server_http_res_ptr failed = ex_wrapper(prepare)(no_req);
-        if (transcription && !failed) {
+        if (uploads && !failed) {
             for (auto & a : atts) files[a.name] = uploaded_file{ std::move(a.data), a.filename, a.mime };
         }
 
