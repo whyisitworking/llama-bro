@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the [decision records](../decisions.md) (`D<n>`), the [research history](history.md), which summarises each phase, and the experiments under [`research/`](../../research/).
-> **Status:** living document, updated 2026-11-23 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180)
+> **Status:** living document, updated 2026-11-23 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181)
 
 Labels such as P1, PA, PF, PD and PH name the project's phases, and W1 to W9 the workstreams of a phase; the
 [research history](history.md#summary-of-the-phases) summarises each. "Task <n>", "T<n>" and "Feeds:" name the steps
@@ -2038,10 +2038,31 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   GET_ROWS #32514, the audio FFT #32815) need a phone A/B before they count (D10).
 - **Feeds:** D10, D91, D93, D137, F153, F163.
 
+## Live transcription and speech (F181)
+
+### F181. Upstream transcribes live only on a model with a streaming audio encoder; a transcription prompt replaces the instruction; streamed speech is one WAV header then PCM
+
+- **Finding:** At b12653: (1) `/v1/realtime` with `intent=transcription` gives a live session (text as audio
+  arrives, `SERVER_TASK_TYPE_TRANSCRIBE_RT`) on a model with a streaming audio encoder and an ASR prompt in its
+  template, as upstream's tiny LFM3 test model has; a model that holds realtime conversations without one is switched
+  by the client to transcribing per commit; any other (Qwen3-ASR, Qwen3.5) is refused with "The current model does not
+  support realtime transcription." A live session's final commit (`final: true`) sends no `committed` event, only the
+  last `completed`; `turn_detection` is always null. (2) A transcription `prompt` replaces the model's instruction
+  (`asr_user_text`) except on VibeVoice-ASR, which reads it as context, so it is no vocabulary hint. (3) `/v1/audio/speech`
+  with `stream_format: "audio"` and `response_format: "wav"` sends one WAV header with unknown sizes (0xFFFFFFFF) and
+  then 16-bit PCM in chunks of any length; the tiny LFM3 speaks at 24 kHz mono, a seed repeats the speech exactly, a
+  `speaker_ref` clip is taken, and `speed` is refused ("the model may not support speed").
+- **Evidence:** `HostTranscriptionTest` and `HostSpeechTest` through the SDK on the tiny LFM3 (host); `curl` against the
+  host `llama-server` for the streamed WAV; `common_chat_get_asr_prompt` and `server-realtime.cpp` at b12653.
+- **Means:** D138 (the session, no hint prompt), D139 (speech read from the streamed WAV), D140 (the demo commits at
+  pauses and falls back to `transcribe` as Llama Chat does).
+- **Feeds:** D138, D139, D140.
+
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F181 | Live transcription needs a streaming audio encoder (refused otherwise); a transcription prompt replaces the instruction; streamed speech is one WAV header then PCM (24 kHz on the tiny LFM3) | D138, D139, D140 |
 | F180 | The upgrade to b12653: contract identical on the Mac and the NPU (76/76); upstream #32434 fixes 0004's bug, so 0004 is dropped; six patches apply unchanged | D10, D91, D93, D137, F153, F163 |
 | F179 | The Hexagon skeletons hold llama.cpp's code, qaic-generated FastRPC glue and inline SDK-header code (headers marked Qualcomm proprietary); the SDK agreement is not public; llama.cpp's official b12479 release ships the same files from the same image, approved by the ggml-hexagon code owner | D133, D93 |
 | F178 | The README's run, 37 arms on the OnePlus 13 at b12479: the NPU fastest for all six ladder models (230M-4B); code edit 8.0× with n-gram + MTP; DFlash JSON now 0.9× off (F73: 2.3×); first voice audio 0.38 s; stop 85 ms | F73, F72, F170, F63, F69 |

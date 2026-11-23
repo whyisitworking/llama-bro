@@ -4,6 +4,19 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
 ([findings](research/findings.md)); the [architecture](architecture.md) has the full design and the
 [SDK README](../sdk/README.md) the examples.
 
+## Unreleased
+
+- **llama.cpp b12653** (D137) with six carried patches: upstream fixed the cache bug 0004 carried (F180). New with
+  the pin: Qwen3-ASR's audio tail, LFM2.5-VL's template, the realtime sleep state and transcription prompt, recurrent
+  state that no longer keeps a NaN, and safer reads of untrusted GGUF and grammars.
+- **`Model.transcriptionSession`** (D138): live speech to text through upstream's realtime transcription, live on a
+  model that transcribes as it hears (LFM3), per commit on one that holds realtime conversations, and refused with
+  `NotSupported` on any other. `FakeLlamaBro` scripts it.
+- **`Model.speak`** (D139): text to speech as a flow of 16-bit PCM pieces, with a voice, a speaker reference to clone,
+  speed, seed and more, each sent only when set. `FakeLlamaBro` scripts it.
+- **Demo:** a tap on the mic dictates into the message bar, a hold records a voice message (D140); a typed reply on a
+  model that speaks can be read aloud (D141).
+
 ## 2.0.0-alpha
 
 A rewrite of 1.x: llama-server's core runs in-process behind a C API, and the Kotlin API is built on it. Code written
