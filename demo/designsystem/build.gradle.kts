@@ -3,6 +3,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+apply(from = "../robolectric.gradle.kts")
+
 android {
     namespace = "com.suhel.llamabro.demo.designsystem"
     compileSdk = 37

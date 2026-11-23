@@ -46,6 +46,8 @@ class ModelLifecycleTest {
         a.join(5_000)
         b.join(5_000)
         assertFalse(closedWhileInside)
+        // close() returned at once; the native close runs once the request is out, in the background (D136)
+        runBlocking { withTimeout(5_000) { model.closeAndJoin() } }
         assertTrue(engine.model.closed)
     }
 

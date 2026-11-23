@@ -20,15 +20,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-// one configuration per runtime: they share a Maven coordinate, so in one configuration only the newest would resolve
-val robolectricSdk35: Configuration by configurations.creating { isTransitive = false }
-val robolectricSdk36: Configuration by configurations.creating { isTransitive = false }
-val robolectricRuntimesDir = layout.buildDirectory.dir("robolectric-runtimes")
-val robolectricRuntimes =
-    tasks.register<Sync>("robolectricRuntimes") {
-        from(robolectricSdk35, robolectricSdk36)
-        into(robolectricRuntimesDir)
-    }
+apply(from = "../robolectric.gradle.kts")
 
 android {
     namespace = "com.suhel.llamabro.demo"
@@ -59,11 +51,6 @@ android {
                 isIncludeNoLocationClasses = true
                 excludes = listOf("jdk.internal.*")
             }
-            // Robolectric would fetch its Android runtimes from Maven mid-test, with no retry or cache, and a fresh
-            // CI runner failed on it; Gradle fetches them instead and Robolectric runs offline
-            it.dependsOn(robolectricRuntimes)
-            it.systemProperty("robolectric.offline", "true")
-            it.systemProperty("robolectric.dependency.dir", robolectricRuntimesDir.get().asFile.path)
         }
         // no window animations while instrumented tests run: an accessibility check made during an activity's or a
         // sheet's window animation reads a 48 dp target scaled down. Compose's own motion is unaffected
@@ -185,8 +172,6 @@ dependencies {
     testImplementation(libs.room.testing)
     testImplementation(libs.androidx.paging.testing)
     testImplementation(libs.robolectric)
-    robolectricSdk35(libs.robolectric.runtime.sdk35)
-    robolectricSdk36(libs.robolectric.runtime.sdk36)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.work.testing)
     // host Compose tests of the model card's layout, under Robolectric
