@@ -39,14 +39,14 @@ class HostTranscriptionTest {
                 "host end-to-end runs from sdk/scripts/check.sh",
                 lib != null && models != null && clipPath != null,
             )
-            clip = HostVoiceTest.pcmOf(File(clipPath!!).readBytes())
+            clip = HostTestSupport.pcmOf(File(clipPath!!).readBytes())
             val gguf = File(models!!, "tinyLFM3-Omni-for-testing-Q2_K.gguf").path
             val mmproj = File(models, "mmproj-tinyLFM3-Omni-for-testing-Q2_K.gguf").path
             model =
                 LlamaBro(LlamaBroRuntime(JniEngine, tempDir(), lib, LlamaBroConfig.Default))
                     .loadModel(ModelSource.file(gguf) { this.mmproj = mmproj }) {
-                        contextSize = ContextSize.Fixed(HostVoiceTest.CONTEXT)
-                        seed = HostVoiceTest.SEED
+                        contextSize = ContextSize.Fixed(HostTestSupport.CONTEXT)
+                        seed = HostTestSupport.SEED
                     }
         }
 
@@ -66,7 +66,7 @@ class HostTranscriptionTest {
 
     /** The events up to and with the [n]th [TranscriptionEvent.Done]. */
     private suspend fun TranscriptionSession.untilDone(n: Int = 1): List<TranscriptionEvent> =
-        withTimeout(HostVoiceTest.TIMEOUT_MS) {
+        withTimeout(HostTestSupport.TIMEOUT_MS) {
             val events = mutableListOf<TranscriptionEvent>()
             var done = 0
             this@untilDone
@@ -83,12 +83,10 @@ class HostTranscriptionTest {
     fun lfm3TranscribesLive() =
         runBlocking {
             open().use { session ->
-                assertTrue(session.live)
+                assertTrue(session.isLive)
                 assertEquals(16000, session.inputSampleRate)
                 session.speak()
-                assertTrue(session.hasUncommittedAudio)
                 assertTrue(session.finish())
-                assertFalse(session.hasUncommittedAudio)
                 val events = session.untilDone()
                 // the final commit ends the input: upstream's live path sends no committed for it, only the last done
                 assertTrue(events.none { it is TranscriptionEvent.Committed })
@@ -132,7 +130,7 @@ class HostTranscriptionTest {
             val session = open()
             model.closeAndJoin()
             assertThrows(LlamaBroException.ModelClosed::class.java) {
-                runBlocking { withTimeout(HostVoiceTest.TIMEOUT_MS) { session.events.toList() } }
+                runBlocking { withTimeout(HostTestSupport.TIMEOUT_MS) { session.events.toList() } }
             }
             assertFalse(session.commit())
         }

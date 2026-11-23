@@ -20,14 +20,17 @@ data class VoiceSettingsState(
     val voice: String?,
     val captionYou: Boolean,
     val dictationLanguage: String? = null,
-    val phoneLanguage: PhoneLanguage = PhoneLanguage.current(),
+    val phoneLanguage: PhoneLanguage,
 )
 
-/** The phone's language as dictation is told it ([code], ISO 639-1) and as the row names it. */
+/** A language as dictation is told it ([code], ISO 639-1) and as its row names it. */
 data class PhoneLanguage(val code: String, val name: String) {
     companion object {
-        fun current(locale: Locale = Locale.getDefault()): PhoneLanguage =
-            PhoneLanguage(locale.language, locale.getDisplayLanguage(locale).replaceFirstChar { it.uppercase(locale) })
+        /** [code] named in its own language, e.g. "Français" for "fr". */
+        fun of(code: String): PhoneLanguage {
+            val locale = Locale.forLanguageTag(code)
+            return PhoneLanguage(code, locale.getDisplayLanguage(locale).replaceFirstChar { it.uppercase(locale) })
+        }
     }
 }
 
@@ -36,7 +39,13 @@ fun VoiceScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     val settings by viewModel.state.collectAsStateWithLifecycle()
     val voices by viewModel.voices.collectAsStateWithLifecycle()
     VoiceContent(
-        VoiceSettingsState(voices, settings.voice, settings.captionYou, settings.dictationLanguage),
+        VoiceSettingsState(
+            voices,
+            settings.voice,
+            settings.captionYou,
+            settings.dictationLanguage,
+            viewModel.phoneLanguage,
+        ),
         onVoice = viewModel::setVoice,
         onCaption = viewModel::setCaptionYou,
         onDictationLanguage = viewModel::setDictationLanguage,
@@ -112,6 +121,11 @@ fun VoiceContent(
                         selected = state.dictationLanguage == state.phoneLanguage.code,
                         onClick = { onDictationLanguage(state.phoneLanguage.code) },
                     )
+                }
+                // chosen before the phone's language changed: it stays, shown as chosen, until another is picked
+                val other = state.dictationLanguage?.takeIf { it != state.phoneLanguage.code }
+                if (other != null) {
+                    row { ListRow(PhoneLanguage.of(other).name, selected = true, onClick = {}) }
                 }
             }
             SectionNote("Tap the mic in a chat to dictate; hold it to send a voice message.")

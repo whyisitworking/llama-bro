@@ -36,6 +36,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.suhel.llamabro.Model
 import com.suhel.llamabro.demo.AppContainer
 import com.suhel.llamabro.demo.chat.Dictation
 import com.suhel.llamabro.demo.chat.LimitAction
@@ -310,15 +311,7 @@ private fun chatViewModel(
                 clock = container.clock,
             )
         },
-        dictationStart = { model, language ->
-            Dictation(
-                model,
-                container.microphone,
-                container.audio.file(container.audio.newName()),
-                container.appScope,
-                language,
-            )
-        },
+        dictationStart = container::dictation,
         dictationLanguage = {
             container.settings.settings
                 .first()
@@ -334,6 +327,10 @@ private fun chatViewModel(
         },
     )
 }
+
+/** A dictation over [model] (D140): the microphone into a new recording in app storage, in [language]. */
+private fun AppContainer.dictation(model: Model, language: String?): Dictation =
+    Dictation(model, microphone, audio.file(audio.newName()), appScope, language)
 
 /** A draft picture, downscaled once more for its 64 dp preview (the saved one is at most 1024 px). */
 private suspend fun AppContainer.thumbnail(name: String): ImageBitmap? =
@@ -389,7 +386,7 @@ private fun rememberVoiceActions(
         }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         voice?.pause()
-        dictation?.finish()
+        dictation?.leave()
     }
     return remember(voice, dictation, context, ask, onTalk) {
         val withMicrophone = { use: MicUse, go: () -> Unit ->

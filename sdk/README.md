@@ -262,7 +262,7 @@ dictation.finish()                   // the user stops; close after the last Don
 ```
 
 Upstream transcribes this way only on a model with a streaming audio encoder. With a transcription prompt in its
-template (LFM3, Voxtral Realtime) the session is `live`: text streams while the audio arrives. A model that holds
+template (LFM3, Voxtral Realtime) the session `isLive`: text streams while the audio arrives. A model that holds
 realtime conversations without one is transcribed per commit, so commit at the speaker's pauses to keep the text close
 behind them; the SDK detects no pauses, as llama-server doesn't. Any other model that hears, such as Qwen3-ASR, is
 refused with `NotSupported`: transcribe its recording, or pieces of it, with `transcribe` instead, as upstream's web

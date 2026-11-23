@@ -114,6 +114,7 @@ public const val SEND_CLOSED: Int = 6
 /** A request's events: chunks of the HTTP body with its status, then exactly one of [onDone] or [onCancelled]. */
 @InternalLlamaBroApi
 public interface RequestSink {
+    /** A chunk of the body. The sink owns [data] from here: an engine hands a fresh array each time. */
     public fun onChunk(httpStatus: Int, data: ByteArray)
 
     public fun onDone()

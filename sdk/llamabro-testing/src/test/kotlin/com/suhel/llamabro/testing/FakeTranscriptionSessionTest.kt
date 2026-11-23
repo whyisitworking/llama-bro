@@ -71,7 +71,7 @@ class FakeTranscriptionSessionTest {
                     transcription("How are you?")
                 }
             fake.model().transcriptionSession().use { session ->
-                assertTrue(session.live)
+                assertTrue(session.isLive)
                 assertTrue(session.append(ShortArray(1600)))
                 assertTrue(session.commit())
                 assertTrue(session.append(ShortArray(1600)))
@@ -100,7 +100,7 @@ class FakeTranscriptionSessionTest {
                     language = "en"
                     prompt = "Llama Bro"
                 }.use { session ->
-                    assertFalse(session.live)
+                    assertFalse(session.isLive)
                     session.append(ShortArray(1600))
                     session.commit()
                     val events = session.until(1) { it is TranscriptionEvent.Done }
@@ -121,10 +121,8 @@ class FakeTranscriptionSessionTest {
         runBlocking {
             val fake = fake(live = false) { transcription("Still here.") }
             fake.model().transcriptionSession().use { session ->
-                assertFalse(session.hasUncommittedAudio)
                 session.commit()
                 session.append(ShortArray(1600))
-                assertTrue(session.hasUncommittedAudio)
                 session.finish()
                 val events = session.until(1) { it is TranscriptionEvent.Done }
                 assertEquals("input_audio_buffer_commit_empty", (events.first() as TranscriptionEvent.Error).type)

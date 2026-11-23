@@ -226,8 +226,21 @@ internal object RealtimeJson {
         }
     }
 
+    /** Upstream's input rate when a session doesn't report one (server-realtime.cpp); every session does. */
+    const val DEFAULT_INPUT_RATE = 16000
+
+    /** A session's audio `format.rate`, from its `audio.input` or `audio.output`. */
+    fun rate(audio: JsonObject?): Int? =
+        ((audio?.get("format") as? JsonObject)?.get("rate") as? JsonPrimitive)?.intOrNull
+
+    fun stringOf(obj: JsonObject, key: String): String? = (obj[key] as? JsonPrimitive)?.contentOrNull
+
+    /** An `error` event's message, or a plain one naming [what] was refused. */
+    fun errorMessage(event: JsonObject, what: String): String =
+        (event["error"] as? JsonObject)?.let { stringOf(it, "message") } ?: "the server refused the $what"
+
     private const val BYTE_BITS = 8
     private const val BYTE_MASK = 0xff
 
-    private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
+    private fun JsonObject.string(key: String): String? = stringOf(this, key)
 }

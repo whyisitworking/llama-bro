@@ -17,8 +17,6 @@ import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 /**
  * The voice session (D95) through Kotlin, JNI and the bridge's in-memory `/v1/realtime` (D97) on upstream's
@@ -39,14 +37,14 @@ class HostVoiceTest {
                 "host end-to-end runs from sdk/scripts/check.sh",
                 lib != null && models != null && clipPath != null,
             )
-            clip = pcmOf(File(clipPath!!).readBytes())
+            clip = HostTestSupport.pcmOf(File(clipPath!!).readBytes())
             val gguf = File(models!!, "tinyLFM3-Omni-for-testing-Q2_K.gguf").path
             val mmproj = File(models, "mmproj-tinyLFM3-Omni-for-testing-Q2_K.gguf").path
             model =
                 LlamaBro(LlamaBroRuntime(JniEngine, tempDir(), lib, LlamaBroConfig.Default))
                     .loadModel(ModelSource.file(gguf) { this.mmproj = mmproj }) {
-                        contextSize = ContextSize.Fixed(CONTEXT)
-                        seed = SEED
+                        contextSize = ContextSize.Fixed(HostTestSupport.CONTEXT)
+                        seed = HostTestSupport.SEED
                     }
         }
 
@@ -60,7 +58,7 @@ class HostVoiceTest {
 
     /** The events up to and with the next reply's end. */
     private suspend fun VoiceSession.untilDone(): List<VoiceEvent> =
-        withTimeout(TIMEOUT_MS) {
+        withTimeout(HostTestSupport.TIMEOUT_MS) {
             val events = mutableListOf<VoiceEvent>()
             this@untilDone
                 .events
@@ -97,7 +95,7 @@ class HostVoiceTest {
             assertEquals(text.joinToString("") { it.delta }, done.text)
             assertTrue(events.none { it is VoiceEvent.Error })
             session.close()
-            assertEquals(emptyList<VoiceEvent>(), withTimeout(TIMEOUT_MS) { session.events.toList() })
+            assertEquals(emptyList<VoiceEvent>(), withTimeout(HostTestSupport.TIMEOUT_MS) { session.events.toList() })
             assertFalse(session.respond())
         }
 
@@ -107,7 +105,10 @@ class HostVoiceTest {
             val session = open()
             assertTrue(session.commit())
             // nothing was said: the commit is refused, and the error is the first event
-            val before = withTimeout(TIMEOUT_MS) { session.events.takeWhile { it !is VoiceEvent.Error }.toList() }
+            val before =
+                withTimeout(
+                    HostTestSupport.TIMEOUT_MS,
+                ) { session.events.takeWhile { it !is VoiceEvent.Error }.toList() }
             assertEquals(emptyList<VoiceEvent>(), before)
             assertTrue(session.sendText("Hello"))
             val reply = session.untilDone()
@@ -131,33 +132,12 @@ class HostVoiceTest {
             val session = open()
             model.closeAndJoin()
             assertThrows(LlamaBroException.ModelClosed::class.java) {
-                runBlocking { withTimeout(TIMEOUT_MS) { session.events.toList() } }
+                runBlocking { withTimeout(HostTestSupport.TIMEOUT_MS) { session.events.toList() } }
             }
             assertFalse(session.commit())
         }
 
-    internal companion object {
-        const val CONTEXT = 4096
+    private companion object {
         const val REPLY_TOKENS = 32
-        const val SEED = 42L
-        const val TIMEOUT_MS = 300_000L
-
-        /** The 16-bit samples of a WAV's `data` chunk (the test clip is 16 kHz mono). */
-        fun pcmOf(wav: ByteArray): ShortArray {
-            val b = ByteBuffer.wrap(wav).order(ByteOrder.LITTLE_ENDIAN)
-            var at = 12
-            while (at + 8 <= wav.size) {
-                val id = String(wav, at, 4, Charsets.US_ASCII)
-                val size = b.getInt(at + 4)
-                if (id == "data") {
-                    val samples = ShortArray(minOf(size, wav.size - at - 8) / 2)
-                    b.position(at + 8)
-                    b.asShortBuffer().get(samples)
-                    return samples
-                }
-                at += 8 + size + (size and 1)
-            }
-            error("no data chunk in the clip")
-        }
     }
 }

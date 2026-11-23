@@ -16,7 +16,7 @@ import kotlin.math.sqrt
  * quieter level at once and creeps back up through louder ones), and a level clearly above it, and above the absolute
  * minimum, is speech. So a quiet and a loud microphone both work, and so does a room with a fan running.
  */
-class SpeechDetector(
+internal class SpeechDetector(
     /** The room's noise level in dBFS when it is known already, so speech from the first level counts. */
     floorDb: Double = 0.0,
     private val speechDb: Double = ABOVE_FLOOR_DB,
@@ -63,7 +63,7 @@ class SpeechDetector(
  * Finds the pauses in speech from the live input levels, so a recording can be transcribed piece by piece while it goes
  * on, cut where the speaker breathes rather than inside a word.
  */
-class PauseDetector(
+internal class PauseDetector(
     /** Time between two levels, as the microphone gives them. */
     private val intervalMs: Int,
     /** Silence after speech that makes a pause. */
@@ -131,7 +131,7 @@ class PauseDetector(
 }
 
 /** dBFS helpers (upstream's levels.ts). */
-object Levels {
+internal object Levels {
     /** Quieter than anything a microphone gives, for a block of digital silence. */
     const val SILENCE_DB = -120.0
 

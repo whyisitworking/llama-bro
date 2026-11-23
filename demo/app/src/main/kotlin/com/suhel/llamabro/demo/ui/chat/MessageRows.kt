@@ -139,28 +139,7 @@ private fun ReplyContent(item: ReplyItem, style: MessageStyle, actions: MessageA
     }
     if (showActions && item.failure == null) {
         ReplyActions {
-            val speech = item.speech
-            if (speech != null) {
-                // a spoken reply plays again (D100): the speaker in ink while it plays
-                val playing = actions.playing()?.let { it.messageId == item.id && it.playing } == true
-                IconAction(
-                    DemoIcons.Speaker,
-                    if (playing) "Stop playing the reply" else "Play the reply",
-                    { actions.toggleVoice(item.id, speech) },
-                    muted = !playing,
-                    small = true,
-                )
-            } else if (actions.canReadAloud()) {
-                // a typed reply on a model that speaks is read aloud (D141): the speaker in ink while it reads
-                val reading = actions.reading() == item.id
-                IconAction(
-                    DemoIcons.Speaker,
-                    if (reading) "Stop reading the reply" else "Read the reply aloud",
-                    { actions.readAloud(item.id, item.text) },
-                    muted = !reading,
-                    small = true,
-                )
-            }
+            SpeakerAction(item, actions)
             IconAction(DemoIcons.Copy, "Copy reply", { actions.copy(item.text) }, muted = true, small = true)
             IconAction(DemoIcons.Share, "Share reply", { actions.share(item.position) }, muted = true, small = true)
             IconAction(
@@ -180,6 +159,34 @@ private fun ReplyContent(item: ReplyItem, style: MessageStyle, actions: MessageA
                 )
             }
         }
+    }
+}
+
+/**
+ * The reply's speaker: a spoken reply plays again (D100); a typed one on a model that speaks is read aloud (D141). In
+ * ink while it plays or reads. Nothing for a typed reply on a model that doesn't speak.
+ */
+@Composable
+private fun SpeakerAction(item: ReplyItem, actions: MessageActions) {
+    val speech = item.speech
+    if (speech != null) {
+        val playing = actions.playing()?.let { it.messageId == item.id && it.playing } == true
+        IconAction(
+            DemoIcons.Speaker,
+            if (playing) "Stop playing the reply" else "Play the reply",
+            { actions.toggleVoice(item.id, speech) },
+            muted = !playing,
+            small = true,
+        )
+    } else if (actions.canReadAloud()) {
+        val reading = actions.reading() == item.id
+        IconAction(
+            DemoIcons.Speaker,
+            if (reading) "Stop reading the reply" else "Read the reply aloud",
+            { actions.readAloud(item.id, item.text) },
+            muted = !reading,
+            small = true,
+        )
     }
 }
 

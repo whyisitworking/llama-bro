@@ -70,15 +70,6 @@ namespace {
 
 constexpr const char * kPlaceholder = "lb-attachment:";
 constexpr const char * kTranscriptions = "transcriptions";
-constexpr const char * kSpeech = "speech";
-constexpr const char * kTts = "tts";
-
-// the routes whose handler reads uploaded files (req.files): a transcription's clip, and speech's speaker_ref
-// (server-context.cpp handle_tts_impl), which the bridge passes as the upload's files, not data URLs in the body
-bool takes_uploads(const std::string & route) {
-    return route == std::string("/") + kTranscriptions || route == std::string("/") + kSpeech ||
-           route == std::string("/") + kTts;
-}
 constexpr const char * kRealtime = "realtime";
 
 std::atomic<int> g_live_attachments{0};
@@ -277,6 +268,12 @@ bool fill_field(json & part, const char * holder, const char * field, const std:
 // "input" (or "content") may hold OAI content parts, read by tokenize_oai_content_array. Filled too (D84).
 bool takes_embedding_content(const std::string & path) {
     return path == "/embeddings" || path == "/embeddings_native";
+}
+
+// The routes whose handler reads uploaded files (req.files): a transcription's clip, and speech's speaker_ref
+// (server-context.cpp handle_tts_impl), which the bridge passes as the upload's files, not data URLs in the body.
+bool takes_uploads(const std::string & path) {
+    return path == "/transcriptions" || path == "/speech" || path == "/tts";
 }
 
 // One content array's media parts: image_url.url and input_audio.data, the two fields media arrives in

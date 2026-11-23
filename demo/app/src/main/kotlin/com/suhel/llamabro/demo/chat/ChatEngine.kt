@@ -38,6 +38,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -254,6 +255,17 @@ class VoiceHold(val model: Model, private val onRelease: () -> Unit) {
     }
 }
 
+/**
+ * [hold] run to its end even when the caller is cancelled meanwhile (a model load can't be stopped halfway by it): a
+ * hold that arrives for a cancelled caller is released rather than dropped, and the caller then sees the cancellation.
+ */
+suspend fun holdUncancelled(hold: suspend () -> VoiceHold?): VoiceHold? {
+    val held = withContext(NonCancellable) { hold() }
+    if (!currentCoroutineContext().isActive) held?.release()
+    currentCoroutineContext().ensureActive()
+    return held
+}
+
 /** What the chat knows about its model, for the header, the composer and the held-message note. */
 sealed interface ChatModelState {
     data class Downloading(val status: DownloadStatus?) : ChatModelState
@@ -458,6 +470,8 @@ class ChatEngine(
             chats.delete(chatId)
         }
 
+    // the chat's facade, as Conversation is the SDK's: each public function is one thing the chat screen does
+    @Suppress("TooManyFunctions")
     @OptIn(ExperimentalCoroutinesApi::class)
     inner class ChatHandle internal constructor(initialChatId: Long, private val startModel: HfModel? = null) {
         /**

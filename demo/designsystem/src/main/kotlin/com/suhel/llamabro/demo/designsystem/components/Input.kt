@@ -6,7 +6,6 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -531,53 +530,45 @@ private fun SendButton(state: ComposerState, onSend: () -> Unit, onStop: () -> U
 }
 
 /**
- * The mic: with dictation (D140), a tap dictates and a hold records a voice message, with a long-press buzz; both are
- * named for TalkBack ("Dictate", and "Record a voice message" as the long-press action). Without it, a tap records.
+ * The mic: with dictation (D140), a tap dictates and a hold records a voice message, with a long-press buzz; TalkBack
+ * reads it as "Dictate" with "Record a voice message" as its long-press action. Without it, a tap records.
  */
 @Composable
 private fun MicButton(voice: VoiceActions) {
     val dictate = voice.onDictate
     if (dictate == null) {
         BarButton(DemoIcons.Mic, stringResource(R.string.ds_record), voice.onRecord)
-        return
-    }
-    val colors = LocalDemoColors.current
-    val haptics = LocalHapticFeedback.current
-    Box(
-        Modifier
-            .minimumInteractiveComponentSize()
-            .size(DemoSize.barCircle)
-            .clip(CircleShape)
-            .combinedClickable(
-                role = Role.Button,
-                onClickLabel = stringResource(R.string.ds_dictate),
-                onLongClickLabel = stringResource(R.string.ds_record),
-                onLongClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    voice.onRecord()
-                },
-                onClick = dictate,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        BarCircle(colors.hairline) {
-            Icon(
-                DemoIcons.Mic,
-                contentDescription = stringResource(R.string.ds_dictate),
-                tint = colors.ink,
-                modifier = Modifier.size(DemoSize.barGlyph),
-            )
-        }
+    } else {
+        val haptics = LocalHapticFeedback.current
+        BarButton(
+            DemoIcons.Mic,
+            stringResource(R.string.ds_dictate),
+            dictate,
+            longClickLabel = stringResource(R.string.ds_record),
+            onLongClick = {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                voice.onRecord()
+            },
+        )
     }
 }
 
-/** A tonal button of the bar (+, the mic, discard): an ink glyph on the hairline's circle. */
+/**
+ * A tonal button of the bar (+, the mic, discard): an ink glyph on the hairline's circle, named [label]. With
+ * [onLongClick] it also takes a hold, named [longClickLabel] for TalkBack.
+ */
 @Composable
-private fun BarButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun BarButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    longClickLabel: String? = null,
+    onLongClick: (() -> Unit)? = null,
+) {
     val colors = LocalDemoColors.current
-    BarIconButton(onClick = onClick) {
+    BarIconButton(onClick = onClick, onLongClick = onLongClick, longClickLabel = longClickLabel, label = label) {
         BarCircle(colors.hairline) {
-            Icon(icon, contentDescription = label, tint = colors.ink, modifier = Modifier.size(DemoSize.barGlyph))
+            Icon(icon, contentDescription = null, tint = colors.ink, modifier = Modifier.size(DemoSize.barGlyph))
         }
     }
 }
@@ -599,13 +590,28 @@ private val IconButtonInset = DemoSpacing.inline
  * with the press clipped to the circle so no larger ring shows. It sits in the button row under the text.
  */
 @Composable
-private fun BarIconButton(onClick: () -> Unit, enabled: Boolean = true, content: @Composable () -> Unit) {
+private fun BarIconButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
+    longClickLabel: String? = null,
+    /** The button's name, when its glyph carries none. */
+    label: String? = null,
+    content: @Composable () -> Unit,
+) {
     Box(
         Modifier
             .minimumInteractiveComponentSize()
             .size(DemoSize.barCircle)
             .clip(CircleShape)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+            .then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier)
+            .combinedClickable(
+                enabled = enabled,
+                role = Role.Button,
+                onLongClickLabel = longClickLabel,
+                onLongClick = onLongClick,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) { content() }
 }

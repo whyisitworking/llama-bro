@@ -42,7 +42,7 @@ class HostSpeechTest {
             model =
                 LlamaBro(LlamaBroRuntime(JniEngine, tempDir(), lib, LlamaBroConfig.Default))
                     .loadModel(ModelSource.file(gguf) { this.mmproj = mmproj }) {
-                        contextSize = ContextSize.Fixed(HostVoiceTest.CONTEXT)
+                        contextSize = ContextSize.Fixed(HostTestSupport.CONTEXT)
                     }
         }
 
@@ -53,7 +53,7 @@ class HostSpeechTest {
         }
 
     private suspend fun speech(text: String, configure: com.suhel.llamabro.voice.SpeechConfig.Builder.() -> Unit) =
-        withTimeout(HostVoiceTest.TIMEOUT_MS) { model.speak(text, configure).toList() }
+        withTimeout(HostTestSupport.TIMEOUT_MS) { model.speak(text, configure).toList() }
 
     private fun List<SpeechAudio>.samples(): ShortArray = flatMap { it.pcm.toList() }.toShortArray()
 
@@ -119,7 +119,9 @@ class HostSpeechTest {
     fun cancellingTheCollectorStopsTheSpeech() =
         runBlocking {
             // the first piece, then the flow is cancelled: the model is free for the next request
-            withTimeout(HostVoiceTest.TIMEOUT_MS) { model.speak("A longer sentence to speak.") { seed = SEED }.first() }
+            withTimeout(
+                HostTestSupport.TIMEOUT_MS,
+            ) { model.speak("A longer sentence to speak.") { seed = SEED }.first() }
             assertEquals(1, speech("Again.") { maxFrames = FRAMES }.map { it.channels }.distinct().size)
         }
 

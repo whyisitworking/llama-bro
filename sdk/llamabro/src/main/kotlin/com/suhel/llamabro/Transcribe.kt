@@ -39,7 +39,7 @@ public suspend fun Model.transcribe(
     requireTask<ModelTask.Generate>("transcribe", "ModelTask.Generate")
     Media.checkAudio(info, source)
     val body = transcriptionBody(RequestOptions(options), language, prompt)
-    val attachment = Media.attachment("file", WAV, source)
+    val attachment = Media.attachment("file", Media.CLIP_TYPE, source)
     val reply = request(Endpoint.Transcriptions, body.toString(), listOf(attachment))
     val (text, written) =
         ErrorMapping.readReply("transcription") {
@@ -80,6 +80,3 @@ private fun transcriptionBody(options: RequestOptions, language: String?, prompt
 }
 
 private val STRING_FIELDS = setOf("max_tokens", "temperature")
-
-/** The type a transcription's file is sent as; the native side checks its header, whatever the name says. */
-private const val WAV = "audio/wav"

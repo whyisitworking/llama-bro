@@ -6,6 +6,8 @@ import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -19,6 +21,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.concurrent.CountDownLatch
 
 /**
  * Dictation (D140) over FakeLlamaBro, on upstream's three routes: live text, a piece at each pause in a realtime
@@ -31,9 +34,12 @@ class DictationTest {
 
     @After fun end() = scope.cancel()
 
-    /** Speech and silence in 50 ms blocks, paced a little as a microphone is; then it ends. */
-    private class Mic(vararg val parts: Pair<Short, Int>) {
-        var closed = false
+    /**
+     * Speech and silence in 50 ms blocks, paced a little as a microphone is; then it ends. Its first read waits for
+     * [gate], so a test can hold the voice back until the session's route is known.
+     */
+    private class Mic(vararg val parts: Pair<Short, Int>, val gate: CountDownLatch = CountDownLatch(0)) {
+        @Volatile var closed = false
 
         fun source() =
             object : SampleSource {
@@ -41,6 +47,7 @@ class DictationTest {
                 override val rate = 16_000
 
                 override fun read(buffer: ShortArray): Int {
+                    gate.await()
                     if (!blocks.hasNext()) return -1
                     Thread.sleep(PACE_MILLIS)
                     val a = blocks.next()
@@ -55,11 +62,19 @@ class DictationTest {
             }
     }
 
+    /** Starts [dictation] and lets [mic] speak once the session's route is known, so the pauses meet it. */
+    private suspend fun startAfterRoute(dictation: Dictation, mic: Mic) {
+        dictation.start()
+        withTimeout(TIMEOUT) { dictation.state.first { it.route != null } }
+        mic.gate.countDown()
+    }
+
     private val quiet: Short = 0
     private val loud: Short = 8_000
 
     /** Two phrases with a pause after each. */
-    private fun twoPhrases() = Mic(quiet to 10, loud to 20, quiet to 12, loud to 20, quiet to 12)
+    private fun twoPhrases() =
+        Mic(quiet to 10, loud to 20, quiet to 12, loud to 20, quiet to 12, gate = CountDownLatch(1))
 
     private fun model(script: FakeLlamaBro.() -> Unit): Model =
         runBlocking {
@@ -105,8 +120,9 @@ class DictationTest {
                     transcription("To call the bank.")
                     transcript("Remind me to call the bank.")
                 }
-            val dictation = Dictation(model, twoPhrases()::source, clip(), scope)
-            dictation.start()
+            val mic = twoPhrases()
+            val dictation = Dictation(model, mic::source, clip(), scope)
+            startAfterRoute(dictation, mic)
             // the first piece's text shows while the person goes on
             withTimeout(TIMEOUT) { dictation.state.first { it.text.startsWith("Remind me.") } }
             assertEquals(DictationRoute.PerPause, dictation.state.value.route)
@@ -170,6 +186,25 @@ class DictationTest {
         }
 
     @Test
+    fun finishingTwiceGivesTheSameTextOnce() =
+        runBlocking {
+            val model =
+                model {
+                    streamsAudio = true
+                    transcription("Once.")
+                }
+            val dictation = Dictation(model, Mic(quiet to 10, loud to 10, quiet to 4)::source, clip(), scope)
+            dictation.start()
+            dictation.heard(24 * 50)
+            val (a, b) =
+                withTimeout(
+                    TIMEOUT,
+                ) { listOf(async { dictation.finish() }, async { dictation.finish() }).awaitAll() }
+            assertEquals("Once.", a)
+            assertEquals(a, b)
+        }
+
+    @Test
     fun aMicrophoneThatWontOpenIsAFailureAndNoText() =
         runBlocking {
             val model = model { streamsAudio = true }
@@ -184,13 +219,13 @@ class DictationTest {
     fun cancellingThrowsTheRecordingAway() =
         runBlocking {
             val model = model { streamsAudio = true }
-            val dictation = Dictation(model, Mic(quiet to 200)::source, clip(), scope)
+            val mic = Mic(quiet to 200)
+            val dictation = Dictation(model, mic::source, clip(), scope)
             dictation.start()
             withTimeout(TIMEOUT) { dictation.state.first { it.millis > 0 } }
-            dictation.cancel()
-            withTimeout(TIMEOUT) {
-                while (clip().exists()) kotlinx.coroutines.delay(20)
-            }
+            withTimeout(TIMEOUT) { dictation.cancel().join() }
+            assertFalse(clip().exists())
+            assertTrue(mic.closed)
         }
 
     private companion object {

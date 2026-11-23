@@ -35,7 +35,6 @@ import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -78,7 +77,7 @@ public class Model internal constructor(
         java.util.concurrent.locks
             .ReentrantReadWriteLock()
     private val closedSignal = CompletableDeferred<Unit>()
-    private val active = mutableSetOf<ActiveCall>()
+    private val active = mutableSetOf<ActiveCall<*>>()
 
     /** Completes when the native shutdown has finished; exists before [close] so a racing [closeAndJoin] waits too. */
     private val shutdownDone = CompletableDeferred<Unit>()
@@ -109,7 +108,7 @@ public class Model internal constructor(
         params: Map<String, String> = emptyMap(),
     ): Flow<String> {
         val body = if (isStreamBody(jsonBody)) BodyMode.Sse else BodyMode.Whole
-        val flow = requestFlow(endpoint, jsonBody, attachments, params, body) {}.map { String(it, Charsets.UTF_8) }
+        val flow = requestFlow(endpoint, jsonBody, attachments, params, body, Chunks.Text) {}
         return if (attachments.isEmpty()) flow else flow.flowOn(io)
     }
 
@@ -122,7 +121,7 @@ public class Model internal constructor(
         jsonBody: String,
         attachments: List<EngineAttachment>,
     ): Flow<ByteArray> {
-        val flow = requestFlow(endpoint, jsonBody, attachments, emptyMap(), BodyMode.Bytes) {}
+        val flow = requestFlow(endpoint, jsonBody, attachments, emptyMap(), BodyMode.Each, Chunks.Bytes) {}
         return if (attachments.isEmpty()) flow else flow.flowOn(io)
     }
 
@@ -132,9 +131,7 @@ public class Model internal constructor(
      * session starts, so events sent at once are queued and go first.
      */
     internal fun realtime(params: Map<String, String>, onOpen: (RealtimeLink) -> Unit): Flow<String> =
-        requestFlow(Endpoint.Realtime, "", emptyList(), params, BodyMode.Events, onOpen).map {
-            String(it, Charsets.UTF_8)
-        }
+        requestFlow(Endpoint.Realtime, "", emptyList(), params, BodyMode.Each, Chunks.Text, onOpen)
 
     /** A descriptor's bytes, read once on [io] (D84); one that can't be read is the request's fault. */
     internal suspend fun read(descriptor: MediaSource.Descriptor): ByteArray = withContext(io) { readNow(descriptor) }
@@ -147,16 +144,17 @@ public class Model internal constructor(
             throw LlamaBroException.InvalidRequest(ErrorMapping.nativeMessage(e.errorJson), e)
         }
 
-    private fun requestFlow(
+    private fun <T> requestFlow(
         endpoint: Endpoint,
         jsonBody: String,
         attachments: List<EngineAttachment>,
         params: Map<String, String>,
         mode: BodyMode,
+        chunks: Chunks<T>,
         onOpen: (RealtimeLink) -> Unit,
-    ): Flow<ByteArray> =
+    ): Flow<T> =
         callbackFlow {
-            val call = ActiveCall(this)
+            val call = ActiveCall(this, chunks)
             onOpen(call)
             val paramsJson =
                 if (params.isEmpty()) {
@@ -269,12 +267,12 @@ public class Model internal constructor(
     /** Returns when [close] is called (Conversation cancels a running tool handler on it). */
     internal suspend fun awaitClosed() = closedSignal.await()
 
-    private fun register(call: ActiveCall): Boolean =
+    private fun register(call: ActiveCall<*>): Boolean =
         synchronized(active) {
             if (closed.get()) false else active.add(call)
         }
 
-    private fun unregister(call: ActiveCall) {
+    private fun unregister(call: ActiveCall<*>) {
         synchronized(active) { active.remove(call) }
     }
 
@@ -282,7 +280,7 @@ public class Model internal constructor(
      * One request's state. The native handle may arrive after the first callbacks, and free() must follow
      * the terminal event, while cancel() must never touch a freed request: all three go through [lock].
      */
-    private class ActiveCall(val scope: ProducerScope<ByteArray>) : RealtimeLink {
+    private class ActiveCall<T>(val scope: ProducerScope<T>, private val chunks: Chunks<T>) : RealtimeLink {
         private val lock = Any()
         private var handle: EngineRequest? = null
         private var terminal = false
@@ -344,8 +342,8 @@ public class Model internal constructor(
                     if (failed) return
                     if (httpStatus >= HTTP_ERROR_FROM) {
                         fail(ErrorMapping.fromBody(httpStatus, String(data, Charsets.UTF_8)))
-                    } else if (mode == BodyMode.Events || mode == BodyMode.Bytes) {
-                        scope.trySend(data)
+                    } else if (mode == BodyMode.Each) {
+                        scope.trySend(chunks.of(data))
                     } else if (mode == BodyMode.Whole) {
                         whole.write(data)
                     } else {
@@ -362,7 +360,7 @@ public class Model internal constructor(
                                 }
 
                                 else -> {
-                                    scope.trySend(payload.toByteArray(Charsets.UTF_8))
+                                    scope.trySend(chunks.of(payload))
                                 }
                             }
                         }
@@ -373,7 +371,7 @@ public class Model internal constructor(
                     if (mode == BodyMode.Whole && !failed &&
                         whole.size() > 0
                     ) {
-                        scope.trySend(whole.toByteArray())
+                        scope.trySend(chunks.of(whole.toByteArray()))
                     }
                     onTerminal()
                     scope.close()
@@ -399,11 +397,27 @@ public class Model internal constructor(
         /** Each SSE `data:` payload until `[DONE]`. */
         Sse,
 
-        /** Each chunk as it comes: a realtime conversation's events (D97). */
-        Events,
+        /** Each chunk as it comes: a realtime conversation's events (D97), or speech's audio (D139). */
+        Each,
+    }
 
-        /** Each chunk's bytes as they come, for a binary body such as speech. */
-        Bytes,
+    /** What a response's chunks become: text, or bytes for a binary body such as speech (D139). */
+    private sealed interface Chunks<T> {
+        fun of(bytes: ByteArray): T
+
+        fun of(text: String): T
+
+        data object Text : Chunks<String> {
+            override fun of(bytes: ByteArray): String = bytes.decodeToString()
+
+            override fun of(text: String): String = text
+        }
+
+        data object Bytes : Chunks<ByteArray> {
+            override fun of(bytes: ByteArray): ByteArray = bytes
+
+            override fun of(text: String): ByteArray = text.encodeToByteArray()
+        }
     }
 
     private companion object {

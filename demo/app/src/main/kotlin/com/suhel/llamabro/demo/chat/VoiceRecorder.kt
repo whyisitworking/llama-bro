@@ -17,8 +17,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
-import kotlin.math.log10
-import kotlin.math.sqrt
 
 /**
  * Where a recording's samples come from: 16-bit mono at [rate]. [read] fills the buffer and returns how many samples it
@@ -130,6 +128,7 @@ class VoiceRecorder(
     private class Pcm(private val out: RandomAccessFile, private val rate: Int) {
         /** One level's worth of samples, read into by the source. */
         val buffer = ShortArray(rate / LEVELS_PER_SECOND)
+        private val bytes = ByteArray(buffer.size * 2)
         private var samples = 0L
 
         val millis: Long get() = samples * MILLIS_PER_SECOND / rate
@@ -140,7 +139,7 @@ class VoiceRecorder(
         }
 
         fun write(n: Int) {
-            out.write(Wav.bytes(buffer, n))
+            out.write(Wav.bytes(buffer, n, bytes), 0, 2 * n)
             samples += n
         }
 
@@ -192,16 +191,10 @@ class VoiceRecorder(
 
         private const val MILLIS_PER_SECOND = 1_000L
         private const val QUIET_DB = 50.0
-        private const val DB_PER_DECADE = 20.0
 
         /** A block's loudness, 0 (50 dB below full scale or quieter) to 1 (full scale). */
-        internal fun level(buffer: ShortArray, n: Int): Float {
-            var sum = 0.0
-            for (i in 0 until n) sum += buffer[i].toDouble() * buffer[i]
-            val rms = sqrt(sum / n) / Short.MAX_VALUE
-            if (rms <= 0.0) return 0f
-            return ((DB_PER_DECADE * log10(rms) + QUIET_DB) / QUIET_DB).coerceIn(0.0, 1.0).toFloat()
-        }
+        internal fun level(buffer: ShortArray, n: Int): Float =
+            ((Levels.rmsToDb(Levels.rms(buffer, n)) + QUIET_DB) / QUIET_DB).coerceIn(0.0, 1.0).toFloat()
 
         /** [levels] as at most [count] peaks, each the loudest of its share. */
         internal fun peaks(levels: List<Float>, count: Int): List<Float> =

@@ -60,6 +60,7 @@ class ReadAloudTest {
                 "**Use** the `step` function, see [the docs](https://x.y).\n```kotlin\nval x = 1\n```\nDone.",
             ),
         )
+        assertEquals("call snake_case in C# code", ReadAloud.spoken("call `snake_case` in C# _code_"))
         assertEquals("Heading item one well-known item", ReadAloud.spoken("# Heading\n- item one\n1. well-known item"))
     }
 

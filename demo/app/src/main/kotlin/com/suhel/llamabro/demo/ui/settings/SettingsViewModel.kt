@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 /** What the settings screens read and change. The token's text never leaves [TokenStore]. */
 class SettingsViewModel(
@@ -152,6 +153,14 @@ class SettingsViewModel(
     fun setVoice(voice: String) = viewModelScope.launch { settings.setVoice(voice) }.let { }
 
     fun setCaptionYou(caption: Boolean) = viewModelScope.launch { settings.setCaptionYou(caption) }.let { }
+
+    /** The phone's language, offered for dictation (D140); read once, as the app's locale stands when it opens. */
+    val phoneLanguage: PhoneLanguage =
+        PhoneLanguage.of(
+            java.util.Locale
+                .getDefault()
+                .language,
+        )
 
     fun setDictationLanguage(language: String?) =
         viewModelScope.launch { settings.setDictationLanguage(language) }.let { }

@@ -4,7 +4,7 @@ package com.suhel.llamabro.voice
  * How a transcription session is set up: the `session.update` upstream's client sends on `/v1/realtime` with
  * `intent=transcription` (`ui/lib/voice/src/realtime.ts`). Each field goes to the server only when set (D98).
  *
- * [language] and [prompt] reach a session that transcribes per commit ([TranscriptionSession.live] false); a live
+ * [language] and [prompt] reach a session that transcribes per commit ([TranscriptionSession.isLive] false); a live
  * session (upstream's streaming ASR, `SERVER_TASK_TYPE_TRANSCRIBE_RT`) takes neither, as upstream reads neither there.
  */
 public class TranscriptionConfig internal constructor(

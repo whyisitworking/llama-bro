@@ -5,6 +5,7 @@ import com.suhel.llamabro.demo.chat.Dictation
 import com.suhel.llamabro.demo.chat.DictationState
 import com.suhel.llamabro.demo.chat.RecordingFailure
 import com.suhel.llamabro.demo.chat.VoiceHold
+import com.suhel.llamabro.demo.chat.holdUncancelled
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -18,8 +19,9 @@ data class DictationShown(val preparing: Boolean, val dictation: DictationState)
 
 /**
  * The message bar's dictation (D140): a tap on the mic holds the chat's model, listens, and writes what is heard into
- * the draft when the person is done. A view model owns one. The model stays held while dictating, so it isn't released
- * under the transcription and a send after it finds it loaded.
+ * the draft when the person is done. A view model owns one, on the main thread, and calls [discard] when it is
+ * cleared. The model stays held while dictating, so it isn't released under the transcription and a send after it
+ * finds it loaded.
  */
 class DictationComposer(
     private val scope: CoroutineScope,
@@ -43,35 +45,24 @@ class DictationComposer(
     /** The dictation under way, or null. */
     val shown: StateFlow<DictationShown?> = _shown.asStateFlow()
 
-    private var job: Job? = null
+    private var starting: Job? = null
+    private var finishing: Job? = null
     private var watcher: Job? = null
     private var dictation: Dictation? = null
     private var held: VoiceHold? = null
-
-    init {
-        // the owner went (its scope cancelled): a dictation under way must not keep the model held
-        scope.coroutineContext[Job]?.invokeOnCompletion {
-            dictation?.cancel()
-            held?.release()
-        }
-    }
 
     /** Starts dictating, once the microphone is allowed; nothing happens while one is under way. */
     fun start() {
         if (_shown.value != null || !canDictate()) return
         _shown.value = DictationShown(preparing = true, DictationState())
         onUsed()
-        job =
+        starting =
             scope.launch {
-                val h = hold()
-                if (h == null) {
-                    _shown.value = null
-                    return@launch
-                }
+                val h = holdUncancelled(hold) ?: return@launch end()
                 held = h
                 val d = newDictation(h.model, language())
                 dictation = d
-                // in the owner's scope, not this job's: start() is over once listening began, and finish() waits for it
+                // in the owner's scope, not this job's: start is over once listening began, and finish waits for it
                 watcher = scope.launch { d.state.collect { _shown.value = DictationShown(preparing = false, it) } }
                 d.start { failure ->
                     problem(
@@ -80,46 +71,58 @@ class DictationComposer(
                             RecordingFailure.Storage -> "There's no room to listen. Free some space and try again."
                         },
                     )
-                    scope.launch { end() }
+                    scope.launch { discard() }
                 }
             }
     }
 
-    /** Stops listening and writes the words into the draft; the screen being left does the same. */
+    /** Stops listening and writes the words into the draft, once however often it is asked. */
     fun finish() {
-        val running = job ?: return
-        if (_shown.value?.dictation?.listening == false) return
-        scope.launch {
-            running.join()
-            val d = dictation
-            val text =
-                try {
-                    d?.finish()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (ignored: Exception) {
-                    problem("That couldn't be written down. Try again.")
-                    null
-                }
-            end()
-            if (!text.isNullOrBlank()) onText(text)
-        }
+        val start = starting ?: return
+        if (finishing != null) return
+        finishing =
+            scope.launch {
+                start.join()
+                val text =
+                    try {
+                        dictation?.finish()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (ignored: Exception) {
+                        problem("That couldn't be written down. Try again.")
+                        null
+                    }
+                end()
+                if (!text.isNullOrBlank()) onText(text)
+            }
     }
 
-    /** Stops listening and throws the words away. */
+    /** The screen was left: what was heard goes into the draft; a dictation still getting ready is dropped. */
+    fun leave() {
+        if (_shown.value?.preparing == true) discard() else finish()
+    }
+
+    /** Stops listening and throws the words away; the model is let go once the transcription has stopped. */
     fun discard() {
-        job?.cancel()
-        dictation?.cancel()
+        starting?.cancel()
+        finishing?.cancel()
+        val d = dictation
+        val h = held
+        held = null
         end()
+        // not in [scope]: the owner may be cleared, its scope already cancelled
+        val stopping = d?.cancel()
+        if (stopping == null) h?.release() else stopping.invokeOnCompletion { h?.release() }
     }
 
     private fun end() {
         watcher?.cancel()
-        watcher = null
         held?.release()
         held = null
+        watcher = null
         dictation = null
-        job = null
+        starting = null
+        finishing = null
         _shown.value = null
     }
 }

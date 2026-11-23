@@ -1740,10 +1740,9 @@ public final class com/suhel/llamabro/voice/TranscriptionSession : java/lang/Aut
 	public final fun commit ()Z
 	public final fun finish ()Z
 	public final fun getEvents ()Lkotlinx/coroutines/flow/Flow;
-	public final fun getHasUncommittedAudio ()Z
 	public final fun getId ()Ljava/lang/String;
 	public final fun getInputSampleRate ()I
-	public final fun getLive ()Z
+	public final fun isLive ()Z
 	public final fun sendRaw (Ljava/lang/String;)Z
 }
 

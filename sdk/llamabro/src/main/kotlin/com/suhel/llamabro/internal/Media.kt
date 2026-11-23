@@ -17,6 +17,12 @@ internal object Media {
     /** The prefix of a chat placeholder; the native side replaces `lb-attachment:<name>` with the file's data URL. */
     const val PLACEHOLDER = "lb-attachment:"
 
+    /**
+     * The type an uploaded clip goes with (a transcription's file, speech's `speaker_ref`): upstream reads WAV, MP3 or
+     * FLAC from the bytes themselves; the type only marks it as audio for the bridge's check.
+     */
+    const val CLIP_TYPE = "audio/wav"
+
     private const val FORMATS = "WAV, MP3 or FLAC, the formats llama.cpp decodes; record WAV or convert it first"
 
     /** A saved clip's MIME type as its format; conversations saved before [AudioFormat] stored the type. */

@@ -2,11 +2,9 @@ package com.suhel.llamabro.voice
 
 import com.suhel.llamabro.internal.RealtimeLink
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * A spoken conversation with a model that listens and talks (D95): upstream's `/v1/realtime` conversation, in memory.
@@ -19,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * with [VoiceEvent.Error], and the session goes on.
  */
 public class VoiceSession internal constructor(
-    private val link: RealtimeLink,
+    link: RealtimeLink,
     private val events0: ReceiveChannel<VoiceEvent>,
     /** upstream's session id */
     public val id: String,
@@ -32,13 +30,9 @@ public class VoiceSession internal constructor(
     /** The language the server will speak, null for the model's default. */
     public val language: String?,
     /** The session's coroutines: its events' collector; [close] cancels them. */
-    private val scope: CoroutineScope,
+    scope: CoroutineScope,
 ) : AutoCloseable {
-    private val closed = AtomicBoolean(false)
-
-    // whether audio went in since the last commit: a commit without it is refused, and a reply to it would answer
-    // nothing
-    private val hasAudio = AtomicBoolean(false)
+    private val sender = RealtimeSender(link, scope)
 
     /**
      * The server's events, in order, from the moment the session opened. One collector; it completes when the session
@@ -51,13 +45,8 @@ public class VoiceSession internal constructor(
      * The user's audio: [length] samples of 16-bit mono PCM from [offset], at [inputSampleRate]
      * (`input_audio_buffer.append`), as `AudioRecord.read(short[])` gives it. The server encodes it as it arrives.
      */
-    public fun append(pcm: ShortArray, offset: Int = 0, length: Int = pcm.size - offset): Boolean {
-        require(offset >= 0 && length >= 0 && offset + length <= pcm.size) { "offset and length outside the array" }
-        if (length == 0) return !closed.get()
-        return send(RealtimeJson.append(pcm, offset, length)).also {
-            if (it) hasAudio.set(true)
-        }
-    }
+    public fun append(pcm: ShortArray, offset: Int = 0, length: Int = pcm.size - offset): Boolean =
+        sender.append(pcm, offset, length)
 
     /**
      * Ends the user's turn (`input_audio_buffer.commit`) and, with [respond], asks for the reply (`response.create`),
@@ -66,7 +55,7 @@ public class VoiceSession internal constructor(
      * several turns can go in before one [respond].
      */
     public fun commit(respond: Boolean = true): Boolean {
-        val audio = hasAudio.getAndSet(false)
+        val audio = sender.takeAudio()
         if (!send(RealtimeJson.commit)) return false
         return if (respond && audio) send(RealtimeJson.respond) else true
     }
@@ -90,9 +79,7 @@ public class VoiceSession internal constructor(
     public fun sendRaw(json: String): Boolean = send(json)
 
     /** Hangs up: the server ends the conversation, and [events] completes. Calling it again does nothing. */
-    override fun close() {
-        if (closed.compareAndSet(false, true)) scope.cancel()
-    }
+    override fun close(): Unit = sender.close()
 
-    private fun send(message: String): Boolean = !closed.get() && link.send(message)
+    private fun send(message: String): Boolean = sender.send(message)
 }

@@ -93,7 +93,14 @@ internal fun DictationLine(state: DictationBar, modifier: Modifier = Modifier) {
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
         } else {
-            Text(state.text, color = colors.ink, style = DemoType.body, maxLines = DICTATION_LINES)
+            Text(
+                state.text,
+                color = colors.ink,
+                style = DemoType.body,
+                maxLines = DICTATION_LINES,
+                // read once the words settle, not on every streamed piece
+                modifier = if (state.listening) Modifier else Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
         }
         Row(
             Modifier.clearAndSetSemantics { contentDescription = "$status, ${state.elapsed}" },

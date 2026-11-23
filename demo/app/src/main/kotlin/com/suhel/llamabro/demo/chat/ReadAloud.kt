@@ -3,7 +3,9 @@ package com.suhel.llamabro.demo.chat
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.speak
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +27,8 @@ class ReadAloud(
     private val output: (rate: Int) -> SpeechOutput,
     /** A plain line when the reply couldn't be read. */
     private val problem: (String) -> Unit,
+    /** Where the speech is fetched and written: `AudioTrack.write` blocks while its buffer is full, which paces it. */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     // external event: the reply being read, as it plays
     private val _reading = MutableStateFlow<Long?>(null)
@@ -40,7 +44,7 @@ class ReadAloud(
         stop()
         if (same) return
         _reading.value = id
-        job = scope.launch { read(id, text) }
+        job = scope.launch(io) { read(id, text) }
     }
 
     fun stop() {
@@ -50,8 +54,8 @@ class ReadAloud(
     }
 
     private suspend fun read(id: Long, text: String) {
-        val held = hold()
         var out: SpeechOutput? = null
+        val held = holdUncancelled(hold)
         try {
             if (held == null) return
             val chosen = voice()?.takeIf { it in held.model.info.voices }
@@ -75,8 +79,10 @@ class ReadAloud(
     companion object {
         private val codeBlock = Regex("```.*?```", RegexOption.DOT_MATCHES_ALL)
         private val link = Regex("""\[([^\]]*)]\([^)]*\)""")
-        private val emphasis = Regex("""[*_`~]+""")
-        private val lineMarks = Regex("""[#>|]+""")
+
+        // marks only at a word's edge, so snake_case and C# keep theirs; backticks anywhere
+        private val emphasis = Regex("""`+|(?<!\w)[*_~]+|[*_~]+(?!\w)""")
+        private val lineMarks = Regex("""(?m)^\s*[#>]+|\|""")
         private val bullet = Regex("""(?m)^\s*(?:[-+]|\d+[.)])\s+""")
         private val space = Regex("""\s+""")
 

@@ -1857,7 +1857,7 @@ Qwen3.5). Its `turn_detection` is always null. Upstream's web client, Llama Chat
 falls back to `/v1/audio/transcriptions` for a refused model.
 Decision: `Model.transcriptionSession { language; prompt; inputSampleRate }` opens that session the way Llama Chat
 does (`ui/lib/voice/src/realtime.ts`): `intent=transcription`, then a `session.update` to a transcription session.
-`TranscriptionSession` has `live`, `append`, `commit`, `finish` (a commit with `final: true`), `sendRaw` and typed
+`TranscriptionSession` has `isLive`, `append`, `commit`, `finish` (a commit with `final: true`), `sendRaw` and typed
 `TranscriptionEvent`s (`Committed`, `Text`, `Done`, `Error`, `Other`). A refused model throws `NotSupported` with
 upstream's message. The SDK has no pause detection and no fallback: both are the client's in upstream, so they are
 the app's here. `FakeLlamaBro` scripts all three outcomes (`streamsAudio`, `transcribesLive`, `transcription`).
