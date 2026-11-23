@@ -3,8 +3,9 @@
 #                   Play uploads are made by hand, from the maintainer's machine)
 #   sdk             the SDK's nine modules and its BOM, signed and uploaded to the Maven Central Portal as a deployment that
 #                   waits there: nothing is public until the maintainer presses Publish in the Portal (D133, docs/publishing.md)
-#   github-release  for a version tag, once both succeeded: the GitHub release with the APK, a pre-release when the version
-#                   has a suffix (-alpha, -beta, -rc); a rerun updates the release it finds
+#   github-release  for a version tag, once both succeeded: the GitHub release with the APK; a rerun updates the release
+#                   it finds. Never a pre-release, even for -alpha: the README's download links use releases/latest,
+#                   which skips pre-releases
 #
 #   git tag 2.0.0-alpha && git push origin 2.0.0-alpha   both; the tag must be the catalog's llamabro version
 #   Actions > Release > Run workflow                     the demo's APK and the SDK's signed local publication as
@@ -215,17 +216,11 @@ jobs:
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
-        # the notes are the version's section of docs/release-notes.md, else GitHub's list of changes; a version with a
-        # pre-release suffix (2.0.0-alpha, 2.1.0-rc1) is a pre-release, which GitHub's releases/latest never points at
+        # the notes are the version's section of docs/release-notes.md, else GitHub's list of changes
         run: |
-          case "${GITHUB_REF_NAME}" in
-            *-*) prerelease=true ;;
-            *) prerelease=false ;;
-          esac
           if gh release view "${GITHUB_REF_NAME}" > /dev/null 2>&1; then
             # a rerun replaces the files and keeps the notes, which may have been edited by hand since
             gh release upload "${GITHUB_REF_NAME}" out/* --clobber
-            gh release edit "${GITHUB_REF_NAME}" --prerelease="${prerelease}"
             exit 0
           fi
           awk -v v="## ${GITHUB_REF_NAME}" '$0 == v {on = 1; next} on && /^## / {exit} on' docs/release-notes.md > notes.md
@@ -238,4 +233,4 @@ jobs:
             notes=(--generate-notes)
           fi
           gh release create "${GITHUB_REF_NAME}" out/* --title "Llama Bro ${GITHUB_REF_NAME}" "${notes[@]}" \
-            --prerelease="${prerelease}" --verify-tag
+            --verify-tag

@@ -60,8 +60,8 @@ it with `./gradlew -p sdk :<module>:apiDump`, committing the `.api` file with th
 
 [`.github/workflows/release.yml`](.github/workflows/release.yml) runs CI's checks, then builds the demo's minified
 release APK signed with the upload key in the repository's secrets. A version tag makes a GitHub release with the APK
-and its SHA-256, once the SDK's Maven Central upload has also succeeded, marked as a pre-release when the version has a
-suffix such as `-alpha`; a manual run (Actions, Release, Run workflow) keeps it as a workflow artifact. The version name is
+and its SHA-256, once the SDK's Maven Central upload has also succeeded. It is never marked a pre-release, even for
+`-alpha`, since the README's download links use `releases/latest`; a manual run (Actions, Release, Run workflow) keeps it as a workflow artifact. The version name is
 the tag; the version code is 1000 plus the run number, so it only grows. Google Play uploads are made by hand.
 
 ```bash
