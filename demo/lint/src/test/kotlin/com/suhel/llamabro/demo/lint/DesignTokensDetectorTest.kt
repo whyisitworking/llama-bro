@@ -64,6 +64,20 @@ class DesignTokensDetectorTest {
         ).run().expectErrorCount(1).expectContains("DemoRawSize")
     }
 
+    @Test fun aNegativeOrParenthesisedNumberIsReportedLikeAnyOther() {
+        check(
+            "src/main/kotlin/com/suhel/llamabro/demo/ui/Screen.kt",
+            """
+            package x
+            import androidx.compose.ui.unit.dp
+            fun inParentheses() = (-4).dp
+            fun negated() = -4.dp
+            fun plus() = (+4).dp
+            fun neither() = (0).dp
+            """,
+        ).run().expectErrorCount(3).expectContains("DemoRawSize")
+    }
+
     @Test fun aColourOutsideTheThemeIsReportedAndTheThemeIsNot() {
         val source =
             """

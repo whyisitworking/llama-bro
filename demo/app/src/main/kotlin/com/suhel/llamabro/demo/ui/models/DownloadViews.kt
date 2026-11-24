@@ -5,7 +5,17 @@ import com.suhel.llamabro.demo.designsystem.components.DownloadStage
 import com.suhel.llamabro.demo.designsystem.components.DownloadView
 import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.models.Format
+import com.suhel.llamabro.demo.models.ModelLibrary
 import com.suhel.llamabro.hub.HfModel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+
+/** The name of the download that runs while [key] waits its turn, as the row says it; null when none does. */
+internal fun ModelLibrary.aheadOf(key: HfModel): Flow<String?> =
+    combine(running, records) { running, records ->
+        running?.takeIf { it != key }?.let { ModelEntry.downloading(it, records[it]).name }
+    }.distinctUntilChanged()
 
 /** A download as the ring panel shows it, on a row and on the card (docs/design/models-page.md §3, §4). */
 object DownloadViews {

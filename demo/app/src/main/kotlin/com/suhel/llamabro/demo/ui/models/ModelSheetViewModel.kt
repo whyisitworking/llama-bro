@@ -395,26 +395,9 @@ class ModelSheetViewModel(
         combine(models.state(key), models.records.map { it[key] }.distinctUntilChanged()) { status, record ->
             status to record
         }.flatMapLatest { (status, record) ->
-            val ahead = if (status == DownloadStatus.Absent) runningBesides(key) else flowOf(null)
+            val ahead = if (status == DownloadStatus.Absent) models.aheadOf(key) else flowOf(null)
             ahead.map { RepoDownload(key, status, record, it) }
         }
-
-    /** The name of the download that runs while [key] waits its turn, as the row says it. */
-    private fun runningBesides(key: HfModel): Flow<String?> =
-        combine(models.downloading, models.records) { keys, records -> keys.filter { it != key } to records }
-            .flatMapLatest { (others, records) ->
-                if (others.isEmpty()) {
-                    flowOf(null)
-                } else {
-                    combine(others.map { other -> models.state(other).map { other.takeIf { _ -> it.running() } } }) {
-                        it.firstNotNullOfOrNull { running -> running }?.let { k ->
-                            records[k]?.name ?: ModelEntry.downloading(k, null).name
-                        }
-                    }
-                }
-            }.distinctUntilChanged()
-
-    private fun DownloadStatus.running() = this is DownloadStatus.Downloading
 
     private companion object {
         /** Past this much arrived, Cancel asks first (models-page design §4.5). */

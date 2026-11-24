@@ -46,6 +46,9 @@ fun clipLength(millis: Long): String {
     return "$minutes:${(seconds - minutes * SECONDS_PER_MINUTE).toString().padStart(2, '0')}"
 }
 
+/** Milliseconds in a second, as a Double for the divisions that show seconds; S3 makes it the demo's one. */
+internal const val MILLIS_PER_SECOND = 1000.0
+
 private const val HALF_SECOND_MILLIS = 500L
 private const val SECONDS_PER_MINUTE = 60
 
@@ -229,8 +232,6 @@ class ChatItems(
     }
 
     companion object {
-        private const val MILLIS_PER_SECOND = 1000.0
-
         /** Below half a word a second there is nothing worth showing. */
         private const val MIN_SPEED = 0.5
 

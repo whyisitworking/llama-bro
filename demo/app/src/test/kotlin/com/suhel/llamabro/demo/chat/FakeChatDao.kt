@@ -112,6 +112,14 @@ class FakeChatDao : ChatDao() {
     override suspend fun audioFrom(chatId: Long, position: Int): List<String> =
         messages.value.filter { it.chatId == chatId && it.position >= position }.mapNotNull { it.audio }
 
+    override suspend fun imagesFrom(chatId: Long, position: Int): List<String> =
+        messages.value
+            .filter {
+                it.chatId == chatId && it.position >= position && it.images.isNotEmpty()
+            }.map { it.images }
+
+    override suspend fun allAudio(): List<String> = messages.value.mapNotNull { it.audio }
+
     override suspend fun deleteFrom(chatId: Long, position: Int) {
         messages.update { list -> list.filterNot { it.chatId == chatId && it.position >= position } }
     }

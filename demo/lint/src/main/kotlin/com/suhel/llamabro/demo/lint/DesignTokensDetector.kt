@@ -12,9 +12,13 @@ import com.android.tools.lint.detector.api.SourceCodeScanner
 import com.intellij.psi.PsiMethod
 import org.jetbrains.uast.UCallExpression
 import org.jetbrains.uast.UElement
+import org.jetbrains.uast.UExpression
 import org.jetbrains.uast.ULiteralExpression
+import org.jetbrains.uast.UParenthesizedExpression
+import org.jetbrains.uast.UPrefixExpression
 import org.jetbrains.uast.UQualifiedReferenceExpression
 import org.jetbrains.uast.USimpleNameReferenceExpression
+import org.jetbrains.uast.UastPrefixOperator
 
 /**
  * The demo's design-system rule (D48, restated by D113): sizes, colours and type come from the theme's tokens anywhere
@@ -54,7 +58,7 @@ class DesignTokensDetector :
     private fun checkReference(context: JavaContext, node: UQualifiedReferenceExpression) {
         val selector = (node.selector as? USimpleNameReferenceExpression)?.identifier ?: return
         val receiver = node.receiver
-        val literal = receiver as? ULiteralExpression
+        val literal = receiver.unwrapped() as? ULiteralExpression
         if (selector in UNITS && literal != null && (literal.value as? Number)?.toDouble() != 0.0) {
             report(context, NUMBER, node, "A size comes from the theme's scale, not `${node.sourcePsi?.text}`")
         }
@@ -64,6 +68,17 @@ class DesignTokensDetector :
             report(context, COLOUR, node, "A colour comes from DemoColors, not `Color.$selector`")
         }
     }
+
+    /**
+     * The literal under parentheses and a unary sign: `(-4).dp` is a size like `4.dp`; `-4.dp` already was reported
+     * (Kotlin reads it as `-(4.dp)`).
+     */
+    private fun UExpression.unwrapped(): UExpression =
+        when {
+            this is UParenthesizedExpression -> expression.unwrapped()
+            this is UPrefixExpression && operator in SIGNS -> operand.unwrapped()
+            else -> this
+        }
 
     /** `Color(…)`, `Dp(…)`, a role's `copy(fontSize = …)`, and in a screen Material's widgets and Compose's motion. */
     private fun checkCall(context: JavaContext, node: UCallExpression, file: File) {
@@ -131,6 +146,7 @@ class DesignTokensDetector :
         private const val PRIORITY = 8
 
         private val UNITS = setOf("dp", "sp")
+        private val SIGNS = setOf(UastPrefixOperator.UNARY_MINUS, UastPrefixOperator.UNARY_PLUS)
 
         /** No colour at all: nothing drawn, or the caller's. */
         private val NOT_COLOURS = setOf("Transparent", "Unspecified")

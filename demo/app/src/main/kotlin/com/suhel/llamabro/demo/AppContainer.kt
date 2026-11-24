@@ -21,6 +21,7 @@ import com.suhel.llamabro.demo.chat.SpeechOutput
 import com.suhel.llamabro.demo.chat.Streamer
 import com.suhel.llamabro.demo.chat.TrackSpeech
 import com.suhel.llamabro.demo.chat.recommendedCard
+import com.suhel.llamabro.demo.chat.sdkStream
 import com.suhel.llamabro.demo.data.AudioStore
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ImageStore
@@ -53,7 +54,7 @@ import java.io.File
 
 /**
  * Manual wiring (no DI framework). Collaborators arrive as constructor parameters with production defaults, so tests
- * inject fakes or fresh files; later tasks add the engines.
+ * inject fakes or fresh files; the repositories, the host and the chat engine are built here, once.
  */
 class AppContainer(
     val app: DemoApp,
@@ -111,16 +112,21 @@ class AppContainer(
      */
     private val recovery =
         scope.async(start = CoroutineStart.LAZY) {
-            try {
-                chats.recoverInterrupted()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (
-                @Suppress("TooGenericExceptionCaught") e: Exception,
-            ) {
-                Log.w("AppContainer", "could not recover interrupted replies: ${e.javaClass.simpleName}")
-            }
+            step("recover interrupted replies") { chats.recoverInterrupted() }
+            step("sweep orphan files") { chats.sweepOrphans() }
         }
+
+    private suspend fun step(what: String, block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (
+            @Suppress("TooGenericExceptionCaught") e: Exception,
+        ) {
+            Log.w("AppContainer", "could not $what: ${e.javaClass.simpleName}")
+        }
+    }
 
     /** Starts the recovery of interrupted replies at launch; the first turn waits for it either way. */
     fun recoverInterrupted() {
@@ -129,21 +135,17 @@ class AppContainer(
 
     /** Runs every chat (one handle per open chat); the chat screens read it. */
     val engine: ChatEngine =
-        if (streamer != null) {
-            ChatEngine(
-                chats,
-                host,
-                models,
-                settings,
-                clock,
-                scope,
-                streamer = streamer,
-                beforeTurn = recovery::await,
-                card = { sampling.card(it) },
-            )
-        } else {
-            ChatEngine(chats, host, models, settings, clock, scope, beforeTurn = recovery::await) { sampling.card(it) }
-        }
+        ChatEngine(
+            chats,
+            host,
+            models,
+            settings,
+            clock,
+            scope,
+            streamer = streamer ?: ::sdkStream,
+            beforeTurn = recovery::await,
+            card = { sampling.card(it) },
+        )
 
     /** The loaded model as Settings › Memory and the model sheet show it, with Unload (D59). */
     val memory: ModelMemory by lazy { ModelMemory(host, engine, models.library) }

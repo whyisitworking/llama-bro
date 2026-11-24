@@ -167,12 +167,15 @@ class ChatRepository(
 
     /**
      * Removes the message at [position] and everything after it (edit, regenerate), and the voice messages among them:
-     * a voice message is never edited or sent again, so its recording goes with its row.
+     * a voice message is never edited or sent again, so its recording goes with its row. The removed rows' pictures go
+     * too, except the names in [keepImages]: the ones a row that replaces them (an edit) still shows.
      */
-    suspend fun truncateFrom(chatId: Long, position: Int) {
+    suspend fun truncateFrom(chatId: Long, position: Int, keepImages: Set<String> = emptySet()) {
         val recordings = dao.audioFrom(chatId, position)
+        val names = dao.imagesFrom(chatId, position).flatMap(::imageNames).filterNot { it in keepImages }
         dao.deleteFrom(chatId, position)
         audioStore?.delete(recordings)
+        imageStore.delete(names)
     }
 
     /** The model of the chat's last turn, or null when the chat is gone. */
@@ -208,6 +211,18 @@ class ChatRepository(
         dao.stopStreaming()
     }
 
+    /**
+     * Deletes the recordings no row names and that are older than a day, which a crash or a death between saving a file
+     * and writing its row leaves behind. The pictures are left alone: a draft's pictures are recorded only in the chat
+     * screen's saved state, which survives a process death for days and which this class cannot read, so a sweep would
+     * delete a picture a draft still holds. A later change stages them in their own folder, which a sweep can then
+     * clear. Recordings and dictation clips are never held across a process.
+     */
+    suspend fun sweepOrphans() {
+        val cutoff = clock() - ORPHAN_AGE_MILLIS
+        audioStore?.deleteUnreferenced(dao.allAudio().toSet(), cutoff)
+    }
+
     private fun MessageEntity.toStored() =
         StoredMessage(
             id = id,
@@ -231,6 +246,8 @@ class ChatRepository(
         )
 
     private companion object {
+        const val ORPHAN_AGE_MILLIS = 24 * 60 * 60 * 1000L
+
         fun imageNames(joined: String): List<String> = joined.split('\n').filter { it.isNotEmpty() }
     }
 }

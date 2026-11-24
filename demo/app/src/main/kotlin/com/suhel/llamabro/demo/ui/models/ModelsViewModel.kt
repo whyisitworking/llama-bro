@@ -12,7 +12,6 @@ import com.suhel.llamabro.demo.chat.Limits
 import com.suhel.llamabro.demo.designsystem.components.DownloadView
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
-import com.suhel.llamabro.demo.models.DownloadRecord
 import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.models.FiltersChange
 import com.suhel.llamabro.demo.models.FitLabel
@@ -618,22 +617,9 @@ class ModelsViewModel(
         combine(models.state(key), models.records.map { it[key] }.distinctUntilChanged()) { status, record ->
             status to record
         }.flatMapLatest { (status, record) ->
-            val ahead = if (status == DownloadStatus.Absent) runningBesides(key) else flowOf(null)
+            val ahead = if (status == DownloadStatus.Absent) models.aheadOf(key) else flowOf(null)
             ahead.map { name -> RowState(badgeOf(status), DownloadViews.of(key, status, record?.totalBytes, name)) }
         }
-
-    /** The name of the download that runs while [key] waits its turn, if one does. */
-    private fun runningBesides(key: HfModel): Flow<String?> =
-        combine(downloading.filterNotNull(), models.records) { keys, records -> keys.filter { it != key } to records }
-            .flatMapLatest { (others, records) ->
-                if (others.isEmpty()) {
-                    flowOf(null)
-                } else {
-                    combine(others.map { other -> models.state(other).map { other.takeIf { _ -> it.running() } } }) {
-                        it.firstNotNullOfOrNull { running -> running }?.let { k -> nameOf(k, records[k]) }
-                    }
-                }
-            }.distinctUntilChanged()
 
     /** When [entry], a model on the phone, was last used: "Used today", "3 days ago". */
     fun lastUsed(entry: ModelEntry): String = Format.usedAgo(entry.lastUsed, clock(), zone)
@@ -711,10 +697,6 @@ private data class Listed(val repos: Set<String>, val keys: Set<String>) {
             Listed(local.map { it.repo.lowercase() }.toSet(), local.map { it.groupKey }.toSet())
     }
 }
-
-private fun DownloadStatus.running() = this is DownloadStatus.Downloading
-
-private fun nameOf(key: HfModel, record: DownloadRecord?) = ModelEntry.downloading(key, record).name
 
 private fun badgeOf(status: DownloadStatus): RowBadge =
     when (status) {

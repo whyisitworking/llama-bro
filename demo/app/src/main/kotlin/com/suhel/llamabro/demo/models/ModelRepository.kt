@@ -67,6 +67,9 @@ interface ModelLibrary {
     val downloading: Flow<List<HfModel>>
     val records: Flow<Map<HfModel, DownloadRecord>>
 
+    /** The download handed to the worker now, the one every other waits behind; null when none runs. */
+    val running: StateFlow<HfModel?>
+
     fun state(model: HfModel): StateFlow<DownloadStatus>
 
     fun get(model: HfModel, record: DownloadRecord? = null)
@@ -207,6 +210,9 @@ class ModelRepository(
     // engine's own source: the download queue's running item
     private val active = MutableStateFlow<Run?>(null)
     private var runs = 0L
+
+    override val running: StateFlow<HfModel?> =
+        active.map { it?.model }.distinctUntilChanged().stateIn(scope, SharingStarted.Eagerly, null)
 
     /**
      * One hand-over of [model] to the worker. An end is tied to the run it came from, so the late end of a run a Pause

@@ -524,9 +524,30 @@ class ModelSheetViewModelTest {
             models.queue.value = listOf(deepQ4, gemma)
             models.recorded.value = mapOf(gemma to DownloadRecord(gemma, "Gemma 3 4B", "Google", 3_000_000_000))
             models.status(gemma).value = DownloadStatus.Downloading(1, 3_000_000_000, null, null)
+            models.running.value = gemma
             val panel = (viewModel().now.foot as CardFoot.Download).view
             assertEquals(DownloadStage.Waiting, panel.stage)
             assertEquals("after Gemma 3 4B", panel.detail)
+        }
+
+    @Test fun aWaitingRowNamesTheRunningModelWhileItsOwnStatusIsAbsent() =
+        runTest {
+            val gemma = HfModel.parse("unsloth/gemma-3-4b-it-GGUF:Q4_K_M")
+            models.queue.value = listOf(gemma, deepQ4)
+            models.recorded.value = mapOf(gemma to DownloadRecord(gemma, "Gemma 3 4B", "Google", 3_000_000_000))
+            models.status(deepQ4).value = DownloadStatus.Absent
+            models.running.value = gemma
+            val panel = (viewModel().now.foot as CardFoot.Download).view
+            assertEquals("after Gemma 3 4B", panel.detail)
+        }
+
+    @Test fun aDownloadingStatusWithNothingRunningNamesNoOneAhead() =
+        runTest {
+            models.queue.value = listOf(deepQ4)
+            models.status(deepQ4).value = DownloadStatus.Downloading(1, 3_000_000_000, null, null)
+            models.running.value = null
+            val panel = (viewModel().now.foot as CardFoot.Download).view
+            assertFalse(panel.detail.orEmpty().contains("after"))
         }
 
     @Test fun cancelPastThreeHundredMegabytesAsksFirst() =

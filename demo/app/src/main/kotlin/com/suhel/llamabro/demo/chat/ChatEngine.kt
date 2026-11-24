@@ -683,6 +683,7 @@ class ChatEngine(
         fun regenerate(position: Int) {
             hs.launch {
                 stopAndWait()
+                beforeTurn() // startup recovery must not run between the cut and the append
                 if (deleting) return@launch
                 _limit.value = null
                 val id = _chatId.value.takeIf { it != 0L } ?: return@launch
@@ -705,12 +706,13 @@ class ChatEngine(
             if (text.isBlank()) return
             hs.launch {
                 stopAndWait()
+                beforeTurn() // startup recovery must not run between the cut and the append
                 if (deleting) return@launch
                 _limit.value = null
                 val id = _chatId.value.takeIf { it != 0L } ?: return@launch
                 val before = messages.value
                 val old = before.firstOrNull { it.position == position } ?: return@launch
-                chats.truncateFrom(id, position)
+                chats.truncateFrom(id, position, keepImages = old.images.mapTo(mutableSetOf()) { it.name })
                 invalidate()
                 modelToRestate(before, position, choice.value.key)?.let {
                     chats.append(id, switchNotice(it, Names.of(it), clock()))

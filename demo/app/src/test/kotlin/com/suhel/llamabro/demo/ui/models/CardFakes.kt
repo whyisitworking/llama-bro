@@ -71,6 +71,9 @@ internal class FakeModelLibrary : ModelLibrary {
     val queue = MutableStateFlow<List<HfModel>>(emptyList())
     val recorded = MutableStateFlow<Map<HfModel, DownloadRecord>>(emptyMap())
 
+    /** The download the worker has now. */
+    override val running = MutableStateFlow<HfModel?>(null)
+
     /** How late each read answers first. */
     var lag = 0L
     override val library: Flow<List<LibraryModel>> get() = shelf.filterNotNull().late(lag)

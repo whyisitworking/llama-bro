@@ -19,6 +19,16 @@ class AudioStore(private val dir: File) {
     suspend fun delete(names: List<String>) {
         withContext(Dispatchers.IO) { names.forEach { file(it).delete() } }
     }
+
+    /** Deletes the files not in [referenced] that were last written before [cutoff] (epoch millis). */
+    suspend fun deleteUnreferenced(referenced: Set<String>, cutoff: Long) {
+        withContext(Dispatchers.IO) {
+            dir
+                .listFiles()
+                ?.filter { it.isFile && it.name !in referenced && it.lastModified() < cutoff }
+                ?.forEach { it.delete() }
+        }
+    }
 }
 
 /** A voice message as stored: its file's [name], its length and its [levels] (0 to 1) for the bubble. */
