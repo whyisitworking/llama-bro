@@ -28,6 +28,7 @@ import com.suhel.llamabro.demo.designsystem.components.Notice
 import com.suhel.llamabro.demo.designsystem.components.SearchField
 import com.suhel.llamabro.demo.designsystem.components.drawerWidth
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
+import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import java.time.ZoneId
 
 /**
@@ -117,6 +118,8 @@ fun DrawerContent(
                 NavRow(DemoIcons.Settings, "Settings", onSettings)
             }
         },
+        // the drawer's page is drawn on its panel, which the bars blur with it
+        pageColor = LocalDemoColors.current.panel,
         modifier =
             modifier
                 .fillMaxSize()

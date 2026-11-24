@@ -188,7 +188,7 @@ data class BottomTab(val label: String, val icon: ImageVector)
 fun BottomTabs(tabs: List<BottomTab>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val colors = LocalDemoColors.current
     Box(modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
-        FloatingLayer(Edge.Bottom, colors.surface, page = null, overKeyboard = false) {
+        FloatingLayer(Edge.Bottom, colors.surface, page = null, colors.canvas, overKeyboard = false) {
             Row(
                 Modifier
                     .widthIn(max = DemoSize.contentMaxWidth)

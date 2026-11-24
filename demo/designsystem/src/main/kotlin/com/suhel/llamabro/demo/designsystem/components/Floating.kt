@@ -82,6 +82,8 @@ fun FloatingFrame(
     modifier: Modifier = Modifier,
     bottom: @Composable () -> Unit = {},
     ground: Color = LocalDemoColors.current.surface,
+    /** The colour the page is drawn on (the canvas; the drawer's panel), under the blurred copy of the page. */
+    pageColor: Color = LocalDemoColors.current.canvas,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val overlay = LocalBottomOverlay.current
@@ -90,9 +92,11 @@ fun FloatingFrame(
     SubcomposeLayout(modifier) { constraints ->
         val bars = constraints.copy(minWidth = constraints.maxWidth, minHeight = 0)
         val topBar =
-            subcompose(FrameSlot.Top) { FloatingLayer(Edge.Top, ground, page, content = top) }.map { it.measure(bars) }
+            subcompose(
+                FrameSlot.Top,
+            ) { FloatingLayer(Edge.Top, ground, page, pageColor, content = top) }.map { it.measure(bars) }
         val bottomBar =
-            subcompose(FrameSlot.Bottom) { FloatingLayer(Edge.Bottom, ground, page, content = bottom) }
+            subcompose(FrameSlot.Bottom) { FloatingLayer(Edge.Bottom, ground, page, pageColor, content = bottom) }
                 .map { it.measure(bars) }
         // each layer's fade band lies over the content: the content clears the bar, not the band
         val fade = DemoSize.edgeFade.roundToPx()
@@ -142,6 +146,7 @@ internal fun FloatingLayer(
     edge: Edge,
     ground: Color,
     page: GraphicsLayer?,
+    pageColor: Color,
     overKeyboard: Boolean = true,
     content: @Composable () -> Unit,
 ) {
@@ -158,6 +163,9 @@ internal fun FloatingLayer(
                         renderEffect = BlurEffect(blur, blur, TileMode.Clamp)
                         clip = true
                     }.drawWithContent {
+                        // the layer holds the page's content only: on its own ground, so the sharp page under it
+                        // doesn't show through the blurred copy's clear parts
+                        drawRect(pageColor)
                         translate(top = -y) { drawLayer(page) }
                         drawRect(bandMask(edge, size.height, DemoSize.edgeFade.toPx()), blendMode = BlendMode.DstIn)
                     },
