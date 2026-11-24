@@ -1,3 +1,5 @@
+import org.gradle.api.component.AdhocComponentWithVariants
+
 plugins {
     alias(libs.plugins.android.library)
     id("llamabro.library")
@@ -70,6 +72,18 @@ kotlin {
         optIn.add("com.suhel.llamabro.InternalLlamaBroApi")
         // a data class's copy is as visible as its constructor, so only the SDK makes the values it reports (D102)
         freeCompilerArgs.add("-Xconsistent-data-class-copy-visibility")
+    }
+}
+
+// AGP puts the test fixtures (hostLlamaBro) into the release component as a `-test-fixtures` artifact; they are for the
+// SDK's own host tests and stay out of what is published (review L4).
+afterEvaluate {
+    (components["release"] as AdhocComponentWithVariants).apply {
+        listOf("Api", "Runtime").forEach { scope ->
+            withVariantsFromConfiguration(configurations["releaseTestFixturesVariantRelease${scope}Publication"]) {
+                skip()
+            }
+        }
     }
 }
 

@@ -9,5 +9,6 @@ import java.io.File
  * (`llamabro-typed`'s `HostTypedTest`). [libDir] holds the host build's libraries, which must also be on
  * `java.library.path`. A test fixture, so it is not in the released artifact (review L4).
  */
+@InternalLlamaBroApi
 public fun hostLlamaBro(libDir: String, filesDir: File, config: LlamaBroConfig = LlamaBroConfig.Default): LlamaBro =
     LlamaBro(LlamaBroRuntime(JniEngine, filesDir, libDir, config))

@@ -1,6 +1,9 @@
+@file:OptIn(InternalLlamaBroApi::class)
+
 package com.suhel.llamabro.typed
 
 import com.suhel.llamabro.ContextSize
+import com.suhel.llamabro.InternalLlamaBroApi
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.Typed
