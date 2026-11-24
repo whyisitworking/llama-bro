@@ -94,6 +94,56 @@ class ModelRawRequestTest {
             assertEquals(256, e.contextSize)
         }
 
+    /** An error in the stream is found by its `error` key, however the server spaces or orders it. */
+    @Test
+    fun streamedErrorFoundWhateverItsSpacingOrKeyOrder() =
+        runTest {
+            val error = """{"code":400,"type":"exceed_context_size_error","message":"x","n_prompt_tokens":400,"n_ctx":256}"""
+            for (payload in listOf(
+                """{"error":$error}""",
+                """{ "error" : $error }""",
+                """{"id":"chatcmpl-1","error":$error}""",
+                "{\t\"error\":\t$error}",
+            )) {
+                val engine = FakeEngine()
+                engine.model.onRequest = { r ->
+                    r.chunk("data: {\"a\":1}\n\n")
+                    r.chunk("data: $payload\n\n")
+                    r.done()
+                }
+                val out = mutableListOf<String>()
+                val e =
+                    runCatching {
+                        model(engine).rawRequest(Endpoint.ChatCompletions, stream).collect { out += it }
+                    }.exceptionOrNull()
+                assertTrue("$payload: $e", e is LlamaBroException.ContextExceeded)
+                assertEquals(400, (e as LlamaBroException.ContextExceeded).promptTokens)
+                assertEquals(payload, listOf("""{"a":1}"""), out)
+            }
+        }
+
+    /** A chunk that merely mentions "error", or carries `"error":null`, is a chunk, not an error. */
+    @Test
+    fun chunkMentioningErrorIsNoError() =
+        runTest {
+            val chunks =
+                listOf(
+                    """{"choices":[{"delta":{"content":"\"error\""}}]}""",
+                    """{"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"error\":1}"}}]}}]}""",
+                    """{"choices":[{"delta":{"content":"an error"}}],"note":{"error":"nested"}}""",
+                    """{"choices":[{"delta":{"content":"hi"}}],"error":null}""",
+                    """{"error":null,"choices":[{"delta":{"content":"hi"}}]}""",
+                    """{"choices":[{"delta":{"content":"error"}}]}""", // exactly "error" in a value: parsed, still data
+                )
+            val engine = FakeEngine()
+            engine.model.onRequest = { r ->
+                chunks.forEach { r.chunk("data: $it\n\n") }
+                r.chunk("data: [DONE]\n\n")
+                r.done()
+            }
+            assertEquals(chunks, model(engine).rawRequest(Endpoint.ChatCompletions, stream).toList())
+        }
+
     @Test
     fun nonStream400MapsInvalidRequest() =
         runTest {

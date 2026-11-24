@@ -3,6 +3,7 @@ package com.suhel.llamabro.internal
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.spi.NativeError
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
@@ -16,6 +17,17 @@ import kotlinx.serialization.json.jsonPrimitive
 internal object ErrorMapping {
     private const val HTTP_OK = 200
     private val json = Json { ignoreUnknownKeys = true }
+
+    /**
+     * An SSE payload that is llama-server's error object, not a chunk: a JSON object whose `error` is a value (not
+     * absent, not `null`), however it is spaced or ordered. Most payloads are token chunks without that key, so only
+     * those that name it are parsed.
+     */
+    fun isErrorPayload(payload: String): Boolean =
+        "\"error\"" in payload &&
+            runCatching { (json.parseToJsonElement(payload) as? JsonObject)?.get("error") }
+                .getOrNull()
+                .let { it != null && it !is JsonNull }
 
     /** [body] is `{"error": {...}}` (or anything else for a non-JSON failure). */
     fun fromBody(httpStatus: Int, body: String): LlamaBroException {

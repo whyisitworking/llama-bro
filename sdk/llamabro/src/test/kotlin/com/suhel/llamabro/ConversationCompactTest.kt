@@ -3,6 +3,7 @@ package com.suhel.llamabro
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.conversation.Compaction
+import com.suhel.llamabro.conversation.ContextUsage
 import com.suhel.llamabro.conversation.compact
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -265,6 +266,65 @@ class ConversationCompactTest {
                 .send("other chat")
                 .toList()
             assertEquals(1, pre.cancelCount)
+        }
+
+    /** A pre-encode whose slots answer [slotBusy]; its own reply carries timings of 27 tokens. */
+    private suspend fun answeredPreEncode(slotBusy: Boolean): Pair<FakeEngine, Model> {
+        val engine = FakeEngine()
+        engine.model.onRequest = { r ->
+            when {
+                r.endpoint == "chat" && isPreEncode(r.body) -> {
+                    r.chunk("""{"choices":[],"timings":{"predicted_n":0,"cache_n":20,"prompt_n":7}}""")
+                    r.done()
+                }
+
+                r.endpoint == "chat" -> {
+                    Replies.text("a1").forEach { r.chunk(it) }
+                    r.done()
+                }
+
+                r.endpoint == "slots" -> {
+                    r.chunk("""[{"id":0,"is_processing":$slotBusy}]""")
+                    r.done()
+                }
+
+                else -> {
+                    r.chunk("{}")
+                    r.done()
+                }
+            }
+        }
+        return engine to testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf"))
+    }
+
+    /** tools/ui reads the pre-encode's timings too: they are the context the next turn starts from. */
+    @Test
+    fun preEncodeTimingsUpdateContextUsage() =
+        runTest {
+            val (_, model) = answeredPreEncode(slotBusy = false)
+            val chat = model.conversation { preEncodeAfterReply = true }
+            chat.send("u1").toList()
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) { while (chat.contextUsage.value.used != 27) delay(5) }
+            }
+            assertEquals(ContextUsage(27, 8192), chat.contextUsage.value)
+        }
+
+    /** tools/ui areAllSlotsIdle: a busy slot means another request runs, and a pre-encode would only delay it. */
+    @Test
+    fun noPreEncodeWhileASlotIsBusy() =
+        runTest {
+            val (engine, model) = answeredPreEncode(slotBusy = true)
+            val chat = model.conversation { preEncodeAfterReply = true }
+            chat.send("u1").toList()
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    while (engine.model.requests.none { it.endpoint == "slots" && it.terminal }) delay(5)
+                }
+                delay(200) // what a pre-encode would send comes right after the slots answer
+            }
+            assertTrue(engine.model.chatBodies.none { isPreEncode(it) })
+            assertEquals(ContextUsage(13, 8192), chat.contextUsage.value)
         }
 
     @Test

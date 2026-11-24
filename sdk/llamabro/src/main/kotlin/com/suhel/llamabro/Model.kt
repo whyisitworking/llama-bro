@@ -6,36 +6,31 @@ import com.suhel.llamabro.chat.ChatRequest
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.conversation.ConversationJson
+import com.suhel.llamabro.internal.ActiveCall
+import com.suhel.llamabro.internal.BodyMode
 import com.suhel.llamabro.internal.ChatJson
 import com.suhel.llamabro.internal.ChatStreamDecoder
+import com.suhel.llamabro.internal.Chunks
 import com.suhel.llamabro.internal.ErrorMapping
 import com.suhel.llamabro.internal.Media
 import com.suhel.llamabro.internal.MediaIo
+import com.suhel.llamabro.internal.PreEncodeSlot
 import com.suhel.llamabro.internal.RealtimeLink
-import com.suhel.llamabro.internal.SseParser
 import com.suhel.llamabro.spi.EngineAttachment
 import com.suhel.llamabro.spi.EngineModel
-import com.suhel.llamabro.spi.EngineRequest
 import com.suhel.llamabro.spi.NativeError
-import com.suhel.llamabro.spi.RequestSink
-import com.suhel.llamabro.spi.SEND_OK
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -43,7 +38,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.read
 import kotlin.concurrent.write
@@ -81,6 +75,9 @@ public class Model internal constructor(
     internal val closeQueued: Boolean get() = gate.hasQueuedThreads()
 
     private val closedSignal = CompletableDeferred<Unit>()
+
+    /** Conversations' background pre-encode, one per model; any chat request cancels it, and [close] ends it. */
+    internal val preEncodeSlot = PreEncodeSlot(CoroutineScope(SupervisorJob() + Dispatchers.Default))
     private val active = mutableSetOf<ActiveCall<*>>()
 
     /** Completes when the native shutdown has finished; exists before [close] so a racing [closeAndJoin] waits too. */
@@ -214,7 +211,7 @@ public class Model internal constructor(
         if (!closed.compareAndSet(false, true)) return
         failActive()
         closedSignal.complete(Unit)
-        background.cancel()
+        preEncodeSlot.close()
         shutdown {
             try {
                 // waits for any request still entering native code (a closed check alone leaves a use-after-free
@@ -244,31 +241,6 @@ public class Model internal constructor(
 
     internal val isClosed: Boolean get() = closed.get()
 
-    // --- background pre-encode (Conversation) ---------------------------------------------------------
-
-    /** Runs Conversation's background pre-encodes; cancelled when the model closes. */
-    internal val background: CoroutineScope =
-        CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-    private val preEncodeLock = Any()
-    private var preEncodeJob: Job? = null
-
-    /**
-     * One pre-encode per model, like tools/ui's store-wide preEncodeAbortController: a new one replaces the old,
-     * and any chat request cancels it ([cancelPreEncode]), whichever conversation started it.
-     */
-    internal fun startPreEncode(block: suspend CoroutineScope.() -> Unit) {
-        synchronized(preEncodeLock) {
-            preEncodeJob?.cancel()
-            preEncodeJob = background.launch(block = block)
-        }
-    }
-
-    internal suspend fun cancelPreEncode() {
-        val job = synchronized(preEncodeLock) { preEncodeJob.also { preEncodeJob = null } }
-        job?.cancelAndJoin()
-    }
-
     /** Returns when [close] is called (Conversation cancels a running tool handler on it). */
     internal suspend fun awaitClosed() = closedSignal.await()
 
@@ -279,150 +251,6 @@ public class Model internal constructor(
 
     private fun unregister(call: ActiveCall<*>) {
         synchronized(active) { active.remove(call) }
-    }
-
-    /**
-     * One request's state. The native handle may arrive after the first callbacks, and free() must follow
-     * the terminal event, while cancel() must never touch a freed request: all three go through [lock].
-     */
-    private class ActiveCall<T>(val scope: ProducerScope<T>, private val chunks: Chunks<T>) : RealtimeLink {
-        private val lock = Any()
-        private var handle: EngineRequest? = null
-        private var terminal = false
-        private var cancelRequested = false
-
-        /** Client events sent before the handle arrived, sent in order once it has. */
-        private val early = mutableListOf<ByteArray>()
-
-        fun setHandle(h: EngineRequest) {
-            synchronized(lock) {
-                handle = h
-                if (terminal) {
-                    h.free()
-                } else if (cancelRequested) {
-                    h.cancel()
-                } else {
-                    early.forEach { h.send(it) }
-                }
-                early.clear()
-            }
-        }
-
-        override fun send(message: String): Boolean =
-            synchronized(lock) {
-                if (terminal || cancelRequested) return false
-                val bytes = message.toByteArray(Charsets.UTF_8)
-                val h = handle
-                if (h == null) {
-                    early += bytes
-                    true
-                } else {
-                    h.send(bytes) == SEND_OK
-                }
-            }
-
-        fun cancelIfRunning() {
-            synchronized(lock) {
-                if (terminal) return
-                val h = handle
-                if (h == null) cancelRequested = true else h.cancel()
-            }
-        }
-
-        private fun onTerminal() {
-            synchronized(lock) {
-                if (terminal) return
-                terminal = true
-                handle?.free()
-            }
-        }
-
-        fun sink(mode: BodyMode): RequestSink =
-            object : RequestSink {
-                private val parser = SseParser()
-                private val whole = ByteArrayOutputStream()
-                private var failed = false
-
-                override fun onChunk(httpStatus: Int, data: ByteArray) {
-                    if (failed) return
-                    if (httpStatus >= HTTP_ERROR_FROM) {
-                        fail(ErrorMapping.fromBody(httpStatus, String(data, Charsets.UTF_8)))
-                    } else if (mode == BodyMode.Each) {
-                        scope.trySend(chunks.of(data))
-                    } else if (mode == BodyMode.Whole) {
-                        whole.write(data)
-                    } else {
-                        for (payload in parser.feed(data)) {
-                            when {
-                                payload == "[DONE]" -> {
-                                    Unit
-                                }
-
-                                // the flow completes at the terminal event
-                                payload.startsWith("{\"error\"") -> {
-                                    fail(ErrorMapping.fromBody(httpStatus, payload))
-                                    return
-                                }
-
-                                else -> {
-                                    scope.trySend(chunks.of(payload))
-                                }
-                            }
-                        }
-                    }
-                }
-
-                override fun onDone() {
-                    if (mode == BodyMode.Whole && !failed &&
-                        whole.size() > 0
-                    ) {
-                        scope.trySend(chunks.of(whole.toByteArray()))
-                    }
-                    onTerminal()
-                    scope.close()
-                }
-
-                override fun onCancelled() {
-                    onTerminal()
-                    scope.close()
-                }
-
-                private fun fail(e: LlamaBroException) {
-                    failed = true
-                    scope.close(e)
-                }
-            }
-    }
-
-    /** How a response's chunks become the flow's strings. */
-    private enum class BodyMode {
-        /** The whole body, once, at the end. */
-        Whole,
-
-        /** Each SSE `data:` payload until `[DONE]`. */
-        Sse,
-
-        /** Each chunk as it comes: a realtime conversation's events (D97), or speech's audio (D139). */
-        Each,
-    }
-
-    /** What a response's chunks become: text, or bytes for a binary body such as speech (D139). */
-    private sealed interface Chunks<T> {
-        fun of(bytes: ByteArray): T
-
-        fun of(text: String): T
-
-        data object Text : Chunks<String> {
-            override fun of(bytes: ByteArray): String = bytes.decodeToString()
-
-            override fun of(text: String): String = text
-        }
-
-        data object Bytes : Chunks<ByteArray> {
-            override fun of(bytes: ByteArray): ByteArray = bytes
-
-            override fun of(text: String): ByteArray = text.encodeToByteArray()
-        }
     }
 
     private companion object {
@@ -444,7 +272,7 @@ public fun Model.chat(request: ChatRequest): Flow<ChatEvent> = chatInternal(requ
 internal fun Model.chatInternal(request: ChatRequest, onCompletionId: ((String) -> Unit)?): Flow<ChatEvent> =
     flow {
         Media.checkMessages(info, request.messages)
-        cancelPreEncode() // tools/ui cancels a pending pre-encode before every chat request
+        preEncodeSlot.cancel() // tools/ui cancels a pending pre-encode before every chat request
         val decoder = ChatStreamDecoder()
         var reported = false
         val encoded = ChatJson.encode(request)
@@ -508,9 +336,6 @@ public fun Model.restoreConversation(json: String, configure: Conversation.Build
     return com.suhel.llamabro.conversation
         .Conversation(this, saved.system, saved.messages, builder)
 }
-
-/** From this HTTP status up, a response is an error. */
-private const val HTTP_ERROR_FROM = 400
 
 /** The status a native failure that isn't the caller's mistake is reported with. */
 private const val HTTP_INTERNAL_ERROR = 500

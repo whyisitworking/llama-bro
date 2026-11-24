@@ -420,9 +420,9 @@ public class Conversation internal constructor(
                 put("stream", false)
                 if (config.registry.tools.isNotEmpty()) put("tools", ChatJson.tools(config.registry.tools))
             }.toString()
-        model.startPreEncode {
+        model.preEncodeSlot.start {
             try {
-                if (!allSlotsIdle()) return@startPreEncode
+                if (!allSlotsIdle()) return@start
                 model.request(Endpoint.ChatCompletions, body, media.all).collect { response ->
                     val t =
                         runCatching {
@@ -480,7 +480,7 @@ public class Conversation internal constructor(
             if (!busy.compareAndSet(false, true)) throw LlamaBroException.Busy()
             _pendingApproval.value = null // nothing can be approved while an operation runs
             try {
-                model.cancelPreEncode()
+                model.preEncodeSlot.cancel()
                 readHistoryDescriptors { model.read(it) }
                 block()
             } finally {

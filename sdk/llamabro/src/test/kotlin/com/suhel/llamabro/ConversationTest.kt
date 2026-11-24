@@ -15,6 +15,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -245,6 +246,24 @@ class ConversationTest {
             val last = chat.messages.value.last() as Message.Assistant
             assertTrue(last.content!!.isNotEmpty())
             assertTrue(last.toolCalls.isEmpty())
+        }
+
+    /** An error after some text keeps that text, so the person sees it; the tool call still in pieces is dropped. */
+    @Test
+    fun anErrorMidReplyKeepsTheStreamedTextWithoutPartialCalls() =
+        runTest {
+            val (engine, model) = setup()
+            engine.model.onRequest = { r ->
+                // the role, the text, the first piece of a tool call, then an error
+                Replies.toolCalls(Triple("c1", "get_weather", "{}"), content = "half").take(3).forEach { r.chunk(it) }
+                r.chunk("data: ${Replies.exceed(400, 256)}\n\n")
+                r.done()
+            }
+            val chat = model.conversation()
+            val e = runCatching { chat.send("q").toList() }.exceptionOrNull()
+            assertTrue("$e", e is LlamaBroException.ContextExceeded)
+            assertEquals(listOf(Message.user("q"), Message.Assistant("half")), chat.messages.value)
+            assertNull(chat.reply.value)
         }
 
     /**
