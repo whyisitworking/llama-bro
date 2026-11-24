@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D144 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D145 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -178,6 +178,7 @@ its amendments to know what holds now.
 | [D130](#d130-the-models-page-is-one-page-offline-first-first-run-is-its-empty-state-labels-name-the-quant-a-download-is-the-pinned-ring-panel) The Models page is one page, offline first: first run is its empty state, labels name the quant, a download is the pinned ring panel | 2026-11-20 | |
 | [D131](#d131-a-softer-neutral-palette-cool-grey-light-dimmed-dark-replies) A softer neutral palette: cool-grey light, dimmed dark replies | 2026-11-21 | |
 | [D144](#d144-the-demos-packages-are-layered-the-container-builds-the-screens-view-models-and-a-drafts-pictures-are-staged-apart-from-sent-ones) The demo's packages are layered, the container builds the screens' view models, and a draft's pictures are staged apart from sent ones | 2026-11-24 | |
+| [D145](#d145-the-sidebar-pushes-the-chat-aside-and-dims-it-and-its-head-is-as-tall-as-the-top-bar) The sidebar pushes the chat aside and dims it, and its head is as tall as the top bar | 2026-11-24 | |
 
 **Repository and process**
 
@@ -2158,3 +2159,21 @@ message's file (only a draft's picture is deleted); a restored draft older than 
 its pictures, with the line above; and a draft picture's thumbnail is read from `images/draft/`. Nothing else changes. Moves were `git mv`, so history follows; the generated baseline
 profile under `demo/app/src/release/generated` still lists the old class names until it is regenerated. Next free IDs:
 D145, F183.
+
+<a id="d145"></a>
+### D145. The sidebar pushes the chat aside and dims it, and its head is as tall as the top bar
+
+Status: Decided (2026-11-24)
+
+Context: The Sidebar layout's drawer slid over the chat (a modal drawer), and its head row was 56 dp (a 48 dp action
+with 4 dp above and below) where the chat's top bar is 64 dp, so the drawer's title and the chat's title sat on
+different lines.
+Decision: The top bar's height is one token, `DemoSize.topBar` (64 dp, which `TopBar` already used as its minimum);
+`DrawerHead` takes it as its minimum height too, so the two titles share a line at every font scale. `DemoDrawer` is
+Material's dismissible drawer: the chat slides right with the sheet instead of being covered, and while the drawer is
+open the pushed chat is dimmed with the theme's scrim (faded in over 250 ms) and a tap on it closes the drawer. The
+swipe gestures are as before, and the shell closes an open drawer on Back before the screen is left. The Chat list
+layout has no drawer, and there is no permanent drawer on wide windows, so nothing there changes.
+Consequences: The pushed chat is narrower by the drawer's width while it is open, so its content reflows under the
+push rather than being hidden behind a sheet; the dim carries no swipe progress, it fades with the drawer's target.
+Next free IDs: D146, F183.

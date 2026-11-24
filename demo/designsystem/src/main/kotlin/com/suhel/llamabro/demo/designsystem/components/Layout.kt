@@ -1,5 +1,7 @@
 package com.suhel.llamabro.demo.designsystem.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,14 +24,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.DismissibleDrawerSheet
+import androidx.compose.material3.DismissibleNavigationDrawer
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -39,9 +42,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
@@ -295,9 +300,9 @@ fun LayoutPreviewCard(
 }
 
 /**
- * The Sidebar layout's drawer: [drawerContent] slides over [content] from the left edge, on the surface colour, with
- * the scrim of the theme. [open] says whether it is shown; the user's swipe or a tap on the scrim reports through
- * [onOpenChange].
+ * The Sidebar layout's drawer (D145): [drawerContent] pushes [content] to the right from the left edge, on the canvas
+ * colour, and the pushed content is dimmed with the theme's scrim; a tap on it closes the drawer. [open] says whether
+ * it is shown; the user's swipe or that tap reports through [onOpenChange].
  */
 @Composable
 fun DemoDrawer(
@@ -318,10 +323,15 @@ fun DemoDrawer(
             .snapshotFlow { state.isOpen }
             .collect { onOpenChange(it) }
     }
-    ModalNavigationDrawer(
+    val dim by animateFloatAsState(
+        if (state.targetValue == DrawerValue.Open) 1f else 0f,
+        animationSpec = tween(DemoMotion.STANDARD_MILLIS),
+        label = "drawer dim",
+    )
+    DismissibleNavigationDrawer(
         drawerContent = {
             // the sheet is as wide as its content (the sidebar's 320 dp), not Material's 360 dp with a blank band
-            ModalDrawerSheet(
+            DismissibleDrawerSheet(
                 modifier = Modifier.drawerWidth(),
                 drawerContainerColor = colors.canvas,
                 drawerContentColor = colors.ink,
@@ -333,14 +343,26 @@ fun DemoDrawer(
         },
         modifier = modifier,
         drawerState = state,
-        // the theme's scrim, as the sheets use: the ink would lay a light haze over the page in dark (F131)
-        scrimColor = colors.scrim,
-        content = content,
-    )
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            content()
+            if (dim > 0f) {
+                // the theme's scrim, as the sheets use: the ink would lay a light haze over the page in dark (F131)
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .drawBehind { drawRect(colors.scrim, alpha = dim) }
+                        .clickable(interactionSource = null, indication = null) { onOpenChange(false) }
+                        .semantics { contentDescription = "Close the menu" },
+                )
+            }
+        }
+    }
 }
 
 /**
- * The head of the Sidebar drawer (D126): the app's [title] in the quiet serif on the 24 dp line the history's text
+ * The head of the Sidebar drawer (D126): as tall as the chat's [TopBar] ([DemoSize.topBar], D145), so the two titles
+ * share a line at any font scale; the app's [title] in the quiet serif on the 24 dp line the history's text
  * starts on, and at the end its one action, a 48 dp icon in the ink ([actionIcon], spoken as [actionLabel]: New chat),
  * whose glyph ends on the same 24 dp line on the right. A heading for a screen reader.
  */
@@ -355,8 +377,8 @@ fun DrawerHead(
     Row(
         modifier
             .fillMaxWidth()
-            .padding(start = DemoSpacing.section, end = DemoSpacing.compact)
-            .padding(vertical = DemoSpacing.inline),
+            .heightIn(min = DemoSize.topBar)
+            .padding(start = DemoSpacing.section, end = DemoSpacing.compact),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(

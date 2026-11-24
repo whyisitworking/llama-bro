@@ -68,11 +68,14 @@ internal fun LayoutSamples() {
 @Composable
 private fun LayoutPreview() = DemoTheme { LayoutSamples() }
 
-/** The Sidebar layout's drawer (D126), open over a chat: the name and New chat, the search, the history, the places. */
+/**
+ * The Sidebar layout's drawer (D126, D145), [open] or closed over a chat: the name and New chat, the search, the
+ * history, the places; open, it pushes the chat aside and dims it.
+ */
 @Composable
-internal fun DrawerSample() {
+internal fun DrawerSample(open: Boolean = true) {
     DemoDrawer(
-        open = true,
+        open = open,
         onOpenChange = {},
         drawerContent = {
             DrawerHead("Llama Bro", DemoIcons.NewChat, "New chat", onAction = {})
@@ -114,3 +117,7 @@ internal fun DrawerSample() {
 @LightDarkPreviews
 @Composable
 private fun DrawerPreview() = DemoTheme { DrawerSample() }
+
+@LightDarkPreviews
+@Composable
+private fun DrawerClosedPreview() = DemoTheme { DrawerSample(open = false) }

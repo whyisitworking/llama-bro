@@ -86,7 +86,7 @@ Chosen in Settings, Appearance, each shown as a small preview. Sidebar is the de
 
 **Sidebar.**
 
-- Home is a new chat. The drawer (D126, "Quiet list") reads top to bottom:
+- Home is a new chat. The drawer (D126, "Quiet list") pushes the chat aside as it opens and dims it, a tap on the dimmed chat or Back closes it, and its head is as tall as the top bar (`DemoSize.topBar`, 64 dp) so the two titles share a line (D145). It reads top to bottom:
   - **Head**: the app's name, "Llama Bro", in the serif (`sidebarTitle`, 22 sp Regular) on a 24 dp inset, with New chat (Material's `add_comment`, in the ink) as a 48 dp icon at its end.
   - **Search**: "Search chats", 16 dp from the sides and 12 dp under the name. It filters the history by title and message text and says "No chats match." when nothing does.
   - **Chats grouped by date** (Today, This week, Earlier). A group's label is quiet (13 sp, soft, sentence case), 24 dp under the group above (8 dp under the search for the first) and close on its rows.

@@ -1,5 +1,6 @@
 package com.suhel.llamabro.demo.ui.shell
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
@@ -181,6 +182,8 @@ private fun Shell(
         }
         when (current) {
             AppLayout.Sidebar -> {
+                // Back closes an open drawer before it leaves the screen
+                BackHandler(enabled = drawerOpen) { drawerOpen = false }
                 DemoDrawer(
                     open = drawerOpen,
                     onOpenChange = { drawerOpen = it },
