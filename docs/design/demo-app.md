@@ -345,11 +345,11 @@ The system lives in `demo/designsystem`. Its values are Material 3's wherever Ma
 
 ### 8.1 Character
 
-Calm, classy, a little alive. Depth and restraint over softness or loudness. A cool grey near-white in light mode and a near-black in dark mode, with no hue (D69, D125). Colour is kept for meaning and for one living moment, the orb. A classic serif, Source Serif 4, for hero moments, a model card's name and the sidebar's title; Geist, a clean sans, everywhere else (D125). Soft shadows and generous but not floaty spacing. Motion only where it earns its place, quiet and quick (§8.11): sheets, the download ring, the wake-up hairline, the thinking fold, and in the chat what arrives, leaves or changes in place.
+Calm, classy, a little alive. Depth and restraint over softness or loudness. A cool grey near-white in light mode and a near-black in dark mode, with no hue (D69, D125). Colour is kept for meaning and for one living moment, the orb. A classic serif, Source Serif 4, for hero moments, a model card's name, the sidebar's title and a reply's running text; Nunito Sans, a calm humanist sans, everywhere else (D150). Soft shadows and generous but not floaty spacing. Motion only where it earns its place, quiet and quick (§8.11): sheets, the download ring, the wake-up hairline, the thinking fold, and in the chat what arrives, leaves or changes in place.
 
 ### 8.2 Type
 
-Material 3 roles, a screen naming a role and never a size. Each role carries size, line height, weight, tracking and face; every line height is a multiple of 4, but `replyBody`'s, chosen by eye (D125). The sans is Geist (SIL OFL, bundled as a variable font, `res/font/geist.ttf`, at weights 300, 400 and 500), the serif Source Serif 4, and code the system monospace (D125).
+Material 3 roles, a screen naming a role and never a size. Each role carries size, line height, weight, tracking and face; every line height is a multiple of 4. The sans is Nunito Sans (SIL OFL, bundled as a variable font, `res/font/nunito_sans.ttf`, at weights 300, 400 and 500), the serif Source Serif 4, and code the system monospace (D150, in place of D125's Geist).
 
 | Role | Size / line | Weight | Face | Use |
 |---|---|---|---|---|
@@ -357,21 +357,21 @@ Material 3 roles, a screen naming a role and never a size. Each role carries siz
 | `sheetTitle` | 22 / 28 | Medium | Serif | a sheet's title |
 | `cardTitle` | 24 / 32 | Regular | Serif | a model card's name (D123) |
 | `sidebarTitle` | 22 / 28 | Regular | Serif | "Llama Bro" at the head of the sidebar (D126) |
-| `screenTitle` | 22 / 28 | Medium | Geist | a top bar's title, "Chats" |
-| `screenTitleLight` | 24 / 32 | Light | Geist | the Models page's title (D123) |
-| `title` | 16 / 24 | Medium | Geist | a row's or card's title |
-| `titleRegular` | 16 / 24 | Regular | Geist | a model row's name, a quiet button's label (D123) |
-| `titleSmall` | 14 / 20 | Medium | Geist | the model's name under a top bar, a group heading inside a card |
-| `body` | 16 / 24 | Regular | Geist | the user's messages, descriptions, field text |
-| `replyBody` | 16 / 26 | Regular | Geist | a reply's running text (D125) |
-| `rowLine` | 15 / 20 | Regular | Geist | a one-line row of a long list, the sidebar's chats and places (D126) |
-| `bodyMedium` | 14 / 20 | Regular | Geist | a row's subtitle, a card's description, a state line |
-| `quietLabel` | 13 / 20 | Regular | Geist | a quiet sentence-case section label, a model page's headings and "About" (D123) |
-| `pageBody` | 13 / 24 | Regular | Geist | a model's page under its card (D123) |
-| `bodySmall` | 12 / 16 | Regular | Geist | a reply's meta line, a row's second line, captions |
-| `label` | 14 / 20 | Medium | Geist | a button's or chip's text |
-| `labelSmall` | 12 / 16 | Medium | Geist | an upper-case section label, a status pill |
-| `voiceCaption` | 22 / 28 | Regular | Geist | the reply's caption in voice mode, read at arm's length (D100) |
+| `screenTitle` | 22 / 28 | Medium | Nunito Sans | a top bar's title, "Chats" |
+| `screenTitleLight` | 24 / 32 | Light | Nunito Sans | the Models page's title (D123) |
+| `title` | 16 / 24 | Medium | Nunito Sans | a row's or card's title |
+| `titleRegular` | 16 / 24 | Regular | Nunito Sans | a model row's name, a quiet button's label (D123) |
+| `titleSmall` | 14 / 20 | Medium | Nunito Sans | the model's name under a top bar, a group heading inside a card |
+| `body` | 16 / 24 | Regular | Nunito Sans | the user's messages, descriptions, field text |
+| `replyBody` | 17 / 28 | Regular | serif | a reply's running text (D150) |
+| `rowLine` | 15 / 20 | Regular | Nunito Sans | a one-line row of a long list, the sidebar's chats and places (D126) |
+| `bodyMedium` | 14 / 20 | Regular | Nunito Sans | a row's subtitle, a card's description, a state line |
+| `quietLabel` | 13 / 20 | Regular | Nunito Sans | a quiet sentence-case section label, a model page's headings and "About" (D123) |
+| `pageBody` | 13 / 24 | Regular | Nunito Sans | a model's page under its card (D123) |
+| `bodySmall` | 12 / 16 | Regular | Nunito Sans | a reply's meta line, a row's second line, captions |
+| `label` | 14 / 20 | Medium | Nunito Sans | a button's or chip's text |
+| `labelSmall` | 12 / 16 | Medium | Nunito Sans | an upper-case section label, a status pill |
+| `voiceCaption` | 22 / 28 | Regular | Nunito Sans | the reply's caption in voice mode, read at arm's length (D100) |
 | `code` | 14 / 20 | Regular | Monospace | code blocks and inline code |
 
 The serif is for the hero roles only (the empty-chat line and a sheet's title), a model card's name (D123) and the sidebar's title (D126); every screen title, row and label is Geist. There is no role below 12 sp. Body text is 16 sp.

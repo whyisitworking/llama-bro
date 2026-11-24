@@ -363,7 +363,7 @@ class ShellTest {
         compose.onNodeWithText("Settings").performClick()
         compose.onNodeWithText("About").performScrollTo().performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("about"), 10_000)
-        for (text in listOf("Version", "MIT licence", "Geist", "Source Serif 4")) {
+        for (text in listOf("Version", "MIT licence", "Nunito Sans", "Source Serif 4")) {
             compose.onNodeWithText(text).assertIsDisplayed()
         }
         compose.onAllNodesWithText("SIL Open Font Licence 1.1").assertCountEquals(2) // the two bundled fonts

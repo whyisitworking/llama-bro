@@ -11,9 +11,9 @@ import androidx.compose.ui.unit.sp
 import com.suhel.llamabro.demo.designsystem.R
 
 /**
- * Source Serif 4 (SIL OFL, res/raw/source_serif_4_ofl.txt) for the two hero roles, a card's name and the sidebar's
- * title only; [Geist] for the rest. Google ships it as one variable font, so Regular and Medium are two weights of the
- * same file.
+ * Source Serif 4 (SIL OFL, res/raw/source_serif_4_ofl.txt) for the two hero roles, a card's name, the sidebar's
+ * title and a reply's running text (D150); [NunitoSans] for the rest. Google ships it as one variable font, so Regular
+ * and Medium are two weights of the same file.
  */
 @OptIn(ExperimentalTextApi::class)
 private val SourceSerif =
@@ -31,15 +31,16 @@ private val SourceSerif =
     )
 
 /**
- * Geist (SIL OFL, res/raw/geist_ofl.txt), the app's sans in place of the system one (D125): one variable font, with an
- * entry for every weight a sans role uses (Light, Regular, Medium), so each renders at its own weight, not a synthesis.
+ * Nunito Sans (SIL OFL, res/raw/nunito_sans_ofl.txt), the app's sans (D150, in place of D125's Geist): a humanist face,
+ * rounder and more open, for a calmer read. One variable font, with an entry for every weight a sans role uses (Light,
+ * Regular, Medium), so each renders at its own weight, not a synthesis.
  */
 @OptIn(ExperimentalTextApi::class)
-private val Geist =
+private val NunitoSans =
     FontFamily(
         listOf(FontWeight.Light, FontWeight.Normal, FontWeight.Medium).map { weight ->
             Font(
-                R.font.geist,
+                R.font.nunito_sans,
                 weight,
                 variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight)),
             )
@@ -48,9 +49,9 @@ private val Geist =
 
 /**
  * The type roles of the design system v2 spec (docs/design/demo-app.md, section 8.2): Material 3's scale (size,
- * line height, tracking from `TypeScaleTokens`) in Geist (D125), the serif only where D48 says. A screen names a role
- * and never a size, a weight or a tracking: a role carries all of them, so the same kind of text is the same
- * everywhere.
+ * line height, tracking from `TypeScaleTokens`) in Nunito Sans (D150), the serif where D48 and D150 say. A screen
+ * names a role and never a size, a weight or a tracking: a role carries all of them, so the same kind of text is the
+ * same everywhere.
  *
  * | Role | Size / line | Weight | Face |
  * |---|---|---|---|
@@ -60,7 +61,7 @@ private val Geist =
  * | [title] | 16 / 24 | Medium | sans |
  * | [titleSmall] | 14 / 20 | Medium | sans |
  * | [body] | 16 / 24 | Regular | sans |
- * | [replyBody] | 16 / 26 | Regular | sans |
+ * | [replyBody] | 17 / 28 | Regular | serif |
  * | [bodyMedium] | 14 / 20 | Regular | sans |
  * | [bodySmall] | 12 / 16 | Regular | sans |
  * | [label] | 14 / 20 | Medium | sans |
@@ -101,10 +102,17 @@ object DemoType {
     val body = sans(FontWeight.Normal, size = 16, line = 24, tracking = 0.5)
 
     /**
-     * A reply's running text: [body] on a looser line (D125), so a long answer in Geist reads easily. Off the 4 dp
-     * grid by design: chosen by eye (D125).
+     * A reply's running text in the serif (D150): a step larger than [body] on a generous line, so a long answer reads
+     * like a well-set page while the controls around it stay in the sans.
      */
-    val replyBody = sans(FontWeight.Normal, size = 16, line = 26, tracking = 0.5)
+    val replyBody =
+        TextStyle(
+            fontFamily = SourceSerif,
+            fontWeight = FontWeight.Normal,
+            fontSize = 17.sp,
+            lineHeight = 28.sp,
+            letterSpacing = 0.sp,
+        )
     val bodyMedium = sans(FontWeight.Normal, size = 14, line = 20, tracking = 0.2)
     val bodySmall = sans(FontWeight.Normal, size = 12, line = 16, tracking = 0.4)
     val label = sans(FontWeight.Medium, size = 14, line = 20, tracking = 0.1)
@@ -172,7 +180,7 @@ object DemoType {
 
     private fun sans(weight: FontWeight, size: Int, line: Int, tracking: Double) =
         TextStyle(
-            fontFamily = Geist,
+            fontFamily = NunitoSans,
             fontWeight = weight,
             fontSize = size.sp,
             lineHeight = line.sp,

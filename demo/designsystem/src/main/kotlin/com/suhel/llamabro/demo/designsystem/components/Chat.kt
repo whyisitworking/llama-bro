@@ -598,14 +598,15 @@ fun JumpToLatest(visible: Boolean, onClick: () -> Unit, modifier: Modifier = Mod
 private fun JumpButton(onClick: () -> Unit) {
     val colors = LocalDemoColors.current
     Box(Modifier.padding(bottom = DemoSpacing.block).minimumInteractiveComponentSize()) {
-        // over a page ([FloatingFrame]'s overlay), a chip of glass (D148); elsewhere a raised surface
+        // over a page ([FloatingFrame]'s overlay), glass with a panel's denser veil, so its chevron reads over the bent
+        // text under it (D148); elsewhere a raised surface
         val backdrop = LocalBackdrop.current
         Box(
             Modifier
                 .size(DemoSize.control)
                 .then(
                     if (backdrop != null) {
-                        Modifier.glass(backdrop, LocalGlass.current.chip).clip(CircleShape)
+                        Modifier.glass(backdrop, LocalGlass.current.panel).clip(CircleShape)
                     } else {
                         Modifier
                             .softShadow(CircleShape, colors)

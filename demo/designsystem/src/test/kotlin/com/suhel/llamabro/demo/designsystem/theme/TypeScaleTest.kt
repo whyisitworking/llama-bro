@@ -47,7 +47,7 @@ class TypeScaleTest {
             "titleSmall" to Spec(14f, 20f, FontWeight.Medium, 0.1f),
             "body" to Spec(16f, 24f, FontWeight.Normal, 0.5f),
             // a reply's looser line (D125)
-            "replyBody" to Spec(16f, 26f, FontWeight.Normal, 0.5f),
+            "replyBody" to Spec(17f, 28f, FontWeight.Normal, 0f),
             "bodyMedium" to Spec(14f, 20f, FontWeight.Normal, 0.2f),
             "bodySmall" to Spec(12f, 16f, FontWeight.Normal, 0.4f),
             "label" to Spec(14f, 20f, FontWeight.Medium, 0.1f),
@@ -76,8 +76,7 @@ class TypeScaleTest {
 
     @Test
     fun everyLineHeightIsOnTheFourDpGrid() {
-        // a reply's line is chosen by eye, off the grid on purpose (D125)
-        for ((name, style) in allRoles - "replyBody") {
+        for ((name, style) in allRoles) {
             assertEquals("$name line height is not a multiple of 4", 0f, style.lineHeight.value % 4f, 0f)
         }
     }
@@ -88,10 +87,10 @@ class TypeScaleTest {
     }
 
     @Test
-    fun onlyTheHeroRolesTheCardsNameAndTheSidebarsTitleAreSerif() {
+    fun onlyTheHeroRolesTheCardsNameTheSidebarsTitleAndTheReplyAreSerif() {
         val sans = DemoType.body.fontFamily
         val serif = allRoles.filter { it.value.fontFamily != sans && it.value.fontFamily != FontFamily.Monospace }
-        assertEquals(setOf("displayHero", "sheetTitle", "cardTitle", "sidebarTitle"), serif.keys)
+        assertEquals(setOf("displayHero", "sheetTitle", "cardTitle", "sidebarTitle", "replyBody"), serif.keys)
         assertEquals(
             serif.values
                 .map { it.fontFamily }
@@ -100,7 +99,7 @@ class TypeScaleTest {
             1,
         )
         assertNotEquals(sans, DemoType.displayHero.fontFamily)
-        // the sans is the bundled face (D125), not the system's
+        // the sans is the bundled face (D150), not the system's
         assertNotEquals(FontFamily.SansSerif, sans)
         assertEquals(FontFamily.Monospace, DemoType.code.fontFamily)
     }
