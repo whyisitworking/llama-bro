@@ -110,7 +110,9 @@ class VoiceConversation(
     private var held: ModelHold? = null
     private var session: VoiceSession? = null
     private var events: Job? = null
-    private var output: SpeechOutput? = null
+
+    // read by the microphone's reader too, for the echo guard
+    @Volatile private var output: SpeechOutput? = null
 
     // turns end at a pause, and talking over a reply stops it, as Settings › Voice said when the session opened (D147)
     private var handsFree = false

@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- voice messages (D76), asked on the first tap of the mic -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- voice mode with Interrupt by talking: communication mode, so echo cancellation hears the reply (D147) -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 

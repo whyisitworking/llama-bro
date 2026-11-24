@@ -2231,8 +2231,12 @@ then speech 10 dB above the loudest playback of the last 300 ms plus that coupli
 (`cancelReply`, kept as Stop keeps it, unless the server had finished it) and starts a turn that ends at a pause; only
 that speech and two blocks of its onset are kept from before it. Voice mode holds one audio focus for its whole
 session (`VoiceFocus`); its microphone and speaker ask for none of their own, so a reply starting doesn't end the
-microphone under it, and with the interrupt on, replies play as a call's voice (the echo canceller's reference), on the
-loudspeaker from Android 12. The settings' captions say the limits: a long pause ends the turn, a noisy room can start
+microphone under it; a focus another app took for good is asked for again at the next turn. With the interrupt on, from
+Android 12, the session puts the phone in communication mode (`MODIFY_AUDIO_SETTINGS`, an install-time permission)
+and plays replies as a call's voice, so the phone's echo cancellation takes the reply as its reference, routed to a
+headset when one is in, else to the loudspeaker, following headsets as they come and go; the previous mode comes back
+whenever the session ends. When that routing can't be made, before Android 12, and always with the interrupt off,
+replies play as the assistant's and the mode is never touched. The settings' captions say the limits: a long pause ends the turn, a noisy room can start
 one, talking over a reply stops it, and on the speaker a loud reply can stop itself. The voice view's hint reads "Pause
 to send, or tap" while a turn ends on its own, and a press on such a turn sends it.
 Consequences: Amends D100 ("no hands-free mode"). The thresholds are first guesses from upstream's dictation numbers,
@@ -2240,4 +2244,5 @@ not measured: tuning them needs a short attended phone run, handed over in
 [the tuning note](./design/hands-free-tuning.md). The detector runs in the app, not the SDK, so the SDK still has no
 turn detection (D95). The echo guard trusts the playback level and the coupling it learnt: an echo that grows louder
 than it was during the warm-up (the volume turned up mid-reply) can still stop the reply, so headphones are the sure
-way. Next free IDs: D148, F183.
+way; and speaking during a reply's first 600 ms teaches the guard a loud echo (up to the playback itself), which can make
+that reply impossible to interrupt. Next free IDs: D148, F183.

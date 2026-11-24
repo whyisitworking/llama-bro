@@ -47,9 +47,14 @@ Switch **Interrupt by talking** on, close and reopen voice mode (settings apply 
 0. Where the reply plays. With the switch on, replies play as a call's voice, so the phone's echo canceller has them
    as its reference; on Android 12 and later voice mode moves the call's voice to the loudspeaker when no headset is in.
    Check that the reply comes from the loudspeaker (not the earpiece) at a normal volume, that the volume keys change
-   it, and that with headphones it plays in them. On Android 10 and 11 replies play as before (the assistant's), and
-   only the app's own echo guard keeps the reply from stopping itself.
-1. On the loudspeaker, say nothing while it speaks. The reply must play to its end, loud passages included. If it
+   it (they now move the call volume), and that with headphones it plays in them, also when they are plugged in or
+   out mid-reply. The phone is in communication mode while voice mode is open with the switch on: listen for any
+   audible side effect of the switch (a click, a drop in volume, other apps' sound changing) as voice mode opens and
+   closes, and check that the previous mode is back after closing it, leaving the screen, and after an error. On
+   Android 10 and 11 replies play as before (the assistant's), and only the app's own echo guard keeps the reply from
+   stopping itself.
+1. On the loudspeaker, say nothing while it speaks (and nothing in its first second either: speech during the
+   warm-up teaches the guard a louder echo, and that reply may then not be interruptible). The reply must play to its end, loud passages included. If it
    stops itself, the echo is getting through: raise the margin or the warm-up below. Turning the volume up in the
    middle of a reply is the known weak spot (the guard learnt the echo at the old volume).
 2. On the loudspeaker, talk over it at a normal voice. It should stop within about half a second and take your turn.

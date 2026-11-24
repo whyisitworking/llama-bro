@@ -57,7 +57,7 @@ class Microphone
                 if (focus != null) {
                     audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
                 } else {
-                    session?.lost != true
+                    session?.reclaim() != false
                 }
             check(granted) { "no audio focus" }
             val min =

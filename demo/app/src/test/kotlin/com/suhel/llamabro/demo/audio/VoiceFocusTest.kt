@@ -3,14 +3,17 @@ package com.suhel.llamabro.demo.audio
 import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.AudioTrack
 import android.media.MediaRecorder
+import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -18,6 +21,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.AudioDeviceInfoBuilder
 import org.robolectric.shadows.ShadowAudioRecord
 import org.robolectric.util.ReflectionHelpers
 
@@ -27,7 +31,13 @@ import org.robolectric.util.ReflectionHelpers
 @SuppressLint("MissingPermission") // a host test records nothing; the shadow source stands for the microphone
 class VoiceFocusTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
-    private val audio = shadowOf(context.getSystemService(AudioManager::class.java))
+    private val manager = context.getSystemService(AudioManager::class.java)
+    private val audio = shadowOf(manager)
+    private val earpiece = device(AudioDeviceInfo.TYPE_BUILTIN_EARPIECE)
+    private val speaker = device(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+    private val headset = device(AudioDeviceInfo.TYPE_WIRED_HEADSET)
+
+    private fun device(type: Int): AudioDeviceInfo = AudioDeviceInfoBuilder.newBuilder().setType(type).build()
 
     @After fun clearSource() = ShadowAudioRecord.clearSource()
 
@@ -107,17 +117,82 @@ class VoiceFocusTest {
         Microphone(context, MediaRecorder.AudioSource.VOICE_COMMUNICATION, focus)
     }
 
-    @Test fun withInterruptByTalkingRepliesPlayAsACallsVoice() {
+    @Test fun afterAPermanentLossTheNextMicrophoneTakesTheFocusAgain() {
+        loud()
+        val focus = VoiceFocus(context).apply { take(communication = false) }
+        val first = audio.lastAudioFocusRequest
+        // another app took the audio for good: the old request is spent
+        first!!.listener.onAudioFocusChange(AudioManager.AUDIOFOCUS_LOSS)
+        assertTrue(focus.lost)
+        val mic = Microphone(context, MediaRecorder.AudioSource.VOICE_COMMUNICATION, focus)
+        assertFalse(focus.lost)
+        assertSame(first.audioFocusRequest, audio.lastAbandonedAudioFocusRequest)
+        assertNotSame(first, audio.lastAudioFocusRequest)
+        assertEquals(16, mic.read(ShortArray(16)))
+        mic.close()
+        focus.release()
+    }
+
+    @Test fun withInterruptByTalkingRepliesPlayAsACallsVoiceOnTheLoudspeakerInCommunicationMode() {
+        audio.setAvailableCommunicationDevices(listOf(earpiece, speaker))
         val focus = VoiceFocus(context).apply { take(communication = true) }
         assertTrue(focus.communication)
+        assertEquals(AudioManager.MODE_IN_COMMUNICATION, manager.mode)
+        assertSame(speaker, manager.communicationDevice)
         val speech = TrackSpeech(context, 24_000, focus)
         assertEquals(AudioAttributes.USAGE_VOICE_COMMUNICATION, speech.track().audioAttributes.usage)
         speech.close()
         focus.release()
         assertFalse(focus.communication)
-        val plain = TrackSpeech(context, 24_000, VoiceFocus(context).apply { take(communication = false) })
-        assertEquals(AudioAttributes.USAGE_ASSISTANT, plain.track().audioAttributes.usage)
-        plain.close()
+        assertEquals(AudioManager.MODE_NORMAL, manager.mode)
+        assertNull(manager.communicationDevice)
+    }
+
+    @Test fun withoutAWayToTheLoudspeakerRepliesPlayAsTheAssistantsAndTheModeIsLeftAlone() {
+        val focus = VoiceFocus(context).apply { take(communication = true) }
+        assertFalse(focus.communication)
+        assertEquals(AudioManager.MODE_NORMAL, manager.mode)
+        val speech = TrackSpeech(context, 24_000, focus)
+        assertEquals(AudioAttributes.USAGE_ASSISTANT, speech.track().audioAttributes.usage)
+        speech.close()
+        focus.release()
+    }
+
+    @Test fun withoutTheFocusNothingIsRoutedAndTheModeIsLeftAlone() {
+        audio.setAvailableCommunicationDevices(listOf(earpiece, speaker))
+        audio.setNextFocusRequestResponse(AudioManager.AUDIOFOCUS_REQUEST_FAILED)
+        val focus = VoiceFocus(context).apply { take(communication = true) }
+        assertFalse(focus.communication)
+        assertEquals(AudioManager.MODE_NORMAL, manager.mode)
+        assertNull(manager.communicationDevice)
+        focus.release()
+    }
+
+    @Test fun interruptOffNeverChangesTheMode() {
+        audio.setAvailableCommunicationDevices(listOf(earpiece, speaker))
+        val focus = VoiceFocus(context).apply { take(communication = false) }
+        assertEquals(AudioManager.MODE_NORMAL, manager.mode)
+        assertNull(manager.communicationDevice)
+        val speech = TrackSpeech(context, 24_000, focus)
+        assertEquals(AudioAttributes.USAGE_ASSISTANT, speech.track().audioAttributes.usage)
+        speech.close()
+        focus.release()
+    }
+
+    @Test fun aHeadsetThatComesInTakesTheCallsVoiceAndOneThatGoesGivesItBackToTheLoudspeaker() {
+        audio.setAvailableCommunicationDevices(listOf(earpiece, speaker))
+        val focus = VoiceFocus(context).apply { take(communication = true) }
+        assertSame(speaker, manager.communicationDevice)
+        audio.addAvailableCommunicationDevice(headset, false)
+        audio.addOutputDevice(headset, true)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertSame(headset, manager.communicationDevice)
+        audio.removeAvailableCommunicationDevice(headset, false)
+        audio.removeOutputDevice(headset, true)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertSame(speaker, manager.communicationDevice)
+        focus.release()
+        assertEquals(AudioManager.MODE_NORMAL, manager.mode)
     }
 
     private fun TrackSpeech.track(): AudioTrack = ReflectionHelpers.getField(this, "track")

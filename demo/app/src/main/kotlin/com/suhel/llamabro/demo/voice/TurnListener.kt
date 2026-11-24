@@ -48,14 +48,17 @@ internal class TurnListener(
         /** The ear has closed on a turn that is the person's: it goes to the model. */
         suspend fun onTurn(turn: PcmBuffer)
 
-        /** What the speaker plays now, in dBFS, for the ear's echo guard. */
+        /** What the speaker plays now, in dBFS, for the ear's echo guard; asked on the reader's thread. */
         fun playbackDb(): Double
     }
+
+    /** A block as the reader read it, with what the speaker played then: the echo in it is of that, not of later. */
+    private class Read(val pcm: ShortArray, val playbackDb: Double)
 
     // the one word the actor sends the reader: stop after the block being read, which is kept
     private val talking = MutableStateFlow(false)
     private var listening: Job? = null
-    private var turnAudio: Channel<ShortArray>? = null
+    private var turnAudio: Channel<Read>? = null
 
     /** Voice mode listening by itself (D147); null while the talk button holds the turn, or nothing listens. */
     private var ear: HandsFreeEar? = null
@@ -81,12 +84,12 @@ internal class TurnListener(
     /** A turn held by the talk button, read live into [session]; false when the microphone couldn't open. */
     suspend fun startHeld(session: VoiceSession?): Boolean {
         val mic = openTurnMicrophone() ?: return false
-        val samples = Channel<ShortArray>(Channel.UNLIMITED)
+        val samples = Channel<Read>(Channel.UNLIMITED)
         turnAudio = samples
         rate = mic.rate
         ui.update { it.copy(phase = VoiceStage.Listening, level = 0f, sendsOnPause = false) }
         talking.value = true
-        listening = listen(mic, session, samples)
+        listening = listen(mic, session, samples, playback = false)
         return true
     }
 
@@ -97,21 +100,21 @@ internal class TurnListener(
      */
     suspend fun startEar(watching: Boolean = false, held: Boolean = false, staysOpen: Boolean = true) {
         val mic = openTurnMicrophone() ?: return
-        val samples = Channel<ShortArray>(Channel.UNLIMITED)
+        val samples = Channel<Read>(Channel.UNLIMITED)
         val heard = HandsFreeEar(floorDb = lastFloorDb)
         heard.watching = watching
         ear = heard
         this.staysOpen = staysOpen
         rate = mic.rate
         talking.value = true
-        listening = listen(mic, null, samples)
+        listening = listen(mic, null, samples, playback = true)
         if (held) {
             press()
         } else if (!watching) {
             ui.update { it.copy(phase = VoiceStage.Listening, level = 0f, sendsOnPause = true) }
         }
         scope.launch(steps.dispatcher) {
-            for (chunk in samples) steps.run { hear(heard, chunk) }.join()
+            for (read in samples) steps.run { hear(heard, read) }.join()
             steps.run { earDone(heard) }
         }
     }
@@ -143,7 +146,7 @@ internal class TurnListener(
         val audio = turnAudio
         stop()
         val samples = PcmBuffer()
-        audio?.let { channel -> for (chunk in channel) samples.add(chunk) }
+        audio?.let { channel -> for (read in channel) samples.add(read.pcm) }
         return samples
     }
 
@@ -171,11 +174,12 @@ internal class TurnListener(
     }
 
     /** One block [heard]: the ear's word on it, and what the session is to hear of it. */
-    private suspend fun hear(heard: HandsFreeEar, chunk: ShortArray) {
+    private suspend fun hear(heard: HandsFreeEar, read: Read) {
         if (ear !== heard) return
+        val chunk = read.pcm
         val watching = heard.watching
-        // under a reply, the guard needs what the speaker plays now: the echo follows it, not the room (D147)
-        val playing = if (watching) callbacks.playbackDb() else Levels.SILENCE_DB
+        // under a reply, the guard needs what the speaker played as the block was read: the echo follows it (D147)
+        val playing = if (watching) read.playbackDb else Levels.SILENCE_DB
         // the block read while the turn was ending is part of it, and nothing more is decided
         when (heard.take(chunk, Levels.detectorDb(chunk, chunk.size), playing, talking.value)) {
             HandsFreeEar.Word.Start -> {
@@ -264,16 +268,16 @@ internal class TurnListener(
 
     /**
      * Reads [mic] on [io] until the turn ends (the block being read then is kept) or the microphone does: each block
-     * goes to [live] and to [samples]. Started ATOMIC: cancelled before it runs (the session ending), it still takes
-     * the microphone over and closes it.
+     * goes to [live] and to [samples], with what the speaker plays as it is read when [playback]. Started ATOMIC:
+     * cancelled before it runs (the session ending), it still takes the microphone over and closes it.
      */
     @OptIn(DelicateCoroutinesApi::class)
-    private fun listen(mic: SampleSource, live: VoiceSession?, samples: Channel<ShortArray>): Job =
+    private fun listen(mic: SampleSource, live: VoiceSession?, samples: Channel<Read>, playback: Boolean): Job =
         scope.launch(io, start = CoroutineStart.ATOMIC) {
             try {
                 mic.blocks(io) { talking.value }.collect { chunk ->
                     live?.append(chunk)
-                    samples.trySend(chunk)
+                    samples.trySend(Read(chunk, if (playback) callbacks.playbackDb() else Levels.SILENCE_DB))
                     val level = VoiceRecorder.level(chunk, chunk.size)
                     ui.update { if (it.phase == VoiceStage.Listening) it.copy(level = level) else it }
                 }
