@@ -58,8 +58,6 @@ bool lb_config_wants_auto_ctx(const json & cfg) {
     return !cfg.contains("n_ctx") || (cfg.at("n_ctx").is_string() && cfg.at("n_ctx") == "auto");
 }
 
-static bool gguf_arch_u64(const std::string & path, const char * suffix, uint64_t & value, std::string & err);
-
 bool lb_parse_model_config(const json & cfg, common_params & out, std::string & err) {
     if (!cfg.is_object()) {
         err = "model config must be a JSON object";
@@ -262,8 +260,10 @@ bool lb_parse_model_config(const json & cfg, common_params & out, std::string & 
     return true;
 }
 
+namespace {
+
 // <arch>.<suffix> from the GGUF header as an unsigned number, without loading tensors; 0 if absent
-static bool gguf_arch_u64(const std::string & path, const char * suffix, uint64_t & value, std::string & err) {
+bool gguf_arch_u64(const std::string & path, const char * suffix, uint64_t & value, std::string & err) {
     gguf_init_params gp = { /*no_alloc =*/ true, /*ctx =*/ nullptr };
     gguf_context * g = gguf_init_from_file(path.c_str(), gp);
     if (!g) {
@@ -288,10 +288,17 @@ static bool gguf_arch_u64(const std::string & path, const char * suffix, uint64_
     return true;
 }
 
-static bool gguf_ctx_train(const std::string & path, uint64_t & n_train, std::string & err) {
+bool gguf_ctx_train(const std::string & path, uint64_t & n_train, std::string & err) {
     return gguf_arch_u64(path, "context_length", n_train, err);
 }
 
+// Upstream's fit measurement swaps llama.cpp's process-wide log callback for its own and back while it runs
+// (common/fit.cpp, common_fit_log_scope), so two measurements at once (two estimates, or an estimate and a load's
+// automatic context) left one forwarding to the other's finished stack frame and crashed (F172). They run one at a
+// time; a measurement reads only headers and takes well under a second.
+std::mutex g_fit_mutex;
+
+}  // namespace
 
 bool lb_resolve_auto_ctx(common_params & params, std::string & err, uint32_t n_ctx_cap) {
     uint64_t n_train = 0;
@@ -312,12 +319,6 @@ int64_t lb_config_memory_budget_mib(const json & cfg) {
     return cfg.contains("memory_budget_mib") && cfg.at("memory_budget_mib").is_number_integer()
         ? cfg.at("memory_budget_mib").get<int64_t>() : 0;
 }
-
-// Upstream's fit measurement swaps llama.cpp's process-wide log callback for its own and back while it runs
-// (common/fit.cpp, common_fit_log_scope), so two measurements at once (two estimates, or an estimate and a load's
-// automatic context) left one forwarding to the other's finished stack frame and crashed (F172). They run one at a
-// time; a measurement reads only headers and takes well under a second.
-static std::mutex g_fit_mutex;
 
 int64_t lb_measure_ctx(common_params & params, uint32_t n_ctx, uint32_t * n_ctx_train, int64_t * draft_bytes) {
     std::lock_guard<std::mutex> one_at_a_time(g_fit_mutex);

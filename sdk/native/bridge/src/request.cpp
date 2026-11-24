@@ -22,12 +22,14 @@
 // ws_realtime) on the request's thread with an in-memory connection: lb_request_send queues a client event, which the
 // handler reads as a text message; each message it sends is one CHUNK. A cancel is the client closing the socket.
 #include "model.h"
+#include "routes.h"
 #include "upstream.h"
 
 #include "base64.hpp"
 
 #include <atomic>
 #include <cerrno>
+#include <cctype>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -37,6 +39,7 @@
 #include <iterator>
 #include <random>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include <fcntl.h>
@@ -69,29 +72,28 @@ struct lb_request {
 namespace {
 
 constexpr const char * kPlaceholder = "lb-attachment:";
-constexpr const char * kTranscriptions = "transcriptions";
-constexpr const char * kRealtime = "realtime";
 
 std::atomic<int> g_live_attachments{0};
 
-// One attachment's bytes, read once. Counted while alive, for the tests that check a request frees them.
+// Counts the attachments alive, for the tests that check a request frees them (lb_attachments_live). A member, so
+// `attachment` keeps the rule of zero: a field added to it is moved without anyone listing it.
+struct live_token {
+    live_token() { g_live_attachments++; }
+    live_token(live_token &&) noexcept { g_live_attachments++; }
+    live_token(const live_token &) = delete;
+    live_token & operator=(live_token &&) noexcept { return *this; }
+    live_token & operator=(const live_token &) = delete;
+    ~live_token() { g_live_attachments--; }
+};
+
+// One attachment's bytes, read once
 struct attachment {
     std::string name;
     std::string mime;
     std::string filename;  // a path's base name, as an upload would carry it
     std::string link;      // its name in the media root when linked (sent as file://), else empty
     raw_buffer data;
-
-    attachment() { g_live_attachments++; }
-    attachment(attachment && o) noexcept
-        : name(std::move(o.name)), mime(std::move(o.mime)), filename(std::move(o.filename)), link(std::move(o.link)),
-          data(std::move(o.data)) {
-        g_live_attachments++;
-    }
-    attachment(const attachment &) = delete;
-    attachment & operator=(const attachment &) = delete;
-    attachment & operator=(attachment &&) = delete;
-    ~attachment() { g_live_attachments--; }
+    live_token counted;
 };
 
 // lb_read_fd's buffer, handed to the caller as is: malloc'd, so lb_buffer_free is free(), with no copy at the end
@@ -166,9 +168,9 @@ bool read_path(const char * path, raw_buffer & out, std::string & err) {
 bool is_audio_file(const char * buf, size_t len) {
     if (len < 12) return false;
     const bool is_wav = memcmp(buf, "RIFF", 4) == 0 && memcmp(buf + 8, "WAVE", 4) == 0;
-    const bool is_mp3 = len >= 3 && (memcmp(buf, "ID3", 3) == 0 ||
-                                     ((unsigned char) buf[0] == 0xFF && ((unsigned char) buf[1] & 0xE0) == 0xE0 &&
-                                      ((unsigned char) buf[1] & 0x06) != 0));
+    const bool is_mp3 = (memcmp(buf, "ID3", 3) == 0 ||
+                         ((unsigned char) buf[0] == 0xFF && ((unsigned char) buf[1] & 0xE0) == 0xE0 &&
+                          ((unsigned char) buf[1] & 0x06) != 0));
     const bool is_flac = memcmp(buf, "fLaC", 4) == 0;
     return is_wav || is_mp3 || is_flac;
 }
@@ -177,7 +179,7 @@ bool is_audio_file(const char * buf, size_t len) {
 struct media_links {
     std::vector<std::string> paths;
     media_links() = default;
-    media_links(media_links && o) noexcept : paths(std::move(o.paths)) {}
+    media_links(media_links && o) noexcept : paths(std::exchange(o.paths, {})) {}  // the moved-from one removes nothing
     media_links(const media_links &) = delete;
     media_links & operator=(const media_links &) = delete;
     media_links & operator=(media_links &&) = delete;
@@ -239,13 +241,6 @@ std::string data_url(const attachment & a) {
     return url;
 }
 
-// The routes whose body is a chat completion's (server-context.cpp: post_chat_completions, handle_count_tokens with
-// TASK_RESPONSE_TYPE_OAI_CHAT, post_apply_template; each calls oaicompat_chat_params_parse on it). Only these get
-// placeholders filled (D84); every other route's body goes to its handler as the caller wrote it.
-bool takes_chat_messages(const std::string & path) {
-    return path == "/chat" || path == "/count_tokens" || path == "/apply_template";
-}
-
 // One media field of a content part: replaced when its value is exactly "lb-attachment:<name>". Returns whether it was.
 // Throws std::invalid_argument for a placeholder with no attachment of that name.
 bool fill_field(json & part, const char * holder, const char * field, const std::vector<attachment> & atts) {
@@ -262,18 +257,6 @@ bool fill_field(json & part, const char * holder, const char * field, const std:
         }
     }
     throw std::invalid_argument("no attachment for the placeholder \"" + s + "\"");
-}
-
-// The embeddings routes (server-context.cpp handle_embeddings_impl, post_embeddings and post_embeddings_oai): their
-// "input" (or "content") may hold OAI content parts, read by tokenize_oai_content_array. Filled too (D84).
-bool takes_embedding_content(const std::string & path) {
-    return path == "/embeddings" || path == "/embeddings_native";
-}
-
-// The routes whose handler reads uploaded files (req.files): a transcription's clip, and speech's speaker_ref
-// (server-context.cpp handle_tts_impl), which the bridge passes as the upload's files, not data URLs in the body.
-bool takes_uploads(const std::string & path) {
-    return path == "/transcriptions" || path == "/speech" || path == "/tts";
 }
 
 // One content array's media parts: image_url.url and input_audio.data, the two fields media arrives in
@@ -320,12 +303,41 @@ void write_placeholders(std::string & body, const std::vector<attachment> & atts
     if (replaced) body = j.dump_safe();
 }
 
+// RFC 3986 percent-encoding of one query component, keeping only the unreserved characters. Upstream's
+// build_query_string (server-http.cpp) also leaves sub-delimiters alone and writes a space as +; both decode alike.
+std::string encode_query_component(const std::string & s) {
+    static const char hex[] = "0123456789ABCDEF";
+    std::string out;
+    for (const unsigned char c : s) {
+        if (std::isalnum(c) || c == '-' || c == '.' || c == '_' || c == '~') {
+            out += (char) c;
+        } else {
+            out += '%';
+            out += hex[c >> 4];
+            out += hex[c & 15];
+        }
+    }
+    return out;
+}
+
 void release(lb_request * r) {
     if (r->refs.fetch_sub(1) == 1) delete r;
 }
 
-void run_request(lb_model * m, lb_request * r, server_http_context::handler_t handler,
-                 std::map<std::string, std::string> params, std::string query, std::string path, std::string body,
+// The end of a request's thread, in the one order that is safe: the terminal event, then out of the model's set (which
+// lb_model_free waits on), then the thread's reference. `m` may be freed from the erase on, so nothing touches it after.
+void finish(lb_model * m, lb_request * r, bool cancelled) {
+    r->cb(r->user, cancelled ? LB_EVENT_CANCELLED : LB_EVENT_DONE, 0, nullptr, 0);
+    {
+        std::lock_guard<std::mutex> lk(m->mtx);
+        m->requests.erase(r);
+        m->cv.notify_all();
+    }
+    release(r);
+}
+
+void run_request(lb_model * m, lb_request * r, server_http_context::handler_t handler, const lb_route & route,
+                 std::map<std::string, std::string> params, std::string query, std::string body,
                  std::vector<attachment> atts, std::string att_error, media_links links) {
     bool cancelled = false;
     {
@@ -333,7 +345,7 @@ void run_request(lb_model * m, lb_request * r, server_http_context::handler_t ha
         // URLs in the body for the rest. A bad attachment is a bad request, answered as ex_wrapper answers one (400),
         // with "lb_code": "attachment" so the SDK knows it by its code rather than by its words
         std::map<std::string, uploaded_file> files;
-        const bool uploads = takes_uploads(path);
+        const bool uploads = lb_route_takes_uploads(route);
         auto prepare = [&](const server_http_req &) -> server_http_res_ptr {
             if (!att_error.empty()) {
                 json error_data = format_error_response(att_error, ERROR_TYPE_INVALID_REQUEST);
@@ -344,8 +356,8 @@ void run_request(lb_model * m, lb_request * r, server_http_context::handler_t ha
                 return res;
             }
             if (!uploads) {
-                if (takes_chat_messages(path)) write_placeholders(body, atts, false);
-                if (takes_embedding_content(path)) write_placeholders(body, atts, true);
+                if (route.body == lb_body::chat) write_placeholders(body, atts, false);
+                if (route.body == lb_body::embeddings) write_placeholders(body, atts, true);
                 atts.clear();  // in the body now, or not wanted by this route
             }
             return nullptr;
@@ -357,7 +369,7 @@ void run_request(lb_model * m, lb_request * r, server_http_context::handler_t ha
         }
 
         // req must outlive the response: a stream keeps a pointer to it (server-stream.cpp:611-629)
-        server_http_req req{ std::move(params), {}, std::move(path), std::move(query), std::move(body), std::move(files),
+        server_http_req req{ std::move(params), {}, route.upstream_path, std::move(query), std::move(body), std::move(files),
                              r->should_stop };
         // ex_wrapper turns exceptions into an error response
         server_http_res_ptr res = failed ? std::move(failed) : handler(req);
@@ -388,15 +400,7 @@ void run_request(lb_model * m, lb_request * r, server_http_context::handler_t ha
         links.remove();
     }
 
-    r->cb(r->user, cancelled ? LB_EVENT_CANCELLED : LB_EVENT_DONE, 0, nullptr, 0);
-
-    {
-        std::lock_guard<std::mutex> lk(m->mtx);
-        m->requests.erase(r);
-        m->cv.notify_all();
-    }
-    // `m` may be freed from here on
-    release(r);
+    finish(m, r, cancelled);
 }
 
 // The WebSocket upstream's realtime handler talks to, in memory: read() takes what lb_request_send queued, send() is
@@ -435,12 +439,12 @@ private:
     lb_request * r_;
 };
 
-void run_realtime(lb_model * m, lb_request * r, server_http_context::ws_handler_t handler,
+void run_realtime(lb_model * m, lb_request * r, server_http_context::ws_handler_t handler, const lb_route & route,
                   std::map<std::string, std::string> params, std::string query) {
     {
         mem_conn conn(r);
         // req must outlive the handler, as an HTTP worker's does
-        const server_http_req req{ std::move(params), {}, "/v1/realtime", std::move(query), {}, {}, r->should_stop };
+        const server_http_req req{ std::move(params), {}, route.upstream_path, std::move(query), {}, {}, r->should_stop };
         try {
             handler(req, conn);  // returns once the conversation has ended, its threads joined
         } catch (const std::exception & e) {
@@ -453,14 +457,7 @@ void run_realtime(lb_model * m, lb_request * r, server_http_context::ws_handler_
         std::lock_guard<std::mutex> lk(r->rt_mtx);
         cancelled = !r->server_ended;  // a cancel closed it before the handler did
     }
-    r->cb(r->user, cancelled ? LB_EVENT_CANCELLED : LB_EVENT_DONE, 0, nullptr, 0);
-
-    {
-        std::lock_guard<std::mutex> lk(m->mtx);
-        m->requests.erase(r);
-        m->cv.notify_all();
-    }
-    release(r);
+    finish(m, r, cancelled);
 }
 
 }  // namespace
@@ -498,8 +495,9 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
         if (!out) return refuse(LB_ERR_INVALID_ARG, "out is NULL");
         if (n_atts > 0 && !atts) return refuse(LB_ERR_INVALID_ARG, "atts is NULL but n_atts is " + std::to_string(n_atts));
 
-        const bool realtime = std::strcmp(endpoint, kRealtime) == 0;
-        const auto it = m->endpoints.find(endpoint);
+        const lb_route * route = lb_find_route(endpoint);
+        const bool realtime = route && route->body == lb_body::websocket;
+        const auto it = route ? m->endpoints.find(route->name) : m->endpoints.end();
         if (realtime) {
             // a WebSocket: no body or attachments, the client's events come through lb_request_send
             if (body_len > 0 || n_atts > 0) {
@@ -509,7 +507,7 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
         } else if (it == m->endpoints.end()) {
             return refuse(LB_ERR_INVALID_ARG, std::string("unknown endpoint \"") + endpoint + "\"");
         }
-        const bool transcription = std::strcmp(endpoint, kTranscriptions) == 0;
+        const bool transcription = route && route->body == lb_body::transcription;
 
         // the caller's mistakes first, then every read, all before this returns (the caller may release its sources)
         for (size_t i = 0; i < n_atts; i++) {
@@ -546,7 +544,8 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
                     return refuse(LB_ERR_INVALID_ARG, "params_json \"" + item.key() + "\" must be a string");
                 }
                 params[item.key()] = item.value().get<std::string>();
-                query += (query.empty() ? "" : "&") + item.key() + "=" + params[item.key()];
+                query += (query.empty() ? "" : "&") + encode_query_component(item.key()) + "=" +
+                         encode_query_component(params[item.key()]);
             }
         }
 
@@ -554,8 +553,7 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
         std::string att_error;
         media_links links;
         // a chat's or embedding's path attachment is linked into the media root instead of read, when there is one
-        const std::string route = std::string("/") + endpoint;
-        const bool link_paths = !m->params.media_path.empty() && (takes_chat_messages(route) || takes_embedding_content(route));
+        const bool link_paths = !m->params.media_path.empty() && route && lb_route_takes_media_links(*route);
         try {
             read.reserve(n_atts);
             for (size_t i = 0; i < n_atts && att_error.empty(); i++) {
@@ -607,11 +605,12 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
         }
         try {
             if (realtime) {
-                std::thread(run_realtime, m, r, m->routes->ws_realtime, std::move(params), std::move(query)).detach();
+                std::thread(run_realtime, m, r, m->routes->ws_realtime, std::cref(*route), std::move(params),
+                            std::move(query)).detach();
             } else {
-                std::thread(run_request, m, r, it->second, std::move(params), std::move(query),
-                            std::string("/") + endpoint, std::string(body ? body : "", body ? body_len : 0),
-                            std::move(read), std::move(att_error), std::move(links)).detach();
+                std::thread(run_request, m, r, it->second, std::cref(*route), std::move(params), std::move(query),
+                            std::string(body ? body : "", body ? body_len : 0), std::move(read), std::move(att_error),
+                            std::move(links)).detach();
             }
         } catch (...) {
             std::lock_guard<std::mutex> lk(m->mtx);

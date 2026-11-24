@@ -101,7 +101,9 @@ add_subdirectory(${LB_LLAMA_DIR} llama EXCLUDE_FROM_ALL)
 add_library(llamabro SHARED
     bridge/src/runtime.cpp
     bridge/src/config.cpp
+    bridge/src/fit.cpp
     bridge/src/upstream.cpp
+    bridge/src/routes.cpp
     bridge/src/model.cpp
     bridge/src/request.cpp
 )

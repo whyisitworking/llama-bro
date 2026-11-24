@@ -6,6 +6,7 @@
 #include "ggml-backend.h"
 
 #include "config.h"
+#include "routes.h"
 #include "upstream.h"
 
 #include "server-common.h"
@@ -25,41 +26,6 @@
 #include <vector>
 
 namespace {
-
-std::map<std::string, server_http_context::handler_t> make_endpoints(server_routes & r) {
-    // the same handlers, each wrapped in ex_wrapper, as server_register_routes() in tools/server/server.cpp
-    return {
-        { "chat",           ex_wrapper(r.post_chat_completions) },
-        { "completion",     ex_wrapper(r.post_completions) },
-        { "completion_oai", ex_wrapper(r.post_completions_oai) },
-        { "control",        ex_wrapper(r.post_control) },
-        { "embeddings",     ex_wrapper(r.post_embeddings_oai) },
-        { "rerank",         ex_wrapper(r.post_rerank) },
-        { "tokenize",       ex_wrapper(r.post_tokenize) },
-        { "detokenize",     ex_wrapper(r.post_detokenize) },
-        { "count_tokens",   ex_wrapper(r.post_chat_completions_tok) },
-        { "apply_template", ex_wrapper(r.post_apply_template) },
-        { "props",          ex_wrapper(r.get_props) },
-        { "slots",          ex_wrapper(r.get_slots) },
-        { "slots_action",   ex_wrapper(r.post_slots) },
-        { "metrics",        ex_wrapper(r.get_metrics) },
-        { "infill",                 ex_wrapper(r.post_infill) },
-        { "responses",              ex_wrapper(r.post_responses_oai) },
-        { "responses_input_tokens", ex_wrapper(r.post_responses_tok_oai) },
-        { "messages",               ex_wrapper(r.post_anthropic_messages) },
-        { "messages_count_tokens",  ex_wrapper(r.post_anthropic_count_tokens) },
-        { "embeddings_native",      ex_wrapper(r.post_embeddings) },
-        { "tts",                    ex_wrapper(r.post_tts) },
-        { "speech",                 ex_wrapper(r.post_speech_oai) },
-        { "transcriptions",         ex_wrapper(r.post_transcriptions_oai) },  // the audio arrives as an attachment (F55)
-        { "systemone",              ex_wrapper(r.post_systemone) },
-        { "props_set",              ex_wrapper(r.post_props) },
-        { "models",                 ex_wrapper(r.get_models) },
-        { "health",                 ex_wrapper(r.get_health) },
-        { "lora_adapters",          ex_wrapper(r.get_lora_adapters) },
-        { "lora_adapters_set",      ex_wrapper(r.post_lora_adapters) },
-    };
-}
 
 void finish_load(lb_model * m, lb_status st, const std::string & error) {
     std::lock_guard<std::mutex> lk(m->mtx);
@@ -127,7 +93,7 @@ void worker_main(lb_model * m) {
         return;
     }
     m->routes->update_meta(m->ctx_server);
-    m->endpoints = make_endpoints(*m->routes);
+    m->endpoints = lb_make_endpoints(*m->routes);
     m->loading.store(false);
     finish_load(m, LB_OK, "");
 
@@ -138,36 +104,14 @@ void worker_main(lb_model * m) {
     m->cv.notify_all();
 }
 
-// A file that can't be opened gets its own code, so apps can tell it apart (F51). llama.cpp would fail on it too,
-// but says why only in its log.
-bool can_open(const std::string & path, std::string & err) {
-    if (path.empty()) return true;
-    FILE * f = std::fopen(path.c_str(), "rb");
-    if (!f) {
-        err = "cannot open " + path + ": " + std::strerror(errno);
-        return false;
-    }
-    std::fclose(f);
-    return true;
-}
-
-// GGUF metadata value, any length (llama_model_meta_val_str_by_index returns the full length, like snprintf)
-std::string meta_value(const llama_model * model, int32_t i) {
+// A GGUF metadata key or value, any length (llama_model_meta_*_by_index return the full length, like snprintf)
+std::string meta_string(const llama_model * model, int32_t i,
+                        int32_t (*getter)(const llama_model *, int32_t, char *, size_t)) {
     std::vector<char> buf(256);
-    int32_t n = llama_model_meta_val_str_by_index(model, i, buf.data(), buf.size());
+    int32_t n = getter(model, i, buf.data(), buf.size());
     if (n >= (int32_t) buf.size()) {
         buf.resize(n + 1);
-        n = llama_model_meta_val_str_by_index(model, i, buf.data(), buf.size());
-    }
-    return n < 0 ? std::string() : std::string(buf.data(), std::min<size_t>(n, buf.size() - 1));
-}
-
-std::string meta_key(const llama_model * model, int32_t i) {
-    std::vector<char> buf(256);
-    int32_t n = llama_model_meta_key_by_index(model, i, buf.data(), buf.size());
-    if (n >= (int32_t) buf.size()) {
-        buf.resize(n + 1);
-        n = llama_model_meta_key_by_index(model, i, buf.data(), buf.size());
+        n = getter(model, i, buf.data(), buf.size());
     }
     return n < 0 ? std::string() : std::string(buf.data(), std::min<size_t>(n, buf.size() - 1));
 }
@@ -203,28 +147,20 @@ lb_status lb_model_load(const char * config_json, lb_progress_cb cb, void * user
             lb_set_error(error_json, err);
             return LB_ERR_INVALID_ARG;
         }
-        if (!can_open(m->params.model.path, err) || !can_open(m->params.mmproj.path, err) ||
-            !can_open(m->params.speculative.draft.mparams.path, err)) {
+        if (!lb_check_model_files(m->params, err)) {
             lb_set_error(error_json, "failed to load model: " + err, "file_not_found");
             return LB_ERR_LOAD_FAILED;
         }
         lb_error_capture errors;
-        if (lb_config_wants_auto_ctx(cfg)) {
-            const int64_t budget_mib = lb_config_memory_budget_mib(cfg);
-            bool insufficient = false;
-            const uint32_t cap = lb_config_ctx_cap(cfg);
-            const bool ok = budget_mib > 0
-                ? lb_fit_auto_ctx(m->params, budget_mib * 1024 * 1024, m->ctx_fit, insufficient, err, cap)
-                : lb_resolve_auto_ctx(m->params, err, cap);
-            if (!ok) {
-                if (insufficient) {
-                    lb_set_error(error_json, "failed to load model: " + err, "insufficient_memory");
-                } else {
-                    if (!errors.first_line().empty()) err += ": " + errors.first_line();
-                    lb_set_error(error_json, "failed to load model: " + err);
-                }
-                return LB_ERR_LOAD_FAILED;
+        bool insufficient = false;
+        if (!lb_choose_ctx(cfg, m->params, m->ctx_fit, insufficient, err)) {
+            if (insufficient) {
+                lb_set_error(error_json, "failed to load model: " + err, "insufficient_memory");
+            } else {
+                if (!errors.first_line().empty()) err += ": " + errors.first_line();
+                lb_set_error(error_json, "failed to load model: " + err);
             }
+            return LB_ERR_LOAD_FAILED;
         }
         m->progress_cb = cb;
         m->progress_user = user;
@@ -274,7 +210,8 @@ lb_status lb_model_info(lb_model * m, char ** out_json, char ** error_json) {
         json metadata = json::object();
         const int32_t n_meta = llama_model_meta_count(model);
         for (int32_t i = 0; i < n_meta; i++) {
-            metadata[meta_key(model, i)] = meta_value(model, i);
+            metadata[meta_string(model, i, llama_model_meta_key_by_index)] =
+                meta_string(model, i, llama_model_meta_val_str_by_index);
         }
 
         json props = json::object();

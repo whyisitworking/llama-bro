@@ -17,9 +17,11 @@
 #define __android_log_print(prio, tag, ...) (std::fprintf(stderr, "%s: ", tag), std::fprintf(stderr, __VA_ARGS__), std::fputc('\n', stderr))
 #endif
 
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,6 +34,7 @@ jclass    g_string_class;        // java.lang.String
 jmethodID g_string_ctor;         // String(byte[], String charsetName)
 jmethodID g_string_get_bytes;    // String.getBytes(String charsetName)
 jstring   g_utf8;                // "UTF-8"
+jclass    g_oom_class;           // java.lang.OutOfMemoryError, thrown when no exception could be built
 jclass    g_native_error_class;  // NativeError
 jmethodID g_native_error_ctor;   // NativeError(int, String)
 jmethodID g_sink_on_chunk;       // RequestSink.onChunk(int, byte[])
@@ -97,11 +100,18 @@ std::string get_string(JNIEnv * env, jstring s) {
     return out;
 }
 
+// Every native that returns 0/null on failure must have an exception pending. When the message or the exception
+// cannot be built, the JVM is out of memory: report_oom may have cleared its error, so one is thrown from the cached
+// OutOfMemoryError class; if ThrowNew itself can't allocate, the runtime's own OutOfMemoryError is left pending.
 void throw_native_error(JNIEnv * env, int status, char * error_json,
                         const char * fallback = "{\"error\":\"unknown\"}") {
     jstring msg = error_json ? take_string(env, error_json) : new_string(env, fallback, std::strlen(fallback));
-    auto * ex = static_cast<jthrowable>(env->NewObject(g_native_error_class, g_native_error_ctor, (jint) status, msg));
-    env->Throw(ex);
+    jobject ex = msg ? env->NewObject(g_native_error_class, g_native_error_ctor, (jint) status, msg) : nullptr;
+    if (ex) {
+        env->Throw(static_cast<jthrowable>(ex));
+    } else if (!env->ExceptionCheck()) {
+        env->ThrowNew(g_oom_class, "llamabro: out of memory building a native error");
+    }
 }
 
 void clear_pending(JNIEnv * env) {
@@ -120,7 +130,11 @@ void log_cb(void * user, lb_log_level level, const char * text) {
     JNIEnv * env = env_for_thread();
     if (!env) return;
     jstring s = new_string(env, text, std::strlen(text));
-    if (!s) return;
+    if (!s) {
+        // a native thread must never return to native code with an exception pending: the next JNI call would abort
+        clear_pending(env);
+        return;
+    }
     env->CallVoidMethod(static_cast<jobject>(user), g_log_on_log, (jint) level, s);
     clear_pending(env);
     env->DeleteLocalRef(s);
@@ -128,27 +142,52 @@ void log_cb(void * user, lb_log_level level, const char * text) {
 
 // --- requests ----------------------------------------------------------------------------------
 
+// Shared by the callback (until the terminal event) and modelRequest (until it has the request handle), either of
+// which may be last: the request's thread can finish before lb_model_request_with returns.
 struct request_ctx {
     jobject sink;  // global ref, deleted after the terminal event
+    // A chunk that could not be handed to Kotlin (the JVM is out of memory) leaves a hole in the response: the
+    // request is cancelled and ends with onCancelled, never onDone, so the hole is not read as a whole response.
+    std::atomic<bool> broken{false};
+    std::atomic<lb_request *> req{nullptr};  // set once lb_model_request_with has returned it
 };
 
+void cancel_broken(request_ctx & ctx) {
+    ctx.broken.store(true);
+    if (lb_request * r = ctx.req.load()) lb_request_cancel(r);  // else modelRequest cancels when it has the handle
+}
+
 void request_cb(void * user, lb_event event, int http_status, const char * data, size_t len) {
-    auto * ctx = static_cast<request_ctx *>(user);
+    auto * holder = static_cast<std::shared_ptr<request_ctx> *>(user);
+    request_ctx * ctx = holder->get();
     JNIEnv * env = env_for_thread();
-    if (!env) return;
-    if (event == LB_EVENT_CHUNK) {
-        jbyteArray bytes = env->NewByteArray(static_cast<jsize>(len));
-        if (!bytes) { report_oom(env, "a response chunk"); return; }
-        env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(len), reinterpret_cast<const jbyte *>(data));
-        env->CallVoidMethod(ctx->sink, g_sink_on_chunk, (jint) http_status, bytes);
-        clear_pending(env);
-        env->DeleteLocalRef(bytes);
+    if (!env) {
+        if (event == LB_EVENT_CHUNK) cancel_broken(*ctx);
+        else delete holder;
         return;
     }
-    env->CallVoidMethod(ctx->sink, event == LB_EVENT_DONE ? g_sink_on_done : g_sink_on_cancelled);
+    if (event == LB_EVENT_CHUNK) {
+        if (ctx->broken.load()) return;
+        jbyteArray bytes = env->NewByteArray(static_cast<jsize>(len));
+        if (!bytes) {
+            report_oom(env, "a response chunk");
+            cancel_broken(*ctx);
+            return;
+        }
+        env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(len), reinterpret_cast<const jbyte *>(data));
+        env->CallVoidMethod(ctx->sink, g_sink_on_chunk, (jint) http_status, bytes);
+        // a Kotlin exception (say an OutOfMemoryError growing a whole body) loses this chunk: same hole as above
+        const bool lost = env->ExceptionCheck();
+        clear_pending(env);
+        env->DeleteLocalRef(bytes);
+        if (lost) cancel_broken(*ctx);
+        return;
+    }
+    const bool done = event == LB_EVENT_DONE && !ctx->broken.load();
+    env->CallVoidMethod(ctx->sink, done ? g_sink_on_done : g_sink_on_cancelled);
     clear_pending(env);
     env->DeleteGlobalRef(ctx->sink);
-    delete ctx;
+    delete holder;
 }
 
 // --- natives -----------------------------------------------------------------------------------
@@ -309,19 +348,23 @@ jlong modelRequest(JNIEnv * env, jobject, jlong model, jstring endpoint, jstring
         }
     }
 
-    auto * ctx = new request_ctx{ env->NewGlobalRef(sink) };
+    auto ctx = std::make_shared<request_ctx>();
+    ctx->sink = env->NewGlobalRef(sink);
+    auto * holder = new std::shared_ptr<request_ctx>(ctx);  // the callback's reference, dropped at the terminal event
     lb_request * req = nullptr;
     char * err = nullptr;
     const lb_status st = lb_model_request_with(reinterpret_cast<lb_model *>(model), ep.c_str(),
                                                params ? pj.c_str() : nullptr, b.data(), b.size(), atts.data(),
-                                               atts.size(), request_cb, ctx, &req, &err);
+                                               atts.size(), request_cb, holder, &req, &err);
     release_lent(env, lent);  // read by now (llamabro.h)
-    if (st != LB_OK) {
+    if (st != LB_OK) {  // the callback is never called
         env->DeleteGlobalRef(ctx->sink);
-        delete ctx;
+        delete holder;
         throw_native_error(env, st, err);
         return 0;
     }
+    ctx->req.store(req);  // the caller still holds its reference: req is valid even if the request has ended
+    if (ctx->broken.load()) lb_request_cancel(req);
     return reinterpret_cast<jlong>(req);
 }
 
@@ -392,6 +435,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM * vm, void *) {
     g_utf8 = static_cast<jstring>(env->NewGlobalRef(env->NewStringUTF("UTF-8")));
     if (!g_string_ctor || !g_string_get_bytes || !g_utf8) return fail("String methods");
 
+    if (!(g_oom_class = global_class(env, "java/lang/OutOfMemoryError"))) return fail("java.lang.OutOfMemoryError");
     if (!(g_native_error_class = global_class(env, "com/suhel/llamabro/spi/NativeError"))) return fail("NativeError");
     if (!(g_native_error_ctor = env->GetMethodID(g_native_error_class, "<init>", "(ILjava/lang/String;)V"))) return fail("NativeError(int, String)");
 

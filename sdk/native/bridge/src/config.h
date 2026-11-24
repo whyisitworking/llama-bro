@@ -37,3 +37,12 @@ int64_t lb_measure_ctx(common_params & params, uint32_t n_ctx, uint32_t * n_ctx_
 
 // "n_ctx_cap": the ceiling of the automatic context, 0 = the training context
 uint32_t lb_config_ctx_cap(const json & cfg);
+
+// fit.cpp, used by lb_model_load and lb_fit_estimate alike, so the two choose the same context and word a missing
+// file the same way.
+// false, with err "cannot open <path>: <errno text>", when the model, mmproj or draft file can't be opened
+bool lb_check_model_files(const common_params & params, std::string & err);
+// Sets params.n_ctx as cfg asks (see lb_config_wants_auto_ctx): the fitted context with a memory budget, else the
+// unfitted one; an explicit n_ctx stays. Returns false as lb_fit_auto_ctx / lb_resolve_auto_ctx do (`insufficient` when
+// even the minimum doesn't fit); `report` gets the fit's numbers.
+bool lb_choose_ctx(const json & cfg, common_params & params, json & report, bool & insufficient, std::string & err);

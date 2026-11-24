@@ -57,7 +57,8 @@ char * lb_runtime_backends(void);                                      // [{"nam
 // Dry-run the same model config and device fit as lb_model_load, without loading tensors. On LB_OK *out_json is a JSON
 // object with fits, n_ctx, n_ctx_min, used_min_mib, used_max_mib and budget_mib (free with lb_string_free). Fails as
 // lb_model_load does: LB_ERR_NOT_INITIALIZED, LB_ERR_INVALID_ARG for the config, LB_ERR_LOAD_FAILED (with "code":
-// "file_not_found" for a file that can't be opened; the only code it sets) when a file can't be read or measured;
+// "file_not_found" for a file that can't be opened, worded as lb_model_load words it; the only code it sets) when a
+// file can't be read or measured;
 // LB_ERR_INTERNAL for anything unexpected, out of memory included.
 lb_status lb_fit_estimate(const char * config_json, char ** out_json, char ** error_json);
 
@@ -86,7 +87,8 @@ lb_status lb_model_load(const char * config_json, lb_progress_cb cb, void * user
 // On LB_OK *out_json is {"devices","ctx_fit","speculative","n_ctx","n_ctx_train","n_params","size","desc","metadata",
 // "props"} (free with lb_string_free); LB_ERR_CLOSED while lb_model_free is waiting for in-flight requests.
 lb_status lb_model_info(lb_model * model, char ** out_json, char ** error_json);
-// endpoint: every route tools/server/server.cpp registers for one model (server_register_routes), by name:
+// endpoint: every route tools/server/server.cpp registers for one model (server_register_routes), by name (the table
+// is bridge/src/routes.cpp; each handler sees the path upstream registers, as server_http_req::path):
 //   chat (/v1/chat/completions), count_tokens (/v1/chat/completions/input_tokens), control (…/control),
 //   completion (/completion), completion_oai (/v1/completions), infill (/infill),
 //   responses (/v1/responses), responses_input_tokens (/v1/responses/input_tokens),
