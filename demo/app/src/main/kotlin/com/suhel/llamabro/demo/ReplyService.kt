@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
  * Keeps the app alive while a reply is still being written after the person left it (D59): a short foreground service
  * (`shortService`, at most about 3 minutes, no special permission) with a "Writing a reply…" notification and a Stop
  * action. It ends with the reply; when Android's limit comes first, the reply stops as Stop would stop it, keeping
- * what arrived. It is never used to hold an idle model: [BackgroundRelease] frees that.
+ * what arrived. It is never used to hold an idle model: [com.suhel.llamabro.demo.chat.BackgroundRelease] frees that.
  */
 class ReplyService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)

@@ -186,6 +186,8 @@ class ModelSheetViewModel(
     startTier: SizeTier? = null,
     /** Where a page is parsed: off the main thread. */
     private val work: CoroutineContext = Dispatchers.Default,
+    /** Whether Get asks for the notification permission first (the phone tests turn it off). */
+    val asksForNotifications: Boolean = true,
 ) : ViewModel() {
     private val repo = row.repo.lowercase()
     private val cards = CardViews(row, startTier)

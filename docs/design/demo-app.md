@@ -59,15 +59,15 @@ It has to work for two kinds of person: someone who has never heard of a model o
 ### 3.1 Packages and the layering rule
 
 The code is in packages, bottom to top; a package imports only those below it, and `ui` and the root import any
-(D144). A `LayeringTest` reads every main source file's imports and fails on an edge this list forbids, and on any
-domain package that imports the design system.
+(D144). A `LayeringTest` reads every main source file's package and import lines (and fully qualified names) and fails on an
+edge this list forbids, on any domain package that names `ui` or the design system, and on a package this table lacks.
 
 | Package | What it holds | May import |
 |---|---|---|
 | `data.settings` | The plain types the settings persist: `Knobs`, `CardSampling`, `LoadConfig`, `SearchFilters` and its parts, `Theme` | none |
 | `data` (with `data.db`) | Room, the settings, token, image and audio stores, `ChatRepository` | `data.settings` |
-| `models` | The catalog, the hub and its cache, downloads, the library, fit; `ModelInUse`, which the chat's model host implements | `data` |
-| `audio` | The microphone and its capture, `VoiceRecorder`, `VoicePlayer`, `SpeechOutput`, WAV, pause detection | `data` |
+| `models` | The catalog, the hub and its cache, downloads, the library, fit; `ModelInUse`, which the chat's model host implements | `data`, `data.settings` |
+| `audio` | The microphone and its capture, `VoiceRecorder`, `VoicePlayer`, `SpeechOutput`, WAV, pause detection | `data`, `data.settings` |
 | `chat` | `ChatEngine`, `ModelHost`, history, limits, sampling, `Think`, the reply draft, `BackgroundRelease` | `data`, `models`, `audio` |
 | `voice` | Voice mode (`VoiceConversation`), `Dictation`, `ReadAloud`, captions, transcripts, `Steps` | `chat`, `audio`, `models`, `data` |
 | `ui` | Screens and view models by feature (`ui.chat`, `ui.models`, `ui.settings`, `ui.shell`), `Screens`, the Markdown parser; domain enums (`Theme`, `Think`, `VoiceStage`) are mapped to the design system's at this edge | all, and `designsystem` |

@@ -94,7 +94,7 @@ fun ModelSheetRoute(
     val closer = remember(sheet, scope) { CardCloser(sheet, scope) }
     val close = { then: () -> Unit -> closer.close(view, then) }
     val get =
-        rememberAskNotificationsThen(screens.asksForNotifications) {
+        rememberAskNotificationsThen(viewModel.asksForNotifications) {
             viewModel.get()?.let(onStarted)
             close(onDismiss)
         }

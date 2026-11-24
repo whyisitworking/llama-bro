@@ -1,9 +1,12 @@
 package com.suhel.llamabro.demo.ui.chat
 
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -33,6 +36,7 @@ import com.suhel.llamabro.demo.voice.Transcripts
 import com.suhel.llamabro.demo.voice.VoiceConversation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,6 +53,8 @@ import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.time.ZoneId
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -96,6 +102,8 @@ class ChatViewModel(
     private val discardImages: suspend (List<String>) -> Unit,
     /** Whether a draft picture's file is still there; a restored draft drops the names whose file is gone. */
     private val draftPictureExists: (String) -> Boolean = { true },
+    /** Where a draft picture's file is (`draft/`), for its preview. */
+    private val draftFile: (String) -> File = { File(it) },
     private val zone: ZoneId = ZoneId.systemDefault(),
     private val locale: Locale = Locale.getDefault(),
     private val clock: () -> Long = System::currentTimeMillis,
@@ -535,6 +543,15 @@ class ChatViewModel(
     }
 
     private fun ComposerDraft.canTakePhoto() = attachments.size < ChatEngine.MAX_IMAGES && editing == null
+
+    /** A draft picture, downscaled once more for its 64 dp preview (the saved one is at most 1024 px). */
+    suspend fun thumbnail(name: String): ImageBitmap? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val options = BitmapFactory.Options().apply { inSampleSize = 2 } // half of 1024 px is sharp for 64 dp
+                BitmapFactory.decodeFile(draftFile(name).path, options)?.asImageBitmap()
+            }.getOrNull()
+        }
 
     fun removeAttachment(name: String) {
         updateDraft { it.copy(attachments = it.attachments - name) }

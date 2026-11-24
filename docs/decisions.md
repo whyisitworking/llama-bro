@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D143 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D144 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -158,7 +158,6 @@ its amendments to know what holds now.
 | [D100](#d100-the-demos-voice-mode-a-full-screen-view-entered-from-the-message-bar-hold-to-talk-saved-as-an-ordinary-chat) The demo's voice mode: a full-screen view entered from the message bar, hold to talk, saved as… | 2026-11-18 | [D109](#d109-captions-of-the-users-words-move-to-the-app-it-transcribes-its-own-recording-of-each-turn) |
 | [D140](#d140-the-demo-dictates-a-tap-on-the-mic-writes-speech-into-the-message-bar-a-hold-records-a-voice-message) The demo dictates: a tap on the mic writes speech into the message bar, a hold records a voice message | 2026-11-23 | |
 | [D141](#d141-the-demo-reads-a-typed-reply-aloud-on-a-model-that-speaks) The demo reads a typed reply aloud on a model that speaks | 2026-11-23 | |
-| [D144](#d144-the-demos-packages-are-layered-the-container-builds-the-screens-view-models-and-a-drafts-pictures-are-staged-apart-from-sent-ones) The demo's packages are layered, the container builds the screens' view models, and a draft's pictures are staged apart from sent ones | 2026-11-24 | |
 | [D101](#d101-the-demos-fit-is-a-formula-on-file-sizes-against-half-the-phones-total-ram-no-network-read-no-free-memory-reading) The demo's fit is a formula on file sizes against half the phone's total RAM; no network read,… | 2026-11-19 | [D116](#d116-one-models-screen-replaces-get-models-and-the-library-a-rows-fit-is-guessed-from-the-search-list-and-drawn-as-a-pace-figure) |
 | [D108](#d108-streaming-markdown-re-parses-from-the-last-top-level-block-lists-and-tables-are-not-resumed-row-by-row) Streaming markdown re-parses from the last top-level block; lists and tables are not resumed row… | 2026-11-19 | |
 | [D113](#d113-the-design-system-rule-is-tokens-anywhere-enforced-by-a-lint-rule-on-the-syntax-tree) The design-system rule is "tokens anywhere", enforced by a lint rule on the syntax tree | 2026-11-19 | |
@@ -178,6 +177,7 @@ its amendments to know what holds now.
 | [D129](#d129-the-demos-state-is-derived-a-mutable-holder-is-only-a-source) The demo's state is derived; a mutable holder is only a source | 2026-11-21 | |
 | [D130](#d130-the-models-page-is-one-page-offline-first-first-run-is-its-empty-state-labels-name-the-quant-a-download-is-the-pinned-ring-panel) The Models page is one page, offline first: first run is its empty state, labels name the quant, a download is the pinned ring panel | 2026-11-20 | |
 | [D131](#d131-a-softer-neutral-palette-cool-grey-light-dimmed-dark-replies) A softer neutral palette: cool-grey light, dimmed dark replies | 2026-11-21 | |
+| [D144](#d144-the-demos-packages-are-layered-the-container-builds-the-screens-view-models-and-a-drafts-pictures-are-staged-apart-from-sent-ones) The demo's packages are layered, the container builds the screens' view models, and a draft's pictures are staged apart from sent ones | 2026-11-24 | |
 
 **Repository and process**
 
@@ -2000,12 +2000,17 @@ file is removed), which `ModelHost` implements. The design system's enums are re
 and `VoiceStage`, mapped at the UI edge. The Markdown parser, which builds design-system blocks, is UI and moves to
 `ui.chat`; `ReplyService` and its keeper are Android entry points and move to the root. `SearchFilters.query` becomes an
 extension in `models`, which knows `DeviceFacts`. The container builds the view models and implements `ui.Screens`, so
-screens name no container; `ChatViewModel`'s audio seams (recorder, player, voice mode, dictation, read-aloud, the mic
+screens name no container, read no repository and make no view model of their own: `ui.Screens` holds view-model
+factories only (the switcher's and the chat sampling sheet's view models are scoped like the model card's, and their
+writes run on the app's scope, so a sheet that closes as it writes cannot cancel them); `ChatViewModel`'s audio seams (recorder, player, voice mode, dictation, read-aloud, the mic
 hint) are one `ChatAudio?`, null where there is no microphone or speaker. A picture picked for a draft is staged in
-`images/draft/`; sending the message moves it into `images/` (and back if the message is not stored); removing it from the
-bar or leaving the chat deletes it from the draft folder. The start-up sweep now covers `images/` as well as `audio/`
-(files no row names and older than a day), leaving `images/draft/`. A restored draft drops the names whose file is gone and
-says "A photo in your draft is gone."
-Consequences: No behaviour change except the last two. Moves were `git mv`, so history follows; the generated baseline
+`images/draft/`; sending the message moves it into `images/` (the pictures this send moved go back if the message is not
+stored; a stored message's pictures stay even when the send is cancelled); removing it from the bar, replacing the draft
+(a starter, an edit) or leaving the chat deletes it from the draft folder. The start-up sweep now covers `images/` as well
+as `audio/` (files no row names and older than a day), and in `images/draft/` only pictures older than 14 days, which an
+abandoned draft leaves. A restored draft drops the names whose file is gone and says "A photo in your draft is gone."
+Consequences: The behaviour changes are all in the draft staging: a ✕ on a picture already sent no longer deletes the
+message's file (only a draft's picture is deleted); a restored draft older than the draft sweep's age (14 days) loses
+its pictures, with the line above; and a draft picture's thumbnail is read from `images/draft/`. Nothing else changes. Moves were `git mv`, so history follows; the generated baseline
 profile under `demo/app/src/release/generated` still lists the old class names until it is regenerated. Next free IDs:
 D145, F183.

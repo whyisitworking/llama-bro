@@ -53,7 +53,19 @@ private fun ThinkLevel.hint() =
         ThinkLevel.Deep -> "Takes as long as it needs"
     }
 
-/** The engine's level as the design system draws it; the two enums list the same entries. */
-internal fun Think.level(): ThinkLevel = ThinkLevel.valueOf(name)
+/** The engine's level as the design system draws it; each `when` fails to compile when an entry is added to one enum. */
+internal fun Think.level(): ThinkLevel =
+    when (this) {
+        Think.Off -> ThinkLevel.Off
+        Think.Quick -> ThinkLevel.Quick
+        Think.Balanced -> ThinkLevel.Balanced
+        Think.Deep -> ThinkLevel.Deep
+    }
 
-internal fun ThinkLevel.think(): Think = Think.valueOf(name)
+internal fun ThinkLevel.think(): Think =
+    when (this) {
+        ThinkLevel.Off -> Think.Off
+        ThinkLevel.Quick -> Think.Quick
+        ThinkLevel.Balanced -> Think.Balanced
+        ThinkLevel.Deep -> Think.Deep
+    }

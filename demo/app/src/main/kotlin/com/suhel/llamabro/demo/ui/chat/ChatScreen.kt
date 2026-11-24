@@ -54,6 +54,7 @@ import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.demo.ui.models.ModelEntry
 import com.suhel.llamabro.demo.ui.models.ModelSheetRoute
+import com.suhel.llamabro.demo.ui.models.rememberSheetViewModelOwner
 import com.suhel.llamabro.demo.ui.shell.ChatChrome
 import com.suhel.llamabro.demo.voice.Dictation
 import com.suhel.llamabro.demo.voice.VoiceConversation
@@ -112,7 +113,6 @@ fun ChatScreen(
                 chrome.startModel,
                 styleOverride?.let(::flowOf),
                 saved,
-                context.applicationContext.contentResolver,
             )
         }
     LaunchedEffect(vm) { vm.handle.chatId.collect { if (it != 0L) chrome.onChatResolved(it) } }
@@ -198,12 +198,12 @@ fun ChatScreen(
             )
         }
     val live =
-        remember(screens) {
+        remember(vm) {
             ChatLive(
                 streaming = { streaming.value },
                 draft = { draft.value },
                 composer = { composer.value },
-                thumbnail = { name -> screens.thumbnail(name) },
+                thumbnail = vm::thumbnail,
             )
         }
 
@@ -231,10 +231,12 @@ private fun ChatSheets(
     card: String?,
     onCard: (String?) -> Unit,
 ) {
+    // the switcher's state serves the sheet and the card it opens, so it lives while either is shown
+    val switcher = if (sheet == Sheet.Switcher || card != null) rememberSwitcher(screens, vm) else null
     when (sheet) {
         Sheet.Switcher -> {
             SwitcherHost(
-                screens,
+                checkNotNull(switcher),
                 vm,
                 chrome,
                 onSampling = { onSheet(Sheet.Sampling) },
@@ -262,17 +264,8 @@ private fun ChatSheets(
             Unit
         }
     }
-    card?.let { key -> CardHost(screens, HfModel.parse(key), onDismiss = { onCard(null) }) }
+    card?.let { key -> CardHost(screens, checkNotNull(switcher), HfModel.parse(key), onDismiss = { onCard(null) }) }
 }
-
-/** A draft picture, downscaled once more for its 64 dp preview (the saved one is at most 1024 px). */
-private suspend fun Screens.thumbnail(name: String): ImageBitmap? =
-    withContext(Dispatchers.IO) {
-        runCatching {
-            val options = BitmapFactory.Options().apply { inSampleSize = 2 } // half of 1024 px is sharp for 64 dp
-            BitmapFactory.decodeFile(draftPicture(name).path, options)?.asImageBitmap()
-        }.getOrNull()
-    }
 
 /** What a limit line's button does. */
 private fun limitAction(
@@ -385,37 +378,36 @@ private fun SmallerHost(screens: Screens, vm: ChatViewModel, onDismiss: () -> Un
     )
 }
 
+/** The switcher's view model, kept while the sheet or the card it opened is shown; clear of the screen's rotation. */
+@Composable
+private fun rememberSwitcher(screens: Screens, vm: ChatViewModel): SwitcherViewModel =
+    viewModel(viewModelStoreOwner = rememberSheetViewModelOwner("switcher")) { screens.switcherViewModel(vm.handle) }
+
 @Composable
 private fun SwitcherHost(
-    screens: Screens,
+    switcher: SwitcherViewModel,
     vm: ChatViewModel,
     chrome: ChatChrome,
     onSampling: () -> Unit,
     onInfo: (HfModel) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val library by screens.models.library.collectAsStateWithLifecycle(emptyList())
+    val library by switcher.library.collectAsStateWithLifecycle()
     val current by vm.handle.current.collectAsStateWithLifecycle()
-    // the estimates follow the chip chosen in Settings › Memory (D72), which the other pane can change meanwhile
-    val chip by remember(screens) { screens.settings.settings.map { it.chip } }.collectAsStateWithLifecycle(null)
-    val facts by produceState(DeviceFacts.Fallback, chip) { value = screens.deviceFacts() }
-    val inMemory by screens.memory.inMemory.collectAsStateWithLifecycle(null)
-    val replying by screens.memory.replying.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
-    val chatId by vm.handle.chatId.collectAsStateWithLifecycle()
-    val chatSampling by remember(chatId) {
-        if (chatId == 0L) flowOf(null) else screens.chats.sampling(chatId)
-    }.collectAsStateWithLifecycle(null)
+    val facts by switcher.facts.collectAsStateWithLifecycle()
+    val inMemory by switcher.inMemory.collectAsStateWithLifecycle()
+    val replying by switcher.replying.collectAsStateWithLifecycle()
+    val chatSampling by switcher.chatSampling.collectAsStateWithLifecycle()
     ModelSwitcherSheet(
-        library = library,
+        library = library.orEmpty(),
         current = current,
         facts = facts,
         onSwitch = vm.handle::switchModel,
-        onUseForNewChats = { key -> scope.launch { screens.settings.pinDefault(key.toString()) } },
+        onUseForNewChats = { key -> switcher.pinDefault(key.toString()) },
         onInfo = onInfo,
         onGetMore = chrome.onGetModels,
         onDismiss = onDismiss,
-        memory = SheetMemory(inMemory, replying) { scope.launch { screens.memory.unload() } },
+        memory = SheetMemory(inMemory, replying, switcher::unload),
         sampling = chatSampling?.let { SheetSampling(it.values.size, onSampling) },
     )
 }
@@ -426,8 +418,8 @@ private fun SwitcherHost(
  * stays on its model. A model removed meanwhile closes the card.
  */
 @Composable
-private fun CardHost(screens: Screens, key: HfModel, onDismiss: () -> Unit) {
-    val library by screens.models.library.collectAsStateWithLifecycle(null)
+private fun CardHost(screens: Screens, switcher: SwitcherViewModel, key: HfModel, onDismiss: () -> Unit) {
+    val library by switcher.library.collectAsStateWithLifecycle()
     val shelf = library ?: return // not read yet
     val model = shelf.firstOrNull { it.key == key }
     if (model == null) {
@@ -443,19 +435,22 @@ private fun SamplingHost(screens: Screens, vm: ChatViewModel, onDismiss: () -> U
     val key by vm.handle.current.collectAsStateWithLifecycle()
     val chatId by vm.handle.chatId.collectAsStateWithLifecycle()
     val think by vm.handle.think.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
     val k = key
     if (k == null || chatId == 0L) {
         LaunchedEffect(Unit) { onDismiss() }
         return
     }
-    val layers by remember(k, chatId) { screens.sampling.chat(k, chatId) }.collectAsStateWithLifecycle(null)
+    val sampling =
+        viewModel(viewModelStoreOwner = rememberSheetViewModelOwner("sampling:$chatId:$k")) {
+            screens.chatSamplingViewModel(chatId, k)
+        }
+    val layers by sampling.layers.collectAsStateWithLifecycle()
     layers?.let { l ->
         ChatSamplingSheet(
             l,
             Thinking.thinks(think),
-            onChange = { knob, value -> scope.launch { screens.sampling.setChat(chatId, knob, value) } },
-            onReset = { scope.launch { screens.sampling.resetChat(chatId) } },
+            onChange = sampling::change,
+            onReset = sampling::reset,
             onDismiss = onDismiss,
         )
     }

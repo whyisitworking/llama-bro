@@ -1,7 +1,6 @@
 package com.suhel.llamabro.demo
 
 import android.annotation.SuppressLint
-import android.content.ContentResolver
 import android.os.StatFs
 import android.util.Log
 import androidx.datastore.core.DataStore
@@ -47,8 +46,10 @@ import com.suhel.llamabro.demo.models.WorkDownloadScheduler
 import com.suhel.llamabro.demo.models.installedModel
 import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.demo.ui.chat.ChatAudio
+import com.suhel.llamabro.demo.ui.chat.ChatSamplingViewModel
 import com.suhel.llamabro.demo.ui.chat.ChatViewModel
 import com.suhel.llamabro.demo.ui.chat.MessageStyle
+import com.suhel.llamabro.demo.ui.chat.SwitcherViewModel
 import com.suhel.llamabro.demo.ui.chat.messageStyle
 import com.suhel.llamabro.demo.ui.models.ModelEntry
 import com.suhel.llamabro.demo.ui.models.ModelSheetViewModel
@@ -102,7 +103,7 @@ class AppContainer(
      * Whether Get asks for the notification permission first; the phone tests turn it off, since a test can't answer
      * the system's dialog.
      */
-    override val asksForNotifications: Boolean = true,
+    val asksForNotifications: Boolean = true,
     val images: ImageStore = ImageStore(File(app.filesDir, "images")),
     /** How a turn reaches the model; the phone tests script timing here, the app leaves it. */
     streamer: Streamer? = null,
@@ -127,10 +128,10 @@ class AppContainer(
     /** The app's own scope: work that outlives a screen or a view model runs here, never in an ad-hoc scope. */
     val appScope: CoroutineScope get() = scope
 
-    override val chats: ChatRepository = ChatRepository(database.chatDao(), images, clock, audio)
-    override val settings: SettingsRepository = SettingsRepository(settingsStore)
+    val chats: ChatRepository = ChatRepository(database.chatDao(), images, clock, audio)
+    val settings: SettingsRepository = SettingsRepository(settingsStore)
     val host: ModelHost = ModelHost(llamaBro, { hub.installedModel(it) }, scope)
-    override val models: ModelRepository =
+    val models: ModelRepository =
         ModelRepository(hub, settings, scheduler, scope, host, chats.lastUsed(), recordsDao = database.hubCacheDao())
 
     /**
@@ -175,13 +176,13 @@ class AppContainer(
         )
 
     /** The loaded model as Settings › Memory and the model sheet show it, with Unload (D59). */
-    override val memory: ModelMemory by lazy { ModelMemory(host, engine, models.library) }
+    val memory: ModelMemory by lazy { ModelMemory(host, engine, models.library) }
 
     /**
      * Each model's and each chat's sampling values (D60), with the hub's for models the catalog lacks (D79), looked up
      * in the background on the app's scope.
      */
-    override val sampling: SamplingStore by lazy { SamplingStore(settings, chats, { hub.recommendedCard(it) }, scope) }
+    val sampling: SamplingStore by lazy { SamplingStore(settings, chats, { hub.recommendedCard(it) }, scope) }
 
     /** The SDK's search, a repo's files and a model's fit; the phone tests pass a fake in [discoveryOverride]. */
     val discovery: ModelDiscovery =
@@ -209,7 +210,7 @@ class AppContainer(
      * The memory budget (half the phone's RAM, D101) and chips, read from the SDK the first time a screen asks; the
      * chip fits use is the one chosen in Settings › Memory when this phone has it (D72).
      */
-    override suspend fun deviceFacts(): DeviceFacts =
+    suspend fun deviceFacts(): DeviceFacts =
         (facts ?: DeviceFacts.read(llamaBro).also { facts = it }).preferring(
             settings.settings
                 .first()
@@ -224,8 +225,6 @@ class AppContainer(
     fun readDeviceFacts() {
         scope.launch(Dispatchers.Default) { deviceFacts() }
     }
-
-    override fun draftPicture(name: String): File = images.draftFile(name)
 
     // ---- the screens' view models (see [Screens]) -----------------------------------------------------------------
 
@@ -258,18 +257,52 @@ class AppContainer(
         )
 
     override fun modelSheetViewModel(row: ModelEntry, onExactFit: (FitView) -> Unit, startTier: SizeTier?) =
-        ModelSheetViewModel(row, hubCache, models, ::deviceFacts, onExactFit = onExactFit, startTier = startTier)
+        ModelSheetViewModel(
+            row,
+            hubCache,
+            models,
+            ::deviceFacts,
+            onExactFit = onExactFit,
+            startTier = startTier,
+            asksForNotifications = asksForNotifications,
+        )
+
+    override fun switcherViewModel(handle: ChatEngine.ChatHandle) =
+        SwitcherViewModel(
+            library = models.library,
+            // the estimates follow the chip chosen in Settings › Memory (D72), which the other pane can change meanwhile
+            facts =
+                settings.settings
+                    .map { it.chip }
+                    .distinctUntilChanged()
+                    .map { deviceFacts() },
+            inMemory = memory.inMemory,
+            replying = memory.replying,
+            chatId = handle.chatId,
+            chatSampling = chats::sampling,
+            pinDefault = settings::pinDefault,
+            unloadModel = { memory.unload() },
+            background = scope,
+        )
+
+    override fun chatSamplingViewModel(chatId: Long, key: HfModel) =
+        ChatSamplingViewModel(
+            layers = sampling.chat(key, chatId),
+            setKnob = { knob, value -> sampling.setChat(chatId, knob, value) },
+            resetAll = { sampling.resetChat(chatId) },
+            background = scope,
+        )
 
     override fun chatViewModel(
         chatId: Long,
         startModel: HfModel?,
         styles: Flow<MessageStyle>?,
         saved: SavedStateHandle,
-        resolver: ContentResolver,
     ) = ChatViewModel(
         engine.open(chatId, startModel),
         styles ?: settings.settings.map { it.layout.messageStyle() },
-        saveImage = { images.save(it, resolver) },
+        saveImage = { images.save(it, app.contentResolver) },
+        draftFile = images::draftFile,
         discardImages = { images.deleteDrafts(it) },
         draftPictureExists = { images.draftFile(it).exists() },
         clock = clock,
