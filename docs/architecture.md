@@ -777,6 +777,15 @@ Its notifications work with no setup: the model's name, a progress bar with the 
 
 The [`download` acceptance app](../sdk/acceptance/download) keeps its own reference recipe: a `CoroutineWorker` that calls `setForeground` with a progress notification and maps `retryable` to a retry, plus an Android 14 user-initiated job variant. Killing the process and force-stopping the app both resume and verify on the test phone (F92). The application should hold its notification permission, or a force-stopped relaunch may stay in the background, where some manufacturers freeze it.
 
+### 12.8 Inside the hub
+
+`LlamaBroHub` is only the facade: the public operations, the gate a `delete` raises against a running download of what it removes, and the registry of one hub per cache folder. The rest lives in `internal/`, each part owning one thing:
+
+- **`Planner`** owns what a selection (a model and its `PlanOptions`) resolves to. `plan` resolves it online from the Hub's listing; `isCachedComplete` asks the same question of the cached listing alone. Both choose files through `select` (model files, projector, DFlash), and through `draftSelection` for another repo's draft (its DFlash file, else its model's files); every `Resolver` is built by `Planner.resolver`. This is the one place the choice is made, so `download` and `progress` choose by the same rule (`DownloadProgressAgreementTest` pins it). One consequence follows upstream's offline resolution (F82): the cached listing holds only the files on disk, so a model downloaded without its projector is Complete for the same selection asked with one.
+- **`DownloadStates`** owns what each selection shows: its `StateFlow<DownloadState>`, the selections seen (so a delete finds the ones it touches) and the first read from disk, all on `Dispatchers.IO`. The hub feeds it the transfer's progress; the disk read (`diskState`) is the only place a state is derived from files.
+- **`PlanStore`, `LocalCopies`, `CacheLookup`, `Cache`** hold the records, the installed copy, byte counts and the cache listing and removal; `Transfers` shares one transfer per selection; `BlobDownloader` fetches one blob.
+- **`HubSearch`** is the searcher behind `search`, `files`, `modelCard`, `baseModel` and `recommendedSampling`; the public types it returns (`SearchPage`, `SearchResult`, `RepoFiles`, `RecommendedSampling` and the rest) are in `HubSearchResults.kt`.
+
 ---
 
 ## 13. Threading and lifecycle

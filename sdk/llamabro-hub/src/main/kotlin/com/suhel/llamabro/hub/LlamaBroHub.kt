@@ -14,37 +14,26 @@ import com.suhel.llamabro.hub.internal.AndroidStorage
 import com.suhel.llamabro.hub.internal.BlobDownloader
 import com.suhel.llamabro.hub.internal.Cache
 import com.suhel.llamabro.hub.internal.CacheLookup
+import com.suhel.llamabro.hub.internal.DownloadStates
 import com.suhel.llamabro.hub.internal.HttpTransport
 import com.suhel.llamabro.hub.internal.LocalCopies
 import com.suhel.llamabro.hub.internal.Locks
 import com.suhel.llamabro.hub.internal.NetworkFailures
 import com.suhel.llamabro.hub.internal.PlanStore
+import com.suhel.llamabro.hub.internal.Planner
 import com.suhel.llamabro.hub.internal.ProgressMeter
-import com.suhel.llamabro.hub.internal.RepoListing
-import com.suhel.llamabro.hub.internal.Resolved
-import com.suhel.llamabro.hub.internal.Resolver
 import com.suhel.llamabro.hub.internal.Storage
 import com.suhel.llamabro.hub.internal.Transfers
 import com.suhel.llamabro.hub.internal.Transport
-import com.suhel.llamabro.hub.internal.isCompleteSplit
 import com.suhel.llamabro.hub.internal.isUnreachable
 import com.suhel.llamabro.hub.internal.repoFolder
-import com.suhel.llamabro.hub.internal.resolvePlan
 import com.suhel.llamabro.spi.LogcatLogger
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineExceptionHandler
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -53,12 +42,15 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
-/** Resolves and caches Hugging Face models under an app-private directory. */
+/**
+ * Resolves and caches Hugging Face models under an app-private directory. The public facade: it owns the operations
+ * (download, delete, search, sampling) and the delete gate, and wires the parts that hold the rest: the [Planner]
+ * (which files a selection is), [DownloadStates] (what each selection shows) and the cache, plan and search helpers.
+ */
 @Suppress("TooManyFunctions") // the public facade: each function is one operation of the API
 public class LlamaBroHub internal constructor(
     internal val config: HubConfig,
@@ -81,28 +73,14 @@ public class LlamaBroHub internal constructor(
     private val logger: Logger? = config.effectiveLogger(defaultLogger)
     private val degradedSymlinks = AtomicBoolean(false)
     private val transfers = Transfers()
-    private val states = ConcurrentHashMap<String, MutableStateFlow<DownloadState>>()
-    private val stateLoads = ConcurrentHashMap<String, Job>()
-
-    // The disk reads below never throw out of the scope: a failed read leaves the state as it is, never kills the app.
-    private val scope =
-        CoroutineScope(
-            SupervisorJob() + Dispatchers.IO +
-                CoroutineExceptionHandler {
-                    _,
-                    error,
-                    ->
-                    logger?.log(LogLevel.Warn, "hub state read failed: $error")
-                },
-        )
-    private val selections = ConcurrentHashMap<String, Pair<HfModel, PlanOptions>>()
 
     // The models a delete is removing now, one entry per running delete: a download of one of them fails fast.
     private val deleting = mutableListOf<HfModel>()
     private val plans: PlanStore = PlanStore(cacheDir, storage)
     private val lookup = CacheLookup(cacheDir)
-    private val copies =
-        LocalCopies(cacheDir, storage, logger)
+    private val copies = LocalCopies(cacheDir, storage, logger)
+    private val planner = Planner(config.endpoint, cacheDir, storage, lookup, plans, transport)
+    private val states = DownloadStates(plans, copies, lookup, planner, logger)
     private val searches = HubSearch(config.endpoint, cacheDir, logger)
 
     internal suspend fun operationTransport(): Transport =
@@ -195,7 +173,7 @@ public class LlamaBroHub internal constructor(
      * @throws IllegalArgumentException if [repo] is not a valid repo id.
      */
     public suspend fun files(repo: String): RepoFiles =
-        searches.files(Resolver(config.endpoint, cacheDir, operationTransport(), storage, look = true), repo)
+        searches.files(planner.resolver(operationTransport(), look = true), repo)
 
     /**
      * The model card of [repo] (the original model's repo, not a GGUF upload's): its `README.md` at `main` as
@@ -284,87 +262,7 @@ public class LlamaBroHub internal constructor(
         options: PlanOptions,
         operationTransport: Transport,
         record: Boolean = true,
-    ): HubPlan =
-        withContext(Dispatchers.IO) {
-            val resolver = Resolver(config.endpoint, cacheDir, operationTransport, storage, look = !record)
-            val listing = resolver.list(model.repo)
-            val selected =
-                resolvePlan(
-                    listing.files,
-                    model.tag.orEmpty(),
-                    model.file.orEmpty(),
-                    options.mmproj,
-                    options.draft?.from == null && options.draft != null,
-                )
-            val available = listing.files.map { it.path }.filter { it.endsWith(".gguf") }
-            if (selected.primary == null) throw noMatch(model, listing.offline, available)
-            val chosen =
-                lookup
-                    .hubFiles(
-                        selected.modelFiles,
-                        HubFile.Role.Model,
-                        model.repo,
-                        listing.commit,
-                    ).toMutableList()
-            selected.mmproj?.let {
-                chosen +=
-                    lookup.hubFiles(listOf(it), HubFile.Role.Mmproj, model.repo, listing.commit)
-            }
-            var offline = listing.offline
-            options.draft?.let { draft ->
-                val found = draftFiles(resolver, model, draft.from, selected, listing, available)
-                chosen += found.files
-                offline = offline || found.offline
-            }
-            val plan = HubPlan(model, listing.commit, chosen, offline, notesFor(listing))
-            plan.partialBytes = lookup.partialBytes(chosen)
-            if (!offline && record) plans.write(plan, options)
-            plan
-        }
-
-    /** Why nothing matched: offline, the cache only lacks it and the Hub may have it, so a worker should retry. */
-    private fun noMatch(model: HfModel, offline: Boolean, available: List<String>): HubException =
-        if (offline) {
-            HubException.Network("offline, and no cached GGUF matches $model", null, true, unreachable = true)
-        } else {
-            HubException.NotFound("no GGUF matches $model", available)
-        }
-
-    /** The draft files of a plan, and whether looking them up fell back to the cache. */
-    private class DraftFiles(val files: List<HubFile>, val offline: Boolean)
-
-    /** A DFlash draft of the model's own repo ([from] null), or the one the caller named. */
-    private suspend fun draftFiles(
-        resolver: Resolver,
-        model: HfModel,
-        from: HfModel?,
-        selected: Resolved,
-        listing: RepoListing,
-        available: List<String>,
-    ): DraftFiles {
-        if (from == null) {
-            val draft =
-                selected.dflash
-                    ?: throw HubException.NotFound(
-                        "no dflash- file in ${model.repo} for ${model.tag.orEmpty()}",
-                        available,
-                    )
-            return DraftFiles(
-                lookup.hubFiles(listOf(draft), HubFile.Role.Draft, model.repo, listing.commit),
-                listing.offline,
-            )
-        }
-        val draftListing = resolver.list(from.repo)
-        val draftSelection = resolvePlan(draftListing.files, from.tag.orEmpty(), from.file.orEmpty(), false, true)
-        val draftFiles =
-            draftSelection.dflash?.let { listOf(it) }
-                ?: draftSelection.modelFiles.takeIf { it.isNotEmpty() }
-                ?: throw HubException.NotFound("no DFlash draft or model in $from", emptyList())
-        return DraftFiles(
-            lookup.hubFiles(draftFiles, HubFile.Role.Draft, from.repo, draftListing.commit),
-            draftListing.offline,
-        )
-    }
+    ): HubPlan = planner.plan(model, options, operationTransport, record)
 
     /**
      * Shares one transfer per selection; collecting again after cancellation resumes partials. When it completes, its
@@ -378,17 +276,11 @@ public class LlamaBroHub internal constructor(
     @CheckResult
     public fun download(model: HfModel, configure: PlanOptions.() -> Unit = {}): Flow<DownloadProgress> {
         val options = PlanOptions().apply(configure)
-        val key = plans.key(model, options)
-        selections.putIfAbsent(key, model to options)
-        val state = stateFor(key, model, options)
+        val key = states.key(model, options)
+        val state = states.track(key, model, options)
         return transfers
             .join(key, run = { emit -> transfer(model, options, emit) }, onIdle = {
-                val current = state.value
-                if (current is DownloadState.Downloading) {
-                    scope.launch {
-                        state.compareAndSet(current, diskState(model, options))
-                    }
-                }
+                states.settleIdle(state, model, options)
             })
             .onEach { update ->
                 state.value =
@@ -414,82 +306,12 @@ public class LlamaBroHub internal constructor(
      */
     public fun progress(model: HfModel, configure: PlanOptions.() -> Unit = {}): StateFlow<DownloadState> {
         val options = PlanOptions().apply(configure)
-        val key = plans.key(model, options)
-        selections.putIfAbsent(key, model to options)
-        return stateFor(key, model, options)
+        return states.track(states.key(model, options), model, options)
     }
-
-    private fun stateFor(key: String, model: HfModel, options: PlanOptions): MutableStateFlow<DownloadState> =
-        states.computeIfAbsent(key) {
-            MutableStateFlow<DownloadState>(DownloadState.Absent).also { flow ->
-                stateLoads[key] =
-                    scope.launch {
-                        val loaded = diskState(model, options)
-                        ensureActive() // delete() cancels a read it would otherwise race (it sets the state itself)
-                        flow.compareAndSet(DownloadState.Absent, loaded)
-                    }
-            }
-        }
 
     /** Tests: waits until [progress]'s first read from disk is done. */
-    internal suspend fun awaitDiskState(model: HfModel, configure: PlanOptions.() -> Unit = {}) {
-        val options = PlanOptions().apply(configure)
-        val key = plans.key(model, options)
-        // for its side effect: the first call starts the read from disk that the join waits for
-        @Suppress("IgnoredReturnValue")
-        stateFor(key, model, options)
-        stateLoads[key]?.join()
-    }
-
-    private fun diskState(model: HfModel, options: PlanOptions): DownloadState {
-        // What loads is complete, whatever a later plan or an unfinished update left in the plan record (D64).
-        if (copies.installedSource(model, options) != null) return DownloadState.Complete
-        val record =
-            plans.read(model, options)
-                ?: return if (offlineComplete(model, options)) DownloadState.Complete else DownloadState.Absent
-        if (record.files.isEmpty()) return DownloadState.Absent
-        val alternate = options.draft?.from
-        val alternateCommit =
-            alternate?.let { Resolver(config.endpoint, cacheDir, transport, storage).cachedListing(it.repo)?.commit }
-        var done = 0L
-        var allComplete = true
-        for (file in record.files) {
-            val draftSource = alternate.takeIf { file.role == HubFile.Role.Draft }
-            val repo = draftSource?.repo ?: model.repo
-            val commit = if (draftSource != null) alternateCommit else record.commit
-            val held = lookup.heldBytes(repo, commit, file)
-            done += held.bytes
-            allComplete = allComplete && held.complete
-        }
-        return when {
-            allComplete -> DownloadState.Complete
-            done > 0 -> DownloadState.Partial(done, record.files.sumOf { it.size })
-            else -> DownloadState.Absent
-        }
-    }
-
-    private fun offlineComplete(model: HfModel, options: PlanOptions): Boolean {
-        val resolver = Resolver(config.endpoint, cacheDir, transport, storage)
-        val listing = resolver.cachedListing(model.repo) ?: return false
-        val selected =
-            resolvePlan(
-                listing.files,
-                model.tag.orEmpty(),
-                model.file.orEmpty(),
-                options.mmproj,
-                options.draft?.from == null && options.draft != null,
-            )
-        return isCompleteSplit(selected) && draftCached(resolver, options.draft, selected)
-    }
-
-    /** Whether the draft the options ask for, if any, can be found in the cache. */
-    private fun draftCached(resolver: Resolver, draft: DraftRequest?, selected: Resolved): Boolean {
-        if (draft == null) return true
-        val from = draft.from ?: return selected.dflash != null
-        val listing = resolver.cachedListing(from.repo) ?: return false
-        val resolved = resolvePlan(listing.files, from.tag.orEmpty(), from.file.orEmpty(), false, true)
-        return resolved.dflash != null || resolved.modelFiles.isNotEmpty()
-    }
+    internal suspend fun awaitDiskState(model: HfModel, configure: PlanOptions.() -> Unit = {}) =
+        states.awaitLoaded(model, PlanOptions().apply(configure))
 
     private suspend fun transfer(model: HfModel, options: PlanOptions, emit: suspend (DownloadProgress) -> Unit) {
         // A delete gates the model, then stops the transfers it finds; this one ran only after its transfer was
@@ -591,21 +413,13 @@ public class LlamaBroHub internal constructor(
             synchronized(deleting) { deleting += model }
             try {
                 transfers.cancel(stoppedBy(model)) { key ->
-                    selections[key]?.let { (selected, options) -> deletes(model, selected, options) } == true
+                    states.selectionOf(key)?.let { (selected, options) -> deletes(model, selected, options) } == true
                 }
                 val removed =
                     Locks.withFileLock(File(cacheDir, ".locks/${repoFolder(model.repo)}/delete.lock")) {
                         Cache(cacheDir).delete(model)
                     }
-                if (removed) {
-                    for ((key, selection) in selections) {
-                        val (selected, options) = selection
-                        if (selected.repo == model.repo || options.draft?.from?.repo == model.repo) {
-                            stateLoads[key]?.cancelAndJoin()
-                            states[key]?.value = diskState(selected, options)
-                        }
-                    }
-                }
+                if (removed) states.refreshAfterDelete(model)
                 removed
             } finally {
                 synchronized(deleting) { deleting -= model }
@@ -729,13 +543,6 @@ private fun stoppedBy(deleted: HfModel): HubException =
 
 /** The cause of the failure [LlamaBroHub.delete] ends a running download with. */
 private class DeletedWhileDownloading(model: HfModel) : CancellationException("$model was deleted")
-
-private fun notesFor(listing: RepoListing): List<String> =
-    if (listing.files.any { it.path == "preset.ini" }) {
-        listOf("preset.ini ignored: llama-server router presets aren't supported")
-    } else {
-        emptyList()
-    }
 
 /**
  * [read], or null when [model]'s repo is gated and no token is set. A configured token the repo refuses is thrown, as
