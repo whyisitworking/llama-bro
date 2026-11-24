@@ -1,6 +1,5 @@
 package com.suhel.llamabro.demo.ui.models
 
-import android.os.StatFs
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -57,11 +56,7 @@ import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.hub.HfModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.map
-import java.time.ZoneId
 
 /** The fresh install's one line over the field (docs/design/models-page.md §2), verbatim. */
 internal const val MODELS_INTRO = "Pick a model to talk to. It runs on this phone, private and offline."

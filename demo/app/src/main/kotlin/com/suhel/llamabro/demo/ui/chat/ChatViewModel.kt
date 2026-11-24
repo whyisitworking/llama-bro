@@ -8,8 +8,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.suhel.llamabro.Model
-import com.suhel.llamabro.demo.audio.SpeechOutput
 import com.suhel.llamabro.demo.audio.Take
 import com.suhel.llamabro.demo.audio.VoicePlayer
 import com.suhel.llamabro.demo.audio.VoiceRecorder
@@ -19,7 +17,6 @@ import com.suhel.llamabro.demo.chat.ClosedNotes
 import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.Limits
 import com.suhel.llamabro.demo.chat.StreamingReply
-import com.suhel.llamabro.demo.chat.VoiceChat
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.designsystem.components.ComposerState
 import com.suhel.llamabro.demo.designsystem.components.DictationBar
@@ -27,10 +24,8 @@ import com.suhel.llamabro.demo.designsystem.components.MarkdownBlocks
 import com.suhel.llamabro.demo.designsystem.components.RecordingState
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.ui.shell.ChatListFormat
-import com.suhel.llamabro.demo.voice.Dictation
 import com.suhel.llamabro.demo.voice.ReadAloud
 import com.suhel.llamabro.demo.voice.Transcripts
-import com.suhel.llamabro.demo.voice.VoiceConversation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

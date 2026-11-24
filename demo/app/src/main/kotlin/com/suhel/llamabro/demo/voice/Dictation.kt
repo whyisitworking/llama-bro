@@ -7,7 +7,6 @@ import com.suhel.llamabro.audio.TranscriptionEvent
 import com.suhel.llamabro.audio.TranscriptionSession
 import com.suhel.llamabro.demo.audio.Levels
 import com.suhel.llamabro.demo.audio.MILLIS_PER_SECOND
-import com.suhel.llamabro.demo.audio.Microphone
 import com.suhel.llamabro.demo.audio.PauseDetector
 import com.suhel.llamabro.demo.audio.RecordingFailure
 import com.suhel.llamabro.demo.audio.SampleSource

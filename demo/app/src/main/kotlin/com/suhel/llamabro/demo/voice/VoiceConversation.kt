@@ -15,7 +15,6 @@ import com.suhel.llamabro.demo.chat.Instructions
 import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.LimitAction
 import com.suhel.llamabro.demo.chat.ModelHold
-import com.suhel.llamabro.demo.chat.Thinking
 import com.suhel.llamabro.demo.chat.holdUncancelled
 import com.suhel.llamabro.demo.chat.key
 import com.suhel.llamabro.demo.data.AudioStore

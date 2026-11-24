@@ -1,55 +1,18 @@
 package com.suhel.llamabro.demo.voice
 
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
-import com.suhel.llamabro.demo.audio.SampleSource
-import com.suhel.llamabro.demo.audio.SessionFocus
-import com.suhel.llamabro.demo.audio.SpeechOutput
-import com.suhel.llamabro.demo.chat.ChatEngine
-import com.suhel.llamabro.demo.chat.FakeChatDao
-import com.suhel.llamabro.demo.chat.HostState
-import com.suhel.llamabro.demo.chat.Limits
-import com.suhel.llamabro.demo.chat.ModelHost
-import com.suhel.llamabro.demo.data.AudioStore
-import com.suhel.llamabro.demo.data.ChatRepository
-import com.suhel.llamabro.demo.data.ImageStore
-import com.suhel.llamabro.demo.data.MessageKind
-import com.suhel.llamabro.demo.data.MessageState
-import com.suhel.llamabro.demo.data.SettingsRepository
-import com.suhel.llamabro.demo.data.StoredMessage
-import com.suhel.llamabro.demo.data.VoiceTurns
 import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.letAWrongActionLand
-import com.suhel.llamabro.demo.models.FakeScheduler
-import com.suhel.llamabro.demo.models.ModelRepository
-import com.suhel.llamabro.demo.models.TestHub
-import com.suhel.llamabro.demo.models.installedModel
-import com.suhel.llamabro.hub.HfModel
-import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
-import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TemporaryFolder
-import org.junit.rules.Timeout
-import java.io.File
-import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 
 /** Hands-free voice mode and talking over a reply (D147). */
 class HandsFreeVoiceTest : VoiceConversationFixture() {

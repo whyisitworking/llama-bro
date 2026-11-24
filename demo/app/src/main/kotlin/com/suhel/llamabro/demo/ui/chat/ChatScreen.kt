@@ -7,7 +7,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -17,28 +16,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.suhel.llamabro.Model
-import com.suhel.llamabro.demo.audio.MediaVoicePlayer
-import com.suhel.llamabro.demo.audio.VoiceRecorder
 import com.suhel.llamabro.demo.chat.LimitAction
 import com.suhel.llamabro.demo.chat.Thinking
 import com.suhel.llamabro.demo.data.AppLayout
@@ -49,24 +40,14 @@ import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
-import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.demo.ui.models.ModelEntry
 import com.suhel.llamabro.demo.ui.models.ModelSheetRoute
 import com.suhel.llamabro.demo.ui.models.rememberSheetViewModelOwner
 import com.suhel.llamabro.demo.ui.shell.ChatChrome
-import com.suhel.llamabro.demo.voice.Dictation
-import com.suhel.llamabro.demo.voice.VoiceConversation
 import com.suhel.llamabro.hub.HfModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /** Sidebar writes replies on the page; Chat list puts them in bubbles (demo design §4.2). */
 fun AppLayout.messageStyle(): MessageStyle = if (this == AppLayout.Sidebar) MessageStyle.Open else MessageStyle.Bubbles

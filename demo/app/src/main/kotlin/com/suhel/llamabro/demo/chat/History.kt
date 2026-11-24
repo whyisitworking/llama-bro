@@ -5,7 +5,6 @@ import com.suhel.llamabro.MediaSource
 import com.suhel.llamabro.chat.AudioFormat
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.Message
-import com.suhel.llamabro.demo.audio.Wav
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.StoredMessage
