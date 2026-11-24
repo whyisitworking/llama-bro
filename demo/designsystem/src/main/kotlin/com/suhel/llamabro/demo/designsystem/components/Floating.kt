@@ -1,6 +1,8 @@
 package com.suhel.llamabro.demo.designsystem.components
 
+import android.graphics.RuntimeShader
 import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -33,7 +35,9 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RenderEffect
 import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
@@ -64,9 +68,18 @@ val LocalBottomOverlay = compositionLocalOf { 0.dp }
 
 /**
  * Whether a floating bar blurs the page under it (Android 12 and up, where a view can blur what it draws); below that,
- * its ground is near-solid instead.
+ * its veil is a little denser instead.
  */
 private val blurs = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+/**
+ * Whether the blur is progressive (Android 13 and up, where a view can run its own shader): its radius eases from full
+ * at the screen's edge to none past the bar, as iOS's bars do. On Android 12 one even blur is faded out instead.
+ */
+private val progressive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+
+/** How far from the screen's edge, as a share of a floating layer's height, the blur and the veil stay at full. */
+private const val HOLD = 0.5f
 
 /**
  * A screen whose content runs edge to edge under floating bars (D148): [top] (the top bar, and on some screens a
@@ -99,7 +112,7 @@ fun FloatingFrame(
             subcompose(FrameSlot.Bottom) { FloatingLayer(Edge.Bottom, ground, page, pageColor, content = bottom) }
                 .map { it.measure(bars) }
         // each layer's fade band lies over the content: the content clears the bar, not the band
-        val fade = DemoSize.edgeFade.roundToPx()
+        val fade = DemoSize.barFade.roundToPx()
         val topHeight = topBar.maxOfOrNull { it.height } ?: 0
         val bottomHeight = bottomBar.maxOfOrNull { it.height } ?: 0
         val padding =
@@ -139,7 +152,7 @@ private fun Modifier.recordInto(page: GraphicsLayer?): Modifier =
 /**
  * A floating layer at [edge]: the page under it blurred (from [page]) and veiled with [ground], then [content], with
  * the status bar's room above it (top) or the navigation bar's, and the keyboard's unless [overKeyboard] is false (the
- * tabs, which the keyboard covers), below it (bottom). Its fade band ([DemoSize.edgeFade]) lies on its inner side.
+ * tabs, which the keyboard covers), below it (bottom). Its fade band ([DemoSize.barFade]) lies on its inner side.
  */
 @Composable
 internal fun FloatingLayer(
@@ -152,6 +165,7 @@ internal fun FloatingLayer(
 ) {
     val density = LocalDensity.current
     val blur = with(density) { DemoSize.backdropBlur.toPx() }
+    val shaders = remember { if (progressive) ProgressiveBlur() else null }
     // where the layer sits in the frame, so it draws the part of the page that lies under it
     var y by remember { mutableFloatStateOf(0f) }
     Box(Modifier.fillMaxWidth().onPlaced { y = it.positionInParent().y }) {
@@ -160,29 +174,35 @@ internal fun FloatingLayer(
                 Modifier
                     .matchParentSize()
                     .graphicsLayer {
-                        renderEffect = BlurEffect(blur, blur, TileMode.Clamp)
+                        renderEffect =
+                            if (shaders != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                shaders.effect(edge, size.height, blur)
+                            } else {
+                                BlurEffect(blur, blur, TileMode.Clamp)
+                            }
                         clip = true
                     }.drawWithContent {
                         // the layer holds the page's content only: on its own ground, so the sharp page under it
                         // doesn't show through the blurred copy's clear parts
                         drawRect(pageColor)
                         translate(top = -y) { drawLayer(page) }
-                        drawRect(bandMask(edge, size.height, DemoSize.edgeFade.toPx()), blendMode = BlendMode.DstIn)
+                        // a progressive blur ends at none, the page itself; an even one is faded out into the page
+                        if (shaders == null) drawRect(eased(edge, size.height, FadeMask), blendMode = BlendMode.DstIn)
                     },
             )
         }
         Box(
             Modifier.matchParentSize().drawBehind {
-                drawRect(tint(edge, ground, page != null, size.height, DemoSize.edgeFade.toPx()))
+                drawRect(eased(edge, size.height, ground.copy(alpha = if (page != null) VEIL_ALPHA else BARE_ALPHA)))
             },
         )
         Column(Modifier.fillMaxWidth()) {
             if (edge == Edge.Top) {
                 Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
                 CompositionLocalProvider(LocalOnFloatingBar provides true) { content() }
-                Spacer(Modifier.height(DemoSize.edgeFade))
+                Spacer(Modifier.height(DemoSize.barFade))
             } else {
-                Spacer(Modifier.height(DemoSize.edgeFade))
+                Spacer(Modifier.height(DemoSize.barFade))
                 content()
                 val insets =
                     if (overKeyboard) {
@@ -198,37 +218,91 @@ internal fun FloatingLayer(
     }
 }
 
-/** Opaque over the layer, fading to clear across the fade band on its inner side. */
-private fun bandMask(edge: Edge, height: Float, fade: Float): Brush {
-    val inner = ((height - fade) / height).coerceIn(0f, 1f)
-    return if (edge == Edge.Top) {
-        Brush.verticalGradient(0f to FadeMask, inner to FadeMask, 1f to Color.Transparent, endY = height)
-    } else {
-        Brush.verticalGradient(0f to Color.Transparent, 1f - inner to FadeMask, 1f to FadeMask, endY = height)
+/** The surface's veil over a blur: translucent, never solid, even behind the status bar. */
+private const val VEIL_ALPHA = 0.55f
+
+/** The veil with no blur under it (before Android 12, the Chat list tabs): denser, so text passing under is quiet. */
+private const val BARE_ALPHA = 0.8f
+
+/**
+ * How strong a floating layer's blur and veil are at [fraction] of the way from the screen's edge to the layer's inner
+ * end: full to [HOLD], then easing (smoothstep) to none. The shader uses the same curve.
+ */
+private fun strength(fraction: Float): Float {
+    val t = ((fraction - HOLD) / (1f - HOLD)).coerceIn(0f, 1f)
+    return 1f - t * t * (3f - 2f * t)
+}
+
+/** [color] over a layer [height] tall, at [strength] from its screen edge ([edge]) inward, in even steps. */
+private fun eased(edge: Edge, height: Float, color: Color): Brush {
+    val stops =
+        Array(EASE_STEPS + 1) { i ->
+            val at = i / EASE_STEPS.toFloat()
+            val fromEdge = if (edge == Edge.Top) at else 1f - at
+            at to color.copy(alpha = color.alpha * strength(fromEdge))
+        }
+    return Brush.verticalGradient(*stops, endY = height)
+}
+
+private const val EASE_STEPS = 12
+
+/**
+ * The progressive blur (Android 13 and up): a separable Gaussian whose radius follows [strength] from the screen's
+ * edge, a horizontal pass then a vertical one, each its own runtime shader. Effects are made afresh when the layer's
+ * size changes; the shaders are kept.
+ */
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+private class ProgressiveBlur {
+    private val across = RuntimeShader(PROGRESSIVE_BLUR)
+    private val down = RuntimeShader(PROGRESSIVE_BLUR)
+
+    fun effect(edge: Edge, height: Float, radius: Float): RenderEffect {
+        for ((shader, dir) in listOf(across to (1f to 0f), down to (0f to 1f))) {
+            shader.setFloatUniform("dir", dir.first, dir.second)
+            shader.setFloatUniform("height", height)
+            shader.setFloatUniform("fromTop", if (edge == Edge.Top) 1f else 0f)
+            shader.setFloatUniform("radius", radius)
+            shader.setFloatUniform("hold", HOLD)
+        }
+        val first = android.graphics.RenderEffect.createRuntimeShaderEffect(across, "content")
+        val second = android.graphics.RenderEffect.createRuntimeShaderEffect(down, "content")
+        return android.graphics.RenderEffect
+            .createChainEffect(second, first)
+            .asComposeRenderEffect()
     }
 }
 
 /**
- * The surface's veil over the layer: translucent, never solid, even behind the status bar, so the page shows through
- * (blurred where it can be); even across the bar, then fading to clear across the band on its inner side, as the blur
- * does. With no blur under it, it is a little denser, so text passing under stays quiet.
+ * One pass of the progressive blur, along [dir]: a Gaussian of `radius` times the strength at this row (full to
+ * `hold`, then smoothstep to none at the layer's inner end), in a fixed number of taps; at no radius, the page as is.
  */
-private fun tint(
-    edge: Edge,
-    ground: Color,
-    blurred: Boolean,
-    height: Float,
-    fade: Float,
-): Brush {
-    val veil = ground.copy(alpha = if (blurred) 0.55f else 0.8f)
-    val clear = ground.copy(alpha = 0f)
-    val inner = ((height - fade) / height).coerceIn(0f, 1f)
-    return if (edge == Edge.Top) {
-        Brush.verticalGradient(0f to veil, inner to veil, 1f to clear, endY = height)
-    } else {
-        Brush.verticalGradient(0f to clear, 1f - inner to veil, 1f to veil, endY = height)
+private const val PROGRESSIVE_BLUR = """
+uniform shader content;
+uniform float2 dir;
+uniform float height;
+uniform float fromTop;
+uniform float radius;
+uniform float hold;
+
+half4 main(float2 p) {
+    float fraction = fromTop > 0.5 ? p.y / height : 1.0 - p.y / height;
+    float t = clamp((fraction - hold) / (1.0 - hold), 0.0, 1.0);
+    float r = radius * (1.0 - t * t * (3.0 - 2.0 * t));
+    if (r < 0.5) {
+        return content.eval(p);
     }
+    float sigma = r / 2.0;
+    half4 sum = half4(0.0);
+    float total = 0.0;
+    for (int i = -12; i <= 12; i++) {
+        float x = float(i) * r / 12.0;
+        float w = exp(-(x * x) / (2.0 * sigma * sigma));
+        sum += content.eval(p + dir * x) * half(w);
+        total += w;
+    }
+    return sum / half(total);
 }
+"""
 
 /**
  * A part of a floating bar as its own raised surface (D148), when [floating]: a circle round an icon, a pill round a

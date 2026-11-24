@@ -2258,11 +2258,13 @@ the message bar, so the bars read as bands cutting the page rather than as contr
 Decision: Every page's content runs edge to edge, under the status bar and the navigation bar, and scrolls on under
 floating bars (`FloatingFrame`): the top bar (with, on the Models page and the Chats home, the search field), a chat's
 message bar, the drawer's head and foot, and the Chat list layout's tabs (a raised pill, `LocalBottomOverlay` keeping
-each page's end clear of it). Under a bar the page is blurred (20 dp, from Android 12, where a view can blur what it
-draws: the page is recorded once into a layer the bars draw again) and veiled with the surface colour at 55%, never
-solid, even behind the status bar; blur and veil both fade out over a 24 dp band past the bar, so what passes under
-softens rather than cuts, as iOS's bars do. Before Android 12, and under the Chat list tabs (which float outside the
-page), there is no blur and the veil is 80%. On a
+each page's end clear of it). Under a bar the page is blurred progressively, as iOS's bars do: from Android 13 a
+runtime shader (a separable Gaussian, `PROGRESSIVE_BLUR`) blurs each row by 24 dp times a strength that is full over
+the half of the layer nearest the screen's edge and eases (smoothstep) to none at its inner end, 40 dp past the bar, so
+the blur has no edge. The page is recorded once into a layer the bars draw again, on the page's own colour. The veil,
+the surface at 55% and never solid, follows the same curve. On Android 12 one even 24 dp blur is faded out along that
+curve; before Android 12, and under the Chat list tabs (which float outside the page), there is no blur and the veil is
+80%. On a
 floating bar each icon action is its own raised circle and a title that opens something (the model switcher) its own
 raised pill, translucent (70% of the surface) so the blur shows through them; a page's plain name is text. The Models intro is the list's first item and scrolls away with it. The
 drawer (`DemoDrawer`) no longer moves: it lies on a new `panel` colour, a step lighter than the canvas in both themes,

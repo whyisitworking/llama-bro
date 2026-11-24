@@ -132,7 +132,10 @@ object DemoSize {
     val edgeFade = 24.dp
 
     /** How far the page blurs under a floating bar (D148): enough to lose its words but not its shapes, as on iOS. */
-    val backdropBlur = 20.dp
+    val backdropBlur = 24.dp
+
+    /** How far past a floating bar its blur and veil reach as they ease out (D148), so the blur ends gradually. */
+    val barFade = 40.dp
 
     /** A divider and an outline. */
     val hairline = 1.dp
