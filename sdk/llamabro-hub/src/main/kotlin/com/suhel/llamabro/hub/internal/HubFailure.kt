@@ -16,27 +16,21 @@ internal fun hubFailure(
     alsoRetryable: Set<Int> = emptySet(),
 ): HubException =
     when (val status = response.status) {
-        HTTP_UNAUTHORIZED, HTTP_FORBIDDEN -> {
+        HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN -> {
             HubException.Unauthorized(status, unauthorized)
         }
 
-        HTTP_NOT_FOUND -> {
+        HttpStatus.NOT_FOUND -> {
             HubException.NotFound(notFound, emptyList())
         }
 
-        HTTP_TOO_MANY_REQUESTS -> {
+        HttpStatus.TOO_MANY_REQUESTS -> {
             HubException.RateLimited(
                 response.headers["retry-after"]?.firstOrNull()?.toLongOrNull(),
             )
         }
 
         else -> {
-            HubException.Network(other, null, status >= HTTP_SERVER_ERROR || status in alsoRetryable)
+            HubException.Network(other, null, status >= HttpStatus.SERVER_ERROR || status in alsoRetryable)
         }
     }
-
-private const val HTTP_UNAUTHORIZED = 401
-private const val HTTP_FORBIDDEN = 403
-private const val HTTP_NOT_FOUND = 404
-private const val HTTP_TOO_MANY_REQUESTS = 429
-private const val HTTP_SERVER_ERROR = 500

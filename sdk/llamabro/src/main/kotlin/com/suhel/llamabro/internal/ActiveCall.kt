@@ -74,7 +74,7 @@ internal class ActiveCall<T>(val scope: ProducerScope<T>, private val chunks: Ch
 
             override fun onChunk(httpStatus: Int, data: ByteArray) {
                 if (failed) return
-                if (httpStatus >= HTTP_ERROR_FROM) {
+                if (httpStatus >= HttpStatus.ERROR_FROM) {
                     fail(ErrorMapping.fromBody(httpStatus, String(data, Charsets.UTF_8)))
                 } else if (mode == BodyMode.Each) {
                     scope.trySend(chunks.of(data))
@@ -153,6 +153,3 @@ internal sealed interface Chunks<T> {
         override fun of(text: String): ByteArray = text.encodeToByteArray()
     }
 }
-
-/** From this HTTP status up, a response is an error. */
-private const val HTTP_ERROR_FROM = 400

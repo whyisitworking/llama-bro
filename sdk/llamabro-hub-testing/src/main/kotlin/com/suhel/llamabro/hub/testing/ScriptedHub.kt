@@ -107,7 +107,8 @@ internal class ScriptedHub(endpoint: String) : Transport {
             if (offline) throw IOException("FakeLlamaBroHub is offline")
             if (rateLimited > 0) {
                 rateLimited--
-                return@synchronized answer(url, HTTP_TOO_MANY, "{}", retryAfter?.let { mapOf("retry-after" to "$it") })
+                val retryHeaders = retryAfter?.let { mapOf("retry-after" to "$it") }
+                return@synchronized answer(url, TOO_MANY_REQUESTS, "{}", retryHeaders)
             }
             route(method, url, range, rangeEnd, job)
         }
@@ -130,7 +131,7 @@ internal class ScriptedHub(endpoint: String) : Transport {
         val history = repos[id]
         return when {
             (!api && !resolve) || history == null -> notFound(url)
-            history.last().repo.gated -> answer(url, HTTP_UNAUTHORIZED, """{"error":"gated"}""")
+            history.last().repo.gated -> answer(url, UNAUTHORIZED, """{"error":"gated"}""")
             api -> api(url, id, history, path.drop(API_REPO_PARTS))
             else -> resolve(method, url, history, path, Range(range, rangeEnd), job)
         }
@@ -141,7 +142,7 @@ internal class ScriptedHub(endpoint: String) : Transport {
         val latest = history.last()
         return when {
             tail.isEmpty() -> {
-                answer(url, HTTP_OK, info(id, latest).toString())
+                answer(url, OK, info(id, latest).toString())
             }
 
             tail == listOf("refs") -> {
@@ -154,13 +155,13 @@ internal class ScriptedHub(endpoint: String) : Transport {
                             }
                         }
                     }
-                answer(url, HTTP_OK, refs.toString())
+                answer(url, OK, refs.toString())
             }
 
             tail.size == 2 && tail[0] == "tree" -> {
                 history
                     .firstOrNull { it.id == tail[1] }
-                    ?.let { answer(url, HTTP_OK, tree(it).toString()) }
+                    ?.let { answer(url, OK, tree(it).toString()) }
                     ?: notFound(url)
             }
 
@@ -185,9 +186,9 @@ internal class ScriptedHub(endpoint: String) : Transport {
         val file = commit?.files?.firstOrNull { it.path == name } ?: return notFound(url)
         val size = file.bytes.size.toLong()
         val head = mapOf("accept-ranges" to listOf("bytes"))
-        if (method == "HEAD") return Response(HTTP_OK, head + length(size), url, null) {}
+        if (method == "HEAD") return Response(OK, head + length(size), url, null) {}
         val start = range.first ?: 0L
-        if (start >= size && size > 0) return answer(url, HTTP_RANGE_NOT_SATISFIABLE, "")
+        if (start >= size && size > 0) return answer(url, RANGE_NOT_SATISFIABLE, "")
         val end = minOf(range.last ?: (size - 1), size - 1)
         val slice = file.bytes.copyOfRange(start.toInt(), (end + 1).toInt())
         // a header read (bounded) answers at once; a download is paced so its progress can be seen
@@ -200,9 +201,14 @@ internal class ScriptedHub(endpoint: String) : Transport {
             }
         val headers = head + length(slice.size.toLong())
         return if (range.first == null) {
-            Response(HTTP_OK, headers, url, body) {}
+            Response(OK, headers, url, body) {}
         } else {
-            Response(HTTP_PARTIAL, headers + ("content-range" to listOf("bytes $start-$end/$size")), url, body) {}
+            Response(
+                PARTIAL_CONTENT,
+                headers + ("content-range" to listOf("bytes $start-$end/$size")),
+                url,
+                body,
+            ) {}
         }
     }
 
@@ -239,7 +245,7 @@ internal class ScriptedHub(endpoint: String) : Transport {
             } else {
                 null
             }
-        return answer(url, HTTP_OK, items.toString(), link)
+        return answer(url, OK, items.toString(), link)
     }
 
     /** When [id] was created: its first commit's order. */
@@ -311,7 +317,7 @@ internal class ScriptedHub(endpoint: String) : Transport {
 
     private fun length(size: Long) = mapOf("content-length" to listOf("$size"))
 
-    private fun notFound(url: String) = answer(url, HTTP_NOT_FOUND, """{"error":"not found"}""")
+    private fun notFound(url: String) = answer(url, NOT_FOUND, """{"error":"not found"}""")
 
     private fun answer(url: String, status: Int, body: String, headers: Map<String, String>? = null): Response {
         val bytes = body.toByteArray(Charsets.UTF_8)
@@ -330,12 +336,6 @@ internal class ScriptedHub(endpoint: String) : Transport {
             }
 
     private companion object {
-        const val HTTP_OK = 200
-        const val HTTP_PARTIAL = 206
-        const val HTTP_UNAUTHORIZED = 401
-        const val HTTP_NOT_FOUND = 404
-        const val HTTP_RANGE_NOT_SATISFIABLE = 416
-        const val HTTP_TOO_MANY = 429
         const val API_REPO_PARTS = 4
         const val RESOLVE_PARTS = 5
         const val REVISION = 3 // owner, name, "resolve", revision
@@ -500,3 +500,11 @@ internal object Gguf {
 }
 
 private fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(Locale.ROOT, it) }
+
+// the scripted hub's own statuses: a test double stays independent of the code it stands in for
+private const val OK = 200
+private const val PARTIAL_CONTENT = 206
+private const val UNAUTHORIZED = 401
+private const val NOT_FOUND = 404
+private const val RANGE_NOT_SATISFIABLE = 416
+private const val TOO_MANY_REQUESTS = 429

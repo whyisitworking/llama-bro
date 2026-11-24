@@ -15,7 +15,6 @@ import kotlinx.serialization.json.jsonPrimitive
  * numbers (server-context.cpp send_error).
  */
 internal object ErrorMapping {
-    private const val HTTP_OK = 200
     private val json = Json { ignoreUnknownKeys = true }
 
     /**
@@ -177,11 +176,15 @@ internal object ErrorMapping {
         }
 
     fun unreadable(what: String, e: Throwable): LlamaBroException.ServerError =
-        LlamaBroException.ServerError(HTTP_OK, "llama-server sent a $what reply the SDK can't read: ${e.message}", e)
+        LlamaBroException.ServerError(
+            HttpStatus.OK,
+            "llama-server sent a $what reply the SDK can't read: ${e.message}",
+            e,
+        )
 
     /** A reply the SDK can't read for a reason of its own, with no exception behind it (D136). */
     fun unreadable(what: String, detail: String): LlamaBroException.ServerError =
-        LlamaBroException.ServerError(HTTP_OK, "llama-server sent a $what reply the SDK can't read: $detail")
+        LlamaBroException.ServerError(HttpStatus.OK, "llama-server sent a $what reply the SDK can't read: $detail")
 
     /** The message of a C API error JSON (`{"error": "..."}`). */
     fun nativeMessage(errorJson: String): String =

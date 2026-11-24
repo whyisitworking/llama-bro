@@ -172,13 +172,23 @@ internal class BlobDownloader(
 
         /** Why this answer to a (resumed) request can't be used, or null when it can. */
         private suspend fun rejection(response: Response, start: Long): HubException? {
-            if (start > 0 && response.status != 206) {
-                if (response.status != 416 && response.status != 200) return statusError(response, file.path)
+            if (start > 0 && response.status != HttpStatus.PARTIAL_CONTENT) {
+                if (response.status != HttpStatus.RANGE_NOT_SATISFIABLE &&
+                    response.status != HttpStatus.OK
+                ) {
+                    return statusError(response, file.path)
+                }
                 // The server won't resume this partial: it went, and a try from the first byte can work.
                 discardPartial()
                 return HubException.Network("HTTP ${response.status} resuming ${file.path}; restarting", null, true)
             }
-            return if (response.status == 200 || response.status == 206) null else statusError(response, file.path)
+            return if (response.status == HttpStatus.OK ||
+                response.status == HttpStatus.PARTIAL_CONTENT
+            ) {
+                null
+            } else {
+                statusError(response, file.path)
+            }
         }
 
         private suspend fun copy(body: InputStream, start: Long, digest: MessageDigest) {
@@ -280,11 +290,10 @@ internal class BlobDownloader(
             unauthorized = "access denied: $path",
             notFound = "file not found: $path",
             other = "HTTP ${response.status} for $path",
-            alsoRetryable = setOf(HTTP_RANGE_NOT_SATISFIABLE),
+            alsoRetryable = setOf(HttpStatus.RANGE_NOT_SATISFIABLE),
         )
 
     private companion object {
-        const val HTTP_RANGE_NOT_SATISFIABLE = 416
         const val MAX_ATTEMPTS = 3
         const val RETRY_BACKOFF_MS = 2_000L
         const val MID_BODY_BYTES = 2L * 1024 * 1024

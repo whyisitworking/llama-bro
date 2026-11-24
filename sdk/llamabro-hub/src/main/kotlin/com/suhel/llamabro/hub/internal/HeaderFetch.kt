@@ -71,9 +71,9 @@ internal class HeaderFetch(private val endpoint: String, private val transport: 
     /** Where the stub continues: a server that ignores Range answers 200 from byte 0, so the stub starts again. */
     private fun positionFor(response: Response, start: Long, file: HubFile): Long =
         when (response.status) {
-            206 -> start
+            HttpStatus.PARTIAL_CONTENT -> start
 
-            200 -> 0L
+            HttpStatus.OK -> 0L
 
             else -> throw hubFailure(
                 response,

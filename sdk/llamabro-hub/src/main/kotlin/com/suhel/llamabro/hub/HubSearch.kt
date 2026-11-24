@@ -5,6 +5,7 @@ import com.suhel.llamabro.Logger
 import com.suhel.llamabro.chat.Sampling
 import com.suhel.llamabro.hub.internal.GgufHeader
 import com.suhel.llamabro.hub.internal.HeaderFetch
+import com.suhel.llamabro.hub.internal.HttpStatus
 import com.suhel.llamabro.hub.internal.Resolver
 import com.suhel.llamabro.hub.internal.Response
 import com.suhel.llamabro.hub.internal.Transport
@@ -216,8 +217,8 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
         val text =
             withContext(Dispatchers.IO) {
                 transport.open("GET", "$endpoint$repo/resolve/main/README.md").use { response ->
-                    if (response.status == HTTP_NOT_FOUND) return@use null
-                    if (response.status != HTTP_OK) throw failure(response, repo)
+                    if (response.status == HttpStatus.NOT_FOUND) return@use null
+                    if (response.status != HttpStatus.OK) throw failure(response, repo)
                     val bytes = response.body?.readAtMost(README_LIMIT_BYTES) ?: ByteArray(0)
                     String(bytes, Charsets.UTF_8)
                 }
@@ -236,7 +237,7 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
                         ?.bufferedReader()
                         ?.use { it.readText() }
                         .orEmpty()
-                if (response.status != HTTP_OK) throw failure(response, what)
+                if (response.status != HttpStatus.OK) throw failure(response, what)
                 try {
                     Answer(Json.parseToJsonElement(body), response.headers)
                 } catch (e: SerializationException) {
@@ -252,7 +253,6 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
 
     internal companion object {
         private const val README_LIMIT_BYTES = 512 * 1024
-        private const val HTTP_NOT_FOUND = 404
         private const val FRONT_MATTER_FENCE = "---"
 
         /** [card] minus a leading `---` block (to the next line that is exactly `---`) and the blank lines after it. */
@@ -267,7 +267,6 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
 
         private const val MAX_LIMIT = 100
         private const val HEADER_LIMIT_BYTES = 256L shl 20 // HeaderFetch's bound on a GGUF header
-        private const val HTTP_OK = 200
         private const val IMAGE_TASK = "image-text-to-text"
         private val EXPANDED_FIELDS =
             listOf("downloads", "likes", "tags", "pipeline_tag", "lastModified", "gguf")

@@ -129,7 +129,7 @@ internal class Resolver(
 
     /** What a non-200 answer means, or null for a 200. */
     private fun statusFailure(response: Response, body: String, repo: String): HubException? =
-        if (response.status == HTTP_OK) {
+        if (response.status == HttpStatus.OK) {
             null
         } else {
             hubFailure(
@@ -196,5 +196,3 @@ internal class Resolver(
 
 /** No route to the Hub, as opposed to an answer from it ([HubException.Network.unreachable]). */
 internal fun isUnreachable(e: Throwable): Boolean = e is IOException || (e is HubException.Network && e.unreachable)
-
-private const val HTTP_OK = 200

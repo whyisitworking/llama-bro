@@ -149,7 +149,7 @@ internal class HttpTransport(
         val stream =
             when {
                 method == "HEAD" -> null
-                status >= HTTP_ERROR_FROM -> connection.errorStream
+                status >= HttpStatus.ERROR_FROM -> connection.errorStream
                 else -> connection.inputStream
             }
         val closed = AtomicBoolean(false)
@@ -201,7 +201,6 @@ internal class HttpTransport(
     private companion object {
         val REDIRECTS = setOf(301, 302, 303, 307, 308)
         const val MAX_REDIRECTS = 10
-        const val HTTP_ERROR_FROM = 400
         val OWNED_HEADERS = setOf("authorization", "range", "user-agent", "accept-encoding")
         val warnedInvalidToken = AtomicBoolean(false)
     }

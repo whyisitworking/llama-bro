@@ -12,6 +12,7 @@ import com.suhel.llamabro.internal.ChatJson
 import com.suhel.llamabro.internal.ChatStreamDecoder
 import com.suhel.llamabro.internal.Chunks
 import com.suhel.llamabro.internal.ErrorMapping
+import com.suhel.llamabro.internal.HttpStatus
 import com.suhel.llamabro.internal.Media
 import com.suhel.llamabro.internal.MediaIo
 import com.suhel.llamabro.internal.PreEncodeSlot
@@ -185,7 +186,11 @@ public class Model internal constructor(
                         LlamaBroException.ModelClosed(e)
                     } else if (e.status == NativeError.INTERNAL) {
                         // the bridge's own failure, not the caller's mistake
-                        LlamaBroException.ServerError(HTTP_INTERNAL_ERROR, ErrorMapping.nativeMessage(e.errorJson), e)
+                        LlamaBroException.ServerError(
+                            HttpStatus.INTERNAL_ERROR,
+                            ErrorMapping.nativeMessage(e.errorJson),
+                            e,
+                        )
                     } else {
                         LlamaBroException.InvalidRequest(ErrorMapping.nativeMessage(e.errorJson), e)
                     }
@@ -332,9 +337,5 @@ public fun Model.restoreConversation(json: String, configure: Conversation.Build
             .Builder()
             .apply(saved.settings)
             .apply(configure)
-    return com.suhel.llamabro.conversation
-        .Conversation(this, saved.system, saved.messages, builder)
+    return Conversation(this, saved.system, saved.messages, builder)
 }
-
-/** The status a native failure that isn't the caller's mistake is reported with. */
-private const val HTTP_INTERNAL_ERROR = 500
