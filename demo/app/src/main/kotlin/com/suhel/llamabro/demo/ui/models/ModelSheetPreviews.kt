@@ -7,7 +7,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
-import com.suhel.llamabro.demo.chat.Markdown
 import com.suhel.llamabro.demo.designsystem.components.DialogCard
 import com.suhel.llamabro.demo.designsystem.components.DownloadStage
 import com.suhel.llamabro.demo.designsystem.components.DownloadView
@@ -16,6 +15,7 @@ import com.suhel.llamabro.demo.designsystem.components.gutterPadding
 import com.suhel.llamabro.demo.models.Capability
 import com.suhel.llamabro.demo.models.FitView
 import com.suhel.llamabro.demo.models.SizeTier
+import com.suhel.llamabro.demo.ui.chat.Markdown
 import com.suhel.llamabro.demo.ui.preview.DemoPreviews
 import com.suhel.llamabro.demo.ui.preview.PreviewFrame
 

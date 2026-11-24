@@ -1,6 +1,7 @@
 package com.suhel.llamabro.demo.chat
 
-import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
+import com.suhel.llamabro.demo.data.settings.Knob
+import com.suhel.llamabro.demo.data.settings.Knobs
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.hub.HfModel
 import org.junit.Assert.assertEquals
@@ -75,10 +76,10 @@ class SamplingSettingsTest {
 
     @Test fun theReplyLimitIsTheAnswersShareAndTheThinkingBudget() {
         assertEquals(2_048, Thinking.replyTokens(null))
-        assertEquals(2_048, Thinking.replyTokens(ThinkLevel.Off))
-        assertEquals(2_560, Thinking.replyTokens(ThinkLevel.Quick))
-        assertEquals(4_096, Thinking.replyTokens(ThinkLevel.Balanced))
-        assertEquals(8_192, Thinking.replyTokens(ThinkLevel.Deep))
+        assertEquals(2_048, Thinking.replyTokens(Think.Off))
+        assertEquals(2_560, Thinking.replyTokens(Think.Quick))
+        assertEquals(4_096, Thinking.replyTokens(Think.Balanced))
+        assertEquals(8_192, Thinking.replyTokens(Think.Deep))
     }
 
     @Test fun anotherSizeOfACatalogModelUsesItsCard() {

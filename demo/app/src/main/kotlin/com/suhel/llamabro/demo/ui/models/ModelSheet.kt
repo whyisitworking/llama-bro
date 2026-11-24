@@ -22,7 +22,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.suhel.llamabro.demo.AppContainer
 import com.suhel.llamabro.demo.designsystem.components.DemoDialog
 import com.suhel.llamabro.demo.designsystem.components.DemoSheet
 import com.suhel.llamabro.demo.designsystem.components.DemoSheetState
@@ -61,6 +60,7 @@ import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 import com.suhel.llamabro.demo.models.FitView
 import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.SizeTier
+import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -74,7 +74,7 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun ModelSheetRoute(
-    container: AppContainer,
+    screens: Screens,
     row: ModelEntry,
     onStarted: (HfModel) -> Unit,
     onDismiss: () -> Unit,
@@ -84,14 +84,7 @@ fun ModelSheetRoute(
 ) {
     val viewModel =
         viewModel(viewModelStoreOwner = rememberSheetViewModelOwner("sheet:${row.repo}")) {
-            ModelSheetViewModel(
-                row,
-                container.hubCache,
-                container.models,
-                container::deviceFacts,
-                onExactFit = onExactFit,
-                startTier = startTier,
-            )
+            screens.modelSheetViewModel(row, onExactFit, startTier)
         }
     val view by viewModel.view.collectAsStateWithLifecycle()
     val problem by viewModel.problem.collectAsStateWithLifecycle()
@@ -101,7 +94,7 @@ fun ModelSheetRoute(
     val closer = remember(sheet, scope) { CardCloser(sheet, scope) }
     val close = { then: () -> Unit -> closer.close(view, then) }
     val get =
-        rememberAskNotificationsThen(container.asksForNotifications) {
+        rememberAskNotificationsThen(screens.asksForNotifications) {
             viewModel.get()?.let(onStarted)
             close(onDismiss)
         }

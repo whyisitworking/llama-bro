@@ -9,11 +9,11 @@ import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.DeviceKind
-import com.suhel.llamabro.demo.chat.Knob
-import com.suhel.llamabro.demo.chat.Knobs
 import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.SamplingLayers
 import com.suhel.llamabro.demo.data.AppLayout
+import com.suhel.llamabro.demo.data.settings.Knob
+import com.suhel.llamabro.demo.data.settings.Knobs
 import com.suhel.llamabro.demo.designsystem.components.ComposerState
 import com.suhel.llamabro.demo.designsystem.components.LimitLine
 import com.suhel.llamabro.demo.designsystem.components.SheetFrame

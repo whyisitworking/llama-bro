@@ -13,6 +13,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import com.suhel.llamabro.demo.data.settings.FiltersChange
+import com.suhel.llamabro.demo.data.settings.SearchFilters
+import com.suhel.llamabro.demo.data.settings.SearchOrder
+import com.suhel.llamabro.demo.data.settings.SizeFilter
 import com.suhel.llamabro.demo.designsystem.components.ChoiceChips
 import com.suhel.llamabro.demo.designsystem.components.DemoSheet
 import com.suhel.llamabro.demo.designsystem.components.Gap
@@ -30,10 +34,6 @@ import com.suhel.llamabro.demo.designsystem.components.Unfold
 import com.suhel.llamabro.demo.designsystem.components.rememberDemoSheetState
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
-import com.suhel.llamabro.demo.models.FiltersChange
-import com.suhel.llamabro.demo.models.SearchFilters
-import com.suhel.llamabro.demo.models.SearchOrder
-import com.suhel.llamabro.demo.models.SizeFilter
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
 import java.math.RoundingMode

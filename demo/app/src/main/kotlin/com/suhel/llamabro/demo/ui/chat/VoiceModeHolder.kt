@@ -1,7 +1,7 @@
 package com.suhel.llamabro.demo.ui.chat
 
 import com.suhel.llamabro.demo.chat.VoiceChat
-import com.suhel.llamabro.demo.chat.VoiceConversation
+import com.suhel.llamabro.demo.voice.VoiceConversation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

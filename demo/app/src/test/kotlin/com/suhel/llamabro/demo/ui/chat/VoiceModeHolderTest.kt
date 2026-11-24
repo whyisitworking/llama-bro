@@ -3,11 +3,11 @@ package com.suhel.llamabro.demo.ui.chat
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.suhel.llamabro.demo.chat.FakeChatDao
 import com.suhel.llamabro.demo.chat.VoiceChat
-import com.suhel.llamabro.demo.chat.VoiceConversation
 import com.suhel.llamabro.demo.data.AudioStore
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.SettingsRepository
+import com.suhel.llamabro.demo.voice.VoiceConversation
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

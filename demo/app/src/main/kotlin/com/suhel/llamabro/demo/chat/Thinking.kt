@@ -3,8 +3,10 @@ package com.suhel.llamabro.demo.chat
 import com.suhel.llamabro.ModelInfo
 import com.suhel.llamabro.chat.Reasoning
 import com.suhel.llamabro.demo.data.ReplyLength
-import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.models.CatalogEntry
+
+/** How much a model thinks before it answers (demo design §4.4); the UI shows it as the design system's level. */
+enum class Think { Off, Quick, Balanced, Deep }
 
 /** How a Think level reaches the model (demo design §4.4). */
 object Thinking {
@@ -23,19 +25,19 @@ object Thinking {
     private const val LONG_REPLY_TOKENS = 8_192
 
     /** Whether a turn at [level] thinks; null is a model that can't. */
-    fun thinks(level: ThinkLevel?): Boolean = level != null && level != ThinkLevel.Off
+    fun thinks(level: Think?): Boolean = level != null && level != Think.Off
 
     /**
      * The whole reply's length limit at [level], thinking and answer together (D60, F113): the answer's share plus the
      * level's thinking budget. A small model that loops ends here, as "Stopped at the length limit", instead of
      * running until Stop; Continue picks the reply up again.
      */
-    fun replyTokens(level: ThinkLevel?): Int =
+    fun replyTokens(level: Think?): Int =
         when (level) {
-            null, ThinkLevel.Off -> ANSWER_TOKENS
-            ThinkLevel.Quick -> ANSWER_TOKENS + QUICK_TOKENS
-            ThinkLevel.Balanced -> ANSWER_TOKENS + BALANCED_TOKENS
-            ThinkLevel.Deep -> DEEP_REPLY_TOKENS
+            null, Think.Off -> ANSWER_TOKENS
+            Think.Quick -> ANSWER_TOKENS + QUICK_TOKENS
+            Think.Balanced -> ANSWER_TOKENS + BALANCED_TOKENS
+            Think.Deep -> DEEP_REPLY_TOKENS
         }
 
     /**
@@ -44,7 +46,7 @@ object Thinking {
      * reply can stop while it still thinks, and Continue goes on; null, for No limit, sends none: the reply runs until
      * the model stops or the context is full.
      */
-    fun replyTokens(level: ThinkLevel?, length: ReplyLength): Int? =
+    fun replyTokens(level: Think?, length: ReplyLength): Int? =
         when (length) {
             ReplyLength.Automatic -> replyTokens(level)
             ReplyLength.Short -> SHORT_REPLY_TOKENS
@@ -64,26 +66,26 @@ object Thinking {
     }
 
     /** The request's reasoning settings for [level]: Off turns thinking off; the others turn it on with a budget. */
-    fun reasoning(level: ThinkLevel): Reasoning = Reasoning.Default.copy { configure(level, this) }
+    fun reasoning(level: Think): Reasoning = Reasoning.Default.copy { configure(level, this) }
 
     /** Writes [level]'s settings into a request's reasoning builder. */
-    fun configure(level: ThinkLevel, builder: Reasoning.Builder) {
+    fun configure(level: Think, builder: Reasoning.Builder) {
         when (level) {
-            ThinkLevel.Off -> {
+            Think.Off -> {
                 builder.enableThinking = false
             }
 
-            ThinkLevel.Quick -> {
+            Think.Quick -> {
                 builder.enableThinking = true
                 builder.budgetTokens = QUICK_TOKENS
             }
 
-            ThinkLevel.Balanced -> {
+            Think.Balanced -> {
                 builder.enableThinking = true
                 builder.budgetTokens = BALANCED_TOKENS
             }
 
-            ThinkLevel.Deep -> {
+            Think.Deep -> {
                 builder.enableThinking = true
             }
         }

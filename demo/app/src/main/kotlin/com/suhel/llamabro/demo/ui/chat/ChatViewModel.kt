@@ -8,22 +8,17 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.Model
+import com.suhel.llamabro.demo.audio.SpeechOutput
+import com.suhel.llamabro.demo.audio.Take
+import com.suhel.llamabro.demo.audio.VoicePlayer
+import com.suhel.llamabro.demo.audio.VoiceRecorder
 import com.suhel.llamabro.demo.chat.ChatEngine
 import com.suhel.llamabro.demo.chat.ChatModelState
 import com.suhel.llamabro.demo.chat.ClosedNotes
-import com.suhel.llamabro.demo.chat.Dictation
 import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.Limits
-import com.suhel.llamabro.demo.chat.Markdown
-import com.suhel.llamabro.demo.chat.ReadAloud
-import com.suhel.llamabro.demo.chat.SpeechOutput
 import com.suhel.llamabro.demo.chat.StreamingReply
-import com.suhel.llamabro.demo.chat.Take
-import com.suhel.llamabro.demo.chat.Transcripts
 import com.suhel.llamabro.demo.chat.VoiceChat
-import com.suhel.llamabro.demo.chat.VoiceConversation
-import com.suhel.llamabro.demo.chat.VoicePlayer
-import com.suhel.llamabro.demo.chat.VoiceRecorder
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.designsystem.components.ComposerState
 import com.suhel.llamabro.demo.designsystem.components.DictationBar
@@ -32,6 +27,10 @@ import com.suhel.llamabro.demo.designsystem.components.RecordingState
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.ui.shell.ChatListFormat
+import com.suhel.llamabro.demo.voice.Dictation
+import com.suhel.llamabro.demo.voice.ReadAloud
+import com.suhel.llamabro.demo.voice.Transcripts
+import com.suhel.llamabro.demo.voice.VoiceConversation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -93,6 +92,7 @@ class ChatViewModel(
     /** How the rows are laid out, as the layout setting says (Settings › Layout can change it while a chat is open). */
     private val styles: Flow<MessageStyle>,
     private val saveImage: suspend (Uri) -> String,
+    /** Deletes a draft's pictures (removed from the bar, or left with a draft nobody sent). */
     private val discardImages: suspend (List<String>) -> Unit,
     private val zone: ZoneId = ZoneId.systemDefault(),
     private val locale: Locale = Locale.getDefault(),
@@ -106,24 +106,15 @@ class ChatViewModel(
     private val savedState: SavedStateHandle,
     /** The app's scope: work that must finish after this view model is gone (deleting a draft's pictures). */
     private val background: CoroutineScope,
-    /** Records voice messages (D76); null where there is no microphone (most tests). */
-    private val recorder: VoiceRecorder? = null,
-    /** Plays the chat's voice messages (D76). */
-    val player: VoicePlayer = VoicePlayer.None,
-    /** Starts voice mode in a chat (D100); null where there is no microphone (most tests). */
-    voiceModeStart: ((VoiceChat) -> VoiceConversation)? = null,
-    /** Starts a dictation over a held model in a language (D140); null where there is no microphone (most tests). */
-    dictationStart: ((Model, String?) -> Dictation)? = null,
-    /** The language dictation listens for, as Settings › Voice says (null: the model tells). */
-    dictationLanguage: suspend () -> String? = { null },
-    /** Whether the mic's one-time hint still shows, and its "seen" (D140). */
-    micHint: Flow<Boolean> = flowOf(false),
-    onMicHintSeen: suspend () -> Unit = {},
-    /** Where read-aloud speech plays, at a rate (D141); null where there is no speaker (most tests). */
-    speech: ((rate: Int) -> SpeechOutput)? = null,
-    /** The voice chosen in Settings › Voice, for read-aloud. */
-    chosenVoice: suspend () -> String? = { null },
+    /** The chat's audio features (D76, D100, D140, D141); null where there is no microphone or speaker (most tests). */
+    audio: ChatAudio? = null,
 ) : ViewModel() {
+    private val recorder: VoiceRecorder? = audio?.recorder
+
+    /** Plays the chat's voice messages (D76). */
+    val player: VoicePlayer = audio?.player ?: VoicePlayer.None
+
+    // each message's parse, by id; rebuilt from the messages now listed on every emission, so it never outgrows the chat
     private val parsed = HashMap<Long, Pair<String, MarkdownBlocks>>()
 
     private fun itemsFor(style: MessageStyle) =
@@ -144,6 +135,7 @@ class ChatViewModel(
             handle.name,
             styles.distinctUntilChanged(),
         ) { messages, model, name, style ->
+            parsed.keys.retainAll(messages.mapTo(HashSet()) { it.id })
             val waiting =
                 when (model) {
                     is ChatModelState.Downloading -> name
@@ -246,7 +238,7 @@ class ChatViewModel(
 
     /** Voice mode (D100): the full-screen view over the chat while it is open. */
     val voiceMode =
-        VoiceModeHolder(viewModelScope, voiceModeStart, handle::voiceChat) { handle.messages.value.isNotEmpty() }
+        VoiceModeHolder(viewModelScope, audio?.voiceModeStart, handle::voiceChat) { handle.messages.value.isNotEmpty() }
 
     /** The note the person closed; the line leaves it out (the engine's own limit is left as it is). */
     val notes = ClosedNotes()
@@ -255,26 +247,26 @@ class ChatViewModel(
 
     /** The bar's dictation (D140); null without a microphone. */
     val dictation: DictationComposer? =
-        dictationStart?.let { start ->
+        audio?.dictationStart?.let { start ->
             DictationComposer(
                 viewModelScope,
                 hold = handle::holdModel,
                 newDictation = start,
-                language = dictationLanguage,
+                language = audio.dictationLanguage,
                 canDictate = {
                     hears.value && !handle.busy.value && voice?.take?.value == null && draft.value.editing == null
                 },
                 onText = { heard -> updateDraft { it.copy(text = Transcripts.insert(it.text, heard)) } },
-                onUsed = { background.launch { onMicHintSeen() } },
+                onUsed = { background.launch { audio.onMicHintSeen() } },
                 problem = { _problem.value = it },
             )
         }
 
     /** Reads replies aloud on a model that speaks (D141); null without a speaker. */
     val readAloud: ReadAloud? =
-        speech?.let { out ->
+        audio?.speech?.let { out ->
             // in the app's scope, as dictation is: stop() in onCleared must still run and let the speaker and model go
-            ReadAloud(background, handle::holdModel, chosenVoice, out, problem = { _problem.value = it })
+            ReadAloud(background, handle::holdModel, audio.chosenVoice, out, problem = { _problem.value = it })
         }
 
     /** The reply being read aloud, or null (always null without a speaker). */
@@ -395,9 +387,16 @@ class ChatViewModel(
     init {
         viewModelScope.launch {
             combine(
-                combine(handle.think, handle.busy, hears, talks, voice?.take ?: flowOf(null), ::BarInputs),
+                combine(
+                    handle.think.map { it?.level() },
+                    handle.busy,
+                    hears,
+                    talks,
+                    voice?.take ?: flowOf(null),
+                    ::BarInputs,
+                ),
                 dictation?.shown ?: flowOf(null),
-                micHint,
+                audio?.micHint ?: flowOf(false),
             ) { inputs, dictating, hint -> inputs.copy(dictation = dictating, micHint = hint) }
                 .collect { barInputs.value = it }
         }
@@ -489,7 +488,7 @@ class ChatViewModel(
         handle.regenerate(if (last.kind == MessageKind.Assistant) last.position else last.position + 1)
     }
 
-    fun setThink(level: ThinkLevel) = handle.setThink(level)
+    fun setThink(level: ThinkLevel) = handle.setThink(level.think())
 
     /** The system has no photo picker to open: one plain line instead of a crash. */
     fun photoPickerMissing() {
@@ -500,7 +499,7 @@ class ChatViewModel(
     fun attach(uri: Uri) = attachWith { saveImage(uri) }
 
     internal fun attachWith(save: suspend () -> String) {
-        if (draft.value.attachments.size >= MAX_IMAGES || draft.value.editing != null) return
+        if (draft.value.attachments.size >= ChatEngine.MAX_IMAGES || draft.value.editing != null) return
         viewModelScope.launch {
             val name =
                 try {
@@ -526,7 +525,7 @@ class ChatViewModel(
         }
     }
 
-    private fun ComposerDraft.canTakePhoto() = attachments.size < MAX_IMAGES && editing == null
+    private fun ComposerDraft.canTakePhoto() = attachments.size < ChatEngine.MAX_IMAGES && editing == null
 
     fun removeAttachment(name: String) {
         updateDraft { it.copy(attachments = it.attachments - name) }
@@ -604,8 +603,6 @@ class ChatViewModel(
         private const val DRAFT_TEXT_KEY = "draft.text"
         private const val DRAFT_IMAGES_KEY = "draft.images"
         private const val DRAFT_EDITING_KEY = "draft.editing"
-        private const val MAX_IMAGES = 4
-        private const val MILLIS_PER_SECOND = 1000.0
 
         /** The chat to open: the one a new chat became before the process died, else the route's [routeId]. */
         fun chatIdToOpen(savedState: SavedStateHandle, routeId: Long): Long =

@@ -1,6 +1,5 @@
 package com.suhel.llamabro.demo.ui.chat
 
-import com.suhel.llamabro.demo.chat.Markdown
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.StoredMessage

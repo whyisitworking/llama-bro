@@ -4,9 +4,9 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import com.suhel.llamabro.demo.chat.Knob
 import com.suhel.llamabro.demo.chat.KnobSource
 import com.suhel.llamabro.demo.chat.SamplingLayers
+import com.suhel.llamabro.demo.data.settings.Knob
 import com.suhel.llamabro.demo.designsystem.components.DemoSheet
 import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.QuietButton

@@ -37,13 +37,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.suhel.llamabro.Model
-import com.suhel.llamabro.demo.AppContainer
-import com.suhel.llamabro.demo.chat.Dictation
+import com.suhel.llamabro.demo.audio.MediaVoicePlayer
+import com.suhel.llamabro.demo.audio.VoiceRecorder
 import com.suhel.llamabro.demo.chat.LimitAction
-import com.suhel.llamabro.demo.chat.MediaVoicePlayer
 import com.suhel.llamabro.demo.chat.Thinking
-import com.suhel.llamabro.demo.chat.VoiceConversation
-import com.suhel.llamabro.demo.chat.VoiceRecorder
 import com.suhel.llamabro.demo.data.AppLayout
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DemoSheet
@@ -54,9 +51,12 @@ import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.designsystem.components.VoiceActions
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.SizeTier
+import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.demo.ui.models.ModelEntry
 import com.suhel.llamabro.demo.ui.models.ModelSheetRoute
 import com.suhel.llamabro.demo.ui.shell.ChatChrome
+import com.suhel.llamabro.demo.voice.Dictation
+import com.suhel.llamabro.demo.voice.VoiceConversation
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -93,7 +93,7 @@ private val ShareRequestSaver: Saver<ShareCardContent?, Any> =
  */
 @Composable
 fun ChatScreen(
-    container: AppContainer,
+    screens: Screens,
     chatId: Long,
     chrome: ChatChrome,
     modifier: Modifier = Modifier,
@@ -107,14 +107,12 @@ fun ChatScreen(
             // after process death a new chat's route still says 0: its saved state holds the id its first message made
             val saved = createSavedStateHandle()
             // a new chat opened on a model (its card's "Chat with") starts on it; the chat is made at its first message
-            chatViewModel(
-                container,
+            screens.chatViewModel(
                 ChatViewModel.chatIdToOpen(saved, chatId),
-                styleOverride?.let(::flowOf)
-                    ?: container.settings.settings.map { it.layout.messageStyle() },
-                context,
-                saved,
                 chrome.startModel,
+                styleOverride?.let(::flowOf),
+                saved,
+                context.applicationContext.contentResolver,
             )
         }
     LaunchedEffect(vm) { vm.handle.chatId.collect { if (it != 0L) chrome.onChatResolved(it) } }
@@ -200,18 +198,18 @@ fun ChatScreen(
             )
         }
     val live =
-        remember(container) {
+        remember(screens) {
             ChatLive(
                 streaming = { streaming.value },
                 draft = { draft.value },
                 composer = { composer.value },
-                thumbnail = { name -> container.thumbnail(name) },
+                thumbnail = { name -> screens.thumbnail(name) },
             )
         }
 
     ChatContent(state, live, actions, chrome.layout, style, modifier)
 
-    ChatSheets(container, vm, chrome, sheet, { sheet = it }, card, { card = it })
+    ChatSheets(screens, vm, chrome, sheet, { sheet = it }, card, { card = it })
     menu?.let { target -> MessageMenu(target, state.rows, messageActions, onDismiss = { menu = null }) }
     details?.let { position -> ReplyDetailsSheet(position, state.rows, onDismiss = { details = null }) }
     photo?.let { target ->
@@ -225,7 +223,7 @@ fun ChatScreen(
 @Composable
 @Suppress("LongParameterList") // the two sheet states and their setters, kept by the screen across rotation
 private fun ChatSheets(
-    container: AppContainer,
+    screens: Screens,
     vm: ChatViewModel,
     chrome: ChatChrome,
     sheet: Sheet?,
@@ -236,7 +234,7 @@ private fun ChatSheets(
     when (sheet) {
         Sheet.Switcher -> {
             SwitcherHost(
-                container,
+                screens,
                 vm,
                 chrome,
                 onSampling = { onSheet(Sheet.Sampling) },
@@ -249,7 +247,7 @@ private fun ChatSheets(
         }
 
         Sheet.Sampling -> {
-            SamplingHost(container, vm, onDismiss = { onSheet(null) })
+            SamplingHost(screens, vm, onDismiss = { onSheet(null) })
         }
 
         Sheet.Think -> {
@@ -257,87 +255,22 @@ private fun ChatSheets(
         }
 
         Sheet.Smaller -> {
-            SmallerHost(container, vm, onDismiss = { onSheet(null) })
+            SmallerHost(screens, vm, onDismiss = { onSheet(null) })
         }
 
         null -> {
             Unit
         }
     }
-    card?.let { key -> CardHost(container, HfModel.parse(key), onDismiss = { onCard(null) }) }
+    card?.let { key -> CardHost(screens, HfModel.parse(key), onDismiss = { onCard(null) }) }
 }
-
-private fun chatViewModel(
-    container: AppContainer,
-    chatId: Long,
-    styles: Flow<MessageStyle>,
-    context: Context,
-    saved: SavedStateHandle,
-    startModel: HfModel? = null,
-): ChatViewModel {
-    val resolver = context.applicationContext.contentResolver
-    return ChatViewModel(
-        container.engine.open(chatId, startModel),
-        styles,
-        saveImage = { container.images.save(it, resolver) },
-        discardImages = { container.images.delete(it) },
-        clock = container.clock,
-        titles = { id ->
-            if (id ==
-                0L
-            ) {
-                emptyFlow()
-            } else {
-                container.chats.chats().map { chats -> chats.firstOrNull { it.id == id }?.title }
-            }
-        },
-        savedState = saved,
-        background = container.appScope,
-        recorder = VoiceRecorder(container.audio, container.microphone, container.appScope),
-        player = MediaVoicePlayer(container.appScope),
-        voiceModeStart = { chat ->
-            VoiceConversation(
-                chat.chatId,
-                chat.key,
-                chat.name,
-                { slots, limit -> container.engine.holdModel(chat.key, chat.name, slots, limit) },
-                container.settings,
-                container.chats,
-                container.audio,
-                container.voiceMicrophone,
-                container.speech,
-                container.appScope,
-                Dispatchers.Main.immediate,
-                clock = container.clock,
-            )
-        },
-        dictationStart = container::dictation,
-        dictationLanguage = {
-            container.settings.settings
-                .first()
-                .dictationLanguage
-        },
-        micHint = container.settings.settings.map { !it.seenMicHint },
-        onMicHintSeen = { container.settings.setSeenMicHint() },
-        speech = container.speech,
-        chosenVoice = {
-            container.settings.settings
-                .first()
-                .voice
-        },
-    )
-}
-
-/** A dictation over [model] (D140): the microphone into a new recording in app storage, in [language]. */
-private fun AppContainer.dictation(model: Model, language: String?): Dictation =
-    Dictation(model, microphone, audio.file(audio.newName()), appScope, language)
 
 /** A draft picture, downscaled once more for its 64 dp preview (the saved one is at most 1024 px). */
-private suspend fun AppContainer.thumbnail(name: String): ImageBitmap? =
+private suspend fun Screens.thumbnail(name: String): ImageBitmap? =
     withContext(Dispatchers.IO) {
         runCatching {
             val options = BitmapFactory.Options().apply { inSampleSize = 2 } // half of 1024 px is sharp for 64 dp
-            BitmapFactory.decodeFile(images.file(name).path, options)?.asImageBitmap()
+            BitmapFactory.decodeFile(draftPicture(name).path, options)?.asImageBitmap()
         }.getOrNull()
     }
 
@@ -437,12 +370,12 @@ private fun openAppSettings(context: Context) {
  * "Chat with": the chat already runs this model.
  */
 @Composable
-private fun SmallerHost(container: AppContainer, vm: ChatViewModel, onDismiss: () -> Unit) {
+private fun SmallerHost(screens: Screens, vm: ChatViewModel, onDismiss: () -> Unit) {
     val current by vm.handle.current.collectAsStateWithLifecycle()
     val name by vm.handle.name.collectAsStateWithLifecycle()
     val key = current ?: return
     ModelSheetRoute(
-        container,
+        screens,
         // the chat's own file, so the card follows it rather than another quant of its repo
         ModelEntry.ofKey(key, name).copy(key = key),
         onStarted = vm.handle::switchModel,
@@ -454,35 +387,35 @@ private fun SmallerHost(container: AppContainer, vm: ChatViewModel, onDismiss: (
 
 @Composable
 private fun SwitcherHost(
-    container: AppContainer,
+    screens: Screens,
     vm: ChatViewModel,
     chrome: ChatChrome,
     onSampling: () -> Unit,
     onInfo: (HfModel) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val library by container.models.library.collectAsStateWithLifecycle(emptyList())
+    val library by screens.models.library.collectAsStateWithLifecycle(emptyList())
     val current by vm.handle.current.collectAsStateWithLifecycle()
     // the estimates follow the chip chosen in Settings › Memory (D72), which the other pane can change meanwhile
-    val chip by remember(container) { container.settings.settings.map { it.chip } }.collectAsStateWithLifecycle(null)
-    val facts by produceState(DeviceFacts.Fallback, chip) { value = container.deviceFacts() }
-    val inMemory by container.memory.inMemory.collectAsStateWithLifecycle(null)
-    val replying by container.memory.replying.collectAsStateWithLifecycle()
+    val chip by remember(screens) { screens.settings.settings.map { it.chip } }.collectAsStateWithLifecycle(null)
+    val facts by produceState(DeviceFacts.Fallback, chip) { value = screens.deviceFacts() }
+    val inMemory by screens.memory.inMemory.collectAsStateWithLifecycle(null)
+    val replying by screens.memory.replying.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val chatId by vm.handle.chatId.collectAsStateWithLifecycle()
     val chatSampling by remember(chatId) {
-        if (chatId == 0L) flowOf(null) else container.chats.sampling(chatId)
+        if (chatId == 0L) flowOf(null) else screens.chats.sampling(chatId)
     }.collectAsStateWithLifecycle(null)
     ModelSwitcherSheet(
         library = library,
         current = current,
         facts = facts,
         onSwitch = vm.handle::switchModel,
-        onUseForNewChats = { key -> scope.launch { container.settings.pinDefault(key.toString()) } },
+        onUseForNewChats = { key -> scope.launch { screens.settings.pinDefault(key.toString()) } },
         onInfo = onInfo,
         onGetMore = chrome.onGetModels,
         onDismiss = onDismiss,
-        memory = SheetMemory(inMemory, replying) { scope.launch { container.memory.unload() } },
+        memory = SheetMemory(inMemory, replying) { scope.launch { screens.memory.unload() } },
         sampling = chatSampling?.let { SheetSampling(it.values.size, onSampling) },
     )
 }
@@ -493,20 +426,20 @@ private fun SwitcherHost(
  * stays on its model. A model removed meanwhile closes the card.
  */
 @Composable
-private fun CardHost(container: AppContainer, key: HfModel, onDismiss: () -> Unit) {
-    val library by container.models.library.collectAsStateWithLifecycle(null)
+private fun CardHost(screens: Screens, key: HfModel, onDismiss: () -> Unit) {
+    val library by screens.models.library.collectAsStateWithLifecycle(null)
     val shelf = library ?: return // not read yet
     val model = shelf.firstOrNull { it.key == key }
     if (model == null) {
         LaunchedEffect(Unit) { onDismiss() }
         return
     }
-    ModelSheetRoute(container, ModelEntry.of(model), onStarted = {}, onDismiss = onDismiss, onChatWith = null)
+    ModelSheetRoute(screens, ModelEntry.of(model), onStarted = {}, onDismiss = onDismiss, onChatWith = null)
 }
 
 /** The chat's sampling sheet, at the chat's Think level; it closes if the chat has no model or no row yet. */
 @Composable
-private fun SamplingHost(container: AppContainer, vm: ChatViewModel, onDismiss: () -> Unit) {
+private fun SamplingHost(screens: Screens, vm: ChatViewModel, onDismiss: () -> Unit) {
     val key by vm.handle.current.collectAsStateWithLifecycle()
     val chatId by vm.handle.chatId.collectAsStateWithLifecycle()
     val think by vm.handle.think.collectAsStateWithLifecycle()
@@ -516,13 +449,13 @@ private fun SamplingHost(container: AppContainer, vm: ChatViewModel, onDismiss: 
         LaunchedEffect(Unit) { onDismiss() }
         return
     }
-    val layers by remember(k, chatId) { container.sampling.chat(k, chatId) }.collectAsStateWithLifecycle(null)
+    val layers by remember(k, chatId) { screens.sampling.chat(k, chatId) }.collectAsStateWithLifecycle(null)
     layers?.let { l ->
         ChatSamplingSheet(
             l,
             Thinking.thinks(think),
-            onChange = { knob, value -> scope.launch { container.sampling.setChat(chatId, knob, value) } },
-            onReset = { scope.launch { container.sampling.resetChat(chatId) } },
+            onChange = { knob, value -> scope.launch { screens.sampling.setChat(chatId, knob, value) } },
+            onReset = { scope.launch { screens.sampling.resetChat(chatId) } },
             onDismiss = onDismiss,
         )
     }

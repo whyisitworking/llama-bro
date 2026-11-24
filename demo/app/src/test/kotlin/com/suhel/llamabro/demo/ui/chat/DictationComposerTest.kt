@@ -2,10 +2,10 @@ package com.suhel.llamabro.demo.ui.chat
 
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
-import com.suhel.llamabro.demo.chat.Dictation
+import com.suhel.llamabro.demo.audio.SampleSource
 import com.suhel.llamabro.demo.chat.ModelHold
-import com.suhel.llamabro.demo.chat.SampleSource
 import com.suhel.llamabro.demo.eventually
+import com.suhel.llamabro.demo.voice.Dictation
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope

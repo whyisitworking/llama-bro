@@ -34,6 +34,8 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.lifecycle.SavedStateHandle
 import androidx.paging.testing.asSnapshot
+import com.suhel.llamabro.demo.data.settings.SearchFilters
+import com.suhel.llamabro.demo.data.settings.SizeFilter
 import com.suhel.llamabro.demo.designsystem.testing.LocalRecompositionCounter
 import com.suhel.llamabro.demo.designsystem.testing.RecompositionCounter
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
@@ -46,8 +48,6 @@ import com.suhel.llamabro.demo.models.FitView
 import com.suhel.llamabro.demo.models.Fits
 import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.RepoFile
-import com.suhel.llamabro.demo.models.SearchFilters
-import com.suhel.llamabro.demo.models.SizeFilter
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.testing.FakeDiscovery
 import com.suhel.llamabro.demo.testing.ScreenshotRule

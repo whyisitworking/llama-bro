@@ -9,7 +9,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.performTextInput
 import androidx.core.view.WindowCompat
 import com.suhel.llamabro.demo.MainActivity
-import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
+import com.suhel.llamabro.demo.data.settings.Theme
 import com.suhel.llamabro.demo.testing.TestAppRule
 import com.suhel.llamabro.demo.testing.demoRules
 import kotlinx.coroutines.runBlocking
@@ -48,9 +48,9 @@ class ChatShellTest {
             }
             return light
         }
-        runBlocking { app.container.settings.setTheme(ThemeMode.Light) }
+        runBlocking { app.container.settings.setTheme(Theme.Light) }
         compose.waitUntil(5_000) { lightIcons() } // a light app: dark icons on it, whatever the phone's own setting
-        runBlocking { app.container.settings.setTheme(ThemeMode.Dark) }
+        runBlocking { app.container.settings.setTheme(Theme.Dark) }
         compose.waitUntil(5_000) { !lightIcons() }
     }
 }

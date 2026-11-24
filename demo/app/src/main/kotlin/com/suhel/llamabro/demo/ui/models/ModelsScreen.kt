@@ -30,7 +30,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
-import com.suhel.llamabro.demo.AppContainer
+import com.suhel.llamabro.demo.data.settings.FiltersChange
+import com.suhel.llamabro.demo.data.settings.SearchFilters
+import com.suhel.llamabro.demo.data.settings.SizeFilter
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.FadeThrough
 import com.suhel.llamabro.demo.designsystem.components.Gap
@@ -50,11 +52,9 @@ import com.suhel.llamabro.demo.designsystem.components.Unfold
 import com.suhel.llamabro.demo.designsystem.components.listItemMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
-import com.suhel.llamabro.demo.models.FiltersChange
 import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.LibraryModel
-import com.suhel.llamabro.demo.models.SearchFilters
-import com.suhel.llamabro.demo.models.SizeFilter
+import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -83,7 +83,7 @@ internal const val FILTERS_CHANGED = "Changed"
  */
 @Composable
 fun ModelsRoute(
-    container: AppContainer,
+    screens: Screens,
     initialQuery: String,
     onBack: (() -> Unit)?,
     onChatWith: (HfModel) -> Unit,
@@ -92,35 +92,10 @@ fun ModelsRoute(
     initialIntro: Boolean? = null,
 ) {
     val viewModel =
-        viewModel(key = "models") {
-            ModelsViewModel(
-                hub = container.hubCache,
-                models = container.models,
-                facts = container::deviceFacts,
-                freeBytes = { StatFs(container.app.filesDir.path).availableBytes },
-                firstRunSeen = container.settings.settings.map { it.seenFirstRun },
-                markFirstRunSeen = container.settings::markFirstRunSeen,
-                startChat = { key ->
-                    // as first run's Get did: new chats use the model, and this one is made on it
-                    container.settings.setLastModel(key.toString())
-                    container.chats.createChat(key.toString())
-                },
-                initialQuery = initialQuery,
-                initialIntro = initialIntro,
-                clock = container.clock,
-                zone = ZoneId.systemDefault(),
-                io = Dispatchers.IO,
-                savedState = createSavedStateHandle(),
-                searchFilters =
-                    container.settings.settings
-                        .map { it.searchFilters }
-                        .distinctUntilChanged(),
-                saveSearchFilters = container.settings::updateSearchFilters,
-            )
-        }
+        viewModel(key = "models") { screens.modelsViewModel(initialQuery, initialIntro, createSavedStateHandle()) }
     ModelsHost(viewModel, onBack, onOpenChat) { row ->
         ModelSheetRoute(
-            container,
+            screens,
             row,
             onStarted = viewModel::started,
             onDismiss = viewModel::dismiss,

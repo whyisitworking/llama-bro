@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.chat.InMemory
-import com.suhel.llamabro.demo.chat.Knob
 import com.suhel.llamabro.demo.chat.ModelMemory
 import com.suhel.llamabro.demo.chat.SamplingLayers
 import com.suhel.llamabro.demo.chat.SamplingStore
@@ -20,10 +19,12 @@ import com.suhel.llamabro.demo.data.ReplyLength
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.TokenStore
 import com.suhel.llamabro.demo.data.loadConfig
+import com.suhel.llamabro.demo.data.settings.Knob
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.ui.theme
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
@@ -178,7 +179,7 @@ class SettingsViewModel(
 
     fun setLayout(layout: AppLayout) = viewModelScope.launch { settings.setLayout(layout) }.let { }
 
-    fun setTheme(theme: ThemeMode) = viewModelScope.launch { settings.setTheme(theme) }.let { }
+    fun setTheme(theme: ThemeMode) = viewModelScope.launch { settings.setTheme(theme.theme()) }.let { }
 
     fun pinDefault(modelKey: String?) = viewModelScope.launch { settings.pinDefault(modelKey) }.let { }
 

@@ -9,6 +9,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.unit.dp
+import com.suhel.llamabro.demo.data.settings.SearchFilters
+import com.suhel.llamabro.demo.data.settings.SearchOrder
+import com.suhel.llamabro.demo.data.settings.SizeFilter
 import com.suhel.llamabro.demo.designsystem.components.DownloadStage
 import com.suhel.llamabro.demo.designsystem.components.DownloadView
 import com.suhel.llamabro.demo.designsystem.components.SheetFrame
@@ -18,9 +21,6 @@ import com.suhel.llamabro.demo.models.DownloadRecord
 import com.suhel.llamabro.demo.models.FitView
 import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.LibraryModel
-import com.suhel.llamabro.demo.models.SearchFilters
-import com.suhel.llamabro.demo.models.SearchOrder
-import com.suhel.llamabro.demo.models.SizeFilter
 import com.suhel.llamabro.demo.ui.preview.DemoPreviews
 import com.suhel.llamabro.demo.ui.preview.DemoScreenPreviews
 import com.suhel.llamabro.demo.ui.preview.PreviewFrame

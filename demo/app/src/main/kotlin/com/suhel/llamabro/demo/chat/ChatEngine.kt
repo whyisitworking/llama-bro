@@ -20,7 +20,8 @@ import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
 import com.suhel.llamabro.demo.data.loadConfig
 import com.suhel.llamabro.demo.data.modelForNewChat
-import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
+import com.suhel.llamabro.demo.data.settings.CardSampling
+import com.suhel.llamabro.demo.data.settings.Knobs
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DownloadFailure
 import com.suhel.llamabro.demo.models.DownloadStatus
@@ -60,6 +61,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.ContinuationInterceptor
 
 /**
@@ -67,7 +70,7 @@ import kotlin.coroutines.ContinuationInterceptor
  * (D60), and whether it [continues] the cut reply that ends the conversation instead of answering a new message.
  */
 data class TurnOptions(
-    val level: ThinkLevel? = null,
+    val level: Think? = null,
     val sampling: Sampling = Sampling.Default,
     val continues: Boolean = false,
 )
@@ -124,7 +127,7 @@ internal fun modelToRestate(rows: List<StoredMessage>, position: Int, current: H
 internal fun canContinue(reply: StoredMessage, key: HfModel): Boolean =
     reply.kind == MessageKind.Assistant && reply.state == MessageState.Cut && reply.modelKey == key.toString()
 
-/** The chip the model runs on, as a reply's details name it ("NPU"). */
+/** The state of a chat's model that isn't on the phone: still arriving, its download failed, or missing. */
 internal fun missingOrDownloading(name: String, status: DownloadStatus): ChatModelState =
     when (status) {
         is DownloadStatus.Downloading, is DownloadStatus.Partial -> ChatModelState.Downloading(status)
@@ -254,9 +257,7 @@ data class VoiceChat(val chatId: Long, val key: HfModel, val name: String)
  * once, when the feature is done with it. Features acquire it through [holdUncancelled].
  */
 class ModelHold(val model: Model, private val onRelease: () -> Unit) {
-    private val released =
-        java.util.concurrent.atomic
-            .AtomicBoolean(false)
+    private val released = AtomicBoolean(false)
 
     fun release() {
         if (released.compareAndSet(false, true)) onRelease()
@@ -444,7 +445,7 @@ class ChatEngine(
         settings.settings.first().let { Instructions.system(it.instructionsAbout, it.instructionsStyle) }
 
     /** A turn at [level]: sampling from the chat, the model and the card, and the reply's length limit (D60). */
-    private suspend fun turnOptions(id: Long, key: HfModel, level: ThinkLevel?, continues: Boolean): TurnOptions {
+    private suspend fun turnOptions(id: Long, key: HfModel, level: Think?, continues: Boolean): TurnOptions {
         val layers =
             SamplingLayers(
                 card = card(key),
@@ -457,9 +458,7 @@ class ChatEngine(
     }
 
     /** The chats open now: each registers when opened and leaves when closed. */
-    private val open: MutableSet<ChatHandle> =
-        java.util.concurrent.ConcurrentHashMap
-            .newKeySet()
+    private val open: MutableSet<ChatHandle> = ConcurrentHashMap.newKeySet()
 
     /**
      * [chatId] 0 is a new chat: it is created with the first message, on [startModel] when one is given (a model card's
@@ -532,10 +531,10 @@ class ChatEngine(
         val limit: StateFlow<Limit?> = _limit.asStateFlow()
 
         // user input and engine: the Think level chosen, null for a model that can't think
-        private val _think = MutableStateFlow<ThinkLevel?>(null)
+        private val _think = MutableStateFlow<Think?>(null)
 
         /** Null when the model can't think. */
-        val think: StateFlow<ThinkLevel?> = _think.asStateFlow()
+        val think: StateFlow<Think?> = _think.asStateFlow()
 
         // the engine's own source: written by the lookup, the first send and a switch
         private val choice = MutableStateFlow<ModelChoice>(ModelChoice.Unknown)
@@ -757,7 +756,7 @@ class ChatEngine(
             }
         }
 
-        fun setThink(level: ThinkLevel) {
+        fun setThink(level: Think) {
             if (_think.value != null) _think.value = level
         }
 
@@ -997,7 +996,7 @@ class ChatEngine(
                 }
             } catch (e: CancellationException) {
                 ticker.cancel()
-                kotlinx.coroutines.withContext(NonCancellable) {
+                withContext(NonCancellable) {
                     finish(replyId, user, draft.ended(MessageState.Stopped))
                 }
                 invalidate()
@@ -1075,7 +1074,7 @@ class ChatEngine(
             val key = choice.value.key ?: return
             val catalog = Catalog.byKey(key)
             val can = if (info != null) Thinking.canThink(info, catalog) else catalog?.thinks == true
-            _think.update { current -> if (can) current ?: ThinkLevel.Off else null }
+            _think.update { current -> if (can) current ?: Think.Off else null }
         }
 
         private fun currentName(): String = choice.value.key?.let(Names::of) ?: "This model"
@@ -1089,7 +1088,7 @@ class ChatEngine(
             library.value?.firstOrNull { Catalog.byKey(it.key)?.sees == true }?.name
     }
 
-    private companion object {
+    companion object {
         /** Builder's call, settled here: at most four images per message. */
         const val MAX_IMAGES = 4
     }

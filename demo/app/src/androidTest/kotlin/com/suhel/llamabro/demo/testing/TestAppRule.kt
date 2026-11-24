@@ -2,8 +2,8 @@ package com.suhel.llamabro.demo.testing
 
 import androidx.test.platform.app.InstrumentationRegistry
 import com.suhel.llamabro.demo.AppContainer
-import com.suhel.llamabro.demo.models.SearchFilters
-import com.suhel.llamabro.demo.models.SizeFilter
+import com.suhel.llamabro.demo.data.settings.SearchFilters
+import com.suhel.llamabro.demo.data.settings.SizeFilter
 import kotlinx.coroutines.runBlocking
 import leakcanary.DetectLeaksAfterTestSuccess
 import org.junit.rules.ExternalResource

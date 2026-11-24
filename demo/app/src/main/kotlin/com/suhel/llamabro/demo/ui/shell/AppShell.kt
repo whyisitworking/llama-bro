@@ -34,7 +34,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.suhel.llamabro.demo.AppContainer
 import com.suhel.llamabro.demo.data.AppLayout
 import com.suhel.llamabro.demo.designsystem.components.BottomTabs
 import com.suhel.llamabro.demo.designsystem.components.DemoDrawer
@@ -50,6 +49,7 @@ import com.suhel.llamabro.demo.designsystem.theme.Light
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
+import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.demo.ui.models.ModelsRoute
 import com.suhel.llamabro.demo.ui.settings.AboutScreen
 import com.suhel.llamabro.demo.ui.settings.AppearanceScreen
@@ -103,32 +103,13 @@ private val settingsRoutes =
  */
 @Composable
 fun AppShell(
-    container: AppContainer,
+    screens: Screens,
     chatScreen: @Composable (chatId: Long, chrome: ChatChrome) -> Unit = { _, chrome -> EmptyChatScreen(chrome) },
     /** Called once the layout and the start screen are known (the settings and the cache scan): the splash ends. */
     onReady: () -> Unit = {},
 ) {
-    val shell =
-        viewModel {
-            ShellViewModel(
-                container.chats,
-                container.settings,
-                container.models,
-                savedState = createSavedStateHandle(),
-                deleteChat = { container.engine.delete(it) },
-            )
-        }
-    val settings =
-        viewModel {
-            SettingsViewModel(
-                container.settings,
-                container.tokenStore,
-                container.models,
-                container.memory,
-                container.sampling,
-                container::deviceFacts,
-            )
-        }
+    val shell = viewModel { screens.shellViewModel(createSavedStateHandle()) }
+    val settings = viewModel { screens.settingsViewModel() }
     val theme by shell.theme.collectAsStateWithLifecycle()
     val layout by shell.layout.collectAsStateWithLifecycle()
     val firstRun by shell.startsWithFirstRun.collectAsStateWithLifecycle()
@@ -148,7 +129,7 @@ fun AppShell(
             val shown = layout
             // first run's seen flag too: the Models page's intro is drawn from it on the first frame
             if (shown != null && start != null && seen != null) {
-                Shell(container, shown, start, shell, settings, chatScreen)
+                Shell(screens, shown, start, shell, settings, chatScreen)
                 SideEffect(onReady)
             }
         }
@@ -157,7 +138,7 @@ fun AppShell(
 
 @Composable
 private fun Shell(
-    container: AppContainer,
+    screens: Screens,
     layout: AppLayout,
     startsWithFirstRun: Boolean,
     shell: ShellViewModel,
@@ -228,7 +209,7 @@ private fun Shell(
                     },
                 ) {
                     Graph(
-                        container,
+                        screens,
                         nav,
                         start,
                         current,
@@ -249,7 +230,7 @@ private fun Shell(
                         Modifier.weight(1f),
                     ) {
                         Graph(
-                            container,
+                            screens,
                             nav,
                             start,
                             current,
@@ -281,7 +262,7 @@ private fun Shell(
 
 @Composable
 private fun Graph(
-    container: AppContainer,
+    screens: Screens,
     nav: NavHostController,
     start: String,
     layout: AppLayout,
@@ -368,7 +349,7 @@ private fun Graph(
             // Back only when something is under the page: a fresh install starts here (models-page design §2)
             val under = remember(entry) { nav.previousBackStackEntry != null }
             ModelsRoute(
-                container,
+                screens,
                 entry.arguments?.getString(Routes.QUERY_ARG).orEmpty(),
                 onBack = if (under) back else null,
                 onChatWith = chatWith,

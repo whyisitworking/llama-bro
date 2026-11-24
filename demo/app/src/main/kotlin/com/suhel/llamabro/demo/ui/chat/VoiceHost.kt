@@ -9,11 +9,13 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.suhel.llamabro.demo.chat.LimitAction
-import com.suhel.llamabro.demo.chat.VoiceConversation
 import com.suhel.llamabro.demo.designsystem.components.LimitLine
 import com.suhel.llamabro.demo.designsystem.components.VoiceDialog
+import com.suhel.llamabro.demo.designsystem.components.VoicePhase
 import com.suhel.llamabro.demo.designsystem.components.VoiceViewActions
 import com.suhel.llamabro.demo.designsystem.components.VoiceViewState
+import com.suhel.llamabro.demo.voice.VoiceConversation
+import com.suhel.llamabro.demo.voice.VoiceStage
 
 /**
  * Voice mode over the chat (demo design §4.8, D100): [conversation]'s state in the design system's voice view, named
@@ -40,7 +42,7 @@ fun VoiceHost(
         VoiceViewState(
             model,
             ui.voice,
-            ui.phase,
+            ui.phase.view(),
             ui.level,
             ui.userWords,
             ui.caption,
@@ -73,3 +75,11 @@ fun VoiceOverlay(vm: ChatViewModel, model: String, onLimitAction: (LimitAction) 
 
 /** Upstream's conversation starts without the chat's earlier messages (D100): said once, quietly. */
 private const val FRESH_NOTE = "Voice starts fresh: it doesn't see the messages above."
+
+private fun VoiceStage.view(): VoicePhase =
+    when (this) {
+        VoiceStage.Ready -> VoicePhase.Ready
+        VoiceStage.Listening -> VoicePhase.Listening
+        VoiceStage.Thinking -> VoicePhase.Thinking
+        VoiceStage.Speaking -> VoicePhase.Speaking
+    }

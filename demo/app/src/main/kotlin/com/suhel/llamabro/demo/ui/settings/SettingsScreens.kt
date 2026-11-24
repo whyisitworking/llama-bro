@@ -39,6 +39,7 @@ import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.LibraryModel
+import com.suhel.llamabro.demo.ui.mode
 
 /** A settings screen: a top bar with Back and the parts of its body a section apart, on the gutter. */
 @Composable
@@ -167,7 +168,7 @@ data class SettingsRoutes(
 @Composable
 fun AppearanceScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    AppearanceContent(state.layout, state.theme, viewModel::setLayout, viewModel::setTheme, onBack)
+    AppearanceContent(state.layout, state.theme.mode(), viewModel::setLayout, viewModel::setTheme, onBack)
 }
 
 /** The layout choice (two small pictures of the two layouts) and the theme switch. */

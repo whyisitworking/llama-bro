@@ -1,6 +1,9 @@
 package com.suhel.llamabro.demo.models
 
 import com.suhel.llamabro.DeviceKind
+import com.suhel.llamabro.demo.data.settings.SearchFilters
+import com.suhel.llamabro.demo.data.settings.SearchOrder
+import com.suhel.llamabro.demo.data.settings.SizeFilter
 import com.suhel.llamabro.hub.SearchSort
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

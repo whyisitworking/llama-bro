@@ -158,6 +158,7 @@ its amendments to know what holds now.
 | [D100](#d100-the-demos-voice-mode-a-full-screen-view-entered-from-the-message-bar-hold-to-talk-saved-as-an-ordinary-chat) The demo's voice mode: a full-screen view entered from the message bar, hold to talk, saved as… | 2026-11-18 | [D109](#d109-captions-of-the-users-words-move-to-the-app-it-transcribes-its-own-recording-of-each-turn) |
 | [D140](#d140-the-demo-dictates-a-tap-on-the-mic-writes-speech-into-the-message-bar-a-hold-records-a-voice-message) The demo dictates: a tap on the mic writes speech into the message bar, a hold records a voice message | 2026-11-23 | |
 | [D141](#d141-the-demo-reads-a-typed-reply-aloud-on-a-model-that-speaks) The demo reads a typed reply aloud on a model that speaks | 2026-11-23 | |
+| [D144](#d144-the-demos-packages-are-layered-the-container-builds-the-screens-view-models-and-a-drafts-pictures-are-staged-apart-from-sent-ones) The demo's packages are layered, the container builds the screens' view models, and a draft's pictures are staged apart from sent ones | 2026-11-24 | |
 | [D101](#d101-the-demos-fit-is-a-formula-on-file-sizes-against-half-the-phones-total-ram-no-network-read-no-free-memory-reading) The demo's fit is a formula on file sizes against half the phone's total RAM; no network read,… | 2026-11-19 | [D116](#d116-one-models-screen-replaces-get-models-and-the-library-a-rows-fit-is-guessed-from-the-search-list-and-drawn-as-a-pace-figure) |
 | [D108](#d108-streaming-markdown-re-parses-from-the-last-top-level-block-lists-and-tables-are-not-resumed-row-by-row) Streaming markdown re-parses from the last top-level block; lists and tables are not resumed row… | 2026-11-19 | |
 | [D113](#d113-the-design-system-rule-is-tokens-anywhere-enforced-by-a-lint-rule-on-the-syntax-tree) The design-system rule is "tokens anywhere", enforced by a lint rule on the syntax tree | 2026-11-19 | |
@@ -1979,3 +1980,32 @@ Consequences: Breaking in 2.0.0-alpha's line, with the same request for the same
 `language`, `prompt` and `options` move into its builder (`stop`, the reasoning and chat-template fields now go through
 `extra`), and `voiceEvents` becomes `realtimeEvents`. D84's text, that
 `transcribe` takes a file, a descriptor or bytes, still holds. Next free IDs: D144, F183.
+
+### D144. The demo's packages are layered, the container builds the screens' view models, and a draft's pictures are staged apart from sent ones
+
+Status: Decided (2026-11-24)
+
+Context: The demo's `chat` package held the chat engine, the audio capture and playback, voice mode, dictation and the
+Markdown parser; `data` imported `chat` for the sampling and load types and `models` for the search filters; `models`
+imported `chat`'s model host; and domain code imported the design system's `ThinkLevel`, `VoicePhase` and `ThemeMode`.
+Screens took the whole `AppContainer` and built their own view models, and the chat's factories (recorder, player,
+voice mode, dictation) were in `ChatScreen.kt`. A draft's pictures were saved among the sent ones and named only in the
+chat screen's saved state, so the image sweep (A12) could not run without risking a draft's picture, and a restored draft
+could name a file that was gone.
+Decision: The packages are layered, bottom to top: `data.settings` (the plain types the settings persist), `data`,
+`models`, `audio`, `chat`, `voice`, then `ui` and the root; a package imports only those below it
+(docs/design/demo-app.md §3.1), enforced by `LayeringTest` on the import lines, which also forbids any domain package
+importing the design system. `models` declares the one thing it needs of `chat`, `ModelInUse` (close a model before its
+file is removed), which `ModelHost` implements. The design system's enums are replaced in the domain by `Theme`, `Think`
+and `VoiceStage`, mapped at the UI edge. The Markdown parser, which builds design-system blocks, is UI and moves to
+`ui.chat`; `ReplyService` and its keeper are Android entry points and move to the root. `SearchFilters.query` becomes an
+extension in `models`, which knows `DeviceFacts`. The container builds the view models and implements `ui.Screens`, so
+screens name no container; `ChatViewModel`'s audio seams (recorder, player, voice mode, dictation, read-aloud, the mic
+hint) are one `ChatAudio?`, null where there is no microphone or speaker. A picture picked for a draft is staged in
+`images/draft/`; sending the message moves it into `images/` (and back if the message is not stored); removing it from the
+bar or leaving the chat deletes it from the draft folder. The start-up sweep now covers `images/` as well as `audio/`
+(files no row names and older than a day), leaving `images/draft/`. A restored draft drops the names whose file is gone and
+says "A photo in your draft is gone."
+Consequences: No behaviour change except the last two. Moves were `git mv`, so history follows; the generated baseline
+profile under `demo/app/src/release/generated` still lists the old class names until it is regenerated. Next free IDs:
+D145, F183.

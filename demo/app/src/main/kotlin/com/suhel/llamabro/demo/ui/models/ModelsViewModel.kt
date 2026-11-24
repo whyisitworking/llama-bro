@@ -9,11 +9,13 @@ import androidx.paging.cachedIn
 import androidx.paging.filter
 import androidx.paging.map
 import com.suhel.llamabro.demo.chat.Limits
+import com.suhel.llamabro.demo.data.settings.FiltersChange
+import com.suhel.llamabro.demo.data.settings.SearchFilters
+import com.suhel.llamabro.demo.data.settings.SizeFilter
 import com.suhel.llamabro.demo.designsystem.components.DownloadView
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.DownloadStatus
-import com.suhel.llamabro.demo.models.FiltersChange
 import com.suhel.llamabro.demo.models.FitLabel
 import com.suhel.llamabro.demo.models.FitView
 import com.suhel.llamabro.demo.models.Fits
@@ -25,10 +27,9 @@ import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.ModelLibrary
 import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.demo.models.RepoFile
-import com.suhel.llamabro.demo.models.SearchFilters
-import com.suhel.llamabro.demo.models.SizeFilter
 import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.models.Sizes
+import com.suhel.llamabro.demo.models.query
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel

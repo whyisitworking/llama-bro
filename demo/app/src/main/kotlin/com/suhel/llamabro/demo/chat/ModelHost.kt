@@ -1,12 +1,12 @@
 package com.suhel.llamabro.demo.chat
 
 import android.util.Log
-import com.suhel.llamabro.ContextSize
-import com.suhel.llamabro.DevicePolicy
 import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.LoadProgress
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
+import com.suhel.llamabro.demo.data.settings.LoadConfig
+import com.suhel.llamabro.demo.models.ModelInUse
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -46,22 +46,6 @@ sealed interface HostState {
 }
 
 /**
- * What Settings › Memory says a model loads under: the chip choice's [policy] (D72) and the context length's [context]
- * (a ceiling the SDK fits to memory), and the requests it serves at once, [slots]: two while voice mode captions what
- * the person says (D99, D100), one otherwise. A model loaded under another config is not reused, except that one loaded
- * with more slots serves a turn that needs fewer ([serves]).
- */
-data class LoadConfig(
-    val policy: DevicePolicy = DevicePolicy.Auto,
-    val context: ContextSize = ContextSize.Auto,
-    val slots: Int = 1,
-) {
-    /** A model loaded under this config can serve a turn that [wanted]: the same chip and context, enough slots. */
-    fun serves(wanted: LoadConfig): Boolean =
-        policy == wanted.policy && context == wanted.context && slots >= wanted.slots
-}
-
-/**
  * Owns the one loaded model. `hold` of another key, or of the same key under another [LoadConfig] (D72), closes the
  * current model before the next one loads, so two are never in memory together and a model loaded for an old choice
  * is not reused; concurrent `hold` of one key share one load. Each `hold` is a [Lease] its turn releases when it ends,
@@ -77,7 +61,7 @@ class ModelHost(
     private val llamaBro: LlamaBro,
     private val source: suspend (HfModel) -> ModelSource,
     private val scope: CoroutineScope,
-) {
+) : ModelInUse {
     // engine's own source: the load state machine
     private val _state = MutableStateFlow<HostState>(HostState.Idle)
     val state: StateFlow<HostState> = _state.asStateFlow()
@@ -274,7 +258,7 @@ class ModelHost(
      * a model a load waits to replace, or one still closing, is left to close when its reply ends, and the load in use
      * goes on. For deleting a model's files: this returns only once no reply streams from it.
      */
-    suspend fun close(key: HfModel) {
+    override suspend fun close(key: HfModel) {
         val target =
             lock.withLock {
                 val existing = current

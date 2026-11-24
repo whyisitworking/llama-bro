@@ -10,7 +10,6 @@ import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.NewMessage
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
-import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DownloadFailure
@@ -57,13 +56,8 @@ class ChatEngineTest {
             PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "settings.preferences_pb") },
         )
     }
-    private val chats by lazy {
-        ChatRepository(
-            dao,
-            ImageStore(File(folder.root, "images")),
-            System::currentTimeMillis,
-        )
-    }
+    private val images by lazy { ImageStore(File(folder.root, "images")) }
+    private val chats by lazy { ChatRepository(dao, images, System::currentTimeMillis) }
     private val host by lazy { ModelHost(fake.llamaBro, { hub.installedModel(it) }, scope) }
     private val models by lazy { ModelRepository(hub, settings, scheduler, scope, host) }
 
@@ -484,7 +478,7 @@ class ChatEngineTest {
             chat.send("hi", emptyList())
             eventually("answered") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
             // Qwen3.5 0.8B thinks (catalog), so Think defaults to Off and the request says thinking is off
-            assertEquals(ThinkLevel.Off, chat.think.value)
+            assertEquals(Think.Off, chat.think.value)
             assertTrue(fake.chatRequests.single().contains("enable_thinking"))
         }
 

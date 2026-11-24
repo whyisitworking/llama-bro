@@ -1,25 +1,32 @@
 package com.suhel.llamabro.demo
 
 import android.annotation.SuppressLint
+import android.content.ContentResolver
+import android.os.StatFs
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
+import androidx.lifecycle.SavedStateHandle
 import androidx.room.Room
 import androidx.room.withTransaction
 import androidx.work.WorkManager
 import androidx.work.WorkerFactory
 import com.suhel.llamabro.LlamaBro
+import com.suhel.llamabro.Model
+import com.suhel.llamabro.demo.audio.MediaVoicePlayer
+import com.suhel.llamabro.demo.audio.Microphone
+import com.suhel.llamabro.demo.audio.SampleSource
+import com.suhel.llamabro.demo.audio.SpeechOutput
+import com.suhel.llamabro.demo.audio.TrackSpeech
+import com.suhel.llamabro.demo.audio.VoiceRecorder
 import com.suhel.llamabro.demo.chat.ChatEngine
-import com.suhel.llamabro.demo.chat.Microphone
 import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.chat.ModelMemory
-import com.suhel.llamabro.demo.chat.SampleSource
 import com.suhel.llamabro.demo.chat.SamplingStore
-import com.suhel.llamabro.demo.chat.SpeechOutput
 import com.suhel.llamabro.demo.chat.Streamer
-import com.suhel.llamabro.demo.chat.TrackSpeech
+import com.suhel.llamabro.demo.chat.VoiceChat
 import com.suhel.llamabro.demo.chat.recommendedCard
 import com.suhel.llamabro.demo.chat.sdkStream
 import com.suhel.llamabro.demo.data.AudioStore
@@ -30,12 +37,27 @@ import com.suhel.llamabro.demo.data.TokenStore
 import com.suhel.llamabro.demo.data.db.ChatDatabase
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.DownloadScheduler
+import com.suhel.llamabro.demo.models.FitView
 import com.suhel.llamabro.demo.models.HubRepository
 import com.suhel.llamabro.demo.models.ModelDiscovery
 import com.suhel.llamabro.demo.models.ModelNotifications
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.models.WorkDownloadScheduler
 import com.suhel.llamabro.demo.models.installedModel
+import com.suhel.llamabro.demo.ui.Screens
+import com.suhel.llamabro.demo.ui.chat.ChatAudio
+import com.suhel.llamabro.demo.ui.chat.ChatViewModel
+import com.suhel.llamabro.demo.ui.chat.MessageStyle
+import com.suhel.llamabro.demo.ui.chat.messageStyle
+import com.suhel.llamabro.demo.ui.models.ModelEntry
+import com.suhel.llamabro.demo.ui.models.ModelSheetViewModel
+import com.suhel.llamabro.demo.ui.models.ModelsViewModel
+import com.suhel.llamabro.demo.ui.settings.SettingsViewModel
+import com.suhel.llamabro.demo.ui.shell.ShellViewModel
+import com.suhel.llamabro.demo.voice.Dictation
+import com.suhel.llamabro.demo.voice.VoiceConversation
+import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.LlamaBroHub
 import com.suhel.llamabro.hub.work.LlamaBroWorkerFactory
 import kotlinx.coroutines.CancellationException
@@ -47,10 +69,15 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.io.File
+import java.time.ZoneId
 
 /**
  * Manual wiring (no DI framework). Collaborators arrive as constructor parameters with production defaults, so tests
@@ -75,7 +102,7 @@ class AppContainer(
      * Whether Get asks for the notification permission first; the phone tests turn it off, since a test can't answer
      * the system's dialog.
      */
-    val asksForNotifications: Boolean = true,
+    override val asksForNotifications: Boolean = true,
     val images: ImageStore = ImageStore(File(app.filesDir, "images")),
     /** How a turn reaches the model; the phone tests script timing here, the app leaves it. */
     streamer: Streamer? = null,
@@ -96,14 +123,14 @@ class AppContainer(
     },
     /** Where voice mode speaks a reply, at its sample rate (D100); the phone tests play nothing. */
     val speech: (rate: Int) -> SpeechOutput = { TrackSpeech(app, it) },
-) {
+) : Screens {
     /** The app's own scope: work that outlives a screen or a view model runs here, never in an ad-hoc scope. */
     val appScope: CoroutineScope get() = scope
 
-    val chats: ChatRepository = ChatRepository(database.chatDao(), images, clock, audio)
-    val settings: SettingsRepository = SettingsRepository(settingsStore)
+    override val chats: ChatRepository = ChatRepository(database.chatDao(), images, clock, audio)
+    override val settings: SettingsRepository = SettingsRepository(settingsStore)
     val host: ModelHost = ModelHost(llamaBro, { hub.installedModel(it) }, scope)
-    val models: ModelRepository =
+    override val models: ModelRepository =
         ModelRepository(hub, settings, scheduler, scope, host, chats.lastUsed(), recordsDao = database.hubCacheDao())
 
     /**
@@ -148,13 +175,13 @@ class AppContainer(
         )
 
     /** The loaded model as Settings › Memory and the model sheet show it, with Unload (D59). */
-    val memory: ModelMemory by lazy { ModelMemory(host, engine, models.library) }
+    override val memory: ModelMemory by lazy { ModelMemory(host, engine, models.library) }
 
     /**
      * Each model's and each chat's sampling values (D60), with the hub's for models the catalog lacks (D79), looked up
      * in the background on the app's scope.
      */
-    val sampling: SamplingStore by lazy { SamplingStore(settings, chats, { hub.recommendedCard(it) }, scope) }
+    override val sampling: SamplingStore by lazy { SamplingStore(settings, chats, { hub.recommendedCard(it) }, scope) }
 
     /** The SDK's search, a repo's files and a model's fit; the phone tests pass a fake in [discoveryOverride]. */
     val discovery: ModelDiscovery =
@@ -182,7 +209,7 @@ class AppContainer(
      * The memory budget (half the phone's RAM, D101) and chips, read from the SDK the first time a screen asks; the
      * chip fits use is the one chosen in Settings › Memory when this phone has it (D72).
      */
-    suspend fun deviceFacts(): DeviceFacts =
+    override suspend fun deviceFacts(): DeviceFacts =
         (facts ?: DeviceFacts.read(llamaBro).also { facts = it }).preferring(
             settings.settings
                 .first()
@@ -197,6 +224,95 @@ class AppContainer(
     fun readDeviceFacts() {
         scope.launch(Dispatchers.Default) { deviceFacts() }
     }
+
+    override fun draftPicture(name: String): File = images.file(name)
+
+    // ---- the screens' view models (see [Screens]) -----------------------------------------------------------------
+
+    override fun shellViewModel(saved: SavedStateHandle) =
+        ShellViewModel(chats, settings, models, savedState = saved, deleteChat = { engine.delete(it) })
+
+    override fun settingsViewModel() = SettingsViewModel(settings, tokenStore, models, memory, sampling, ::deviceFacts)
+
+    override fun modelsViewModel(initialQuery: String, initialIntro: Boolean?, saved: SavedStateHandle) =
+        ModelsViewModel(
+            hub = hubCache,
+            models = models,
+            facts = ::deviceFacts,
+            freeBytes = { StatFs(app.filesDir.path).availableBytes },
+            firstRunSeen = settings.settings.map { it.seenFirstRun },
+            markFirstRunSeen = settings::markFirstRunSeen,
+            startChat = { key ->
+                // as first run's Get did: new chats use the model, and this one is made on it
+                settings.setLastModel(key.toString())
+                chats.createChat(key.toString())
+            },
+            initialQuery = initialQuery,
+            initialIntro = initialIntro,
+            clock = clock,
+            zone = ZoneId.systemDefault(),
+            io = Dispatchers.IO,
+            savedState = saved,
+            searchFilters = settings.settings.map { it.searchFilters }.distinctUntilChanged(),
+            saveSearchFilters = settings::updateSearchFilters,
+        )
+
+    override fun modelSheetViewModel(row: ModelEntry, onExactFit: (FitView) -> Unit, startTier: SizeTier?) =
+        ModelSheetViewModel(row, hubCache, models, ::deviceFacts, onExactFit = onExactFit, startTier = startTier)
+
+    override fun chatViewModel(
+        chatId: Long,
+        startModel: HfModel?,
+        styles: Flow<MessageStyle>?,
+        saved: SavedStateHandle,
+        resolver: ContentResolver,
+    ) = ChatViewModel(
+        engine.open(chatId, startModel),
+        styles ?: settings.settings.map { it.layout.messageStyle() },
+        saveImage = { images.save(it, resolver) },
+        discardImages = { images.delete(it) },
+        clock = clock,
+        titles = { id ->
+            if (id == 0L) emptyFlow() else chats.chats().map { all -> all.firstOrNull { it.id == id }?.title }
+        },
+        savedState = saved,
+        background = scope,
+        audio = chatAudio(),
+    )
+
+    /** The chat's audio features: the recorder, the player, voice mode, dictation and read-aloud (D76, D100, D140, D141). */
+    private fun chatAudio() =
+        ChatAudio(
+            recorder = VoiceRecorder(audio, microphone, scope),
+            player = MediaVoicePlayer(scope),
+            voiceModeStart = ::voiceConversation,
+            dictationStart = ::dictation,
+            dictationLanguage = { settings.settings.first().dictationLanguage },
+            micHint = settings.settings.map { !it.seenMicHint },
+            onMicHintSeen = { settings.setSeenMicHint() },
+            speech = speech,
+            chosenVoice = { settings.settings.first().voice },
+        )
+
+    private fun voiceConversation(chat: VoiceChat) =
+        VoiceConversation(
+            chat.chatId,
+            chat.key,
+            chat.name,
+            { slots, limit -> engine.holdModel(chat.key, chat.name, slots, limit) },
+            settings,
+            chats,
+            audio,
+            voiceMicrophone,
+            speech,
+            scope,
+            Dispatchers.Main.immediate,
+            clock = clock,
+        )
+
+    /** A dictation over [model] (D140): the microphone into a new recording in app storage, in [language]. */
+    private fun dictation(model: Model, language: String?) =
+        Dictation(model, microphone, audio.file(audio.newName()), scope, language)
 
     /** For tests that build a container per test: stops DataStore's scope and closes the database. */
     fun close() {

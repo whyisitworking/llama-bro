@@ -4,12 +4,12 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.suhel.llamabro.ContextSize
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.DevicePolicy
-import com.suhel.llamabro.demo.chat.Knobs
-import com.suhel.llamabro.demo.chat.LoadConfig
 import com.suhel.llamabro.demo.chat.SamplingLayers
+import com.suhel.llamabro.demo.chat.Think
 import com.suhel.llamabro.demo.chat.Thinking
 import com.suhel.llamabro.demo.chat.contextLabel
-import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
+import com.suhel.llamabro.demo.data.settings.Knobs
+import com.suhel.llamabro.demo.data.settings.LoadConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -68,14 +68,14 @@ class LengthSettingsTest {
     }
 
     @Test fun automaticFollowsTheThinkLevelAndTheOthersReplaceItsTotal() {
-        for (level in listOf(null) + ThinkLevel.entries) {
+        for (level in listOf(null) + Think.entries) {
             assertEquals(Thinking.replyTokens(level), Thinking.replyTokens(level, ReplyLength.Automatic))
             assertEquals(1_024, Thinking.replyTokens(level, ReplyLength.Short))
             assertEquals(8_192, Thinking.replyTokens(level, ReplyLength.Long))
             assertNull(Thinking.replyTokens(level, ReplyLength.NoLimit))
         }
         // the level's thinking budget stays as it is under every length
-        assertEquals(512, Thinking.reasoning(ThinkLevel.Quick).budgetTokens)
+        assertEquals(512, Thinking.reasoning(Think.Quick).budgetTokens)
     }
 
     @Test fun noLimitSendsNoMaxTokens() {

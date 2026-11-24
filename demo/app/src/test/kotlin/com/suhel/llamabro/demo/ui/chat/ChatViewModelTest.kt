@@ -3,16 +3,13 @@ package com.suhel.llamabro.demo.ui.chat
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.lifecycle.SavedStateHandle
 import com.suhel.llamabro.LlamaBroException
+import com.suhel.llamabro.demo.audio.SampleSource
+import com.suhel.llamabro.demo.audio.VoiceRecorder
 import com.suhel.llamabro.demo.chat.ChatEngine
-import com.suhel.llamabro.demo.chat.Dictation
-import com.suhel.llamabro.demo.chat.DictationRoute
 import com.suhel.llamabro.demo.chat.FakeChatDao
 import com.suhel.llamabro.demo.chat.LimitAction
 import com.suhel.llamabro.demo.chat.ModelHost
-import com.suhel.llamabro.demo.chat.SampleSource
 import com.suhel.llamabro.demo.chat.VoiceChat
-import com.suhel.llamabro.demo.chat.VoiceConversation
-import com.suhel.llamabro.demo.chat.VoiceRecorder
 import com.suhel.llamabro.demo.data.AudioStore
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ImageStore
@@ -27,6 +24,9 @@ import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.models.installedModel
 import com.suhel.llamabro.demo.ui.shutDown
+import com.suhel.llamabro.demo.voice.Dictation
+import com.suhel.llamabro.demo.voice.DictationRoute
+import com.suhel.llamabro.demo.voice.VoiceConversation
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CompletableDeferred
@@ -120,16 +120,25 @@ class ChatViewModelTest {
             discardImages = {},
             savedState = saved,
             background = scope,
-            recorder = recorder,
-            voiceModeStart = voiceMode,
-            dictationStart =
-                dictating?.let { blocks ->
-                    { model, language ->
-                        Dictation(model, steadyVoice(blocks), File(folder.root, "dictation.wav"), scope, language)
-                    }
-                },
-            micHint = settings.settings.map { !it.seenMicHint },
-            onMicHintSeen = { settings.setSeenMicHint() },
+            audio =
+                ChatAudio(
+                    recorder = recorder,
+                    voiceModeStart = voiceMode,
+                    dictationStart =
+                        dictating?.let { blocks ->
+                            { model, language ->
+                                Dictation(
+                                    model,
+                                    steadyVoice(blocks),
+                                    File(folder.root, "dictation.wav"),
+                                    scope,
+                                    language,
+                                )
+                            }
+                        },
+                    micHint = settings.settings.map { !it.seenMicHint },
+                    onMicHintSeen = { settings.setSeenMicHint() },
+                ),
         ).also(viewModels::add)
     }
 

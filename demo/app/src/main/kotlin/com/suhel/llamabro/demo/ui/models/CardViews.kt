@@ -1,6 +1,5 @@
 package com.suhel.llamabro.demo.ui.models
 
-import com.suhel.llamabro.demo.chat.Markdown
 import com.suhel.llamabro.demo.designsystem.components.DownloadStage
 import com.suhel.llamabro.demo.designsystem.components.DownloadView
 import com.suhel.llamabro.demo.models.Cached
@@ -18,6 +17,7 @@ import com.suhel.llamabro.demo.models.RepoFile
 import com.suhel.llamabro.demo.models.SearchModel
 import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.models.Sizes
+import com.suhel.llamabro.demo.ui.chat.Markdown
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubException
 

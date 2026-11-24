@@ -6,14 +6,14 @@ import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.chat.ChipFallback
 import com.suhel.llamabro.demo.chat.InMemory
-import com.suhel.llamabro.demo.chat.Knob
-import com.suhel.llamabro.demo.chat.Knobs
 import com.suhel.llamabro.demo.chat.SamplingLayers
 import com.suhel.llamabro.demo.data.AppLayout
 import com.suhel.llamabro.demo.data.ChipChoice
 import com.suhel.llamabro.demo.data.ContextChoice
 import com.suhel.llamabro.demo.data.KeepLoaded
 import com.suhel.llamabro.demo.data.ReplyLength
+import com.suhel.llamabro.demo.data.settings.Knob
+import com.suhel.llamabro.demo.data.settings.Knobs
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.LibraryModel

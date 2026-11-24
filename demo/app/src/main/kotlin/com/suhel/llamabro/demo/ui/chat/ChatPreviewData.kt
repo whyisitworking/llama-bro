@@ -1,7 +1,6 @@
 package com.suhel.llamabro.demo.ui.chat
 
 import com.suhel.llamabro.demo.chat.Limits
-import com.suhel.llamabro.demo.chat.Markdown
 import com.suhel.llamabro.demo.designsystem.components.ComposerState
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 

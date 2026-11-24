@@ -1,12 +1,12 @@
 package com.suhel.llamabro.demo.ui.chat
 
 import com.suhel.llamabro.Model
-import com.suhel.llamabro.demo.chat.Dictation
-import com.suhel.llamabro.demo.chat.DictationResult
-import com.suhel.llamabro.demo.chat.DictationState
+import com.suhel.llamabro.demo.audio.RecordingFailure
 import com.suhel.llamabro.demo.chat.ModelHold
-import com.suhel.llamabro.demo.chat.RecordingFailure
 import com.suhel.llamabro.demo.chat.holdUncancelled
+import com.suhel.llamabro.demo.voice.Dictation
+import com.suhel.llamabro.demo.voice.DictationResult
+import com.suhel.llamabro.demo.voice.DictationState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job

@@ -29,7 +29,7 @@ import com.suhel.llamabro.demo.MainActivity
 import com.suhel.llamabro.demo.data.AppLayout
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.NewMessage
-import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
+import com.suhel.llamabro.demo.data.settings.Theme
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.testing.TestAppRule
 import com.suhel.llamabro.demo.testing.TestConfig
@@ -182,7 +182,7 @@ class ShellTest {
     }
 
     @Test fun themeChoiceApplies() {
-        runBlocking { app.container.settings.setTheme(ThemeMode.Dark) }
+        runBlocking { app.container.settings.setTheme(Theme.Dark) }
         waitForShell()
         compose.onNodeWithTag("shell_root").assertIsDisplayed()
     }

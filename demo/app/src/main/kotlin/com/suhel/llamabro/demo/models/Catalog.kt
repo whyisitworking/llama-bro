@@ -1,12 +1,12 @@
 package com.suhel.llamabro.demo.models
 
-import com.suhel.llamabro.demo.chat.CardSampling
-import com.suhel.llamabro.demo.chat.Knob.MinP
-import com.suhel.llamabro.demo.chat.Knob.PresencePenalty
-import com.suhel.llamabro.demo.chat.Knob.Temperature
-import com.suhel.llamabro.demo.chat.Knob.TopK
-import com.suhel.llamabro.demo.chat.Knob.TopP
-import com.suhel.llamabro.demo.chat.Knobs
+import com.suhel.llamabro.demo.data.settings.CardSampling
+import com.suhel.llamabro.demo.data.settings.Knob.MinP
+import com.suhel.llamabro.demo.data.settings.Knob.PresencePenalty
+import com.suhel.llamabro.demo.data.settings.Knob.Temperature
+import com.suhel.llamabro.demo.data.settings.Knob.TopK
+import com.suhel.llamabro.demo.data.settings.Knob.TopP
+import com.suhel.llamabro.demo.data.settings.Knobs
 import com.suhel.llamabro.hub.HfModel
 
 /**

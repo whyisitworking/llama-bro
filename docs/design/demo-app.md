@@ -46,7 +46,7 @@ It has to work for two kinds of person: someone who has never heard of a model o
   app never starts a download the person didn't ask for: it loads only what the library lists, and a load of a model
   deleted meanwhile fails rather than fetching it.
 - Loading takes seconds and cannot be made faster (D30, F58); the interface masks it (section 4.1). Memory is tight on real phones: a load can be refused with `InsufficientMemory`, and the app explains that in plain words and offers what to do, never crashing (F90).
-- Layers: UI, view models exposing `StateFlow`s derived with `combine` and `stateIn`, repositories, the SDK. Only genuine input is a mutable flow. Manual wiring through an application container, no dependency injection framework. Room holds chats and messages (text, image references, thinking text, the model used, times and timings), DataStore holds settings, images are copied into app-private storage, and the Hugging Face token lives under a Keystore key and is sent only to `huggingface.co`.
+- Layers: UI, view models exposing `StateFlow`s derived with `combine` and `stateIn`, repositories, the SDK. Only genuine input is a mutable flow. Manual wiring through an application container, no dependency injection framework; the container also builds the screens' view models and implements `ui.Screens`, the small interface screens take instead of the container (D144). Room holds chats and messages (text, image references, thinking text, the model used, times and timings), DataStore holds settings, images are copied into app-private storage, and the Hugging Face token lives under a Keystore key and is sent only to `huggingface.co`.
 - Chats are stored by the app and sent to the model through the SDK's `Conversation`; editing, regenerating, switching models and reopening a chat rebuild the `Conversation` from the stored messages (F96).
 - Speculative decoding stays at the SDK default, which is off on every chip (F67, F68): the app downloads no draft models and offers no switch.
 - The model loads with the chip choice's `DevicePolicy` (D72) and the context length's `ContextSize` (`Auto`, or `UpTo(n)`, D78); the host keys a load on both (`LoadConfig`), so a model loaded under another config is not reused.
@@ -55,6 +55,25 @@ It has to work for two kinds of person: someone who has never heard of a model o
   speak the app's words through the SDK's override (`ModelNotifications`). The app must hold its notification permission
   for a force-stopped download to resume as a foreground service (F92).
 - Package `com.suhel.llamabro.demo`, API 29 and up, arm64-v8a only. No network except Hugging Face; no analytics.
+
+### 3.1 Packages and the layering rule
+
+The code is in packages, bottom to top; a package imports only those below it, and `ui` and the root import any
+(D144). A `LayeringTest` reads every main source file's imports and fails on an edge this list forbids, and on any
+domain package that imports the design system.
+
+| Package | What it holds | May import |
+|---|---|---|
+| `data.settings` | The plain types the settings persist: `Knobs`, `CardSampling`, `LoadConfig`, `SearchFilters` and its parts, `Theme` | none |
+| `data` (with `data.db`) | Room, the settings, token, image and audio stores, `ChatRepository` | `data.settings` |
+| `models` | The catalog, the hub and its cache, downloads, the library, fit; `ModelInUse`, which the chat's model host implements | `data` |
+| `audio` | The microphone and its capture, `VoiceRecorder`, `VoicePlayer`, `SpeechOutput`, WAV, pause detection | `data` |
+| `chat` | `ChatEngine`, `ModelHost`, history, limits, sampling, `Think`, the reply draft, `BackgroundRelease` | `data`, `models`, `audio` |
+| `voice` | Voice mode (`VoiceConversation`), `Dictation`, `ReadAloud`, captions, transcripts, `Steps` | `chat`, `audio`, `models`, `data` |
+| `ui` | Screens and view models by feature (`ui.chat`, `ui.models`, `ui.settings`, `ui.shell`), `Screens`, the Markdown parser; domain enums (`Theme`, `Think`, `VoiceStage`) are mapped to the design system's at this edge | all, and `designsystem` |
+| root | `DemoApp`, `MainActivity`, `ReplyService`, `AppContainer`, `ContainerFactory`: the Android entry points and the composition root | all |
+
+The design system (`:demo:designsystem`) knows no domain type, and no domain package knows it.
 
 ## 4. The experience
 

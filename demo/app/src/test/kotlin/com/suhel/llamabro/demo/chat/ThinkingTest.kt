@@ -2,7 +2,6 @@ package com.suhel.llamabro.demo.chat
 
 import com.suhel.llamabro.ModelInfo
 import com.suhel.llamabro.ModelSource
-import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
@@ -14,14 +13,14 @@ import org.junit.Test
 
 class ThinkingTest {
     @Test fun eachLevelsReasoning() {
-        assertEquals(false, Thinking.reasoning(ThinkLevel.Off).enableThinking)
-        val quick = Thinking.reasoning(ThinkLevel.Quick)
+        assertEquals(false, Thinking.reasoning(Think.Off).enableThinking)
+        val quick = Thinking.reasoning(Think.Quick)
         assertEquals(true, quick.enableThinking)
         assertEquals(512, quick.budgetTokens)
-        val balanced = Thinking.reasoning(ThinkLevel.Balanced)
+        val balanced = Thinking.reasoning(Think.Balanced)
         assertEquals(true, balanced.enableThinking)
         assertEquals(2_048, balanced.budgetTokens)
-        val deep = Thinking.reasoning(ThinkLevel.Deep)
+        val deep = Thinking.reasoning(Think.Deep)
         assertEquals(true, deep.enableThinking)
         assertNull(deep.budgetTokens)
     }

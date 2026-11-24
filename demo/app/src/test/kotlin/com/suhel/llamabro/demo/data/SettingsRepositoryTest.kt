@@ -1,12 +1,12 @@
 package com.suhel.llamabro.demo.data
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
-import com.suhel.llamabro.demo.chat.Knob
-import com.suhel.llamabro.demo.chat.Knobs
-import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
-import com.suhel.llamabro.demo.models.SearchFilters
-import com.suhel.llamabro.demo.models.SearchOrder
-import com.suhel.llamabro.demo.models.SizeFilter
+import com.suhel.llamabro.demo.data.settings.Knob
+import com.suhel.llamabro.demo.data.settings.Knobs
+import com.suhel.llamabro.demo.data.settings.SearchFilters
+import com.suhel.llamabro.demo.data.settings.SearchOrder
+import com.suhel.llamabro.demo.data.settings.SizeFilter
+import com.suhel.llamabro.demo.data.settings.Theme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -50,7 +50,7 @@ class SettingsRepositoryTest {
         runBlocking {
             val s = repository().settings.first()
             assertEquals(AppLayout.Sidebar, s.layout)
-            assertEquals(ThemeMode.System, s.theme)
+            assertEquals(Theme.System, s.theme)
             assertNull(s.defaultModel)
             assertNull(s.lastModel)
             assertEquals("", s.instructionsAbout)
@@ -102,7 +102,7 @@ class SettingsRepositoryTest {
         runBlocking {
             val repo = repository()
             repo.setLayout(AppLayout.ChatList)
-            repo.setTheme(ThemeMode.Dark)
+            repo.setTheme(Theme.Dark)
             repo.pinDefault("a/b:Q4")
             repo.setLastModel("c/d#e.gguf")
             repo.setInstructions("I am a nurse", "Short answers")
@@ -110,7 +110,7 @@ class SettingsRepositoryTest {
             assertEquals(
                 AppSettings(
                     AppLayout.ChatList,
-                    ThemeMode.Dark,
+                    Theme.Dark,
                     "a/b:Q4",
                     "c/d#e.gguf",
                     "I am a nurse",
@@ -119,12 +119,12 @@ class SettingsRepositoryTest {
                 ),
                 repo.settings.first(),
             )
-            repo.setTheme(ThemeMode.Light)
-            assertEquals(ThemeMode.Light, repo.settings.first().theme)
+            repo.setTheme(Theme.Light)
+            assertEquals(Theme.Light, repo.settings.first().theme)
             repo.setLayout(AppLayout.Sidebar)
             assertEquals(AppLayout.Sidebar, repo.settings.first().layout)
-            repo.setTheme(ThemeMode.System)
-            assertEquals(ThemeMode.System, repo.settings.first().theme)
+            repo.setTheme(Theme.System)
+            assertEquals(Theme.System, repo.settings.first().theme)
         }
 
     @Test fun settingsSurviveProcessRestart() =

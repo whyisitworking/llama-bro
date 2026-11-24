@@ -1,11 +1,11 @@
 package com.suhel.llamabro.demo.data
 
-import com.suhel.llamabro.demo.chat.Knobs
 import com.suhel.llamabro.demo.data.db.ChatDao
 import com.suhel.llamabro.demo.data.db.ChatEntity
 import com.suhel.llamabro.demo.data.db.MessageEntity
 import com.suhel.llamabro.demo.data.db.NEW_CHAT_TITLE
 import com.suhel.llamabro.demo.data.db.ReplyStats
+import com.suhel.llamabro.demo.data.settings.Knobs
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.io.File

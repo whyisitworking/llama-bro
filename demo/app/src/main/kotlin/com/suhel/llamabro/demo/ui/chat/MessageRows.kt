@@ -14,7 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.testTag
-import com.suhel.llamabro.demo.chat.PlayingClip
+import com.suhel.llamabro.demo.audio.PlayingClip
 import com.suhel.llamabro.demo.designsystem.components.DayLabel
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.Gap

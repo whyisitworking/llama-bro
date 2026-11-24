@@ -9,13 +9,13 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.suhel.llamabro.ContextSize
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.DevicePolicy
-import com.suhel.llamabro.demo.chat.Knobs
-import com.suhel.llamabro.demo.chat.LoadConfig
-import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
-import com.suhel.llamabro.demo.models.FiltersChange
-import com.suhel.llamabro.demo.models.SearchFilters
-import com.suhel.llamabro.demo.models.SearchOrder
-import com.suhel.llamabro.demo.models.SizeFilter
+import com.suhel.llamabro.demo.data.settings.FiltersChange
+import com.suhel.llamabro.demo.data.settings.Knobs
+import com.suhel.llamabro.demo.data.settings.LoadConfig
+import com.suhel.llamabro.demo.data.settings.SearchFilters
+import com.suhel.llamabro.demo.data.settings.SearchOrder
+import com.suhel.llamabro.demo.data.settings.SizeFilter
+import com.suhel.llamabro.demo.data.settings.Theme
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -77,7 +77,7 @@ val AppSettings.loadConfig: LoadConfig get() = LoadConfig(chip.policy, context.s
 
 data class AppSettings(
     val layout: AppLayout = AppLayout.Sidebar,
-    val theme: ThemeMode = ThemeMode.System,
+    val theme: Theme = Theme.System,
     val defaultModel: String? = null,
     val lastModel: String? = null,
     val instructionsAbout: String = "",
@@ -116,9 +116,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 layout = if (p[LAYOUT] == "chat_list") AppLayout.ChatList else AppLayout.Sidebar,
                 theme =
                     when (p[THEME]) {
-                        "light" -> ThemeMode.Light
-                        "dark" -> ThemeMode.Dark
-                        else -> ThemeMode.System
+                        "light" -> Theme.Light
+                        "dark" -> Theme.Dark
+                        else -> Theme.System
                     },
                 defaultModel = p[DEFAULT_MODEL],
                 lastModel = p[LAST_MODEL],
@@ -144,7 +144,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         store.edit { it[LAYOUT] = if (layout == AppLayout.ChatList) "chat_list" else "sidebar" }
     }
 
-    suspend fun setTheme(theme: ThemeMode) {
+    suspend fun setTheme(theme: Theme) {
         store.edit { it[THEME] = theme.name.lowercase() }
     }
 

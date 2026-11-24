@@ -7,7 +7,6 @@ import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.demo.chat.ChatEngine
 import com.suhel.llamabro.demo.chat.FakeChatDao
 import com.suhel.llamabro.demo.chat.HostState
-import com.suhel.llamabro.demo.chat.LoadConfig
 import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.chat.ModelMemory
 import com.suhel.llamabro.demo.chat.SamplingStore
@@ -19,6 +18,7 @@ import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.TokenStore
+import com.suhel.llamabro.demo.data.settings.LoadConfig
 import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.FakeScheduler

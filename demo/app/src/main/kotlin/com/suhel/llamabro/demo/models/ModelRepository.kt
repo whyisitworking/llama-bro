@@ -1,6 +1,5 @@
 package com.suhel.llamabro.demo.models
 
-import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.db.HubCacheDao
 import com.suhel.llamabro.demo.models.DownloadFailure.Kind
@@ -95,7 +94,7 @@ class ModelRepository(
     private val settings: SettingsRepository,
     private val scheduler: DownloadScheduler,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
-    private val host: ModelHost? = null,
+    private val host: ModelInUse? = null,
     lastUsed: Flow<Map<String, Long>> = flowOf(emptyMap()),
     /** The models wholly on the phone; a test counts the scans here. */
     private val installed: suspend () -> List<CachedModel> = { hub.installed() },
@@ -381,7 +380,7 @@ class ModelRepository(
         }
 
     /**
-     * Deletes a model from the phone: closes it first when it is in memory (`ModelHost.close`), and unpins it as the
+     * Deletes a model from the phone: closes it first when it is in memory (`ModelInUse.close`), and unpins it as the
      * default. Deleting a model a reply is streaming from waits for that reply to end. False, as for [cancel], when
      * its download's work couldn't be told to stop: nothing is deleted and the model stays listed.
      */

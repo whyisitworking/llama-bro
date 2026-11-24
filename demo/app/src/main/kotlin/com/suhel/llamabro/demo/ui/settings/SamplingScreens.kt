@@ -8,11 +8,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.suhel.llamabro.demo.chat.Knob
 import com.suhel.llamabro.demo.chat.KnobSource
 import com.suhel.llamabro.demo.chat.KnobValue
 import com.suhel.llamabro.demo.chat.SamplingLayers
 import com.suhel.llamabro.demo.data.ReplyLength
+import com.suhel.llamabro.demo.data.settings.Knob
 import com.suhel.llamabro.demo.designsystem.components.GroupScope
 import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListRow

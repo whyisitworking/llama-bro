@@ -2,9 +2,9 @@ package com.suhel.llamabro.demo.models
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.suhel.llamabro.demo.chat.HostState
-import com.suhel.llamabro.demo.chat.LoadConfig
 import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.data.SettingsRepository
+import com.suhel.llamabro.demo.data.settings.LoadConfig
 import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.letAWrongActionLand
 import com.suhel.llamabro.demo.models.TestHub.Refusal

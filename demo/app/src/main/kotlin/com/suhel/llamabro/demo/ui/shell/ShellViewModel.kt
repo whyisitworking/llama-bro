@@ -9,6 +9,7 @@ import com.suhel.llamabro.demo.data.ChatSummary
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.models.ModelLibrary
+import com.suhel.llamabro.demo.ui.mode
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -42,7 +43,7 @@ class ShellViewModel(
 
     val theme: StateFlow<ThemeMode> =
         settings.settings
-            .map { it.theme }
+            .map { it.theme.mode() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), ThemeMode.System)
 
     /** Whether first run has been seen; null until the settings are read. The Models page's intro starts from it. */

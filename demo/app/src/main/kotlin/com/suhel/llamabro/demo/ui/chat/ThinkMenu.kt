@@ -2,6 +2,7 @@ package com.suhel.llamabro.demo.ui.chat
 
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
+import com.suhel.llamabro.demo.chat.Think
 import com.suhel.llamabro.demo.designsystem.components.DemoSheet
 import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListRow
@@ -51,3 +52,8 @@ private fun ThinkLevel.hint() =
         ThinkLevel.Balanced -> "Thinks it through"
         ThinkLevel.Deep -> "Takes as long as it needs"
     }
+
+/** The engine's level as the design system draws it; the two enums list the same entries. */
+internal fun Think.level(): ThinkLevel = ThinkLevel.valueOf(name)
+
+internal fun ThinkLevel.think(): Think = Think.valueOf(name)

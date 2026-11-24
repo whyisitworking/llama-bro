@@ -5,6 +5,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.paging.testing.asSnapshot
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.data.SettingsRepository
+import com.suhel.llamabro.demo.data.settings.SearchFilters
+import com.suhel.llamabro.demo.data.settings.SearchOrder
+import com.suhel.llamabro.demo.data.settings.SizeFilter
 import com.suhel.llamabro.demo.designsystem.components.DownloadStage
 import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.Catalog
@@ -18,12 +21,10 @@ import com.suhel.llamabro.demo.models.Guess
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.RepoFile
-import com.suhel.llamabro.demo.models.SearchFilters
 import com.suhel.llamabro.demo.models.SearchModel
-import com.suhel.llamabro.demo.models.SearchOrder
-import com.suhel.llamabro.demo.models.SizeFilter
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.models.installed
+import com.suhel.llamabro.demo.models.query
 import com.suhel.llamabro.demo.ui.keepAlive
 import com.suhel.llamabro.demo.ui.shutDown
 import com.suhel.llamabro.hub.HfModel

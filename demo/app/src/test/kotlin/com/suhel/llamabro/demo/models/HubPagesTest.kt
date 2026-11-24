@@ -15,6 +15,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.data.db.ChatDatabase
 import com.suhel.llamabro.demo.data.db.HubResultEntity
+import com.suhel.llamabro.demo.data.settings.SearchFilters
+import com.suhel.llamabro.demo.data.settings.SizeFilter
 import com.suhel.llamabro.hub.testing.FakeLlamaBroHub
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope

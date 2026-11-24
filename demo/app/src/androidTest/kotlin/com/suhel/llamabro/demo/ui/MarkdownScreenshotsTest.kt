@@ -16,13 +16,13 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
-import com.suhel.llamabro.demo.chat.Markdown
 import com.suhel.llamabro.demo.designsystem.components.MarkdownText
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.testing.TestAppRule
 import com.suhel.llamabro.demo.testing.demoRules
+import com.suhel.llamabro.demo.ui.chat.Markdown
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain

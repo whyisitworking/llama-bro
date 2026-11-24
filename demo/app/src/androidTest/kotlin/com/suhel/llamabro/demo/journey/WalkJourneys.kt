@@ -23,6 +23,7 @@ import com.suhel.llamabro.demo.designsystem.theme.Light
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.testing.withAccessibilityChecks
+import com.suhel.llamabro.demo.ui.theme
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -115,7 +116,7 @@ class WalkJourneys : Journey() {
         see("seven hills", substring = true)
 
         for (theme in listOf(ThemeMode.Light, ThemeMode.Dark)) {
-            runBlocking { app.container.settings.setTheme(theme) }
+            runBlocking { app.container.settings.setTheme(theme.theme()) }
             compose.waitForIdle()
             arrive("chat", theme) {}
             arrive("model-switcher", theme) { compose.onNodeWithTag("model_title").performClick() }

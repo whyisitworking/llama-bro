@@ -15,8 +15,8 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import com.suhel.llamabro.ContextSize
+import com.suhel.llamabro.demo.ReplyKeeper
 import com.suhel.llamabro.demo.chat.HostState
-import com.suhel.llamabro.demo.chat.ReplyKeeper
 import com.suhel.llamabro.demo.data.ChipChoice
 import com.suhel.llamabro.demo.models.Catalog
 import kotlinx.coroutines.flow.first

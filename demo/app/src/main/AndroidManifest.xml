@@ -37,7 +37,7 @@
         </provider>
         <!-- a reply still being written when the app leaves the screen (D59): at most a few minutes, never an idle model -->
         <service
-            android:name=".chat.ReplyService"
+            android:name=".ReplyService"
             android:exported="false"
             android:foregroundServiceType="shortService" />
         <!-- DemoApp provides WorkManager's configuration, so the default startup initializer is removed. -->

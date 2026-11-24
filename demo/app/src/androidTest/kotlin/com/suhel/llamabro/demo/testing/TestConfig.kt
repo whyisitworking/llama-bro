@@ -1,8 +1,8 @@
 package com.suhel.llamabro.demo.testing
 
 import com.suhel.llamabro.LlamaBro
-import com.suhel.llamabro.demo.chat.SampleSource
-import com.suhel.llamabro.demo.chat.SpeechOutput
+import com.suhel.llamabro.demo.audio.SampleSource
+import com.suhel.llamabro.demo.audio.SpeechOutput
 import com.suhel.llamabro.demo.chat.Streamer
 import com.suhel.llamabro.demo.models.DownloadScheduler
 import com.suhel.llamabro.demo.models.ModelDiscovery
