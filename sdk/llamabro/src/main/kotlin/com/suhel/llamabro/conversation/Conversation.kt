@@ -362,6 +362,15 @@ public class Conversation internal constructor(
     }
 
     /**
+     * Whether [compact] with [preservedSteps] has anything to summarise (tools/ui `canCompactMessages`), e.g. to
+     * enable a Compact button. A step is a user message, or an assistant message with its tool results. False while a
+     * tool call of the last reply has no result, since a compaction would drop it
+     * ([D62](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d62)).
+     */
+    public fun canCompact(preservedSteps: Int = Compaction.DEFAULT_PRESERVED_STEPS): Boolean =
+        CompactionPlanner.canCompact(_messages.value, preservedSteps) && unansweredToolCalls(_messages.value).isEmpty()
+
+    /**
      * Adds the result of a pending tool call (after `Done(ToolCallsPending)`); then call [resume].
      * @throws LlamaBroException.Busy while a send, resume, regenerate, approve, deny or compaction runs.
      */

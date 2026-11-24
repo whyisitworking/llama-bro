@@ -60,8 +60,10 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
     instead of an error about a missing directory. A fake nobody closes has its directory removed when the JVM exits.
 - **`compact`, `addToolResult` and `askAgain` are `Conversation` members again**: the same calls compile unchanged
   once their imports (`com.suhel.llamabro.conversation.compact`, `.addToolResult`, `.askAgain`) are removed; for Java
-  callers and binaries, `CompactionKt.compact` and the whole `ConversationKt` class are gone. `canCompact` stays an
-  extension.
+  callers and binaries, `CompactionKt.compact` and the whole `ConversationKt` class are gone.
+  **`canCompact` is a member too** (it was an extension of 2.0.0-alpha's and this section's earlier builds): remove the
+  `com.suhel.llamabro.conversation.canCompact` import; for Java callers and binaries, `CompactionKt.canCompact(chat, n)`
+  becomes `chat.canCompact(n)`.
 - **A streamed server error is recognised by its `error` key**, not by the payload starting with `{"error"`, so one
   spaced or ordered differently fails the flow with its `LlamaBroException` as the usual shape does.
 - **API review fixes**, breaking changes from the lines above:

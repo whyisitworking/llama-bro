@@ -5,7 +5,6 @@ import com.suhel.llamabro.chat.FinishReason
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.conversation.LbToolAbort
-import com.suhel.llamabro.conversation.canCompact
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.toList

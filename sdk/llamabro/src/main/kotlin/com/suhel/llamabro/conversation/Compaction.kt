@@ -21,15 +21,6 @@ public object Compaction {
 }
 
 /**
- * Whether [Conversation.compact] with [preservedSteps] has anything to summarise (tools/ui `canCompactMessages`),
- * e.g. to enable a Compact button. A step is a user message, or an assistant message with its tool results. False
- * while a tool call of the last reply has no result, since a compaction would drop it
- * ([D62](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d62)).
- */
-public fun Conversation.canCompact(preservedSteps: Int = Compaction.DEFAULT_PRESERVED_STEPS): Boolean =
-    CompactionPlanner.canCompact(messages.value, preservedSteps) && unansweredToolCalls(messages.value).isEmpty()
-
-/**
  * The calls of the last reply still without a result. A compaction closes that batch (D62), so the call would never
  * be approved or answered and the model would later see it without a result; tools/ui never has such calls, since
  * its loop answers every call before the user can compact.

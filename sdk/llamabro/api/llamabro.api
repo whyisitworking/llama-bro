@@ -1751,11 +1751,6 @@ public final class com/suhel/llamabro/conversation/Compaction {
 	public static final field INSTANCE Lcom/suhel/llamabro/conversation/Compaction;
 }
 
-public final class com/suhel/llamabro/conversation/CompactionKt {
-	public static final fun canCompact (Lcom/suhel/llamabro/conversation/Conversation;I)Z
-	public static synthetic fun canCompact$default (Lcom/suhel/llamabro/conversation/Conversation;IILjava/lang/Object;)Z
-}
-
 public final class com/suhel/llamabro/conversation/ContextUsage {
 	public fun <init> (II)V
 	public final fun component1 ()I
@@ -1777,6 +1772,8 @@ public final class com/suhel/llamabro/conversation/Conversation {
 	public static synthetic fun ask$default (Lcom/suhel/llamabro/conversation/Conversation;Ljava/lang/String;[Lcom/suhel/llamabro/chat/Content;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun askAgain (Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun askAgain$default (Lcom/suhel/llamabro/conversation/Conversation;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun canCompact (I)Z
+	public static synthetic fun canCompact$default (Lcom/suhel/llamabro/conversation/Conversation;IILjava/lang/Object;)Z
 	public final fun compact (ILjava/lang/String;)Lkotlinx/coroutines/flow/Flow;
 	public static synthetic fun compact$default (Lcom/suhel/llamabro/conversation/Conversation;ILjava/lang/String;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
 	public final fun deny (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/flow/Flow;
