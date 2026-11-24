@@ -4,6 +4,7 @@
 # installed once STUB_PHONE/installed exists (the stub gradle creates it). STUB_THERMAL (default 0) is the thermal
 # status, STUB_LOCKED the keyguard, STUB_FAIL_ARM an arm whose instrumentation call reports a failure,
 # STUB_WATCH a path whose existence each instrumentation call logs,
+# STUB_INSTALLED_APK (a file) is the app pm path finds and pull copies, STUB_INSTALLED_CODE its version code;
 # STUB_NO_SLOTLOG leaves the slot-cache log unwritten. STUB_FAIL_ARM=all fails every arm. STUB_FAIL_PUSH makes every
 # push fail, with the serial in its message. After STUB_HOT_AFTER
 # instrumentation calls the thermal status becomes 3; after STUB_GONE_AFTER calls every command fails the way adb does
@@ -27,6 +28,9 @@ case "$*" in
     "shell getprop ro.build.version.release") printf '16\r\n' ;;
     "shell pm list instrumentation") printf 'instrumentation:other.test/androidx.test.runner.AndroidJUnitRunner (target=other)\r\ninstrumentation:com.suhel.llamabro.sample.test/androidx.test.runner.AndroidJUnitRunner (target=com.suhel.llamabro.sample)\r\n' ;;
     "shell am force-stop "*) ;;
+    "shell pm path "*) [ -n "${STUB_INSTALLED_APK:-}" ] && printf 'package:/data/app/base.apk\r\n' ;;
+    "shell dumpsys package "*) printf 'Packages:\r\n    versionCode=%s minSdk=31 targetSdk=36\r\n' "${STUB_INSTALLED_CODE:-1}" ;;
+    "pull "*) cp "$STUB_INSTALLED_APK" "$3" ;;
     "shell chmod "*) ;;
     "shell rm -f /data/local/tmp/"*) last="${*: -1}"; rm -f "$STUB_PHONE/tmp/${last##*/}" ;;
     "push "*)

@@ -20,7 +20,8 @@
 #                  in-memory /v1/realtime on the same model (HostVoiceTest)
 #   aar            release AAR: libraries, names, exports, 16 KB alignment (check-aar.sh); hub, hub-work and typed carry
 #                  no native code, and hub-work's manifest declares the dataSync foreground service
-#   scripts        the host scripts against stubs, no phone: device-preflight.sh (tests/device-preflight-test.sh),
+#   scripts        the host scripts against stubs, no phone: device-preflight.sh (tests/device-preflight-test.sh), installed-guard.sh
+#                  (tests/installed-guard-test.sh),
 #                  bench.sh end to end (tests/bench-sh-test.sh) and bench.py's merge, charts and README check
 #                  (tests/bench-test.py), and that every decision or finding link in the sources has its anchor
 #                  (tests/anchor-links-test.py)
@@ -139,7 +140,8 @@ gradle() { (cd "$root" && ./gradlew -p sdk "$@"); }
 step_quality() { (cd "$root" && ./gradlew qualityCheck); }
 
 step_scripts() {
-    bash "$sdk/scripts/tests/device-preflight-test.sh" && bash "$sdk/scripts/tests/bench-sh-test.sh" &&
+    bash "$sdk/scripts/tests/device-preflight-test.sh" && bash "$sdk/scripts/tests/installed-guard-test.sh" &&
+        bash "$sdk/scripts/tests/bench-sh-test.sh" &&
         python3 "$sdk/scripts/tests/bench-test.py" && python3 "$sdk/scripts/tests/anchor-links-test.py"
 }
 

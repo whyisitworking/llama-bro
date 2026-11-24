@@ -294,7 +294,12 @@ let_device_go() {
 if [ $wants_device -eq 1 ]; then
     # one session per device (F150): refuse if another uses it, else hold its lock until the device steps end
     printf '%-10s ' preflight
-    if device_lock="$(ANDROID_SERIAL="${DEMO_DEVICE:-}" bash "$root/sdk/scripts/device-preflight.sh" $$ 2> "$logs/preflight.log")"; then
+    # the device steps install the app under test and uninstall it when they end, also after a failed install: an
+    # installed build they can't replace (another key, a higher version) would be deleted with its data, so it refuses
+    if device_lock="$(ANDROID_SERIAL="${DEMO_DEVICE:-}" bash "$root/sdk/scripts/device-preflight.sh" $$ 2> "$logs/preflight.log")" &&
+        gradle :demo:app:assembleDebug -q >> "$logs/preflight.log" 2>&1 &&
+        ANDROID_SERIAL="${DEMO_DEVICE:-}" bash "$root/sdk/scripts/installed-guard.sh" com.suhel.llamabro.demo \
+            "$root/demo/app/build/outputs/apk/debug/app-debug.apk" 2>> "$logs/preflight.log"; then
         trap let_device_go EXIT
         echo PASS; cat "$logs/preflight.log"
         run device step_device
@@ -306,6 +311,7 @@ if [ $wants_device -eq 1 ]; then
         let_device_go
         trap - EXIT
     else
+        rm -f "$device_lock"
         echo "FAIL: the device steps did not run"; sed 's/^/    /' "$logs/preflight.log"
         results+=("FAIL preflight"); failed=1; refused=1
     fi
