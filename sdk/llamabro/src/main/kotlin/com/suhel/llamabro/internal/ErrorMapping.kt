@@ -167,6 +167,10 @@ internal object ErrorMapping {
     fun unreadable(what: String, e: Throwable): LlamaBroException.ServerError =
         LlamaBroException.ServerError(HTTP_OK, "llama-server sent a $what reply the SDK can't read: ${e.message}", e)
 
+    /** A reply the SDK can't read for a reason of its own, with no exception behind it (D136). */
+    fun unreadable(what: String, detail: String): LlamaBroException.ServerError =
+        LlamaBroException.ServerError(HTTP_OK, "llama-server sent a $what reply the SDK can't read: $detail")
+
     /** The message of a C API error JSON (`{"error": "..."}`). */
     fun nativeMessage(errorJson: String): String =
         runCatching { (json.parseToJsonElement(errorJson) as JsonObject).string("error") }.getOrNull() ?: errorJson

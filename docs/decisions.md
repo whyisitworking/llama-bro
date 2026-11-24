@@ -57,11 +57,12 @@ its amendments to know what holds now.
 | [D87](#d87-a-chats-path-attachments-reach-llama-server-as-file-links-in-the-sdks-media-folder-bytes-and-descriptors-keep-base64) A chat's path attachments reach llama-server as file:// links in the SDK's media folder; bytes… | 2026-11-17 | |
 | [D88](#d88-typed-output-and-tools-after-w6s-review-integer-bounds-by-default-askagain-valueornull-results-with-every-field) Typed output and tools after W6's review: integer bounds by default, `askAgain`, `valueOrNull`,… | 2026-11-17 | |
 | [D102](#d102-public-value-types-are-data-classes-builder-built-requests-and-configurations-keep-their-builders) Public value types are data classes; builder-built requests and configurations keep their builders | 2026-11-19 | |
-| [D103](#d103-one-error-rule-a-call-or-flow-fails-with-a-llamabroexception-only-misuse-throws-kotlins-own-exceptions) One error rule: a call or flow fails with a `LlamaBroException`; only misuse throws Kotlin's own… | 2026-11-19 | [D136](#d136-an-api-pass-for-the-first-release-flows-that-warn-auto-compaction-misuse-as-kotlin-exceptions-typed-audio-and-transcripts) |
+| [D103](#d103-one-error-rule-a-call-or-flow-fails-with-a-llamabroexception-only-misuse-throws-kotlins-own-exceptions) One error rule: a call or flow fails with a `LlamaBroException`; only misuse throws Kotlin's own… | 2026-11-19 | [D136](#d136-an-api-pass-for-the-first-release-flows-that-warn-auto-compaction-misuse-as-kotlin-exceptions-typed-audio-and-transcripts), [D142](#d142-one-error-model-a-missing-capability-is-notsupported-on-every-path-an-unreadable-reply-is-servererror-and-every-c-api-call-reports-a-status-and-its-reason) |
 | [D104](#d104-the-engine-and-backend-seams-are-a-spi-package-internal-is-kotlin-internal) The engine and backend seams are a `spi` package; `internal` is Kotlin-internal | 2026-11-19 | |
 | [D105](#d105-api-shape-a-sealed-modelsource-internal-speech-endpoints-long-seeds-typedtext-no-jvm-annotations) API shape: a sealed `ModelSource`, internal speech endpoints, `Long` seeds, `Typed.text`, no… | 2026-11-19 | |
 | [D106](#d106-create-compares-settings-not-the-logger-or-token-provider-hub-locks-key-by-canonical-path-saves-read-version-3-only) `create` compares settings, not the logger or token provider; hub locks key by canonical path;… | 2026-11-19 | |
 | [D115](#d115-the-bridges-own-errors-carry-a-code-upstreams-matched-words-are-pinned-against-its-source) The bridge's own errors carry a code; upstream's matched words are pinned against its source | 2026-11-19 | |
+| [D142](#d142-one-error-model-a-missing-capability-is-notsupported-on-every-path-an-unreadable-reply-is-servererror-and-every-c-api-call-reports-a-status-and-its-reason) One error model: a missing capability is `NotSupported` on every path, an unreadable reply is… | 2026-11-24 | |
 
 **Hub**
 
@@ -189,7 +190,7 @@ its amendments to know what holds now.
 | [D133](#d133-the-sdk-is-published-to-maven-central-through-the-central-portal-with-the-vanniktech-plugin) The SDK is published to Maven Central through the Central Portal, with the vanniktech plugin | 2026-11-21 | [D135](#d135-a-bom-llamabro-bom-keeps-every-module-on-one-version) |
 | [D134](#d134-arm64-v8a-is-the-only-abi) arm64-v8a is the only ABI | 2026-11-22 | |
 | [D135](#d135-a-bom-llamabro-bom-keeps-every-module-on-one-version) A BOM, `llamabro-bom`, keeps every module on one version | 2026-11-22 | |
-| [D136](#d136-an-api-pass-for-the-first-release-flows-that-warn-auto-compaction-misuse-as-kotlin-exceptions-typed-audio-and-transcripts) An API pass for the first release: flows that warn, auto-compaction, misuse as Kotlin exceptions, typed audio and transcripts | 2026-11-22 | |
+| [D136](#d136-an-api-pass-for-the-first-release-flows-that-warn-auto-compaction-misuse-as-kotlin-exceptions-typed-audio-and-transcripts) An API pass for the first release: flows that warn, auto-compaction, misuse as Kotlin exceptions, typed audio and transcripts | 2026-11-22 | [D142](#d142-one-error-model-a-missing-capability-is-notsupported-on-every-path-an-unreadable-reply-is-servererror-and-every-c-api-call-reports-a-status-and-its-reason) |
 
 ---
 
@@ -1919,3 +1920,28 @@ bullets and marks dropped. The chat's model is held while it reads (`ChatHandle.
 Leaving the screen stops it. Settings › Voice also gets dictation's language (D140): Automatic, or the phone's own.
 Consequences: Only models that speak (LFM3-Omni here) offer it; a model without a voice of its own, or one whose
 speech settings differ, is spoken with upstream's defaults.
+
+### D142. One error model: a missing capability is `NotSupported` on every path, an unreadable reply is `ServerError`, and every C API call reports a status and its reason
+
+Status: Decided (2026-11-24)
+
+Context: D103 and D136 set one error rule, but the audio calls drifted from it. A model that doesn't hear made
+`transcribe` throw `InvalidRequest` while `voiceSession` and `transcriptionSession` threw `NotSupported`, so an app
+that hides its mic on `NotSupported` missed one path. Speech that couldn't be read, and a realtime server that ended
+before its session opened or sent an unreadable event, were `InvalidRequest`, the caller's fault, though they are the
+server's. Below Kotlin, the C API reported errors three ways: some calls returned a status and an error JSON, some
+returned a string and an error JSON with no status, some a status with no reason, and a request on a model being
+freed came back as an invalid argument; JNI then made up the missing statuses and messages. The Flutter and KMP
+bindings planned on this header would inherit all of it. Amends D103 and D136.
+Decision: A call that needs a capability the model lacks fails with `NotSupported` before it sends anything, from
+one check (`requireHears`, beside `requireTask`); a clip inside a chat message stays `InvalidRequest`, as there the
+message's data is what the model can't take. `speak` has no check up front, because a model can speak with no
+predefined voices, from a speaker reference alone (upstream's `handle_tts_impl`); upstream's own refusal maps to
+`NotSupported`. A reply the SDK can't read, on any path (chat, transcription, speech, realtime), is `ServerError`
+through `ErrorMapping.unreadable`. Every fallible C API call returns `lb_status` and fills an optional
+`char ** error_json` with its specific reason; `lb_fit_estimate` and `lb_model_info` hand their result through an out
+parameter. `LB_ERR_CLOSED` reports a call made while `lb_model_free` waits for in-flight requests to end, and Kotlin maps it to `ModelClosed`; it does not make a call racing the free safe, so a binding serialises frees with its other calls, as Kotlin's gate does. A request the bridge can't start for its own reasons (`LB_ERR_INTERNAL`) is `ServerError`. JNI passes
+the bridge's status and reason through and invents none. The merge-patch step of every typed call's `extra` is one
+helper (`JsonMergePatch.applyExtra`).
+Consequences: Exception types change on these paths (see the release notes); no Kotlin signature changes. The C
+header changes shape before any other binding uses it.

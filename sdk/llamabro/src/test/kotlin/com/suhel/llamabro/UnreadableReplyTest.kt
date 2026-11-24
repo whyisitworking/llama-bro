@@ -59,4 +59,39 @@ class UnreadableReplyTest {
             val m = model(engine)
             assertUnreadable { m.chat(ChatRequest { messages = listOf(Message.user("hi")) }).toList() }
         }
+
+    @Test
+    fun speechThatIsNotWavIsAServerError() =
+        runTest {
+            val engine = FakeEngine()
+            answer(engine, "x".repeat(64))
+            val m = model(engine)
+            assertUnreadable { m.speak("Hello.").toList() }
+        }
+
+    @Test
+    fun speakOnAModelThatDoesNotSpeakIsNotSupported() =
+        runTest {
+            val engine = FakeEngine()
+            engine.model.onRequest = { r ->
+                r.chunk(
+                    """{"error":{"code":501,"message":"this server does not support audio generation",""" +
+                        """"type":"not_supported_error"}}""",
+                    status = 501,
+                )
+                r.done()
+            }
+            val m = model(engine)
+            val e = runCatching { m.speak("Hello.").toList() }.exceptionOrNull()
+            assertTrue("$e", e is LlamaBroException.NotSupported)
+        }
+
+    @Test
+    fun speechEndingBeforeAnyAudioIsAServerError() =
+        runTest {
+            val engine = FakeEngine()
+            answer(engine)
+            val m = model(engine)
+            assertUnreadable { m.speak("Hello.").toList() }
+        }
 }

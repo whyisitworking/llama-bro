@@ -306,10 +306,10 @@ class FakeLlamaBroTest {
                 model.transcribe(MediaSource.bytes(wav), language = "en") { sampling { maxTokens = 3 } },
             )
             assertTrue(fake.transcribeRequests[1].contains("\"language\":\"en\""))
-            // a model that doesn't hear refuses audio before any request, as on the phone
+            // a model that doesn't hear refuses transcribe before any request, as on the phone
             val deaf = FakeLlamaBro().llamaBro.loadModel(ModelSource.file("/text.gguf"))
             val e = runCatching { deaf.transcribe(MediaSource.bytes(wav)) }.exceptionOrNull()
-            assertTrue("$e", e is LlamaBroException.InvalidRequest)
+            assertTrue("$e", e is LlamaBroException.NotSupported)
         }
 
     @Test

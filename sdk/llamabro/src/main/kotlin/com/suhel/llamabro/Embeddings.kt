@@ -150,10 +150,6 @@ private suspend fun Model.embedInput(
     }
 }
 
-internal inline fun <reified T : ModelTask> Model.requireTask(call: String, loadWith: String) {
-    check(task is T) { "$call needs a model loaded with task = $loadWith; this one was loaded with ModelTask.$task" }
-}
-
 /** llama-server's base64 is the vector's memory, in the machine's byte order: little-endian on every target. */
 private fun decode(base64: String): FloatArray {
     val buffer = ByteBuffer.wrap(Base64.getDecoder().decode(base64)).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()

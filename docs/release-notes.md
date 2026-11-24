@@ -14,6 +14,12 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
   `NotSupported` on any other. `FakeLlamaBro` scripts it.
 - **`Model.speak`** (D139): text to speech as a flow of 16-bit PCM pieces, with a voice, a speaker reference to clone,
   speed, seed and more, each sent only when set. `FakeLlamaBro` scripts it.
+- **Audio errors** (D142): changes from 2.0.0-alpha: `transcribe` on a model that doesn't hear throws `NotSupported`
+  (it was `InvalidRequest`; `voiceSession` already threw `NotSupported`), and a `voiceSession` the server ends before
+  it opens or whose events can't be read throws `ServerError` (it was `InvalidRequest`): the server's fault, not the
+  request's. New in this section, so with no earlier behaviour: `transcriptionSession` and `speak` throw the same
+  `NotSupported` and `ServerError` (`speak` also for speech that can't be read or ends before any audio). A clip in a
+  chat message on a model that doesn't hear stays `InvalidRequest`.
 - **Demo:** a tap on the mic dictates into the message bar, a hold records a voice message (D140); a typed reply on a
   model that speaks can be read aloud (D141).
 

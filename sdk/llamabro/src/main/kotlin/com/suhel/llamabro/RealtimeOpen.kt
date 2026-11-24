@@ -1,5 +1,6 @@
 package com.suhel.llamabro
 
+import com.suhel.llamabro.internal.ErrorMapping
 import com.suhel.llamabro.internal.RealtimeLink
 import com.suhel.llamabro.voice.RealtimeJson
 import kotlinx.coroutines.CancellationException
@@ -46,7 +47,7 @@ internal suspend fun <S, E> Model.openRealtime(
                 }
             }
             opened.completeExceptionally(
-                LlamaBroException.InvalidRequest("the server ended the $what before it opened"),
+                ErrorMapping.unreadable(what, "it ended before the session opened"),
             )
             events.close()
         } catch (e: CancellationException) {
@@ -56,9 +57,24 @@ internal suspend fun <S, E> Model.openRealtime(
         } catch (
             @Suppress("TooGenericExceptionCaught") e: Exception,
         ) {
-            // besides the SDK's own errors: an event that isn't a JSON object, or audio that isn't base64, which
-            // upstream never sends. Either ends the session typed; uncaught, it would leave the open hanging.
-            val failure = e as? LlamaBroException ?: LlamaBroException.InvalidRequest("unreadable $what event", e)
+            // an event the SDK can't read is the server's fault, as ErrorMapping.readReply classes a reply (D103):
+            // not a JSON object or not base64 (IllegalArgumentException, which SerializationException extends), a
+            // missing field, a field of another type. Anything else is the SDK's own bug and passes through as it
+            // is; either way the open can't hang.
+            val failure =
+                when (e) {
+                    is LlamaBroException -> {
+                        e
+                    }
+
+                    is IllegalArgumentException, is NoSuchElementException, is ClassCastException -> {
+                        ErrorMapping.unreadable("$what event", e)
+                    }
+
+                    else -> {
+                        e
+                    }
+                }
             opened.completeExceptionally(failure)
             events.close(failure)
         } finally {

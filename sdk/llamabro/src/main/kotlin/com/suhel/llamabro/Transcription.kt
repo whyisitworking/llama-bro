@@ -23,6 +23,8 @@ import kotlinx.serialization.json.JsonObject
  * @throws LlamaBroException.NotSupported if the model doesn't hear, or upstream refused live transcription for it,
  *   with upstream's message.
  * @throws LlamaBroException.InvalidRequest if the server refused the setup.
+ * @throws LlamaBroException.ServerError if the server ended before the session opened, or sent an event the SDK can't
+ *   read.
  * @throws IllegalStateException if the model was loaded for another task ([ModelTask]).
  */
 public suspend fun Model.transcriptionSession(
@@ -63,7 +65,7 @@ public suspend fun Model.transcriptionSession(
 
 private fun Model.checkCanTranscribe() {
     requireTask<ModelTask.Generate>("transcriptionSession", "ModelTask.Generate")
-    if (!info.supportsAudio) throw LlamaBroException.NotSupported("this model doesn't hear: no transcription session")
+    requireHears("transcriptionSession")
 }
 
 /** An error before the session opened: before `session.created` upstream refuses the model, after it the setup. */

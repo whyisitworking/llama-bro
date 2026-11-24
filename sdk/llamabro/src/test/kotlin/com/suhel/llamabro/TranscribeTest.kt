@@ -130,11 +130,11 @@ class TranscribeTest {
         }
 
     @Test
-    fun transcribeOnAModelThatCantHearIsInvalidRequest() =
+    fun transcribeOnAModelThatCantHearIsNotSupported() =
         runTest {
             val (engine, model) = setup(FakeModel.DEFAULT_INFO)
             val error = runCatching { model.transcribe(MediaSource.file("/clips/note.wav")) }.exceptionOrNull()
-            assertTrue("$error", error is LlamaBroException.InvalidRequest)
+            assertTrue("$error", error is LlamaBroException.NotSupported)
             assertTrue(error!!.message!!, error.message!!.contains("supportsAudio"))
             assertTrue(engine.model.requests.isEmpty())
         }

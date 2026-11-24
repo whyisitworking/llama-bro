@@ -20,6 +20,8 @@ import kotlinx.serialization.json.JsonObject
  * @throws LlamaBroException.NotSupported if the model doesn't hear.
  * @throws LlamaBroException.InvalidRequest if the server refused the setup (a model that can't hold a conversation),
  *   with upstream's message.
+ * @throws LlamaBroException.ServerError if the server ended before the session opened, or sent an event the SDK can't
+ *   read.
  * @throws IllegalArgumentException if [VoiceConfig.Builder.voice] isn't one of [ModelInfo.voices].
  * @throws IllegalStateException if the model was loaded for another task ([ModelTask]).
  */
@@ -50,7 +52,7 @@ public suspend fun Model.voiceSession(configure: VoiceConfig.Builder.() -> Unit 
 
 private fun Model.checkCanTalk() {
     requireTask<ModelTask.Generate>("voiceSession", "ModelTask.Generate")
-    if (!info.supportsAudio) throw LlamaBroException.NotSupported("this model doesn't hear: no voice session")
+    requireHears("voiceSession")
 }
 
 private fun session(

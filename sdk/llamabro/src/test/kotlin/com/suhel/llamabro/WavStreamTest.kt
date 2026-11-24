@@ -67,13 +67,13 @@ class WavStreamTest {
 
     @Test
     fun otherThan16BitPcmIsAnError() {
-        assertThrows(LlamaBroException.InvalidRequest::class.java) { WavStream().feed(streamed(1, bits = 32)) }
+        assertThrows(LlamaBroException.ServerError::class.java) { WavStream().feed(streamed(1, bits = 32)) }
     }
 
     @Test
     fun aBodyThatIsNotWavIsAnError() {
         assertThrows(
-            LlamaBroException.InvalidRequest::class.java,
+            LlamaBroException.ServerError::class.java,
         ) { WavStream().feed(ByteArray(64) { 'x'.code.toByte() }) }
     }
 }

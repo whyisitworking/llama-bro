@@ -36,8 +36,8 @@ public class VoiceSession internal constructor(
 
     /**
      * The server's events, in order, from the moment the session opened. One collector; it completes when the session
-     * ends, and fails with `LlamaBroException.ModelClosed` when the model is closed under it. Events not yet collected
-     * are kept.
+     * ends, and fails with `LlamaBroException.ModelClosed` when the model is closed under it, or with
+     * `LlamaBroException.ServerError` on an event the SDK can't read. Events not yet collected are kept.
      */
     public val events: Flow<VoiceEvent> = events0.receiveAsFlow()
 

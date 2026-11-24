@@ -25,6 +25,15 @@ internal object JsonMergePatch {
         return JsonObject(out)
     }
 
+    /**
+     * [base] with a typed call's `extra` applied, or [base] itself when there is none. The builders check `extra` when
+     * it is set; it is parsed again here, where the object is needed, and the check comes with the parse.
+     *
+     * @throws IllegalArgumentException if [extra] isn't a JSON object or sets one of [owned].
+     */
+    fun applyExtra(base: JsonObject, extra: String?, owned: Set<String>): JsonObject =
+        extra?.let { apply(base, checkPatch(it, owned)) as JsonObject } ?: base
+
     /** @throws IllegalArgumentException if [patch] isn't a JSON object or sets one of [owned]. */
     fun checkPatch(patch: String, owned: Set<String>): JsonObject {
         val parsed =

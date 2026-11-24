@@ -26,8 +26,10 @@ import kotlinx.serialization.json.put
  * The clip must be WAV, MP3 or FLAC, the formats llama.cpp decodes. A file or descriptor is read natively during the
  * call, off the caller's thread; the app may close a descriptor once this returns.
  *
- * @throws LlamaBroException.InvalidRequest if the model doesn't hear, or the clip is missing, unreadable or in another
- *   format; no transcription is made. Engine failures stay exceptions too.
+ * @throws LlamaBroException.NotSupported if the model doesn't hear ([ModelInfo.supportsAudio]); nothing is sent.
+ * @throws LlamaBroException.InvalidRequest if the clip is missing, unreadable or in another format; no transcription is
+ *   made. Engine failures stay exceptions too.
+ * @throws LlamaBroException.ServerError if llama-server's reply can't be read.
  * @throws IllegalStateException if the model was loaded for another task ([ModelTask]).
  */
 public suspend fun Model.transcribe(
@@ -37,6 +39,7 @@ public suspend fun Model.transcribe(
     options: RequestOptions.Builder.() -> Unit = {},
 ): Transcript {
     requireTask<ModelTask.Generate>("transcribe", "ModelTask.Generate")
+    requireHears("transcribe")
     Media.checkAudio(info, source)
     val body = transcriptionBody(RequestOptions(options), language, prompt)
     val attachment = Media.attachment("file", Media.CLIP_TYPE, source)
@@ -69,10 +72,7 @@ private fun transcriptionBody(options: RequestOptions, language: String?, prompt
             prompt?.let { put("prompt", it) }
             put("response_format", "json")
         }
-    val merged =
-        options.extra?.let {
-            JsonMergePatch.apply(base, JsonMergePatch.checkPatch(it, RequestOptions.OWNED)) as JsonObject
-        } ?: base
+    val merged = JsonMergePatch.applyExtra(base, options.extra, RequestOptions.OWNED)
     return JsonObject(
         merged.mapValues { (k, v) -> if (k in STRING_FIELDS && v is JsonPrimitive) JsonPrimitive(v.content) else v } +
             ("stream" to JsonPrimitive("false")),

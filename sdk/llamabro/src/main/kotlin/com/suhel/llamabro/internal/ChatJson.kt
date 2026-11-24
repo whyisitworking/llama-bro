@@ -50,11 +50,7 @@ internal object ChatJson {
                 put("return_progress", true)
                 putJsonObject("stream_options") { put("include_usage", true) }
             }
-        val extra = r.extra ?: return Encoded(base.toString(), media.all)
-        return Encoded(
-            JsonMergePatch.apply(base, JsonMergePatch.checkPatch(extra, RequestOptions.OWNED)).toString(),
-            media.all,
-        )
+        return Encoded(JsonMergePatch.applyExtra(base, r.extra, RequestOptions.OWNED).toString(), media.all)
     }
 
     /** The body fields of [o], in the golden order; `extra` is not among them (it is applied to the whole body). */

@@ -37,7 +37,8 @@ public class TranscriptionSession internal constructor(
 
     /**
      * The server's events, in order, from the moment the session opened. One collector; it completes when the session
-     * ends, and fails with `LlamaBroException.ModelClosed` when the model is closed under it.
+     * ends, and fails with `LlamaBroException.ModelClosed` when the model is closed under it, or with
+     * `LlamaBroException.ServerError` on an event the SDK can't read.
      */
     public val events: Flow<TranscriptionEvent> = events0.receiveAsFlow()
 

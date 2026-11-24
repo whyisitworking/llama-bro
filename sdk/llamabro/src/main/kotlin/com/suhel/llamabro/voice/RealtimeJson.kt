@@ -52,9 +52,7 @@ internal object RealtimeJson {
                     }
                 }
             }
-        val merged =
-            config.extra?.let { JsonMergePatch.apply(session, JsonMergePatch.checkPatch(it, VoiceConfig.OWNED)) }
-                ?: session
+        val merged = JsonMergePatch.applyExtra(session, config.extra, VoiceConfig.OWNED)
         return event("session.update") { put("session", merged) }
     }
 

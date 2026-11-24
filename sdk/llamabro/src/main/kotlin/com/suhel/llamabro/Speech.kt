@@ -1,5 +1,6 @@
 package com.suhel.llamabro
 
+import com.suhel.llamabro.internal.ErrorMapping
 import com.suhel.llamabro.internal.JsonMergePatch
 import com.suhel.llamabro.internal.Media
 import com.suhel.llamabro.voice.SpeechAudio
@@ -19,9 +20,13 @@ import kotlinx.serialization.json.put
  * @throws IllegalArgumentException at once if [SpeechConfig.Builder.voice] isn't one of [ModelInfo.voices], or both a
  *   voice and a speaker reference are set (upstream takes one).
  * @throws IllegalStateException at once if the model was loaded for another task ([ModelTask]).
- * @throws LlamaBroException.InvalidRequest from the flow if upstream refused the request, with its message (a model
- *   that doesn't speak, a setting it doesn't take, a speaker reference it can't use), the reference is missing or
- *   isn't WAV, MP3 or FLAC, or the speech that came back isn't 16-bit PCM WAV or holds no audio.
+ * @throws LlamaBroException.NotSupported from the flow if the model doesn't speak, as upstream reports it. There is no
+ *   check up front: a model can speak with no predefined [ModelInfo.voices], from a speaker reference alone
+ *   (`handle_tts_impl`).
+ * @throws LlamaBroException.InvalidRequest from the flow if upstream refused the request, with its message (a setting
+ *   the model doesn't take, a speaker reference it can't use), or the reference is missing or isn't WAV, MP3 or FLAC.
+ * @throws LlamaBroException.ServerError from the flow if the speech that came back isn't 16-bit PCM WAV or holds no
+ *   audio: the server's fault, not the caller's.
  */
 public fun Model.speak(text: String, configure: SpeechConfig.Builder.() -> Unit = {}): Flow<SpeechAudio> {
     val config = SpeechConfig(configure)
@@ -42,7 +47,7 @@ public fun Model.speak(text: String, configure: SpeechConfig.Builder.() -> Unit 
         requestBytes(Endpoint.Speech, body, attachments).collect { bytes ->
             wav.feed(bytes)?.let { emit(it) }
         }
-        if (!wav.started) throw LlamaBroException.InvalidRequest("the speech ended before any audio")
+        if (!wav.started) throw ErrorMapping.unreadable("speech", "it ended before any audio")
     }
 }
 
@@ -61,9 +66,7 @@ private fun speechBody(text: String, config: SpeechConfig): JsonObject {
             config.temperature?.let { put("temperature", it) }
             config.maxFrames?.let { put("max_tokens", it) }
         }
-    return config.extra?.let {
-        JsonMergePatch.apply(base, JsonMergePatch.checkPatch(it, SpeechConfig.OWNED)) as JsonObject
-    } ?: base
+    return JsonMergePatch.applyExtra(base, config.extra, SpeechConfig.OWNED)
 }
 
 /**
@@ -131,7 +134,7 @@ internal class WavStream {
 
     /** Speech the server sent that can't be read is the server's fault, an SDK error, not the caller's misuse. */
     private inline fun unreadable(ok: Boolean, message: () -> String) {
-        if (!ok) throw LlamaBroException.InvalidRequest(message())
+        if (!ok) throw ErrorMapping.unreadable("speech", message())
     }
 
     private fun ByteArray.ascii(at: Int) = String(this, at, ID, Charsets.US_ASCII)
