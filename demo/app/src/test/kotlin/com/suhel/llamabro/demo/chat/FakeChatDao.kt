@@ -24,7 +24,11 @@ class FakeChatDao : ChatDao() {
             .AtomicLong()
     val messageUpdates = AtomicInteger()
 
+    /** Awaited before each chat is inserted: a test holds a creation open to race another against it. */
+    var beforeInsertChat: suspend () -> Unit = {}
+
     override suspend fun insertChat(chat: ChatEntity): Long {
+        beforeInsertChat()
         val id = chatIds.incrementAndGet()
         chats.update { it + chat.copy(id = id) }
         return id

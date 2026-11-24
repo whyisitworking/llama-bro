@@ -6,15 +6,18 @@ import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.eventually
+import com.suhel.llamabro.demo.letAWrongActionLand
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.models.installedModel
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -37,13 +40,14 @@ class ChatEngineStartTest {
     private val fake = FakeLlamaBro()
     private val testHub = TestHub()
     private val hub get() = testHub.hub
+    private val dao = FakeChatDao()
     private val settings by lazy {
         SettingsRepository(
             PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "settings.preferences_pb") },
         )
     }
     private val chats by lazy {
-        ChatRepository(FakeChatDao(), ImageStore(File(folder.root, "images")), System::currentTimeMillis)
+        ChatRepository(dao, ImageStore(File(folder.root, "images")), System::currentTimeMillis)
     }
     private val host by lazy { ModelHost(fake.llamaBro, { hub.installedModel(it) }, scope) }
     private val models by lazy { ModelRepository(hub, settings, FakeScheduler(), scope, host) }
@@ -73,6 +77,27 @@ class ChatEngineStartTest {
             eventually("answered") { chat.messages.value.size == 2 }
             assertEquals(deep.toString(), chats.modelKey(chat.chatId.value))
             assertTrue("no switch divider", chat.messages.value.none { it.kind == MessageKind.Switch })
+            chat.close()
+        }
+
+    @Test fun aSwitchDuringANewChatsFirstSendMakesOneChat() =
+        runBlocking {
+            // the first send creates the chat; a switch at that moment must find it, not create a second one
+            val creating = CompletableDeferred<Unit>()
+            val gate = CompletableDeferred<Unit>()
+            dao.beforeInsertChat = { if (creating.complete(Unit)) gate.await() }
+            settings.setLastModel(swift.toString())
+            val chat = engine.open(0)
+            eventually("the model is known") { chat.current.value == swift }
+            val sent = scope.async { chat.send("hello", emptyList()) }
+            eventually("the send creates the chat") { creating.isCompleted }
+            chat.switchModel(deep)
+            // nothing marks where the switch would create its own chat: it waits for the send's, or makes another
+            letAWrongActionLand()
+            gate.complete(Unit)
+            assertTrue(sent.await())
+            eventually("switched") { chats.modelKey(chat.chatId.value) == deep.toString() }
+            assertEquals("one chat", 1, chats.chats().first().size)
             chat.close()
         }
 

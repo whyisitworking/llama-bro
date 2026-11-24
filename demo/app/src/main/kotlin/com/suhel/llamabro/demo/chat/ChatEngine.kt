@@ -363,9 +363,13 @@ class ChatEngine(
          * Whether the message was taken: false while a reply is coming, for an empty message, when the chat has no
          * model at all, and for pictures or a [voice] message sent to a model that can't see or hear them (the limit
          * line says so). The caller keeps the draft when this is false. A taken message is stored as held and answered
-         * as soon as its model is on the phone.
+         * as soon as its model is on the phone. Runs on [confined], as a switch does, so the two never both create
+         * the chat.
          */
-        suspend fun send(text: String, images: List<String> = emptyList(), voice: NewVoice? = null): Boolean {
+        suspend fun send(text: String, images: List<String> = emptyList(), voice: NewVoice? = null): Boolean =
+            withContext(confined) { take(text, images, voice) }
+
+        private suspend fun take(text: String, images: List<String>, voice: NewVoice?): Boolean {
             // a chat deleted from the drawer takes nothing more: its rows would point at a chat that is gone
             if (_busy.value || deleting) return false
             if (text.isBlank() && images.isEmpty() && voice == null) return false
@@ -544,9 +548,9 @@ class ChatEngine(
 
         /**
          * The chat is being deleted: [pump] answers nothing more, and the person's actions are refused. Written on
-         * [confined] only; volatile because [send] reads it from the screen's thread.
+         * [confined] only.
          */
-        @Volatile private var deleting = false
+        private var deleting = false
 
         /** Answers every held user message in order, once, as soon as its model is on the phone. */
         private fun pump() {
@@ -818,19 +822,28 @@ class ChatEngine(
          * Voice mode's chat (D100): this one, created now if it is new, with its model and the model's name; null when
          * no model is known yet.
          */
-        suspend fun voiceChat(): VoiceChat? {
-            val id = ensureChat() ?: return null
-            val key = choice.value.key ?: return null
-            return VoiceChat(id, key, Names.of(key))
-        }
+        suspend fun voiceChat(): VoiceChat? =
+            withContext(confined) {
+                val id = ensureChat() ?: return@withContext null
+                val key = choice.value.key ?: return@withContext null
+                VoiceChat(id, key, Names.of(key))
+            }
+
+        /**
+         * Held while the chat is created: a send and a switch both on [confined] still meet at the creation's
+         * suspension, and the second must find the chat the first made rather than make another.
+         */
+        private val creating = Mutex()
 
         /** Creates the chat on the first message; null when no model is known yet. */
-        private suspend fun ensureChat(): Long? {
-            _chatId.value.takeIf { it != 0L }?.let { return it }
-            val key =
-                choice.value.key ?: initialModelKey()?.also { choice.value = ModelChoice.Chosen(it) } ?: return null
-            return chats.createChat(key.toString()).also { _chatId.value = it }
-        }
+        private suspend fun ensureChat(): Long? =
+            creating.withLock {
+                _chatId.value.takeIf { it != 0L }?.let { return@withLock it }
+                val key =
+                    choice.value.key ?: initialModelKey()?.also { choice.value = ModelChoice.Chosen(it) }
+                        ?: return@withLock null
+                chats.createChat(key.toString()).also { _chatId.value = it }
+            }
 
         private fun syncThink(info: ModelInfo? = null) {
             val key = choice.value.key ?: return
