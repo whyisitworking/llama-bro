@@ -98,6 +98,7 @@ object Markdown {
      * list's) and where the next append parses again from ([restart]: the last top-level block that starts before the
      * text's last line). A link reference definition reaches back to links before it, so a reply with one is parsed
      * whole ([whole]). [text] is the text parsed, which leaves out a last line held back as a possible underline.
+     * [readFrom] is where this parse began reading [text]: the work it did, which a test bounds instead of a clock.
      */
     class Parsed internal constructor(
         val text: String,
@@ -105,6 +106,7 @@ object Markdown {
         internal val starts: IntArray,
         internal val restart: Int,
         internal val whole: Boolean,
+        internal val readFrom: Int,
     )
 
     fun parseKeeping(text: String, previous: Parsed?): Parsed =
@@ -140,7 +142,7 @@ object Markdown {
             for (block in MarkdownTree.Reply.blocks(node)) out.add(block, start)
             node = node.next
         }
-        return out.parsed(whole)
+        return out.parsed(whole, from)
     }
 
     /** A parse of [text]'s blocks in order: [previous]'s before [keepBefore], then those read, with their starts. */
@@ -164,10 +166,10 @@ object Markdown {
             starts += start
         }
 
-        fun parsed(whole: Boolean): Parsed {
+        fun parsed(whole: Boolean, readFrom: Int): Parsed {
             val lastLine = text.lastIndexOf('\n') + 1
             val restart = starts.lastOrNull { it < lastLine } ?: 0
-            return Parsed(text, MarkdownBlocks(blocks), starts.toIntArray(), restart, whole)
+            return Parsed(text, MarkdownBlocks(blocks), starts.toIntArray(), restart, whole, readFrom)
         }
     }
 }
