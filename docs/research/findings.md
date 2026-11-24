@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the [decision records](../decisions.md) (`D<n>`), the [research history](history.md), which summarises each phase, and the experiments under [`research/`](../../research/).
-> **Status:** living document, updated 2026-11-24 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182)
+> **Status:** living document, updated 2026-11-25 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183)
 
 Labels such as P1, PA, PF, PD and PH name the project's phases, and W1 to W9 the workstreams of a phase; the
 [research history](history.md#summary-of-the-phases) summarises each. "Task <n>", "T<n>" and "Feeds:" name the steps
@@ -2261,10 +2261,33 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   written and read on one thread.
 - **Feeds:** the demo's `ChatViewModel.composerState`.
 
+## Glass performance (F183)
+
+<a id="f183"></a>
+### F183. The demo's glass costs a flagship 8 ms of GPU per frame while a chat scrolls; a third shader pass trades a lower median for more jank
+
+- **Finding:** With D148's glass (a progressive bar blur in two runtime-shader passes of 25 taps, the colour split
+  read three times per tap in the vertical pass, and a lens shader per chip and panel), scrolling a long chat on the
+  release build costs 8 ms of GPU per frame at the median and 10 ms at the 99th percentile, against an 11.1 ms frame
+  at 90 Hz; 1.4% of frames miss their deadline, all on the GPU (slow draw commands), with one slow UI-thread frame.
+  Moving the colour split into a third 3-sample pass (a shift and a blur commute) lowers the median to 7 ms but
+  doubles the frames near 10 ms and the jank (2.8% warm, 3.2% right after an install, with shaders compiling): each
+  pass in a `RenderEffect` chain renders a full intermediate target, and that bandwidth costs more in the slow frames
+  than the sampling it saves.
+- **Evidence:** phone CPH2649 (Android 17, 90 Hz, Skia on Vulkan), release build, a long chat scrolled by 40
+  `adb shell input swipe`s of 350 ms over about 80 s, `dumpsys gfxinfo com.suhel.llamabro.demo` reset before:
+  3,516 frames, janky 1.42%, GPU 50th/90th/95th/99th 8/8/9/10 ms; with the third pass 3,030 frames, janky 2.77%,
+  GPU 7/7/9/10 ms, 116 frames at 10 ms against 51 (2026-11-25).
+- **Means:** the glass fits a flagship with about 3 ms to spare, not a mid-range GPU; the split stays in the blur's
+  vertical pass. The next lever is to blur a downscaled copy of the page (fewer pixels to sample and to move), not to
+  add passes; measure it the same way before keeping it.
+- **Feeds:** D148, D151.
+
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F183 | The demo's glass costs a flagship 8 ms of GPU per frame scrolling a chat; a third shader pass lowers the median but doubles the jank | D148, D151 |
 | F182 | A `derivedStateOf` read on one thread while another writes its inputs can stay stale for good; a plain getter cannot | ChatViewModel |
 | F181 | Live transcription needs a streaming audio encoder (refused otherwise); a transcription prompt replaces the instruction; streamed speech is one WAV header then PCM (24 kHz on the tiny LFM3) | D138, D139, D140 |
 | F180 | The upgrade to b12653: contract identical on the Mac and the NPU (76/76); upstream #32434 fixes 0004's bug, so 0004 is dropped; six patches apply unchanged | D10, D91, D93, D137, F153, F163 |
