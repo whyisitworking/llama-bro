@@ -266,6 +266,36 @@ class ChatEngineTurnTest {
             assertEquals("no answer started after the delete", 1, calls.get())
         }
 
+    @Test fun editingTheFirstOfTwoHeldMessagesAnswersOnlyTheEdit() =
+        runBlocking {
+            // two questions wait for the model; the first one's reply streams when the first is edited: its turn had
+            // made its reply row, so a pump that went on would start the second, which the edit is cutting away
+            val asked = java.util.concurrent.CopyOnWriteArrayList<String>()
+            streamer = { _, text, _, _ ->
+                asked += text
+                flow {
+                    emit(ChatEvent.ContentDelta("re: $text"))
+                    if (text != "changed") delay(60_000)
+                }
+            }
+            settings.setLastModel(swift.toString())
+            val chat = engine.open(0)
+            eventually("the model is known") { chat.current.value == swift }
+            assertTrue(chat.send("one", emptyList()))
+            assertTrue(chat.send("two", emptyList()))
+            onPhone(swift)
+            eventually("streaming") { chat.streaming.value?.text == "re: one" }
+            chat.edit(0, "changed")
+            eventually("the edit answered") {
+                assertFalse("the cut message was answered: $asked", "two" in asked)
+                rows(chat).map { it.text } == listOf("changed", "re: changed") &&
+                    rows(chat).last().state == MessageState.Done
+            }
+            eventually("no turn under way") { !engine.replying.value }
+            letAWrongActionLand()
+            assertEquals(listOf("one", "changed"), asked.toList())
+        }
+
     @Test fun aChatDeletedFromTheDrawerTakesNoMoreMessages() =
         runBlocking {
             // the drawer deletes the chat on screen: its handle must not write to the deleted id, whose rows the

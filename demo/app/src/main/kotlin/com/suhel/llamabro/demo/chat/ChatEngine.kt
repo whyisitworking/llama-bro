@@ -315,6 +315,7 @@ class ChatEngine(
                 }
             }.stateIn(hs, SharingStarted.Eagerly, ChatModelState.Waking())
 
+        /** Held by the pump for its whole loop, by a continue, and by a rewrite ([rewriting]). */
         private val turn = Mutex()
 
         /** The turn under way, load and reply both; volatile only because [stop] cancels it from the UI's thread. */
@@ -445,9 +446,8 @@ class ChatEngine(
         }
 
         fun switchModel(key: HfModel) {
-            hs.launch {
-                stopAndWait()
-                if (deleting) return@launch
+            rewriting {
+                if (deleting) return@rewriting
                 // an empty chat has no model to switch from: choosing one just sets it, with no divider
                 val switching = isSwitch(messages.value)
                 // the in-memory model changes first, so a message sent right after is answered by the new one, and a
@@ -455,12 +455,11 @@ class ChatEngine(
                 invalidate()
                 _limit.value = null
                 choice.value = ModelChoice.Chosen(key)
-                val id = ensureChat() ?: return@launch
+                val id = ensureChat() ?: return@rewriting
                 syncThink()
                 if (switching) chats.append(id, switchNotice(key, Names.of(key), clock()))
                 chats.setModel(id, key.toString())
                 settings.setLastModel(key.toString())
-                pump()
             }
         }
 
@@ -472,29 +471,53 @@ class ChatEngine(
 
         /**
          * Cuts the chat from [position] and asks again (an edit, a regenerate): stops the turn, then, with [keep]
-         * saying which pictures of the cut rows stay (null: nothing to rewrite), cuts, says "Switched to" again where
-         * the cut removed it ([modelToRestate]), runs [then] with the chat's id and the rows before the cut, and answers
-         * what is held.
+         * saying which pictures of the cut rows stay (null: nothing to rewrite), cuts, says "Switched to" again
+         * where the cut removed it ([modelToRestate]), runs [then] with the chat's id and the rows before the cut,
+         * and answers what is held.
          */
         private fun rewriteFrom(
             position: Int,
             keep: (List<StoredMessage>) -> Set<String>?,
             then: suspend (id: Long, before: List<StoredMessage>) -> Unit,
         ) {
-            hs.launch {
-                stopAndWait()
+            rewriting {
                 beforeTurn() // startup recovery must not run between the cut and the append
-                if (deleting) return@launch
+                if (deleting) return@rewriting
                 _limit.value = null
-                val id = _chatId.value.takeIf { it != 0L } ?: return@launch
+                val id = _chatId.value.takeIf { it != 0L } ?: return@rewriting
                 val before = messages.value
-                val kept = keep(before) ?: return@launch
+                val kept = keep(before) ?: return@rewriting
                 chats.truncateFrom(id, position, keepImages = kept)
                 invalidate()
                 modelToRestate(before, position, choice.value.key)?.let {
                     chats.append(id, switchNotice(it, Names.of(it), clock()))
                 }
                 then(id, before)
+            }
+        }
+
+        /**
+         * Rewrites (an edit, a regenerate, a switch) are under way; [pump] answers nothing while one is. Read and
+         * written on [confined] only.
+         */
+        private var rewrites = 0
+
+        /**
+         * Runs [block], a change to the chat's rows or model, with no turn under way, then answers what is held. The
+         * turn is stopped, and [rewrites] keeps [pump] from starting the next held message's turn meanwhile: a pump
+         * whose stopped turn had made its reply row would otherwise go on to the next one while [block] cuts it
+         * away. [block] then runs under [turn], so no pump's turn can run beside it.
+         */
+        private fun rewriting(block: suspend () -> Unit) {
+            hs.launch {
+                rewrites++
+                try {
+                    stopAndWait()
+                    turn.withLock { block() }
+                } finally {
+                    rewrites--
+                }
+                // also when [block] changed nothing: a pump that gave way to it may have left messages held
                 pump()
             }
         }
@@ -529,7 +552,7 @@ class ChatEngine(
         private fun pump() {
             hs.launch {
                 turn.withLock {
-                    while (!deleting) {
+                    while (!deleting && rewrites == 0) {
                         val id = _chatId.value.takeIf { it != 0L } ?: return@withLock
                         val key = choice.value.key ?: return@withLock
                         val lib = library.value ?: return@withLock
@@ -544,8 +567,9 @@ class ChatEngine(
                         // before the load starts, so a Stop while the model wakes ends the turn (the message
                         // stays held, no reply row is made), and an edit, a regenerate or a switch waits for
                         // the load as it waits for a reply
-                        // the chat may have started going while its rows were read
-                        if (deleting) return@withLock
+                        // the chat may have started going, or a rewrite may have begun, while its rows were read;
+                        // nothing suspends from here until the turn is [running], where a rewrite's stop finds it
+                        if (deleting || rewrites > 0) return@withLock
                         var replied = false
                         runAsCurrent { answer(id, key, held) { replied = true } }
                         if (!replied) return@withLock
