@@ -7,14 +7,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestDispatcher
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.setMain
-import kotlinx.coroutines.withTimeout
+import java.util.concurrent.locks.LockSupport
 
 /**
  * The screens' state is derived with `stateIn(WhileSubscribed)`, so it only runs while something collects, as in the
@@ -26,17 +22,25 @@ fun <T> StateFlow<T>.keepAlive(scope: CoroutineScope): StateFlow<T> {
 }
 
 /**
- * Ends [viewModels]' scopes, then resets Main. Main first becomes an unconfined dispatcher on [main]'s scheduler, so a
- * cancelled coroutine's resume, now or later from an IO thread, finishes in place; whatever [main] had already queued
- * runs; and Main is reset only once every scope has ended. A scope still winding down when `resetMain` runs resumes
- * onto no Main at all, and that exception fails whichever test runs next.
+ * Ends [viewModels]' scopes, then resets Main. A cancelled coroutine winding down on an IO thread resumes onto Main,
+ * which for a standard [main] queues on its scheduler that nothing runs once the test has returned; so this runs that
+ * queue until every scope has ended, and only then resets Main. Main is never swapped meanwhile: setting it while an IO
+ * thread dispatches onto it fails ("Dispatchers.Main is used concurrently with setting it"), and resetting it while a
+ * scope still winds down leaves that scope's last resume with no Main, failing whichever test runs next.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 fun shutDown(main: TestDispatcher, viewModels: Collection<ViewModel>) {
-    Dispatchers.setMain(UnconfinedTestDispatcher(main.scheduler))
     val jobs = viewModels.mapNotNull { it.viewModelScope.coroutineContext[Job] }
     jobs.forEach { it.cancel() }
+    val deadline = System.nanoTime() + SHUT_DOWN_NANOS
+    while (jobs.any { !it.isCompleted }) {
+        main.scheduler.runCurrent()
+        check(System.nanoTime() < deadline) { "a view model's scope was still running 5 s after its cancel" }
+        LockSupport.parkNanos(POLL_NANOS)
+    }
     main.scheduler.runCurrent()
-    runBlocking { withTimeout(5_000) { jobs.joinAll() } }
     Dispatchers.resetMain()
 }
+
+private const val SHUT_DOWN_NANOS = 5_000_000_000L
+private const val POLL_NANOS = 1_000_000L
