@@ -185,6 +185,16 @@ class PausesTest {
         (0 until ms step interval).map { push(db, playbackDb) }.filter { it != TurnDetector.Heard.Nothing }
 
     @Test
+    fun aTurnPastItsLongestEndsAtItsFirstQuietMomentWithoutAWholePause() {
+        val d = TurnDetector(interval, maxTurnMs = 2000)
+        d.hold(-50.0, 500)
+        assertEquals(listOf(TurnDetector.Heard.Start), d.hold(-15.0, TurnDetector.START_SPEECH_MS))
+        assertEquals(emptyList<TurnDetector.Heard>(), d.hold(-15.0, 2000))
+        // one quiet block, far short of the end pause, ends it
+        assertEquals(listOf(TurnDetector.Heard.End), d.hold(-50.0, interval))
+    }
+
+    @Test
     fun underAReplyItsEchoNeverInterruptsAndSpeechWellAboveItDoes() {
         val d = TurnDetector(interval, floorDb = -50.0)
         d.watching = true

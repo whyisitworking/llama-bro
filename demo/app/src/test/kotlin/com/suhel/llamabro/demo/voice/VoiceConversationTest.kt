@@ -2,6 +2,7 @@ package com.suhel.llamabro.demo.voice
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.suhel.llamabro.demo.audio.SampleSource
+import com.suhel.llamabro.demo.audio.SessionFocus
 import com.suhel.llamabro.demo.audio.SpeechOutput
 import com.suhel.llamabro.demo.chat.ChatEngine
 import com.suhel.llamabro.demo.chat.FakeChatDao
@@ -17,6 +18,7 @@ import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
 import com.suhel.llamabro.demo.data.VoiceTurns
 import com.suhel.llamabro.demo.eventually
+import com.suhel.llamabro.demo.letAWrongActionLand
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.TestHub
@@ -90,7 +92,7 @@ class VoiceConversationTest {
         testHub.close()
     }
 
-    private suspend fun conversation(): Pair<Long, VoiceConversation> {
+    private suspend fun conversation(focus: SessionFocus = SessionFocus.None): Pair<Long, VoiceConversation> {
         testHub.install(omni)
         models.changed()
         val chatId = chats.createChat(omni.toString())
@@ -111,6 +113,7 @@ class VoiceConversationTest {
                 scope = scope,
                 dispatcher = Dispatchers.Default.limitedParallelism(1),
                 locale = { language },
+                focus = focus,
             )
         opened += voice
         return chatId to voice
@@ -331,11 +334,12 @@ class VoiceConversationTest {
             val (chatId, voice) = conversation()
             mic.script(QUIET, 6)
             mic.script(SPEECH, 10)
-            mic.script(QUIET, 20)
+            mic.script(QUIET, 60)
             voice.open()
             eventually("the turn is sent and answered") { rows(chatId).size == 2 }
             assertEquals(1, commits())
-            // the quiet before the speech, the speech and the pause that ended it; the reader may take the last blocks
+            // the quiet before the speech, the speech and the pause that ended it, and the block read as it ended: not
+            // the quiet the microphone read on ahead of the steps, which runs to 76 blocks
             val clip = rows(chatId)[0].voice!!
             assertTrue("${clip.millis}", clip.millis in 34 * BLOCK..36 * BLOCK)
             eventually("listening again") { mic.opens.get() == 2 && voice.ui.value.phase == VoiceStage.Listening }
@@ -371,9 +375,11 @@ class VoiceConversationTest {
             val (chatId, voice) = conversation()
             mic.script(QUIET, 6)
             mic.script(SPEECH, 10)
+            mic.script(QUIET, 3)
             voice.open()
-            // the session hears the turn only once speech has started it: every block read, and no pause after
-            eventually("the turn started") { sentTypes().count { it == "input_audio_buffer.append" } == 16 }
+            // the session hears the turn once its speech stands out from its own floor (the breath after it): every
+            // block read, and no pause long enough to end it
+            eventually("the turn started") { appends() == 19 }
             voice.talkEnd()
             eventually("sent and answered") { rows(chatId).size == 2 }
             assertEquals(1, commits())
@@ -405,9 +411,15 @@ class VoiceConversationTest {
             eventually("speaking") { voice.ui.value.phase == VoiceStage.Speaking }
             mic.script(QUIET, 12)
             mic.script(OVER_NOISE, 20)
+            // the reply all written and its drain begun: an ear under it would have opened at the first write, and read
+            // the script at once, while the reply still plays
+            assertTrue(speaker.draining.await(5, TimeUnit.SECONDS))
+            letAWrongActionLand()
+            assertEquals(10, mic.reads.get())
             speaker.holdDrain?.complete(Unit)
             eventually("the reply is over") { voice.ui.value.phase == VoiceStage.Ready && rows(chatId).size == 2 }
             assertEquals(1, mic.opens.get())
+            assertEquals(10, mic.reads.get())
             assertTrue("response.cancel" !in sentTypes())
             assertEquals(0, speaker.stops.get())
             voice.close()
@@ -428,10 +440,251 @@ class VoiceConversationTest {
             mic.script(OVER_NOISE, 10)
             mic.script(QUIET, 20)
             eventually("the second turn is answered") { rows(chatId).size == 4 }
-            assertTrue("response.cancel" in sentTypes())
+            // the fake sends a reply whole, so it was only playing out: stopped here, with nothing for the server to cancel
+            assertTrue("response.cancel" !in sentTypes())
             assertTrue(speaker.stops.get() > 0)
             assertEquals(2, commits())
             assertEquals(listOf("", "", "", "Sure."), rows(chatId).map { it.text })
+            voice.close()
+        }
+
+    private fun appends() = sentTypes().count { it == "input_audio_buffer.append" }
+
+    /** A quiet room, then speech, then the pause that ends it: one hands-free turn. */
+    private fun scriptATurn() {
+        mic.script(QUIET, 6)
+        mic.script(SPEECH, 10)
+        mic.script(QUIET, 20)
+    }
+
+    @Test fun tapToTalkOpensNoMicrophoneUntilAPressAndComingBackOpensNone() =
+        runBlocking {
+            val (_, voice) = conversation()
+            voice.open()
+            eventually("open") { voice.ui.value.voice != null }
+            voice.resume()
+            letAWrongActionLand()
+            assertEquals(0, mic.opens.get())
+            assertEquals(VoiceStage.Ready, voice.ui.value.phase)
+            voice.close()
+        }
+
+    @Test fun theSessionHoldsOneFocusFromItsOpeningToItsEnd() =
+        runBlocking {
+            settings.voice.setInterruptByTalking(true)
+            val focus = CountingFocus()
+            val (_, voice) = conversation(focus)
+            voice.open()
+            eventually("open") { voice.ui.value.voice != null }
+            assertEquals(1, focus.takes.get())
+            assertEquals(true, focus.asked)
+            voice.pause()
+            eventually("released") { focus.releases.get() == 1 }
+            voice.pause()
+            voice.open()
+            eventually("taken again") { focus.takes.get() == 2 }
+            voice.close()
+            eventually("released again") { focus.releases.get() == 2 }
+            letAWrongActionLand()
+            assertEquals(2, focus.releases.get())
+        }
+
+    @Test fun handsFreeLeavingWhileListeningClosesTheMicrophoneOnceAndComingBackListensAgain() =
+        runBlocking {
+            handsFree()
+            val (chatId, voice) = conversation()
+            voice.open()
+            eventually("listening") { mic.opens.get() == 1 && voice.ui.value.phase == VoiceStage.Listening }
+            voice.pause()
+            eventually("paused") { !engine.replying.value && mic.closes.get() == 1 }
+            assertEquals(VoiceStage.Ready, voice.ui.value.phase)
+            assertEquals(1, mic.opens.get())
+            voice.resume()
+            eventually("listening again") { mic.opens.get() == 2 && voice.ui.value.phase == VoiceStage.Listening }
+            voice.close()
+            eventually("closed") { !engine.replying.value && mic.closes.get() == 2 }
+            letAWrongActionLand()
+            assertEquals(2, mic.opens.get())
+            assertEquals(0, commits())
+            assertTrue(rows(chatId).isEmpty())
+        }
+
+    @Test fun handsFreeClosingMidTurnClosesTheMicrophoneOnceAndSendsNothing() =
+        runBlocking {
+            handsFree()
+            val (chatId, voice) = conversation()
+            mic.script(QUIET, 6)
+            mic.script(SPEECH, 10)
+            mic.script(QUIET, 3)
+            voice.open()
+            eventually("the turn is heard") { appends() == 19 }
+            voice.close()
+            eventually("closed") { !engine.replying.value && mic.closes.get() == 1 }
+            letAWrongActionLand()
+            assertEquals(1, mic.opens.get())
+            assertEquals(0, commits())
+            assertTrue(rows(chatId).isEmpty())
+        }
+
+    @Test fun handsFreeWithInterruptOnTheEarUnderAReplyListensOnOnTheSameMicrophone() =
+        runBlocking {
+            handsFree()
+            settings.voice.setInterruptByTalking(true)
+            // three pieces: the reply goes on playing after the ear opens under it
+            fake.voiceReply { repeat(3) { audio(ShortArray(4_800)) } }
+            speaker.holdDrain = CompletableDeferred()
+            val (_, voice) = conversation()
+            scriptATurn()
+            voice.open()
+            eventually("the ear under the reply") {
+                voice.ui.value.phase == VoiceStage.Speaking && mic.opens.get() == 2
+            }
+            assertTrue(speaker.draining.await(5, TimeUnit.SECONDS))
+            speaker.holdDrain?.complete(Unit)
+            eventually("listening on") {
+                voice.ui.value.phase == VoiceStage.Listening && voice.ui.value.sendsOnPause
+            }
+            assertEquals(2, mic.opens.get())
+            assertEquals(1, mic.closes.get())
+            voice.close()
+        }
+
+    @Test fun tapToTalkWithInterruptOnClosesTheEarUnderAReplyWhenItEnds() =
+        runBlocking {
+            settings.voice.setCaptionYou(false)
+            settings.voice.setInterruptByTalking(true)
+            fake.voiceReply { audio(ShortArray(4_800)) }
+            speaker.holdDrain = CompletableDeferred()
+            val (_, voice) = conversation()
+            say(voice)
+            eventually("the ear under the reply") {
+                voice.ui.value.phase == VoiceStage.Speaking && mic.opens.get() == 2
+            }
+            speaker.holdDrain?.complete(Unit)
+            eventually("ready, the ear closed") { voice.ui.value.phase == VoiceStage.Ready && mic.closes.get() == 2 }
+            assertEquals(1, commits())
+            voice.close()
+        }
+
+    @Test fun stoppingAReplyMidWriteDoesNotCutTheTurnThatInterruptedIt() =
+        runBlocking {
+            settings.voice.setCaptionYou(false)
+            settings.voice.setInterruptByTalking(true)
+            fake.voiceReply { repeat(5) { audio(ShortArray(4_800)) } }
+            fake.voiceReply { text("Sure.") }
+            speaker.blockWrites = CountDownLatch(1)
+            val (chatId, voice) = conversation()
+            say(voice)
+            eventually("the ear under the reply") {
+                voice.ui.value.phase == VoiceStage.Speaking && mic.opens.get() == 2
+            }
+            mic.script(QUIET, 12)
+            mic.script(OVER_NOISE, 10)
+            mic.script(QUIET, 20)
+            eventually("the second turn is answered") { rows(chatId).size == 4 }
+            // the speech that interrupted and its onset, and the pause that ended it, all on the one microphone
+            val clip = rows(chatId)[2].voice!!
+            assertTrue("${clip.millis}", clip.millis >= (10 + 18) * BLOCK)
+            assertEquals(2, mic.opens.get())
+            assertEquals(2, commits())
+            voice.close()
+        }
+
+    @Test fun handsFreeStopListensAgain() =
+        runBlocking {
+            handsFree()
+            fake.voiceReply { audio(ShortArray(4_800)) }
+            speaker.holdDrain = CompletableDeferred()
+            val (_, voice) = conversation()
+            scriptATurn()
+            voice.open()
+            eventually("speaking") { voice.ui.value.phase == VoiceStage.Speaking }
+            voice.stop()
+            eventually("listening again") { voice.ui.value.phase == VoiceStage.Listening && mic.opens.get() == 2 }
+            voice.close()
+        }
+
+    @Test fun stoppingAReplyTheServerHasFinishedSendsNoCancel() =
+        runBlocking {
+            settings.voice.setCaptionYou(false)
+            fake.voiceReply { audio(ShortArray(4_800)) }
+            speaker.holdDrain = CompletableDeferred()
+            val (chatId, voice) = conversation()
+            say(voice)
+            eventually("saved while it still plays") {
+                rows(chatId).size == 2 && voice.ui.value.phase == VoiceStage.Speaking
+            }
+            voice.stop()
+            eventually("ready") { voice.ui.value.phase == VoiceStage.Ready }
+            assertTrue("response.cancel" !in sentTypes())
+            assertTrue(speaker.stops.get() > 0)
+            voice.close()
+        }
+
+    @Test fun handsFreeAPressHoldsTheTurnThroughAPauseAndTheReleaseSendsAQuietShortOne() =
+        runBlocking {
+            handsFree()
+            fake.voiceReply { text("Hi.") }
+            val (chatId, voice) = conversation()
+            voice.open()
+            eventually("listening by itself") { mic.opens.get() == 1 && voice.ui.value.phase == VoiceStage.Listening }
+            voice.talkEnd()
+            eventually("waiting for a tap") { mic.closes.get() == 1 && voice.ui.value.phase == VoiceStage.Ready }
+            voice.talkStart()
+            eventually("held") {
+                mic.opens.get() == 2 && voice.ui.value.phase == VoiceStage.Listening && !voice.ui.value.sendsOnPause
+            }
+            // a "yes" too quiet and short to start a turn by itself, then a pause longer than the one that ends a turn
+            mic.script(QUIET, 2)
+            mic.script(QUIET_YES, 4)
+            mic.script(QUIET, 30)
+            eventually("all heard") { appends() == 36 }
+            assertEquals(0, commits())
+            voice.talkEnd()
+            eventually("sent and answered") { rows(chatId).size == 2 }
+            assertEquals(1, commits())
+            voice.close()
+        }
+
+    @Test fun handsFreeThreeTurnsOfNoiseSendNothingAndStopListening() =
+        runBlocking {
+            handsFree()
+            val (chatId, voice) = conversation()
+            mic.script(QUIET, 20)
+            // bursts long enough to start a turn, too short to be one
+            repeat(3) {
+                mic.script(SPEECH, 5)
+                mic.script(QUIET, 25)
+            }
+            voice.open()
+            eventually("given up") { mic.closes.get() == 1 && voice.ui.value.phase == VoiceStage.Ready }
+            assertEquals(0, appends())
+            assertEquals(0, commits())
+            assertTrue(rows(chatId).isEmpty())
+            voice.close()
+        }
+
+    @Test fun handsFreeTwoMinutesWithNoTurnStopListening() =
+        runBlocking {
+            handsFree()
+            val (_, voice) = conversation()
+            mic.script(QUIET, HandsFreeEar.IDLE_MS / HandsFreeEar.BLOCK_MS)
+            voice.open()
+            eventually("given up") { mic.closes.get() == 1 && voice.ui.value.phase == VoiceStage.Ready }
+            assertEquals(0, commits())
+            voice.close()
+        }
+
+    @Test fun handsFreeAfterAnErrorItListensAgain() =
+        runBlocking {
+            handsFree()
+            // no reply scripted: the session answers the turn with an error
+            val (_, voice) = conversation()
+            scriptATurn()
+            voice.open()
+            eventually("the error said, and listening again") {
+                voice.limit.value != null && voice.ui.value.phase == VoiceStage.Listening && mic.opens.get() == 2
+            }
             voice.close()
         }
 
@@ -502,19 +755,27 @@ class VoiceConversationTest {
 
         @Volatile var closedOnce = false
 
+        /** How many times it has been closed: once for each open, however listening ended. */
+        val closes = AtomicInteger()
+
         override fun close() {
             closed = true
             closedOnce = true
+            closes.incrementAndGet()
         }
     }
 
     /**
      * A speaker that counts what it plays; [holdDrain] keeps a reply "playing" until completed, and [blockWrites] makes
-     * each write wait, as a full AudioTrack buffer does, until [stop] releases it.
+     * each write after the first wait, as a full AudioTrack buffer does, until [stop] releases it.
      */
     private class ScriptedSpeaker : SpeechOutput {
         val played = AtomicInteger()
         val stops = AtomicInteger()
+        private val writes = AtomicInteger()
+
+        /** The player has written the whole reply and waits for it to play out. */
+        val draining = CountDownLatch(1)
 
         /** Writes that came after a stop: speech that went on playing although the reply was stopped. */
         val writesAfterStop = AtomicInteger()
@@ -526,12 +787,13 @@ class VoiceConversationTest {
         override fun write(pcm: ShortArray) {
             if (stops.get() > 0) writesAfterStop.incrementAndGet()
             played.addAndGet(pcm.size)
-            blockWrites?.await(5, TimeUnit.SECONDS)
+            if (writes.incrementAndGet() > 1) blockWrites?.await(5, TimeUnit.SECONDS)
         }
 
         override val level: Float = 0.5f
 
         override suspend fun drain() {
+            draining.countDown()
             holdDrain?.await()
         }
 
@@ -544,6 +806,31 @@ class VoiceConversationTest {
         override fun close() = Unit
     }
 
+    /** A focus that counts what voice mode asks of it, given back only when taken, as the phone's is. */
+    private class CountingFocus : SessionFocus {
+        val takes = AtomicInteger()
+        val releases = AtomicInteger()
+
+        @Volatile var asked: Boolean? = null
+
+        @Volatile private var held = false
+        override val lost = false
+        override val communication = false
+
+        override fun take(communication: Boolean) {
+            if (held) return
+            held = true
+            asked = communication
+            takes.incrementAndGet()
+        }
+
+        override fun release() {
+            if (!held) return
+            held = false
+            releases.incrementAndGet()
+        }
+    }
+
     private companion object {
         /** A block's length in milliseconds. */
         const val BLOCK = 50L
@@ -553,6 +840,9 @@ class VoiceConversationTest {
 
         /** About -50 dBFS: a quiet room. */
         const val QUIET: Short = 100
+
+        /** About -30 dBFS: a quiet word. */
+        const val QUIET_YES: Short = 1_000
 
         /** About -12 dBFS: speech close to the phone. */
         const val SPEECH: Short = 8_000

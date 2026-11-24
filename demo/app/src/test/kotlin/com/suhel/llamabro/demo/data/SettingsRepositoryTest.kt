@@ -150,32 +150,48 @@ class SettingsRepositoryTest {
             assertNull(KeepLoaded.UntilNeeded.millis)
         }
 
+    /** Settings › Voice as stored now (D100, D140, D147). */
+    private suspend fun SettingsRepository.voicePrefs(): VoicePrefs = settings.first().voice
+
     @Test fun voiceModeTakesTheModelsFirstVoiceAndCaptionsUntilChosen() =
         runBlocking {
             val first = repository()
-            assertNull(first.settings.first().voice.name)
-            assertTrue(first.settings.first().voice.captionYou)
+            assertNull(first.voicePrefs().name)
+            assertTrue(first.voicePrefs().captionYou)
             first.voice.setVoice("male")
             first.voice.setCaptionYou(false)
             restart()
             val again = repository()
-            assertEquals("male", again.settings.first().voice.name)
-            assertFalse(again.settings.first().voice.captionYou)
+            assertEquals("male", again.voicePrefs().name)
+            assertFalse(again.voicePrefs().captionYou)
             again.voice.setVoice(null)
-            assertNull(again.settings.first().voice.name)
+            assertNull(again.voicePrefs().name)
         }
 
     @Test fun voiceModeIsTapToTalkWithoutInterruptingUntilChosen() =
         runBlocking {
             val first = repository()
-            assertEquals(VoiceTurns.TapToTalk, first.settings.first().voice.turns)
-            assertFalse(first.settings.first().voice.interruptByTalking)
+            assertEquals(VoiceTurns.TapToTalk, first.voicePrefs().turns)
+            assertFalse(first.voicePrefs().interruptByTalking)
             first.voice.setVoiceTurns(VoiceTurns.HandsFree)
             first.voice.setInterruptByTalking(true)
             restart()
             val again = repository()
-            assertEquals(VoiceTurns.HandsFree, again.settings.first().voice.turns)
-            assertTrue(again.settings.first().voice.interruptByTalking)
+            assertEquals(VoiceTurns.HandsFree, again.voicePrefs().turns)
+            assertTrue(again.voicePrefs().interruptByTalking)
+        }
+
+    @Test fun dictationsLanguageAndTheMicHintAreKeptWithTheVoiceSettings() =
+        runBlocking {
+            val first = repository()
+            assertEquals(VoicePrefs(), first.voicePrefs())
+            first.voice.setDictationLanguage("fr")
+            first.voice.setSeenMicHint()
+            restart()
+            val again = repository()
+            assertEquals(VoicePrefs(dictationLanguage = "fr", seenMicHint = true), again.voicePrefs())
+            again.voice.setDictationLanguage(null)
+            assertNull(again.voicePrefs().dictationLanguage)
         }
 
     @Test fun aModelThatTalksIsRememberedWithItsVoicesUntilItStops() =
