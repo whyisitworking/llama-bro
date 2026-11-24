@@ -1,8 +1,8 @@
 package com.suhel.llamabro.hub
 
 import com.suhel.llamabro.hub.internal.JvmStorage
-import com.suhel.llamabro.hub.internal.Response
-import com.suhel.llamabro.hub.internal.Transport
+import com.suhel.llamabro.hub.spi.Response
+import com.suhel.llamabro.hub.spi.Transport
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

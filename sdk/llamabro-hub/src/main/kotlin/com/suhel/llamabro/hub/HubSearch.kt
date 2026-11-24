@@ -7,13 +7,13 @@ import com.suhel.llamabro.hub.internal.GgufHeader
 import com.suhel.llamabro.hub.internal.HeaderFetch
 import com.suhel.llamabro.hub.internal.HttpStatus
 import com.suhel.llamabro.hub.internal.Resolver
-import com.suhel.llamabro.hub.internal.Response
-import com.suhel.llamabro.hub.internal.Transport
 import com.suhel.llamabro.hub.internal.findBestSibling
 import com.suhel.llamabro.hub.internal.hubFailure
 import com.suhel.llamabro.hub.internal.isModelGguf
 import com.suhel.llamabro.hub.internal.isValidRepoId
 import com.suhel.llamabro.hub.internal.splitInfo
+import com.suhel.llamabro.hub.spi.Response
+import com.suhel.llamabro.hub.spi.Transport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext

@@ -22,11 +22,11 @@ import com.suhel.llamabro.hub.internal.NetworkFailures
 import com.suhel.llamabro.hub.internal.PlanStore
 import com.suhel.llamabro.hub.internal.Planner
 import com.suhel.llamabro.hub.internal.ProgressMeter
-import com.suhel.llamabro.hub.internal.Storage
 import com.suhel.llamabro.hub.internal.Transfers
-import com.suhel.llamabro.hub.internal.Transport
 import com.suhel.llamabro.hub.internal.isUnreachable
 import com.suhel.llamabro.hub.internal.repoFolder
+import com.suhel.llamabro.hub.spi.Storage
+import com.suhel.llamabro.hub.spi.Transport
 import com.suhel.llamabro.spi.LogcatLogger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers

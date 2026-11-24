@@ -6,6 +6,8 @@ import com.suhel.llamabro.hub.HubException
 import com.suhel.llamabro.hub.HubFile
 import com.suhel.llamabro.hub.HubPlan
 import com.suhel.llamabro.hub.PlanOptions
+import com.suhel.llamabro.hub.spi.Storage
+import com.suhel.llamabro.hub.spi.Transport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File

@@ -5,9 +5,9 @@ import com.suhel.llamabro.hub.internal.JvmStorage
 import com.suhel.llamabro.hub.internal.LocalCopies
 import com.suhel.llamabro.hub.internal.PlanStore
 import com.suhel.llamabro.hub.internal.Resolver
-import com.suhel.llamabro.hub.internal.Response
-import com.suhel.llamabro.hub.internal.Transport
 import com.suhel.llamabro.hub.internal.repoFolder
+import com.suhel.llamabro.hub.spi.Response
+import com.suhel.llamabro.hub.spi.Transport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll

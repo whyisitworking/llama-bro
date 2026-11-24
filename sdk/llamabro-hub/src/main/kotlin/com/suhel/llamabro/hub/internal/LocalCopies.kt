@@ -8,6 +8,7 @@ import com.suhel.llamabro.hub.HubException
 import com.suhel.llamabro.hub.HubFile
 import com.suhel.llamabro.hub.HubPlan
 import com.suhel.llamabro.hub.PlanOptions
+import com.suhel.llamabro.hub.spi.Storage
 import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.nio.file.Files

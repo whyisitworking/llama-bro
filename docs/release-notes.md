@@ -74,6 +74,9 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
   - `SpeechConfig.Builder` no longer refuses `temperature < 0` or `speed <= 0` when set: upstream checks sampling
     values (D143), so a model that doesn't take one refuses the request with upstream's message, as for the other
     fields.
+  - The hub's seams for tests, `Transport`, `Response` and `Storage` (all `@InternalLlamaBroApi`), moved from
+    `com.suhel.llamabro.hub.internal` to **`com.suhel.llamabro.hub.spi`**, as core's engine seam is in `spi` (D104).
+    Only `llamabro-hub-testing` and the hub's own tests use them; change the imports.
 - **Demo:** a tap on the mic dictates into the message bar, a hold records a voice message (D140); a typed reply on a
   model that speaks can be read aloud (D141).
 

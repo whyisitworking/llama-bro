@@ -4,6 +4,9 @@ import com.suhel.llamabro.LogLevel
 import com.suhel.llamabro.Logger
 import com.suhel.llamabro.hub.HubException
 import com.suhel.llamabro.hub.HubFile
+import com.suhel.llamabro.hub.spi.Response
+import com.suhel.llamabro.hub.spi.Storage
+import com.suhel.llamabro.hub.spi.Transport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive

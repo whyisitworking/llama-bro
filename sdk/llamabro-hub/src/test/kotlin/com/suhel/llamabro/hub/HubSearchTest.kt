@@ -2,8 +2,8 @@ package com.suhel.llamabro.hub
 
 import com.suhel.llamabro.chat.Sampling
 import com.suhel.llamabro.hub.internal.JvmStorage
-import com.suhel.llamabro.hub.internal.Response
-import com.suhel.llamabro.hub.internal.Transport
+import com.suhel.llamabro.hub.spi.Response
+import com.suhel.llamabro.hub.spi.Transport
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.flow.toList

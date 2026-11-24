@@ -35,7 +35,9 @@ class DevicePolicyTest {
         (Json.parseToJsonElement(config) as JsonObject)["mmproj_device"]?.jsonPrimitive?.content
 
     private fun loadVision(engine: FakeEngine, configure: ModelConfig.Builder.() -> Unit = {}): Model =
-        runBlocking { testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf") { mmproj = "/mm.gguf" }, configure = configure) }
+        runBlocking {
+            testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf") { mmproj = "/mm.gguf" }, configure = configure)
+        }
 
     @Test
     fun encoderFollowsTheModelUnlessSet() { // llama-server's --mmproj-device: absent follows --device

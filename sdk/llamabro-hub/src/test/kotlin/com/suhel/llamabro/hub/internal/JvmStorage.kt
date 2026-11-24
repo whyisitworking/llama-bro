@@ -1,5 +1,6 @@
 package com.suhel.llamabro.hub.internal
 
+import com.suhel.llamabro.hub.spi.Storage
 import java.io.File
 
 /** Host implementation for JVM tests. */

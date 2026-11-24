@@ -4,6 +4,7 @@ import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.HubFile
 import com.suhel.llamabro.hub.HubPlan
 import com.suhel.llamabro.hub.PlanOptions
+import com.suhel.llamabro.hub.spi.Storage
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject

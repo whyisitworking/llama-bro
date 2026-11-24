@@ -2,6 +2,8 @@ package com.suhel.llamabro.hub.internal
 
 import com.suhel.llamabro.hub.HubException
 import com.suhel.llamabro.hub.HubFile
+import com.suhel.llamabro.hub.spi.Response
+import com.suhel.llamabro.hub.spi.Transport
 import kotlinx.coroutines.ensureActive
 import java.io.File
 import java.io.RandomAccessFile

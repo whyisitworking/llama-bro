@@ -1,6 +1,7 @@
 package com.suhel.llamabro.hub.internal
 
 import com.suhel.llamabro.hub.HubException
+import com.suhel.llamabro.hub.spi.Response
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

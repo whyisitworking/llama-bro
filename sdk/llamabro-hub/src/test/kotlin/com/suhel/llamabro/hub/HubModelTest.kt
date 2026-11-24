@@ -5,9 +5,9 @@ import com.suhel.llamabro.DownloadProgress
 import com.suhel.llamabro.hub.internal.HttpTransport
 import com.suhel.llamabro.hub.internal.HubTestHooks
 import com.suhel.llamabro.hub.internal.JvmStorage
-import com.suhel.llamabro.hub.internal.Response
-import com.suhel.llamabro.hub.internal.Transport
 import com.suhel.llamabro.hub.internal.repoFolder
+import com.suhel.llamabro.hub.spi.Response
+import com.suhel.llamabro.hub.spi.Transport
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.toList

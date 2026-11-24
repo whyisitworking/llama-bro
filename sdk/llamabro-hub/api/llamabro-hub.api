@@ -201,7 +201,7 @@ public final class com/suhel/llamabro/hub/LlamaBroHub {
 public final class com/suhel/llamabro/hub/LlamaBroHub$Companion {
 	public final fun create (Landroid/content/Context;Lcom/suhel/llamabro/hub/HubConfig;)Lcom/suhel/llamabro/hub/LlamaBroHub;
 	public static synthetic fun create$default (Lcom/suhel/llamabro/hub/LlamaBroHub$Companion;Landroid/content/Context;Lcom/suhel/llamabro/hub/HubConfig;ILjava/lang/Object;)Lcom/suhel/llamabro/hub/LlamaBroHub;
-	public final fun withTransport (Lcom/suhel/llamabro/hub/internal/Transport;Lcom/suhel/llamabro/hub/internal/Storage;Lcom/suhel/llamabro/hub/HubConfig;)Lcom/suhel/llamabro/hub/LlamaBroHub;
+	public final fun withTransport (Lcom/suhel/llamabro/hub/spi/Transport;Lcom/suhel/llamabro/hub/spi/Storage;Lcom/suhel/llamabro/hub/HubConfig;)Lcom/suhel/llamabro/hub/LlamaBroHub;
 }
 
 public final class com/suhel/llamabro/hub/PlanOptions {
@@ -300,7 +300,7 @@ public final class com/suhel/llamabro/hub/SearchSort : java/lang/Enum {
 	public static fun values ()[Lcom/suhel/llamabro/hub/SearchSort;
 }
 
-public final class com/suhel/llamabro/hub/internal/Response : java/io/Closeable {
+public final class com/suhel/llamabro/hub/spi/Response : java/io/Closeable {
 	public fun <init> (ILjava/util/Map;Ljava/lang/String;Ljava/io/InputStream;Lkotlin/jvm/functions/Function0;)V
 	public fun close ()V
 	public final fun getBody ()Ljava/io/InputStream;
@@ -309,18 +309,18 @@ public final class com/suhel/llamabro/hub/internal/Response : java/io/Closeable 
 	public final fun getStatus ()I
 }
 
-public abstract interface class com/suhel/llamabro/hub/internal/Storage {
+public abstract interface class com/suhel/llamabro/hub/spi/Storage {
 	public abstract fun allocatableBytes (Ljava/io/File;)J
 	public abstract fun allocate (Ljava/io/File;J)V
 	public abstract fun fsyncDir (Ljava/io/File;)V
 }
 
-public abstract interface class com/suhel/llamabro/hub/internal/Transport {
+public abstract interface class com/suhel/llamabro/hub/spi/Transport {
 	public abstract fun open (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/Long;Ljava/lang/Long;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static synthetic fun open$default (Lcom/suhel/llamabro/hub/internal/Transport;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/Long;Ljava/lang/Long;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun open$default (Lcom/suhel/llamabro/hub/spi/Transport;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/Long;Ljava/lang/Long;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
-public final class com/suhel/llamabro/hub/internal/Transport$DefaultImpls {
-	public static synthetic fun open$default (Lcom/suhel/llamabro/hub/internal/Transport;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/Long;Ljava/lang/Long;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+public final class com/suhel/llamabro/hub/spi/Transport$DefaultImpls {
+	public static synthetic fun open$default (Lcom/suhel/llamabro/hub/spi/Transport;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/Long;Ljava/lang/Long;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 

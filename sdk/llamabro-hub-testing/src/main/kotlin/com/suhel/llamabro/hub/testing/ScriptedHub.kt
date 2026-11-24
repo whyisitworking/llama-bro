@@ -1,9 +1,9 @@
 package com.suhel.llamabro.hub.testing
 
 import com.suhel.llamabro.chat.Sampling
-import com.suhel.llamabro.hub.internal.Response
-import com.suhel.llamabro.hub.internal.Storage
-import com.suhel.llamabro.hub.internal.Transport
+import com.suhel.llamabro.hub.spi.Response
+import com.suhel.llamabro.hub.spi.Storage
+import com.suhel.llamabro.hub.spi.Transport
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext

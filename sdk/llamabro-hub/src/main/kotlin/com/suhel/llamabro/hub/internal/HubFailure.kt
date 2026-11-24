@@ -1,6 +1,7 @@
 package com.suhel.llamabro.hub.internal
 
 import com.suhel.llamabro.hub.HubException
+import com.suhel.llamabro.hub.spi.Response
 
 /**
  * What an HTTP error from the Hub means, the same for every request the hub makes: a token problem, a missing

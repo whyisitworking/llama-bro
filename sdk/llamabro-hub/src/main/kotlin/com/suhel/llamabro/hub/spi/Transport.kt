@@ -1,13 +1,11 @@
-package com.suhel.llamabro.hub.internal
+package com.suhel.llamabro.hub.spi
 
 import com.suhel.llamabro.InternalLlamaBroApi
-import com.suhel.llamabro.hub.HubException
 import java.io.Closeable
-import java.io.IOException
 import java.io.InputStream
 
 /**
- * A single HTTP request. Redirects are resolved by the implementation. [HttpTransport] in production; public only for
+ * A single HTTP request. Redirects are resolved by the implementation. `HttpTransport` in production; public only for
  * `llamabro-hub-testing`'s scripted Hub
  * ([D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75), as the core's engine seam is for
  * `llamabro-testing`, [D27](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d27)). Apps never
@@ -39,23 +37,4 @@ public class Response(
     private val onClose: () -> Unit,
 ) : Closeable {
     override fun close(): Unit = onClose()
-}
-
-/**
- * [inner] with an [IOException] from `open` reported as [HttpTransport] reports one, a retryable
- * [HubException.Network], so a scripted transport fails as the network does.
- */
-internal class NetworkFailures(private val inner: Transport) : Transport {
-    override suspend fun open(
-        method: String,
-        url: String,
-        headers: Map<String, String>,
-        range: Long?,
-        rangeEnd: Long?,
-    ): Response =
-        try {
-            inner.open(method, url, headers, range, rangeEnd)
-        } catch (e: IOException) {
-            throw HubException.Network("HTTP $method $url: ${e.message}", e, true)
-        }
 }
