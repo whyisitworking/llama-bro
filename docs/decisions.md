@@ -2322,7 +2322,8 @@ Decision: A reply's running text (`replyBody`) is Source Serif 4, 17 / 28 sp, no
 size (17): a reply reads like a set page. Its headings are the serif too, at the display optical size (24), on a
 calibrated ladder, size first and weight second: H1 24 / 32, H2 21 / 28, H3 18 / 28 at SemiBold (600), H4 to H6 the
 text's 17 / 28 at Medium (500); bold in the text is a true SemiBold, not a synthesised one; light on a dark ground
-reads heavy, so nothing in a reply goes past 600. Every sans role is Nunito Sans (SIL OFL, `res/font/nunito_sans.ttf` from Google Fonts' repository, the variable
+reads heavy, so nothing in a reply goes past 600. A top bar's title (`screenTitle`) is 18 / 24 sp, not Material's 22 / 28: in a
+floating glass pill the larger name read as too big. Every sans role is Nunito Sans (SIL OFL, `res/font/nunito_sans.ttf` from Google Fonts' repository, the variable
 font at 300, 400 and 500), a humanist face, rounder and more open than Geist; the user's own messages, the controls
 and the labels stay in it, so who speaks is told by the face before a word is read. Geist is removed.
 Consequences: Amends D125's type (its accent and selection outline stand). `replyBody`'s line is now on the 4 dp grid,

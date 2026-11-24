@@ -46,7 +46,7 @@ class TypeScaleTest {
         mapOf(
             "displayHero" to Spec(28f, 36f, FontWeight.Medium, 0f),
             "sheetTitle" to Spec(22f, 28f, FontWeight.Medium, 0f),
-            "screenTitle" to Spec(22f, 28f, FontWeight.Medium, 0f),
+            "screenTitle" to Spec(18f, 24f, FontWeight.Medium, 0f),
             "title" to Spec(16f, 24f, FontWeight.Medium, 0.2f),
             "titleSmall" to Spec(14f, 20f, FontWeight.Medium, 0.1f),
             "body" to Spec(16f, 24f, FontWeight.Normal, 0.5f),

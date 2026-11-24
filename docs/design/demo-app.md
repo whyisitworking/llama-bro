@@ -357,7 +357,7 @@ Material 3 roles, a screen naming a role and never a size. Each role carries siz
 | `sheetTitle` | 22 / 28 | Medium | Serif | a sheet's title |
 | `cardTitle` | 24 / 32 | Regular | Serif | a model card's name (D123) |
 | `sidebarTitle` | 22 / 28 | Regular | Serif | "Llama Bro" at the head of the sidebar (D126) |
-| `screenTitle` | 22 / 28 | Medium | Nunito Sans | a top bar's title, "Chats" |
+| `screenTitle` | 18 / 24 | Medium | Nunito Sans | a top bar's title, "Chats" (D150) |
 | `screenTitleLight` | 24 / 32 | Light | Nunito Sans | the Models page's title (D123) |
 | `title` | 16 / 24 | Medium | Nunito Sans | a row's or card's title |
 | `titleRegular` | 16 / 24 | Regular | Nunito Sans | a model row's name, a quiet button's label (D123) |

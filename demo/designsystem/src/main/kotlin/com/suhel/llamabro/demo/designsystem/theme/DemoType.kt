@@ -66,7 +66,7 @@ private val NunitoSans =
  * |---|---|---|---|
  * | [displayHero] | 28 / 36 | Medium | serif |
  * | [sheetTitle] | 22 / 28 | Medium | serif |
- * | [screenTitle] | 22 / 28 | Medium | sans |
+ * | [screenTitle] | 18 / 24 | Medium | sans |
  * | [title] | 16 / 24 | Medium | sans |
  * | [titleSmall] | 14 / 20 | Medium | sans |
  * | [body] | 16 / 24 | Regular | sans |
@@ -107,7 +107,9 @@ object DemoType {
             lineHeight = 28.sp,
             letterSpacing = 0.sp,
         )
-    val screenTitle = sans(FontWeight.Medium, size = 22, line = 28, tracking = 0.0)
+
+    /** A top bar's title: 18 sp (D150), smaller than Material's 22, so the name sits quietly in its floating pill. */
+    val screenTitle = sans(FontWeight.Medium, size = 18, line = 24, tracking = 0.0)
     val title = sans(FontWeight.Medium, size = 16, line = 24, tracking = 0.2)
     val titleSmall = sans(FontWeight.Medium, size = 14, line = 20, tracking = 0.1)
     val body = sans(FontWeight.Normal, size = 16, line = 24, tracking = 0.5)
