@@ -232,9 +232,23 @@ The C API in [`llamabro.h`](../sdk/native/bridge/include/llamabro.h) is a stable
 | `lb_request_cancel(req)` / `lb_request_free(req)` | Cancel a request and release its handle |
 | `lb_model_free(model)` | Cancel in-flight requests, stop the loop, join the thread |
 
-Errors have one shape. Every call that can fail returns an `lb_status` and takes `char ** error_json` last: on failure it is set to `{"error": "<the specific reason>"}` (`lb_model_load` and `lb_fit_estimate` add `"code"`: a load can carry `file_not_found` or `insufficient_memory`, a fit estimate `file_not_found` only), on success to NULL, and the caller frees it with `lb_string_free`; passing NULL means the caller doesn't want the reason. The status is the kind of failure and the message says which one: each of a request's refusals (an unknown endpoint, an attachment with no name, no source, more than one source, no mime or a repeated name, params that aren't a JSON object of strings) has its own. `LB_ERR_CLOSED` is what a call made while `lb_model_free` is still waiting for in-flight requests sees, so it isn't mistaken for a bad argument. It is not a licence to race the free: the model is deleted when `lb_model_free` returns, so that call must not run concurrently with, or before, any other call on the same model outside that wait. The caller serialises frees, as the Kotlin layer does with its gate lock, where `LB_ERR_CLOSED` maps to `LlamaBroException.ModelClosed`. The JNI layer passes the status and the JSON on as `NativeError` without inventing either; `lb_request_send` alone stays a status to Kotlin (`EngineRequest.send`), since a closed conversation is an expected answer on a per-chunk path. Calls that can't fail (`lb_version`, `lb_runtime_devices`, `lb_runtime_backends`) return their value directly.
+Errors have one shape. Every call that can fail returns an `lb_status` and takes `char ** error_json` last:
 
-A single generic request function means any llama-server feature that has no Kotlin type yet is still reachable with raw JSON (section 5.5). Pictures and clips travel beside the JSON (D84): Kotlin writes a placeholder (`lb-attachment:<n>`) as a part's `image_url.url` or `input_audio.data` and passes each file as an `lb_attachment` (a path or a descriptor, read natively, or bytes, copied across JNI once); the bridge reads them in the call and writes the base64 data URL llama-server takes into the body (chat's `messages[].content[]` parts on the chat-completion routes, and the `{"content": [...]}` entries of an embeddings input), so neither llama-server's code nor the Java heap holds a base64 copy. A path attachment on those routes isn't read at all: the bridge checks its first bytes, links it under a random 128-bit name into the process's media folder (`noBackupFilesDir/llamabro/media/<pid>-<random>/`, llama-server's `--media-path`; one per process, since the app's processes share `noBackupFilesDir`, and at start the runtime removes only the folders of processes that ended) and writes `file://<name>`, so llama-server reads the file while the request runs, and the link is removed when it ends (D87, F157: a turn with three voice notes 195 → 94 ms). A caller-written `file://` reaches only that folder. Bytes and descriptors keep base64. A transcription's file goes into the request's files as upstream's multipart upload would. Because the files are read inside the native call, a request with attachments starts on the IO dispatcher.
+- **The JSON.** On failure it is set to `{"error": "<the specific reason>"}` (`lb_model_load` and `lb_fit_estimate` add `"code"`: a load can carry `file_not_found` or `insufficient_memory`, a fit estimate `file_not_found` only), on success to NULL, and the caller frees it with `lb_string_free`; passing NULL means the caller doesn't want the reason.
+- **The status** is the kind of failure and the message says which one: each of a request's refusals (an unknown endpoint, an attachment with no name, no source, more than one source, no mime or a repeated name, params that aren't a JSON object of strings) has its own.
+- **`LB_ERR_CLOSED`** is what a call made while `lb_model_free` is still waiting for in-flight requests sees, so it isn't mistaken for a bad argument. It is not a licence to race the free: the model is deleted when `lb_model_free` returns, so that call must not run concurrently with, or before, any other call on the same model outside that wait. The caller serialises frees, as the Kotlin layer does with its gate lock, where `LB_ERR_CLOSED` maps to `LlamaBroException.ModelClosed`.
+- **The JNI layer** passes the status and the JSON on as `NativeError` without inventing either; `lb_request_send` alone stays a status to Kotlin (`EngineRequest.send`), since a closed conversation is an expected answer on a per-chunk path.
+- **Calls that can't fail** (`lb_version`, `lb_runtime_devices`, `lb_runtime_backends`) return their value directly.
+
+A single generic request function means any llama-server feature that has no Kotlin type yet is still reachable with raw JSON (section 5.5). Pictures and clips travel beside the JSON (D84):
+
+- **Placeholders.** Kotlin writes a placeholder (`lb-attachment:<n>`) as a part's `image_url.url` or `input_audio.data` and passes each file as an `lb_attachment` (a path or a descriptor, read natively, or bytes, copied across JNI once).
+- **Base64 in the bridge.** The bridge reads them in the call and writes the base64 data URL llama-server takes into the body (chat's `messages[].content[]` parts on the chat-completion routes, and the `{"content": [...]}` entries of an embeddings input), so neither llama-server's code nor the Java heap holds a base64 copy.
+- **A path on those routes isn't read at all** (D87, F157: a turn with three voice notes 195 → 94 ms). The bridge checks its first bytes, links it under a random 128-bit name into the process's media folder and writes `file://<name>`, so llama-server reads the file while the request runs, and the link is removed when it ends.
+  - The folder is `noBackupFilesDir/llamabro/media/<pid>-<random>/`, llama-server's `--media-path`; one per process, since the app's processes share `noBackupFilesDir`, and at start the runtime removes only the folders of processes that ended.
+  - A caller-written `file://` reaches only that folder. Bytes and descriptors keep base64.
+- **A transcription's file** goes into the request's files as upstream's multipart upload would.
+- **Threading.** Because the files are read inside the native call, a request with attachments starts on the IO dispatcher.
 
 ### 4.2 Streaming and cancellation
 
@@ -383,7 +397,16 @@ Typed output and typed tools live in their own module, `llamabro-typed` (package
 - `contextUsage: StateFlow<ContextUsage>`, derived from timings (prompt, cached and predicted tokens)
 - `pendingApproval: StateFlow<ToolCall?>`, the call waiting for `approve` or `deny` (section 6.2)
 
-Operations: `send(text) { options }`, `ask(text, vararg attachments)` (returns `Typed<String>`: `Value(value, text, reasoning)`, or `Incomplete(reason, text)` for `Length`, `TurnLimit`, `ToolCallsPending` and `ToolAborted`, F41, D63; `valueOrNull()` gives the value or null, D88; engine failures still throw), `resume()`, `approve(callId)`, `deny(callId, reason)`, `regenerate()`, `askAgain()` (`regenerate` collected into a `Typed<String>`, as `ask` is `send` collected; `llamabro-typed`'s `askAgain<T>()` regenerates under the same schema, D88), `endReasoning()`, `toJson()` and `Model.restoreConversation(json)`. A conversation can also start from the application's own stored messages (F96). A descriptor in a message is read once into bytes when the message is added (D84), off the caller's thread, so later turns and `toJson` use the bytes; one in a starting `history` is read once by the first request or by `toJson`, and a closed descriptor, a missing file or a clip file in another format is `InvalidRequest` before the message is added. When a send's first request fails with `InvalidRequest` caused by its media (the bridge's attachment errors, or the decoder's) before any token or tool call, the message is removed again, atomically and only while it is still the last one, so the chat isn't wedged by media that fails every request; any other failure keeps it for `resume()`. `toJson` saves a file source as its path and bytes as base64, in save format version 3 (audio parts and paths); version 2 saves, with inline image data, and version 1 saves still load. Per-conversation `defaults { ... }` apply to every request, and per-send options apply to one (F38).
+Operations:
+
+- `send(text) { options }`, `resume()`, `approve(callId)`, `deny(callId, reason)`, `regenerate()`, `endReasoning()`, `toJson()` and `Model.restoreConversation(json)`.
+- `ask(text, vararg attachments)` returns `Typed<String>`: `Value(value, text, reasoning)`, or `Incomplete(reason, text)` for `Length`, `TurnLimit`, `ToolCallsPending` and `ToolAborted` (F41, D63); `valueOrNull()` gives the value or null (D88); engine failures still throw.
+- `askAgain()` is `regenerate` collected into a `Typed<String>`, as `ask` is `send` collected; `llamabro-typed`'s `askAgain<T>()` regenerates under the same schema (D88).
+- A conversation can also start from the application's own stored messages (F96).
+- **Media in messages.** A descriptor in a message is read once into bytes when the message is added (D84), off the caller's thread, so later turns and `toJson` use the bytes; one in a starting `history` is read once by the first request or by `toJson`, and a closed descriptor, a missing file or a clip file in another format is `InvalidRequest` before the message is added.
+- **A send that fails on its media.** When a send's first request fails with `InvalidRequest` caused by its media (the bridge's attachment errors, or the decoder's) before any token or tool call, the message is removed again, atomically and only while it is still the last one, so the chat isn't wedged by media that fails every request; any other failure keeps it for `resume()`.
+- **`toJson`** saves a file source as its path and bytes as base64, in save format version 3 (audio parts and paths); version 2 saves, with inline image data, and version 1 saves still load.
+- **Options.** Per-conversation `defaults { ... }` apply to every request, and per-send options apply to one (F38).
 
 Only one operation runs at a time. A second operation fails with `Busy` when its flow is collected, not when it is created.
 
@@ -691,22 +714,18 @@ hub.files("unsloth/Qwen3.5-4B-GGUF")                 // each quantisation with i
 hub.recommendedSampling(ref)                         // fromFile and fromBaseModel, each or null (D79)
 ```
 
-Search (D68) asks `/api/models` for GGUF repos with a query, a sort (downloads by default, likes, trending, recently
-updated, newest), a filter by author, one for models that take pictures, a parameter range (`num_parameters`, as each
-upload reports its count) and one that hides gated repos, and pages through the Hub's `Link` cursor; a cursor that
-leaves the endpoint's origin is not followed. A cursor is text (`SearchCursor.value`) an app may store for an endless
-list that outlives the process; the hub follows a stored one only on its own endpoint. A result groups the repos tagged `base_model:quantized:X` under X;
-a fine-tune, merge or adapter names the same base under another tag and stays its own result (F146). Grouping is per
-page, so an endless list merges pages by result id. `files(repo)` lists the newest commit through the resolver's look (it moves no ref) and gives each model GGUF
-once, split parts summed, with an `HfModel` naming that file, and whether an `mmproj` is there; sizes, not a fit
-verdict. `plan(ref)` is a look too: it moves no ref and writes no record, and falls back to the cache only when the
-Hub can't be reached; only `download` records a selection. `recommendedSampling(ref)` returns both sources, labelled, each null when absent (D79): `fromFile`, the GGUF
-header's `general.sampling.*` (what loads by default, F17), read from disk when the model is on the phone, else through
-the header fetch into a stub removed when it returns; and `fromBaseModel`, the base model's `generation_config.json`
-(`temperature`, `top_p`, `top_k`, `min_p`, `repetition_penalty` as the repeat penalty, `presence_penalty`;
-`do_sample: false` is greedy, temperature 0). A gated base model gives a null `fromBaseModel`; a configured token
-refused by the model's own repo throws `Unauthorized`, as `plan` does. Nothing is applied for the app. Every request goes through the hub's
-transport, so the token reaches only the endpoint's host and never crosses a redirect (F82).
+Search (D68) asks `/api/models` for GGUF repos, and the calls around it are looks that move nothing:
+
+- **The query.** A query, a sort (downloads by default, likes, trending, recently updated, newest), a filter by author, one for models that take pictures, a parameter range (`num_parameters`, as each upload reports its count) and one that hides gated repos; it pages through the Hub's `Link` cursor, and a cursor that leaves the endpoint's origin is not followed.
+- **The cursor** is text (`SearchCursor.value`) an app may store for an endless list that outlives the process; the hub follows a stored one only on its own endpoint.
+- **Grouping.** A result groups the repos tagged `base_model:quantized:X` under X; a fine-tune, merge or adapter names the same base under another tag and stays its own result (F146). Grouping is per page, so an endless list merges pages by result id.
+- **`files(repo)`** lists the newest commit through the resolver's look (it moves no ref) and gives each model GGUF once, split parts summed, with an `HfModel` naming that file, and whether an `mmproj` is there; sizes, not a fit verdict.
+- **`plan(ref)`** is a look too: it moves no ref and writes no record, and falls back to the cache only when the Hub can't be reached; only `download` records a selection.
+- **`recommendedSampling(ref)`** returns both sources, labelled, each null when absent (D79):
+  - `fromFile`: the GGUF header's `general.sampling.*` (what loads by default, F17), read from disk when the model is on the phone, else through the header fetch into a stub removed when it returns.
+  - `fromBaseModel`: the base model's `generation_config.json` (`temperature`, `top_p`, `top_k`, `min_p`, `repetition_penalty` as the repeat penalty, `presence_penalty`; `do_sample: false` is greedy, temperature 0).
+  - A gated base model gives a null `fromBaseModel`; a configured token refused by the model's own repo throws `Unauthorized`, as `plan` does. Nothing is applied for the app.
+- **The token.** Every request goes through the hub's transport, so the token reaches only the endpoint's host and never crosses a redirect (F82).
 
 `hub.model(ref)` is a `RemoteModelSource` (D64, D75). Its `fetch` loads the installed copy when every one of its files
 is on disk, without a request or a token lookup; otherwise it joins the shared, resumable download (F114-F116) and
@@ -714,27 +733,17 @@ returns the files it left. Its `withHeaders` hands `estimateFit` the installed f
 headers of the model and drafts and a sparse placeholder for the projector, removed when the estimate ends, also when it
 throws.
 
-**The installed copy, a deliberate deviation from upstream (D64).** Upstream's `-hf` re-reads `main` on every start and
-downloads what changed (F82), and its offline read follows `refs/main`. But `refs/main` records the newest commit the
-cache has seen, not the copy on the phone: a started update moves it, whether it was cancelled or failed (`hub.plan(ref)` is a look and moves nothing), and a refs-only
-read would then download the newer commit inside a load, or fail offline beside a complete older snapshot. So the hub
-keeps an installed record per model and options (`.llamabro/installed/`), written only when a download completes, and
-`hub.model`, `hub.source` and `hub.progress` follow it. A newer copy replaces it only when its download completes:
-`hasUpdate` compares the newest commit with it (an online look that moves nothing, and throws on a refusal or a rate
-limit rather than answering "no update"), and `download` fetches it. A copy with no installed record is not on the
-phone, and `hub.cached()` lists installed copies only (D107). `hub.delete` removes the record with the files;
-deletes of one repository run one at a time, so of two at once for one model the second returns false; a delete first stops this process's running
-downloads of what it removes (the repo, the tag or the file, as the model or its draft) and waits for them, ending
-their flows with a `Network` error that is not retryable so no worker fetches the model again (a download of it
-that starts while the delete runs fails at once with the same error); partial files are
-removed under their blob's lock; and a delete
-removes each blob under its download lock, so a download of another tag that links it meanwhile keeps it. When a download
-replaces an installed copy, the files only the old copy named are removed, each decided under its blob's lock from the
-records as they are then, so a download of another selection reusing a blob keeps it; a removal that fails is logged
-and the download still completes. `hub.cached()` lists only complete selections: the installed copies with every file
-on disk, then the tags of `refs/main`'s snapshot with all their split parts, and, for a tag the hub holds a plan or
-installed record of, only when one of those records is complete or its default selection loads as `hub.source` would
-load it, since the snapshot alone can't tell a stopped download from a copy made without its projector.
+**The installed copy, a deliberate deviation from upstream (D64).** Upstream's `-hf` re-reads `main` on every start and downloads what changed (F82), and its offline read follows `refs/main`. But `refs/main` records the newest commit the cache has seen, not the copy on the phone: a started update moves it, whether it was cancelled or failed (`hub.plan(ref)` is a look and moves nothing), and a refs-only read would then download the newer commit inside a load, or fail offline beside a complete older snapshot. So:
+
+- **The installed record.** The hub keeps one per model and options (`.llamabro/installed/`), written only when a download completes, and `hub.model`, `hub.source` and `hub.progress` follow it.
+- **Updates.** A newer copy replaces it only when its download completes: `hasUpdate` compares the newest commit with it (an online look that moves nothing, and throws on a refusal or a rate limit rather than answering "no update"), and `download` fetches it.
+- **On the phone.** A copy with no installed record is not on the phone, and `hub.cached()` lists installed copies only (D107).
+- **`hub.delete`** removes the record with the files:
+  - Deletes of one repository run one at a time, so of two at once for one model the second returns false.
+  - A delete first stops this process's running downloads of what it removes (the repo, the tag or the file, as the model or its draft) and waits for them, ending their flows with a `Network` error that is not retryable so no worker fetches the model again; a download of it that starts while the delete runs fails at once with the same error.
+  - Partial files are removed under their blob's lock, and a delete removes each blob under its download lock, so a download of another tag that links it meanwhile keeps it.
+- **Replacing a copy.** When a download replaces an installed copy, the files only the old copy named are removed, each decided under its blob's lock from the records as they are then, so a download of another selection reusing a blob keeps it; a removal that fails is logged and the download still completes.
+- **`hub.cached()` lists only complete selections**: the installed copies with every file on disk, then the tags of `refs/main`'s snapshot with all their split parts, and, for a tag the hub holds a plan or installed record of, only when one of those records is complete or its default selection loads as `hub.source` would load it, since the snapshot alone can't tell a stopped download from a copy made without its projector.
 
 `HfModel` is a class and converts to a plain string, so it fits in a WorkManager `Data` or an Intent extra. `HubConfig` sets the endpoint, a token provider, the cache directory, the progress interval and a logger. `create` returns the same hub for the same cache folder and an equal config, throws `IllegalStateException` for a different config on that folder, and lets hubs on different folders coexist; the logger and token provider compare by reference, so create the config once (a DI singleton scope does that).
 
@@ -856,7 +865,14 @@ The seams live in `com.suhel.llamabro.spi`: the `Engine` the runtime drives (wit
 
 #### 14.2.1 `llamabro-hub-testing`
 
-Applications that use the hub test with `llamabro-hub-testing`, whose `FakeLlamaBroHub` is a real `LlamaBroHub` over a scripted Hugging Face Hub and a temporary folder (D70, D75), built through `LlamaBroHub.withTransport`, the hub's counterpart of `LlamaBro.withEngine`: its `Transport` and `Storage` interfaces are public only under `@InternalLlamaBroApi`, as `Engine` is. The script declares repos (GGUF files with their sizes and header sampling, a base model and its `generation_config.json`, downloads, likes, whether one takes pictures or is gated) and the scripted Hub answers search, model info, refs, tree and ranged resolve requests from them, as huggingface.co does. Everything above the transport is production code: plan, resolve, the resumable download, the installed-copy rule (D64), `hasUpdate` (declaring a repo again publishes a new commit), search grouping, `files` and `recommendedSampling`. A download writes small valid GGUFs, so `llama.loadModel(fakeHub.hub.model(…))` on a `FakeLlamaBro` fetches and loads end to end. Failures: an undeclared repo (`NotFound`), a gated one (`Unauthorized`), `rateLimit` (`RateLimited`), `offline` (`Network`) and `freeBytes` (`InsufficientStorage`); `downloadMillis` paces a download so its progress shows, and `requests` lists every request, so a test can assert that none was made. The endpoint is `https://hub.invalid/`, a reserved name no request could reach; the fake takes no token provider, since a token sends requests over the hub's own HTTP transport (F82).
+Applications that use the hub test with `llamabro-hub-testing`, whose `FakeLlamaBroHub` is a real `LlamaBroHub` over a scripted Hugging Face Hub and a temporary folder (D70, D75):
+
+- **Built through** `LlamaBroHub.withTransport`, the hub's counterpart of `LlamaBro.withEngine`: its `Transport` and `Storage` interfaces are public only under `@InternalLlamaBroApi`, as `Engine` is.
+- **The script** declares repos (GGUF files with their sizes and header sampling, a base model and its `generation_config.json`, downloads, likes, whether one takes pictures or is gated), and the scripted Hub answers search, model info, refs, tree and ranged resolve requests from them, as huggingface.co does.
+- **Everything above the transport is production code**: plan, resolve, the resumable download, the installed-copy rule (D64), `hasUpdate` (declaring a repo again publishes a new commit), search grouping, `files` and `recommendedSampling`.
+- **A download writes small valid GGUFs**, so `llama.loadModel(fakeHub.hub.model(…))` on a `FakeLlamaBro` fetches and loads end to end.
+- **Failures**: an undeclared repo (`NotFound`), a gated one (`Unauthorized`), `rateLimit` (`RateLimited`), `offline` (`Network`) and `freeBytes` (`InsufficientStorage`). `downloadMillis` paces a download so its progress shows, and `requests` lists every request, so a test can assert that none was made.
+- **The endpoint** is `https://hub.invalid/`, a reserved name no request could reach; the fake takes no token provider, since a token sends requests over the hub's own HTTP transport (F82).
 
 ### 14.3 Test layers inside the SDK
 
