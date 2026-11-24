@@ -6,8 +6,9 @@ integration tests of the public API.
 
 ## Features
 
-- First run offers three suggested models with plain-language descriptions; the Models screen shows what is downloading and on the phone, searches Hugging Face and shows
-  how each file will run on this phone before anything is downloaded.
+- First run is the Models page: six suggested models that fit this phone, each with a fit symbol, and a chat that is
+  usable before the download ends (D130). The page also shows what is downloading and on the phone, searches Hugging
+  Face and shows how each file will run on this phone before anything is downloaded.
 - Downloads continue in the background, survive process death and resume where they stopped.
 - Chat with streaming replies, markdown and code blocks, a thought fold ("Thought for 8 s"), think levels (Off, Quick,
   Balanced, Deep), image input for models that can see, edit and regenerate, share and copy, and a divider when the
@@ -21,14 +22,15 @@ integration tests of the public API.
 
 | Module | What it is |
 |---|---|
-| `app/` | Screens, view models, the chat engine over the SDK's `Conversation`, Room storage, the download worker |
-| `designsystem/` | The component library: Material 3 type roles, spacing and shape tokens, layout primitives that own the gutter and gaps, components with `@Preview`s |
+| `app/` | Screens, view models, the chat engine over the SDK's `Conversation`, Room storage, the WorkManager setup over the SDK's download worker (`LlamaBroWorkerFactory` from `llamabro-hub-work`) |
+| `designsystem/` | The component library: Material 3 type roles, spacing and shape tokens, layout primitives that own the gutter and gaps, components, most with `@Preview`s |
 | `benchmark/` | Macrobenchmarks and the Baseline Profile generator |
-| `catalog/` | The pinned sizes of the suggested models, checked against a unit test |
-| `scripts/` | The checks (`check.sh`), the end-to-end driver for real models (`e2e/`), the performance budgets |
+| `lint/` | The design-system lint rule: sizes, colours and type roles from the theme, screens built from components (D113) |
+| `catalog/` | `pin.md`, the pinned file sizes of the suggested models, checked by `CatalogTest` (no code module) |
+| `scripts/` | The checks (`check.sh`), the end-to-end driver for real models (`e2e/`), the performance, coverage and stability scripts |
 
 The rules the design system enforces (no raw colours, text styles or numbers in a screen; one name per model; one
-gutter) are described in [docs/design/demo-app.md](../docs/design/demo-app.md) and checked by `scripts/check.sh`.
+gutter) are described in [docs/design/demo-app.md](../docs/design/demo-app.md) and checked by the `ds` step of `scripts/check.sh`.
 
 ## Run
 

@@ -67,7 +67,14 @@ Chosen in Settings, Appearance, each shown as a small preview. Sidebar is the de
 
 **Sidebar.**
 
-- Home is a new chat. The drawer (D126, "Quiet list") reads top to bottom: the app's name, "Llama Bro", in the serif (`sidebarTitle`, 22 sp Regular) on a 24 dp inset, with New chat (Material's `add_comment`, in the ink) as a 48 dp icon at its end; the search field, "Search chats", 16 dp from the sides and 12 dp under the name, which filters the history by title and message text and says "No chats match." when nothing does; then the chats grouped by date (Today, This week, Earlier). A group's label is quiet (13 sp, soft, sentence case), 24 dp under the group above (8 dp under the search for the first) and close on its rows. A chat is one line, at least 48 dp tall: the title (15 sp Regular, `rowLine`, ellipsized) and the chat's time at the end (12 sp, soft: the time today, the weekday this week, else the date), 12 dp inside the row and 12 dp from the drawer's edges, so the labels and the titles start on one 24 dp line; the open chat lies on the soft accent fill with 12 dp corners, no outline and no tick. Long press opens Rename and Delete. With no chats at all the head, the search and the foot stay and "No chats yet. Start one." stands where the list would be. At the foot, under a hairline, two labelled 48 dp rows: Models (its icon, "Models", and "N on this phone" soft at the end) and Settings. A screen reader hears each place as one button, "Models, 2 on this phone" (or "Models" before the library is read) and "Settings", and reaches the head and the foot before the chats: the drawer is one traversal group with those two first.
+- Home is a new chat. The drawer (D126, "Quiet list") reads top to bottom:
+  - **Head**: the app's name, "Llama Bro", in the serif (`sidebarTitle`, 22 sp Regular) on a 24 dp inset, with New chat (Material's `add_comment`, in the ink) as a 48 dp icon at its end.
+  - **Search**: "Search chats", 16 dp from the sides and 12 dp under the name. It filters the history by title and message text and says "No chats match." when nothing does.
+  - **Chats grouped by date** (Today, This week, Earlier). A group's label is quiet (13 sp, soft, sentence case), 24 dp under the group above (8 dp under the search for the first) and close on its rows.
+  - **A chat** is one line, at least 48 dp tall: the title (15 sp Regular, `rowLine`, ellipsized) and the chat's time at the end (12 sp, soft: the time today, the weekday this week, else the date). The row is 12 dp inside and 12 dp from the drawer's edges, so the labels and the titles start on one 24 dp line. The open chat lies on the soft accent fill with 12 dp corners, no outline and no tick. Long press opens Rename and Delete.
+  - **No chats at all**: the head, the search and the foot stay, and "No chats yet. Start one." stands where the list would be.
+  - **Foot**, under a hairline: two labelled 48 dp rows, Models (its icon, "Models", and "N on this phone" soft at the end) and Settings.
+  - **Screen reader**: each place is one button, "Models, 2 on this phone" (or "Models" before the library is read) and "Settings". The drawer is one traversal group with the head and the foot first, so they are reached before the chats.
 - A new chat opens with the default model: the last model used, unless one was pinned with "Use for new chats". An empty chat shows the small orb, "What's on your mind?" and starter chips.
 - Tapping the model's name in the top bar opens the model switcher: the models on the phone as the Models page's rows
   (§4.3), "Current" on the chat's model and "Default" on the one for new chats as line 2's small soft mark, the fit as
@@ -193,7 +200,11 @@ One model is in memory at a time, owned by the app, not by a chat: the first mes
 
 - **In memory now.** Settings › Memory, and the chat's model sheet under "In memory", show the loaded model ("Qwen3.5 4B", "2.8 GB · NPU · 16k context": the weights, the chip, and the context the SDK picked, in whole k rounded down; the context's memory comes on top of the size) with **Unload**. In Settings one line under it says, for both choices below: "Changing the chip or the context length reloads the model." While a reply is being written the row says so instead: a reply is never cut off. Nothing loaded shows no row in the sheet, and "Nothing loaded" in Settings.
 - **Runs on.** Automatic (the default: "The fastest chip that can run the model", the SDK's `Auto`), NPU, GPU or CPU, each `Prefer(kind)`, so a chip that can't load the model falls back instead of failing (D72). A kind this phone doesn't have stays listed as "Not on this phone, so the fastest chip it has runs the model". Under the choice: "Running on the CPU: the GPU couldn't load it." when the model was loaded for this choice and isn't on that chip; "Moves to the CPU after this reply." (or "… with the next message.") while the model in memory was loaded for an earlier choice (no line when it already runs on the chip chosen). A change frees a model loaded for another choice once no reply holds it, and the next message loads it on the new chip; a message sent while another reply is still being written shares the model in use. Fit and speed estimates use the chosen chip when the phone has it.
-- **Context length.** How much of the chat the model sees at once (D78). Automatic (the default: "The most that fits in memory, up to 16k", the SDK's `Auto`), 4k, 8k, 16k or 32k, each `UpTo(n)`: a ceiling the SDK still fits to free memory (and to the model's training context), never below 4k, so a choice never fails a load. Subtitles give it in words ("About 3,000 words; the least memory" … "About 24,000 words, for long documents; the most memory"). Under the choice: "Reloads at 8k after this reply." (or "… with the next message."; for Automatic "Reloads at the most that fits …") while the model in memory was loaded at another length, then "How much of the chat the model sees at once. Each size is the most it gets: with less memory free, it gets less, down to 4k." A change reloads exactly as a chip change does (D72): it frees a model loaded under another config once no reply holds it, a message sent beside another reply shares the model in use, and a chip or context change replaces the other's pending wait (the choice itself is always saved).
+- **Context length.** How much of the chat the model sees at once (D78).
+  - **Choices**: Automatic (the default: "The most that fits in memory, up to 16k", the SDK's `Auto`), 4k, 8k, 16k or 32k, each `UpTo(n)`. `UpTo(n)` is a ceiling the SDK still fits to free memory (and to the model's training context), never below 4k, so a choice never fails a load.
+  - **Subtitles** give each in words ("About 3,000 words; the least memory" … "About 24,000 words, for long documents; the most memory").
+  - **Under the choice**, while the model in memory was loaded at another length: "Reloads at 8k after this reply." (or "… with the next message."; for Automatic "Reloads at the most that fits …"). Otherwise: "How much of the chat the model sees at once. Each size is the most it gets: with less memory free, it gets less, down to 4k."
+  - **A change reloads exactly as a chip change does** (D72): it frees a model loaded under another config once no reply holds it, a message sent beside another reply shares the model in use, and a chip or context change replaces the other's pending wait (the choice itself is always saved).
 - **After you leave the app.** Free it after a minute (the default: a quick look at another app keeps it ready), after 5 minutes, or keep it until Android needs the memory. Under every choice Android's own signal frees it at once (`onTrimMemory` at `TRIM_MEMORY_BACKGROUND`, which comes when the app is pushed towards the cached list, not on every Home: F134).
 - **A reply still being written** when the app leaves the screen goes on under a short foreground service: a "Writing a reply…" notification with Stop, gone when the reply ends. Android allows it a few minutes; when that runs out the reply stops as Stop would stop it, keeping what arrived. There is no notification for an idle model: a service that keeps gigabytes away from the low-memory killer would close other apps instead, and Android kills an idle background app regardless.
 
@@ -219,7 +230,20 @@ How a model picks its words starts from what its makers recommend and can be cha
   model's setting", "Model default" or "llama.cpp default", with **Use the model's values**. The chat's value wins over
   the model's, the model's over the card's. A value nobody set is not sent, so a model file's own recommendation still
   applies. A chat with no message yet has no row: its values would have nothing to belong to.
-- **The length limit.** Every reply has one unless the person removes it, its thinking and answer together. Settings › Sampling › **Reply length** sets it for every model and chat, with no per-chat override (D78): **Automatic** (the default: about 2,000 tokens for the answer plus the Think level's budget, table in section 7.2), **Short** (1,024 tokens) or **Long** (8,192), which replace the level's total and leave its thinking budget as it is (so a Short reply at Balanced or Deep can stop while it still thinks), or **No limit** ("Until the model stops or the context is full": no `max_tokens` is sent). Note under the group: "For every model and chat. A reply that reaches its length stops, and Continue goes on, unless the chat has filled the context." A small model that loops ends at the limit instead of running until Stop (F113); No limit gives that guard up on purpose. The reply is kept, "Stopped at the length limit.", and **Continue** sends the chat with that reply last, so llama-server goes on writing it, from inside its thinking if it was cut there (F137). It can be cut and continued again. A reply that ends because the chat filled the context (prompt and reply reach the loaded context) has no room to continue: it ends failed with "This chat is longer than {model} can hold." and **Start a new chat**, keeping what it wrote.
+- **The length limit.** Every reply has one unless the person removes it, its thinking and answer together. Settings › Sampling › **Reply length** sets it for every model and chat, with no per-chat override (D78).
+
+  | Choice | Limit |
+  |---|---|
+  | **Automatic** (the default) | About 2,000 tokens for the answer plus the Think level's budget (table in section 7.2) |
+  | **Short** | 1,024 tokens |
+  | **Long** | 8,192 tokens |
+  | **No limit** | "Until the model stops or the context is full": no `max_tokens` is sent |
+
+  - Short and Long replace the level's total and leave its thinking budget as it is, so a Short reply at Balanced or Deep can stop while it still thinks.
+  - Note under the group: "For every model and chat. A reply that reaches its length stops, and Continue goes on, unless the chat has filled the context."
+  - A small model that loops ends at the limit instead of running until Stop (F113); No limit gives that guard up on purpose.
+  - **At the limit** the reply is kept with "Stopped at the length limit." and **Continue** sends the chat with that reply last, so llama-server goes on writing it, from inside its thinking if it was cut there (F137). It can be cut and continued again.
+  - **When the chat filled the context** (prompt and reply reach the loaded context) there is no room to continue: the reply ends failed with "This chat is longer than {model} can hold." and **Start a new chat**, keeping what it wrote.
 
 ### 4.8 Voice mode
 
@@ -343,7 +367,17 @@ The grid is 4 dp for small things and 8 dp for layout. The scale is 4, 8, 12, 16
 | `hero` | 32, 48 | around a hero or an empty state |
 | `gutter` | 16 | the left and right edge of every screen, sheet, composer and banner |
 
-The gutter is 16 dp everywhere, measured from the edge of a content column that is at most 640 dp wide and centred (Material's cap for a sheet), so a tablet does not stretch lines. Gaps follow proximity: related things are closer than unrelated ones, and the gap around a group exceeds the gap inside it. A section label belongs to what follows it: 4 dp above its first row, with the previous section's last row 24 dp above the label. A section label with an action is the action's 48 dp tall, the label centred on the button's line, like Material's list subheader: every touch target is a real 48 dp of layout, never an overlay that reaches past its row, since a parent's bounds cut such an overlay and accessibility services see only what's left (F130). The thinking fold is a 48 dp row for the same reason, and its height above and below the line is the gap to the reply. A section label is inset by the 16 dp padding of the cards and rows under it, on every screen and every sheet, so it starts where their text starts, not on the gutter where their surface starts (D77); where rows reach the edge themselves, as the drawer's chats do, that inset alone puts it on their text. A muted note under a section's cards (where the model runs, what a change reloads) is a `SectionNote`, inset the same way. A label sits 4 dp above its first row on a screen and 8 dp on a sheet. Content that has no left-aligned text (a segmented switch) keeps the gutter. A reply's meta line sits 4 dp under it, and the action row (48 dp tall, a touch target) sits 8 dp under that.
+Layout rules for gutters, gaps and section labels:
+
+- **Gutter**: 16 dp everywhere, measured from the edge of a content column that is at most 640 dp wide and centred (Material's cap for a sheet), so a tablet does not stretch lines. Content with no left-aligned text (a segmented switch) keeps the gutter.
+- **Proximity**: related things are closer than unrelated ones, and the gap around a group exceeds the gap inside it.
+- **Section label**:
+  - It belongs to what follows it: 4 dp above its first row on a screen (8 dp on a sheet), with the previous section's last row 24 dp above the label.
+  - It is inset by the 16 dp padding of the cards and rows under it, on every screen and every sheet, so it starts where their text starts, not on the gutter where their surface starts (D77). Where rows reach the edge themselves, as the drawer's chats do, that inset alone puts it on their text.
+  - A label with an action is the action's 48 dp tall, the label centred on the button's line, like Material's list subheader.
+  - A muted note under a section's cards (where the model runs, what a change reloads) is a `SectionNote`, inset the same way.
+- **Touch targets** are a real 48 dp of layout, never an overlay that reaches past its row, since a parent's bounds cut such an overlay and accessibility services see only what's left (F130). The thinking fold is a 48 dp row for the same reason, and its height above and below the line is the gap to the reply.
+- **A reply's footer**: the meta line sits 4 dp under the reply, and the action row (48 dp tall, a touch target) 8 dp under that.
 
 ### 8.4 Layout primitives
 
@@ -436,9 +470,41 @@ A model is one `ModelRow` everywhere it is listed (the Models page, the model sw
 
 ### 8.10 Chat details
 
-A sent message's bubble has 16 dp horizontal and 12 dp vertical padding and ink text; a model reply in the open style has none. Inside a reply, blocks are 8 dp apart, list items 4 dp, and a heading has 16 dp above it; a list item's text hangs on a 32 dp indent (the marker right-aligned in a 24 dp column, 8 dp before the text, so "1." and "2." start their text at one edge), and a line under an item that starts no other block belongs to the item, as in CommonMark. A nested list hangs one indent (32 dp) deeper than its parent item, and its items are 4 dp apart like any others, while a list right after another one (a change of marker) keeps the 8 dp block gap; bullets are drawn rather than typed, 6 dp in the muted colour, a disc, then a 1 dp ring, then a square by depth, centred where the body font's "•" sits. Headings 1 and 2 take the `screenTitle` role and 3 to 6 the `title` role, with 16 dp above each, and are announced as headings. A quote is a 4 dp hairline-coloured bar with its blocks 12 dp after it in the muted colour; a nested quote draws its own bar inside. A horizontal rule is a 1 dp hairline across the column. A table sits in a 1 dp hairline frame with 12 dp corners: the header row in the `title` role on the code fill, the body in `body`, a hairline rule under every row but the last, cells 12 dp by 8 dp inside, each column as wide as its widest cell and aligned as the delimiter row says; cells don't wrap, and a table wider than the column scrolls sideways, like code. A code block is a 12 dp-cornered card with 16 dp inside. The empty chat's chips are `label` text in 32 dp chips 8 dp apart, centred under the hero. Banners sit on the gutter 8 dp above the message bar.
+Spacing in chat uses the `DemoSpacing` tokens (section 8.3), so `DemoSpacing.kt` stays the one source of the values:
 
-A photo in a sent message opens full-screen in the photo viewer, over the whole window, edge to edge. Its backdrop is black in both themes, opaque at rest so the chat doesn't show through, and the photo is fitted to the screen. A ✕ at the top end, a 24 dp white glyph on a 40 dp dark scrim circle in a 48 dp target, closes it, and so does back. Pinching zooms up to 4x about the fingers; a double tap zooms to 2.5x at the tap and the next one back to 1x; a zoomed photo pans only as far as its own edges, and at 1x not at all. A message with several photos swipes sideways between them, opening at the one tapped; a photo swiped past returns to 1x. At 1x a swipe down (or up) moves the photo with the finger and fades the backdrop; let go past a fifth of the screen's height, or flicked, it closes, otherwise it springs back with the standard motion. Each photo is announced as "Photo 2 of 3". The viewer's window has no dim of its own and light system bar icons in both themes. It decodes the full pictures, bounded by the screen's long side, off the main thread, the tapped one first, showing each as it lands; until then a page is the bare backdrop, and a picture that can't be decoded says "This photo can't be shown." Neither zooms, so swipes and the pull to close still work on them. A rotation reopens the photo in view, at 1x.
+- **Bubble and reply**:
+  - A sent message's bubble has `item` padding sideways and `compact` vertically, with ink text; a model reply in the open style has none.
+  - Inside a reply, blocks are `block` apart, list items `inline`, and a heading has `item` above it.
+- **Lists**:
+  - An item's text hangs on a 32 dp indent: the marker is right-aligned in a 24 dp column, 8 dp before the text, so "1." and "2." start their text at one edge.
+  - A line under an item that starts no other block belongs to the item, as in CommonMark.
+  - A nested list hangs one indent (32 dp) deeper than its parent item, and its items are `inline` apart like any others; a list right after another one (a change of marker) keeps the `block` gap.
+  - Bullets are drawn rather than typed, 6 dp in the muted colour: a disc, then a 1 dp ring, then a square by depth, centred where the body font's "•" sits.
+- **Headings**: 1 and 2 take the `screenTitle` role and 3 to 6 the `title` role, with `item` above each, and are announced as headings.
+- **Quote and rule**: a quote is a 4 dp hairline-coloured bar with its blocks 12 dp (`compact`) after it, in the muted colour; a nested quote draws its own bar inside. A horizontal rule is a 1 dp hairline across the column.
+- **Table**:
+  - A 1 dp hairline frame with 12 dp corners; the header row in the `title` role on the code fill, the body in `body`, a hairline rule under every row but the last.
+  - Cells are 12 dp by 8 dp inside, each column as wide as its widest cell and aligned as the delimiter row says.
+  - Cells don't wrap; a table wider than the column scrolls sideways, like code.
+- **Code block**: a 12 dp-cornered card with `item` padding inside.
+- **Empty chat**: the chips are `label` text in 32 dp chips `block` apart, centred under the hero.
+- **Banners** sit on the gutter, `block` above the message bar.
+
+A photo in a sent message opens full-screen in the photo viewer, over the whole window, edge to edge.
+
+| Aspect | Behaviour |
+|---|---|
+| Backdrop | Black in both themes, opaque at rest so the chat doesn't show through; the photo is fitted to the screen |
+| Close | A ✕ at the top end (a 24 dp white glyph on a 40 dp dark scrim circle in a 48 dp target), or back |
+| Zoom | Pinch up to 4x about the fingers; a double tap zooms to 2.5x at the tap and the next one back to 1x |
+| Pan | Only as far as the photo's own edges, and at 1x not at all |
+| Several photos | A sideways swipe moves between them, opening at the one tapped; a photo swiped past returns to 1x |
+| Pull to close | At 1x a swipe down (or up) moves the photo with the finger and fades the backdrop; let go past a fifth of the screen's height, or flicked, it closes, otherwise it springs back with the standard motion |
+| Accessibility | Each photo is announced as "Photo 2 of 3" |
+| Window | No dim of its own; light system bar icons in both themes |
+| Loading | Full pictures, bounded by the screen's long side, decoded off the main thread, the tapped one first, each shown as it lands; until then a page is the bare backdrop |
+| Undecodable picture | "This photo can't be shown."; it does not zoom, so swipes and the pull to close still work |
+| Rotation | Reopens the photo in view, at 1x |
 
 ### 8.11 Motion
 
@@ -491,7 +557,21 @@ Budgets are for the test phone with the release build and the Baseline Profile a
 | Model sheet Basic and Advanced, layout switch, frame overrun P90 | 0 ms | -6.0 ms and -4.5 ms |
 | Java heap held while streaming in a 300-message chat | 64 MB | 21.2 MB |
 
-`Markdown.parse` was measured on the phone with the hand-written parser; its replacement by commonmark-java (D74) was measured on the host only (`MarkdownStreamingTest`, four characters per append): a median of about 0.01 ms per append for a mixed reply, against the old parser's 0.02 ms; a list or table being written is parsed again whole on each append, about 0.3 ms for a 10 KB table (D108). The phone is not re-measured. The method, the budgets' exact definitions and what they do not cover are in [../testing.md](../testing.md#performance-budgets-perf). The design assumes these rules: stable or immutable parameters; lambdas instead of passed state where a value changes often; lazy list items with stable keys and content types; no parsing, formatting or decoding in composition; the streaming reply as its own flow, separate from the stored list; deltas coalesced to at most one update per frame; the database written at most every 250 ms during a stream; markdown re-parsing only the top-level block the line being written can still join, with earlier blocks kept as they were; and a recomposition test per screen (while one reply streams only its row recomposes, and typing does not recompose the list). The real-model run on the phone met the chat benchmarks.
+`Markdown.parse` was measured on the phone with the hand-written parser. Its replacement by commonmark-java (D74) was measured on the host only (`MarkdownStreamingTest`, four characters per append), and the phone is not re-measured:
+
+- A median of about 0.01 ms per append for a mixed reply, against the old parser's 0.02 ms.
+- A list or table being written is parsed again whole on each append, about 0.3 ms for a 10 KB table (D108).
+
+The method, the budgets' exact definitions and what they do not cover are in [../testing.md](../testing.md#performance-budgets-perf). The design assumes these rules:
+
+- Stable or immutable parameters; lambdas instead of passed state where a value changes often.
+- Lazy list items with stable keys and content types.
+- No parsing, formatting or decoding in composition.
+- The streaming reply as its own flow, separate from the stored list; deltas coalesced to at most one update per frame; the database written at most every 250 ms during a stream.
+- Markdown re-parsing only the top-level block the line being written can still join, with earlier blocks kept as they were.
+- A recomposition test per screen: while one reply streams only its row recomposes, and typing does not recompose the list.
+
+The real-model run on the phone met the chat benchmarks.
 
 ## 11. Accessibility
 

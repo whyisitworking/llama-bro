@@ -87,7 +87,7 @@ demo/scripts/check.sh --only ds,quality                 # a slice, by step name
 | `assemble` | The debug APK, the minified release APK and the instrumented-test APKs build | Gradle |
 | `ds` | The design-system gates described below: the Compose stability report, and no raw visuals or numbers in a screen | Gradle, Python 3 |
 | `quality` | ktlint and detekt over every Kotlin module | Gradle |
-| `device` | The instrumented tests of `:designsystem` (component behaviour and screenshots) and `:app` (every state of every screen, accessibility checks, StrictMode, LeakCanary), excluding journeys and monkey | `DEMO_DEVICE`, Python 3 (the fake Hub) |
+| `device` | The instrumented tests of `:designsystem` (component behaviour, with pixel probes on a few nodes; there are no screenshot comparisons) and `:app` (every state of every screen, accessibility checks, StrictMode, LeakCanary), excluding journeys and monkey | `DEMO_DEVICE`, Python 3 (the fake Hub) |
 | `journey` | Whole-app stories over a fake engine and the fake Hub: first run to first answer, download in the background, pause, resume and cancel, process death, search and get a model, switch models mid-chat, edit and regenerate, a voice message recorded from a scripted microphone, sent and answered (D76), share, gated model and token, memory refusal, a walk over every screen and sheet in both themes. `NotificationDeniedJourney` runs first on a fresh install, because the system asks about notifications once per install | `DEMO_DEVICE` |
 | `monkey` | Three fixed seeds of 10,000 random events at the app through Android's `monkey`, restricted to the app, with the fake engine; passes on no crash, no ANR and an app that still answers. `--pct-flip 0` keeps the emulator from aborting on a lid flip (F110). Skipped (exit 77) on a phone | an emulator (`DEMO_DEVICE=emulator-5554`) |
 | `coverage` | The merged unit and device JaCoCo reports against the floors below | the results of `unit` and `device` |
@@ -129,7 +129,7 @@ Facts about driving a real phone from outside are in F114: start the activity by
 
 ### The design-system gates (`ds`)
 
-The design system is enforced by the build, not by review (see [design/demo-app.md](design/demo-app.md)):
+The design system is enforced by the build, not by review (see [design/demo-app.md](design/demo-app.md)). The `ds` step reads source and compiler reports; it does not render components or compare screenshots. Its checks:
 
 - The Compose compiler's stability report (`demo/scripts/stability.py`): no public composable of `:designsystem` may be restartable but not skippable, and no class may be reported unstable.
 - No raw `Color(...)`, `TextStyle(...)`, `RoundedCornerShape(...)`, shadow or Material widget (`Button`, `Card`, `TextField`, `ListItem`, `ModalBottomSheet`, and so on) in `demo/app/src/main`; a new visual need becomes a component in `:designsystem` first.

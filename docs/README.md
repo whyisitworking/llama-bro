@@ -6,10 +6,14 @@
 | [decisions.md](decisions.md) | Every design decision (`D<n>`): what was chosen, why, and which findings back it |
 | [research/findings.md](research/findings.md) | The findings register (`F<n>`): every measurement and upstream reading, with its evidence |
 | [research/history.md](research/history.md) | How the SDK got here, phase by phase, and what is still open |
-| [release-notes.md](release-notes.md) | What changed for apps in each phase: breaking changes, new API, speed-ups and fixes |
+| [release-notes.md](release-notes.md) | What changed for apps in each version: breaking changes, new API, speed-ups and fixes |
 | [testing.md](testing.md) | The verification gates, what each proves, what it needs, and the performance budgets |
 | [publishing.md](publishing.md) | How a version of the SDK is staged, checked and released on Maven Central, and the one-time setup |
 | [design/demo-app.md](design/demo-app.md) | The demo app's design reference: experience, naming, limits, design system |
+| [design/models-page.md](design/models-page.md) | The Models page: one offline-first page for suggested, downloaded and searched models (D130) |
+| [design/models-search.md](design/models-search.md) | Searching Hugging Face from the Models page: paging (D127) and filters (D128) |
+| [design/models-audit.md](design/models-audit.md) | The critic's audit of the Models screen; its findings (S, M, R IDs) are cited from code and marked fixed or ruled out |
+| [design/models-screen.md](design/models-screen.md) | The earlier merged Models screen (D116), superseded by models-page.md; kept for the fit symbol and card rationale |
 | [design/mockups/](design/mockups/README.md) | The HTML mockups the demo app was built from |
 | [../research/README.md](../research/README.md) | The experiments behind the findings: scripts, method and raw results |
 
