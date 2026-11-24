@@ -245,12 +245,13 @@ class ModelLifecycleTest {
             engine.progress = listOf(0f, 0.5f, 1f)
             val seen = mutableListOf<Float>()
             val threads = mutableSetOf<Thread>()
-            testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf")) {
-                onProgress {
+            testLlamaBro(engine).loadModel(
+                ModelSource.file("/m.gguf"),
+                onProgress = {
                     seen += (it as LoadProgress.Loading).fraction
                     threads += Thread.currentThread()
-                }
-            }
+                },
+            )
             // conflated: values may be skipped, never reordered, and the last one always arrives
             assertEquals(1f, seen.last())
             assertEquals(seen.sorted(), seen)

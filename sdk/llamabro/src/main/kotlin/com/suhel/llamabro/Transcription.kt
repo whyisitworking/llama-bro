@@ -35,6 +35,8 @@ import kotlinx.serialization.json.put
  * @throws LlamaBroException.InvalidRequest if the clip is missing, unreadable or in another format; no transcription is
  *   made. Engine failures stay exceptions too.
  * @throws LlamaBroException.ServerError if llama-server's reply can't be read.
+ * @throws IllegalArgumentException if a setting [configure] sets is refused (each [TranscribeConfig.Builder] setter
+ *   says which).
  * @throws IllegalStateException if the model was loaded for another task ([ModelTask]).
  */
 public suspend fun Model.transcribe(

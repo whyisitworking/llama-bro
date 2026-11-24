@@ -25,11 +25,18 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
      * two never share memory. The first call in the process also initialises the native runtime.
      *
      * ```
-     * val model = llama.loadModel(ModelSource.file(path)) {
+     * val model = llama.loadModel(
+     *     ModelSource.file(path),
+     *     onProgress = { p -> if (p is LoadProgress.Loading) progress.value = p.fraction },
+     * ) {
      *     contextSize = ContextSize.Fixed(4096)
-     *     onProgress { p -> if (p is LoadProgress.Loading) progress.value = p.fraction }
      * }
      * ```
+     * [onProgress] is called on the context `loadModel` was called from: with [LoadProgress.Fetching] while a
+     * [RemoteModelSource] downloads, then [LoadProgress.Loading] with llama.cpp's load progress, 0 to 1
+     * ([D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)). Values may be skipped if
+     * the listener is slow; the last one always arrives.
+     *
      * Cancelling the calling coroutine stops the load while it reads weights (the model's, a draft's, an image
      * encoder's): it ends at the next progress tick, frees what it read and throws `CancellationException`. The stages
      * after the last tick finish first (creating the context, warm-up, compiling GPU kernels, opening an NPU
@@ -46,7 +53,7 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
      * @throws LlamaBroException.ModelLoadFailed
      * @throws LlamaBroException.DeviceUnavailable with [DevicePolicy.Only] when no device of that kind could load it
      *   (or none is in the app), or when every device [DevicePolicy.Auto] or [DevicePolicy.Prefer] tried failed.
-     * @throws IllegalArgumentException if [ModelConfig.memoryReserveMib] is negative (when the config is made), or
+     * @throws IllegalArgumentException if [ModelConfig.memoryReserveMib] is set negative in [configure], or
      *   [Speculative.DFlash] is set on a [ModelSource.file] with no draft.
      * @throws IllegalStateException if the runtime was already initialised in this process with another
      *   [LlamaBroConfig].
@@ -54,14 +61,25 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
      *   `hub.model(…)` a `HubException` (`Network` when it is offline with nothing installed, `Unauthorized`,
      *   `NotFound`, `InsufficientStorage`), so catch those where the source can fail.
      */
-    public suspend fun loadModel(source: ModelSource, configure: ModelConfig.Builder.() -> Unit = {}): Model {
-        val builder = ModelConfig.Builder(ModelConfig.Default).apply(configure)
-        return runtime.load(source, builder.build(), builder.progressListener)
-    }
+    public suspend fun loadModel(
+        source: ModelSource,
+        onProgress: ((LoadProgress) -> Unit)? = null,
+        configure: ModelConfig.Builder.() -> Unit = {},
+    ): Model = loadModel(source, ModelConfig(configure), onProgress)
 
     /**
-     * [loadModel] with a [ModelConfig] kept as a value (a phone profile, derived with [ModelConfig.copy]). The
-     * progress listener is a parameter, not part of the value: [onProgress] is called as `onProgress {}` is above.
+     * [loadModel] with a [ModelConfig] kept as a value (a phone profile, derived with [ModelConfig.copy]); [onProgress]
+     * is called as above.
+     *
+     * @throws LlamaBroException.ModelLoadFailed
+     * @throws LlamaBroException.DeviceUnavailable with [DevicePolicy.Only] when no device of that kind could load it
+     *   (or none is in the app), or when every device [DevicePolicy.Auto] or [DevicePolicy.Prefer] tried failed.
+     * @throws IllegalArgumentException if [Speculative.DFlash] is set on a [ModelSource.file] with no draft.
+     * @throws IllegalStateException if the runtime was already initialised in this process with another
+     *   [LlamaBroConfig].
+     * @throws Exception whatever a [RemoteModelSource]'s [RemoteModelSource.fetch] throws, unchanged: for the hub's
+     *   `hub.model(…)` a `HubException` (`Network` when it is offline with nothing installed, `Unauthorized`,
+     *   `NotFound`, `InsufficientStorage`), so catch those where the source can fail.
      */
     public suspend fun loadModel(
         source: ModelSource,
@@ -74,6 +92,7 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
      * [RemoteModelSource] lends its headers through [RemoteModelSource.withHeaders] and downloads no weights
      * ([D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)).
      *
+     * @throws IllegalArgumentException if [ModelConfig.memoryReserveMib] is set negative in [configure].
      * @throws Exception whatever a [RemoteModelSource]'s [RemoteModelSource.withHeaders] throws, unchanged: for the
      *   hub's `hub.model(…)` a `HubException` (`Network` when it is offline with nothing installed, `Unauthorized`,
      *   `NotFound`).
@@ -81,7 +100,13 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
     public suspend fun estimateFit(source: ModelSource, configure: ModelConfig.Builder.() -> Unit = {}): FitEstimate =
         estimateFit(source, ModelConfig(configure))
 
-    /** [estimateFit] with a [ModelConfig] kept as a value. */
+    /**
+     * [estimateFit] with a [ModelConfig] kept as a value.
+     *
+     * @throws Exception whatever a [RemoteModelSource]'s [RemoteModelSource.withHeaders] throws, unchanged: for the
+     *   hub's `hub.model(…)` a `HubException` (`Network` when it is offline with nothing installed, `Unauthorized`,
+     *   `NotFound`).
+     */
     public suspend fun estimateFit(source: ModelSource, config: ModelConfig): FitEstimate =
         runtime.estimateFit(source, config)
 
@@ -95,7 +120,7 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
      * It moves with free memory, so it's a hint, not a promise. Null where the SDK can't read the phone's memory
      * (a test engine).
      *
-     * @throws IllegalArgumentException if [ModelConfig.memoryReserveMib] is negative (when the config is made).
+     * @throws IllegalArgumentException if [ModelConfig.memoryReserveMib] is set negative in [configure].
      */
     public suspend fun memoryBudgetBytes(configure: ModelConfig.Builder.() -> Unit = {}): Long? =
         memoryBudgetBytes(ModelConfig(configure))

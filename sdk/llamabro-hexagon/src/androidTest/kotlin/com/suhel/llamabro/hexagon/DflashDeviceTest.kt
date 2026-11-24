@@ -80,7 +80,7 @@ class DflashDeviceTest {
                 val estimate = llama.estimateFit(candidate, config)
                 val auto =
                     try {
-                        llama.loadModel(candidate, config)
+                        llama.loadModel(candidate, configure = config)
                     } catch (e: LlamaBroException.ModelLoadFailed) {
                         // With the draft, Qwen 4B needs about 6.1 GB at the minimum context (F90). On a phone with less
                         // even so, a refusal is the right answer; it must agree with the estimate made just before

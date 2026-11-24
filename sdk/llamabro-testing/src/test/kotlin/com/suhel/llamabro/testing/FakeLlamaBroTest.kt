@@ -11,7 +11,6 @@ import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.ModelTask
 import com.suhel.llamabro.Ranked
 import com.suhel.llamabro.Typed
-import com.suhel.llamabro.audio.Transcript
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.FinishReason
@@ -31,6 +30,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -299,14 +299,16 @@ class FakeLlamaBroTest {
             val reply = model.conversation().ask("What did I say?", Content.Audio(MediaSource.bytes(wav)))
             assertEquals("You asked about the weather.", (reply as Typed.Value).value)
             assertTrue(fake.chatRequests.single().contains("lb-attachment:0"))
-            assertEquals(Transcript("What's the weather?"), model.transcribe(MediaSource.file("/a.wav")))
-            assertEquals(
-                Transcript("What's the", truncated = true),
+            val whole = model.transcribe(MediaSource.file("/a.wav"))
+            assertEquals("What's the weather?", whole.text)
+            assertFalse(whole.truncated)
+            val cut =
                 model.transcribe(MediaSource.bytes(wav)) {
                     language = "en"
                     maxTokens = 3
-                },
-            )
+                }
+            assertEquals("What's the", cut.text)
+            assertTrue(cut.truncated)
             assertTrue(fake.transcribeRequests[1].contains("\"language\":\"en\""))
             // a model that doesn't hear refuses transcribe before any request, as on the phone
             val deaf = FakeLlamaBro().llamaBro.loadModel(ModelSource.file("/text.gguf"))

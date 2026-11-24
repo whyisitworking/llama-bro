@@ -402,7 +402,7 @@ class FakeLlamaBroHubTest {
             val fake = FakeLlamaBro { reply { content("Hello!") } }
             val progress = mutableListOf<LoadProgress>()
 
-            val loaded = fake.llamaBro.loadModel(fakeHub.hub.model("$qwen:Q4_K_M")) { onProgress { progress += it } }
+            val loaded = fake.llamaBro.loadModel(fakeHub.hub.model("$qwen:Q4_K_M"), onProgress = { progress += it })
             assertEquals(1, fake.openModels)
             assertTrue(progress.first() is LoadProgress.Fetching)
             assertTrue(progress.last() is LoadProgress.Loading)

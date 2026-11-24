@@ -149,13 +149,11 @@ class ModelHost(
             }
             return try {
                 val loaded =
-                    llamaBro.loadModel(source(key)) {
-                        devicePolicy = config.policy
-                        contextSize = config.context
-                        parallelSlots = config.slots
+                    llamaBro.loadModel(
+                        source(key),
                         // the load bar under the top bar, from the load's own phase: an installed copy is not fetched
                         // (D64); a value that arrives after the load ended changes nothing
-                        onProgress { progress ->
+                        onProgress = { progress ->
                             if (current === this@Load && progress is LoadProgress.Loading) {
                                 _state.update { s ->
                                     if (s is HostState.Waking &&
@@ -167,7 +165,11 @@ class ModelHost(
                                     }
                                 }
                             }
-                        }
+                        },
+                    ) {
+                        devicePolicy = config.policy
+                        contextSize = config.context
+                        parallelSlots = config.slots
                     }
                 model = loaded
                 if (current === this) _state.value = HostState.Ready(key, loaded, config)

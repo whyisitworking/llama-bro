@@ -252,7 +252,7 @@ class ContextFitTest {
         return runBlocking {
             LlamaBro(
                 runtime(e, 8 * gib),
-            ).loadModel(ModelSource.file("/m.gguf"), configure)
+            ).loadModel(ModelSource.file("/m.gguf"), configure = configure)
         }.loadReport
     }
 

@@ -269,10 +269,12 @@ The public API dump is checked into the repository ([`llamabro.api`](../sdk/llam
 ```kotlin
 val llama = LlamaBro.create(context)                // runs no native code
 
-val model: Model = llama.loadModel(ModelSource.file(path)) {   // suspend, on Dispatchers.IO
+val model: Model = llama.loadModel(   // suspend, on Dispatchers.IO
+    ModelSource.file(path),
+    onProgress = { p -> /* LoadProgress: Fetching(download) for a RemoteModelSource, then Loading(0..1) (D75) */ },
+) {
     contextSize = ContextSize.Auto
     devicePolicy = DevicePolicy.Auto
-    onProgress { p -> /* LoadProgress: Fetching(download) for a RemoteModelSource, then Loading(0..1) (D75) */ }
 }
 
 // 1) Conversation: history, tools and compaction managed for the caller.

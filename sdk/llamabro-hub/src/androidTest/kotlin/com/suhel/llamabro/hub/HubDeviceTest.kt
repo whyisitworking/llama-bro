@@ -142,7 +142,7 @@ class HubDeviceTest {
                 assertEquals("projected memory at minimum", realEstimate.bytesAtMinimum, hubEstimate.bytesAtMinimum)
                 assertTrue("Qwen does not fit the available memory", hubEstimate.fits == true)
 
-                val loaded = llama.loadModel(realSource, fitConfig)
+                val loaded = llama.loadModel(realSource, configure = fitConfig)
                 val loadedContext =
                     try {
                         loaded.info.contextSize

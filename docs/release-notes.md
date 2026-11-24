@@ -44,10 +44,13 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
     unchanged; a `ModelConfig.() -> Unit` you stored becomes `ModelConfig.Builder.() -> Unit`), or a `ModelConfig`.
     It is a plain class, not a data class, so settings can be added without breaking callers: it has value `equals`,
     `hashCode` and `toString` over its settings, and no `componentN` or generated `copy` (use `copy { … }`). A negative
-    `memoryReserveMib` throws `IllegalArgumentException` when the config is made, not when it is used.
-  - **The progress listener is not part of a `ModelConfig`**: `onProgress { … }` in the builder lambda still works, and
-    with a config value it is `loadModel(source, config) { progress -> … }` (a parameter `onProgress`, null by default).
-    `equals` and `copy` ignore it.
+    `memoryReserveMib` throws `IllegalArgumentException` when it is set, like the audio configs' settings, not when the
+    config is built or used.
+  - **The progress listener is not part of a `ModelConfig`**: `ModelConfig.Builder.onProgress { … }` is gone, so no
+    config can hold a listener that a call then ignores. `loadModel` takes it as a parameter `onProgress`, null by
+    default, on both overloads: `loadModel(source, onProgress = { p -> … }) { contextSize = … }` where the builder
+    lambda was, and `loadModel(source, config) { p -> … }` with a config value. A builder lambda you hold in a variable
+    is passed as `configure = lambda`. `estimateFit` and `memoryBudgetBytes` never took a listener.
   - **`FitEstimate` is a data class** (value `equals`, `hashCode`, `toString`, `copy`), and `FitEstimate.Method` and `FitEstimate.method` are gone: the estimate was
     always a projection.
   - **`LlamaBro.withHostEngine` is removed** from the artifact. It was a test seam; the repository's own host tests
@@ -61,6 +64,14 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
   extension.
 - **A streamed server error is recognised by its `error` key**, not by the payload starting with `{"error"`, so one
   spaced or ordered differently fails the flow with its `LlamaBroException` as the usual shape does.
+- **API review fixes**, breaking changes from the lines above:
+  - `Model.speak` is `@CheckResult` like every public function that returns a cold flow (D136): a call whose flow is
+    never collected is a lint warning.
+  - `Transcript` has an internal constructor (D102), as the SDK's other result types do: an app reads one, and a test
+    reads `text` and `truncated` instead of building one to compare with.
+  - `SpeechConfig.Builder` no longer refuses `temperature < 0` or `speed <= 0` when set: upstream checks sampling
+    values (D143), so a model that doesn't take one refuses the request with upstream's message, as for the other
+    fields.
 - **Demo:** a tap on the mic dictates into the message bar, a hold records a voice message (D140); a typed reply on a
   model that speaks can be read aloud (D141).
 

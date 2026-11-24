@@ -26,6 +26,8 @@ import kotlinx.serialization.json.JsonObject
  * @throws LlamaBroException.InvalidRequest if the server refused the setup.
  * @throws LlamaBroException.ServerError if the server ended before the session opened, or sent an event the SDK can't
  *   read.
+ * @throws IllegalArgumentException if a setting [configure] sets is refused (each [TranscriptionConfig.Builder]
+ *   setter says which).
  * @throws IllegalStateException if the model was loaded for another task ([ModelTask]).
  */
 public suspend fun Model.transcriptionSession(

@@ -1,5 +1,6 @@
 package com.suhel.llamabro
 
+import androidx.annotation.CheckResult
 import com.suhel.llamabro.audio.SpeechAudio
 import com.suhel.llamabro.audio.SpeechConfig
 import com.suhel.llamabro.internal.ErrorMapping
@@ -29,6 +30,7 @@ import kotlinx.serialization.json.put
  * @throws LlamaBroException.ServerError from the flow if the speech that came back isn't 16-bit PCM WAV or holds no
  *   audio: the server's fault, not the caller's.
  */
+@CheckResult
 public fun Model.speak(text: String, configure: SpeechConfig.Builder.() -> Unit = {}): Flow<SpeechAudio> {
     val config = SpeechConfig(configure)
     requireTask<ModelTask.Generate>("speak", "ModelTask.Generate")

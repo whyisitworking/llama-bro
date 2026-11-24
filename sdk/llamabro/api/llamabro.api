@@ -265,9 +265,9 @@ public final class com/suhel/llamabro/LlamaBro {
 	public final fun estimateFit (Lcom/suhel/llamabro/ModelSource;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun estimateFit$default (Lcom/suhel/llamabro/LlamaBro;Lcom/suhel/llamabro/ModelSource;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun loadModel (Lcom/suhel/llamabro/ModelSource;Lcom/suhel/llamabro/ModelConfig;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public final fun loadModel (Lcom/suhel/llamabro/ModelSource;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun loadModel (Lcom/suhel/llamabro/ModelSource;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun loadModel$default (Lcom/suhel/llamabro/LlamaBro;Lcom/suhel/llamabro/ModelSource;Lcom/suhel/llamabro/ModelConfig;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
-	public static synthetic fun loadModel$default (Lcom/suhel/llamabro/LlamaBro;Lcom/suhel/llamabro/ModelSource;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun loadModel$default (Lcom/suhel/llamabro/LlamaBro;Lcom/suhel/llamabro/ModelSource;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun memoryBudgetBytes (Lcom/suhel/llamabro/ModelConfig;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun memoryBudgetBytes (Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun memoryBudgetBytes$default (Lcom/suhel/llamabro/LlamaBro;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
@@ -542,7 +542,6 @@ public final class com/suhel/llamabro/ModelConfig$Builder {
 	public final fun getSpeculative ()Lcom/suhel/llamabro/Speculative;
 	public final fun getTask ()Lcom/suhel/llamabro/ModelTask;
 	public final fun getThreads ()Ljava/lang/Integer;
-	public final fun onProgress (Lkotlin/jvm/functions/Function1;)V
 	public final fun setBatchSize (I)V
 	public final fun setCheckpointsPerSlot (I)V
 	public final fun setContextSize (Lcom/suhel/llamabro/ContextSize;)V
@@ -936,12 +935,8 @@ public final class com/suhel/llamabro/audio/TranscribeConfigKt {
 }
 
 public final class com/suhel/llamabro/audio/Transcript {
-	public fun <init> (Ljava/lang/String;Z)V
-	public synthetic fun <init> (Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Z
-	public final fun copy (Ljava/lang/String;Z)Lcom/suhel/llamabro/audio/Transcript;
-	public static synthetic fun copy$default (Lcom/suhel/llamabro/audio/Transcript;Ljava/lang/String;ZILjava/lang/Object;)Lcom/suhel/llamabro/audio/Transcript;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getText ()Ljava/lang/String;
 	public final fun getTruncated ()Z

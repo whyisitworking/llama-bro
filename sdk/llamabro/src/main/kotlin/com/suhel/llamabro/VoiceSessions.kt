@@ -26,7 +26,8 @@ import kotlinx.serialization.json.JsonObject
  *   with upstream's message.
  * @throws LlamaBroException.ServerError if the server ended before the session opened, or sent an event the SDK can't
  *   read.
- * @throws IllegalArgumentException if [VoiceConfig.Builder.voice] isn't one of [ModelInfo.voices].
+ * @throws IllegalArgumentException if [VoiceConfig.Builder.voice] isn't one of [ModelInfo.voices], or another setting
+ *   [configure] sets is refused (each [VoiceConfig.Builder] setter says which).
  * @throws IllegalStateException if the model was loaded for another task ([ModelTask]).
  */
 public suspend fun Model.voiceSession(configure: VoiceConfig.Builder.() -> Unit = {}): VoiceSession {

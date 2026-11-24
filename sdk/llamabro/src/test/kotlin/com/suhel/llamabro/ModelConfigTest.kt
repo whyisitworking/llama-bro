@@ -25,13 +25,9 @@ class ModelConfigTest {
     }
 
     @Test
-    fun aConfigHasValueSemanticsAndIgnoresTheProgressListener() {
+    fun aConfigHasValueSemantics() {
         val a = ModelConfig { threads = 4 }
-        val b =
-            ModelConfig {
-                threads = 4
-                onProgress { }
-            }
+        val b = ModelConfig { threads = 4 }
         assertEquals(a, b)
         assertEquals(a.hashCode(), b.hashCode())
         assertEquals(a.toString(), b.toString())
@@ -40,7 +36,7 @@ class ModelConfigTest {
     }
 
     @Test
-    fun aNegativeReserveFailsWhenTheConfigIsMade() {
+    fun aNegativeReserveFailsWhenItIsSet() {
         assertTrue(runCatching { ModelConfig { memoryReserveMib = -1 } }.exceptionOrNull() is IllegalArgumentException)
         assertTrue(
             runCatching { ModelConfig.Default.copy { memoryReserveMib = -1 } }.exceptionOrNull()

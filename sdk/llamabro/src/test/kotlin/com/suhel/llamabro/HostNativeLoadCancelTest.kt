@@ -51,10 +51,11 @@ class HostNativeLoadCancelTest {
                 launch(Dispatchers.Default) {
                     outcome =
                         runCatching {
-                            llama.loadModel(ModelSource.file(modelPath)) {
-                                config()
-                                onProgress { firstTick.complete(Unit) }
-                            }
+                            llama.loadModel(
+                                ModelSource.file(modelPath),
+                                onProgress = { firstTick.complete(Unit) },
+                                configure = config,
+                            )
                         }.exceptionOrNull()
                 }
             withTimeout(60_000) { firstTick.await() }
@@ -67,7 +68,7 @@ class HostNativeLoadCancelTest {
             assertEquals(listOf(NativeError.CANCELLED), engine.failed)
             assertTrue("loadModel returned $ms ms after the cancel", ms < 1_000)
 
-            val model = llama.loadModel(ModelSource.file(modelPath), config)
+            val model = llama.loadModel(ModelSource.file(modelPath), configure = config)
             assertTrue(model.info.contextSize > 0)
             model.closeAndJoin()
         }

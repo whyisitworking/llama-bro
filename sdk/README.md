@@ -567,9 +567,11 @@ and stays the one that loads. Pass `repo =` for a draft from another repo.
 ## Loading
 
 ```kotlin
-llama.loadModel(ModelSource.file(path) { mmproj = encoderPath }) {   // the source: which files
+llama.loadModel(
+    ModelSource.file(path) { mmproj = encoderPath },   // the source: which files
+    onProgress = { p -> … },                           // LoadProgress.Loading(fraction); Fetching(download) for a remote source
+) {
     contextSize = ContextSize.Fixed(8192)    // the config: how to run them (default ContextSize.Auto, see below)
-    onProgress { p -> … }                    // LoadProgress.Loading(fraction); Fetching(download) for a remote source
 }
 ```
 

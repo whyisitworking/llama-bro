@@ -7,7 +7,9 @@ import com.suhel.llamabro.internal.JsonMergePatch
  * How `Model.speak` speaks: upstream's speech request (`POST /v1/audio/speech`, `handle_tts_impl`). Each field goes to
  * the server only when set, so an unset one keeps upstream's and the model's default
  * ([D98](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d98)). A model that doesn't take a
- * setting, such as [speed] on LFM3, refuses the request with upstream's message.
+ * setting, such as [speed] on LFM3, refuses the request with upstream's message. Values are not range-checked here:
+ * upstream checks what a model takes (a negative [temperature], a [speed] of 0), as it does for a chat's sampling
+ * ([D143](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d143)).
  */
 public class SpeechConfig internal constructor(
     /** One of the model's voices ([com.suhel.llamabro.ModelInfo.voices]); null speaks with the model's first. */
@@ -54,21 +56,11 @@ public class SpeechConfig internal constructor(
         public var speakerReferenceText: String? = from.speakerReferenceText
         public var language: String? = from.language
 
-        /** @throws IllegalArgumentException when set to 0 or less. */
         public var speed: Float? = from.speed
-            set(value) {
-                require(value == null || value > 0f) { "speed must be above 0" }
-                field = value
-            }
 
         public var seed: Long? = from.seed
 
-        /** @throws IllegalArgumentException when set below 0. */
         public var temperature: Float? = from.temperature
-            set(value) {
-                require(value == null || value >= 0f) { "temperature must be at least 0" }
-                field = value
-            }
 
         /** @throws IllegalArgumentException when set below 1. */
         public var maxFrames: Int? = from.maxFrames

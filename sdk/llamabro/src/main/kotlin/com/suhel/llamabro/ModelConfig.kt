@@ -12,17 +12,20 @@ import kotlinx.serialization.json.put
  * of `loadModel(source) { … }` ([D102](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d102)).
  * Defaults are the phone defaults ([D17](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d17)).
  */
-public class ModelConfig internal constructor(
+public class ModelConfig internal constructor(builder: Builder) {
     /** Tokens of context (`n_ctx`). */
-    public val contextSize: ContextSize,
+    public val contextSize: ContextSize = builder.contextSize
+
     /**
      * Speculative decoding: [Speculative.Off] by default, as upstream; the app opts in to a drafting mode. Drafting
      * with a model of its own ([Speculative.DFlash]) also needs that model's file on the source:
      * `ModelSource.file(path) { draft = … }`. The source names the files; this config says how to run them.
      */
-    public val speculative: Speculative,
+    public val speculative: Speculative = builder.speculative
+
     /** Which chip runs the model; [DevicePolicy.Auto] picks the fastest that loads ([Model.loadReport] says which). */
-    public val devicePolicy: DevicePolicy,
+    public val devicePolicy: DevicePolicy = builder.devicePolicy
+
     /**
      * Which chip runs the image and audio encoder (the source's `mmproj`), as llama-server's `--mmproj-device`. null,
      * the default, follows the model's device. [DevicePolicy.Only] fails the load with
@@ -30,31 +33,38 @@ public class ModelConfig internal constructor(
      * [DevicePolicy.Auto] (the fastest available) fall back to the model's device when theirs is missing or fails to
      * load. [Model.loadReport] says where the SDK placed it.
      */
-    public val encoderDevice: DevicePolicy?,
+    public val encoderDevice: DevicePolicy? = builder.encoderDevice
+
     /** null = llama.cpp's default. */
-    public val threads: Int?,
+    public val threads: Int? = builder.threads
+
     /**
      * The sampling seed of requests that set none (`--seed`); null keeps llama-server's default, a random seed. A
      * voice session's replies take this seed and none of their own
      * ([F168](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f168)), so a fixed one
      * makes them reproducible.
      */
-    public val seed: Long?,
+    public val seed: Long? = builder.seed
+
     /** Logical batch for prompt processing (`-b`). */
-    public val batchSize: Int,
+    public val batchSize: Int = builder.batchSize
+
     /**
      * Physical batch (`-ub`); bigger didn't help on the phone
      * ([F10](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f10)).
      */
-    public val microBatchSize: Int,
+    public val microBatchSize: Int = builder.microBatchSize
+
     /**
      * Requests the model serves at once (`-np`); each slot has its own cache. One fits a chat app. With more, the
      * context size applies per slot: [ContextSize.Auto] and [ContextSize.UpTo] fit each slot up to the ceiling, and
      * [ContextSize.Fixed] is split between them, as llama-server does.
      */
-    public val parallelSlots: Int,
+    public val parallelSlots: Int = builder.parallelSlots
+
     /** RAM for llama-server's prompt cache across conversations (`--cache-ram`), in MiB. */
-    public val ramCacheMib: Int,
+    public val ramCacheMib: Int = builder.ramCacheMib
+
     /**
      * Memory [ContextSize.Auto] and [ContextSize.UpTo] leave free for what grows during a chat and isn't projected
      * (context checkpoints, slack), in MiB, like llama-server's `--fit-target` margin. The default, 512, was measured
@@ -65,7 +75,8 @@ public class ModelConfig internal constructor(
      * ([D45](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d45)). [LlamaBro.estimateFit] uses
      * the same value. At least 0.
      */
-    public val memoryReserveMib: Int,
+    public val memoryReserveMib: Int = builder.memoryReserveMib
+
     /**
      * What happens when [ContextSize.Auto] or [ContextSize.UpTo] finds that even the smallest context doesn't fit:
      * [MemoryCheck.Warn] (the default) loads at the smallest context and says so in [LoadReport.memoryWarning];
@@ -74,23 +85,27 @@ public class ModelConfig internal constructor(
      * ([F128](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f128)).
      * [ContextSize.Fixed] has no check.
      */
-    public val memoryCheck: MemoryCheck,
+    public val memoryCheck: MemoryCheck = builder.memoryCheck
+
     /** Context checkpoints kept per slot (`--ctx-checkpoints`), which let hybrid models reuse a prefix (§7). */
-    public val checkpointsPerSlot: Int,
+    public val checkpointsPerSlot: Int = builder.checkpointsPerSlot
+
     /** What the model is loaded for: chat and completion, embeddings, or reranking ([ModelTask]). */
-    public val task: ModelTask,
+    public val task: ModelTask = builder.task
+
     /**
      * The context cache's number format (`-ctk`/`-ctv`, both). [KvCacheType.Q8_0] about halves the cache, so
      * [ContextSize.Auto] fits about twice the tokens; llama.cpp's default [KvCacheType.F16] is exact. The model's
      * head size must be a multiple of the type's block (32 for Q8_0), or the load fails with llama.cpp's reason.
      */
-    public val kvCacheType: KvCacheType,
+    public val kvCacheType: KvCacheType = builder.kvCacheType
+
     /**
      * LoRA adapters loaded with the model (`--lora`), each at its scale. Their position in the list is the `id` that a
      * request's `lora` field (`extra`) and [Endpoint.LoraAdaptersSet] use to change a scale.
      */
-    public val loraAdapters: List<LoraAdapter>,
-) {
+    public val loraAdapters: List<LoraAdapter> = builder.loraAdapters
+
     /** This config with [configure]'s changes. */
     public fun copy(configure: Builder.() -> Unit): ModelConfig = Builder(this).apply(configure).build()
 
@@ -134,81 +149,56 @@ public class ModelConfig internal constructor(
      * ([D17](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d17)); each setting is described
      * on [ModelConfig]'s property of the same name.
      */
-    public class Builder internal constructor(from: ModelConfig) {
-        public var contextSize: ContextSize = from.contextSize
-        public var speculative: Speculative = from.speculative
-        public var devicePolicy: DevicePolicy = from.devicePolicy
-        public var encoderDevice: DevicePolicy? = from.encoderDevice
-        public var threads: Int? = from.threads
-        public var seed: Long? = from.seed
-        public var batchSize: Int = from.batchSize
-        public var microBatchSize: Int = from.microBatchSize
-        public var parallelSlots: Int = from.parallelSlots
-        public var ramCacheMib: Int = from.ramCacheMib
-        public var memoryReserveMib: Int = from.memoryReserveMib
-        public var memoryCheck: MemoryCheck = from.memoryCheck
-        public var checkpointsPerSlot: Int = from.checkpointsPerSlot
-        public var task: ModelTask = from.task
-        public var kvCacheType: KvCacheType = from.kvCacheType
-        public var loraAdapters: List<LoraAdapter> = from.loraAdapters
-        internal var progressListener: ((LoadProgress) -> Unit)? = null
-
-        /**
-         * Called on the context `loadModel` was called from: with [LoadProgress.Fetching] while a [RemoteModelSource]
-         * downloads, then [LoadProgress.Loading] with llama.cpp's load progress, 0 to 1
-         * ([D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)). Values may be skipped
-         * if the listener is slow; the last one always arrives. Not part of the value: `equals` ignores it, [copy]
-         * doesn't carry it over, and `loadModel(source, config, onProgress)` takes it as a parameter.
-         */
-        public fun onProgress(listener: (LoadProgress) -> Unit) {
-            progressListener = listener
+    public class Builder internal constructor() {
+        internal constructor(from: ModelConfig) : this() {
+            contextSize = from.contextSize
+            speculative = from.speculative
+            devicePolicy = from.devicePolicy
+            encoderDevice = from.encoderDevice
+            threads = from.threads
+            seed = from.seed
+            batchSize = from.batchSize
+            microBatchSize = from.microBatchSize
+            parallelSlots = from.parallelSlots
+            ramCacheMib = from.ramCacheMib
+            memoryReserveMib = from.memoryReserveMib
+            memoryCheck = from.memoryCheck
+            checkpointsPerSlot = from.checkpointsPerSlot
+            task = from.task
+            kvCacheType = from.kvCacheType
+            loraAdapters = from.loraAdapters
         }
 
-        /** @throws IllegalArgumentException if [memoryReserveMib] is negative. */
-        internal fun build(): ModelConfig {
-            require(memoryReserveMib >= 0) { "memoryReserveMib must be at least 0, was $memoryReserveMib" }
-            return ModelConfig(
-                contextSize,
-                speculative,
-                devicePolicy,
-                encoderDevice,
-                threads,
-                seed,
-                batchSize,
-                microBatchSize,
-                parallelSlots,
-                ramCacheMib,
-                memoryReserveMib,
-                memoryCheck,
-                checkpointsPerSlot,
-                task,
-                kvCacheType,
-                loraAdapters,
-            )
-        }
+        public var contextSize: ContextSize = ContextSize.Auto
+        public var speculative: Speculative = Speculative.Off
+        public var devicePolicy: DevicePolicy = DevicePolicy.Auto
+        public var encoderDevice: DevicePolicy? = null
+        public var threads: Int? = null
+        public var seed: Long? = null
+        public var batchSize: Int = 512
+        public var microBatchSize: Int = 512
+        public var parallelSlots: Int = 1
+        public var ramCacheMib: Int = 1024
+
+        /** @throws IllegalArgumentException when set below 0. */
+        public var memoryReserveMib: Int = 512
+            set(value) {
+                require(value >= 0) { "memoryReserveMib must be at least 0, was $value" }
+                field = value
+            }
+
+        public var memoryCheck: MemoryCheck = MemoryCheck.Warn
+        public var checkpointsPerSlot: Int = 8
+        public var task: ModelTask = ModelTask.Generate
+        public var kvCacheType: KvCacheType = KvCacheType.F16
+        public var loraAdapters: List<LoraAdapter> = emptyList()
+
+        internal fun build(): ModelConfig = ModelConfig(this)
     }
 
     public companion object {
         /** The phone defaults ([D17](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d17)). */
-        public val Default: ModelConfig =
-            ModelConfig(
-                contextSize = ContextSize.Auto,
-                speculative = Speculative.Off,
-                devicePolicy = DevicePolicy.Auto,
-                encoderDevice = null,
-                threads = null,
-                seed = null,
-                batchSize = 512,
-                microBatchSize = 512,
-                parallelSlots = 1,
-                ramCacheMib = 1024,
-                memoryReserveMib = 512,
-                memoryCheck = MemoryCheck.Warn,
-                checkpointsPerSlot = 8,
-                task = ModelTask.Generate,
-                kvCacheType = KvCacheType.F16,
-                loraAdapters = emptyList(),
-            )
+        public val Default: ModelConfig = Builder().build()
     }
 
     /**

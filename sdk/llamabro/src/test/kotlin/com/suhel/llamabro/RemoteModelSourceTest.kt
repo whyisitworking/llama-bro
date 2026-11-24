@@ -74,7 +74,7 @@ class RemoteModelSourceTest {
                     steps = listOf(download(DownloadPhase.Downloading, 50), download(DownloadPhase.Complete, 100)),
                 )
             val seen = mutableListOf<LoadProgress>()
-            testLlamaBro(engine).loadModel(remote) { onProgress { seen += it } }
+            testLlamaBro(engine).loadModel(remote, onProgress = { seen += it })
 
             assertEquals(1, remote.fetches)
             assertEquals("nothing loads before the fetch returns", 0, remote.loadsWhenFetched)
@@ -135,7 +135,7 @@ class RemoteModelSourceTest {
                 launch(Dispatchers.Default) {
                     outcome =
                         runCatching {
-                            testLlamaBro(engine).loadModel(remote) { onProgress { synchronized(seen) { seen += it } } }
+                            testLlamaBro(engine).loadModel(remote, onProgress = { synchronized(seen) { seen += it } })
                         }.exceptionOrNull()
                 }
             assertTrue(reached.await(5, TimeUnit.SECONDS))
@@ -187,7 +187,7 @@ class RemoteModelSourceTest {
         runBlocking {
             val engine = FakeEngine().apply { progress = listOf(0f, 0.5f, 1f) }
             val seen = mutableListOf<LoadProgress>()
-            testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf")) { onProgress { seen += it } }
+            testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf"), onProgress = { seen += it })
             assertTrue(engine.loadConfigs.single().contains("\"model_path\":\"/m.gguf\""))
             assertTrue("$seen", seen.isNotEmpty() && seen.all { it is LoadProgress.Loading })
             assertEquals(LoadProgress.Loading(1f), seen.last())
