@@ -9,7 +9,6 @@ import androidx.paging.PagingDataEvent
 import androidx.paging.PagingDataPresenter
 import androidx.paging.PagingState
 import androidx.paging.RemoteMediator.MediatorResult
-import androidx.paging.testing.asSnapshot
 import androidx.room.Room
 import androidx.room.withTransaction
 import androidx.test.core.app.ApplicationProvider
@@ -25,6 +24,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -231,15 +231,35 @@ class HubPagesTest {
             assertTrue("asked $waitedMillis ms after opening, inside the 400 ms debounce", waitedMillis >= 400)
         }
 
+    /**
+     * The fetched page reaches the list when Room's invalidation reloads the Pager's source, which comes after the
+     * mediator reports its refresh done: between the two the load states read idle over the empty first read, so
+     * paging-testing's `asSnapshot` (idle for 1 ms) can return before the rows. The test waits for the rows instead.
+     */
     @Test fun fetchingIsTrueWhileAPageIsAsked(): Unit =
         runBlocking {
             hubPages[null] = SearchRowsPage(listOf(row("B")), next = null)
             val held = CompletableDeferred<Unit>().also { gate = it }
             assertTrue(!repository.fetching(query).first())
-            val loading = async(Dispatchers.Default) { repository.pages(query).asSnapshot() }
-            withTimeout(5_000) { repository.fetching(query).first { it } }
-            held.complete(Unit)
-            assertEquals(listOf("B"), loading.await().map { it.name })
-            withTimeout(5_000) { repository.fetching(query).first { !it } }
+            val presenter =
+                // off the main looper, which a Robolectric test does not run by itself
+                object : PagingDataPresenter<SearchModel>(Dispatchers.Default) {
+                    override suspend fun presentPagingDataEvent(event: PagingDataEvent<SearchModel>) = Unit
+                }
+            val showing = scope.launch { repository.pages(query).collectLatest(presenter::collectFrom) }
+            try {
+                withTimeout(5_000) { repository.fetching(query).first { it } }
+                held.complete(Unit)
+                // the load states replay their latest, so rows shown before this subscribed are seen at once
+                withTimeout(5_000) {
+                    merge(presenter.loadStateFlow, presenter.onPagesUpdatedFlow).first {
+                        presenter.snapshot().items.isNotEmpty()
+                    }
+                }
+                assertEquals(listOf("B"), presenter.snapshot().items.map { it.name })
+                withTimeout(5_000) { repository.fetching(query).first { !it } }
+            } finally {
+                showing.cancel()
+            }
         }
 }
