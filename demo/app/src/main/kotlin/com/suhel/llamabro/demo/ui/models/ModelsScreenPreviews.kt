@@ -210,7 +210,7 @@ internal data class RowPreview(val name: String, val row: ModelEntry, val fit: F
     override fun toString() = name
 }
 
-internal class RowStates : PreviewParameterProvider<RowPreview> {
+internal class EntryRowStates : PreviewParameterProvider<RowPreview> {
     override val values =
         sequenceOf(
             RowPreview("Great, a suggestion", ModelsPreviewData.swift, ModelsPreviewData.great, null),
@@ -242,7 +242,7 @@ internal class RowStates : PreviewParameterProvider<RowPreview> {
 @DemoPreviews
 @Composable
 internal fun EntryRowPreview(
-    @PreviewParameter(RowStates::class) p: RowPreview,
+    @PreviewParameter(EntryRowStates::class) p: RowPreview,
 ) {
     PreviewFrame {
         EntryRow(

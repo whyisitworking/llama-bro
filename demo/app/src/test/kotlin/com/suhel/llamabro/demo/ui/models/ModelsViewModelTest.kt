@@ -327,9 +327,9 @@ class ModelsViewModelTest {
             val gemma = Catalog.suggested[1]
             // a GPU phone on which Gemma 3 4B's total (3.3 GB) is slow but its model file (2.5 GB) runs well
             val gpu = DeviceFacts(budgetBytes = 16L shl 30, chip = DeviceKind.Gpu)
-            val suggestion = viewModel(facts = gpu).fit(ModelEntry.of(gemma)).arrives { it != null }
+            val suggestion = viewModel(facts = gpu).fit(ModelEntry.of(gemma), backgroundScope).arrives { it != null }
             val library = LibraryModel(gemma.key, gemma.realName, gemma.modelBytes, null, false, gemma.mmprojBytes)
-            val onPhone = viewModel(facts = gpu).fit(ModelEntry.of(library)).arrives { it != null }
+            val onPhone = viewModel(facts = gpu).fit(ModelEntry.of(library), backgroundScope).arrives { it != null }
             assertEquals(FitLabel.RunsWell, suggestion?.label)
             assertEquals("the row on the phone", suggestion, onPhone)
             assertEquals("the switcher", suggestion, Fits.quick(library, gpu))
@@ -539,7 +539,7 @@ class ModelsViewModelTest {
         runTest {
             val vm = viewModel()
             val row = ModelEntry.of(result("Phi", repo = "someone/Phi-GGUF", parameters = 4_000_000_000))
-            val size = vm.size(row).keepAlive(backgroundScope)
+            val size = vm.size(row, backgroundScope).keepAlive(backgroundScope)
             runCurrent()
             assertEquals(SizeText.About(Guess.recommendedBytes(4_000_000_000)), size.value)
             cache.files.value =
@@ -553,14 +553,13 @@ class ModelsViewModelTest {
                 )
             runCurrent()
             assertEquals("its Recommended and reader", SizeText.Exact(3_300_000_000, 2_700_000_000), size.value)
-            assertTrue("one flow per row", vm.size(row) === vm.size(row))
         }
 
     @Test fun aKnownSizeStaysWhateverTheCacheHolds() =
         runTest {
             val vm = viewModel()
             val entry = ModelEntry.of(Catalog.suggested[2])
-            assertEquals(entry.size, vm.size(entry).value)
+            assertEquals(entry.size, vm.size(entry, backgroundScope).value)
         }
 
     @Test fun recentSearchesComeFromTheRepositoryAndOnlySubmitsAreKept() =
@@ -597,10 +596,15 @@ class ModelsViewModelTest {
             models.get(key)
             testHub.downloading(key)
             val vm = viewModel()
-            val state = vm.state(ModelEntry.of(result("Qwen"))).arrives { it?.badge is RowBadge.Downloading }!!
+            val state =
+                vm
+                    .state(
+                        ModelEntry.of(result("Qwen")),
+                        backgroundScope,
+                    ).arrives { it?.badge is RowBadge.Downloading }!!
             assertEquals(DownloadStage.Downloading, state.download?.stage)
             assertEquals("the quant, never a tier", "Q4_K_M", state.download?.quant)
-            assertNull("another repo has none", vm.state(ModelEntry.of(result("Other"))).value)
+            assertNull("another repo has none", vm.state(ModelEntry.of(result("Other")), backgroundScope).value)
         }
 
     @Test fun aDownloadWaitingItsTurnNamesTheOneAhead() =
@@ -611,7 +615,11 @@ class ModelsViewModelTest {
             models.get(waiting)
             testHub.downloading(running)
             val vm = viewModel()
-            val state = vm.state(ModelEntry.of(result("Waiting"))).arrives { it?.download?.detail == "after Running" }!!
+            val state =
+                vm.state(ModelEntry.of(result("Waiting")), backgroundScope).arrives {
+                    it?.download?.detail ==
+                        "after Running"
+                }!!
             assertEquals(RowBadge.Queued, state.badge)
             assertEquals(DownloadStage.Waiting, state.download?.stage)
         }
@@ -621,8 +629,7 @@ class ModelsViewModelTest {
             testHub.install(HfModel.parse("someone/Qwen-GGUF:Q8_0"))
             val vm = viewModel()
             val row = ModelEntry.of(result("Qwen", repo = "Someone/qwen-gguf"))
-            assertEquals(RowState(RowBadge.OnPhone, null), vm.state(row).arrives { it != null })
-            assertTrue("one flow per repo", vm.state(row) === vm.state(row))
+            assertEquals(RowState(RowBadge.OnPhone, null), vm.state(row, backgroundScope).arrives { it != null })
         }
 
     @Test fun aPausedOrFailedDownloadSaysSo() =
@@ -634,8 +641,22 @@ class ModelsViewModelTest {
             testHub.partial(paused)
             testHub.refuse(failed, TestHub.Refusal.Unauthorized)
             val vm = viewModel()
-            assertEquals(RowBadge.Paused, vm.state(ModelEntry.of(result("Paused"))).arrives { it != null }!!.badge)
-            val stopped = vm.state(ModelEntry.of(result("Failed"))).arrives { it?.badge is RowBadge.Failed }!!
+            assertEquals(
+                RowBadge.Paused,
+                vm
+                    .state(ModelEntry.of(result("Paused")), backgroundScope)
+                    .arrives {
+                        it !=
+                            null
+                    }!!
+                    .badge,
+            )
+            val stopped =
+                vm
+                    .state(
+                        ModelEntry.of(result("Failed")),
+                        backgroundScope,
+                    ).arrives { it?.badge is RowBadge.Failed }!!
             assertEquals(RowBadge.Failed("This model needs a Hugging Face token."), stopped.badge)
             assertEquals(DownloadStage.Stopped, stopped.download?.stage)
             assertEquals(
@@ -658,30 +679,41 @@ class ModelsViewModelTest {
             vm.ready()
             type(vm, "zz")
             val rows = vm.hubPages.asSnapshot()
-            rows.forEach { assertNotNull("${it.name} has its fit on its first value", vm.fit(it).value) }
+            rows.forEach {
+                assertNotNull(
+                    "${it.name} has its fit on its first value",
+                    vm.fit(it, backgroundScope).value,
+                )
+            }
             assertEquals("the phone is read once, not per row", 1, factsAsked)
-            assertEquals(Guess.fit(result("Qwen", parameters = 4_000_000_000), phone), vm.fit(rows[0]).value)
+            assertEquals(
+                Guess.fit(result("Qwen", parameters = 4_000_000_000), phone),
+                vm.fit(rows[0], backgroundScope).value,
+            )
         }
 
     @Test fun aCatalogRowsFitIsItsShippedSizes() =
         runTest {
             val vm = viewModel()
             runCurrent()
-            assertEquals(Fits.quick(Catalog.suggested[2], phone), vm.fit(ModelEntry.of(Catalog.suggested[2])).value)
+            assertEquals(
+                Fits.quick(Catalog.suggested[2], phone),
+                vm.fit(ModelEntry.of(Catalog.suggested[2]), backgroundScope).value,
+            )
         }
 
     @Test fun aRowWithNoParameterCountHasNoFitRatherThanAWrongOne() =
         runTest {
             val vm = viewModel()
             runCurrent()
-            assertNull(vm.fit(ModelEntry.of(result("Qwen"))).value)
+            assertNull(vm.fit(ModelEntry.of(result("Qwen")), backgroundScope).value)
         }
 
     @Test fun anExactFitReplacesTheGuess() =
         runTest {
             val vm = viewModel()
             val row = ModelEntry.of(result("Qwen", parameters = 4_000_000_000))
-            val fit = vm.fit(row).keepAlive(backgroundScope)
+            val fit = vm.fit(row, backgroundScope).keepAlive(backgroundScope)
             runCurrent()
             val exact = FitView(FitLabel.TooBig, 0)
             assertTrue(fit.value != exact)

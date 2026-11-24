@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -167,14 +168,20 @@ internal fun ModelsHost(
     opened?.let { card(it) }
 }
 
-/** One row over the view model: its fit, size and state on flows of their own. */
+/**
+ * One row over the view model: its fit, size and state on flows of their own, made in the row's own scope, so they
+ * end when the row leaves the list. Each is kept for what it is figured from: the fit per file, the size per file or
+ * repo, the state per repo.
+ */
 @Composable
 private fun PageRow(viewModel: ModelsViewModel, entry: ModelEntry, fromHub: Boolean, modifier: Modifier) {
-    val fit by viewModel.fit(entry).collectAsStateWithLifecycle()
-    val size by viewModel.size(entry).collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    val fit by remember(ModelEntry.listKey(entry)) { viewModel.fit(entry, scope) }.collectAsStateWithLifecycle()
+    val sizeKey = entry.key?.toString() ?: entry.repo.lowercase()
+    val size by remember(sizeKey) { viewModel.size(entry, scope) }.collectAsStateWithLifecycle()
     // read whatever the row is, so the composition is one across a landing (page 11); a model on the phone says only
     // Default, and what its repo downloads is another row's (§3)
-    val repoState by viewModel.state(entry).collectAsStateWithLifecycle()
+    val repoState by remember(entry.repo.lowercase()) { viewModel.state(entry, scope) }.collectAsStateWithLifecycle()
     val state = repoState.takeIf { !entry.onPhone }
     EntryRow(
         entry,

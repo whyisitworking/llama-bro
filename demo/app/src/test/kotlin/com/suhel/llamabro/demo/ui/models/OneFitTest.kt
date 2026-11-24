@@ -103,15 +103,23 @@ class OneFitTest {
             val big = DeviceFacts(budgetBytes = 32L shl 30, chip = DeviceKind.Gpu)
             val vm = viewModel(facts = big)
             val gemma = Catalog.suggested[1]
-            val suggestion = vm.fit(ModelEntry.of(gemma)).arrives { it != null }
+            val suggestion = vm.fit(ModelEntry.of(gemma), backgroundScope).arrives { it != null }
             val card = ModelEntry.of(gemma)
             assertEquals(
                 "the catalog's file",
                 listOf(suggestion),
-                fitsOf(vm, gemma.key, gemma.modelBytes, gemma.mmprojBytes, card, big).values.distinct(),
+                fitsOf(
+                    backgroundScope,
+                    vm,
+                    gemma.key,
+                    gemma.modelBytes,
+                    gemma.mmprojBytes,
+                    card,
+                    big,
+                ).values.distinct(),
             )
             val q8 = HfModel.parse("${gemma.key.repo}:Q8_0")
-            val q8Fits = fitsOf(vm, q8, 4_130_000_000, gemma.mmprojBytes, card, big)
+            val q8Fits = fitsOf(backgroundScope, vm, q8, 4_130_000_000, gemma.mmprojBytes, card, big)
             assertEquals("Gemma's Q8_0: $q8Fits", 1, q8Fits.values.distinct().size)
             assertEquals(Fits.quick(4_130_000_000 + gemma.mmprojBytes, 4_130_000_000, big), q8Fits.values.first())
 
@@ -130,7 +138,7 @@ class OneFitTest {
                         activeParameters = 3_000_000_000,
                     ),
                 )
-            val moeFits = fitsOf(vm, moe, 18_556_689_568, 0, hubRow, big)
+            val moeFits = fitsOf(backgroundScope, vm, moe, 18_556_689_568, 0, hubRow, big)
             assertEquals("Qwen3 30B A3B: $moeFits", 1, moeFits.values.distinct().size)
             // a token reads the three billion active weights of thirty
             assertEquals(Fits.quick(18_556_689_568, 1_855_668_956, big), moeFits.values.first())
@@ -138,6 +146,7 @@ class OneFitTest {
 
     /** The fit of the file [key] ([modelBytes] and its reader) as each place that shows it figures it. */
     private suspend fun fitsOf(
+        scope: CoroutineScope,
         vm: ModelsViewModel,
         key: HfModel,
         modelBytes: Long,
@@ -150,8 +159,8 @@ class OneFitTest {
         val library = LibraryModel(key, card.name, modelBytes, null, false, readerBytes)
         val file = RepoFile("${key.tag}.gguf", key.tag!!, modelBytes, readerBytes)
         return mapOf(
-            "download row" to vm.fit(download).arrives { it != null },
-            "landed row" to vm.fit(ModelEntry.of(library)).arrives { it != null },
+            "download row" to vm.fit(download, scope).arrives { it != null },
+            "landed row" to vm.fit(ModelEntry.of(library), scope).arrives { it != null },
             "card's tier" to CardViews(card, null).fit(file, facts),
             "switcher" to Fits.quick(library, facts),
         )

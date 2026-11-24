@@ -224,7 +224,7 @@ class ModelsFirstPaintTest {
                     .onPhone
                     .single()
             // a library row lacked its fit and maker until its card was opened
-            assertNotNull("its fit, from its own file", vm.fit(row).arrives { it != null })
+            assertNotNull("its fit, from its own file", vm.fit(row, backgroundScope).arrives { it != null })
             withContext(Dispatchers.Default) {
                 eventually("its repo facts are asked for") { "someone/foo-2b-gguf" in cache.factsAskedOnce }
             }
