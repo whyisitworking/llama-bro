@@ -303,8 +303,9 @@ half4 main(float2 p) {
     float sigma = r / 2.0;
     half4 sum = half4(0.0);
     float total = 0.0;
-    for (int i = -8; i <= 8; i++) {
-        float x = float(i) * r / 8.0;
+    // taps no more than r / 12 apart: sparser, a strong blur shows ghost copies of text instead of a smear
+    for (int i = -12; i <= 12; i++) {
+        float x = float(i) * r / 12.0;
         float w = exp(-(x * x) / (2.0 * sigma * sigma));
         float2 q = p + dir * x;
         half4 c = content.eval(q);
