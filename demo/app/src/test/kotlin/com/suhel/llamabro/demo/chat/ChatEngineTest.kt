@@ -326,7 +326,10 @@ class ChatEngineTest {
             eventually("limit shown") { chat.limit.value != null }
             assertEquals(LimitAction.StartNewChat, chat.limit.value!!.action)
             assertEquals("This chat is longer than Qwen3.5 0.8B can hold.", chat.limit.value!!.line)
-            assertTrue(rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Failed })
+            // the chat's rows follow the database a moment after the limit is set
+            eventually("the reply failed") {
+                rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Failed }
+            }
         }
 
     @Test fun aModelTheMemoryCheckDoubtsAnswersWithANote() =

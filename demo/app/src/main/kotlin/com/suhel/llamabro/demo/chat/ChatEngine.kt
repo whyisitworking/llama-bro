@@ -378,6 +378,7 @@ class ChatEngine(
             val id = if (empty || !canTake()) null else chatFor(names.isNotEmpty(), voice != null)
             if (id == null) return false
             _limit.value = null
+            stopped = null
             store(id, text.trim(), names, voice)
             return true
         }
@@ -453,8 +454,21 @@ class ChatEngine(
 
         /** Stops the turn, whether the model is still waking (the message stays held) or the reply is streaming. */
         fun stop() {
-            running?.cancel()
+            val current = running ?: return
+            stopped = answering
+            current.cancel()
         }
+
+        /** The held message [pump]'s turn answers, by id, while that turn is [running]. */
+        @Volatile private var answering: Long? = null
+
+        /**
+         * The message whose turn was stopped, by id, until the person sends or rewrites the chat: [pump] skips it and
+         * answers every other held message as before. Without it a pump asked for meanwhile (a send's and a library
+         * change's for one held message, the second queued behind the first's turn; or a library change after the
+         * Stop) starts the stopped message's turn again. Set from any thread by [stop]; cleared on [confined].
+         */
+        @Volatile private var stopped: Long? = null
 
         /** Asks again from [position]. */
         fun regenerate(position: Int) {
@@ -567,7 +581,10 @@ class ChatEngine(
                     } finally {
                         rewrites.value--
                     }
-                if (changed) pump()
+                if (changed) {
+                    stopped = null
+                    pump()
+                }
             }
         }
 
@@ -609,7 +626,8 @@ class ChatEngine(
                         val held =
                             chats.messages(id).first().firstOrNull {
                                 it.kind == MessageKind.User &&
-                                    it.state == MessageState.Held
+                                    it.state == MessageState.Held &&
+                                    it.id != stopped
                             }
                                 ?: return@withLock
                         // the turn, load and reply both, is the one job [stop] cancels: it is [running]
@@ -618,9 +636,11 @@ class ChatEngine(
                         // the load as it waits for a reply
                         // the chat may have started going, or a rewrite may have begun, while its rows were read;
                         // nothing suspends from here until the turn is [running], where a rewrite's stop finds it
-                        if (deleting || rewrites.value > 0) return@withLock
+                        if (deleting || rewrites.value > 0 || held.id == stopped) return@withLock
                         var replied = false
+                        answering = held.id
                         runAsCurrent { answer(id, key, held) { replied = true } }
+                        answering = null
                         if (!replied) return@withLock
                     }
                 }

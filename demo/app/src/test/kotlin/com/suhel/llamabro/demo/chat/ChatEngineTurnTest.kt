@@ -149,6 +149,81 @@ class ChatEngineTurnTest {
             }
         }
 
+    @Test fun stopWhileTheModelWakesAlsoEndsAPumpQueuedBehindTheTurn() =
+        runBlocking {
+            val gate = CompletableDeferred<Unit>()
+            slowLoad(gate)
+            reply("never")
+            val chat = newChat()
+            val stored = CompletableDeferred<Unit>()
+            val sendGoesOn = CompletableDeferred<Unit>()
+            dao.afterInsertMessage = {
+                stored.complete(Unit)
+                sendGoesOn.await()
+            }
+            try {
+                // the send's row is stored but its pump not yet asked for: a model that arrives answers the row first
+                val send = async { chat.send("go", emptyList()) }
+                stored.await()
+                onPhone(swift, HfModel.parse("unsloth/Qwen3.5-4B-GGUF:Q4_K_M"))
+                eventually("waking") { chat.busy.value && host.state.value is HostState.Waking }
+                // the send's own pump now waits behind the turn
+                sendGoesOn.complete(Unit)
+                assertTrue(send.await())
+                chat.stop()
+                eventually("the turn ended") { !chat.busy.value }
+                // the queued pump, or one the library change asks for after the Stop, would start the held message's
+                // turn again, waking the model for good
+                letAWrongActionLand()
+                assertFalse(chat.busy.value)
+                assertEquals(MessageState.Held, rows(chat).single().state)
+            } finally {
+                gate.complete(Unit)
+            }
+        }
+
+    @Test fun stopWhileAReplyStreamsGoesOnToTheNextHeldMessageAndNeverBackToTheStoppedOne() =
+        runBlocking {
+            val asked = mutableListOf<String>()
+            streamer = { _, text, _, _ ->
+                synchronized(asked) { asked += text }
+                flow {
+                    if (text == "one") {
+                        emit(ChatEvent.ContentDelta("slow"))
+                        delay(60_000)
+                    } else {
+                        emit(ChatEvent.ContentDelta("second"))
+                    }
+                }
+            }
+            // the model isn't on the phone yet, so both messages are taken and held
+            settings.setLastModel(swift.toString())
+            val chat = engine.open(0)
+            assertTrue(chat.send("one", emptyList()))
+            assertTrue(chat.send("two", emptyList()))
+            eventually("both held") { rows(chat).count { it.state == MessageState.Held } == 2 }
+            onPhone(swift)
+            eventually("streaming") { chat.streaming.value?.text == "slow" }
+            chat.stop()
+            eventually("the next one answered") {
+                rows(chat).map { it.text to it.state } ==
+                    listOf(
+                        "one" to MessageState.Done,
+                        "two" to MessageState.Done,
+                        "slow" to MessageState.Stopped,
+                        "second" to MessageState.Done,
+                    )
+            }
+            eventually("every turn ended") { !engine.replying.value }
+            // a model that arrives pumps again: the stopped message's turn must not start over
+            val deep = HfModel.parse("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")
+            onPhone(swift, deep)
+            models.library.first { lib -> lib.any { it.key == deep } }
+            letAWrongActionLand()
+            assertEquals(listOf("one", "two"), synchronized(asked) { asked.toList() })
+            assertEquals(4, rows(chat).size)
+        }
+
     @Test fun editWhileTheModelWakesWaitsForTheLoadAndAnswersOnce() =
         runBlocking {
             val gate = CompletableDeferred<Unit>()
