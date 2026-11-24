@@ -41,6 +41,7 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
 
 /**
  * The one strong button of a screen or sheet ("Get Qwen3.5 0.8B", "Save", "New chat"): the ink primary, [onAccent]
@@ -164,7 +165,7 @@ fun IconAction(
     Box(
         modifier
             .size(DemoSize.target)
-            .floatingChip(LocalBackdrop.current.takeIf { LocalGlassChips.current }, colors)
+            .chipGlass(LocalBackdrop.current.takeIf { LocalGlassChips.current }, LocalGlass.current.chip)
             .clip(CircleShape)
             .clickable(role = Role.Button, onClick = onClick)
             .then(if (mark != null) Modifier.semantics { stateDescription = mark } else Modifier),
@@ -230,19 +231,28 @@ fun ChoiceChips(options: List<String>, selected: Int, onSelect: (Int) -> Unit, m
 fun DemoFab(text: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = LocalDemoColors.current
     val shape = DemoShapes.fab
+    // floating over a page ([FloatingFrame]'s overlay), a pill of glass in the ink (D148); elsewhere the accent's fill
+    val backdrop = LocalBackdrop.current
+    val ink = if (backdrop != null) colors.ink else colors.onAccent
     Row(
         modifier
-            .softShadow(shape, colors, elevation = DemoSize.elevationRaised, lightAlpha = 0.18f)
-            .clip(shape)
-            .background(colors.accent)
-            .clickable(role = Role.Button, onClick = onClick)
+            .then(
+                if (backdrop != null) {
+                    Modifier.glass(backdrop, LocalGlass.current.panel, DemoShapes.fabRadius).clip(shape)
+                } else {
+                    Modifier
+                        .softShadow(shape, colors, elevation = DemoSize.elevationRaised, lightAlpha = 0.18f)
+                        .clip(shape)
+                        .background(colors.accent)
+                },
+            ).clickable(role = Role.Button, onClick = onClick)
             .heightIn(min = DemoSize.field)
             .padding(horizontal = DemoSpacing.item, vertical = DemoSpacing.block),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(DemoSpacing.block),
     ) {
-        Icon(icon, contentDescription = null, tint = colors.onAccent, modifier = Modifier.size(DemoSize.icon))
-        Text(text, color = colors.onAccent, style = DemoType.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(DemoSize.icon))
+        Text(text, color = ink, style = DemoType.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

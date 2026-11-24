@@ -301,6 +301,17 @@ fun ListHomeScreen(
             }
         },
         modifier = modifier.fillMaxSize(),
+        // the FAB floats over the list, outside it, so its glass draws the list under it (D148)
+        overlay = { bars ->
+            if (fab != null) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = bars.calculateBottomPadding())
+                        .padding(DemoSpacing.gutter),
+                ) { fab() }
+            }
+        },
     ) { bars ->
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             Box(
@@ -311,14 +322,6 @@ fun ListHomeScreen(
                         if (gutter) Modifier.gutterContainer().padding(horizontal = DemoSpacing.gutter) else Modifier,
                     ),
             ) { body(bars) }
-            if (fab != null) {
-                Box(
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(bottom = bars.calculateBottomPadding())
-                        .padding(DemoSpacing.gutter),
-                ) { fab() }
-            }
         }
     }
 }

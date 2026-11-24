@@ -71,6 +71,7 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
 import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 import com.suhel.llamabro.demo.designsystem.theme.onPhotoScrim
 import com.suhel.llamabro.demo.designsystem.theme.photoScrim
@@ -597,14 +598,22 @@ fun JumpToLatest(visible: Boolean, onClick: () -> Unit, modifier: Modifier = Mod
 private fun JumpButton(onClick: () -> Unit) {
     val colors = LocalDemoColors.current
     Box(Modifier.padding(bottom = DemoSpacing.block).minimumInteractiveComponentSize()) {
+        // over a page ([FloatingFrame]'s overlay), a chip of glass (D148); elsewhere a raised surface
+        val backdrop = LocalBackdrop.current
         Box(
             Modifier
                 .size(DemoSize.control)
-                .softShadow(CircleShape, colors)
-                .clip(CircleShape)
-                .background(colors.surface)
-                .border(DemoSize.hairline, colors.hairline, CircleShape)
-                .clickable(role = Role.Button, onClick = onClick),
+                .then(
+                    if (backdrop != null) {
+                        Modifier.glass(backdrop, LocalGlass.current.chip).clip(CircleShape)
+                    } else {
+                        Modifier
+                            .softShadow(CircleShape, colors)
+                            .clip(CircleShape)
+                            .background(colors.surface)
+                            .border(DemoSize.hairline, colors.hairline, CircleShape)
+                    },
+                ).clickable(role = Role.Button, onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

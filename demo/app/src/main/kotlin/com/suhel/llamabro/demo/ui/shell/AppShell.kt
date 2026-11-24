@@ -47,6 +47,8 @@ import com.suhel.llamabro.demo.designsystem.components.FloatingFrame
 import com.suhel.llamabro.demo.designsystem.components.IconAction
 import com.suhel.llamabro.demo.designsystem.components.LocalBottomOverlay
 import com.suhel.llamabro.demo.designsystem.components.TopBar
+import com.suhel.llamabro.demo.designsystem.components.backdropSource
+import com.suhel.llamabro.demo.designsystem.components.rememberBackdrop
 import com.suhel.llamabro.demo.designsystem.components.screenEnter
 import com.suhel.llamabro.demo.designsystem.components.screenExit
 import com.suhel.llamabro.demo.designsystem.theme.DarkDemoColors
@@ -243,20 +245,24 @@ private fun Shell(
                 // the tabs float over the page's bottom (D148): the page scrolls on under them, its end kept clear
                 var tabsHeight by remember { mutableStateOf(0.dp) }
                 val density = LocalDensity.current
+                // the screens are the tabs' page: blurred under their layer and bent through their glass
+                val screensPage = rememberBackdrop()
                 Box(Modifier.fillMaxSize()) {
                     CompositionLocalProvider(LocalBottomOverlay provides if (tab != null) tabsHeight else 0.dp) {
-                        Graph(
-                            screens,
-                            nav,
-                            start,
-                            current,
-                            shell,
-                            settings,
-                            chatScreen,
-                            openChat,
-                            deleteChat,
-                            { _, _ -> },
-                        ) {}
+                        Box(Modifier.fillMaxSize().backdropSource(screensPage)) {
+                            Graph(
+                                screens,
+                                nav,
+                                start,
+                                current,
+                                shell,
+                                settings,
+                                chatScreen,
+                                openChat,
+                                deleteChat,
+                                { _, _ -> },
+                            ) {}
+                        }
                     }
                     if (tab != null) {
                         BottomTabs(
@@ -266,6 +272,7 @@ private fun Shell(
                             Modifier
                                 .align(Alignment.BottomCenter)
                                 .onSizeChanged { tabsHeight = with(density) { it.height.toDp() } },
+                            backdrop = screensPage,
                         )
                     }
                 }

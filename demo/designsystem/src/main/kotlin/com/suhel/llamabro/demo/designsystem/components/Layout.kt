@@ -71,6 +71,7 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
 import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 import com.suhel.llamabro.demo.designsystem.theme.scrim
 import kotlin.math.roundToInt
@@ -135,7 +136,7 @@ fun TopBarTitle(
     val chip = backdrop != null
     Column(
         modifier
-            .floatingChip(backdrop, colors)
+            .chipGlass(backdrop, LocalGlass.current.chip)
             .clip(if (chip) CircleShape else DemoShapes.card)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .heightIn(min = DemoSize.target)
@@ -190,22 +191,28 @@ fun TopBarTitle(
 data class BottomTab(val label: String, val icon: ImageVector)
 
 /**
- * The chat list layout's bottom tabs (Chats, Models, Settings), floating over the page's bottom (D148): a raised pill
- * on the gutter, above the navigation bar; the selected one's icon sits in a soft accent pill.
+ * The chat list layout's bottom tabs (Chats, Models, Settings), floating over the page's bottom (D148): a pill of glass
+ * on the gutter, above the navigation bar, over the page that is [backdrop] (the screens under it, blurred under the
+ * tabs' layer and bent through the pill); the selected one's icon sits in a soft accent pill.
  */
 @Composable
-fun BottomTabs(tabs: List<BottomTab>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun BottomTabs(
+    tabs: List<BottomTab>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    backdrop: Backdrop? = null,
+) {
     val colors = LocalDemoColors.current
     Box(modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
-        FloatingLayer(Edge.Bottom, colors.surface, backdrop = null, overKeyboard = false) {
+        FloatingLayer(Edge.Bottom, colors.surface, backdrop, overKeyboard = false) {
             Row(
                 Modifier
                     .widthIn(max = DemoSize.contentMaxWidth)
                     .fillMaxWidth()
                     .padding(horizontal = DemoSpacing.gutter, vertical = DemoSpacing.block)
-                    .softShadow(CircleShape, colors, elevation = DemoSize.elevationRaised)
+                    .glass(backdrop, LocalGlass.current.panel)
                     .clip(CircleShape)
-                    .background(colors.surface)
                     .height(DemoSize.navBar)
                     .selectableGroup(),
                 verticalAlignment = Alignment.CenterVertically,

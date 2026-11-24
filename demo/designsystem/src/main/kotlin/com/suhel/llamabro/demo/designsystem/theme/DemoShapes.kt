@@ -31,8 +31,11 @@ object DemoShapes {
 
     val composer = RoundedCornerShape(composerRadius)
 
+    /** The floating action button's corner (Material's Large), also for what draws it without a shape (its glass). */
+    val fabRadius = 16.dp
+
     /** The floating action button (Material's Large corner). */
-    val fab = RoundedCornerShape(16.dp)
+    val fab = RoundedCornerShape(fabRadius)
 
     /** The user's bubble: the tail corner is bottom end. */
     val userBubble = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 6.dp, bottomStart = 20.dp)

@@ -131,36 +131,6 @@ object DemoSize {
      */
     val edgeFade = 24.dp
 
-    /** How far the page blurs under a floating bar (D148): enough to lose its words but not its shapes, as on iOS. */
-    val backdropBlur = 24.dp
-
-    /** How far past a floating bar its blur and veil reach as they ease out (D148), so the blur ends gradually. */
-    val barFade = 40.dp
-
-    /**
-     * The glass of the floating bars (D148), after Apple's Liquid Glass: how the page bends and splits into its colours
-     * through a chip, and how far the colours split in the blur under a bar.
-     */
-    object Glass {
-        /** How far in from a chip's rim the page bends. */
-        val bezel = 8.dp
-
-        /** How far the page is read from, further in, at a chip's very rim. */
-        val refraction = 6.dp
-
-        /** How much more red bends than green, and blue less, as a share of [refraction]: raise it for more colour. */
-        const val DISPERSION = 0.45f
-
-        /** The soft blur through a chip, before it bends. */
-        val blur = 6.dp
-
-        /** The light caught on a chip's upper rim. */
-        val rim = 1.dp
-
-        /** How far red and blue split in the blur under a bar, at its strongest. */
-        val barSpread = 4.dp
-    }
-
     /** A divider and an outline. */
     val hairline = 1.dp
 

@@ -4,6 +4,7 @@ import android.graphics.RuntimeShader
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -21,13 +22,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Brush
@@ -37,26 +38,17 @@ import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onPlaced
-import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.suhel.llamabro.demo.designsystem.theme.DemoSize
+import com.suhel.llamabro.demo.designsystem.theme.BarGlass
 import com.suhel.llamabro.demo.designsystem.theme.FadeMask
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
-
-/**
- * The page under the floating layer the content is on (either of a [FloatingFrame]'s bars), null off one: the glass
- * there (a [TopBar]'s chips, the message bar, a floating search field) is drawn over it (D148).
- */
-internal val LocalBackdrop = staticCompositionLocalOf<Backdrop?> { null }
+import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
 
 /**
  * How tall a floating layer outside the screen is over its bottom (the Chat list layout's tabs, fade band and all), so
@@ -65,27 +57,19 @@ internal val LocalBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 val LocalBottomOverlay = compositionLocalOf { 0.dp }
 
 /**
- * Whether a floating bar blurs the page under it (Android 12 and up, where a view can blur what it draws); below that,
- * its veil is a little denser instead.
- */
-private val blurs = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-
-/**
  * Whether the blur is progressive (Android 13 and up, where a view can run its own shader): its radius eases from full
  * at the screen's edge to none past the bar, as iOS's bars do. On Android 12 one even blur is faded out instead.
  */
 private val progressive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
 
-/** How far from the screen's edge, as a share of a floating layer's height, the blur and the veil stay at full. */
-private const val HOLD = 0.5f
-
 /**
  * A screen whose content runs edge to edge under floating bars (D148): [top] (the top bar, and on some screens a
  * search field) over the status bar, [bottom] (a chat's message bar) over the navigation bar and the keyboard. The
  * content gets the bars' heights as [content]'s padding, to pad its scroll with, so it starts clear of them and scrolls
- * on beneath. Under each bar the page is blurred, as iOS's bars do, and veiled with [ground], a translucent surface;
- * both fade out over a short band past the bar, so what scrolls under it softens rather than cuts and
- * the bar's parts read as floating over the page. Before Android 12 there is no blur and the veil is a little denser.
+ * on beneath. The content is the bars' [Backdrop]: under each bar it is blurred, as iOS's bars do, and veiled with
+ * [ground], both easing out past the bar ([LocalGlass]'s bar), so what scrolls under softens rather than cuts. The
+ * glass on the bars, and on the [overlay] (what floats over the content but isn't a bar: a FAB, a jump to the latest
+ * message, given the same padding), is drawn over it. Before Android 12 there is no blur and the veil is denser.
  */
 @Composable
 fun FloatingFrame(
@@ -95,63 +79,61 @@ fun FloatingFrame(
     ground: Color = LocalDemoColors.current.surface,
     /** The colour the page is drawn on (the canvas; the drawer's panel), under the blurred copy of the page. */
     pageColor: Color = LocalDemoColors.current.canvas,
+    overlay: @Composable BoxScope.(PaddingValues) -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
 ) {
-    val overlay = LocalBottomOverlay.current
-    // the page, drawn once into a layer that the bars draw again, blurred, under themselves
-    val page = if (blurs) rememberGraphicsLayer() else null
-    val backdrop = remember(page, pageColor) { Backdrop(page, pageColor) }
-    SubcomposeLayout(modifier.onGloballyPositioned { backdrop.origin = it.positionInWindow() }) { constraints ->
+    val below = LocalBottomOverlay.current
+    val fade = LocalGlass.current.bar.fade
+    // the page, drawn once into a layer that the bars and the overlay draw again, blurred or bent, under themselves
+    val backdrop = rememberBackdrop(pageColor)
+    SubcomposeLayout(modifier) { constraints ->
         val bars = constraints.copy(minWidth = constraints.maxWidth, minHeight = 0)
         val topBar =
-            subcompose(
-                FrameSlot.Top,
-            ) { FloatingLayer(Edge.Top, ground, backdrop, content = top) }.map { it.measure(bars) }
+            subcompose(FrameSlot.Top) { FloatingLayer(Edge.Top, ground, backdrop, content = top) }
+                .map { it.measure(bars) }
         val bottomBar =
             subcompose(FrameSlot.Bottom) { FloatingLayer(Edge.Bottom, ground, backdrop, content = bottom) }
                 .map { it.measure(bars) }
         // each layer's fade band lies over the content: the content clears the bar, not the band
-        val fade = DemoSize.barFade.roundToPx()
+        val band = fade.roundToPx()
         val topHeight = topBar.maxOfOrNull { it.height } ?: 0
         val bottomHeight = bottomBar.maxOfOrNull { it.height } ?: 0
         val padding =
             PaddingValues(
-                top = (topHeight - fade).coerceAtLeast(0).toDp(),
-                bottom = (maxOf(bottomHeight, overlay.roundToPx()) - fade).coerceAtLeast(0).toDp(),
+                top = (topHeight - band).coerceAtLeast(0).toDp(),
+                bottom = (maxOf(bottomHeight, below.roundToPx()) - band).coerceAtLeast(0).toDp(),
             )
         val body =
             subcompose(FrameSlot.Content) {
-                Box(Modifier.fillMaxSize().recordInto(page)) { content(padding) }
+                Box(Modifier.fillMaxSize().backdropSource(backdrop)) { content(padding) }
+            }.map { it.measure(constraints) }
+        // over the content and outside it, so its glass never draws itself
+        val over =
+            subcompose(FrameSlot.Overlay) {
+                CompositionLocalProvider(LocalBackdrop provides backdrop) {
+                    Box(Modifier.fillMaxSize()) { overlay(padding) }
+                }
             }.map { it.measure(constraints) }
         val width = constraints.maxWidth
         val height = constraints.maxHeight
         layout(width, height) {
             body.forEach { it.place(0, 0) }
+            over.forEach { it.place(0, 0) }
             topBar.forEach { it.place(0, 0) }
             bottomBar.forEach { it.place(0, height - bottomHeight) }
         }
     }
 }
 
-private enum class FrameSlot { Top, Bottom, Content }
+private enum class FrameSlot { Top, Bottom, Content, Overlay }
 
 internal enum class Edge { Top, Bottom }
 
-/** Draws the content as usual, and records it into [page] first, for the bars to blur. */
-private fun Modifier.recordInto(page: GraphicsLayer?): Modifier =
-    if (page == null) {
-        this
-    } else {
-        drawWithContent {
-            page.record { this@drawWithContent.drawContent() }
-            drawLayer(page)
-        }
-    }
-
 /**
- * A floating layer at [edge]: the page under it blurred (from [page]) and veiled with [ground], then [content], with
- * the status bar's room above it (top) or the navigation bar's, and the keyboard's unless [overKeyboard] is false (the
- * tabs, which the keyboard covers), below it (bottom). Its fade band ([DemoSize.barFade]) lies on its inner side.
+ * A floating layer at [edge]: the page under it ([backdrop]'s, wherever it sits over it) blurred and veiled with
+ * [ground], then [content], with the status bar's room above it (top) or the navigation bar's, and the keyboard's
+ * unless [overKeyboard] is false (the tabs, which the keyboard covers), below it (bottom). Its fade band
+ * ([BarGlass.fade]) lies on its inner side.
  */
 @Composable
 internal fun FloatingLayer(
@@ -163,13 +145,14 @@ internal fun FloatingLayer(
 ) {
     val page = backdrop?.page
     val pageColor = backdrop?.pageColor ?: Color.Transparent
+    val style = LocalGlass.current.bar
     val density = LocalDensity.current
-    val spread = with(density) { DemoSize.Glass.barSpread.toPx() }
-    val blur = with(density) { DemoSize.backdropBlur.toPx() }
+    val spread = with(density) { style.dispersion.toPx() }
+    val blur = with(density) { style.blur.toPx() }
     val shaders = remember { if (progressive) ProgressiveBlur() else null }
-    // where the layer sits in the frame, so it draws the part of the page that lies under it
-    var y by remember { mutableFloatStateOf(0f) }
-    Box(Modifier.fillMaxWidth().onPlaced { y = it.positionInParent().y }) {
+    // where the layer sits over the page, so it draws the part of the page that lies under it
+    var at by remember { mutableStateOf(Offset.Zero) }
+    Box(Modifier.fillMaxWidth().onGloballyPositioned { at = it.positionInWindow() }) {
         if (page != null) {
             Box(
                 Modifier
@@ -177,7 +160,7 @@ internal fun FloatingLayer(
                     .graphicsLayer {
                         renderEffect =
                             if (shaders != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                shaders.effect(edge, size.width, size.height, blur, spread)
+                                shaders.effect(edge, size.width, size.height, blur, spread, style.hold)
                             } else {
                                 BlurEffect(blur, blur, TileMode.Clamp)
                             }
@@ -186,24 +169,29 @@ internal fun FloatingLayer(
                         // the layer holds the page's content only: on its own ground, so the sharp page under it
                         // doesn't show through the blurred copy's clear parts
                         drawRect(pageColor)
-                        translate(top = -y) { drawLayer(page) }
+                        // its place in the window less the page's, read here so either moving redraws it
+                        val over = at - backdrop.origin
+                        translate(-over.x, -over.y) { drawLayer(page) }
                         // a progressive blur ends at none, the page itself; an even one is faded out into the page
-                        if (shaders == null) drawRect(eased(edge, size.height, FadeMask), blendMode = BlendMode.DstIn)
+                        if (shaders == null) {
+                            drawRect(eased(edge, size.height, style.hold, FadeMask), blendMode = BlendMode.DstIn)
+                        }
                     },
             )
         }
         Box(
             Modifier.matchParentSize().drawBehind {
-                drawRect(eased(edge, size.height, ground.copy(alpha = if (page != null) VEIL_ALPHA else BARE_ALPHA)))
+                val veil = ground.copy(alpha = if (page != null) style.veil else style.bareVeil)
+                drawRect(eased(edge, size.height, style.hold, veil))
             },
         )
         Column(Modifier.fillMaxWidth()) {
             if (edge == Edge.Top) {
                 Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
                 CompositionLocalProvider(LocalBackdrop provides backdrop) { content() }
-                Spacer(Modifier.height(DemoSize.barFade))
+                Spacer(Modifier.height(style.fade))
             } else {
-                Spacer(Modifier.height(DemoSize.barFade))
+                Spacer(Modifier.height(style.fade))
                 CompositionLocalProvider(LocalBackdrop provides backdrop) { content() }
                 val insets =
                     if (overKeyboard) {
@@ -219,28 +207,22 @@ internal fun FloatingLayer(
     }
 }
 
-/** The surface's veil over a blur: translucent, never solid, even behind the status bar. */
-private const val VEIL_ALPHA = 0.55f
-
-/** The veil with no blur under it (before Android 12, the Chat list tabs): denser, so text passing under is quiet. */
-private const val BARE_ALPHA = 0.8f
-
 /**
  * How strong a floating layer's blur and veil are at [fraction] of the way from the screen's edge to the layer's inner
- * end: full to [HOLD], then easing (smoothstep) to none. The shader uses the same curve.
+ * end: full to [hold], then easing (smoothstep) to none. The shader uses the same curve.
  */
-private fun strength(fraction: Float): Float {
-    val t = ((fraction - HOLD) / (1f - HOLD)).coerceIn(0f, 1f)
+private fun strength(fraction: Float, hold: Float): Float {
+    val t = ((fraction - hold) / (1f - hold)).coerceIn(0f, 1f)
     return 1f - t * t * (3f - 2f * t)
 }
 
 /** [color] over a layer [height] tall, at [strength] from its screen edge ([edge]) inward, in even steps. */
-private fun eased(edge: Edge, height: Float, color: Color): Brush {
+private fun eased(edge: Edge, height: Float, hold: Float, color: Color): Brush {
     val stops =
         Array(EASE_STEPS + 1) { i ->
             val at = i / EASE_STEPS.toFloat()
             val fromEdge = if (edge == Edge.Top) at else 1f - at
-            at to color.copy(alpha = color.alpha * strength(fromEdge))
+            at to color.copy(alpha = color.alpha * strength(fromEdge, hold))
         }
     return Brush.verticalGradient(*stops, endY = height)
 }
@@ -263,6 +245,7 @@ private class ProgressiveBlur {
         height: Float,
         radius: Float,
         spread: Float,
+        hold: Float,
     ): RenderEffect {
         // the colours split along the vertical pass only: a fringe on every edge across the bar, at a third of the taps
         across.setFloatUniform("spread", 0f)
@@ -273,7 +256,7 @@ private class ProgressiveBlur {
             shader.setFloatUniform("height", height)
             shader.setFloatUniform("fromTop", if (edge == Edge.Top) 1f else 0f)
             shader.setFloatUniform("radius", radius)
-            shader.setFloatUniform("hold", HOLD)
+            shader.setFloatUniform("hold", hold)
         }
         val first = android.graphics.RenderEffect.createRuntimeShaderEffect(across, "content")
         val second = android.graphics.RenderEffect.createRuntimeShaderEffect(down, "content")

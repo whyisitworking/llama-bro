@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -80,6 +82,7 @@ fun ChatContent(
     style: MessageStyle,
     modifier: Modifier = Modifier,
 ) {
+    val jump = remember { JumpToEnd() }
     FloatingFrame(
         top = {
             Column {
@@ -89,11 +92,23 @@ fun ChatContent(
         },
         bottom = { BottomArea(state, live, actions) },
         modifier = modifier.fillMaxSize().testTag("chat_screen"),
+        // the way back to the latest message floats over the messages, outside them, as glass (D148)
+        overlay = { bars ->
+            JumpToLatest(
+                visible = jump.visible(),
+                onClick = { jump.onClick() },
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = bars.calculateBottomPadding())
+                        .testTag("jump_to_latest"),
+            )
+        },
     ) { bars ->
         if (state.rows.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(bars)) { EmptyChat(actions.onStarter) }
         } else {
-            MessageList(state.rows, state.busy, live.streaming, style, actions.message, bars)
+            MessageList(state.rows, state.busy, live.streaming, style, actions.message, bars, jump)
         }
     }
 }
@@ -201,6 +216,7 @@ private fun MessageList(
     style: MessageStyle,
     actions: MessageActions,
     bars: PaddingValues,
+    jump: JumpToEnd,
 ) {
     val listState = rememberLazyListState()
     val follow = rememberFollowState()
@@ -233,25 +249,25 @@ private fun MessageList(
     val away by remember(busy) { derivedStateOf { listState.canScrollForward && !(busy && follow.following) } }
     val scope = rememberCoroutineScope()
     val still = animationsDisabled()
+    // the frame draws the button over the messages; the list says when it shows (read where it is drawn) and what it
+    // does, once each composition has been applied
+    val visible = remember(busy) { { away } }
+    SideEffect {
+        jump.visible = visible
+        jump.onClick = {
+            // to the end of the last item, not the start of it: a reply taller than the screen would otherwise stay
+            // "away" and the button would stay on screen. Following resumes once there, so a growing reply does not
+            // move the end under the animation
+            scope.launch {
+                listState.animateScrollToItem(count - 1, Int.MAX_VALUE)
+                follow.follow()
+            }
+        }
+    }
     MessageColumn(
         listState,
         Modifier.nestedScroll(readerScrolls).testTag("message_list"),
         bars = bars,
-        overlay = {
-            JumpToLatest(
-                visible = away,
-                onClick = {
-                    // to the end of the last item, not the start of it: a reply taller than the screen would
-                    // otherwise stay "away" and the button would stay on screen. Following resumes once there, so a
-                    // growing reply does not move the end under the animation
-                    scope.launch {
-                        listState.animateScrollToItem(count - 1, Int.MAX_VALUE)
-                        follow.follow()
-                    }
-                },
-                modifier = Modifier.align(Alignment.BottomCenter).testTag("jump_to_latest"),
-            )
-        },
     ) {
         items(rows, key = { it.key }, contentType = { it.type }) { item ->
             // a finished reply takes the streaming row's place: it is already on screen, so it does not fade in again
@@ -271,6 +287,16 @@ private fun MessageList(
             }
         }
     }
+}
+
+/**
+ * The jump to the latest message, drawn by the frame over the list (D148) and told by the list ([MessageList]) when it
+ * shows ([visible], read where it is drawn) and what it does. Before the list has set them, hidden.
+ */
+@Stable
+internal class JumpToEnd {
+    var visible: () -> Boolean by mutableStateOf({ false })
+    var onClick: () -> Unit = {}
 }
 
 /**

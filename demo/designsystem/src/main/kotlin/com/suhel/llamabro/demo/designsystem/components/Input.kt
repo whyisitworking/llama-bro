@@ -58,6 +58,7 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
 import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 
 /**
@@ -90,7 +91,7 @@ fun SearchField(
         modifier
             .then(
                 if (backdrop != null) {
-                    Modifier.floatingPanel(backdrop, colors).clip(shape)
+                    Modifier.glass(backdrop, LocalGlass.current.panel).clip(shape)
                 } else {
                     Modifier.softShadow(shape, colors).clip(shape).background(colors.surface)
                 },
@@ -342,7 +343,7 @@ fun Composer(
             .fillMaxWidth()
             .then(
                 if (backdrop != null) {
-                    Modifier.floatingPanel(backdrop, colors, DemoShapes.composerRadius).clip(shape)
+                    Modifier.glass(backdrop, LocalGlass.current.panel, DemoShapes.composerRadius).clip(shape)
                 } else {
                     Modifier
                         .softShadow(shape, colors, elevation = DemoSize.elevationRaised, lightAlpha = 0.08f)

@@ -3,12 +3,20 @@ package com.suhel.llamabro.demo.designsystem.components
 import android.graphics.RuntimeShader
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -20,27 +28,60 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.node.CompositionLocalConsumerModifierNode
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.GlobalPositionAwareModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.currentValueOf
 import androidx.compose.ui.node.invalidateDraw
-import androidx.compose.ui.node.requireDensity
 import androidx.compose.ui.node.requireGraphicsContext
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import com.suhel.llamabro.demo.designsystem.theme.DemoColors
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
+import com.suhel.llamabro.demo.designsystem.theme.GlassStyle
+import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
 
 /**
- * The page under a [FloatingFrame]'s bars: the layer it is recorded into ([page], null where nothing can blur, before
- * Android 12), the colour it is drawn on, and where the frame sits in the window, so a piece of glass on a bar finds
- * the part of the page under itself.
+ * A page that glass can be drawn over (D148): the layer the page is recorded into ([page], null before Android 12,
+ * where nothing can blur), the colour it is drawn on, and where it sits in the window, so a piece of glass anywhere
+ * over it finds the part under itself. Made with [rememberBackdrop]; the page is the content of [backdropSource].
  */
 @Stable
-internal class Backdrop(val page: GraphicsLayer?, val pageColor: Color) {
-    var origin by mutableStateOf(Offset.Zero)
+class Backdrop internal constructor(internal val page: GraphicsLayer?, val pageColor: Color) {
+    internal var origin by mutableStateOf(Offset.Zero)
 }
+
+/** A [Backdrop] for a page drawn on [pageColor]. */
+@Composable
+fun rememberBackdrop(pageColor: Color = LocalDemoColors.current.canvas): Backdrop {
+    val page = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) rememberGraphicsLayer() else null
+    return remember(page, pageColor) { Backdrop(page, pageColor) }
+}
+
+/**
+ * Makes this content [backdrop]'s page: drawn as usual and recorded once per frame for the glass over it. Glass must
+ * not be inside its own page: what it draws would draw itself.
+ */
+fun Modifier.backdropSource(backdrop: Backdrop): Modifier {
+    val page = backdrop.page ?: return this
+    return onGloballyPositioned { backdrop.origin = it.positionInWindow() }
+        .drawWithContent {
+            page.record { this@drawWithContent.drawContent() }
+            drawLayer(page)
+        }
+}
+
+/**
+ * The page under the floating layer the content is on (either of a [FloatingFrame]'s bars, its overlay, the Chat list
+ * tabs), null off one: the glass there (a [TopBar]'s chips, the message bar, a floating field, a FAB) is drawn over it.
+ */
+val LocalBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
 /**
  * Whether an [IconAction] or a tappable [TopBarTitle] is a chip of glass: in a [TopBar] or the drawer's head, not
@@ -49,58 +90,78 @@ internal class Backdrop(val page: GraphicsLayer?, val pageColor: Color) {
 internal val LocalGlassChips = staticCompositionLocalOf { false }
 
 /**
- * A part of a floating bar as a piece of glass (D148), when on one ([backdrop]): a circle round an icon, a pill round
- * a title. See [glass].
+ * A piece of glass over [backdrop]'s page (D148), its corners [corner] (a pill when null), in [style]. From Android 13
+ * it is a lens over the page: softly blurred, bent toward its rim as a convex edge bends light, the colours split apart
+ * there (red bent more, blue less, as through Apple's Liquid Glass), under a veil of the surface, a light catching its
+ * upper rim and a hairline round it. Before that, or with no [backdrop], a translucent fill and the hairline. Clip the
+ * content to the same shape after it.
  */
-internal fun Modifier.floatingChip(backdrop: Backdrop?, colors: DemoColors): Modifier =
-    if (backdrop == null) this else glass(backdrop, colors, corner = null, veil = CHIP_VEIL)
+fun Modifier.glass(backdrop: Backdrop?, style: GlassStyle, corner: Dp? = null): Modifier =
+    this then GlassElement(backdrop, corner, style)
 
 /**
- * A floating panel as glass (D148): the message bar, a floating search field, with [corner] (a pill when null) and a
- * denser veil than a chip's, so the text typed on it stays calm over what passes under.
+ * [content] on a piece of glass ([glass]) over the page under it ([LocalBackdrop]), clipped to its shape: corners
+ * [corner], a pill when null.
  */
-internal fun Modifier.floatingPanel(backdrop: Backdrop, colors: DemoColors, corner: Dp? = null): Modifier =
-    glass(backdrop, colors, corner, PANEL_VEIL)
+@Composable
+fun GlassSurface(
+    modifier: Modifier = Modifier,
+    corner: Dp? = null,
+    style: GlassStyle = LocalGlass.current.panel,
+    backdrop: Backdrop? = LocalBackdrop.current,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val shape = if (corner == null) CircleShape else RoundedCornerShape(corner)
+    Box(modifier.glass(backdrop, style, corner).clip(shape), content = content)
+}
 
-/**
- * A piece of glass over [backdrop]'s page, with rounded [corner]s (a pill when null). From Android 13 it is a lens over
- * the page: softly blurred, bent toward its rim as a convex edge bends light, the colours split apart there (red bent
- * more, blue less, as through Apple's Liquid Glass), under a [veil] of the surface, a light catching its upper rim and
- * a hairline round it. Before that, a translucent fill and the hairline.
- */
-private fun Modifier.glass(backdrop: Backdrop, colors: DemoColors, corner: Dp?, veil: Float): Modifier =
-    this then GlassElement(backdrop, colors, corner, veil)
+/** A part of a floating bar as a chip of glass in [style], when on one ([backdrop]); nothing otherwise. */
+internal fun Modifier.chipGlass(backdrop: Backdrop?, style: GlassStyle): Modifier =
+    if (backdrop == null) this else glass(backdrop, style)
 
-private data class GlassElement(val backdrop: Backdrop, val colors: DemoColors, val corner: Dp?, val veil: Float) :
+private data class GlassElement(val backdrop: Backdrop?, val corner: Dp?, val style: GlassStyle) :
     ModifierNodeElement<GlassNode>() {
-    override fun create() = GlassNode(backdrop, colors, corner, veil)
+    override fun create() = GlassNode(backdrop, corner, style)
 
     override fun update(node: GlassNode) {
-        node.backdrop = backdrop
-        node.colors = colors
-        node.corner = corner
-        node.veil = veil
-        node.invalidateDraw()
+        node.update(backdrop, corner, style)
     }
 }
 
-private class GlassNode(var backdrop: Backdrop, var colors: DemoColors, var corner: Dp?, var veil: Float) :
+private class GlassNode(var backdrop: Backdrop?, var corner: Dp?, var style: GlassStyle) :
     Modifier.Node(),
     DrawModifierNode,
-    GlobalPositionAwareModifierNode {
+    GlobalPositionAwareModifierNode,
+    CompositionLocalConsumerModifierNode {
     private var at = Offset.Zero
     private var glass: GraphicsLayer? = null
     private var lens: Any? = null // a Lens, made only where it can run
 
-    override fun onAttach() {
-        // a lens needs a page to bend and a shader to bend it (Android 13 and up)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backdrop.page != null) {
+    fun update(backdrop: Backdrop?, corner: Dp?, style: GlassStyle) {
+        val lensChanged = (backdrop?.page != null) != (this.backdrop?.page != null)
+        this.backdrop = backdrop
+        this.corner = corner
+        this.style = style
+        if (lensChanged && isAttached) {
+            release()
+            prepare()
+        }
+        invalidateDraw()
+    }
+
+    override fun onAttach() = prepare()
+
+    override fun onDetach() = release()
+
+    /** A lens needs a page to bend and a shader to bend it (Android 13 and up). */
+    private fun prepare() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backdrop?.page != null) {
             glass = requireGraphicsContext().createGraphicsLayer()
             lens = Lens()
         }
     }
 
-    override fun onDetach() {
+    private fun release() {
         glass?.let { requireGraphicsContext().releaseGraphicsLayer(it) }
         glass = null
         lens = null
@@ -115,71 +176,70 @@ private class GlassNode(var backdrop: Backdrop, var colors: DemoColors, var corn
     }
 
     override fun ContentDrawScope.draw() {
+        val colors = currentValueOf(LocalDemoColors)
         val pill = size.minDimension / 2
         val corner = CornerRadius(this@GlassNode.corner?.toPx()?.coerceAtMost(pill) ?: pill)
-        val lensed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && drawLens(corner)
-        if (!lensed) drawRoundRect(colors.surface.copy(alpha = BARE_GLASS), cornerRadius = corner)
-        val hairline = requireDensity().run { DemoSize.hairline.toPx() }
-        drawRoundRect(colors.hairline, cornerRadius = corner, style = Stroke(hairline))
+        val lensed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && drawLens(corner, colors)
+        if (!lensed) drawRoundRect(colors.surface.copy(alpha = style.bareVeil), cornerRadius = corner)
+        drawRoundRect(colors.hairline, cornerRadius = corner, style = Stroke(DemoSize.hairline.toPx()))
         drawContent()
     }
 
-    /** The lens: the page under the chip, bent and split, a light veil and the light on its rim; false if it can't. */
+    /** The lens: the page under the glass, bent and split, the veil and the light on its rim; false if it can't. */
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    private fun ContentDrawScope.drawLens(corner: CornerRadius): Boolean {
+    private fun ContentDrawScope.drawLens(corner: CornerRadius, colors: DemoColors): Boolean {
+        val backdrop = backdrop ?: return false
         val page = backdrop.page ?: return false
         val layer = glass ?: return false
         val lens = lens as? Lens ?: return false
-        // the part of the page under the chip: the chip's place in the window less the frame's
+        // the part of the page under the glass: its place in the window less the page's
         val offset = at - backdrop.origin
         layer.record {
             drawRect(backdrop.pageColor)
             translate(-offset.x, -offset.y) { drawLayer(page) }
         }
-        layer.renderEffect = lens.effect(size.width, size.height, corner.x, requireDensity())
+        layer.renderEffect = lens.effect(size.width, size.height, corner.x, style, this)
         layer.setRoundRectOutline(Offset.Zero, size, corner.x)
         layer.clip = true
         drawLayer(layer)
-        drawRoundRect(colors.surface.copy(alpha = veil), cornerRadius = corner)
+        drawRoundRect(colors.surface.copy(alpha = style.veil), cornerRadius = corner)
         // the light on the glass: bright along the upper rim, fading down it
+        val light = GlassLight.copy(alpha = style.rimLight)
         drawRoundRect(
-            Brush.verticalGradient(listOf(GlassLight, GlassLight.copy(alpha = 0f)), endY = size.height * 0.6f),
+            Brush.verticalGradient(listOf(light, light.copy(alpha = 0f)), endY = size.height * 0.6f),
             cornerRadius = corner,
-            style = Stroke(requireDensity().run { DemoSize.Glass.rim.toPx() }),
+            style = Stroke(style.rim.toPx()),
         )
         return true
     }
 }
 
-/** How opaque glass is where it can't be a lens: denser than the bar's veil, still letting the page show through. */
-private const val BARE_GLASS = 0.7f
-
-/** The veil over a chip's lens: light, so the bent, split page reads through it. */
-private const val CHIP_VEIL = 0.35f
-
-/** The veil over a panel's lens: denser, under text that is typed and read on it. */
-private const val PANEL_VEIL = 0.6f
-
-/** The light caught on a lens's rim: light whatever the theme, as a highlight on glass is. */
+/** The light caught on a lens's rim: light in either theme, as a highlight on glass is; the style sets its strength. */
 @Suppress("DemoRawColour")
-private val GlassLight = Color.White.copy(alpha = 0.22f)
+private val GlassLight = Color.White
 
 /**
- * A chip's lens (Android 13 and up): a soft blur, then [LENS] bending and splitting the page toward the chip's rim. The
- * shader is kept; the effect is made afresh for each draw, since it carries the chip's size.
+ * A glass's lens (Android 13 and up): a soft blur, then [LENS] bending and splitting the page toward its rim. The
+ * shader is kept; the effect is made afresh for each draw, since it carries the glass's size and style.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 private class Lens {
     private val shader = RuntimeShader(LENS)
 
-    fun effect(width: Float, height: Float, radius: Float, density: androidx.compose.ui.unit.Density): RenderEffect {
+    fun effect(
+        width: Float,
+        height: Float,
+        radius: Float,
+        style: GlassStyle,
+        density: Density,
+    ): RenderEffect {
         with(density) {
             shader.setFloatUniform("size", width, height)
             shader.setFloatUniform("radius", radius)
-            shader.setFloatUniform("bezel", minOf(DemoSize.Glass.bezel.toPx(), radius))
-            shader.setFloatUniform("refraction", DemoSize.Glass.refraction.toPx())
-            shader.setFloatUniform("dispersion", DemoSize.Glass.DISPERSION)
-            val soft = DemoSize.Glass.blur.toPx()
+            shader.setFloatUniform("bezel", minOf(style.bezel.toPx(), radius))
+            shader.setFloatUniform("refraction", style.refraction.toPx())
+            shader.setFloatUniform("dispersion", style.dispersion)
+            val soft = style.blur.toPx()
             val blur =
                 android.graphics.RenderEffect.createBlurEffect(
                     soft,
@@ -228,9 +288,12 @@ half4 main(float2 p) {
     n *= float2(rel.x < 0.0 ? -1.0 : 1.0, rel.y < 0.0 ? -1.0 : 1.0);
     float k = 1.0 - depth / bezel;
     float bend = refraction * k * k;
-    half4 g = content.eval(p - n * bend);
-    half r = content.eval(p - n * bend * (1.0 + dispersion)).r;
-    half b = content.eval(p - n * bend * (1.0 - dispersion)).b;
+    // read inside the glass only: a strong bend at a tight corner can reach past the far side
+    float2 lo = float2(0.5);
+    float2 hi = size - 0.5;
+    half4 g = content.eval(clamp(p - n * bend, lo, hi));
+    half r = content.eval(clamp(p - n * bend * (1.0 + dispersion), lo, hi)).r;
+    half b = content.eval(clamp(p - n * bend * (1.0 - dispersion), lo, hi)).b;
     return half4(r, g.g, b, g.a);
 }
 """
