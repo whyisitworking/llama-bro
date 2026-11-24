@@ -198,11 +198,11 @@ private class GlassNode(var backdrop: Backdrop?, var corner: Dp?, var style: Gla
             drawRect(backdrop.pageColor)
             translate(-offset.x, -offset.y) { drawLayer(page) }
         }
-        layer.renderEffect = lens.effect(size.width, size.height, corner.x, style, this)
+        layer.renderEffect = lens.effect(size.width, size.height, corner.x, style, colors.surface, this)
         layer.setRoundRectOutline(Offset.Zero, size, corner.x)
         layer.clip = true
+        // the veil is blended into the glass by its shader, not laid over it
         drawLayer(layer)
-        drawRoundRect(colors.surface.copy(alpha = style.veil), cornerRadius = corner)
         // the light on the glass: bright along the upper rim, fading down it
         val light = GlassLight.copy(alpha = style.rimLight)
         drawRoundRect(
@@ -231,9 +231,12 @@ private class Lens {
         height: Float,
         radius: Float,
         style: GlassStyle,
+        tint: Color,
         density: Density,
     ): RenderEffect {
         with(density) {
+            shader.setFloatUniform("tint", tint.red, tint.green, tint.blue)
+            shader.setFloatUniform("veil", style.veil)
             shader.setFloatUniform("size", width, height)
             shader.setFloatUniform("radius", radius)
             shader.setFloatUniform("bezel", minOf(style.bezel.toPx(), radius))
@@ -258,7 +261,8 @@ private class Lens {
  * A rounded rectangle of glass (`size`, corner `radius`; a circle or a pill): within `bezel` of the rim the page is
  * read from further in, by up to `refraction` at the rim on a squared curve, as a convex edge bends light toward the
  * middle; red bends `dispersion` more and blue as much less, so edges inside the rim fringe with colour. The middle is
- * the page as is.
+ * the page as is. Everywhere the `tint` (the surface) is overlay-blended in by the `veil` share: the page's lights and
+ * darks pulled toward the surface, not a film over it.
  */
 private const val LENS = """
 uniform shader content;
@@ -267,6 +271,17 @@ uniform float radius;
 uniform float bezel;
 uniform float refraction;
 uniform float dispersion;
+uniform float3 tint;
+uniform float veil;
+
+half3 overlay(half3 base, half3 over) {
+    return mix(2.0 * base * over, 1.0 - 2.0 * (1.0 - base) * (1.0 - over), step(0.5, base));
+}
+
+half4 veiled(half4 c) {
+    c.rgb = mix(c.rgb, overlay(c.rgb, half3(tint)), half(veil));
+    return c;
+}
 
 half4 main(float2 p) {
     float2 c = size * 0.5;
@@ -275,7 +290,7 @@ half4 main(float2 p) {
     float2 outer = max(q, 0.0);
     float depth = radius - length(outer) - min(max(q.x, q.y), 0.0);
     if (depth >= bezel || depth <= 0.0) {
-        return content.eval(p);
+        return veiled(content.eval(p));
     }
     float2 n;
     if (q.x > 0.0 && q.y > 0.0) {
@@ -294,6 +309,6 @@ half4 main(float2 p) {
     half4 g = content.eval(clamp(p - n * bend, lo, hi));
     half r = content.eval(clamp(p - n * bend * (1.0 + dispersion), lo, hi)).r;
     half b = content.eval(clamp(p - n * bend * (1.0 - dispersion), lo, hi)).b;
-    return half4(r, g.g, b, g.a);
+    return veiled(half4(r, g.g, b, g.a));
 }
 """

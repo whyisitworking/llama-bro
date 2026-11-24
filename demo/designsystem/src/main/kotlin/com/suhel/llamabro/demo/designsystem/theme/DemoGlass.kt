@@ -23,7 +23,10 @@ data class GlassStyle(
     val dispersion: Float,
     /** The soft blur through the glass, before it bends. */
     val blur: Dp,
-    /** How opaque the surface's veil over the lens is: low for a chip, higher for a panel with text on it. */
+    /**
+     * How strongly the surface is blended into the lens (an overlay blend in its shader, not a layer over it): low for
+     * a chip, higher for a panel with text on it.
+     */
     val veil: Float,
     /** How bright the light along the glass's upper rim is, 0 to 1. */
     val rimLight: Float,
@@ -43,7 +46,7 @@ data class BarGlass(
     val blur: Dp,
     /** The chromatic aberration in that blur: how far red and blue split, at its strongest. 0 for none. */
     val dispersion: Dp,
-    /** How opaque the surface's veil over the blur is. */
+    /** How strongly the surface is blended into the blur (an overlay blend in its shader, along with its strength). */
     val veil: Float,
     /** The veil with no blur under it (before Android 12, or over no page): denser, so text under it stays quiet. */
     val bareVeil: Float,
@@ -71,16 +74,19 @@ data class GlassTheme(val chip: GlassStyle, val panel: GlassStyle, val bar: BarG
             ).let { chip ->
                 GlassTheme(
                     chip = chip,
-                    // under text: a denser veil, so what is typed and read on it stays calm
-                    panel = chip.copy(veil = 0.6f),
+                    // under text: a denser veil and a stronger blur, so what is typed and read on it stays calm
+                    // over what passes under (the veil is blended into the glass, keeping its lights and darks)
+                    panel = chip.copy(veil = 0.6f, blur = 16.dp),
                     bar =
                         BarGlass(
                             blur = 24.dp,
                             dispersion = 8.dp,
                             veil = 0.55f,
                             bareVeil = 0.8f,
-                            fade = 40.dp,
-                            hold = 0.5f,
+                            // the blur recedes into the bar: content stays sharp until it slides under the bar's
+                            // parts, then softens toward the screen's edge
+                            fade = 8.dp,
+                            hold = 0.3f,
                         ),
                 )
             }

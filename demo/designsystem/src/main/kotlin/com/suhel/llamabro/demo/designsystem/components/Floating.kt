@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Brush
@@ -43,6 +44,7 @@ import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.theme.BarGlass
@@ -69,7 +71,8 @@ private val progressive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
  * on beneath. The content is the bars' [Backdrop]: under each bar it is blurred, as iOS's bars do, and veiled with
  * [ground], both easing out past the bar ([LocalGlass]'s bar), so what scrolls under softens rather than cuts. The
  * glass on the bars, and on the [overlay] (what floats over the content but isn't a bar: a FAB, a jump to the latest
- * message, given the same padding), is drawn over it. Before Android 12 there is no blur and the veil is denser.
+ * message; its padding clears the bars whole, and it is drawn over them), is drawn over it. Before Android 12 there
+ * is no blur and the veil is denser.
  */
 @Composable
 fun FloatingFrame(
@@ -107,20 +110,26 @@ fun FloatingFrame(
             subcompose(FrameSlot.Content) {
                 Box(Modifier.fillMaxSize().backdropSource(backdrop)) { content(padding) }
             }.map { it.measure(constraints) }
-        // over the content and outside it, so its glass never draws itself
+        // over the content and outside it, so its glass never draws itself; clear of the bars whole, fade band and
+        // all, and drawn after them, so nothing floating is hidden under a bar's blur
+        val clear =
+            PaddingValues(
+                top = topHeight.toDp(),
+                bottom = maxOf(bottomHeight, below.roundToPx()).toDp(),
+            )
         val over =
             subcompose(FrameSlot.Overlay) {
                 CompositionLocalProvider(LocalBackdrop provides backdrop) {
-                    Box(Modifier.fillMaxSize()) { overlay(padding) }
+                    Box(Modifier.fillMaxSize()) { overlay(clear) }
                 }
             }.map { it.measure(constraints) }
         val width = constraints.maxWidth
         val height = constraints.maxHeight
         layout(width, height) {
             body.forEach { it.place(0, 0) }
-            over.forEach { it.place(0, 0) }
             topBar.forEach { it.place(0, 0) }
             bottomBar.forEach { it.place(0, height - bottomHeight) }
+            over.forEach { it.place(0, 0) }
         }
     }
 }
@@ -147,7 +156,6 @@ internal fun FloatingLayer(
     val pageColor = backdrop?.pageColor ?: Color.Transparent
     val style = LocalGlass.current.bar
     val density = LocalDensity.current
-    val spread = with(density) { style.dispersion.toPx() }
     val blur = with(density) { style.blur.toPx() }
     val shaders = remember { if (progressive) ProgressiveBlur() else null }
     // where the layer sits over the page, so it draws the part of the page that lies under it
@@ -160,7 +168,7 @@ internal fun FloatingLayer(
                     .graphicsLayer {
                         renderEffect =
                             if (shaders != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                shaders.effect(edge, size.width, size.height, blur, spread, style.hold)
+                                shaders.effect(edge, size, style, ground, this)
                             } else {
                                 BlurEffect(blur, blur, TileMode.Clamp)
                             }
@@ -179,12 +187,15 @@ internal fun FloatingLayer(
                     },
             )
         }
-        Box(
-            Modifier.matchParentSize().drawBehind {
-                val veil = ground.copy(alpha = if (page != null) style.veil else style.bareVeil)
-                drawRect(eased(edge, size.height, style.hold, veil))
-            },
-        )
+        // the veil: blended into the blur by the shader where it runs (D148); a flat layer over a plain blur or none
+        if (shaders == null || page == null) {
+            Box(
+                Modifier.matchParentSize().drawBehind {
+                    val veil = ground.copy(alpha = if (page != null) style.veil else style.bareVeil)
+                    drawRect(eased(edge, size.height, style.hold, veil))
+                },
+            )
+        }
         Column(Modifier.fillMaxWidth()) {
             if (edge == Edge.Top) {
                 Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
@@ -239,24 +250,29 @@ private class ProgressiveBlur {
     private val across = RuntimeShader(PROGRESSIVE_BLUR)
     private val down = RuntimeShader(PROGRESSIVE_BLUR)
 
+    /** The blur of a layer at [edge], [size] large, in [style], the veil's [tint] blended in, at [density]. */
     fun effect(
         edge: Edge,
-        width: Float,
-        height: Float,
-        radius: Float,
-        spread: Float,
-        hold: Float,
+        size: Size,
+        style: BarGlass,
+        tint: Color,
+        density: Density,
     ): RenderEffect {
-        // the colours split along the vertical pass only: a fringe on every edge across the bar, at a third of the taps
+        // the colours split and the veil blends along the vertical pass only, the last: a fringe on every edge across
+        // the bar, at a third of the taps, and the tint over the finished blur
         across.setFloatUniform("spread", 0f)
-        down.setFloatUniform("spread", spread)
+        down.setFloatUniform("spread", with(density) { style.dispersion.toPx() })
+        across.setFloatUniform("veil", 0f)
+        down.setFloatUniform("veil", style.veil)
+        val radius = with(density) { style.blur.toPx() }
         for ((shader, dir) in listOf(across to (1f to 0f), down to (0f to 1f))) {
+            shader.setFloatUniform("tint", tint.red, tint.green, tint.blue)
             shader.setFloatUniform("dir", dir.first, dir.second)
-            shader.setFloatUniform("size", width, height)
-            shader.setFloatUniform("height", height)
+            shader.setFloatUniform("size", size.width, size.height)
+            shader.setFloatUniform("height", size.height)
             shader.setFloatUniform("fromTop", if (edge == Edge.Top) 1f else 0f)
             shader.setFloatUniform("radius", radius)
-            shader.setFloatUniform("hold", hold)
+            shader.setFloatUniform("hold", style.hold)
         }
         val first = android.graphics.RenderEffect.createRuntimeShaderEffect(across, "content")
         val second = android.graphics.RenderEffect.createRuntimeShaderEffect(down, "content")
@@ -270,7 +286,9 @@ private class ProgressiveBlur {
  * One pass of the progressive blur, along [dir]: a Gaussian of `radius` times the strength at this row (full to
  * `hold`, then smoothstep to none at the layer's inner end), in a fixed number of taps; at no radius, the page as is.
  * With a `spread`, red is read that far ahead along [dir] and blue as far behind, scaled by the same strength: the
- * colour fringes of light through glass (D148).
+ * colour fringes of light through glass (D148). With a `veil`, the `tint` (the surface) is overlay-blended into the
+ * finished blur by that share times the strength: the blur's own lights and darks pulled toward the surface, not a
+ * flat film laid over it.
  */
 private const val PROGRESSIVE_BLUR = """
 uniform shader content;
@@ -281,6 +299,12 @@ uniform float fromTop;
 uniform float radius;
 uniform float hold;
 uniform float spread;
+uniform float3 tint;
+uniform float veil;
+
+half3 overlay(half3 base, half3 over) {
+    return mix(2.0 * base * over, 1.0 - 2.0 * (1.0 - base) * (1.0 - over), step(0.5, base));
+}
 
 half4 main(float2 p) {
     float fraction = fromTop > 0.5 ? p.y / height : 1.0 - p.y / height;
@@ -311,7 +335,11 @@ half4 main(float2 p) {
         sum += c * half(w);
         total += w;
     }
-    return sum / half(total);
+    half4 c = sum / half(total);
+    if (veil > 0.0) {
+        c.rgb = mix(c.rgb, overlay(c.rgb, half3(tint)), half(veil * strength));
+    }
+    return c;
 }
 """
 

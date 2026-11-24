@@ -2264,7 +2264,11 @@ message bar, the drawer's head and foot, and the Chat list layout's tabs (a rais
 each page's end clear of it). Under a bar the page is blurred progressively, as iOS's bars do: from Android 13 a
 runtime shader (a separable Gaussian, `PROGRESSIVE_BLUR`) blurs each row by 24 dp times a strength that is full over
 the half of the layer nearest the screen's edge and eases (smoothstep) to none at its inner end, 40 dp past the bar, so
-the blur has no edge. The page is recorded once into a layer the bars draw again, on the page's own colour. The veil,
+the blur has no edge. (2026-11-25: the band past the bar is 8 dp and the blur full over the outer 30% only, so it
+recedes into the bar: content stays sharp until it slides under the bar's parts. The veil is no longer a layer over
+the glass: each shader overlay-blends the surface into its own result, the bars' along the blur's strength, so the
+blurred page keeps its lights and darks; panels blur 16 dp inside to stay calm under text. What floats in the
+frame's overlay clears the bars whole and is drawn over them, so a bar's blur never hides it.) The page is recorded once into a layer the bars draw again, on the page's own colour. The veil,
 the surface at 55% and never solid, follows the same curve. On Android 12 one even 24 dp blur is faded out along that
 curve; before Android 12, and under the Chat list tabs (which float outside the page), there is no blur and the veil is
 80%. On a
