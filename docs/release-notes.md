@@ -77,6 +77,9 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
   - The hub's seams for tests, `Transport`, `Response` and `Storage` (all `@InternalLlamaBroApi`), moved from
     `com.suhel.llamabro.hub.internal` to **`com.suhel.llamabro.hub.spi`**, as core's engine seam is in `spi` (D104).
     Only `llamabro-hub-testing` and the hub's own tests use them; change the imports.
+  - `EngineRequest.send` (the engine seam, `@InternalLlamaBroApi`) answers the `lb_status` as a `NativeError` constant:
+    `SEND_OK`, `SEND_NOT_REALTIME` and `SEND_CANCELLED` are gone for `NativeError.OK`, `NativeError.INVALID_ARG` and
+    `NativeError.CANCELLED`.
 - **Demo:** a tap on the mic dictates into the message bar, a hold records a voice message (D140); a typed reply on a
   model that speaks can be read aloud (D141).
 

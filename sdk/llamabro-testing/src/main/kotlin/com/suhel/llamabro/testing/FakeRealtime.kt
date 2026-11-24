@@ -4,9 +4,8 @@ package com.suhel.llamabro.testing
 
 import com.suhel.llamabro.InternalLlamaBroApi
 import com.suhel.llamabro.spi.EngineRequest
+import com.suhel.llamabro.spi.NativeError
 import com.suhel.llamabro.spi.RequestSink
-import com.suhel.llamabro.spi.SEND_CANCELLED
-import com.suhel.llamabro.spi.SEND_OK
 import com.suhel.llamabro.testing.FakeWire.q
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -29,12 +28,12 @@ internal abstract class FakeRealtimeRequest(protected val fake: FakeLlamaBro, pr
 
     final override fun send(message: ByteArray): Int =
         synchronized(this) {
-            if (!open.get()) return SEND_CANCELLED
+            if (!open.get()) return NativeError.CANCELLED
             val text = String(message, Charsets.UTF_8)
             synchronized(fake.lock) { fake.realtime += text }
             val json = runCatching { Json.parseToJsonElement(text) as JsonObject }.getOrNull()
             if (json?.get("type") !is JsonPrimitive) event(error("invalid JSON")) else handle(json)
-            SEND_OK
+            NativeError.OK
         }
 
     /** Answers one client event; [json] is an object with a `type`. */

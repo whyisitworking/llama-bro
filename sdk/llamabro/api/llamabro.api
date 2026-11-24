@@ -1896,12 +1896,6 @@ public final class com/suhel/llamabro/spi/EngineAttachment$Path : com/suhel/llam
 	public final fun getPath ()Ljava/lang/String;
 }
 
-public final class com/suhel/llamabro/spi/EngineKt {
-	public static final field SEND_CANCELLED I
-	public static final field SEND_NOT_REALTIME I
-	public static final field SEND_OK I
-}
-
 public abstract interface class com/suhel/llamabro/spi/EngineModel {
 	public abstract fun close ()V
 	public abstract fun getInfoJson ()Ljava/lang/String;
@@ -1930,7 +1924,9 @@ public final class com/suhel/llamabro/spi/NativeError : java/lang/RuntimeExcepti
 	public static final field CLOSED I
 	public static final field Companion Lcom/suhel/llamabro/spi/NativeError$Companion;
 	public static final field INTERNAL I
+	public static final field INVALID_ARG I
 	public static final field LOAD_FAILED I
+	public static final field OK I
 	public fun <init> (ILjava/lang/String;)V
 	public final fun getErrorJson ()Ljava/lang/String;
 	public final fun getStatus ()I

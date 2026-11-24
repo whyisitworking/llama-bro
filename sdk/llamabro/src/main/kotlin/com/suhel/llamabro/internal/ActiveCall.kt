@@ -2,8 +2,8 @@ package com.suhel.llamabro.internal
 
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.spi.EngineRequest
+import com.suhel.llamabro.spi.NativeError
 import com.suhel.llamabro.spi.RequestSink
-import com.suhel.llamabro.spi.SEND_OK
 import kotlinx.coroutines.channels.ProducerScope
 import java.io.ByteArrayOutputStream
 
@@ -45,7 +45,7 @@ internal class ActiveCall<T>(val scope: ProducerScope<T>, private val chunks: Ch
                 early += bytes
                 true
             } else {
-                h.send(bytes) == SEND_OK
+                h.send(bytes) == NativeError.OK
             }
         }
 

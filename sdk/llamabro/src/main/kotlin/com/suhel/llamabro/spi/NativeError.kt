@@ -10,6 +10,12 @@ import com.suhel.llamabro.InternalLlamaBroApi
 @InternalLlamaBroApi
 public class NativeError(public val status: Int, public val errorJson: String) : RuntimeException(errorJson) {
     public companion object {
+        /** `LB_OK`: what a call answers when it worked (the status of `lb_request_send`). */
+        public const val OK: Int = 0
+
+        /** `LB_ERR_INVALID_ARG`: the caller's mistake; for `lb_request_send`, a request that is not a realtime one. */
+        public const val INVALID_ARG: Int = 1
+
         /** `LB_ERR_ALREADY_INITIALIZED`: runtime init ran before in this process, with a different config. */
         public const val ALREADY_INITIALIZED: Int = 2
 
@@ -21,7 +27,8 @@ public class NativeError(public val status: Int, public val errorJson: String) :
 
         /**
          * `LB_ERR_CANCELLED`: the load's progress callback said stop
-         * ([D67](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d67)).
+         * ([D67](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d67)), or a send reached a
+         * conversation that had ended.
          */
         public const val CANCELLED: Int = 6
 
