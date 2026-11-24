@@ -1,9 +1,13 @@
 package com.suhel.llamabro.demo.designsystem.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -37,6 +41,7 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,9 +82,10 @@ import com.suhel.llamabro.demo.designsystem.theme.subtleFill
  * label, and its double tap would do nothing. A screen reader offers the actions by name instead. The touch area is at
  * least 48 dp even when a short reply is not; the drawn size doesn't change.
  */
-private fun Modifier.messageActions(onLongClick: (() -> Unit)?): Modifier =
+private fun Modifier.messageActions(onLongClick: (() -> Unit)?, touchArea: Boolean): Modifier =
     if (onLongClick == null) {
-        this
+        // a reply still being written has no actions yet but keeps the saved reply's size (D146)
+        if (touchArea) minimumInteractiveComponentSize() else this
     } else {
         composed {
             val label = stringResource(R.string.ds_message_actions)
@@ -158,7 +164,7 @@ fun UserBubble(
                     .bubbleIn(end = true)
                     .clip(DemoShapes.userBubble)
                     .background(colors.bubble)
-                    .messageActions(onLongClick)
+                    .messageActions(onLongClick, false)
                     .padding(start = DemoSpacing.inline, end = DemoSpacing.item),
                 time = time.takeIf { text.isEmpty() },
             )
@@ -178,7 +184,7 @@ fun UserBubble(
                     .bubbleIn(end = true)
                     .clip(DemoShapes.userBubble)
                     .background(colors.bubble)
-                    .messageActions(onLongClick)
+                    .messageActions(onLongClick, false)
                     .padding(horizontal = DemoSpacing.item, vertical = DemoSpacing.compact),
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(DemoSpacing.inline),
@@ -201,6 +207,8 @@ fun ModelBubble(
     time: String? = null,
     speed: String? = null,
     onLongClick: (() -> Unit)? = null,
+    /** Lays the reply out as one with actions even without them, so it keeps its size when they arrive (D146). */
+    touchArea: Boolean = onLongClick != null,
 ) {
     val colors = LocalDemoColors.current
     Box(modifier.fillMaxWidth()) {
@@ -210,7 +218,7 @@ fun ModelBubble(
                 .softShadow(DemoShapes.modelBubble, colors)
                 .clip(DemoShapes.modelBubble)
                 .background(colors.surface)
-                .messageActions(onLongClick)
+                .messageActions(onLongClick, touchArea)
                 .padding(horizontal = DemoSpacing.item, vertical = DemoSpacing.compact),
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(DemoSpacing.inline),
@@ -230,10 +238,12 @@ fun OpenReply(
     modifier: Modifier = Modifier,
     speed: String? = null,
     onLongClick: (() -> Unit)? = null,
+    /** Lays the reply out as one with actions even without them, so it keeps its size when they arrive (D146). */
+    touchArea: Boolean = onLongClick != null,
 ) {
     val colors = LocalDemoColors.current
     Column(
-        modifier.fillMaxWidth().messageActions(onLongClick),
+        modifier.fillMaxWidth().messageActions(onLongClick, touchArea),
         verticalArrangement = Arrangement.spacedBy(DemoSpacing.inline),
     ) {
         content()
@@ -340,15 +350,31 @@ private const val SHIMMER_WIDTH_FRACTION = 0.6f
 /**
  * The actions under a reply (copy, share, regenerate, details): small [IconAction]s whose glyphs line up with the
  * reply's text edge. Each glyph sits in the middle of its 48 dp target, so the row starts half the difference earlier,
- * mirrored in RTL.
+ * mirrored in RTL. With [easeIn] the row eases in under the reply when it is first composed, growing from nothing and
+ * fading in (D146), at once with animations off; the caller says so only for a reply that has just finished. Without
+ * it the row is there at once. A caller that stops composing it removes it at once.
  */
 @Composable
-fun ReplyActions(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-    Row(
-        modifier.fillMaxWidth().offset(x = -(DemoSize.target - DemoSize.iconSmall) / 2),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content,
-    )
+fun ReplyActions(modifier: Modifier = Modifier, easeIn: Boolean = true, content: @Composable RowScope.() -> Unit) {
+    val still = animationsDisabled()
+    val shown = remember { MutableTransitionState(!easeIn) }.apply { targetState = true }
+    AnimatedVisibility(
+        shown,
+        enter =
+            if (still) {
+                EnterTransition.None
+            } else {
+                expandVertically(tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard)) +
+                    fadeIn(tween(DemoMotion.STANDARD_MILLIS))
+            },
+        exit = ExitTransition.None,
+    ) {
+        Row(
+            modifier.fillMaxWidth().offset(x = -(DemoSize.target - DemoSize.iconSmall) / 2),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content,
+        )
+    }
 }
 
 /** A quiet day label between messages ("Today"). */

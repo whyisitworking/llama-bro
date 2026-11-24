@@ -203,6 +203,7 @@ private fun MessageList(
     val shown = rememberShownReply(streaming, rowKeys)
     // read apart from the text, so a new token doesn't recompose the list
     val streamingKey by remember { derivedStateOf { shown()?.let { "m-${it.id}" } ?: STREAMING } }
+    val finished = rememberFinishedReply(streamingKey)
     val bottom = rows.lastOrNull()
     val count = rows.size + if (busy) 1 else 0 // not the laid-out count, which can still be the old one
     // the message the reader last sent, so that coming back to the chat (or turning the phone) does not count again
@@ -248,7 +249,11 @@ private fun MessageList(
         items(rows, key = { it.key }, contentType = { it.type }) { item ->
             // a finished reply takes the streaming row's place: it is already on screen, so it does not fade in again
             Box(Modifier.messageMotion(this, still, appear = item !is ReplyItem)) {
-                MessageRow(item, style, actions, showActions = !busy && item.key == lastReplyKey)
+                val showActions = !busy && item.key == lastReplyKey
+                val easeIn = item.key == finished.key
+                MessageRow(item, style, actions, showActions, easeIn)
+                // eased once: scrolling back to it later shows the actions at once
+                finished.EasedOnce(item.key, showActions)
             }
         }
         // the streaming row has the key its saved reply will have, and stays until that reply is in the rows (see
@@ -259,6 +264,28 @@ private fun MessageList(
             }
         }
     }
+}
+
+/**
+ * The reply written in this list (D146): its saved row, once it has its actions, is the one that has just finished and
+ * eases them in. A reply that was never written here (opening a chat, scrolling back) shows them at once.
+ */
+private class FinishedReply {
+    var key by mutableStateOf<String?>(null)
+}
+
+@Composable
+private fun rememberFinishedReply(streamingKey: String): FinishedReply {
+    val finished = remember { FinishedReply() }
+    LaunchedEffect(streamingKey) { if (streamingKey != STREAMING) finished.key = streamingKey }
+    return finished
+}
+
+/** Forgets the finished reply once its row [rowKey] has its actions up, so they ease in once. */
+@Composable
+private fun FinishedReply.EasedOnce(rowKey: String, showActions: Boolean) {
+    val eased = showActions && rowKey == key
+    LaunchedEffect(eased) { if (eased) key = null }
 }
 
 /**

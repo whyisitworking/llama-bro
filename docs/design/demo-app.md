@@ -531,7 +531,7 @@ Material 3's durations and easings (D58), in `DemoMotion`; a screen never names 
 
 | What | Motion |
 |---|---|
-| A message, a day label, the reply starting | fades in (300 ms); rows below a row that changes height glide to their place (250 ms). A finished reply takes the streaming row's place without fading again. The rows of a chat that opens are there at once, and the list fades in once (300 ms) |
+| A message, a day label, the reply starting | fades in (300 ms); rows below a row that changes height glide to their place (250 ms). A finished reply takes the streaming row's place without fading again. It is the same layout as the streaming row, so its text does not move; the action row under it eases in when the reply has just finished (250 ms; at once with animations off, and at once for a reply that was not just written, as when a chat opens or the list scrolls back) (D146). The rows of a chat that opens are there at once, and the list fades in once (300 ms) |
 | The reply before its first word | three 6 dp muted dots, one line tall, in a wave (1.2 s, each a fifth later): while the model wakes and reads the prompt. A thinking model shows its fold instead |
 | "Thinking" | a soft band of ink sweeps across the muted word (1.4 s, the wake line's loop) until the thought ends |
 | The thought's chevron | turns a quarter as the fold opens (250 ms) |

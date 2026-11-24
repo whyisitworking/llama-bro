@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D145 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D146 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -179,6 +179,7 @@ its amendments to know what holds now.
 | [D131](#d131-a-softer-neutral-palette-cool-grey-light-dimmed-dark-replies) A softer neutral palette: cool-grey light, dimmed dark replies | 2026-11-21 | |
 | [D144](#d144-the-demos-packages-are-layered-the-container-builds-the-screens-view-models-and-a-drafts-pictures-are-staged-apart-from-sent-ones) The demo's packages are layered, the container builds the screens' view models, and a draft's pictures are staged apart from sent ones | 2026-11-24 | |
 | [D145](#d145-the-sidebar-pushes-the-chat-aside-and-dims-it-and-its-head-is-as-tall-as-the-top-bar) The sidebar pushes the chat aside and dims it, and its head is as tall as the top bar | 2026-11-24 | |
+| [D146](#d146-a-reply-is-one-row-while-it-is-written-and-once-it-is-saved-and-its-actions-ease-in) A reply is one row while it is written and once it is saved, and its actions ease in | 2026-11-24 | |
 
 **Repository and process**
 
@@ -2177,3 +2178,53 @@ layout has no drawer, and there is no permanent drawer on wide windows, so nothi
 Consequences: The pushed chat is narrower by the drawer's width while it is open, so its content reflows under the
 push rather than being hidden behind a sheet; the dim carries no swipe progress, it fades with the drawer's target.
 Next free IDs: D146, F183.
+
+<a id="d146"></a>
+### D146. A reply is one row while it is written and once it is saved, and its actions ease in
+
+Status: Decided (2026-11-24)
+
+Context: `StreamingRow` and `ReplyRow` were two layouts. A saved reply's long-press area is laid out at least 48 dp tall
+(`minimumInteractiveComponentSize`), which the reply being written had not, so a one-line reply moved down when it
+finished; the actions row appeared in one frame; and a fold the reader had opened was state of the streaming row, not
+of the saved one.
+Decision: One composable, `ReplyLayout`, draws both: the fold, then a stack of the body and what is added below it.
+The reply being written passes nothing below and no long press, but is laid out as one with actions (`touchArea` on
+`OpenReply` and `ModelBubble`), so its text keeps the size and place it has once saved. The saved reply adds its limit
+lines and `ReplyActions`, which is composed only for the last, finished reply and eases in when that reply has just
+finished (the row grows from nothing and fades in over 250 ms, at once with animations off); nothing is reserved for it
+before. The fold's open state is saved under a name made from the reply's id, so the saved row inherits it from the streaming row.
+`ReplyPositionTest` (instrumented) asserts the text node's bounds before and after the switch, in both message styles
+and with a thought.
+Consequences: Only a reply that has just been written in the list eases its actions in (the chat screen remembers the
+key of the reply it streamed, and clears it once the actions are up); opening a chat or scrolling back to the last reply
+shows them at once (`ReplyActions(easeIn = false)`). The row's Block gap under the text appears with the actions row,
+a frame before it has grown. Next free IDs: D147, F183.
+
+<a id="d147"></a>
+### D147. Hands-free voice mode ends a turn at a pause, and talking can interrupt a reply
+
+Status: Decided (2026-11-24)
+
+Context: Voice mode was tap or hold to talk (D100): at b12479 upstream's realtime conversation had no turn detection,
+and the maintainer then wanted no detector in the app. At b12653 it still has none (`turn_detection` is null), and the
+owner now asks for hands-free talking and for talking over a reply to stop it. Dictation already tells speech from the
+room with Llama Chat's ported detectors (`SpeechDetector`, `PauseDetector`, D140).
+Decision: Settings › Voice gets a Talking section: Tap to talk (the default, as before) or Hands-free, and a separate
+Interrupt by talking switch (off by default). `TurnDetector` (`audio/Pauses.kt`) builds on the two detectors: a turn
+starts after 250 ms of unbroken speech above the room's floor (`SpeechDetector`'s 9 dB, upstream's piece minimum), and
+ends at 900 ms of quiet after it (a `PauseDetector` seeded with the floor heard so far), or at the first quiet moment
+after a minute. Hands-free, voice mode listens by itself when it opens and again after each reply; the 700 ms before a
+turn starts is kept and sent with it, so its first word isn't lost; the session hears nothing until a turn starts, so
+noise alone sends nothing. The talk button still overrides: a tap sends the turn at once, and a tap before any speech
+stops listening until the next tap. With Interrupt by talking on, the microphone also listens while a reply plays
+(either mode): nothing counts for the first 600 ms, while the phone's echo cancellation learns the speaker, then
+400 ms of speech 15 dB above the floor stops the reply (`cancelReply`, kept as Stop keeps it) and starts a turn that
+ends at a pause. The settings' captions say the limits: a long pause ends the turn, a noisy room can start one, and
+on the speaker a loud reply can stop itself. The voice view's hint reads "Pause to send, or tap" while a turn ends on
+its own, and a press on a turn that began without one sends it.
+Consequences: Amends D100 ("no hands-free mode"). The thresholds are first guesses from upstream's dictation numbers,
+not measured: tuning them needs a short attended phone run, handed over in
+[the tuning note](./design/hands-free-tuning.md). The detector runs in the app, not the SDK, so the SDK still has no
+turn detection (D95). The interrupt's echo guard is only a warm-up and a margin: an echo that survives the phone's
+cancellation louder than the margin stops the reply, so headphones are the sure way. Next free IDs: D148, F183.

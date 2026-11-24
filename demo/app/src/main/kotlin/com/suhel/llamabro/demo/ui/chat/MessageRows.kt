@@ -2,6 +2,7 @@ package com.suhel.llamabro.demo.ui.chat
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -67,12 +68,19 @@ class MessageActions(
 )
 
 @Composable
-fun MessageRow(item: ChatItem, style: MessageStyle, actions: MessageActions, showActions: Boolean) {
+fun MessageRow(
+    item: ChatItem,
+    style: MessageStyle,
+    actions: MessageActions,
+    showActions: Boolean,
+    /** A reply's actions ease in only when it has just finished being written (D146); else they are there at once. */
+    easeIn: Boolean = false,
+) {
     when (item) {
         is DayItem -> DayLabel(item.label)
         is SwitchItem -> SwitchDivider(item.text)
         is UserItem -> UserRow(item, actions)
-        is ReplyItem -> ReplyRow(item, style, actions, showActions)
+        is ReplyItem -> ReplyRow(item, style, actions, showActions, easeIn)
     }
 }
 
@@ -103,22 +111,14 @@ private fun UserRow(item: UserItem, actions: MessageActions) {
 }
 
 @Composable
-private fun ReplyRow(item: ReplyItem, style: MessageStyle, actions: MessageActions, showActions: Boolean) {
+private fun ReplyRow(
+    item: ReplyItem,
+    style: MessageStyle,
+    actions: MessageActions,
+    showActions: Boolean,
+    easeIn: Boolean,
+) {
     CountRecompositions("row-${item.key}")
-    var expanded by rememberSaveable(item.id) { mutableStateOf(false) }
-    // the fold sits above the stack: its 48 dp row already holds the gap to the reply under it
-    Column(Modifier.fillMaxWidth().testTag("reply_message")) {
-        if (item.reasoning != null) {
-            ThoughtFold(ThoughtState(item.thoughtSeconds, expanded, item.reasoning), { expanded = !expanded })
-        }
-        Stack(Gap.Block, Modifier.fillMaxWidth()) { ReplyContent(item, style, actions, showActions) }
-    }
-}
-
-@Composable
-private fun ReplyContent(item: ReplyItem, style: MessageStyle, actions: MessageActions, showActions: Boolean) {
-    // a reply that failed before any text has no body: an empty, long-pressable area would be a control with nothing
-    // to say (accessibility), and the limit line under it already says what happened
     // a cut reply that can go on says so with its way out below; one that can't any more is marked like a stopped one
     val note =
         when {
@@ -126,38 +126,85 @@ private fun ReplyContent(item: ReplyItem, style: MessageStyle, actions: MessageA
             item.cut && !item.canContinue -> CUT_LINE
             else -> null
         }
-    if (item.blocks.blocks.isNotEmpty() || note != null) {
-        // the speed lives in the details sheet now, with the rest of what was measured
-        ReplyBody(item.blocks, null, note, null, item.time, style, actions.copyCode) {
-            actions.openMenu(item.position, true)
+    val view = ReplyView(item.id, item.blocks, item.reasoning, item.thoughtSeconds, note, item.time, typing = false)
+    ReplyLayout(view, style, "reply_message", actions.copyCode, { actions.openMenu(item.position, true) }) {
+        // a failed reply says so and offers the way out, like every limit in the app
+        if (item.failure != null) LimitLine(item.failure, "Try again", { actions.regenerate(item.position) })
+        if (item.canContinue) {
+            LimitLine(CUT_LINE, "Continue", { actions.continueReply(item.position) }, Modifier.testTag("cut_line"))
         }
-    }
-    // a failed reply says so and offers the way out, like every limit in the app
-    if (item.failure != null) LimitLine(item.failure, "Try again", { actions.regenerate(item.position) })
-    if (item.canContinue) {
-        LimitLine(CUT_LINE, "Continue", { actions.continueReply(item.position) }, Modifier.testTag("cut_line"))
-    }
-    if (showActions && item.failure == null) {
-        ReplyActions {
-            SpeakerAction(item, actions)
-            IconAction(DemoIcons.Copy, "Copy reply", { actions.copy(item.text) }, muted = true, small = true)
-            IconAction(DemoIcons.Share, "Share reply", { actions.share(item.position) }, muted = true, small = true)
-            IconAction(
-                DemoIcons.Regenerate,
-                "Regenerate reply",
-                { actions.regenerate(item.position) },
-                muted = true,
-                small = true,
-            )
-            if (item.details.isNotEmpty()) {
+        // the row's last line, which eases in once the reply is whole; nothing is reserved for it before
+        if (showActions && item.failure == null) {
+            ReplyActions(easeIn = easeIn) {
+                SpeakerAction(item, actions)
+                IconAction(DemoIcons.Copy, "Copy reply", { actions.copy(item.text) }, muted = true, small = true)
+                IconAction(DemoIcons.Share, "Share reply", { actions.share(item.position) }, muted = true, small = true)
                 IconAction(
-                    DemoIcons.Info,
-                    "Reply details",
-                    { actions.details(item.position) },
+                    DemoIcons.Regenerate,
+                    "Regenerate reply",
+                    { actions.regenerate(item.position) },
                     muted = true,
                     small = true,
                 )
+                if (item.details.isNotEmpty()) {
+                    IconAction(
+                        DemoIcons.Info,
+                        "Reply details",
+                        { actions.details(item.position) },
+                        muted = true,
+                        small = true,
+                    )
+                }
             }
+        }
+    }
+}
+
+/** What a reply row draws, whether the reply is still being written or saved. */
+private class ReplyView(
+    val id: Long,
+    val blocks: MarkdownBlocks,
+    val reasoning: String?,
+    /** Null while the model thinks. */
+    val thoughtSeconds: Int?,
+    val note: String?,
+    val time: String?,
+    /** Read, not yet written: the dots stay until the first word (a thinking model shows its fold instead). */
+    val typing: Boolean,
+)
+
+/**
+ * The one layout of a reply (D146): the fold, then the body, then what [below] adds. The reply being written and the
+ * saved reply both draw it, so when the stream ends the text stays where it was and only what is added below appears.
+ * A saved reply's long press is [onLongClick]; the reply being written has none, but is laid out as if it had.
+ */
+@Composable
+private fun ReplyLayout(
+    view: ReplyView,
+    style: MessageStyle,
+    tag: String,
+    onCopyCode: (String) -> Unit,
+    onLongClick: (() -> Unit)?,
+    below: @Composable ColumnScope.() -> Unit,
+) {
+    // keyed by name, not by place: the saved row takes the streaming row's place as a row of its own, and a fold the
+    // reader opened stays open
+    var expanded by rememberSaveable(view.id, key = "thought-${view.id}") { mutableStateOf(false) }
+    // the fold sits above the stack: its 48 dp row already holds the gap to the reply under it
+    Column(Modifier.fillMaxWidth().testTag(tag)) {
+        if (view.reasoning != null) {
+            ThoughtFold(ThoughtState(view.thoughtSeconds, expanded, view.reasoning), { expanded = !expanded })
+        }
+        Stack(Gap.Block, Modifier.fillMaxWidth()) {
+            // a reply that failed before any text has no body: an empty, long-pressable area would be a control with
+            // nothing to say (accessibility), and the limit line under it already says what happened
+            if (view.blocks.blocks.isNotEmpty() || view.note != null) {
+                // the speed lives in the details sheet now, with the rest of what was measured
+                ReplyBody(view.blocks, view.note, view.time, style, onCopyCode, onLongClick)
+            } else if (view.typing) {
+                TypingDots(Modifier.testTag("typing"))
+            }
+            below()
         }
     }
 }
@@ -197,29 +244,23 @@ private const val CUT_LINE = "Stopped at the length limit."
 @Composable
 fun StreamingRow(item: StreamingItem, style: MessageStyle, actions: MessageActions) {
     CountRecompositions("row-streaming")
-    var expanded by rememberSaveable(item.id) { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().testTag("streaming_reply")) {
-        if (item.reasoning != null) {
-            ThoughtFold(ThoughtState(if (item.thinking) null else item.thoughtSeconds, expanded, item.reasoning), {
-                expanded =
-                    !expanded
-            })
-        }
-        when {
-            item.text.isNotEmpty() -> ReplyBody(item.blocks, null, null, null, null, style, actions.copyCode, null)
-
-            // read, not yet written: the dots stay until the first word (a thinking model shows its fold instead)
-            item.reasoning == null -> TypingDots(Modifier.testTag("typing"))
-        }
-    }
+    val view =
+        ReplyView(
+            item.id,
+            item.blocks,
+            item.reasoning,
+            if (item.thinking) null else item.thoughtSeconds,
+            note = null,
+            time = null,
+            typing = item.text.isEmpty() && item.reasoning == null,
+        )
+    ReplyLayout(view, style, "streaming_reply", actions.copyCode, onLongClick = null) {}
 }
 
 @Composable
 private fun ReplyBody(
     blocks: MarkdownBlocks,
-    failure: String?,
     note: String?,
-    speed: String?,
     time: String?,
     style: MessageStyle,
     onCopyCode: (String) -> Unit,
@@ -230,12 +271,11 @@ private fun ReplyBody(
         Stack(Gap.Block) {
             if (blocks.blocks.isNotEmpty()) MarkdownText(blocks, onCopyCode)
             if (note != null) Text(note, color = colors.muted, style = DemoType.bodySmall)
-            if (failure != null) Text(failure, color = colors.muted, style = DemoType.bodyMedium)
         }
     }
     when (style) {
-        MessageStyle.Open -> OpenReply(content, speed = speed, onLongClick = onLongClick)
-        MessageStyle.Bubbles -> ModelBubble(content, time = time.orEmpty(), speed = speed, onLongClick = onLongClick)
+        MessageStyle.Open -> OpenReply(content, onLongClick = onLongClick, touchArea = true)
+        MessageStyle.Bubbles -> ModelBubble(content, time = time.orEmpty(), onLongClick = onLongClick, touchArea = true)
     }
 }
 
