@@ -2266,7 +2266,11 @@ the surface at 55% and never solid, follows the same curve. On Android 12 one ev
 curve; before Android 12, and under the Chat list tabs (which float outside the page), there is no blur and the veil is
 80%. On a
 floating bar each icon action is its own raised circle and a title that opens something (the model switcher) its own
-raised pill, translucent (70% of the surface) so the blur shows through them; a page's plain name is text. The Models intro is the list's first item and scrolls away with it. The
+piece of glass, after Apple's Liquid Glass: from Android 13 a lens (`LENS`) over the page,
+softly blurred, bent toward its rim by up to 10 dp within 14 dp of it, with red bent 60% more and blue 60% less so
+edges there fringe with colour, under a 35% veil, a light along its upper rim and a hairline round it; before Android
+13, a 70% translucent fill and the hairline. The blur under a bar splits red and blue too, by up to 5 dp along with its
+strength. The glass constants are theme tokens (`DemoSize.Glass`); a page's plain name is text. The Models intro is the list's first item and scrolls away with it. The
 drawer (`DemoDrawer`) no longer moves: it lies on a new `panel` colour, a step lighter than the canvas in both themes,
 and the page slides right off it (a drag on the page or the menu button), casting a soft shadow on it and dimmed by the
 scrim; closed, it is not composed. A followed chat keeps its end in view when the message bar grows.

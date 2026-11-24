@@ -3,8 +3,6 @@ package com.suhel.llamabro.demo.designsystem.components
 import android.graphics.RuntimeShader
 import android.os.Build
 import androidx.annotation.RequiresApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,7 +17,6 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsTopHeight
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
@@ -44,21 +41,22 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.suhel.llamabro.demo.designsystem.theme.DemoColors
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.FadeMask
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 
 /**
- * Whether the content is on a floating bar ([FloatingFrame]'s top): an [IconAction] and a tappable [TopBarTitle] there
- * are each their own raised surface, since the page scrolls on under them (D148).
+ * The page under the floating bar the content is on ([FloatingFrame]'s top), null off one: an [IconAction] and a
+ * tappable [TopBarTitle] there are each a piece of glass over it (D148).
  */
-internal val LocalOnFloatingBar = staticCompositionLocalOf { false }
+internal val LocalBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
 /**
  * How tall a floating layer outside the screen is over its bottom (the Chat list layout's tabs, fade band and all), so
@@ -102,14 +100,15 @@ fun FloatingFrame(
     val overlay = LocalBottomOverlay.current
     // the page, drawn once into a layer that the bars draw again, blurred, under themselves
     val page = if (blurs) rememberGraphicsLayer() else null
-    SubcomposeLayout(modifier) { constraints ->
+    val backdrop = remember(page, pageColor) { Backdrop(page, pageColor) }
+    SubcomposeLayout(modifier.onGloballyPositioned { backdrop.origin = it.positionInWindow() }) { constraints ->
         val bars = constraints.copy(minWidth = constraints.maxWidth, minHeight = 0)
         val topBar =
             subcompose(
                 FrameSlot.Top,
-            ) { FloatingLayer(Edge.Top, ground, page, pageColor, content = top) }.map { it.measure(bars) }
+            ) { FloatingLayer(Edge.Top, ground, backdrop, content = top) }.map { it.measure(bars) }
         val bottomBar =
-            subcompose(FrameSlot.Bottom) { FloatingLayer(Edge.Bottom, ground, page, pageColor, content = bottom) }
+            subcompose(FrameSlot.Bottom) { FloatingLayer(Edge.Bottom, ground, backdrop, content = bottom) }
                 .map { it.measure(bars) }
         // each layer's fade band lies over the content: the content clears the bar, not the band
         val fade = DemoSize.barFade.roundToPx()
@@ -158,12 +157,14 @@ private fun Modifier.recordInto(page: GraphicsLayer?): Modifier =
 internal fun FloatingLayer(
     edge: Edge,
     ground: Color,
-    page: GraphicsLayer?,
-    pageColor: Color,
+    backdrop: Backdrop?,
     overKeyboard: Boolean = true,
     content: @Composable () -> Unit,
 ) {
+    val page = backdrop?.page
+    val pageColor = backdrop?.pageColor ?: Color.Transparent
     val density = LocalDensity.current
+    val spread = with(density) { DemoSize.Glass.barSpread.toPx() }
     val blur = with(density) { DemoSize.backdropBlur.toPx() }
     val shaders = remember { if (progressive) ProgressiveBlur() else null }
     // where the layer sits in the frame, so it draws the part of the page that lies under it
@@ -176,7 +177,7 @@ internal fun FloatingLayer(
                     .graphicsLayer {
                         renderEffect =
                             if (shaders != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                shaders.effect(edge, size.height, blur)
+                                shaders.effect(edge, size.height, blur, spread)
                             } else {
                                 BlurEffect(blur, blur, TileMode.Clamp)
                             }
@@ -199,7 +200,7 @@ internal fun FloatingLayer(
         Column(Modifier.fillMaxWidth()) {
             if (edge == Edge.Top) {
                 Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
-                CompositionLocalProvider(LocalOnFloatingBar provides true) { content() }
+                CompositionLocalProvider(LocalBackdrop provides backdrop) { content() }
                 Spacer(Modifier.height(DemoSize.barFade))
             } else {
                 Spacer(Modifier.height(DemoSize.barFade))
@@ -256,7 +257,10 @@ private class ProgressiveBlur {
     private val across = RuntimeShader(PROGRESSIVE_BLUR)
     private val down = RuntimeShader(PROGRESSIVE_BLUR)
 
-    fun effect(edge: Edge, height: Float, radius: Float): RenderEffect {
+    fun effect(edge: Edge, height: Float, radius: Float, spread: Float): RenderEffect {
+        // the colours split along the vertical pass only: a fringe on every edge across the bar, at a third of the taps
+        across.setFloatUniform("spread", 0f)
+        down.setFloatUniform("spread", spread)
         for ((shader, dir) in listOf(across to (1f to 0f), down to (0f to 1f))) {
             shader.setFloatUniform("dir", dir.first, dir.second)
             shader.setFloatUniform("height", height)
@@ -275,6 +279,8 @@ private class ProgressiveBlur {
 /**
  * One pass of the progressive blur, along [dir]: a Gaussian of `radius` times the strength at this row (full to
  * `hold`, then smoothstep to none at the layer's inner end), in a fixed number of taps; at no radius, the page as is.
+ * With a `spread`, red is read that far ahead along [dir] and blue as far behind, scaled by the same strength: the
+ * colour fringes of light through glass (D148).
  */
 private const val PROGRESSIVE_BLUR = """
 uniform shader content;
@@ -283,42 +289,35 @@ uniform float height;
 uniform float fromTop;
 uniform float radius;
 uniform float hold;
+uniform float spread;
 
 half4 main(float2 p) {
     float fraction = fromTop > 0.5 ? p.y / height : 1.0 - p.y / height;
     float t = clamp((fraction - hold) / (1.0 - hold), 0.0, 1.0);
-    float r = radius * (1.0 - t * t * (3.0 - 2.0 * t));
+    float strength = 1.0 - t * t * (3.0 - 2.0 * t);
+    float r = radius * strength;
     if (r < 0.5) {
         return content.eval(p);
     }
+    float d = spread * strength;
     float sigma = r / 2.0;
     half4 sum = half4(0.0);
     float total = 0.0;
-    for (int i = -12; i <= 12; i++) {
-        float x = float(i) * r / 12.0;
+    for (int i = -8; i <= 8; i++) {
+        float x = float(i) * r / 8.0;
         float w = exp(-(x * x) / (2.0 * sigma * sigma));
-        sum += content.eval(p + dir * x) * half(w);
+        float2 q = p + dir * x;
+        half4 c = content.eval(q);
+        if (d > 0.5) {
+            c.r = content.eval(q + dir * d).r;
+            c.b = content.eval(q - dir * d).b;
+        }
+        sum += c * half(w);
         total += w;
     }
     return sum / half(total);
 }
 """
-
-/**
- * A part of a floating bar as its own raised surface (D148), when [floating]: a circle round an icon, a pill round a
- * title. Translucent like the bar under it, so the blurred page shows through as frosted glass; a hairline edge, not
- * a shadow (which would show through the fill as a smudge), and the denser fill set it apart.
- */
-internal fun Modifier.floatingChip(floating: Boolean, colors: DemoColors): Modifier =
-    if (floating) {
-        background(colors.surface.copy(alpha = CHIP_ALPHA), CircleShape)
-            .border(DemoSize.hairline, colors.hairline, CircleShape)
-    } else {
-        this
-    }
-
-/** How opaque a floating bar's chip is: denser than the bar's veil, still letting the page show through. */
-private const val CHIP_ALPHA = 0.7f
 
 /** The padding [FloatingFrame] gave, its top and bottom only, with [extra] more at each end. */
 fun PaddingValues.vertical(extra: Dp = 0.dp): PaddingValues =

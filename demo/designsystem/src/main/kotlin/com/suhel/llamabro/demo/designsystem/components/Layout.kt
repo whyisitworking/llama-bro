@@ -123,10 +123,11 @@ fun TopBarTitle(
 ) {
     val colors = LocalDemoColors.current
     // on a floating bar a title that opens something is a raised pill of its own (D148); a page's name is just text
-    val chip = LocalOnFloatingBar.current && onClick != null
+    val backdrop = LocalBackdrop.current.takeIf { onClick != null }
+    val chip = backdrop != null
     Column(
         modifier
-            .floatingChip(chip, colors)
+            .floatingChip(backdrop, colors)
             .clip(if (chip) CircleShape else DemoShapes.card)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .heightIn(min = DemoSize.target)
@@ -188,7 +189,7 @@ data class BottomTab(val label: String, val icon: ImageVector)
 fun BottomTabs(tabs: List<BottomTab>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val colors = LocalDemoColors.current
     Box(modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
-        FloatingLayer(Edge.Bottom, colors.surface, page = null, colors.canvas, overKeyboard = false) {
+        FloatingLayer(Edge.Bottom, colors.surface, backdrop = null, overKeyboard = false) {
             Row(
                 Modifier
                     .widthIn(max = DemoSize.contentMaxWidth)
