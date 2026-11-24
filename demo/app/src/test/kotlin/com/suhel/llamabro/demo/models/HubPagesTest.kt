@@ -155,6 +155,20 @@ class HubPagesTest {
             assertEquals("three", repository.next(query.key))
         }
 
+    @Test fun aRefreshSaysHowManyRowsItStoredBeforeItEnds() =
+        runBlocking {
+            // the page reads it when the Pager hears the refresh ended, before Room's reload brings the rows (the
+            // "No models match" flash); a later page doesn't change it
+            hubPages[null] = SearchRowsPage(listOf(row("B"), row("A")), next = "two")
+            hubPages["two"] = SearchRowsPage(listOf(row("D")), next = null)
+            val told = mutableListOf<Int>()
+            val mediator =
+                HubPagesMediator(query, discovery::searchPage, repository, 0, refreshed = { told += it })
+            mediator.load(LoadType.REFRESH, nothingLoaded)
+            mediator.load(LoadType.APPEND, nothingLoaded)
+            assertEquals(listOf(2), told)
+        }
+
     @Test fun theLastPageEndsTheListAndNothingMoreIsAsked() =
         runBlocking {
             hubPages[null] = SearchRowsPage(listOf(row("B")), next = "two")

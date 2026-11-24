@@ -29,7 +29,8 @@ interface SearchPageStore {
  * Hugging Face's pages of one search into Room (models-search design §1): the Pager's source reads Room, so stored
  * pages show at once and offline; this fetches. On opening it refreshes the first page in place, [refreshAfterMillis]
  * after it starts (the field's debounce: typing on starts a new search and cancels this one before it asks); scrolling
- * near the end fetches the next page with the cursor stored with the last. [fetching] is told while the Hub is asked.
+ * near the end fetches the next page with the cursor stored with the last. [fetching] is told while the Hub is asked,
+ * and [refreshed] how many rows a refresh stored, before the Pager hears the refresh ended.
  */
 @OptIn(ExperimentalPagingApi::class)
 class HubPagesMediator(
@@ -38,6 +39,7 @@ class HubPagesMediator(
     private val store: SearchPageStore,
     private val refreshAfterMillis: Long,
     private val fetching: (Boolean) -> Unit = {},
+    private val refreshed: (Int) -> Unit = {},
 ) : RemoteMediator<Int, HubResultEntity>() {
     override suspend fun initialize(): InitializeAction = InitializeAction.LAUNCH_INITIAL_REFRESH
 
@@ -67,6 +69,7 @@ class HubPagesMediator(
             fetching(true)
             val page = fetch(query, cursor)
             store.write(query.key, page.rows, page.next, first = cursor == null)
+            if (cursor == null) refreshed(page.rows.size)
             MediatorResult.Success(endOfPaginationReached = page.next == null)
         } catch (e: CancellationException) {
             throw e

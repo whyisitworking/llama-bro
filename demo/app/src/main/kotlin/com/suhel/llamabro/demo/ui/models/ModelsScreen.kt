@@ -121,7 +121,16 @@ internal fun ModelsHost(
     val hubRows = viewModel.hubPages.collectAsLazyPagingItems()
     val filters by viewModel.filters.collectAsStateWithLifecycle()
     val nothingFits by viewModel.nothingFits.collectAsStateWithLifecycle()
-    val hub = hubAnswer(search.query, hubRows.itemCount, hubRows.loadState, search.local.size, nothingFits)
+    // the stored count is read, not observed: the load state that makes it matter recomposes this
+    val hub =
+        hubAnswer(
+            search.query,
+            hubRows.itemCount,
+            hubRows.loadState,
+            search.local.size,
+            nothingFits,
+            viewModel.refreshStored(hubRows.loadState),
+        )
     val searching by viewModel.searching.collectAsStateWithLifecycle()
     val fetching by viewModel.fetching.collectAsStateWithLifecycle()
     val pendingRemove by viewModel.pendingRemove.collectAsStateWithLifecycle()

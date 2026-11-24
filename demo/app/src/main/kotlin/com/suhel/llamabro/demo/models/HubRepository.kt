@@ -50,6 +50,13 @@ interface HubSearch {
     /** Whether the Hub is being asked for a page of [query]: the field's line. */
     fun fetching(query: HubQuery): Flow<Boolean>
 
+    /**
+     * How many rows the last refresh of [query]'s first page stored in this process, or null before one ended: set
+     * before the Pager hears the refresh ended, so a page that reads it then knows rows are on their way to the list
+     * while Room's reload of them is still coming.
+     */
+    fun refreshStored(query: HubQuery): Int? = null
+
     suspend fun rememberSearch(query: String)
 
     fun recentSearches(): Flow<List<String>>
@@ -117,9 +124,14 @@ class HubRepository(
         Pager(
             config = PagingConfig(pageSize = PAGE_ROWS, initialLoadSize = PAGE_ROWS, enablePlaceholders = false),
             remoteMediator =
-                HubPagesMediator(query, discovery::searchPage, this, refreshAfterMillis) { asking ->
-                    setStatus("pages:${query.key}") { it.copy(refreshing = asking) }
-                },
+                HubPagesMediator(
+                    query,
+                    discovery::searchPage,
+                    this,
+                    refreshAfterMillis,
+                    fetching = { asking -> setStatus("pages:${query.key}") { it.copy(refreshing = asking) } },
+                    refreshed = { rows -> refreshedRows.update { it + (query.key to rows) } },
+                ),
         ) { dao.results(query.key) }
             .flow
             // a row stored in a shape that no longer reads is left out; the next refresh rewrites the page
@@ -127,6 +139,11 @@ class HubRepository(
 
     override fun fetching(query: HubQuery): Flow<Boolean> =
         status.map { it["pages:${query.key}"]?.refreshing == true }.distinctUntilChanged()
+
+    // external event: the rows each search's last first-page refresh stored, read as the page draws (never observed)
+    private val refreshedRows = MutableStateFlow<Map<String, Int>>(emptyMap())
+
+    override fun refreshStored(query: HubQuery): Int? = refreshedRows.value[query.key]
 
     override suspend fun next(search: String): String? = dao.searchPage(search)?.let { it.next ?: SearchPageStore.END }
 

@@ -1,6 +1,7 @@
 package com.suhel.llamabro.demo.ui.models
 
 import androidx.lifecycle.SavedStateHandle
+import androidx.paging.CombinedLoadStates
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.filter
@@ -76,7 +77,7 @@ internal class ModelSearch(
      * phone's facts (the "Fits this phone" cap) are read, and when nothing can fit; a retry makes it a new request
      * even for the same query.
      */
-    private val hubRequest: StateFlow<HubRequest?> =
+    val hubRequest: StateFlow<HubRequest?> =
         combine(queryInput.map { it.trim() }.distinctUntilChanged(), savedFilters, deviceFacts, retryInput) {
             text,
             chosen,
@@ -107,6 +108,15 @@ internal class ModelSearch(
                     hub.pages(request.query, debounceMillis).map { page -> page.map(ModelEntry::of) }
                 }
             }.cachedIn(scope)
+
+    private val pendingStored = PendingStored()
+
+    /**
+     * How many rows the query's last first-page refresh stored, read as the page draws with its load [states]
+     * ([hubAnswer]), until Room's reload of them has come ([PendingStored]).
+     */
+    fun refreshStored(states: CombinedLoadStates): Int? =
+        pendingStored.of(hubRequest.value?.let { hub.refreshStored(it.query) }, states)
 
     /** The search under way: while a page of the query is fetched. The field's line. */
     val fetching: StateFlow<Boolean> =
@@ -179,7 +189,7 @@ internal class ModelSearch(
 }
 
 /** One ask of the Hub: the query with its filters, and the retry it belongs to. */
-private data class HubRequest(val query: HubQuery, val attempt: Int)
+internal data class HubRequest(val query: HubQuery, val attempt: Int)
 
 /** What the local part lists, to leave out of the Hub's rows: repos, every upload's, and group keys. */
 private data class Listed(val repos: Set<String>, val keys: Set<String>) {

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.CombinedLoadStates
 import androidx.paging.PagingData
 import com.suhel.llamabro.demo.data.settings.FiltersChange
 import com.suhel.llamabro.demo.data.settings.SearchFilters
@@ -306,8 +307,11 @@ class ModelsViewModel(
             local,
         )
 
-    /** A row's fit, size and state, each on a flow of its own. */
-    private val rows = RowStates(hub, models, deviceFacts, library, downloading)
+    /** A row's fit, size and state, each on a flow of its own; what rows learned is kept for one search. */
+    private val rows =
+        RowStates(hub, models, deviceFacts, library, downloading, io).also { rows ->
+            viewModelScope.launch { find.hubRequest.collect { rows.forget() } }
+        }
 
     val query: StateFlow<String> = find.query
 
@@ -327,6 +331,9 @@ class ModelsViewModel(
 
     /** Search mode's body: the recent searches and the local models whose name has the query. */
     val search: StateFlow<SearchView> = find.search
+
+    /** How many rows the query's last first-page refresh stored, as the page draws: [ModelSearch.refreshStored]. */
+    fun refreshStored(states: CombinedLoadStates): Int? = find.refreshStored(states)
 
     /** Hugging Face's rows for the query, in the Hub's order, less those the local part already lists. */
     val hubPages: Flow<PagingData<ModelEntry>> = find.hubPages

@@ -6,6 +6,7 @@ import androidx.paging.LoadStates
 import com.suhel.llamabro.demo.models.TestHub
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -58,6 +59,27 @@ class HubAnswersTest {
             hubAnswer("phi", 0, states(idle), localMatches = 1),
         )
         assertEquals(HubAnswer.Rows(stored), hubAnswer("phi", stored, states(idle), 0))
+    }
+
+    @Test fun aRefreshThatStoredRowsIsLoadingUntilRoomBringsThem() {
+        // the refresh ended and Room's reload of what it stored is still coming: no rows yet, and no "no matches"
+        assertEquals(HubAnswer.Loading(0), hubAnswer("phi", 0, states(idle), 0, refreshStored = 3))
+        assertEquals(HubAnswer.Rows(3), hubAnswer("phi", 3, states(idle), 0, refreshStored = 3))
+        assertEquals("the Hub had none", HubAnswer.None, hubAnswer("zzzz", 0, states(idle), 0, refreshStored = 0))
+    }
+
+    @Test fun aStoredCountHoldsOnlyUntilRoomsReloadHasCome() {
+        val pending = PendingStored()
+        val reading = LoadStates(LoadState.Loading, idle, idle)
+        // the refresh ended: its count holds while Room's reload is on its way, and while it reads
+        assertEquals(3, pending.of(3, states(idle)))
+        assertEquals(3, pending.of(3, states(idle, reading)))
+        // the reload came with no rows (none of the stored ones read): no matches, not Loading for good
+        assertNull(pending.of(3, states(idle)))
+        assertEquals(HubAnswer.None, hubAnswer("phi", 0, states(idle), 0, refreshStored = pending.of(3, states(idle))))
+        // a new refresh: its count holds again until its own reload has come
+        assertEquals(3, pending.of(3, states(LoadState.Loading)))
+        assertEquals(3, pending.of(3, states(idle)))
     }
 
     @Test fun aFailedNextPageIsMarkedOnTheRowsAndOneLoadingSaysNothing() {

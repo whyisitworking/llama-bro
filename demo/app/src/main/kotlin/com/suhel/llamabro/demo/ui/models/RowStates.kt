@@ -23,15 +23,20 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.CoroutineContext
 
 /**
  * A Models page row's own flows: its fit ([fit]), its size ([size]) and what its repo is doing here ([state]), so
  * either changing recomposes that row alone. Each lives in the scope its caller passes, the row's own in the page
- * (`rememberCoroutineScope`), so a row that scrolled away takes its flows with it: nothing here grows with the rows
- * seen.
+ * (`rememberCoroutineScope`), so a row that scrolled away takes its flows with it. What a row's flows learned that
+ * isn't read at once (an exact size from the stored files, the download ahead in the queue) is kept until the next
+ * search ([forget]), so a row that scrolls back starts from it rather than flickering from the guess.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class RowStates(
@@ -40,9 +45,21 @@ internal class RowStates(
     private val deviceFacts: StateFlow<DeviceFacts?>,
     private val library: StateFlow<List<LibraryModel>?>,
     private val downloading: StateFlow<List<HfModel>?>,
+    /** Where the stored files are read and decoded. */
+    private val io: CoroutineContext,
 ) {
     // external event: the card reports the fit it measured
     private val exactFits = MutableStateFlow<Map<String, FitView>>(emptyMap())
+
+    // the last exact size per repo, and the name of the download ahead per queued model, as rows' flows found them
+    private val lastSizes = ConcurrentHashMap<String, SizeText>()
+    private val lastAhead = ConcurrentHashMap<HfModel, String>()
+
+    /** A new search: what rows learned for the last one is let go, so it never grows with the searches made. */
+    fun forget() {
+        lastSizes.clear()
+        lastAhead.clear()
+    }
 
     /**
      * How [row] runs here, with no call of its own: a catalog model from the sizes it ships, any other guessed from
@@ -54,11 +71,7 @@ internal class RowStates(
         val file = fileOf(row)
         val exact = exactFits.map { it[file] }.distinctUntilChanged()
         return combine(deviceFacts, exact) { phone, known -> known ?: phone?.let { guess(row, it) } }
-            .stateIn(
-                scope,
-                SharingStarted.WhileSubscribed(STOP_TIMEOUT),
-                exactFits.value[file] ?: deviceFacts.value?.let { guess(row, it) },
-            )
+            .stateIn(scope, SharingStarted.Eagerly, exactFits.value[file] ?: deviceFacts.value?.let { guess(row, it) })
     }
 
     /**
@@ -72,11 +85,14 @@ internal class RowStates(
             // a constant: a row's own size never changes
             MutableStateFlow(own).asStateFlow()
         } else {
+            val repo = row.repo.lowercase()
             hub
                 .files(row.repo)
                 .map { cached -> cached.value?.let(::recommendedSize) ?: own }
+                .flowOn(io)
                 .distinctUntilChanged()
-                .stateIn(scope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), own)
+                .onEach { if (it is SizeText.Exact) lastSizes[repo] = it }
+                .stateIn(scope, SharingStarted.Eagerly, lastSizes[repo] ?: own)
         }
     }
 
@@ -110,7 +126,7 @@ internal class RowStates(
             }.distinctUntilChanged()
             .stateIn(
                 scope,
-                SharingStarted.WhileSubscribed(STOP_TIMEOUT),
+                SharingStarted.Eagerly,
                 firstState(row, where(library.value, downloading.value)),
             )
     }
@@ -124,7 +140,9 @@ internal class RowStates(
         return when {
             key != null -> {
                 val status = models.state(key).value
-                RowState(badgeOf(status), DownloadViews.of(key, status, row.size?.bytes.takeIf { row.key == key }))
+                val ahead = lastAhead[key].takeIf { status == DownloadStatus.Absent }
+                val bytes = row.size?.bytes.takeIf { row.key == key }
+                RowState(badgeOf(status), DownloadViews.of(key, status, bytes, ahead))
             }
 
             installed -> {
@@ -142,12 +160,11 @@ internal class RowStates(
             status to record
         }.flatMapLatest { (status, record) ->
             val ahead = if (status == DownloadStatus.Absent) models.aheadOf(key) else flowOf(null)
-            ahead.map { name -> RowState(badgeOf(status), DownloadViews.of(key, status, record?.totalBytes, name)) }
+            ahead.map { name ->
+                if (name != null) lastAhead[key] = name else lastAhead.remove(key)
+                RowState(badgeOf(status), DownloadViews.of(key, status, record?.totalBytes, name))
+            }
         }
-
-    private companion object {
-        const val STOP_TIMEOUT = 5_000L
-    }
 }
 
 /**
