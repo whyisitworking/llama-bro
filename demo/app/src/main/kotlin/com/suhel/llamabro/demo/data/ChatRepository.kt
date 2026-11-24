@@ -212,16 +212,23 @@ class ChatRepository(
     }
 
     /**
-     * Deletes the recordings no row names and that are older than a day, which a crash or a death between saving a file
-     * and writing its row leaves behind. The pictures are left alone: a draft's pictures are recorded only in the chat
-     * screen's saved state, which survives a process death for days and which this class cannot read, so a sweep would
-     * delete a picture a draft still holds. A later change stages them in their own folder, which a sweep can then
-     * clear. Recordings and dictation clips are never held across a process.
+     * Deletes the recordings and the pictures no row names and that are older than a day, which a crash or a death
+     * between saving a file and writing its row leaves behind. A draft's pictures are recorded only in the chat screen's
+     * saved state, which survives a process death for days and which this class cannot read: they are staged in the
+     * image store's draft folder, which a sweep leaves alone. Recordings and dictation clips are never held across a
+     * process.
      */
     suspend fun sweepOrphans() {
         val cutoff = clock() - ORPHAN_AGE_MILLIS
         audioStore?.deleteUnreferenced(dao.allAudio().toSet(), cutoff)
+        imageStore.deleteUnreferenced(dao.allImages().flatMapTo(mutableSetOf(), ::imageNames), cutoff)
     }
+
+    /** Moves the pictures of a message about to be stored out of the draft folder and into the messages' own. */
+    suspend fun commitDraftImages(names: List<String>) = imageStore.commit(names, clock())
+
+    /** Puts them back in the draft folder: the message was not stored. */
+    suspend fun returnDraftImages(names: List<String>) = imageStore.uncommit(names)
 
     private fun MessageEntity.toStored() =
         StoredMessage(

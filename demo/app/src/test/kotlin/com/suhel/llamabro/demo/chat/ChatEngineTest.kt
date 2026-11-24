@@ -283,6 +283,20 @@ class ChatEngineTest {
             assertTrue(rows(chat).isEmpty())
         }
 
+    @Test fun aSentDraftsPicturesMoveIntoTheMessagesFolder() =
+        runBlocking {
+            val seer = Catalog.suggested.first { it.sees }.key
+            settings.setLastModel(seer.toString())
+            onPhone(seer)
+            val draft = images.draftFile("p.jpg").apply { parentFile!!.mkdirs() }
+            draft.writeBytes(byteArrayOf(1))
+            val chat = engine.open(0)
+            assertTrue(chat.send("what is this?", listOf("p.jpg")))
+            assertFalse("the draft's copy is gone", draft.exists())
+            assertTrue(images.file("p.jpg").exists())
+            eventually("the row names it") { rows(chat).firstOrNull()?.images == listOf(images.file("p.jpg")) }
+        }
+
     @Test fun closingAHandleStopsItsReplyAndItsObservers() =
         runBlocking {
             streamer = { _, _, _, _ ->

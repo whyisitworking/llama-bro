@@ -91,6 +91,9 @@ abstract class ChatDao {
     @Query("SELECT audio FROM messages WHERE audio IS NOT NULL")
     abstract suspend fun allAudio(): List<String>
 
+    @Query("SELECT images FROM messages WHERE images != ''")
+    abstract suspend fun allImages(): List<String>
+
     @Query("DELETE FROM messages WHERE chatId = :chatId AND position >= :position")
     abstract suspend fun deleteFrom(chatId: Long, position: Int)
 

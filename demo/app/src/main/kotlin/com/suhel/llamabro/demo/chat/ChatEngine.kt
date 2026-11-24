@@ -662,17 +662,26 @@ class ChatEngine(
             }
             val id = ensureChat() ?: return false
             _limit.value = null
-            chats.append(
-                id,
-                NewMessage(
-                    MessageKind.User,
-                    text.trim(),
-                    names,
-                    state = MessageState.Held,
-                    sentAt = clock(),
-                    voice = voice,
-                ),
-            )
+            chats.commitDraftImages(names)
+            try {
+                chats.append(
+                    id,
+                    NewMessage(
+                        MessageKind.User,
+                        text.trim(),
+                        names,
+                        state = MessageState.Held,
+                        sentAt = clock(),
+                        voice = voice,
+                    ),
+                )
+            } catch (
+                @Suppress("TooGenericExceptionCaught") e: Exception,
+            ) {
+                // not stored: the draft keeps its pictures (even when this call was cancelled)
+                withContext(NonCancellable) { chats.returnDraftImages(names) }
+                throw e
+            }
             pump()
             return true
         }

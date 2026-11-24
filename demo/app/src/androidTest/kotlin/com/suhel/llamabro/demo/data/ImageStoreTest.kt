@@ -45,7 +45,7 @@ class ImageStoreTest {
         runBlocking<Unit> {
             val name = store.save(picture(4000, 3000, Bitmap.CompressFormat.JPEG), context.contentResolver)
             assertTrue(name.endsWith(".jpg"))
-            val saved = bounds(store.file(name))
+            val saved = bounds(store.draftFile(name))
             assertEquals("image/jpeg", saved.outMimeType)
             assertEquals(1024, saved.outWidth)
             assertEquals(768, saved.outHeight)
@@ -54,7 +54,7 @@ class ImageStoreTest {
     @Test fun aTallPngIsScaledAndBecomesJpeg() =
         runBlocking<Unit> {
             val name = store.save(picture(1500, 3000, Bitmap.CompressFormat.PNG), context.contentResolver)
-            val saved = bounds(store.file(name))
+            val saved = bounds(store.draftFile(name))
             assertEquals("image/jpeg", saved.outMimeType)
             assertEquals(512, saved.outWidth)
             assertEquals(1024, saved.outHeight)
@@ -63,7 +63,7 @@ class ImageStoreTest {
     @Test fun aSmallPictureKeepsItsSize() =
         runBlocking<Unit> {
             val name = store.save(picture(400, 300, Bitmap.CompressFormat.JPEG), context.contentResolver)
-            val saved = bounds(store.file(name))
+            val saved = bounds(store.draftFile(name))
             assertEquals(400, saved.outWidth)
             assertEquals(300, saved.outHeight)
         }
@@ -73,8 +73,8 @@ class ImageStoreTest {
             val a = store.save(picture(100, 100, Bitmap.CompressFormat.JPEG), context.contentResolver)
             val b = store.save(picture(100, 100, Bitmap.CompressFormat.JPEG), context.contentResolver)
             assertTrue(a != b)
-            store.delete(listOf(a, "never-existed.jpg"))
-            assertFalse(store.file(a).exists())
-            assertTrue(store.file(b).exists())
+            store.deleteDrafts(listOf(a, "never-existed.jpg"))
+            assertFalse(store.draftFile(a).exists())
+            assertTrue(store.draftFile(b).exists())
         }
 }

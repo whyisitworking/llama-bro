@@ -10,12 +10,19 @@ import java.io.File
 import java.util.UUID
 import kotlin.math.max
 
-/** Pictures attached to messages: downscaled to a long side of at most 1024 px, saved as JPEG quality 85. */
+/**
+ * Pictures attached to messages: downscaled to a long side of at most 1024 px, saved as JPEG quality 85. A picture
+ * picked for a message not yet sent is staged in `draft/` under [dir]; sending the message [commit]s it into [dir]
+ * itself, where a message's pictures live. The draft folder is the one place a sweep leaves alone, since a draft's names
+ * are held only in the chat screen's saved state, which this class cannot read.
+ */
 class ImageStore(private val dir: File) {
-    /** Decodes [uri] (EXIF rotation applied), saves it under a new name and returns the name. */
+    private val drafts = File(dir, DRAFT_DIR)
+
+    /** Decodes [uri] (EXIF rotation applied), saves it in the draft folder under a new name and returns the name. */
     suspend fun save(uri: Uri, resolver: ContentResolver): String =
         withContext(Dispatchers.IO) {
-            dir.mkdirs()
+            drafts.mkdirs()
             val bitmap =
                 ImageDecoder.decodeBitmap(ImageDecoder.createSource(resolver, uri)) { decoder, info, _ ->
                     decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
@@ -30,20 +37,66 @@ class ImageStore(private val dir: File) {
                 }
             val name = UUID.randomUUID().toString() + ".jpg"
             try {
-                File(dir, name).outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.JPEG, QUALITY, it)) }
+                File(
+                    drafts,
+                    name,
+                ).outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.JPEG, QUALITY, it)) }
             } finally {
                 bitmap.recycle()
             }
             name
         }
 
+    /** A message's picture. */
     fun file(name: String): File = File(dir, name)
 
+    /** A picture in a draft that is not sent yet. */
+    fun draftFile(name: String): File = File(drafts, name)
+
+    /** Deletes messages' pictures. */
     suspend fun delete(names: List<String>) {
         withContext(Dispatchers.IO) { names.forEach { file(it).delete() } }
     }
 
+    /** Deletes a draft's pictures: removed from the bar, or left with a draft nobody sent. */
+    suspend fun deleteDrafts(names: List<String>) {
+        withContext(Dispatchers.IO) { names.forEach { draftFile(it).delete() } }
+    }
+
+    /**
+     * Moves a sent draft's pictures into the messages' folder, stamped [now] so a sweep never takes one between the move
+     * and the row naming it. A name with no draft file is left as it is.
+     */
+    suspend fun commit(names: List<String>, now: Long) {
+        withContext(Dispatchers.IO) {
+            dir.mkdirs()
+            names.forEach { name ->
+                val from = draftFile(name)
+                if (from.exists() && from.renameTo(file(name))) file(name).setLastModified(now)
+            }
+        }
+    }
+
+    /** Undoes [commit] for a message that could not be stored, so the draft still has its pictures. */
+    suspend fun uncommit(names: List<String>) {
+        withContext(Dispatchers.IO) {
+            drafts.mkdirs()
+            names.forEach { name -> if (file(name).exists()) file(name).renameTo(draftFile(name)) }
+        }
+    }
+
+    /** Deletes the messages' pictures not in [referenced] that were last written before [cutoff] (epoch millis). */
+    suspend fun deleteUnreferenced(referenced: Set<String>, cutoff: Long) {
+        withContext(Dispatchers.IO) {
+            dir
+                .listFiles()
+                ?.filter { it.isFile && it.name !in referenced && it.lastModified() < cutoff }
+                ?.forEach { it.delete() }
+        }
+    }
+
     private companion object {
+        const val DRAFT_DIR = "draft"
         const val MAX_SIDE = 1024
         const val QUALITY = 85
     }

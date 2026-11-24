@@ -120,6 +120,8 @@ class FakeChatDao : ChatDao() {
 
     override suspend fun allAudio(): List<String> = messages.value.mapNotNull { it.audio }
 
+    override suspend fun allImages(): List<String> = messages.value.map { it.images }.filter { it.isNotEmpty() }
+
     override suspend fun deleteFrom(chatId: Long, position: Int) {
         messages.update { list -> list.filterNot { it.chatId == chatId && it.position >= position } }
     }

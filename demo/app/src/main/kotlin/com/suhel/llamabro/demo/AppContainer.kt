@@ -225,7 +225,7 @@ class AppContainer(
         scope.launch(Dispatchers.Default) { deviceFacts() }
     }
 
-    override fun draftPicture(name: String): File = images.file(name)
+    override fun draftPicture(name: String): File = images.draftFile(name)
 
     // ---- the screens' view models (see [Screens]) -----------------------------------------------------------------
 
@@ -270,7 +270,8 @@ class AppContainer(
         engine.open(chatId, startModel),
         styles ?: settings.settings.map { it.layout.messageStyle() },
         saveImage = { images.save(it, resolver) },
-        discardImages = { images.delete(it) },
+        discardImages = { images.deleteDrafts(it) },
+        draftPictureExists = { images.draftFile(it).exists() },
         clock = clock,
         titles = { id ->
             if (id == 0L) emptyFlow() else chats.chats().map { all -> all.firstOrNull { it.id == id }?.title }

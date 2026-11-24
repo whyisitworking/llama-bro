@@ -109,6 +109,7 @@ class ChatViewModelTest {
         recorder: VoiceRecorder? = null,
         voiceMode: ((VoiceChat) -> VoiceConversation)? = null,
         dictating: Int? = null,
+        draftPictureExists: (String) -> Boolean = { true },
     ): ChatViewModel {
         testHub.install(model)
         models.changed()
@@ -120,6 +121,7 @@ class ChatViewModelTest {
             discardImages = {},
             savedState = saved,
             background = scope,
+            draftPictureExists = draftPictureExists,
             audio =
                 ChatAudio(
                     recorder = recorder,
@@ -709,6 +711,28 @@ class ChatViewModelTest {
                         .position,
                 ),
             )
+        }
+
+    @Test fun aRestoredDraftDropsAPhotoWhoseFileIsGoneAndSaysSo() =
+        runBlocking {
+            val saved =
+                SavedStateHandle(
+                    mapOf("draft.text" to "look", "draft.images" to arrayListOf("kept.jpg", "gone.jpg")),
+                )
+            val vm = viewModel(saved = saved, draftPictureExists = { it == "kept.jpg" })
+            assertEquals(listOf("kept.jpg"), vm.composer.value.attachments)
+            assertEquals("look", vm.composer.value.text)
+            assertEquals("A photo in your draft is gone.", vm.problem.value)
+            // the saved state is cleaned too, so the next restore doesn't say it again
+            assertEquals(arrayListOf("kept.jpg"), saved.get<ArrayList<String>>("draft.images"))
+        }
+
+    @Test fun aRestoredDraftWithAllItsPhotosSaysNothing() =
+        runBlocking {
+            val saved = SavedStateHandle(mapOf("draft.images" to arrayListOf("a.jpg", "b.jpg")))
+            val vm = viewModel(saved = saved)
+            assertEquals(listOf("a.jpg", "b.jpg"), vm.composer.value.attachments)
+            assertNull(vm.problem.value)
         }
 
     @Test fun leavingTheChatClosesItsHandleAndDeletesTheUnsentPictures() =

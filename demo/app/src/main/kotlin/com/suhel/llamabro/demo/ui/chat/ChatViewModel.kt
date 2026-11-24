@@ -94,6 +94,8 @@ class ChatViewModel(
     private val saveImage: suspend (Uri) -> String,
     /** Deletes a draft's pictures (removed from the bar, or left with a draft nobody sent). */
     private val discardImages: suspend (List<String>) -> Unit,
+    /** Whether a draft picture's file is still there; a restored draft drops the names whose file is gone. */
+    private val draftPictureExists: (String) -> Boolean = { true },
     private val zone: ZoneId = ZoneId.systemDefault(),
     private val locale: Locale = Locale.getDefault(),
     private val clock: () -> Long = System::currentTimeMillis,
@@ -408,12 +410,19 @@ class ChatViewModel(
 
     fun onText(text: String) = updateDraft { it.copy(text = text) }
 
-    private fun restoredDraft() =
-        ComposerDraft(
+    private fun restoredDraft(): ComposerDraft {
+        val saved = savedState.get<ArrayList<String>>(DRAFT_IMAGES_KEY).orEmpty()
+        val kept = saved.filter(draftPictureExists)
+        if (kept.size != saved.size) {
+            savedState[DRAFT_IMAGES_KEY] = ArrayList(kept)
+            _problem.value = "A photo in your draft is gone."
+        }
+        return ComposerDraft(
             text = savedState.get<String>(DRAFT_TEXT_KEY).orEmpty(),
-            attachments = savedState.get<ArrayList<String>>(DRAFT_IMAGES_KEY).orEmpty(),
+            attachments = kept,
             editing = savedState.get<Int>(DRAFT_EDITING_KEY),
         )
+    }
 
     /** Applies [change] to the draft atomically (two photo picks can finish together) and saves the result. */
     private fun updateDraft(change: (ComposerDraft) -> ComposerDraft): ComposerDraft =
