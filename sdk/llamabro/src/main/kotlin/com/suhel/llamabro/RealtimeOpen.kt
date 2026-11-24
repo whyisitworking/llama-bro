@@ -1,8 +1,8 @@
 package com.suhel.llamabro
 
+import com.suhel.llamabro.audio.RealtimeJson
 import com.suhel.llamabro.internal.ErrorMapping
 import com.suhel.llamabro.internal.RealtimeLink
-import com.suhel.llamabro.voice.RealtimeJson
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope

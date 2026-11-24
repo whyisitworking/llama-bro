@@ -1,4 +1,4 @@
-package com.suhel.llamabro.voice
+package com.suhel.llamabro.audio
 
 /**
  * What a [TranscriptionSession] hears from the server, in order: upstream's realtime transcription events

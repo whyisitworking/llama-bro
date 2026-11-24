@@ -10,8 +10,8 @@ import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.ModelTask
 import com.suhel.llamabro.Ranked
-import com.suhel.llamabro.Transcript
 import com.suhel.llamabro.Typed
+import com.suhel.llamabro.audio.Transcript
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.FinishReason
@@ -303,7 +303,10 @@ class FakeLlamaBroTest {
             assertEquals(Transcript("What's the weather?"), model.transcribe(MediaSource.file("/a.wav")))
             assertEquals(
                 Transcript("What's the", truncated = true),
-                model.transcribe(MediaSource.bytes(wav), language = "en") { sampling { maxTokens = 3 } },
+                model.transcribe(MediaSource.bytes(wav)) {
+                    language = "en"
+                    maxTokens = 3
+                },
             )
             assertTrue(fake.transcribeRequests[1].contains("\"language\":\"en\""))
             // a model that doesn't hear refuses transcribe before any request, as on the phone

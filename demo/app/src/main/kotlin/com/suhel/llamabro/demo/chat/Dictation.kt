@@ -3,10 +3,10 @@ package com.suhel.llamabro.demo.chat
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.MediaSource
 import com.suhel.llamabro.Model
+import com.suhel.llamabro.audio.TranscriptionEvent
+import com.suhel.llamabro.audio.TranscriptionSession
 import com.suhel.llamabro.transcribe
 import com.suhel.llamabro.transcriptionSession
-import com.suhel.llamabro.voice.TranscriptionEvent
-import com.suhel.llamabro.voice.TranscriptionSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -419,7 +419,7 @@ class Dictation(
 
     private suspend fun transcribe(source: MediaSource): String? =
         try {
-            Transcripts.clean(model.transcribe(source, language = language).text).trim()
+            Transcripts.clean(model.transcribe(source) { language = this@Dictation.language }.text).trim()
         } catch (e: CancellationException) {
             throw e
         } catch (expected: LlamaBroException) {

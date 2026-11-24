@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D136 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D143 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -131,8 +131,9 @@ its amendments to know what holds now.
 | [D98](#d98-the-kotlin-voice-session-a-suspending-open-a-handle-with-sends-typed-events-with-a-raw-escape-hatch) The Kotlin voice session: a suspending open, a handle with sends, typed events with a raw escape… | 2026-11-18 | [D99](#d99-the-voice-session-captions-the-users-words-when-asked-on-a-second-slot-while-the-reply-is-made) |
 | [D99](#d99-the-voice-session-captions-the-users-words-when-asked-on-a-second-slot-while-the-reply-is-made) The voice session captions the user's words when asked, on a second slot, while the reply is made | 2026-11-18 | [D109](#d109-captions-of-the-users-words-move-to-the-app-it-transcribes-its-own-recording-of-each-turn) |
 | [D109](#d109-captions-of-the-users-words-move-to-the-app-it-transcribes-its-own-recording-of-each-turn) Captions of the user's words move to the app: it transcribes its own recording of each turn | 2026-11-19 | |
-| [D138](#d138-live-transcription-is-upstreams-realtime-transcription-session-set-up-as-its-web-client-does-the-sdk-detects-no-pauses) Live transcription is upstream's realtime transcription session; the SDK detects no pauses | 2026-11-23 | |
-| [D139](#d139-speech-is-upstreams-v1audiospeech-streamed-as-wav-and-handed-out-as-pcm-pieces) Speech is upstream's `/v1/audio/speech`, streamed as WAV and handed out as PCM pieces | 2026-11-23 | |
+| [D138](#d138-live-transcription-is-upstreams-realtime-transcription-session-set-up-as-its-web-client-does-the-sdk-detects-no-pauses) Live transcription is upstream's realtime transcription session; the SDK detects no pauses | 2026-11-23 | [D143](#d143-the-audio-family-has-one-shape-package-audio-a-builder-for-transcribe-extra-on-every-config-one-rate-check-and-one-voice-check-and-a-fakellamabro-that-can-refuse-speech) |
+| [D139](#d139-speech-is-upstreams-v1audiospeech-streamed-as-wav-and-handed-out-as-pcm-pieces) Speech is upstream's `/v1/audio/speech`, streamed as WAV and handed out as PCM pieces | 2026-11-23 | [D143](#d143-the-audio-family-has-one-shape-package-audio-a-builder-for-transcribe-extra-on-every-config-one-rate-check-and-one-voice-check-and-a-fakellamabro-that-can-refuse-speech) |
+| [D143](#d143-the-audio-family-has-one-shape-package-audio-a-builder-for-transcribe-extra-on-every-config-one-rate-check-and-one-voice-check-and-a-fakellamabro-that-can-refuse-speech) The audio family has one shape: package `audio`, a builder for `transcribe`, `extra` on every config… | 2026-11-24 | |
 
 **Demo app**
 
@@ -190,7 +191,7 @@ its amendments to know what holds now.
 | [D133](#d133-the-sdk-is-published-to-maven-central-through-the-central-portal-with-the-vanniktech-plugin) The SDK is published to Maven Central through the Central Portal, with the vanniktech plugin | 2026-11-21 | [D135](#d135-a-bom-llamabro-bom-keeps-every-module-on-one-version) |
 | [D134](#d134-arm64-v8a-is-the-only-abi) arm64-v8a is the only ABI | 2026-11-22 | |
 | [D135](#d135-a-bom-llamabro-bom-keeps-every-module-on-one-version) A BOM, `llamabro-bom`, keeps every module on one version | 2026-11-22 | |
-| [D136](#d136-an-api-pass-for-the-first-release-flows-that-warn-auto-compaction-misuse-as-kotlin-exceptions-typed-audio-and-transcripts) An API pass for the first release: flows that warn, auto-compaction, misuse as Kotlin exceptions, typed audio and transcripts | 2026-11-22 | [D142](#d142-one-error-model-a-missing-capability-is-notsupported-on-every-path-an-unreadable-reply-is-servererror-and-every-c-api-call-reports-a-status-and-its-reason) |
+| [D136](#d136-an-api-pass-for-the-first-release-flows-that-warn-auto-compaction-misuse-as-kotlin-exceptions-typed-audio-and-transcripts) An API pass for the first release: flows that warn, auto-compaction, misuse as Kotlin exceptions, typed audio and transcripts | 2026-11-22 | [D142](#d142-one-error-model-a-missing-capability-is-notsupported-on-every-path-an-unreadable-reply-is-servererror-and-every-c-api-call-reports-a-status-and-its-reason), [D143](#d143-the-audio-family-has-one-shape-package-audio-a-builder-for-transcribe-extra-on-every-config-one-rate-check-and-one-voice-check-and-a-fakellamabro-that-can-refuse-speech) |
 
 ---
 
@@ -1945,3 +1946,36 @@ the bridge's status and reason through and invents none. The merge-patch step of
 helper (`JsonMergePatch.applyExtra`).
 Consequences: Exception types change on these paths (see the release notes); no Kotlin signature changes. The C
 header changes shape before any other binding uses it.
+
+### D143. The audio family has one shape: package `audio`, a builder for `transcribe`, `extra` on every config, one rate check and one voice check, and a `FakeLlamaBro` that can refuse speech
+
+Status: Decided (2026-11-24)
+
+Context: The audio calls were built one at a time (D95, D138, D139) and had drifted apart. The types lived in a package
+named `voice` though it holds speech to text and text to speech too, and `Transcript` sat apart from them, in the file
+of the call that returns it. `speak` and the three sessions took a configuration builder, while `transcribe` took
+`language`, `prompt` and a whole `RequestOptions`, of which a transcription reads only sampling and `extra`. The voice
+session's config had `extra` for session fields the typed ones don't cover; the transcription session's did not. The
+input-rate limits and the voice check were each written twice. `FakeLlamaBro`, 895 lines in one file, could not refuse
+speech, recorded only "voice" events though transcription sessions fed it too, and carried a refusal no path reached.
+Amends D136 (where `Transcript` lives and `transcribe`'s parameters), D138 and D139.
+Decision: The types move to `com.suhel.llamabro.audio`: the sessions, configs, events and speech types, and
+`Transcript`. The entry points stay on `Model` in `com.suhel.llamabro`, in files named for what they hold
+(`VoiceSessions.kt`, `TranscriptionSessions.kt`, `Transcription.kt`, `Speech.kt`). `Model.transcribe(source) { }` takes a
+`TranscribeConfig` builder like `SpeechConfig`: `language`, `prompt`, `maxTokens`, `temperature`, `seed` and `extra`,
+each sent only when set; besides the sampling fields (`top_k`, `top_p`, …), `stop`, the reasoning fields
+(`reasoning_format`, the reasoning budget) and the chat-template fields (`chat_template_kwargs`, e.g. `enable_thinking`)
+go through `extra`, as in `extra = """{"reasoning_format":"none"}"""`. Sampling values keep upstream's checks (the SDK
+adds no range check on `temperature`), as before. The request is the same for the same settings (same fields, same
+order), and `extra` may not set `response_format`, `stream`, `stream_options` or `return_progress`. `TranscriptionConfig` gains `extra`, applied to the transcription
+`session.update` as `VoiceConfig.extra` is. One `AudioLimits.requireRate` holds upstream's 8000 to 192000 Hz check for
+both sessions, and one `Model.requireVoice` the voice check of `voiceSession` and `speak`. `FakeLlamaBro` splits by
+feature (the script and recordings; the engine and request routing; the realtime sessions), drops the unreachable
+refusal in its voice conversation, renames `voiceEvents` to `realtimeEvents` since it records both session kinds, and
+adds `speaks` (false answers every `speak` with upstream's 501 `not_supported_error`) and `speechError` (an error for
+the next `speak`).
+Consequences: Breaking in 2.0.0-alpha's line, with the same request for the same settings: imports of
+`com.suhel.llamabro.voice` become `com.suhel.llamabro.audio`, `Transcript` is imported from there, `transcribe`'s
+`language`, `prompt` and `options` move into its builder (`stop`, the reasoning and chat-template fields now go through
+`extra`), and `voiceEvents` becomes `realtimeEvents`. D84's text, that
+`transcribe` takes a file, a descriptor or bytes, still holds. Next free IDs: D144, F183.

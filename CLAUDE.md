@@ -6,7 +6,7 @@ An Android SDK that runs llama.cpp's llama-server core in-process with a Kotlin 
 
 ## Map
 
-- `sdk/llamabro`: the public API and its internals (`chat/`, `conversation/`, `voice/`, `internal/`, `spi/`);
+- `sdk/llamabro`: the public API and its internals (`chat/`, `conversation/`, `audio/`, `internal/`, `spi/`);
   `sdk/llamabro-hub`: downloads and search; `sdk/llamabro-hub-work`: the WorkManager download worker;
   `sdk/llamabro-typed`, `sdk/llamabro-typed-ksp`: typed output and tools, and their KSP processor;
   `sdk/llamabro-hexagon`, `sdk/llamabro-opencl`: optional backends; `sdk/llamabro-testing`: `FakeLlamaBro`;

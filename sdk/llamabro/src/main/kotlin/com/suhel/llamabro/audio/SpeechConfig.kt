@@ -1,4 +1,4 @@
-package com.suhel.llamabro.voice
+package com.suhel.llamabro.audio
 
 import com.suhel.llamabro.MediaSource
 import com.suhel.llamabro.internal.JsonMergePatch

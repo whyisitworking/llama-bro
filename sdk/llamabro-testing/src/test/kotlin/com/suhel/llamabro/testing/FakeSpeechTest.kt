@@ -14,6 +14,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Speech (D139) on [FakeLlamaBro]: the real `Model.speak` over scripted, streamed WAV. */
@@ -64,6 +65,39 @@ class FakeSpeechTest {
             val model = FakeLlamaBro().model()
             assertThrows(LlamaBroException::class.java) { runBlocking { model.speak("Hi.").toList() } }
             Unit
+        }
+
+    @Test
+    fun aModelThatDoesNotSpeakRefusesEverySpeakAsNotSupported() =
+        runBlocking {
+            val fake =
+                FakeLlamaBro {
+                    speaks = false
+                    speech(ShortArray(2))
+                }
+            val model = fake.model()
+            repeat(2) {
+                val e = runCatching { model.speak("Hi.").toList() }.exceptionOrNull()
+                assertTrue("$e", e is LlamaBroException.NotSupported)
+                assertTrue("$e", e!!.message!!.contains("this server does not support audio generation"))
+            }
+            assertEquals(2, fake.speechRequests.size)
+        }
+
+    @Test
+    fun aQueuedSpeechErrorAnswersTheNextSpeakBeforeTheScript() =
+        runBlocking {
+            val fake =
+                FakeLlamaBro {
+                    speechError(400, "invalid_request_error", "this model takes no speed")
+                    speech(ShortArray(2))
+                }
+            val model = fake.model()
+            val e = runCatching { model.speak("Hi.").toList() }.exceptionOrNull()
+            assertTrue("$e", e is LlamaBroException.InvalidRequest)
+            assertTrue("$e", e!!.message!!.contains("this model takes no speed"))
+            assertTrue(model.speak("Hi.").toList().isNotEmpty())
+            assertEquals(2, fake.speechRequests.size)
         }
 
     @Test

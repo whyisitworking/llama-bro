@@ -1,11 +1,11 @@
 package com.suhel.llamabro
 
+import com.suhel.llamabro.audio.TranscribeConfig
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.ChatRequest
 import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.chat.ReasoningFormat
-import com.suhel.llamabro.chat.RequestOptions
 import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.internal.ChatJson
 import com.suhel.llamabro.internal.JniEngine
@@ -90,14 +90,12 @@ class HostAudioTest {
         }
     }
 
-    private val transcription: RequestOptions.Builder.() -> Unit = {
-        sampling {
-            temperature = 0f
-            seed = 1
-            maxTokens = REPLY_TOKENS
-        }
+    private val transcription: TranscribeConfig.Builder.() -> Unit = {
+        temperature = 0f
+        seed = 1
+        maxTokens = REPLY_TOKENS
         // the test model's "transcript" is reasoning; kept in the text, which the default would empty
-        reasoning { format = ReasoningFormat.None }
+        extra = """{"reasoning_format":"none"}"""
     }
 
     private suspend fun Conversation.turn(text: String, vararg media: Content): ChatEvent.Done =
@@ -171,29 +169,33 @@ class HostAudioTest {
     @Test
     fun transcribeFromEachSourceAgrees() =
         runBlocking {
-            val byPath = model.transcribe(MediaSource.file(clip.path), options = transcription)
-            val byBytes = model.transcribe(MediaSource.bytes(clip.readBytes()), options = transcription)
+            val byPath = model.transcribe(MediaSource.file(clip.path), configure = transcription)
+            val byBytes = model.transcribe(MediaSource.bytes(clip.readBytes()), configure = transcription)
             val byDescriptor =
                 FileInputStream(clip).use { stream ->
-                    model.transcribe(MediaSource.Descriptor { fdOf(stream.fd) }, options = transcription)
+                    model.transcribe(MediaSource.Descriptor { fdOf(stream.fd) }, configure = transcription)
                 }
             val text = byPath.text
             assertTrue("a transcript: $byPath", text.isNotEmpty())
             assertEquals(byPath, byBytes)
             assertEquals(byPath, byDescriptor)
-            val withLanguage = model.transcribe(MediaSource.file(clip.path), language = "en", options = transcription)
+            val withLanguage =
+                model.transcribe(MediaSource.file(clip.path)) {
+                    transcription()
+                    language = "en"
+                }
             assertTrue("a transcript: $withLanguage", withLanguage.text.isNotEmpty())
         }
 
     @Test
     fun cancellingATranscriptionOrAChatLeavesTheModelUsable() =
         runBlocking {
-            val long: RequestOptions.Builder.() -> Unit = {
+            val long: TranscribeConfig.Builder.() -> Unit = {
                 transcription()
-                sampling { maxTokens = LONG_TOKENS }
-                extra = """{"ignore_eos":true}"""
+                maxTokens = LONG_TOKENS
+                extra = """{"reasoning_format":"none","ignore_eos":true}"""
             }
-            val transcribing = async { model.transcribe(MediaSource.file(clip.path), options = long) }
+            val transcribing = async { model.transcribe(MediaSource.file(clip.path), configure = long) }
             delay(CANCEL_AFTER_MS)
             transcribing.cancelAndJoin()
             assertTrue(transcribing.isCancelled)
@@ -211,7 +213,7 @@ class HostAudioTest {
             sending.cancelAndJoin()
             assertTrue(sending.isCancelled)
 
-            val after = model.transcribe(MediaSource.file(clip.path), options = transcription)
+            val after = model.transcribe(MediaSource.file(clip.path), configure = transcription)
             assertTrue("$after", after.text.isNotEmpty())
         }
 

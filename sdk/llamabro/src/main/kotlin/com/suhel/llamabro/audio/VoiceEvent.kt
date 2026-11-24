@@ -1,4 +1,4 @@
-package com.suhel.llamabro.voice
+package com.suhel.llamabro.audio
 
 /**
  * What a [VoiceSession] hears from the server, in order: upstream's realtime events (`/v1/realtime`, D95), the ones a

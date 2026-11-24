@@ -168,7 +168,7 @@ context.contentResolver.openFileDescriptor(voiceNoteUri, "r")!!.use { pfd ->
     chat.send("Reply to this voice note.", Content.Audio(MediaSource.descriptor(pfd), AudioFormat.Wav)).collect { … }
 }
 // …or only write down what it says
-val transcript = model.transcribe(MediaSource.file(recording.path), language = "en")
+val transcript = model.transcribe(MediaSource.file(recording.path)) { language = "en" }
 showTranscript(if (transcript.truncated) transcript.text + "…" else transcript.text)   // truncated: cut at maxTokens
 ```
 
@@ -194,8 +194,11 @@ convert with `Bitmap.compress`.
   part removed or replaced (`model.conversation(system, history = …)`).
 - Each turn sends the whole history again, earlier media included: the server's cache keeps the model from reading
   it again, but its decoding repeats.
-- `transcribe(source, language, prompt, options)`: `prompt` is upstream's (words to expect, or an instruction in place
-  of the model's own), and `options`' sampling applies.
+- `transcribe(source) { language; prompt; maxTokens; temperature; seed; extra }`: a builder like `speak` and the
+  sessions (D143). `prompt` is upstream's (words to expect, or an instruction in place of the model's own); besides
+  the sampling fields (`top_k`, `top_p`, …), `stop`, the reasoning fields (`reasoning_format`, reasoning budget) and the
+  chat-template fields (`chat_template_kwargs`, e.g. `enable_thinking`) go through `extra`, for example
+  `extra = """{"reasoning_format":"none"}"""`.
 
 ### A spoken conversation
 
@@ -526,9 +529,11 @@ Tool handlers can be tested alone with `JsonArgs.parse("""{"city":"Paris"}""")`.
 `ranking(score, …)` one score per document in the documents' order (answered best first and cut at `topN`, as
 llama-server does), and `inputTooLong(tokens)` the batch error. `embedRequests` and `rerankRequests` keep the bodies.
 `transcribe` takes `transcript(text, truncated = false)` from the same queue, and `transcribeRequests` keeps its fields.
-A voice session answers each asked-for reply with the next `voiceReply { text("…"); audio(pcm) }`, and `voiceEvents`
-keeps every client event it was sent. The fake model neither sees nor hears until you set `supportsVision` or
-`supportsAudio` before loading, as a text model on the phone refuses pictures and clips.
+A voice session answers each asked-for reply with the next `voiceReply { text("…"); audio(pcm) }`, and `realtimeEvents`
+keeps every client event that voice and transcription sessions were sent. `speech(pcm)` queues what `speak` says;
+`speaks = false` makes every `speak` fail `NotSupported`, as on a model that doesn't speak, and
+`speechError(status, type, message)` queues an error for the next one. The fake model neither sees nor hears until you
+set `supportsVision` or `supportsAudio` before loading, as a text model on the phone refuses pictures and clips.
 
 With the hub, add `testImplementation("io.github.whyisitworking:llamabro-hub-testing")`. `FakeLlamaBroHub` is the real
 `LlamaBroHub` over a scripted Hugging Face Hub and a temporary folder, so search, files, downloads, `hasUpdate`,

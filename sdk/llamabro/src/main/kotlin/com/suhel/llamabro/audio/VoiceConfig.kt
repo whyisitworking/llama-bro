@@ -1,4 +1,4 @@
-package com.suhel.llamabro.voice
+package com.suhel.llamabro.audio
 
 import com.suhel.llamabro.internal.JsonMergePatch
 
@@ -26,6 +26,8 @@ public class VoiceConfig internal constructor(
     /**
      * A JSON object applied to the `session` of the `session.update` last, as a JSON Merge Patch (RFC 7396): any
      * upstream session field the typed ones don't cover, such as `tools`.
+     *
+     * Don't patch `audio.input.format`: it changes what the server expects, while `append` still sends 16-bit PCM.
      */
     public val extra: String?,
 ) {
@@ -78,9 +80,7 @@ public class VoiceConfig internal constructor(
         /** @throws IllegalArgumentException outside upstream's 8000 to 192000 Hz. */
         public var inputSampleRate: Int? = from.inputSampleRate
             set(value) {
-                require(value == null || value in MIN_RATE..MAX_RATE) {
-                    "inputSampleRate must be between $MIN_RATE and $MAX_RATE Hz"
-                }
+                AudioLimits.requireRate(value)
                 field = value
             }
 
@@ -114,10 +114,6 @@ public class VoiceConfig internal constructor(
 
         /** Session keys the SDK sets and `extra` may not touch. */
         internal val OWNED = setOf("type")
-
-        // upstream's limits on the input rate (server-realtime.cpp on_session_update)
-        private const val MIN_RATE = 8000
-        private const val MAX_RATE = 192000
     }
 }
 

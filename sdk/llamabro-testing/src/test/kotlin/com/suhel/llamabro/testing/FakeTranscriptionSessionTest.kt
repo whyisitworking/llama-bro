@@ -4,9 +4,9 @@ import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.ModelTask
+import com.suhel.llamabro.audio.TranscriptionEvent
+import com.suhel.llamabro.audio.TranscriptionSession
 import com.suhel.llamabro.transcriptionSession
-import com.suhel.llamabro.voice.TranscriptionEvent
-import com.suhel.llamabro.voice.TranscriptionSession
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -107,7 +107,7 @@ class FakeTranscriptionSessionTest {
                     assertEquals("done item_1 Good morning.", events.last().line())
                 }
             // the setup upstream's client sends: a transcription session with the language and the hints
-            val update = Json.parseToJsonElement(fake.voiceEvents.first()).jsonObject
+            val update = Json.parseToJsonElement(fake.realtimeEvents.first()).jsonObject
             assertEquals("session.update", update["type"]!!.jsonPrimitive.content)
             val session = update.at("session")
             assertEquals("transcription", session["type"]!!.jsonPrimitive.content)

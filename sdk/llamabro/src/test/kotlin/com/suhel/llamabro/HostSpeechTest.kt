@@ -1,8 +1,8 @@
 package com.suhel.llamabro
 
+import com.suhel.llamabro.audio.SpeechAudio
 import com.suhel.llamabro.internal.JniEngine
 import com.suhel.llamabro.internal.LlamaBroRuntime
-import com.suhel.llamabro.voice.SpeechAudio
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -52,7 +52,7 @@ class HostSpeechTest {
             if (::model.isInitialized) model.closeAndJoin()
         }
 
-    private suspend fun speech(text: String, configure: com.suhel.llamabro.voice.SpeechConfig.Builder.() -> Unit) =
+    private suspend fun speech(text: String, configure: com.suhel.llamabro.audio.SpeechConfig.Builder.() -> Unit) =
         withTimeout(HostTestSupport.TIMEOUT_MS) { model.speak(text, configure).toList() }
 
     private fun List<SpeechAudio>.samples(): ShortArray = flatMap { it.pcm.toList() }.toShortArray()
@@ -74,7 +74,7 @@ class HostSpeechTest {
     @Test
     fun aSeedRepeatsTheSpeech() =
         runBlocking {
-            val config: com.suhel.llamabro.voice.SpeechConfig.Builder.() -> Unit = {
+            val config: com.suhel.llamabro.audio.SpeechConfig.Builder.() -> Unit = {
                 voice = "male"
                 seed = SEED
                 maxFrames = FRAMES

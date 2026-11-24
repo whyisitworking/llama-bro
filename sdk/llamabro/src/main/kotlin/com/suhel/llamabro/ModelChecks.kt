@@ -22,3 +22,15 @@ internal fun Model.requireHears(call: String) {
         )
     }
 }
+
+/**
+ * A model's voices are its own names: a typo is caught up front, not as noise or a refusal from the server. A model
+ * that lists none takes any name, as one can speak from a speaker reference alone.
+ *
+ * @throws IllegalArgumentException if [voice] isn't one of [ModelInfo.voices].
+ */
+internal fun Model.requireVoice(voice: String?) {
+    require(voice == null || info.voices.isEmpty() || voice in info.voices) {
+        "voice \"$voice\" isn't one this model speaks with; ModelInfo.voices: ${info.voices}"
+    }
+}

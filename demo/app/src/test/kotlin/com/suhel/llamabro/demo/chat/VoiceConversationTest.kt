@@ -119,7 +119,7 @@ class VoiceConversationTest {
         voice.talkEnd()
     }
 
-    private fun sentTypes() = fake.voiceEvents.map { it.substringAfter("\"type\":\"").substringBefore('"') }
+    private fun sentTypes() = fake.realtimeEvents.map { it.substringAfter("\"type\":\"").substringBefore('"') }
 
     @Test fun aSpokenTurnIsSavedWithItsCaptionAndTheSpokenReply() =
         runBlocking {
@@ -150,7 +150,7 @@ class VoiceConversationTest {
             assertEquals("Tell me a story.", voice.ui.value.userWords)
             assertEquals("Once upon a time.", voice.ui.value.caption)
 
-            val setup = fake.voiceEvents.first()
+            val setup = fake.realtimeEvents.first()
             assertTrue(setup, setup.contains(""""voice":"female","language":"en""""))
             assertTrue(setup, setup.contains(VoiceConversation.INSTRUCTION.substringBefore("'")))
             assertTrue(setup, setup.contains(""""max_output_tokens":1024"""))
@@ -256,7 +256,7 @@ class VoiceConversationTest {
             val (_, voice) = conversation()
             voice.open()
             eventually("open") { voice.ui.value.voice == "male" }
-            assertTrue(fake.voiceEvents.first().contains(""""voice":"male","language":"fr""""))
+            assertTrue(fake.realtimeEvents.first().contains(""""voice":"male","language":"fr""""))
             voice.close()
         }
 

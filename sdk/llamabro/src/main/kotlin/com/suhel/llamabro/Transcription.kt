@@ -1,94 +1,81 @@
 package com.suhel.llamabro
 
-import com.suhel.llamabro.internal.RealtimeLink
-import com.suhel.llamabro.voice.RealtimeJson
-import com.suhel.llamabro.voice.TranscriptionConfig
-import com.suhel.llamabro.voice.TranscriptionEvent
-import com.suhel.llamabro.voice.TranscriptionSession
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.channels.Channel
+import com.suhel.llamabro.audio.TranscribeConfig
+import com.suhel.llamabro.audio.Transcript
+import com.suhel.llamabro.internal.ErrorMapping
+import com.suhel.llamabro.internal.JsonMergePatch
+import com.suhel.llamabro.internal.Media
+import kotlinx.coroutines.flow.single
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 
 /**
- * Opens a live transcription with this model (D138): upstream's `/v1/realtime` with `intent=transcription`, in memory,
- * set up as upstream's own client does (`ui/lib/voice/src/realtime.ts`). Returns once the server has taken the setup
- * (`session.updated`).
+ * What is said in [source] (`POST /v1/audio/transcriptions`), on a model that hears ([ModelInfo.supportsAudio]): a
+ * [Transcript] with the text, [Transcript.truncated] when it was cut at `maxTokens` (D63, D84, D136). Upstream's
+ * transcription response has no finish reason, so a cut is inferred from the reply having as many tokens as
+ * `maxTokens` (`output_tokens >= max_tokens`); with no `maxTokens`, a transcript stopped by the context's end is not
+ * truncated. [configure] sets the language (e.g. `"fr"`), the prompt (words to expect, or the model's instruction in
+ * place of its own), `maxTokens`, `temperature`, `seed` and `extra` ([TranscribeConfig]), as upstream reads them:
+ * llama-server runs a transcription as a chat request. It is a builder like [speak] and the sessions, one shape across
+ * the audio family (D143).
  *
- * Upstream transcribes this way only on a model with a streaming audio encoder: live when its template has a
- * transcription prompt (LFM3, Voxtral Realtime), otherwise per commit on a model that holds realtime conversations,
- * which this switches to transcribing ([TranscriptionSession.isLive] says which). Any other model that hears, such as
- * Qwen3-ASR, is refused: transcribe its audio with [transcribe] instead, as upstream's client falls back to
- * `/v1/audio/transcriptions`.
+ * The clip must be WAV, MP3 or FLAC, the formats llama.cpp decodes. A file or descriptor is read natively during the
+ * call, off the caller's thread; the app may close a descriptor once this returns.
  *
- * @throws LlamaBroException.NotSupported if the model doesn't hear, or upstream refused live transcription for it,
- *   with upstream's message.
- * @throws LlamaBroException.InvalidRequest if the server refused the setup.
- * @throws LlamaBroException.ServerError if the server ended before the session opened, or sent an event the SDK can't
- *   read.
+ * @throws LlamaBroException.NotSupported if the model doesn't hear ([ModelInfo.supportsAudio]); nothing is sent.
+ * @throws LlamaBroException.InvalidRequest if the clip is missing, unreadable or in another format; no transcription is
+ *   made. Engine failures stay exceptions too.
+ * @throws LlamaBroException.ServerError if llama-server's reply can't be read.
  * @throws IllegalStateException if the model was loaded for another task ([ModelTask]).
  */
-public suspend fun Model.transcriptionSession(
-    configure: TranscriptionConfig.Builder.() -> Unit = {},
-): TranscriptionSession {
-    val config = TranscriptionConfig(configure)
-    checkCanTranscribe()
-    // upstream answers with the kind it made: a live session, or a conversation the update switches to transcription
-    var createdType: String? = null
-    return openRealtime(
-        params = mapOf("intent" to "transcription"),
-        what = "transcription session",
-        first = {},
-        handshake = { event, link, events, scope ->
-            when (RealtimeJson.type(event)) {
-                "session.created" -> {
-                    createdType = (event["session"] as? JsonObject)?.let { RealtimeJson.stringOf(it, "type") }.orEmpty()
-                    link.send(RealtimeJson.transcriptionUpdate(config))
-                    null
-                }
+public suspend fun Model.transcribe(
+    source: MediaSource,
+    configure: TranscribeConfig.Builder.() -> Unit = {},
+): Transcript {
+    requireTask<ModelTask.Generate>("transcribe", "ModelTask.Generate")
+    requireHears("transcribe")
+    Media.checkAudio(info, source)
+    val body = transcriptionBody(TranscribeConfig(configure))
+    val attachment = Media.attachment("file", Media.CLIP_TYPE, source)
+    val reply = request(Endpoint.Transcriptions, body.toString(), listOf(attachment))
+    val (text, written) =
+        ErrorMapping.readReply("transcription") {
+            val response = Json.parseToJsonElement(reply.single()).jsonObject
+            val text = response["text"]?.jsonPrimitive?.content.orEmpty()
+            text to (response["usage"] as? JsonObject)?.get("output_tokens")?.jsonPrimitive?.intOrNull
+        }
+    // upstream's transcription response has no finish reason (to_json_oaicompat_asr): a reply as long as the limit
+    // was cut there
+    val limit = (body["max_tokens"] as? JsonPrimitive)?.content?.toIntOrNull()
+    return Transcript(text, truncated = limit != null && written != null && written >= limit)
+}
 
-                "session.updated" -> {
-                    createdType?.let { session(link, events, event, it == "transcription", scope) }
-                }
-
-                "error" -> {
-                    throw refusal(event, created = createdType != null)
-                }
-
-                else -> {
-                    null
-                }
-            }
-        },
-        decode = RealtimeJson::decodeTranscription,
+/**
+ * The form fields, as upstream reads a multipart upload (convert_transcriptions_to_chatcmpl): `stream`, `max_tokens`
+ * and `temperature` as strings, which it converts; every other field is copied into the chat request it runs, so it
+ * keeps its JSON type. The keys come in the order a chat request's sampling gives them.
+ */
+private fun transcriptionBody(config: TranscribeConfig): JsonObject {
+    val base =
+        buildJsonObject {
+            config.temperature?.let { put("temperature", it) }
+            config.seed?.let { put("seed", it) }
+            config.maxTokens?.let { put("max_tokens", it) }
+            config.language?.let { put("language", it) }
+            config.prompt?.let { put("prompt", it) }
+            put("response_format", "json")
+        }
+    val merged = JsonMergePatch.applyExtra(base, config.extra, TranscribeConfig.OWNED)
+    return JsonObject(
+        merged.mapValues { (k, v) -> if (k in STRING_FIELDS && v is JsonPrimitive) JsonPrimitive(v.content) else v } +
+            ("stream" to JsonPrimitive("false")),
     )
 }
 
-private fun Model.checkCanTranscribe() {
-    requireTask<ModelTask.Generate>("transcriptionSession", "ModelTask.Generate")
-    requireHears("transcriptionSession")
-}
-
-/** An error before the session opened: before `session.created` upstream refuses the model, after it the setup. */
-private fun refusal(event: JsonObject, created: Boolean): LlamaBroException {
-    val message = RealtimeJson.errorMessage(event, "transcription session")
-    return if (created) LlamaBroException.InvalidRequest(message) else LlamaBroException.NotSupported(message)
-}
-
-private fun session(
-    link: RealtimeLink,
-    events: Channel<TranscriptionEvent>,
-    updated: JsonObject,
-    live: Boolean,
-    scope: CoroutineScope,
-): TranscriptionSession {
-    val session = updated["session"] as? JsonObject ?: JsonObject(emptyMap())
-    val input = (session["audio"] as? JsonObject)?.get("input") as? JsonObject
-    return TranscriptionSession(
-        link,
-        events,
-        RealtimeJson.stringOf(session, "id").orEmpty(),
-        live,
-        RealtimeJson.rate(input) ?: RealtimeJson.DEFAULT_INPUT_RATE,
-        scope,
-    )
-}
+private val STRING_FIELDS = setOf("max_tokens", "temperature")

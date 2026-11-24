@@ -1,9 +1,9 @@
 package com.suhel.llamabro
 
+import com.suhel.llamabro.audio.TranscriptionEvent
+import com.suhel.llamabro.audio.TranscriptionSession
 import com.suhel.llamabro.internal.JniEngine
 import com.suhel.llamabro.internal.LlamaBroRuntime
-import com.suhel.llamabro.voice.TranscriptionEvent
-import com.suhel.llamabro.voice.TranscriptionSession
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking

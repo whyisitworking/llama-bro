@@ -1,5 +1,7 @@
 package com.suhel.llamabro
 
+import com.suhel.llamabro.audio.TranscribeConfig
+import com.suhel.llamabro.audio.Transcript
 import com.suhel.llamabro.spi.EngineAttachment
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -91,7 +93,7 @@ class TranscribeTest {
             answer(engine, "Hello th", 4)
             assertEquals(
                 Transcript("Hello th", truncated = true),
-                model.transcribe(MediaSource.file("/clips/note.wav")) { sampling { maxTokens = 4 } },
+                model.transcribe(MediaSource.file("/clips/note.wav")) { maxTokens = 4 },
             )
         }
 
@@ -100,12 +102,12 @@ class TranscribeTest {
         runTest {
             val (engine, model) = setup()
             answer(engine, "Bonjour.", 3)
-            model.transcribe(MediaSource.file("/clips/note.wav"), language = "fr", prompt = "Names: Suhel.") {
-                sampling {
-                    temperature = 0f
-                    maxTokens = 64
-                    seed = 3
-                }
+            model.transcribe(MediaSource.file("/clips/note.wav")) {
+                language = "fr"
+                prompt = "Names: Suhel."
+                temperature = 0f
+                maxTokens = 64
+                seed = 3
             }
             val b = body(engine.model.requests.single())
             assertEquals(JsonPrimitive("fr"), b["language"])
@@ -116,6 +118,28 @@ class TranscribeTest {
             assertEquals(JsonPrimitive("64"), b["max_tokens"])
             assertEquals(JsonPrimitive("0.0"), b["temperature"])
             assertEquals(JsonPrimitive(3), b["seed"])
+            // the request on the wire is what the options-based call sent (D143): same keys, same order
+            assertEquals(
+                """{"temperature":"0.0","seed":3,"max_tokens":"64","language":"fr","prompt":"Names: Suhel.",""" +
+                    """"response_format":"json","stream":"false"}""",
+                engine.model.requests
+                    .single()
+                    .body,
+            )
+        }
+
+    @Test
+    fun transcribeExtraReachesTheBodyAndCannotSetTheOwnedFields() =
+        runTest {
+            val (engine, model) = setup()
+            answer(engine, "Hi.", 2)
+            model.transcribe(MediaSource.file("/clips/note.wav")) { extra = """{"top_k":5}""" }
+            assertEquals(JsonPrimitive(5), body(engine.model.requests.single())["top_k"])
+            for (owned in listOf("stream", "response_format")) {
+                val e = runCatching { TranscribeConfig { extra = """{"$owned":"x"}""" } }.exceptionOrNull()
+                assertTrue("$owned: $e", e is IllegalArgumentException)
+            }
+            assertTrue(runCatching { TranscribeConfig { maxTokens = 0 } }.exceptionOrNull() is IllegalArgumentException)
         }
 
     @Test

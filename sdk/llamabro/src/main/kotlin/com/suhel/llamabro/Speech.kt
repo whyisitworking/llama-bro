@@ -1,10 +1,10 @@
 package com.suhel.llamabro
 
+import com.suhel.llamabro.audio.SpeechAudio
+import com.suhel.llamabro.audio.SpeechConfig
 import com.suhel.llamabro.internal.ErrorMapping
 import com.suhel.llamabro.internal.JsonMergePatch
 import com.suhel.llamabro.internal.Media
-import com.suhel.llamabro.voice.SpeechAudio
-import com.suhel.llamabro.voice.SpeechConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.JsonObject
@@ -31,11 +31,7 @@ import kotlinx.serialization.json.put
 public fun Model.speak(text: String, configure: SpeechConfig.Builder.() -> Unit = {}): Flow<SpeechAudio> {
     val config = SpeechConfig(configure)
     requireTask<ModelTask.Generate>("speak", "ModelTask.Generate")
-    config.voice?.let { voice ->
-        require(info.voices.isEmpty() || voice in info.voices) {
-            "voice \"$voice\" isn't one this model speaks with; ModelInfo.voices: ${info.voices}"
-        }
-    }
+    requireVoice(config.voice)
     require(config.voice == null || config.speakerReference == null) {
         "a voice and a speaker reference can't be used together; set one"
     }

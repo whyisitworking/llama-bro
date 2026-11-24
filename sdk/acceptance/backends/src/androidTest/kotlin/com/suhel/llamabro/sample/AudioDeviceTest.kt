@@ -127,10 +127,8 @@ class AudioDeviceTest {
             val started = System.nanoTime()
             val transcript =
                 model.transcribe(MediaSource.file(clip.path)) {
-                    sampling {
-                        temperature = 0f
-                        maxTokens = REPLY_TOKENS
-                    }
+                    temperature = 0f
+                    maxTokens = REPLY_TOKENS
                 }
             log("transcribe (file): ${ms(started)} ms: $transcript")
             assertTrue("a transcript: $transcript", transcript.text.isNotBlank())
@@ -138,7 +136,7 @@ class AudioDeviceTest {
             val fromDescriptor =
                 ParcelFileDescriptor.open(clip, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
                     val t = System.nanoTime()
-                    model.transcribe(MediaSource.descriptor(pfd)) { sampling { temperature = 0f } }.also {
+                    model.transcribe(MediaSource.descriptor(pfd)) { temperature = 0f }.also {
                         log("transcribe (descriptor): ${ms(t)} ms: $it")
                     }
                 }

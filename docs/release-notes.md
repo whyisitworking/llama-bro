@@ -20,6 +20,23 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
   request's. New in this section, so with no earlier behaviour: `transcriptionSession` and `speak` throw the same
   `NotSupported` and `ServerError` (`speak` also for speech that can't be read or ends before any audio). A clip in a
   chat message on a model that doesn't hear stays `InvalidRequest`.
+- **The audio family made symmetric** (D143), breaking changes from the lines above and from 2.0.0-alpha:
+  - The package `com.suhel.llamabro.voice` is now **`com.suhel.llamabro.audio`**, and `Transcript` moved into it
+    (import `com.suhel.llamabro.audio.Transcript`). The entry points (`Model.voiceSession`, `transcriptionSession`,
+    `transcribe`, `speak`) stay in `com.suhel.llamabro`.
+  - **`Model.transcribe(source) { … }`** takes a `TranscribeConfig` builder like `speak` (language, prompt, `maxTokens`,
+    `temperature`, `seed`, `extra`) in place of `language`, `prompt` and `options`. Besides the sampling fields
+    (`top_k`, `top_p`, …), `stop`, the reasoning fields (`reasoning_format`, reasoning budget) and the chat-template
+    fields (`chat_template_kwargs`, e.g. `enable_thinking`) now go through `extra`, as in
+    `extra = """{"reasoning_format":"none"}"""`. The request is the same for the same settings. Breaking: a
+    `maxTokens` below 1 is refused (`IllegalArgumentException`; null means no limit), and `extra` may not set
+    `response_format` (refused when set: upstream accepts only json and the SDK parses a JSON reply).
+  - For Java callers the JVM facade classes changed: `TranscriptionKt` now holds `transcribe`; `transcriptionSession` is
+    in `TranscriptionSessionsKt` and `voiceSession` in `VoiceSessionsKt`; `TranscribeKt` and `VoiceKt` are gone.
+  - `TranscriptionConfig` has `extra`, a JSON Merge Patch for the transcription `session.update`, as `VoiceConfig` has.
+  - `FakeLlamaBro.voiceEvents` is now **`realtimeEvents`** (it records transcription sessions too). New:
+    `speaks = false` makes every `speak` fail `NotSupported`, and `speechError(status, type, message)` queues an error
+    for the next one.
 - **Demo:** a tap on the mic dictates into the message bar, a hold records a voice message (D140); a typed reply on a
   model that speaks can be read aloud (D141).
 

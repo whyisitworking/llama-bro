@@ -4,8 +4,8 @@ import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.ModelTask
-import com.suhel.llamabro.voice.VoiceEvent
-import com.suhel.llamabro.voice.VoiceSession
+import com.suhel.llamabro.audio.VoiceEvent
+import com.suhel.llamabro.audio.VoiceSession
 import com.suhel.llamabro.voiceSession
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.takeWhile
@@ -96,13 +96,13 @@ class FakeVoiceSessionTest {
             assertEquals("Once upon a time.", done.text)
             assertFalse(done.cancelled)
 
-            val sent = fake.voiceEvents.map { it.substringAfter("\"type\":\"").substringBefore('"') }
+            val sent = fake.realtimeEvents.map { it.substringAfter("\"type\":\"").substringBefore('"') }
             assertEquals(
                 listOf("session.update", "input_audio_buffer.append", "input_audio_buffer.commit", "response.create"),
                 sent,
             )
-            assertTrue(fake.voiceEvents[0].contains(""""voice":"female","language":"en""""))
-            assertTrue(fake.voiceEvents[0].contains(""""max_output_tokens":256"""))
+            assertTrue(fake.realtimeEvents[0].contains(""""voice":"female","language":"en""""))
+            assertTrue(fake.realtimeEvents[0].contains(""""max_output_tokens":256"""))
             session.close()
             model.closeAndJoin()
         }
@@ -116,7 +116,7 @@ class FakeVoiceSessionTest {
             assertTrue(session.commit())
             val error = withTimeout(TIMEOUT) { session.events.first() } as VoiceEvent.Error
             assertEquals("input_audio_buffer_commit_empty", error.type)
-            assertFalse(fake.voiceEvents.any { it.contains("response.create") })
+            assertFalse(fake.realtimeEvents.any { it.contains("response.create") })
             session.close()
             model.closeAndJoin()
         }
@@ -141,7 +141,7 @@ class FakeVoiceSessionTest {
             val second = session.reply()
             assertTrue(second.first() is VoiceEvent.Other)
             assertEquals("Two.", (second.last() as VoiceEvent.ReplyDone).text)
-            assertTrue(fake.voiceEvents.any { it.contains(""""input_text","text":"And now?"""") })
+            assertTrue(fake.realtimeEvents.any { it.contains(""""input_text","text":"And now?"""") })
             session.close()
             model.closeAndJoin()
         }
@@ -152,7 +152,7 @@ class FakeVoiceSessionTest {
             val fake = fake()
             val model = fake.model()
             val session = model.voiceSession { extra = """{"tool_choice":"none"}""" }
-            assertTrue(fake.voiceEvents[0].contains(""""tool_choice":"none""""))
+            assertTrue(fake.realtimeEvents[0].contains(""""tool_choice":"none""""))
             assertTrue(session.sendRaw("""{"type":"input_audio_buffer.clear"}"""))
             val error = withTimeout(TIMEOUT) { session.events.first() } as VoiceEvent.Error
             assertEquals("unknown event type: input_audio_buffer.clear", error.message)

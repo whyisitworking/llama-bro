@@ -1,6 +1,8 @@
 package com.suhel.llamabro.demo.chat
 
 import com.suhel.llamabro.LlamaBroException
+import com.suhel.llamabro.audio.VoiceEvent
+import com.suhel.llamabro.audio.VoiceSession
 import com.suhel.llamabro.demo.data.AudioStore
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.MessageChange
@@ -11,8 +13,6 @@ import com.suhel.llamabro.demo.data.NewVoice
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.designsystem.components.VoicePhase
 import com.suhel.llamabro.hub.HfModel
-import com.suhel.llamabro.voice.VoiceEvent
-import com.suhel.llamabro.voice.VoiceSession
 import com.suhel.llamabro.voiceSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher

@@ -37,6 +37,8 @@ style:
       - '**/hub/internal/RepoId.kt'
       - '**/hub/HubException.kt'
       - '**/testing/FakeLlamaBro.kt'
+      - '**/testing/FakeEngine.kt'
+      - '**/testing/FakeRealtime.kt'
       # design values: sizes, alphas and fractions of the component library
       - '**/designsystem/**'
     # 10 and 100 are percent and decimals, 0 and 1 and 2 are counting

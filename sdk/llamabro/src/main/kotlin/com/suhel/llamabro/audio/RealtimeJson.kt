@@ -1,4 +1,4 @@
-package com.suhel.llamabro.voice
+package com.suhel.llamabro.audio
 
 import com.suhel.llamabro.internal.JsonMergePatch
 import kotlinx.serialization.SerializationException
@@ -69,7 +69,7 @@ internal object RealtimeJson {
     /**
      * The `session.update` upstream's client sends once a transcription session is created (realtime.ts
      * handleSessionCreated): a transcription session, which switches a model that holds realtime conversations to
-     * transcribing per commit, with the input rate, language and prompt when set.
+     * transcribing per commit, with the input rate, language and prompt when set, and the config's `extra` last.
      */
     fun transcriptionUpdate(config: TranscriptionConfig): String {
         val session =
@@ -92,7 +92,8 @@ internal object RealtimeJson {
                     }
                 }
             }
-        return event("session.update") { put("session", session) }
+        val merged = JsonMergePatch.applyExtra(session, config.extra, TranscriptionConfig.OWNED)
+        return event("session.update") { put("session", merged) }
     }
 
     val commit: String = event("input_audio_buffer.commit") {}

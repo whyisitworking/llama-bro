@@ -1,10 +1,10 @@
 package com.suhel.llamabro
 
+import com.suhel.llamabro.audio.RealtimeJson
+import com.suhel.llamabro.audio.VoiceConfig
+import com.suhel.llamabro.audio.VoiceEvent
+import com.suhel.llamabro.audio.VoiceSession
 import com.suhel.llamabro.internal.RealtimeLink
-import com.suhel.llamabro.voice.RealtimeJson
-import com.suhel.llamabro.voice.VoiceConfig
-import com.suhel.llamabro.voice.VoiceEvent
-import com.suhel.llamabro.voice.VoiceSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.serialization.json.JsonObject
@@ -28,12 +28,7 @@ import kotlinx.serialization.json.JsonObject
 public suspend fun Model.voiceSession(configure: VoiceConfig.Builder.() -> Unit = {}): VoiceSession {
     val config = VoiceConfig(configure)
     checkCanTalk()
-    // a model's voices are its own names: a typo is caught here, not as noise or a refusal from the server
-    config.voice?.let { voice ->
-        require(info.voices.isEmpty() || voice in info.voices) {
-            "voice \"$voice\" isn't one this model speaks with; ModelInfo.voices: ${info.voices}"
-        }
-    }
+    requireVoice(config.voice)
     val update = RealtimeJson.sessionUpdate(config)
     return openRealtime(
         params = emptyMap(),

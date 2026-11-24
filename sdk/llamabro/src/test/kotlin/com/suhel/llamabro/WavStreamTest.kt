@@ -1,6 +1,6 @@
 package com.suhel.llamabro
 
-import com.suhel.llamabro.voice.SpeechAudio
+import com.suhel.llamabro.audio.SpeechAudio
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

@@ -1,7 +1,8 @@
-package com.suhel.llamabro.voice
+package com.suhel.llamabro.audio
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -60,6 +61,30 @@ class RealtimeJsonTest {
         assertThrows(IllegalArgumentException::class.java) { VoiceConfig { maxOutputTokens = 0 } }
         assertThrows(IllegalArgumentException::class.java) { VoiceConfig { inputSampleRate = 4000 } }
         assertThrows(IllegalArgumentException::class.java) { VoiceConfig { inputSampleRate = 200_000 } }
+    }
+
+    @Test
+    fun aTranscriptionSessionTakesTheSameRateLimitsAndAnExtraPatch() {
+        assertThrows(IllegalArgumentException::class.java) { TranscriptionConfig { inputSampleRate = 4000 } }
+        assertThrows(IllegalArgumentException::class.java) { TranscriptionConfig { inputSampleRate = 200_000 } }
+        assertThrows(IllegalArgumentException::class.java) { TranscriptionConfig { extra = """{"type":"realtime"}""" } }
+        val config =
+            TranscriptionConfig {
+                language = "en"
+                extra = """{"audio":{"input":{"turn_detection":{"type":"server_vad"}}}}"""
+            }
+        assertEquals(
+            config,
+            TranscriptionConfig.Default.copy {
+                language = "en"
+                extra = config.extra
+            },
+        )
+        val input =
+            ((Json.parseToJsonElement(RealtimeJson.transcriptionUpdate(config)) as JsonObject)["session"] as JsonObject)
+                .let { (it["audio"] as JsonObject)["input"] as JsonObject }
+        assertEquals("server_vad", ((input["turn_detection"] as JsonObject)["type"] as JsonPrimitive).content)
+        assertEquals("en", ((input["transcription"] as JsonObject)["language"] as JsonPrimitive).content)
     }
 
     @Test

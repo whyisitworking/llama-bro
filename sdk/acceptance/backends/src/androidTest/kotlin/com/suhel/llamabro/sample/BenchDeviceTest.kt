@@ -13,14 +13,14 @@ import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.ModelTask
 import com.suhel.llamabro.Speculative
+import com.suhel.llamabro.audio.VoiceEvent
+import com.suhel.llamabro.audio.VoiceSession
 import com.suhel.llamabro.chat
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.ChatRequest
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.embed
 import com.suhel.llamabro.rerank
-import com.suhel.llamabro.voice.VoiceEvent
-import com.suhel.llamabro.voice.VoiceSession
 import com.suhel.llamabro.voiceSession
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
