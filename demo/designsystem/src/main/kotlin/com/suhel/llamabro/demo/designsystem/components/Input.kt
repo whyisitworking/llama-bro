@@ -84,12 +84,17 @@ fun SearchField(
     val colors = LocalDemoColors.current
     val shape = CircleShape
     val sweep = if (loading && !animationsDisabled()) rememberLoop(DemoMotion.SWEEP_MILLIS) else null
+    // floating over a page (Models, Chats, the drawer), a pill of glass (D148); elsewhere a raised surface
+    val backdrop = LocalBackdrop.current
     Row(
         modifier
-            .softShadow(shape, colors)
-            .clip(shape)
-            .background(colors.surface)
             .then(
+                if (backdrop != null) {
+                    Modifier.floatingPanel(backdrop, colors).clip(shape)
+                } else {
+                    Modifier.softShadow(shape, colors).clip(shape).background(colors.surface)
+                },
+            ).then(
                 if (loading) {
                     Modifier
                         .semantics { stateDescription = "Loading" }
@@ -330,13 +335,22 @@ fun Composer(
     val colors = LocalDemoColors.current
     val shape = DemoShapes.composer
     val recording = state.recording
+    // over a chat's page, a panel of glass like the bar's chips (D148); elsewhere a raised surface
+    val backdrop = LocalBackdrop.current
     Column(
         modifier
             .fillMaxWidth()
-            .softShadow(shape, colors, elevation = DemoSize.elevationRaised, lightAlpha = 0.08f)
-            .clip(shape)
-            .background(colors.surface)
-            .border(DemoSize.hairline, colors.hairline, shape),
+            .then(
+                if (backdrop != null) {
+                    Modifier.floatingPanel(backdrop, colors, DemoShapes.composerRadius).clip(shape)
+                } else {
+                    Modifier
+                        .softShadow(shape, colors, elevation = DemoSize.elevationRaised, lightAlpha = 0.08f)
+                        .clip(shape)
+                        .background(colors.surface)
+                        .border(DemoSize.hairline, colors.hairline, shape)
+                },
+            ),
     ) {
         // only what grows animates: an animated size clips its content, and the buttons below must keep their whole
         // 48 dp targets while the text area grows, or an accessibility check then reads them smaller

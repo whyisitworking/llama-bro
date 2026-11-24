@@ -36,6 +36,7 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -50,7 +51,11 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -101,9 +106,12 @@ fun TopBar(
             ).padding(horizontal = DemoSpacing.inline),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (start != null) start()
-        Box(Modifier.weight(1f).padding(horizontal = DemoSpacing.compact)) { title() }
-        if (end != null) end()
+        // on a floating bar its actions and a title that opens something are chips of glass (D148)
+        CompositionLocalProvider(LocalGlassChips provides true) {
+            if (start != null) start()
+            Box(Modifier.weight(1f).padding(horizontal = DemoSpacing.compact)) { title() }
+            if (end != null) end()
+        }
     }
 }
 
@@ -123,7 +131,7 @@ fun TopBarTitle(
 ) {
     val colors = LocalDemoColors.current
     // on a floating bar a title that opens something is a raised pill of its own (D148); a page's name is just text
-    val backdrop = LocalBackdrop.current.takeIf { onClick != null }
+    val backdrop = LocalBackdrop.current.takeIf { onClick != null && LocalGlassChips.current }
     val chip = backdrop != null
     Column(
         modifier
@@ -328,7 +336,8 @@ fun LayoutPreviewCard(
 
 /**
  * The Sidebar layout's drawer (D145, D148): the page slides right to show [drawerContent] beneath it, which holds still
- * on the [DemoColors.panel] ground, a step lighter than the page; the page casts a soft shadow on it and is dimmed with
+ * on the [DemoColors.panel] ground, a step lighter than the page, coming into focus from a blur and a touch smaller as
+ * the page slides off it; the page casts a soft shadow on it and is dimmed with
  * the theme's scrim, and a tap on it closes the drawer. A drag on the page opens and closes it. [open] says whether it
  * is shown; the user's drag or that tap reports through [onOpenChange]. Closed, the drawer is not composed, so neither
  * a screen reader nor a test finds it under the page.
@@ -362,7 +371,7 @@ fun DemoDrawer(
         LaunchedEffect(state) { snapshotFlow { state.settledValue }.collect { reportOpen(it == DrawerValue.Open) } }
         val shown by remember { derivedStateOf { state.offset.let { !it.isNaN() && it > 0f } } }
         if (shown || state.targetValue == DrawerValue.Open) {
-            Column(Modifier.fillMaxHeight().width(with(LocalDensity.current) { width.toDp() }), content = drawerContent)
+            DrawerPanel(state, width, still, drawerContent)
         }
         Box(
             Modifier
@@ -386,6 +395,39 @@ fun DemoDrawer(
         }
     }
 }
+
+/**
+ * The drawer's column, [width] wide: it comes into focus as the page slides off it ([state]), from a blur and a touch
+ * smaller, growing from its edge; [still] (animations off) leaves out the blur.
+ */
+@Composable
+private fun DrawerPanel(
+    state: AnchoredDraggableState<DrawerValue>,
+    width: Float,
+    still: Boolean,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val density = LocalDensity.current
+    val focus = with(density) { DemoSize.drawerFocusBlur.toPx() }
+    Column(
+        Modifier
+            .fillMaxHeight()
+            .width(with(density) { width.toDp() })
+            .graphicsLayer {
+                val open = (state.offset / width).takeUnless { it.isNaN() }?.coerceIn(0f, 1f) ?: 1f
+                val scale = DRAWER_START_SCALE + (1f - DRAWER_START_SCALE) * open
+                scaleX = scale
+                scaleY = scale
+                transformOrigin = TransformOrigin(0f, 0.5f)
+                val blur = focus * (1f - open)
+                renderEffect = if (blur >= 0.5f && !still) BlurEffect(blur, blur, TileMode.Decal) else null
+            },
+        content = content,
+    )
+}
+
+/** How small the drawer starts as it opens, before it grows to its size with the slide (D148). */
+private const val DRAWER_START_SCALE = 0.96f
 
 @Composable
 private fun drawerFling(state: AnchoredDraggableState<DrawerValue>) =
@@ -420,7 +462,7 @@ fun DrawerHead(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        IconAction(actionIcon, actionLabel, onAction)
+        CompositionLocalProvider(LocalGlassChips provides true) { IconAction(actionIcon, actionLabel, onAction) }
     }
 }
 

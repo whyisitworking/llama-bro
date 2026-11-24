@@ -143,22 +143,22 @@ object DemoSize {
      */
     object Glass {
         /** How far in from a chip's rim the page bends. */
-        val bezel = 14.dp
+        val bezel = 8.dp
 
         /** How far the page is read from, further in, at a chip's very rim. */
-        val refraction = 10.dp
+        val refraction = 6.dp
 
         /** How much more red bends than green, and blue less, as a share of [refraction]: raise it for more colour. */
-        const val DISPERSION = 0.6f
+        const val DISPERSION = 0.45f
 
         /** The soft blur through a chip, before it bends. */
         val blur = 6.dp
 
         /** The light caught on a chip's upper rim. */
-        val rim = 1.5.dp
+        val rim = 1.dp
 
         /** How far red and blue split in the blur under a bar, at its strongest. */
-        val barSpread = 5.dp
+        val barSpread = 4.dp
     }
 
     /** A divider and an outline. */
@@ -196,6 +196,9 @@ object DemoSize {
 
     /** A navigation drawer and the sidebar. */
     val drawerWidth = 320.dp
+
+    /** How blurred the drawer starts as it opens, coming into focus as the page slides off it (D148). */
+    val drawerFocusBlur = 12.dp
 
     /** The tallest a list inside a sheet grows before it scrolls. */
     val sheetListMaxHeight = 340.dp

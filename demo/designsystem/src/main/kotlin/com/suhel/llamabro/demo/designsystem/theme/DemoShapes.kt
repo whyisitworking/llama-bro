@@ -25,7 +25,11 @@ object DemoShapes {
     val row = RoundedCornerShape(radiusLarge)
     val sheet = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     val chip = RoundedCornerShape(8.dp)
-    val composer = RoundedCornerShape(28.dp)
+
+    /** The composer's corner, for what draws it without a shape (its glass, D148). */
+    val composerRadius = 28.dp
+
+    val composer = RoundedCornerShape(composerRadius)
 
     /** The floating action button (Material's Large corner). */
     val fab = RoundedCornerShape(16.dp)

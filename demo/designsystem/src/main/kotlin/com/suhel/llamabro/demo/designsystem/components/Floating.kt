@@ -53,8 +53,8 @@ import com.suhel.llamabro.demo.designsystem.theme.FadeMask
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 
 /**
- * The page under the floating bar the content is on ([FloatingFrame]'s top), null off one: an [IconAction] and a
- * tappable [TopBarTitle] there are each a piece of glass over it (D148).
+ * The page under the floating layer the content is on (either of a [FloatingFrame]'s bars), null off one: the glass
+ * there (a [TopBar]'s chips, the message bar, a floating search field) is drawn over it (D148).
  */
 internal val LocalBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
@@ -177,7 +177,7 @@ internal fun FloatingLayer(
                     .graphicsLayer {
                         renderEffect =
                             if (shaders != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                shaders.effect(edge, size.height, blur, spread)
+                                shaders.effect(edge, size.width, size.height, blur, spread)
                             } else {
                                 BlurEffect(blur, blur, TileMode.Clamp)
                             }
@@ -204,7 +204,7 @@ internal fun FloatingLayer(
                 Spacer(Modifier.height(DemoSize.barFade))
             } else {
                 Spacer(Modifier.height(DemoSize.barFade))
-                content()
+                CompositionLocalProvider(LocalBackdrop provides backdrop) { content() }
                 val insets =
                     if (overKeyboard) {
                         WindowInsets.navigationBars.union(
@@ -257,12 +257,19 @@ private class ProgressiveBlur {
     private val across = RuntimeShader(PROGRESSIVE_BLUR)
     private val down = RuntimeShader(PROGRESSIVE_BLUR)
 
-    fun effect(edge: Edge, height: Float, radius: Float, spread: Float): RenderEffect {
+    fun effect(
+        edge: Edge,
+        width: Float,
+        height: Float,
+        radius: Float,
+        spread: Float,
+    ): RenderEffect {
         // the colours split along the vertical pass only: a fringe on every edge across the bar, at a third of the taps
         across.setFloatUniform("spread", 0f)
         down.setFloatUniform("spread", spread)
         for ((shader, dir) in listOf(across to (1f to 0f), down to (0f to 1f))) {
             shader.setFloatUniform("dir", dir.first, dir.second)
+            shader.setFloatUniform("size", width, height)
             shader.setFloatUniform("height", height)
             shader.setFloatUniform("fromTop", if (edge == Edge.Top) 1f else 0f)
             shader.setFloatUniform("radius", radius)
@@ -285,6 +292,7 @@ private class ProgressiveBlur {
 private const val PROGRESSIVE_BLUR = """
 uniform shader content;
 uniform float2 dir;
+uniform float2 size;
 uniform float height;
 uniform float fromTop;
 uniform float radius;
@@ -307,11 +315,15 @@ half4 main(float2 p) {
     for (int i = -12; i <= 12; i++) {
         float x = float(i) * r / 12.0;
         float w = exp(-(x * x) / (2.0 * sigma * sigma));
-        float2 q = p + dir * x;
+        // read inside the layer only, as a clamped blur does: past its edge is nothing, and a half-clear sum there
+        // lets the sharp page under the bar show through
+        float2 lo = float2(0.5);
+        float2 hi = size - 0.5;
+        float2 q = clamp(p + dir * x, lo, hi);
         half4 c = content.eval(q);
         if (d > 0.5) {
-            c.r = content.eval(q + dir * d).r;
-            c.b = content.eval(q - dir * d).b;
+            c.r = content.eval(clamp(q + dir * d, lo, hi)).r;
+            c.b = content.eval(clamp(q - dir * d, lo, hi)).b;
         }
         sum += c * half(w);
         total += w;

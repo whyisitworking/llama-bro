@@ -2267,13 +2267,16 @@ curve; before Android 12, and under the Chat list tabs (which float outside the 
 80%. On a
 floating bar each icon action is its own raised circle and a title that opens something (the model switcher) its own
 piece of glass, after Apple's Liquid Glass: from Android 13 a lens (`LENS`) over the page,
-softly blurred, bent toward its rim by up to 10 dp within 14 dp of it, with red bent 60% more and blue 60% less so
+softly blurred, bent toward its rim by up to 6 dp within 8 dp of it, with red bent 45% more and blue 45% less so
 edges there fringe with colour, under a 35% veil, a light along its upper rim and a hairline round it; before Android
-13, a 70% translucent fill and the hairline. The blur under a bar splits red and blue too, by up to 5 dp along with its
+13, a 70% translucent fill and the hairline. The message bar and the floating search fields are the same glass with a
+60% veil, under the text typed on them. The blur under a bar splits red and blue too, by up to 4 dp along with its
 strength. The glass constants are theme tokens (`DemoSize.Glass`); a page's plain name is text. The Models intro is the list's first item and scrolls away with it. The
 drawer (`DemoDrawer`) no longer moves: it lies on a new `panel` colour, a step lighter than the canvas in both themes,
 and the page slides right off it (a drag on the page or the menu button), casting a soft shadow on it and dimmed by the
-scrim; closed, it is not composed. A followed chat keeps its end in view when the message bar grows.
+scrim; as it opens it comes into focus from a 12 dp blur and grows from 96% to its size with the slide; closed, it
+is not composed. The palette's white point is a step lower (canvas EBEBEE, surface F4F4F6 in light; ink D5D5D9,
+reply C2C2C7, accent BBBBC0 in dark), so neither theme is harsh; the light greys darken to keep every contrast. A followed chat keeps its end in view when the message bar grows.
 Consequences: Amends D145's push drawer and the solid top bars of the earlier screens. Material's drawer is gone, so
 the drag and fling are the app's own (`AnchoredDraggableState`).
 

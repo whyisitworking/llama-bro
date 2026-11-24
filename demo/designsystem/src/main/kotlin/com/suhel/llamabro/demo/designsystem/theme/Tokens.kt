@@ -6,7 +6,8 @@ import androidx.compose.ui.graphics.Color
 
 /**
  * demo design §8.6's table, with the Models page's too-big ink no dimmer than [muted] (D117: it is a fit, not a
- * disabled mark), in a softer neutral palette: a cool grey light theme and a dimmed dark one. Cards and fields are
+ * disabled mark), in a softer neutral palette: a cool grey light theme and a dimmed dark one, both with a lowered white
+ * point (D148): no near-white ground in light, no near-white text in dark. Cards and fields are
  * their fill alone, with no edge (D122). "Runs well" has no tint of its own: it is the plain surface.
  */
 @Immutable
@@ -54,18 +55,18 @@ class DemoColors(
 
 val LightDemoColors =
     DemoColors(
-        canvas = Color(0xFFF2F2F5),
-        surface = Color(0xFFFBFBFC),
-        panel = Color(0xFFF7F7F9),
+        canvas = Color(0xFFEBEBEE),
+        surface = Color(0xFFF4F4F6),
+        panel = Color(0xFFF0F0F3),
         ink = Color(0xFF1D1D1F),
         reply = Color(0xFF2C2C2E),
-        muted = Color(0xFF65656A),
-        soft = Color(0xFF6E6E73),
-        hairline = Color(0xFFE3E3E8),
-        bubble = Color(0xFFE6E6EB),
+        muted = Color(0xFF606065),
+        soft = Color(0xFF6A6A6F),
+        hairline = Color(0xFFDCDCE1),
+        bubble = Color(0xFFE0E0E5),
         accent = Color(0xFF3A3A3D),
-        onAccent = Color(0xFFFBFBFC),
-        accentSoft = Color(0xFFE8E8ED),
+        onAccent = Color(0xFFF4F4F6),
+        accentSoft = Color(0xFFE1E1E6),
         greatInk = Color(0xFF3E5641),
         slowInk = Color(0xFF73572F),
         tooBigInk = Color(0xFF5A5A5F),
@@ -78,13 +79,13 @@ val DarkDemoColors =
         canvas = Color(0xFF0B0B0C),
         surface = Color(0xFF161618),
         panel = Color(0xFF131315),
-        ink = Color(0xFFE3E3E6),
-        reply = Color(0xFFCFCFD4),
+        ink = Color(0xFFD5D5D9),
+        reply = Color(0xFFC2C2C7),
         muted = Color(0xFF98989D),
         soft = Color(0xFF808085),
         hairline = Color(0xFF242426),
         bubble = Color(0xFF222224),
-        accent = Color(0xFFC8C8CD),
+        accent = Color(0xFFBBBBC0),
         onAccent = Color(0xFF161618),
         accentSoft = Color(0xFF28282B),
         greatInk = Color(0xFFA9C3AA),

@@ -7,6 +7,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -27,6 +28,7 @@ import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.node.requireDensity
 import androidx.compose.ui.node.requireGraphicsContext
+import androidx.compose.ui.unit.Dp
 import com.suhel.llamabro.demo.designsystem.theme.DemoColors
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 
@@ -41,25 +43,48 @@ internal class Backdrop(val page: GraphicsLayer?, val pageColor: Color) {
 }
 
 /**
+ * Whether an [IconAction] or a tappable [TopBarTitle] is a chip of glass: in a [TopBar] or the drawer's head, not
+ * inside a glass panel (a search field's filters) or the message bar's row.
+ */
+internal val LocalGlassChips = staticCompositionLocalOf { false }
+
+/**
  * A part of a floating bar as a piece of glass (D148), when on one ([backdrop]): a circle round an icon, a pill round
- * a title. From Android 13 it is a lens over the page: softly blurred, bent toward its rim as a convex edge bends
- * light, the colours split apart there (red bent more, blue less, as through Apple's Liquid Glass), under a light
- * veil, a light catching its upper rim and a hairline round it. Before that, a translucent fill and the hairline.
+ * a title. See [glass].
  */
 internal fun Modifier.floatingChip(backdrop: Backdrop?, colors: DemoColors): Modifier =
-    if (backdrop == null) this else this then GlassElement(backdrop, colors)
+    if (backdrop == null) this else glass(backdrop, colors, corner = null, veil = CHIP_VEIL)
 
-private data class GlassElement(val backdrop: Backdrop, val colors: DemoColors) : ModifierNodeElement<GlassNode>() {
-    override fun create() = GlassNode(backdrop, colors)
+/**
+ * A floating panel as glass (D148): the message bar, a floating search field, with [corner] (a pill when null) and a
+ * denser veil than a chip's, so the text typed on it stays calm over what passes under.
+ */
+internal fun Modifier.floatingPanel(backdrop: Backdrop, colors: DemoColors, corner: Dp? = null): Modifier =
+    glass(backdrop, colors, corner, PANEL_VEIL)
+
+/**
+ * A piece of glass over [backdrop]'s page, with rounded [corner]s (a pill when null). From Android 13 it is a lens over
+ * the page: softly blurred, bent toward its rim as a convex edge bends light, the colours split apart there (red bent
+ * more, blue less, as through Apple's Liquid Glass), under a [veil] of the surface, a light catching its upper rim and
+ * a hairline round it. Before that, a translucent fill and the hairline.
+ */
+private fun Modifier.glass(backdrop: Backdrop, colors: DemoColors, corner: Dp?, veil: Float): Modifier =
+    this then GlassElement(backdrop, colors, corner, veil)
+
+private data class GlassElement(val backdrop: Backdrop, val colors: DemoColors, val corner: Dp?, val veil: Float) :
+    ModifierNodeElement<GlassNode>() {
+    override fun create() = GlassNode(backdrop, colors, corner, veil)
 
     override fun update(node: GlassNode) {
         node.backdrop = backdrop
         node.colors = colors
+        node.corner = corner
+        node.veil = veil
         node.invalidateDraw()
     }
 }
 
-private class GlassNode(var backdrop: Backdrop, var colors: DemoColors) :
+private class GlassNode(var backdrop: Backdrop, var colors: DemoColors, var corner: Dp?, var veil: Float) :
     Modifier.Node(),
     DrawModifierNode,
     GlobalPositionAwareModifierNode {
@@ -90,9 +115,10 @@ private class GlassNode(var backdrop: Backdrop, var colors: DemoColors) :
     }
 
     override fun ContentDrawScope.draw() {
-        val corner = CornerRadius(size.minDimension / 2)
+        val pill = size.minDimension / 2
+        val corner = CornerRadius(this@GlassNode.corner?.toPx()?.coerceAtMost(pill) ?: pill)
         val lensed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && drawLens(corner)
-        if (!lensed) drawRoundRect(colors.surface.copy(alpha = CHIP_ALPHA), cornerRadius = corner)
+        if (!lensed) drawRoundRect(colors.surface.copy(alpha = BARE_GLASS), cornerRadius = corner)
         val hairline = requireDensity().run { DemoSize.hairline.toPx() }
         drawRoundRect(colors.hairline, cornerRadius = corner, style = Stroke(hairline))
         drawContent()
@@ -114,7 +140,7 @@ private class GlassNode(var backdrop: Backdrop, var colors: DemoColors) :
         layer.setRoundRectOutline(Offset.Zero, size, corner.x)
         layer.clip = true
         drawLayer(layer)
-        drawRoundRect(colors.surface.copy(alpha = GLASS_VEIL), cornerRadius = corner)
+        drawRoundRect(colors.surface.copy(alpha = veil), cornerRadius = corner)
         // the light on the glass: bright along the upper rim, fading down it
         drawRoundRect(
             Brush.verticalGradient(listOf(GlassLight, GlassLight.copy(alpha = 0f)), endY = size.height * 0.6f),
@@ -125,15 +151,18 @@ private class GlassNode(var backdrop: Backdrop, var colors: DemoColors) :
     }
 }
 
-/** How opaque a chip is where it can't be a lens: denser than the bar's veil, still letting the page show through. */
-private const val CHIP_ALPHA = 0.7f
+/** How opaque glass is where it can't be a lens: denser than the bar's veil, still letting the page show through. */
+private const val BARE_GLASS = 0.7f
 
-/** The veil over a lens: light, so the bent, split page reads through it. */
-private const val GLASS_VEIL = 0.35f
+/** The veil over a chip's lens: light, so the bent, split page reads through it. */
+private const val CHIP_VEIL = 0.35f
+
+/** The veil over a panel's lens: denser, under text that is typed and read on it. */
+private const val PANEL_VEIL = 0.6f
 
 /** The light caught on a lens's rim: light whatever the theme, as a highlight on glass is. */
 @Suppress("DemoRawColour")
-private val GlassLight = Color.White.copy(alpha = 0.45f)
+private val GlassLight = Color.White.copy(alpha = 0.22f)
 
 /**
  * A chip's lens (Android 13 and up): a soft blur, then [LENS] bending and splitting the page toward the chip's rim. The

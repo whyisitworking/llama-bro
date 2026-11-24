@@ -142,4 +142,4 @@ internal val FadeMask: Color = Color.Black
  * A download ring's track: at least 1.5:1 against the surface and the canvas in both themes, so a frozen arc's ring
  * still reads as a ring on the dark sheet; the soft accent is 1.2:1 there.
  */
-internal val DemoColors.ringTrack: Color get() = if (isDark) Color(0xFF3D3D3D) else Color(0xFFC6C6C6)
+internal val DemoColors.ringTrack: Color get() = if (isDark) Color(0xFF3D3D3D) else Color(0xFFBEBEBE)
