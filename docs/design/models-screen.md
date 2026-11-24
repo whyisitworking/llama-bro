@@ -2,7 +2,7 @@
 
 Status: superseded by [models-page.md](models-page.md) (D130), 2026-11-21. Was: built, 2026-11-20. Amended
 [demo-app.md](demo-app.md) §4.3 (since rewritten for the Models page); the decision is D116 in
-[../decisions.md](../decisions.md#d116-one-models-screen-replaces-get-models-and-the-library-a-rows-fit-is-guessed-from-the-search-list-and-drawn-as-a-pace-figure), which also lists where the build departed from this design (the sheet's height, the fit symbol's target, images in model pages, the kept catalog `about`). The mockup of the result is [mockups/models-merged.html](mockups/models-merged.html).
+[../decisions.md](../decisions.md#d116-one-models-screen-replaces-get-models-and-the-library-a-rows-fit-is-guessed-from-the-search-list-and-drawn-as-a-pace-figure), which also lists where the build departed from this design (the sheet's height, the fit symbol's target, images in model pages, the kept catalog `about`).
 
 ## Why
 
@@ -239,8 +239,7 @@ Facts only, no labels:
   and long-press tooltip.
 - A row's fit is computed from `SearchRepo.gguf` (above); `ModelDiscovery.quickFit`'s tree call and the
   `fitSlots` semaphore go.
-- `demo-app.md` §4.3 rewritten; one mockup of the final decisions (screen, rows, card, fit symbols) at
-  `docs/design/mockups/models-merged.html`, listed in its README.
+- `demo-app.md` §4.3 rewritten.
 - Built from `:demo:designsystem` components and tokens (D113); new pieces (badge, label chip) go into the design system
   with previews.
 

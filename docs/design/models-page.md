@@ -162,8 +162,7 @@ download and letting the person type when it lands (today's first-run behaviour)
 ### 3. One model row
 
 One component, `ModelRow` in the design system, replaces `ModelCard`, `LibraryRow`, `DownloadRow` and the pick card.
-Two lines and the fit symbol, typed slots, one meaning per slot (the maintainer's "ultra subtle" design, D123; mockup
-`docs/design/mockups/models-subtle.html`: "the less text there is, the better"):
+Two lines and the fit symbol, typed slots, one meaning per slot (the maintainer's "ultra subtle" design, D123: "the less text there is, the better"):
 
 | Line | Content |
 |---|---|
