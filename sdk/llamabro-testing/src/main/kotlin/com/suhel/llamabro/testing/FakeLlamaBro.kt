@@ -88,7 +88,8 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) : AutoCloseable 
 
     /**
      * How long each model load takes, reported as progress in four steps. A `loadModel` cancelled meanwhile
-     * stops at the next step and throws `CancellationException`, as the phone's load does (D67).
+     * stops at the next step and throws `CancellationException`, as the phone's load does
+     * ([D67](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d67)).
      */
     @Volatile public var loadMillis: Long = 0
 
@@ -127,12 +128,29 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) : AutoCloseable 
 
     private val filesDir = Files.createTempDirectory("llamabro-fake").toFile()
 
+    @Volatile private var closed = false
+
+    // a fake nobody closed still removes its directory when the JVM exits; close() takes the hook back
+    private val cleanup = Thread { filesDir.deleteRecursively() }
+
+    init {
+        Runtime.getRuntime().addShutdownHook(cleanup)
+    }
+
+    internal fun checkOpen() = check(!closed) { "FakeLlamaBro was closed" }
+
     /** The [LlamaBro] to hand to the code under test. */
     public val llamaBro: LlamaBro = LlamaBro.withEngine(FakeEngine(this), filesDir)
 
-    /** Deletes the temporary directory the fake keeps its saved slots and media in; call it when the test ends. */
+    /**
+     * Deletes the temporary directory the fake keeps its saved slots and media in; call it when the test ends. After
+     * it, every call that reaches the engine (loading a model, a request on one) fails with `IllegalStateException`.
+     * A fake never closed has its directory removed when the JVM exits.
+     */
     override fun close() {
+        closed = true
         filesDir.deleteRecursively()
+        runCatching { Runtime.getRuntime().removeShutdownHook(cleanup) }
     }
 
     init {

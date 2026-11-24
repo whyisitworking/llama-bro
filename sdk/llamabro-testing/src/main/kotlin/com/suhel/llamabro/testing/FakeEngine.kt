@@ -26,16 +26,22 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** The [Engine] behind [FakeLlamaBro.llamaBro]: loads, and routes each request to what the fake scripted. */
 @OptIn(InternalLlamaBroApi::class)
 internal class FakeEngine(private val fake: FakeLlamaBro) : Engine {
-    override fun init(configJson: String): String? = null
+    override fun init(configJson: String): String? {
+        fake.checkOpen()
+        return null
+    }
 
     override fun readFd(fd: Int): ByteArray = readDevFd(fd)
 
     override fun setLog(listener: ((level: Int, text: String) -> Unit)?) {}
 
-    override fun devices(): String =
-        """[{"name":"CPU","description":"FakeLlamaBro","type":"cpu","memory_free":0,"memory_total":0}]"""
+    override fun devices(): String {
+        fake.checkOpen()
+        return """[{"name":"CPU","description":"FakeLlamaBro","type":"cpu","memory_free":0,"memory_total":0}]"""
+    }
 
     override fun load(configJson: String, onProgress: (Float) -> Boolean): EngineModel {
+        fake.checkOpen()
         synchronized(fake.lock) {
             if (fake.loadFailures > 0) {
                 fake.loadFailures--
@@ -122,6 +128,7 @@ internal class FakeModel(
         attachments: List<EngineAttachment>,
         sink: RequestSink,
     ): EngineRequest {
+        fake.checkOpen()
         val text = String(body, Charsets.UTF_8)
 
         fun send(status: Int, data: String) = sink.onChunk(status, data.toByteArray(Charsets.UTF_8))

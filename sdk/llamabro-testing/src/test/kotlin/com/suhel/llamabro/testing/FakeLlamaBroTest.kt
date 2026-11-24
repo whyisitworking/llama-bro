@@ -328,6 +328,19 @@ class FakeLlamaBroTest {
             assertTrue("$e", e!!.message!!.contains("set maxTokens to script a cut transcript"))
         }
 
+    @Test
+    fun aClosedFakeSaysSoInsteadOfFailingOnAMissingDirectory() =
+        runBlocking {
+            val fake = FakeLlamaBro { reply { content("Hi") } }
+            val model = fake.llamaBro.loadModel(ModelSource.file("/fake.gguf"))
+            fake.close()
+            val load = runCatching { fake.llamaBro.loadModel(ModelSource.file("/fake.gguf")) }.exceptionOrNull()
+            assertTrue("$load", load is IllegalStateException && load.message == "FakeLlamaBro was closed")
+            val chat = runCatching { model.conversation().send("Hi").collect() }.exceptionOrNull()
+            assertTrue("$chat", generateSequence(chat) { it.cause }.any { it.message == "FakeLlamaBro was closed" })
+            model.close()
+        }
+
     private companion object {
         const val WEATHER_SCHEMA = """{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}"""
     }
