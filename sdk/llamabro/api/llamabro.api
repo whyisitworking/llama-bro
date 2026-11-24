@@ -1547,7 +1547,7 @@ public final class com/suhel/llamabro/spi/EngineAttachment$Path : com/suhel/llam
 }
 
 public final class com/suhel/llamabro/spi/EngineKt {
-	public static final field SEND_CLOSED I
+	public static final field SEND_CANCELLED I
 	public static final field SEND_NOT_REALTIME I
 	public static final field SEND_OK I
 }
@@ -1576,7 +1576,10 @@ public final class com/suhel/llamabro/spi/LogcatLogger : com/suhel/llamabro/Logg
 
 public final class com/suhel/llamabro/spi/NativeError : java/lang/RuntimeException {
 	public static final field CANCELLED I
+	public static final field CLOSED I
 	public static final field Companion Lcom/suhel/llamabro/spi/NativeError$Companion;
+	public static final field INTERNAL I
+	public static final field LOAD_FAILED I
 	public fun <init> (ILjava/lang/String;)V
 	public final fun getErrorJson ()Ljava/lang/String;
 	public final fun getStatus ()I

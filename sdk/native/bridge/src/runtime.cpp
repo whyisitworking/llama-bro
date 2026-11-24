@@ -297,30 +297,41 @@ const char * lb_version(void) {
 
 void lb_string_free(char * s) { std::free(s); }
 
-char * lb_fit_estimate(const char * config_json, char ** error_json) {
-    return lb_guard(static_cast<char *>(nullptr), error_json, [&]() -> char * {
+lb_status lb_fit_estimate(const char * config_json, char ** out_json, char ** error_json) {
+    return lb_guard(LB_ERR_INTERNAL, error_json, [&]() -> lb_status {
         if (error_json) *error_json = nullptr;
+        if (!out_json) {
+            lb_set_error(error_json, "out_json is NULL");
+            return LB_ERR_INVALID_ARG;
+        }
+        *out_json = nullptr;
         if (!lb_runtime_is_initialized()) {
             lb_set_error(error_json, "lb_runtime_init has not been called");
-            return nullptr;
+            return LB_ERR_NOT_INITIALIZED;
+        }
+        json cfg;
+        try {
+            cfg = json::parse(config_json ? config_json : "");
+        } catch (const std::exception & e) {
+            lb_set_error(error_json, std::string("invalid config JSON: ") + e.what());
+            return LB_ERR_INVALID_ARG;
+        }
+        if (!cfg.is_object()) {
+            lb_set_error(error_json, "config must be a JSON object");
+            return LB_ERR_INVALID_ARG;
         }
         try {
-            const json cfg = json::parse(config_json ? config_json : "");
-            if (!cfg.is_object()) {
-                lb_set_error(error_json, "config must be a JSON object");
-                return nullptr;
-            }
             common_params params;
             std::string err;
             if (!lb_parse_model_config(cfg, params, err)) {
                 lb_set_error(error_json, err);
-                return nullptr;
+                return LB_ERR_INVALID_ARG;
             }
             for (const std::string * path : {&params.model.path, &params.mmproj.path,
                                              &params.speculative.draft.mparams.path}) {
                 if (!path->empty() && !std::ifstream(*path).good()) {
                     lb_set_error(error_json, "failed to open model file: " + *path, "file_not_found");
-                    return nullptr;
+                    return LB_ERR_LOAD_FAILED;
                 }
             }
 
@@ -336,7 +347,7 @@ char * lb_fit_estimate(const char * config_json, char ** error_json) {
                 bool insufficient = false;
                 if (!lb_fit_auto_ctx(params, budget_mib * MiB, report, insufficient, err, cap) && !insufficient) {
                     lb_set_error(error_json, err);
-                    return nullptr;
+                    return LB_ERR_LOAD_FAILED;
                 }
                 result["fits"] = !insufficient;
                 result["n_ctx_min"] = report.at("n_ctx_min");
@@ -347,12 +358,12 @@ char * lb_fit_estimate(const char * config_json, char ** error_json) {
                 common_params minimum = params;
                 if (!lb_resolve_auto_ctx(minimum, err, (uint32_t) params.fit_params_min_ctx)) {
                     lb_set_error(error_json, err);
-                    return nullptr;
+                    return LB_ERR_LOAD_FAILED;
                 }
                 const uint32_t min_ctx = (uint32_t) minimum.n_ctx;
                 if (lb_config_wants_auto_ctx(cfg) && !lb_resolve_auto_ctx(params, err, cap)) {
                     lb_set_error(error_json, err);
-                    return nullptr;
+                    return LB_ERR_LOAD_FAILED;
                 }
                 const int64_t used_min = lb_measure_ctx(params, min_ctx);
                 const int64_t used = params.n_ctx == (int32_t) min_ctx ? used_min
@@ -367,10 +378,13 @@ char * lb_fit_estimate(const char * config_json, char ** error_json) {
                     if (has_budget) result["fits"] = true;
                 }
             }
-            return lb_json_strdup(result);
-        } catch (const std::exception & e) {
+            *out_json = lb_json_strdup(result);
+            return LB_OK;
+        } catch (const std::runtime_error & e) {
+            // the measurement's own failures (config.cpp throws runtime_error); bad_alloc and anything else reach
+            // lb_guard as LB_ERR_INTERNAL
             lb_set_error(error_json, std::string("fit estimate failed: ") + e.what());
-            return nullptr;
+            return LB_ERR_LOAD_FAILED;
         }
     });
 }

@@ -206,13 +206,8 @@ jlong modelLoad(JNIEnv * env, jobject, jstring config, jobject progress) {
     char * err = nullptr;
     const lb_status st = lb_model_load(c.c_str(), listener ? progress_cb : nullptr, listener, &model, &err);
     if (listener) env->DeleteGlobalRef(listener);  // no callbacks after lb_model_load returns
-    if (st == LB_ERR_CANCELLED) {
-        // a stop carries no error JSON (llamabro.h); Kotlin turns this status into the caller's cancellation
-        if (err) lb_string_free(err);
-        throw_native_error(env, st, nullptr, "{\"error\":\"model load cancelled\"}");
-        return 0;
-    }
     if (st != LB_OK) {
+        // LB_ERR_CANCELLED included: Kotlin turns that status into the caller's cancellation
         throw_native_error(env, st, err);
         return 0;
     }
@@ -221,19 +216,22 @@ jlong modelLoad(JNIEnv * env, jobject, jstring config, jobject progress) {
 
 jstring fitEstimate(JNIEnv * env, jobject, jstring config) {
     const std::string c = get_string(env, config);
+    char * result = nullptr;
     char * err = nullptr;
-    char * result = lb_fit_estimate(c.c_str(), &err);
-    if (!result) {
-        throw_native_error(env, LB_ERR_LOAD_FAILED, err);
+    const lb_status st = lb_fit_estimate(c.c_str(), &result, &err);
+    if (st != LB_OK) {
+        throw_native_error(env, st, err);
         return nullptr;
     }
     return take_string(env, result);
 }
 
 jstring modelInfo(JNIEnv * env, jobject, jlong model) {
-    char * info = lb_model_info(reinterpret_cast<lb_model *>(model));
-    if (!info) {
-        throw_native_error(env, LB_ERR_INTERNAL, nullptr, "{\"error\":\"the model's info could not be read\"}");
+    char * info = nullptr;
+    char * err = nullptr;
+    const lb_status st = lb_model_info(reinterpret_cast<lb_model *>(model), &info, &err);
+    if (st != LB_OK) {
+        throw_native_error(env, st, err);
         return nullptr;
     }
     return take_string(env, info);
@@ -313,14 +311,15 @@ jlong modelRequest(JNIEnv * env, jobject, jlong model, jstring endpoint, jstring
 
     auto * ctx = new request_ctx{ env->NewGlobalRef(sink) };
     lb_request * req = nullptr;
+    char * err = nullptr;
     const lb_status st = lb_model_request_with(reinterpret_cast<lb_model *>(model), ep.c_str(),
                                                params ? pj.c_str() : nullptr, b.data(), b.size(), atts.data(),
-                                               atts.size(), request_cb, ctx, &req);
+                                               atts.size(), request_cb, ctx, &req, &err);
     release_lent(env, lent);  // read by now (llamabro.h)
     if (st != LB_OK) {
         env->DeleteGlobalRef(ctx->sink);
         delete ctx;
-        throw_native_error(env, st, nullptr);
+        throw_native_error(env, st, err);
         return 0;
     }
     return reinterpret_cast<jlong>(req);
@@ -352,12 +351,14 @@ jbyteArray readFd(JNIEnv * env, jobject, jint fd) {
 void requestCancel(JNIEnv *, jobject, jlong req) { lb_request_cancel(reinterpret_cast<lb_request *>(req)); }
 void requestFree(JNIEnv *, jobject, jlong req)   { lb_request_free(reinterpret_cast<lb_request *>(req)); }
 
-// a realtime client event (D97); the lb_status, which Kotlin maps: the bridge copies the bytes before it returns
+// a realtime client event (D97); the lb_status, which Kotlin maps: the bridge copies the bytes before it returns. The
+// reason is not asked for: a send to a closed conversation is expected (the status says so), and this runs per audio
+// chunk
 jint requestSend(JNIEnv * env, jobject, jlong req, jbyteArray msg) {
     const jsize len = env->GetArrayLength(msg);
     std::vector<char> buf(static_cast<size_t>(len));
     if (len > 0) env->GetByteArrayRegion(msg, 0, len, reinterpret_cast<jbyte *>(buf.data()));
-    return static_cast<jint>(lb_request_send(reinterpret_cast<lb_request *>(req), buf.data(), buf.size()));
+    return static_cast<jint>(lb_request_send(reinterpret_cast<lb_request *>(req), buf.data(), buf.size(), nullptr));
 }
 void modelFree(JNIEnv *, jobject, jlong model)   { lb_model_free(reinterpret_cast<lb_model *>(model)); }
 

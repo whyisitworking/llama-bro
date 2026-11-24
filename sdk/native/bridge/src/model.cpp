@@ -118,7 +118,7 @@ void worker_main(lb_model * m) {
     // during the context, warm-up, GPU kernels or NPU session is the caller's: it gets LB_OK and frees the model
     if (m->stop_requested.load()) {
         m->ctx_server.terminate();
-        finish_load(m, LB_ERR_CANCELLED, "");
+        finish_load(m, LB_ERR_CANCELLED, "model load cancelled");
         return;
     }
     if (!loaded) {
@@ -238,7 +238,7 @@ lb_status lb_model_load(const char * config_json, lb_progress_cb cb, void * user
         m->loading.store(false);  // no progress callbacks once this returns: `user` may be gone
         if (m->state == lb_model::FAILED) {
             m->worker.join();
-            if (m->load_status != LB_ERR_CANCELLED) lb_set_error(error_json, m->load_error);
+            lb_set_error(error_json, m->load_error);
             return m->load_status;  // m, and the model the worker loaded, are freed here
         }
         *out = m.release();
@@ -246,9 +246,25 @@ lb_status lb_model_load(const char * config_json, lb_progress_cb cb, void * user
     });
 }
 
-char * lb_model_info(lb_model * m) {
-    return lb_guard(static_cast<char *>(nullptr), nullptr, [&]() -> char * {
-        if (!m) return nullptr;
+lb_status lb_model_info(lb_model * m, char ** out_json, char ** error_json) {
+    return lb_guard(LB_ERR_INTERNAL, error_json, [&]() -> lb_status {
+        if (error_json) *error_json = nullptr;
+        if (out_json) *out_json = nullptr;
+        if (!m) {
+            lb_set_error(error_json, "model is NULL");
+            return LB_ERR_INVALID_ARG;
+        }
+        if (!out_json) {
+            lb_set_error(error_json, "out_json is NULL");
+            return LB_ERR_INVALID_ARG;
+        }
+        {
+            std::lock_guard<std::mutex> lk(m->mtx);
+            if (m->closing) {
+                lb_set_error(error_json, "the model is being freed");
+                return LB_ERR_CLOSED;
+            }
+        }
         const llama_context * lctx = m->ctx_server.get_llama_context();
         const llama_model * model = llama_get_model(lctx);
 
@@ -280,7 +296,7 @@ char * lb_model_info(lb_model * m) {
         }
         if (devices.empty()) devices.push_back("CPU");
 
-        return lb_json_strdup(json{
+        *out_json = lb_json_strdup(json{
             {"devices", devices},
             {"ctx_fit", m->ctx_fit},
             // what decodes: a separate DFlash model, MTP head, or neither
@@ -296,6 +312,7 @@ char * lb_model_info(lb_model * m) {
             {"metadata", metadata},
             {"props", props},
         });
+        return LB_OK;
     });
 }
 

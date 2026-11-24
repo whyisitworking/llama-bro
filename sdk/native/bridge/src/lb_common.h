@@ -10,7 +10,7 @@ using json = common_json;  // same alias as tools/server/server-common.h
 char * lb_strdup(const std::string & s);                            // malloc'd copy; free with lb_string_free
 // The text of a JSON the bridge returns: invalid UTF-8 (a GGUF's metadata, a file name) is replaced, never thrown
 char * lb_json_strdup(const json & j);
-// {"error": message}, plus "code" when given (lb_model_load: "file_not_found")
+// {"error": message}, plus "code" when given (lb_model_load: "file_not_found", "insufficient_memory"; lb_fit_estimate: "file_not_found")
 void lb_set_error(char ** error_json, const std::string & message, const char * code = nullptr);
 
 // Collects the ERROR lines llama.cpp logs on this thread while it lives. llama.cpp reports why a model failed to

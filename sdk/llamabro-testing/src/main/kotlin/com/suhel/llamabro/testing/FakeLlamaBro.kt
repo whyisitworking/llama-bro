@@ -9,7 +9,7 @@ import com.suhel.llamabro.spi.EngineModel
 import com.suhel.llamabro.spi.EngineRequest
 import com.suhel.llamabro.spi.NativeError
 import com.suhel.llamabro.spi.RequestSink
-import com.suhel.llamabro.spi.SEND_CLOSED
+import com.suhel.llamabro.spi.SEND_CANCELLED
 import com.suhel.llamabro.spi.SEND_OK
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -158,7 +158,7 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
             loadFailures = times
             loadFailure =
                 NativeError(
-                    LOAD_FAILED_STATUS,
+                    NativeError.LOAD_FAILED,
                     JsonObject(
                         mapOf(
                             "error" to JsonPrimitive(message),
@@ -557,7 +557,7 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
 
         override fun send(message: ByteArray): Int =
             synchronized(this) {
-                if (!open.get()) return SEND_CLOSED
+                if (!open.get()) return SEND_CANCELLED
                 val text = String(message, Charsets.UTF_8)
                 synchronized(lock) { voice += text }
                 handle(text)
@@ -686,7 +686,7 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
 
         override fun send(message: ByteArray): Int =
             synchronized(this) {
-                if (!open.get()) return SEND_CLOSED
+                if (!open.get()) return SEND_CANCELLED
                 val text = String(message, Charsets.UTF_8)
                 synchronized(lock) { voice += text }
                 handle(text)
@@ -787,9 +787,6 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
         private const val LOAD_STEPS = 4
 
         private var callIds = 0
-
-        /** `lb_status` for a failed load (the C API's generic error). */
-        private const val LOAD_FAILED_STATUS = 1
 
         fun q(s: String): String = JsonPrimitive(s).toString()
 

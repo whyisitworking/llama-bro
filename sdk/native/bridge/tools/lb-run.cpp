@@ -112,13 +112,21 @@ bool wav_pcm(const std::string & path, std::string & pcm, int & rate) {
     return false;
 }
 
+// one client event; false with lb_request_send's reason
+bool send_event(lb_request * req, const std::string & msg, std::string & error) {
+    char * err = nullptr;
+    if (lb_request_send(req, msg.data(), msg.size(), &err) == LB_OK) return true;
+    error = std::string("send failed: ") + (err ? err : "");
+    lb_string_free(err);
+    return false;
+}
+
 // runs a realtime spec's steps on an open session; false (with a message) when a step fails
 bool run_steps(lb_request * req, run_state & s, const json & steps, std::string & error) {
     size_t seen = 0;  // server events already matched by a wait
     for (const auto & step : steps) {
         if (step.contains("send")) {
-            const std::string msg = step.at("send").dump();
-            if (lb_request_send(req, msg.data(), msg.size()) != LB_OK) { error = "send failed"; return false; }
+            if (!send_event(req, step.at("send").dump(), error)) return false;
         } else if (step.contains("append_clip")) {
             std::string pcm;
             int rate = 0;
@@ -127,7 +135,7 @@ bool run_steps(lb_request * req, run_state & s, const json & steps, std::string 
             for (size_t at = 0; at < pcm.size(); at += chunk) {
                 const std::string msg = json{{"type", "input_audio_buffer.append"},
                                              {"audio", base64_of(pcm.substr(at, chunk))}}.dump();
-                if (lb_request_send(req, msg.data(), msg.size()) != LB_OK) { error = "send failed"; return false; }
+                if (!send_event(req, msg, error)) return false;
             }
         } else if (step.contains("wait")) {
             const std::string type = step.at("wait").get<std::string>();
@@ -223,12 +231,14 @@ int main(int argc, char ** argv) {
             atts.push_back(att);
         }
         lb_request * req = nullptr;
+        char * req_err = nullptr;
         const lb_status st = lb_model_request_with(model, endpoint.c_str(), nullptr, body.data(), body.size(),
-                                                   atts.data(), atts.size(), on_event, &s, &req);
+                                                   atts.data(), atts.size(), on_event, &s, &req, &req_err);
         for (const int fd : fds) if (fd >= 0) close(fd);
         buffers.clear();
         if (st != LB_OK) {
-            std::fprintf(stderr, "%s: lb_model_request failed\n", id.c_str());
+            std::fprintf(stderr, "%s: lb_model_request_with: %s\n", id.c_str(), req_err ? req_err : "");
+            lb_string_free(req_err);
             rc = 1;
             continue;
         }

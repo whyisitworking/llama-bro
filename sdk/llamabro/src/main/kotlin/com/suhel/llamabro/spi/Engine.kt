@@ -90,7 +90,7 @@ public interface EngineRequest {
 
     /**
      * `lb_request_send`: one client event of a realtime request (D97), copied and queued in order. Answers the
-     * `lb_status`: [SEND_OK], [SEND_NOT_REALTIME] for another endpoint's request, or [SEND_CLOSED] once the
+     * `lb_status`: [SEND_OK], [SEND_NOT_REALTIME] for another endpoint's request, or [SEND_CANCELLED] once the
      * conversation has closed. Never after [free].
      */
     public fun send(message: ByteArray): Int = SEND_NOT_REALTIME
@@ -107,9 +107,9 @@ public const val SEND_OK: Int = 0
 @InternalLlamaBroApi
 public const val SEND_NOT_REALTIME: Int = 1
 
-/** `LB_ERR_CANCELLED` from [EngineRequest.send]: the conversation has closed. */
+/** `LB_ERR_CANCELLED` from [EngineRequest.send]: a send on a conversation that has ended answers it. */
 @InternalLlamaBroApi
-public const val SEND_CLOSED: Int = 6
+public const val SEND_CANCELLED: Int = 6
 
 /** A request's events: chunks of the HTTP body with its status, then exactly one of [onDone] or [onCancelled]. */
 @InternalLlamaBroApi

@@ -106,8 +106,10 @@ static lb_model * load_test_model(const json & extra = json::object()) {
 }
 
 static json model_info(lb_model * model) {
-    char * s = lb_model_info(model);
-    LB_CHECK(s != nullptr);
+    char * s = nullptr;
+    char * err = nullptr;
+    LB_CHECK(lb_model_info(model, &s, &err) == LB_OK);
+    LB_CHECK(s != nullptr && err == nullptr);
     json info = json::parse(s);
     lb_string_free(s);
     return info;
@@ -425,7 +427,9 @@ static void check_load_stops(float stop_past, bool read_aborted, const json & ex
                  s.seen.empty() ? -1.0f : s.seen.back());
     LB_CHECK(st == LB_ERR_CANCELLED);
     LB_CHECK(model == nullptr);
-    LB_CHECK(err == nullptr);
+    LB_CHECK(err != nullptr && std::strstr(err, "model load cancelled"));
+    lb_string_free(err);
+    err = nullptr;
     LB_CHECK(!s.seen.empty());
     LB_CHECK(s.seen.back() > stop_past);  // the call that said stop was the last one
     for (size_t i = 0; i + 1 < s.seen.size(); i++) LB_CHECK(s.seen[i] <= stop_past);
@@ -575,9 +579,10 @@ static std::string long_prompt(int approx_tokens) {
 static lb_request * start(lb_model * m, const char * endpoint, const json & body, collector & c) {
     const std::string b = body.dump();
     lb_request * req = nullptr;
-    const lb_status st = lb_model_request(m, endpoint, nullptr, b.data(), b.size(), collector::cb, &c, &req);
+    char * err = nullptr;
+    const lb_status st = lb_model_request(m, endpoint, nullptr, b.data(), b.size(), collector::cb, &c, &req, &err);
     LB_CHECK(st == LB_OK);
-    LB_CHECK(req != nullptr);
+    LB_CHECK(req != nullptr && err == nullptr);
     return req;
 }
 
@@ -703,7 +708,10 @@ static void unknown_endpoint_invalid_arg() {
     lb_model * m = load_test_model();
     collector c;
     lb_request * req = nullptr;
-    LB_CHECK(lb_model_request(m, "nope", nullptr, "{}", 2, collector::cb, &c, &req) == LB_ERR_INVALID_ARG);
+    char * err = nullptr;
+    LB_CHECK(lb_model_request(m, "nope", nullptr, "{}", 2, collector::cb, &c, &req, &err) == LB_ERR_INVALID_ARG);
+    LB_CHECK(err != nullptr && json::parse(err).at("error") == "unknown endpoint \"nope\"");
+    lb_string_free(err);
     // refused before any request thread exists, so nothing can call back later
     LB_CHECK(req == nullptr);
     LB_CHECK(c.chunks.empty() && c.n_terminal == 0);
@@ -1359,11 +1367,8 @@ static void model_info_survives_invalid_utf8_metadata() {
         output << input.rdbuf();
     }
     lb_model * m = load_at(path.string(), json{{"n_ctx", 512}});
-    char * info = lb_model_info(m);
-    LB_CHECK(info != nullptr);
-    const json parsed = json::parse(info);
+    const json parsed = model_info(m);
     LB_CHECK(parsed.at("metadata").at("general.name").get<std::string>().rfind("stories ", 0) == 0);
-    lb_string_free(info);
     lb_model_free(m);
     std::filesystem::remove(path);
 }
@@ -1430,12 +1435,12 @@ static void kv_cache_q8_0_loads_and_generates() {
 
 static json estimate(const json & cfg) {
     char * err = nullptr;
-    char * raw = lb_fit_estimate(cfg.dump().c_str(), &err);
-    if (!raw) std::fprintf(stderr, "lb_fit_estimate: %s\n", err ? err : "unknown error");
-    LB_CHECK(raw != nullptr);
+    char * raw = nullptr;
+    const lb_status st = lb_fit_estimate(cfg.dump().c_str(), &raw, &err);
+    if (st != LB_OK) std::fprintf(stderr, "lb_fit_estimate: %d %s\n", st, err ? err : "");
+    LB_CHECK(st == LB_OK && raw != nullptr && err == nullptr);
     json result = json::parse(raw);
     lb_string_free(raw);
-    if (err) lb_string_free(err);
     return result;
 }
 
@@ -1558,9 +1563,9 @@ static lb_attachment att_bytes(const char * name, const char * mime, const std::
 }
 
 static lb_status start_with(lb_model * m, const char * endpoint, const json & body, const std::vector<lb_attachment> & atts,
-                            collector & c, lb_request ** req) {
+                            collector & c, lb_request ** req, char ** err = nullptr) {
     const std::string b = body.dump();
-    return lb_model_request_with(m, endpoint, nullptr, b.data(), b.size(), atts.data(), atts.size(), collector::cb, &c, req);
+    return lb_model_request_with(m, endpoint, nullptr, b.data(), b.size(), atts.data(), atts.size(), collector::cb, &c, req, err);
 }
 
 // one non-streaming request with attachments: the HTTP status and the parsed body
@@ -2231,7 +2236,7 @@ static void omni_tts_same_audio_as_upstream() {
     collector c;
     lb_request * req = nullptr;
     const std::string b = json{{"input", "The weather in Paris is cloudy."}, {"seed", 42}, {"response_format", "wav"}}.dump();
-    LB_CHECK(lb_model_request(m, "tts", nullptr, b.data(), b.size(), collector::cb, &c, &req) == LB_OK);
+    LB_CHECK(lb_model_request(m, "tts", nullptr, b.data(), b.size(), collector::cb, &c, &req, nullptr) == LB_OK);
     c.wait_terminal();
     LB_CHECK(c.terminal == LB_EVENT_DONE);
     lb_request_free(req);
@@ -2269,7 +2274,7 @@ static json rt_wait(collector & c, const std::string & type, size_t * from) {
 
 static void rt_send(lb_request * req, const json & ev) {
     const std::string msg = ev.dump();
-    LB_CHECK(lb_request_send(req, msg.data(), msg.size()) == LB_OK);
+    LB_CHECK(lb_request_send(req, msg.data(), msg.size(), nullptr) == LB_OK);
 }
 
 // the clip's PCM16 as input_audio_buffer.append events of 100 ms
@@ -2294,7 +2299,7 @@ static void realtime_turn_in_memory() {
     lb_model * m = load_omni();
     collector c;
     lb_request * req = nullptr;
-    LB_CHECK(lb_model_request(m, "realtime", nullptr, nullptr, 0, collector::cb, &c, &req) == LB_OK);
+    LB_CHECK(lb_model_request(m, "realtime", nullptr, nullptr, 0, collector::cb, &c, &req, nullptr) == LB_OK);
     size_t at = 0;
     const json created = rt_wait(c, "session.created", &at);
     LB_CHECK(created.at("session").at("type") == "realtime");
@@ -2326,7 +2331,7 @@ static void realtime_turn_in_memory() {
     LB_CHECK(c.terminal == LB_EVENT_CANCELLED);
     LB_CHECK(c.n_terminal == 1 && !c.chunk_after_terminal);
     const std::string late = json{{"type", "response.create"}}.dump();
-    LB_CHECK(lb_request_send(req, late.data(), late.size()) == LB_ERR_CANCELLED);
+    LB_CHECK(lb_request_send(req, late.data(), late.size(), nullptr) == LB_ERR_CANCELLED);
     lb_request_free(req);
     lb_model_free(m);
 }
@@ -2337,15 +2342,15 @@ static void realtime_misuse_refused() {
     collector c;
     lb_request * req = nullptr;
     const std::string body = "{}";
-    LB_CHECK(lb_model_request(m, "realtime", nullptr, body.data(), body.size(), collector::cb, &c, &req) == LB_ERR_INVALID_ARG);
+    LB_CHECK(lb_model_request(m, "realtime", nullptr, body.data(), body.size(), collector::cb, &c, &req, nullptr) == LB_ERR_INVALID_ARG);
     LB_CHECK(req == nullptr);
     const std::vector<uint8_t> bytes = {1, 2, 3};
     LB_CHECK(start_with(m, "realtime", json(), {att_bytes("0", "audio/wav", bytes)}, c, &req) == LB_ERR_INVALID_ARG);
 
     const std::string b = chat_body("Hi", 4, false).dump();
-    LB_CHECK(lb_model_request(m, "chat", nullptr, b.data(), b.size(), collector::cb, &c, &req) == LB_OK);
-    LB_CHECK(lb_request_send(req, "{}", 2) == LB_ERR_INVALID_ARG);
-    LB_CHECK(lb_request_send(nullptr, "{}", 2) == LB_ERR_INVALID_ARG);
+    LB_CHECK(lb_model_request(m, "chat", nullptr, b.data(), b.size(), collector::cb, &c, &req, nullptr) == LB_OK);
+    LB_CHECK(lb_request_send(req, "{}", 2, nullptr) == LB_ERR_INVALID_ARG);
+    LB_CHECK(lb_request_send(nullptr, "{}", 2, nullptr) == LB_ERR_INVALID_ARG);
     c.wait_terminal();
     lb_request_free(req);
     lb_model_free(m);
@@ -2356,12 +2361,151 @@ static void realtime_model_free_closes_session() {
     lb_model * m = load_omni();
     collector c;
     lb_request * req = nullptr;
-    LB_CHECK(lb_model_request(m, "realtime", nullptr, nullptr, 0, collector::cb, &c, &req) == LB_OK);
+    LB_CHECK(lb_model_request(m, "realtime", nullptr, nullptr, 0, collector::cb, &c, &req, nullptr) == LB_OK);
     size_t at = 0;
     rt_wait(c, "session.created", &at);
     lb_model_free(m);
     LB_CHECK(c.n_terminal == 1 && c.terminal == LB_EVENT_CANCELLED);
     lb_request_free(req);
+}
+
+// Every refusal of lb_model_request_with has its own message, and nothing is started or called back
+static void request_refusals_have_their_own_messages() {
+    lb_model * m = load_test_model();
+    const std::string body = chat_body("Hi", 4, false).dump();
+    const std::vector<uint8_t> bytes = {1, 2, 3};
+    collector c;
+    struct refusal {
+        lb_model * model;
+        const char * endpoint;
+        const char * params;
+        const char * body;
+        std::vector<lb_attachment> atts;
+        bool null_atts;
+        lb_request_cb cb;
+        bool null_out;
+        std::string message;
+    };
+    lb_attachment two = att_bytes("0", "image/png", bytes);
+    two.fd = 0;
+    lb_attachment none = att_bytes("0", "image/png", bytes);
+    none.data = nullptr;
+    const std::vector<refusal> refusals = {
+        {nullptr, "chat", nullptr, nullptr, {}, false, collector::cb, false, "model is NULL"},
+        {m, nullptr, nullptr, nullptr, {}, false, collector::cb, false, "endpoint is NULL"},
+        {m, "chat", nullptr, nullptr, {}, false, nullptr, false, "cb is NULL"},
+        {m, "chat", nullptr, nullptr, {}, false, collector::cb, true, "out is NULL"},
+        {m, "chat", nullptr, nullptr, {}, true, collector::cb, false, "atts is NULL but n_atts is 1"},
+        {m, "nope", nullptr, nullptr, {}, false, collector::cb, false, "unknown endpoint \"nope\""},
+        {m, "realtime", nullptr, "{}", {}, false, collector::cb, false,
+         "realtime takes no body or attachments: send events with lb_request_send"},
+        {m, "chat", nullptr, nullptr, {att_bytes("", "image/png", bytes)}, false, collector::cb, false,
+         "attachment 0 has no name"},
+        {m, "chat", nullptr, nullptr, {none}, false, collector::cb, false,
+         "attachment 0 (\"0\") has no source: set one of path, fd or data"},
+        {m, "chat", nullptr, nullptr, {two}, false, collector::cb, false,
+         "attachment 0 (\"0\") has more than one source: set only one of path, fd or data"},
+        {m, "chat", nullptr, nullptr, {att_bytes("0", nullptr, bytes)}, false, collector::cb, false,
+         "attachment 0 (\"0\") has no mime, which this endpoint needs"},
+        {m, "chat", nullptr, nullptr, {att_bytes("a", "image/png", bytes), att_bytes("a", "image/png", bytes)}, false,
+         collector::cb, false, "attachment 1 (\"a\") repeats the name of attachment 0"},
+        {m, "chat", "{", nullptr, {}, false, collector::cb, false, "params_json is not valid JSON: "},
+        {m, "chat", "[]", nullptr, {}, false, collector::cb, false, "params_json must be a JSON object"},
+        {m, "chat", R"({"id_slot": 0})", nullptr, {}, false, collector::cb, false, "params_json \"id_slot\" must be a string"},
+    };
+    for (const refusal & r : refusals) {
+        const char * b = r.body ? r.body : body.c_str();
+        lb_request * req = nullptr;
+        char * err = nullptr;
+        const lb_status st = lb_model_request_with(r.model, r.endpoint, r.params, b, std::strlen(b),
+                                                   r.null_atts ? nullptr : r.atts.data(), r.null_atts ? 1 : r.atts.size(),
+                                                   r.cb, &c, r.null_out ? nullptr : &req, &err);
+        LB_CHECK(err != nullptr);
+        const std::string message = json::parse(err).at("error").get<std::string>();
+        lb_string_free(err);
+        if (st != LB_ERR_INVALID_ARG || message.rfind(r.message, 0) != 0) {
+            std::fprintf(stderr, "status %d, \"%s\"; expected \"%s\"\n", st, message.c_str(), r.message.c_str());
+        }
+        LB_CHECK(st == LB_ERR_INVALID_ARG);
+        LB_CHECK(message.rfind(r.message, 0) == 0);  // the JSON parser's own reason follows "not valid JSON: "
+        LB_CHECK(req == nullptr);
+    }
+    // the reason is optional: the same refusal with error_json NULL
+    lb_request * req = nullptr;
+    LB_CHECK(lb_model_request(m, "nope", nullptr, "{}", 2, collector::cb, &c, &req, nullptr) == LB_ERR_INVALID_ARG);
+    LB_CHECK(c.chunks.empty() && c.n_terminal == 0);
+
+    // lb_request_send's refusals
+    LB_CHECK(lb_model_request(m, "chat", nullptr, body.data(), body.size(), collector::cb, &c, &req, nullptr) == LB_OK);
+    char * err = nullptr;
+    LB_CHECK(lb_request_send(req, "{}", 2, &err) == LB_ERR_INVALID_ARG);
+    LB_CHECK(err && json::parse(err).at("error") == "not a realtime request: only realtime takes client events");
+    lb_string_free(err);
+    LB_CHECK(lb_request_send(nullptr, "{}", 2, &err) == LB_ERR_INVALID_ARG);
+    LB_CHECK(err && json::parse(err).at("error") == "req is NULL");
+    lb_string_free(err);
+    c.wait_terminal();
+    lb_request_free(req);
+    lb_model_free(m);
+}
+
+// A request started while lb_model_free is under way is LB_ERR_CLOSED, not a caller's mistake. A request whose
+// callback is held keeps lb_model_free waiting (it waits for every terminal event), so the model stays valid while
+// the test asks; lb_model_info says when the free has begun.
+static void request_on_a_closing_model_is_closed() {
+    lb_model * m = load_test_model();
+    std::mutex mtx;
+    std::condition_variable cv;
+    bool entered = false;
+    bool release = false;
+    struct holder {
+        std::mutex * mtx;
+        std::condition_variable * cv;
+        bool * entered;
+        bool * release;
+        static void cb(void * user, lb_event ev, int, const char *, size_t) {
+            auto * h = static_cast<holder *>(user);
+            std::unique_lock<std::mutex> lk(*h->mtx);
+            *h->entered = true;  // a terminal event counts too, so a stream without a chunk fails the wait below
+            h->cv->notify_all();
+            if (ev == LB_EVENT_CHUNK) h->cv->wait(lk, [h] { return *h->release; });
+        }
+    } h{&mtx, &cv, &entered, &release};
+    const std::string body = chat_body("Write a long story about a dragon.", 512, true).dump();
+    lb_request * held = nullptr;
+    LB_CHECK(lb_model_request(m, "chat", nullptr, body.data(), body.size(), holder::cb, &h, &held, nullptr) == LB_OK);
+    {
+        std::unique_lock<std::mutex> lk(mtx);
+        LB_CHECK(cv.wait_for(lk, std::chrono::seconds(120), [&] { return entered; }));  // inside its first chunk
+    }
+    std::thread freer([m] { lb_model_free(m); });
+    while (true) {  // until the free has begun: a few calls at most, each answered at once
+        char * info = nullptr;
+        char * err = nullptr;
+        const lb_status st = lb_model_info(m, &info, &err);
+        lb_string_free(info);
+        if (st == LB_ERR_CLOSED) {
+            LB_CHECK(err && json::parse(err).at("error") == "the model is being freed");
+            lb_string_free(err);
+            break;
+        }
+        LB_CHECK(st == LB_OK);
+        std::this_thread::yield();
+    }
+    collector c;
+    lb_request * req = nullptr;
+    char * err = nullptr;
+    LB_CHECK(lb_model_request(m, "chat", nullptr, body.data(), body.size(), collector::cb, &c, &req, &err) == LB_ERR_CLOSED);
+    LB_CHECK(err && json::parse(err).at("error") == "the model is being freed");
+    lb_string_free(err);
+    LB_CHECK(req == nullptr && c.chunks.empty() && c.n_terminal == 0);
+    {
+        std::lock_guard<std::mutex> lk(mtx);
+        release = true;
+    }
+    cv.notify_all();
+    freer.join();
+    lb_request_free(held);
 }
 
 int main(int argc, char ** argv) {
@@ -2417,6 +2561,8 @@ int main(int argc, char ** argv) {
         {"cancel_during_prefill_with_progress", cancel_during_prefill_with_progress},
         {"context_exceeded_returns_counts", context_exceeded_returns_counts},
         {"unknown_endpoint_invalid_arg", unknown_endpoint_invalid_arg},
+        {"request_refusals_have_their_own_messages", request_refusals_have_their_own_messages},
+        {"request_on_a_closing_model_is_closed", request_on_a_closing_model_is_closed},
         {"two_requests_one_slot_both_complete", two_requests_one_slot_both_complete},
         {"model_free_with_inflight_request", model_free_with_inflight_request},
         {"request_free_inside_callback", request_free_inside_callback},

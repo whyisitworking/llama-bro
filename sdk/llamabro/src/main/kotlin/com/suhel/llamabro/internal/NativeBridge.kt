@@ -30,11 +30,13 @@ internal object NativeBridge {
     /** `lb_fit_estimate`. Projects from headers and throws [NativeError] on failure. */
     external fun fitEstimate(configJson: String): String
 
+    /** `lb_model_info`. Throws [NativeError] on failure ([NativeError.CLOSED] once the model is being freed). */
     external fun modelInfo(model: Long): String
 
     /**
      * `lb_model_request_with`. Attachment `i` is [names]`[i]` and [mimes]`[i]` with one source: [paths]`[i]`,
-     * [fds]`[i]` (≥ 0, else -1) or [bytes]`[i]`, copied once. Throws [NativeError] if the request couldn't start.
+     * [fds]`[i]` (≥ 0, else -1) or [bytes]`[i]`, copied once. Throws [NativeError] with the C API's status and reason
+     * if the request couldn't start: [NativeError.CLOSED] when the model is being freed.
      */
     @Suppress("LongParameterList") // mirrors lb_model_request_with's arguments one for one
     external fun modelRequest(
@@ -57,7 +59,10 @@ internal object NativeBridge {
 
     external fun requestFree(request: Long)
 
-    /** `lb_request_send`: a realtime client event (D97); answers the `lb_status`. */
+    /**
+     * `lb_request_send`: a realtime client event (D97); answers the `lb_status` rather than throwing, since a closed
+     * conversation is an expected answer and this runs per audio chunk.
+     */
     external fun requestSend(request: Long, message: ByteArray): Int
 
     external fun modelFree(model: Long)

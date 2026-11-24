@@ -478,37 +478,78 @@ extern "C" {
 
 lb_status lb_model_request(lb_model * m, const char * endpoint, const char * params_json,
                            const char * body, size_t body_len, lb_request_cb cb, void * user,
-                           lb_request ** out) {
-    return lb_model_request_with(m, endpoint, params_json, body, body_len, nullptr, 0, cb, user, out);
+                           lb_request ** out, char ** error_json) {
+    return lb_model_request_with(m, endpoint, params_json, body, body_len, nullptr, 0, cb, user, out, error_json);
 }
 
 lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char * params_json,
                                 const char * body, size_t body_len, const lb_attachment * atts, size_t n_atts,
-                                lb_request_cb cb, void * user, lb_request ** out) {
-    return lb_guard(LB_ERR_INTERNAL, nullptr, [&]() -> lb_status {
+                                lb_request_cb cb, void * user, lb_request ** out, char ** error_json) {
+    return lb_guard(LB_ERR_INTERNAL, error_json, [&]() -> lb_status {
+        if (error_json) *error_json = nullptr;
         if (out) *out = nullptr;
-        if (!m || !endpoint || !cb || !out || (n_atts > 0 && !atts)) return LB_ERR_INVALID_ARG;
+        auto refuse = [error_json](lb_status st, const std::string & message) {
+            lb_set_error(error_json, message);
+            return st;
+        };
+        if (!m) return refuse(LB_ERR_INVALID_ARG, "model is NULL");
+        if (!endpoint) return refuse(LB_ERR_INVALID_ARG, "endpoint is NULL");
+        if (!cb) return refuse(LB_ERR_INVALID_ARG, "cb is NULL");
+        if (!out) return refuse(LB_ERR_INVALID_ARG, "out is NULL");
+        if (n_atts > 0 && !atts) return refuse(LB_ERR_INVALID_ARG, "atts is NULL but n_atts is " + std::to_string(n_atts));
 
         const bool realtime = std::strcmp(endpoint, kRealtime) == 0;
         const auto it = m->endpoints.find(endpoint);
         if (realtime) {
             // a WebSocket: no body or attachments, the client's events come through lb_request_send
-            if (body_len > 0 || n_atts > 0 || !m->routes || !m->routes->ws_realtime) return LB_ERR_INVALID_ARG;
+            if (body_len > 0 || n_atts > 0) {
+                return refuse(LB_ERR_INVALID_ARG, "realtime takes no body or attachments: send events with lb_request_send");
+            }
+            if (!m->routes || !m->routes->ws_realtime) return refuse(LB_ERR_INVALID_ARG, "this model has no realtime route");
         } else if (it == m->endpoints.end()) {
-            return LB_ERR_INVALID_ARG;
+            return refuse(LB_ERR_INVALID_ARG, std::string("unknown endpoint \"") + endpoint + "\"");
         }
         const bool transcription = std::strcmp(endpoint, kTranscriptions) == 0;
 
         // the caller's mistakes first, then every read, all before this returns (the caller may release its sources)
         for (size_t i = 0; i < n_atts; i++) {
             const lb_attachment & a = atts[i];
+            const std::string which = "attachment " + std::to_string(i);
+            if (!a.name || !*a.name) return refuse(LB_ERR_INVALID_ARG, which + " has no name");
+            const std::string named = which + " (\"" + a.name + "\")";
             const int sources = (a.path ? 1 : 0) + (a.fd >= 0 ? 1 : 0) + (a.data ? 1 : 0);
-            if (!a.name || !*a.name || sources != 1) return LB_ERR_INVALID_ARG;
-            if (!transcription && (!a.mime || !*a.mime)) return LB_ERR_INVALID_ARG;  // a data URL needs its type
+            if (sources == 0) return refuse(LB_ERR_INVALID_ARG, named + " has no source: set one of path, fd or data");
+            if (sources > 1) {
+                return refuse(LB_ERR_INVALID_ARG, named + " has more than one source: set only one of path, fd or data");
+            }
+            if (!transcription && (!a.mime || !*a.mime)) {  // a data URL needs its type
+                return refuse(LB_ERR_INVALID_ARG, named + " has no mime, which this endpoint needs");
+            }
             for (size_t j = 0; j < i; j++) {
-                if (std::strcmp(atts[j].name, a.name) == 0) return LB_ERR_INVALID_ARG;
+                if (std::strcmp(atts[j].name, a.name) == 0) {
+                    return refuse(LB_ERR_INVALID_ARG, named + " repeats the name of attachment " + std::to_string(j));
+                }
             }
         }
+        std::map<std::string, std::string> params;
+        std::string query;
+        if (params_json && *params_json) {
+            json p;
+            try {
+                p = json::parse(params_json);
+            } catch (const std::exception & e) {
+                return refuse(LB_ERR_INVALID_ARG, std::string("params_json is not valid JSON: ") + e.what());
+            }
+            if (!p.is_object()) return refuse(LB_ERR_INVALID_ARG, "params_json must be a JSON object");
+            for (const auto & item : p.items()) {
+                if (!item.value().is_string()) {
+                    return refuse(LB_ERR_INVALID_ARG, "params_json \"" + item.key() + "\" must be a string");
+                }
+                params[item.key()] = item.value().get<std::string>();
+                query += (query.empty() ? "" : "&") + item.key() + "=" + params[item.key()];
+            }
+        }
+
         std::vector<attachment> read;
         std::string att_error;
         media_links links;
@@ -550,23 +591,6 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
         }
         if (!att_error.empty()) read.clear();  // the request only reports the error
 
-        std::map<std::string, std::string> params;
-        std::string query;
-        if (params_json && *params_json) {
-            json p;
-            try {
-                p = json::parse(params_json);
-            } catch (...) {
-                return LB_ERR_INVALID_ARG;
-            }
-            if (!p.is_object()) return LB_ERR_INVALID_ARG;
-            for (const auto & item : p.items()) {
-                if (!item.value().is_string()) return LB_ERR_INVALID_ARG;
-                params[item.key()] = item.value().get<std::string>();
-                query += (query.empty() ? "" : "&") + item.key() + "=" + params[item.key()];
-            }
-        }
-
         auto * r = new lb_request();
         r->cb = cb;
         r->user = user;
@@ -577,7 +601,7 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
             std::lock_guard<std::mutex> lk(m->mtx);
             if (m->closing) {
                 delete r;
-                return LB_ERR_INVALID_ARG;
+                return refuse(LB_ERR_CLOSED, "the model is being freed");
             }
             m->requests.insert(r);
         }
@@ -594,7 +618,7 @@ lb_status lb_model_request_with(lb_model * m, const char * endpoint, const char 
             m->requests.erase(r);
             m->cv.notify_all();
             delete r;
-            return LB_ERR_INTERNAL;
+            return refuse(LB_ERR_INTERNAL, "could not start the request's thread");
         }
         *out = r;
         return LB_OK;
@@ -605,11 +629,26 @@ void lb_request_cancel(lb_request * r) {
     if (r) r->request_stop();
 }
 
-lb_status lb_request_send(lb_request * r, const char * msg, size_t len) {
-    return lb_guard(LB_ERR_INTERNAL, nullptr, [&]() -> lb_status {
-        if (!r || !r->realtime || (!msg && len > 0)) return LB_ERR_INVALID_ARG;
+lb_status lb_request_send(lb_request * r, const char * msg, size_t len, char ** error_json) {
+    return lb_guard(LB_ERR_INTERNAL, error_json, [&]() -> lb_status {
+        if (error_json) *error_json = nullptr;
+        if (!r) {
+            lb_set_error(error_json, "req is NULL");
+            return LB_ERR_INVALID_ARG;
+        }
+        if (!r->realtime) {
+            lb_set_error(error_json, "not a realtime request: only realtime takes client events");
+            return LB_ERR_INVALID_ARG;
+        }
+        if (!msg && len > 0) {
+            lb_set_error(error_json, "msg is NULL but len is " + std::to_string(len));
+            return LB_ERR_INVALID_ARG;
+        }
         std::lock_guard<std::mutex> lk(r->rt_mtx);
-        if (r->stop.load() || r->rt_closed) return LB_ERR_CANCELLED;
+        if (r->stop.load() || r->rt_closed) {
+            lb_set_error(error_json, "the conversation has closed");
+            return LB_ERR_CANCELLED;
+        }
         r->inbox.emplace_back(msg ? msg : "", len);
         r->rt_cv.notify_all();
         return LB_OK;

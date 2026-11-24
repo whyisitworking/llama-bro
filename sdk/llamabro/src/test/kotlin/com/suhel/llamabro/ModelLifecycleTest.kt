@@ -2,6 +2,7 @@ package com.suhel.llamabro
 
 import com.suhel.llamabro.spi.Engine
 import com.suhel.llamabro.spi.EngineModel
+import com.suhel.llamabro.spi.NativeError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -58,6 +59,30 @@ class ModelLifecycleTest {
         // close() returned at once; the native close runs once the request is out, in the background (D136)
         runBlocking { withTimeout(5_000) { model.closeAndJoin() } }
         assertTrue(engine.model.closed)
+    }
+
+    /** The C API's LB_ERR_CLOSED for a request start is the model closing, not a bad request, by its status alone. */
+    @Test
+    fun nativeClosedIsModelClosed() {
+        val engine = FakeEngine()
+        engine.model.onRequest = { throw NativeError(NativeError.CLOSED, """{"error":"the model is being freed"}""") }
+        val model = runBlocking { testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf")) }
+        val failure = runCatching { runBlocking { model.rawRequest(Endpoint.Props, "").collect() } }.exceptionOrNull()
+        assertTrue("expected ModelClosed, got $failure", failure is LlamaBroException.ModelClosed)
+        model.close()
+    }
+
+    /** The bridge's own failure at request start is a server error with its message, not a bad request. */
+    @Test
+    fun nativeInternalIsServerError() {
+        val engine = FakeEngine()
+        engine.model.onRequest = { throw NativeError(NativeError.INTERNAL, """{"error":"internal error: boom"}""") }
+        val model = runBlocking { testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf")) }
+        val failure = runCatching { runBlocking { model.rawRequest(Endpoint.Props, "").collect() } }.exceptionOrNull()
+        assertTrue("expected ServerError, got $failure", failure is LlamaBroException.ServerError)
+        assertEquals(500, (failure as LlamaBroException.ServerError).httpStatus)
+        assertEquals("internal error: boom", failure.message)
+        model.close()
     }
 
     /** A model whose info can't be read after the native load is freed, not leaked, and the load fails typed. */

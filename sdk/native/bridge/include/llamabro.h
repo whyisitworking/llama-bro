@@ -6,14 +6,20 @@
 extern "C" {
 #endif
 
+// Errors have one shape. Every call that can fail returns an lb_status and takes `char ** error_json` last: on failure
+// *error_json is {"error": "<the specific reason>"} (lb_model_load and lb_fit_estimate add "code" for some, below), on LB_OK it is NULL;
+// free it with lb_string_free. error_json may be NULL when the caller doesn't want the reason. The status says what
+// kind of failure it was, the message which one. Calls that can't fail (lb_version, lb_runtime_devices,
+// lb_runtime_backends) return their value directly.
 typedef enum {
     LB_OK = 0,
-    LB_ERR_INVALID_ARG = 1,          // bad JSON, unknown config key, unknown endpoint
+    LB_ERR_INVALID_ARG = 1,          // the caller's mistake: bad JSON, unknown config key or endpoint, a bad attachment
     LB_ERR_ALREADY_INITIALIZED = 2,  // lb_runtime_init called again with a different config
-    LB_ERR_NOT_INITIALIZED = 3,
-    LB_ERR_LOAD_FAILED = 4,
+    LB_ERR_NOT_INITIALIZED = 3,      // lb_runtime_init has not been called
+    LB_ERR_LOAD_FAILED = 4,          // a model file is missing or llama.cpp could not load or measure it
     LB_ERR_INTERNAL = 5,
-    LB_ERR_CANCELLED = 6,            // lb_model_load stopped because its progress callback returned false
+    LB_ERR_CANCELLED = 6,            // lb_model_load's progress callback said stop; lb_request_send after the end
+    LB_ERR_CLOSED = 7,               // a call made while lb_model_free waits for in-flight requests (see there)
 } lb_status;
 
 typedef enum { LB_EVENT_CHUNK = 0, LB_EVENT_DONE = 1, LB_EVENT_CANCELLED = 2 } lb_event;
@@ -48,9 +54,12 @@ lb_status lb_runtime_init(const char * config_json, char ** error_json);
 void lb_runtime_set_log(lb_log_cb cb, void * user);
 char * lb_runtime_devices(void);                                       // [{"name","description","type","memory_free","memory_total"}]
 char * lb_runtime_backends(void);                                      // [{"name","loaded","error","devices"}], "cpu" first; [] before init
-// Dry-run the same model config and device fit as lb_model_load, without loading tensors. Returns a JSON object with
-// fits, n_ctx, n_ctx_min, used_min_mib, used_max_mib and budget_mib; NULL plus error_json on failure.
-char * lb_fit_estimate(const char * config_json, char ** error_json);
+// Dry-run the same model config and device fit as lb_model_load, without loading tensors. On LB_OK *out_json is a JSON
+// object with fits, n_ctx, n_ctx_min, used_min_mib, used_max_mib and budget_mib (free with lb_string_free). Fails as
+// lb_model_load does: LB_ERR_NOT_INITIALIZED, LB_ERR_INVALID_ARG for the config, LB_ERR_LOAD_FAILED (with "code":
+// "file_not_found" for a file that can't be opened; the only code it sets) when a file can't be read or measured;
+// LB_ERR_INTERNAL for anything unexpected, out of memory included.
+lb_status lb_fit_estimate(const char * config_json, char ** out_json, char ** error_json);
 
 // On LB_ERR_LOAD_FAILED, error_json is {"error": "<why, with llama.cpp's own reason>"}, plus "code": "file_not_found"
 // when the model or mmproj file can't be opened.
@@ -65,7 +74,8 @@ char * lb_fit_estimate(const char * config_json, char ** error_json);
 // A progress callback that returns false stops the load (D67). A stop takes effect only from a progress call: while
 // weights are read (the model, its draft and its image encoder), the read stops within one tensor. If the callback
 // said stop on a call whose answer the load can't act on (MTP's own 0 and 1, the last tick), the load finishes and is
-// then freed. Either way the result is LB_ERR_CANCELLED with nothing allocated: *out and *error_json stay NULL.
+// then freed. Either way the result is LB_ERR_CANCELLED with nothing allocated: *out stays NULL and error_json is
+// {"error": "model load cancelled"}.
 // Nothing calls cb after the last weight tick, so the stages without progress (creating the context, the warm-up
 // decode, compiling GPU kernels, the NPU session) can't be stopped: a caller that cancels during them gets LB_OK and
 // frees the returned model itself. With an image encoder or a draft, the text model's context and warm-up come before
@@ -73,7 +83,9 @@ char * lb_fit_estimate(const char * config_json, char ** error_json);
 // Flutter or KMP one) must free a model returned with LB_OK after their caller cancelled, as the Kotlin runtime does.
 // cb and user are not used once lb_model_load returns.
 lb_status lb_model_load(const char * config_json, lb_progress_cb cb, void * user, lb_model ** out, char ** error_json);
-char * lb_model_info(lb_model * model);
+// On LB_OK *out_json is {"devices","ctx_fit","speculative","n_ctx","n_ctx_train","n_params","size","desc","metadata",
+// "props"} (free with lb_string_free); LB_ERR_CLOSED while lb_model_free is waiting for in-flight requests.
+lb_status lb_model_info(lb_model * model, char ** out_json, char ** error_json);
 // endpoint: every route tools/server/server.cpp registers for one model (server_register_routes), by name:
 //   chat (/v1/chat/completions), count_tokens (/v1/chat/completions/input_tokens), control (…/control),
 //   completion (/completion), completion_oai (/v1/completions), infill (/infill),
@@ -93,9 +105,12 @@ char * lb_model_info(lb_model * model);
 //   /models/load, /v1/stream and /v1/streams/lookup, the GCP compat routes).
 // params_json: path/query params as a flat JSON object (e.g. {"id_slot":"0","action":"save"}), or NULL.
 // lb_model_request_with below is the same call with attachments; this one sends none.
+// LB_ERR_INVALID_ARG for the caller's mistakes, each with its own message: a NULL model, endpoint, cb or out; an
+// unknown endpoint; realtime with a body or attachments, or on a model without it; params_json that isn't a JSON
+// object of strings. LB_ERR_CLOSED while lb_model_free is waiting for in-flight requests. On failure *out stays NULL and cb is never called.
 lb_status lb_model_request(lb_model * model, const char * endpoint, const char * params_json,
                            const char * body, size_t body_len, lb_request_cb cb, void * user,
-                           lb_request ** out);
+                           lb_request ** out, char ** error_json);
 
 // A file sent beside a request (D84): exactly one of path, fd (>= 0) or data (len bytes) is set; set path NULL,
 // fd -1 and data NULL for the others. Every attachment is read before lb_model_request_with returns, so the caller
@@ -127,19 +142,25 @@ typedef struct {
 } lb_attachment;
 
 // lb_model_request with attachments. LB_ERR_INVALID_ARG, as for a bad endpoint or params_json, when an attachment
-// has no name, a name used twice, not exactly one source, or (on a route other than transcriptions) no mime. A file
+// has no name, a name used twice, not exactly one source, or (on a route other than transcriptions) no mime; the
+// message names the attachment. A file
 // that can't be read, audio that isn't WAV, MP3 or FLAC, or a placeholder with no attachment of its name is the
 // request's error, as llama-server answers a bad body: one CHUNK with status 400 and
 // {"error": {"code": 400, "message": "...", "type": "invalid_request_error"}}, then DONE.
 lb_status lb_model_request_with(lb_model * model, const char * endpoint, const char * params_json,
                                 const char * body, size_t body_len, const lb_attachment * atts, size_t n_atts,
-                                lb_request_cb cb, void * user, lb_request ** out);
+                                lb_request_cb cb, void * user, lb_request ** out, char ** error_json);
 void lb_request_cancel(lb_request * req);      // idempotent; the terminal event follows soon after
 // Realtime only: one client event (a WebSocket text message, e.g. {"type":"input_audio_buffer.append",...}), copied
 // and queued in order. LB_ERR_INVALID_ARG for another endpoint's request; LB_ERR_CANCELLED once the conversation has
 // closed (cancelled, or ended by the server). May be called from inside the callback.
-lb_status lb_request_send(lb_request * req, const char * msg, size_t len);
+lb_status lb_request_send(lb_request * req, const char * msg, size_t len, char ** error_json);
 void lb_request_free(lb_request * req);        // never blocks; may be called from inside the callback
+// Lifetime: the model is deleted when this returns, so lb_model_free must not run concurrently with, or before, any
+// other call on the same model, except while this free is still waiting for in-flight requests to end: a call made
+// during that wait finds the model closing and gets LB_ERR_CLOSED. LB_ERR_CLOSED does not make a call that races the
+// end of the free safe; the caller serialises frees against every other call on the model, as the Kotlin layer does
+// with its gate lock.
 void lb_model_free(lb_model * model);          // cancels in-flight requests, waits for their terminal
                                                // events, stops the loop, joins the worker thread
 

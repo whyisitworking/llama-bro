@@ -185,10 +185,11 @@ public class Model internal constructor(
                     }
                 } catch (e: NativeError) {
                     unregister(call)
-                    throw if (closed.get()) {
-                        LlamaBroException.ModelClosed(
-                            e,
-                        )
+                    throw if (e.status == NativeError.CLOSED || closed.get()) {
+                        LlamaBroException.ModelClosed(e)
+                    } else if (e.status == NativeError.INTERNAL) {
+                        // the bridge's own failure, not the caller's mistake
+                        LlamaBroException.ServerError(HTTP_INTERNAL_ERROR, ErrorMapping.nativeMessage(e.errorJson), e)
                     } else {
                         LlamaBroException.InvalidRequest(ErrorMapping.nativeMessage(e.errorJson), e)
                     }
@@ -510,3 +511,6 @@ public fun Model.restoreConversation(json: String, configure: Conversation.Build
 
 /** From this HTTP status up, a response is an error. */
 private const val HTTP_ERROR_FROM = 400
+
+/** The status a native failure that isn't the caller's mistake is reported with. */
+private const val HTTP_INTERNAL_ERROR = 500
