@@ -89,4 +89,49 @@ class FitEstimateTest {
         }
         assertTrue(fake.initConfigs.isEmpty())
     }
+
+    private val cpu = """{"name":"cpu","loaded":true,"error":null,"devices":["CPU"]}"""
+    private val opencl = """{"name":"opencl","loaded":true,"error":null,"devices":["GPUOpenCL"]}"""
+
+    @Test fun estimateSkipsTheGpuWhenDraftingAndNamesWhy() {
+        for (spec in listOf(Speculative.Mtp(4), Speculative.Ngram(), Speculative.Ngram(then = Speculative.Mtp(4)))) {
+            val fake = FakeEngine().apply { backendsJson = "[$cpu,$opencl]" }
+            val estimate =
+                runBlocking { testLlamaBro(fake).estimateFit(ModelSource.file("/m.gguf")) { speculative = spec } }
+            assertEquals(spec.toString(), DeviceKind.Cpu, estimate.device)
+            val plain = runBlocking { testLlamaBro(fake).estimateFit(ModelSource.file("/m.gguf")) }
+            assertEquals(DeviceKind.Gpu, plain.device)
+            try {
+                runBlocking {
+                    testLlamaBro(fake).estimateFit(ModelSource.file("/m.gguf")) {
+                        speculative = spec
+                        devicePolicy = DevicePolicy.Only(DeviceKind.Gpu)
+                    }
+                }
+                fail("Only(Gpu) with $spec estimated")
+            } catch (x: LlamaBroException.DeviceUnavailable) {
+                assertEquals(DeviceKind.Gpu, x.kind)
+                assertTrue(x.message, x.message!!.startsWith("no Gpu device could estimate the model: "))
+                assertTrue(x.message, x.message!!.contains("OpenCL"))
+            }
+        }
+    }
+
+    private val hexagon = """{"name":"hexagon","loaded":true,"error":null,"devices":["HTP0"]}"""
+
+    @Test fun estimateWithMtpGoesToTheNpuWhenThereIsOne() {
+        val fake = FakeEngine().apply { backendsJson = "[$cpu,$opencl,$hexagon]" }
+        val estimate =
+            runBlocking {
+                testLlamaBro(fake).estimateFit(ModelSource.file("/m.gguf")) { speculative = Speculative.Mtp(4) }
+            }
+        assertEquals(DeviceKind.Npu, estimate.device)
+    }
+
+    @Test fun estimateWithDFlashSkipsTheGpu() {
+        val fake = FakeEngine().apply { backendsJson = "[$cpu,$opencl]" }
+        val source = ModelSource.file("/m.gguf") { draft = "/d.gguf" }
+        val estimate = runBlocking { testLlamaBro(fake).estimateFit(source) { speculative = Speculative.DFlash() } }
+        assertEquals(DeviceKind.Cpu, estimate.device)
+    }
 }

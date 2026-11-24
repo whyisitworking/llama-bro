@@ -7,6 +7,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class RuntimeTest {
     @Test
@@ -159,5 +160,36 @@ class RuntimeTest {
     fun devicesParsed() {
         val devices = runBlocking { testLlamaBro().devices() }
         assertEquals(listOf(DeviceInfo("CPU", "cpu", DeviceKind.Cpu, 1, 2)), devices)
+    }
+
+    /**
+     * The sweep also runs when native init is triggered by `devices()` rather than a model load (the load path is
+     * ModelConfigTest's), and removes a regular file left in the media folder as well as folders.
+     */
+    @Test
+    fun initThroughDevicesSweepsEndedProcessesMediaFoldersAndStrayFiles() {
+        val dir = tempDir()
+        val media = File(dir, "llamabro/media")
+        val dead = File(media, "300-aaaa").also { it.mkdirs() }
+        val sameWhoseFolderEnded = File(media, "100-bbbb").also { it.mkdirs() }
+        val running = File(media, "200-cccc").also { it.mkdirs() }
+        val stray = File(media, "junk").also { it.mkdirs() }
+        val strayFile = File(media, "400-file").also { it.writeText("x") }
+        File(dead, "link").writeText("x")
+        val runtime =
+            LlamaBroRuntime(
+                FakeEngine(),
+                dir,
+                "/b",
+                LlamaBroConfig.Default,
+                processId = 100,
+                processAlive = { it == 200 },
+            )
+        runBlocking { runtime.devices() }
+        assertTrue(running.exists())
+        listOf(dead, sameWhoseFolderEnded, stray, strayFile).forEach { assertTrue(it.path, !it.exists()) }
+        val own = media.listFiles()!!.filter { it != running }
+        assertEquals(own.toString(), 1, own.size)
+        assertTrue(own.single().name.startsWith("100-") && own.single().isDirectory)
     }
 }

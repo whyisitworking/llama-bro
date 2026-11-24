@@ -1900,6 +1900,7 @@ public final class com/suhel/llamabro/spi/LogcatLogger : com/suhel/llamabro/Logg
 }
 
 public final class com/suhel/llamabro/spi/NativeError : java/lang/RuntimeException {
+	public static final field ALREADY_INITIALIZED I
 	public static final field CANCELLED I
 	public static final field CLOSED I
 	public static final field Companion Lcom/suhel/llamabro/spi/NativeError$Companion;

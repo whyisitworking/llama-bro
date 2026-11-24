@@ -10,6 +10,9 @@ import com.suhel.llamabro.InternalLlamaBroApi
 @InternalLlamaBroApi
 public class NativeError(public val status: Int, public val errorJson: String) : RuntimeException(errorJson) {
     public companion object {
+        /** `LB_ERR_ALREADY_INITIALIZED`: runtime init ran before in this process, with a different config. */
+        public const val ALREADY_INITIALIZED: Int = 2
+
         /** `LB_ERR_LOAD_FAILED`: a model file is missing, or llama.cpp could not load or measure it. */
         public const val LOAD_FAILED: Int = 4
 

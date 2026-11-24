@@ -1,5 +1,23 @@
 package com.suhel.llamabro.internal
 
+import com.suhel.llamabro.ModelConfig
+import com.suhel.llamabro.ModelSource
+import java.io.File
+
+internal const val BYTES_PER_MIB = 1024L * 1024L
+
+/** [ModelConfig.toJson] with the runtime's slot and media folders (D87). */
+internal fun ModelConfig.loadJson(
+    slotsDir: File,
+    mediaDir: File,
+    source: ModelSource,
+    devices: List<String>,
+    memoryBudgetMib: Long?,
+    mmprojDevice: String? = null,
+    smallestContext: Boolean = false,
+): String =
+    toJson(source, slotsDir.path + "/", devices, memoryBudgetMib, mmprojDevice, smallestContext, mediaDir.path + "/")
+
 /**
  * What a model may use in total for `ContextSize.Auto` (D33), from Android's view of memory at load time. The
  * native side fits the context to it with upstream's own measurement, over every device, since a phone has one RAM.
