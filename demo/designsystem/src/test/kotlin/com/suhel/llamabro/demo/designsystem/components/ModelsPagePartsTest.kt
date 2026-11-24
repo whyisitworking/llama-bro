@@ -65,7 +65,7 @@ class ModelsPagePartsTest {
     @Test
     fun aDialogCardShowsWhatItHoldsBetweenItsTextAndItsButtons() {
         show {
-            DialogCard("What's a model?", "A model is the mind that answers you.", "Got it", {}, null, {}) {
+            DialogCard("What's a model?", "A model is the mind that answers you.", "Got it", {}, {}) {
                 SectionNote("Inside")
             }
         }

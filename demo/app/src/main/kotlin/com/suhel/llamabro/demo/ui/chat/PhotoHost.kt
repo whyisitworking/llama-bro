@@ -39,7 +39,7 @@ fun PhotoHost(target: OpenPhoto, rows: List<ChatItem>, onPageChange: (Int) -> Un
     val longSide = max(window.width, window.height)
     // the photo first shown decodes first; the page changing afterwards doesn't restart the decoding
     val first = remember(files) { target.index }
-    PhotoViewerDialog(rememberFullImages(files, longSide, first), target.index, onPageChange, onClose)
+    PhotoViewerDialog(rememberFullImages(files, longSide, first), target.index, onClose, onPageChange)
 }
 
 /**

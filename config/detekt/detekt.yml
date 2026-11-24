@@ -64,7 +64,7 @@ style:
     active: true
   # a preview is used by the IDE, not by code
   UnusedPrivateFunction:
-    ignoreAnnotated: ['Preview', 'LightDarkPreviews', 'PreviewLightDark']
+    ignoreAnnotated: ['Preview', 'LightDarkPreviews', 'PreviewLightDark', 'VoiceModePreviews']
   UseOrEmpty:
     excludes: ['**/test/**', '**/androidTest/**']
   # Room generates the DAO from an abstract class, and the SDK's sealed classes are part of its API (D26)

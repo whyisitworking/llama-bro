@@ -147,8 +147,8 @@ class ModelsPageComponentsTest {
                     "0.9 GB has arrived. Cancelling deletes it.",
                     "Cancel download",
                     {},
-                    "Keep",
                     {},
+                    dismissLabel = "Keep",
                     danger = true,
                 )
             }
@@ -165,7 +165,15 @@ class ModelsPageComponentsTest {
     fun keepIsABorderedButtonTheConfirmsHeightNotUnderlinedText() {
         show {
             Box(Modifier.width(360.dp)) {
-                DialogCard("Remove Qwen3.5 4B?", "This frees 3.4 GB.", "Remove", {}, "Keep", {}, danger = true)
+                DialogCard(
+                    "Remove Qwen3.5 4B?",
+                    "This frees 3.4 GB.",
+                    "Remove",
+                    {},
+                    {},
+                    dismissLabel = "Keep",
+                    danger = true,
+                )
             }
         }
         val keep =
@@ -188,7 +196,7 @@ class ModelsPageComponentsTest {
     fun theDialogsTitleIsAStepOverItsLine() {
         show(fontScale = 2f) {
             Box(Modifier.width(320.dp)) {
-                DialogCard("What's a model?", "A model is the part that writes the replies.", "Got it", {}, null, {})
+                DialogCard("What's a model?", "A model is the part that writes the replies.", "Got it", {}, {})
             }
         }
         val title =

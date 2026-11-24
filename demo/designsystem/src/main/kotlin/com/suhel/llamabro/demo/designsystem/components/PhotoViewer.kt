@@ -30,7 +30,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -53,7 +52,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -61,10 +59,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.toSize
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.DialogWindowProvider
-import androidx.core.view.WindowCompat
 import com.suhel.llamabro.demo.designsystem.R
 import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
@@ -100,22 +94,8 @@ sealed interface ViewerPhoto {
  * dim of its own (the viewer draws its backdrop, which fades on a pull) and light-on-dark system bars in both themes.
  */
 @Composable
-fun PhotoViewerDialog(photos: List<ViewerPhoto>, startAt: Int, onPageChange: (Int) -> Unit, onClose: () -> Unit) {
-    Dialog(
-        onDismissRequest = onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
-        val view = LocalView.current
-        val window = (view.parent as? DialogWindowProvider)?.window
-        SideEffect {
-            window?.let {
-                it.setDimAmount(0f)
-                WindowCompat.getInsetsController(it, view).apply {
-                    isAppearanceLightStatusBars = false
-                    isAppearanceLightNavigationBars = false
-                }
-            }
-        }
+fun PhotoViewerDialog(photos: List<ViewerPhoto>, startAt: Int, onClose: () -> Unit, onPageChange: (Int) -> Unit = {}) {
+    FullScreenDialog(onDismissRequest = onClose, lightBars = false) {
         PhotoViewer(photos, startAt, onClose, onPageChange = onPageChange)
     }
 }

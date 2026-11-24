@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.suhel.llamabro.demo.designsystem.components.Composer
 import com.suhel.llamabro.demo.designsystem.components.ComposerState
+import com.suhel.llamabro.demo.designsystem.components.ComposerVoiceActions
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DictationBar
 import com.suhel.llamabro.demo.designsystem.components.Gap
@@ -15,7 +16,6 @@ import com.suhel.llamabro.demo.designsystem.components.RecordingState
 import com.suhel.llamabro.demo.designsystem.components.SearchField
 import com.suhel.llamabro.demo.designsystem.components.TextArea
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
-import com.suhel.llamabro.demo.designsystem.components.VoiceActions
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 
 /**
@@ -126,10 +126,10 @@ private fun dictating(bar: DictationBar) =
     ComposerState("", canAttach = true, think = null, busy = false, canRecord = true, dictation = bar)
 
 /** Voice actions with dictation, so the mic takes a tap and a hold. */
-private val DictatingVoice = VoiceActions({}, {}, {}, onDictate = {})
+private val DictatingVoice = ComposerVoiceActions({}, {}, {}, onDictate = {})
 
 @Composable
-private fun SampleComposer(state: ComposerState, placeholder: String, voice: VoiceActions = DictatingVoice) {
+private fun SampleComposer(state: ComposerState, placeholder: String, voice: ComposerVoiceActions = DictatingVoice) {
     Composer(
         state = state,
         placeholder = placeholder,

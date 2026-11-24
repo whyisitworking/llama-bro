@@ -32,23 +32,26 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 
 /**
- * How a model runs on this phone, as a word ("Runs great", "Slow here"), in the ink of its [tint] (demo design §8.6).
- * The app maps its fit label to a [CardTint] (`FitTint` in `:app`) and passes the same tint to the card and the text,
- * so the two can't disagree.
+ * How a model runs on this phone, as a word ("Runs great", "Slow here"), in the ink of its [level] (demo design §8.6):
+ * the same ink as the [level]'s [FitSymbol], so the word and the figure can't disagree. A fit is never a card fill
+ * (D48): a card says *selected* with its border and nothing else, so one signal means one thing.
  */
 @Composable
-fun FitText(label: String, tint: CardTint, modifier: Modifier = Modifier, style: TextStyle = DemoType.label) {
+fun FitText(label: String, level: FitLevel, modifier: Modifier = Modifier, style: TextStyle = DemoType.label) {
     Text(
         label,
         modifier,
-        color = tint.ink(LocalDemoColors.current),
+        color = level.ink(LocalDemoColors.current),
         style = style,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
 }
 
-/** How a model runs on this phone, as the figure that stands for it (models-screen design, "The fit symbol"). */
+/**
+ * How a model runs on this phone, as the figure and the ink that stand for it (models-screen design, "The fit symbol"):
+ * [Great] a sage green, [Slow] a sand brown, [TooBig] and [CantChat] a grey; "runs well" is [Well], the plain ink.
+ */
 enum class FitLevel { Great, Well, Slow, TooBig, CantChat }
 
 private fun FitLevel.icon(): ImageVector =
@@ -60,7 +63,7 @@ private fun FitLevel.icon(): ImageVector =
         FitLevel.CantChat -> DemoIcons.NoEntry
     }
 
-private fun FitLevel.ink(colors: DemoColors): Color =
+internal fun FitLevel.ink(colors: DemoColors): Color =
     when (this) {
         FitLevel.Great -> colors.greatInk
         FitLevel.Well -> colors.ink

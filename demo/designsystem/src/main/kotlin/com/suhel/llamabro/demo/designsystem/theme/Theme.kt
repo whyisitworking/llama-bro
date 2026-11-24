@@ -124,7 +124,7 @@ fun DemoTheme(themeMode: ThemeMode = ThemeMode.System, content: @Composable () -
             ThemeMode.Light -> false
             ThemeMode.Dark -> true
         }
-    val colors = if (dark) Dark else Light
+    val colors = if (dark) DarkDemoColors else LightDemoColors
     CompositionLocalProvider(LocalDemoColors provides colors) {
         MaterialTheme(
             colorScheme = colors.toScheme(),

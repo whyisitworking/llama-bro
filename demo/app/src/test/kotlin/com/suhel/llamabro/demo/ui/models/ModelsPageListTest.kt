@@ -26,7 +26,7 @@ import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.designsystem.components.DownloadStage
 import com.suhel.llamabro.demo.designsystem.components.DownloadView
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
-import com.suhel.llamabro.demo.designsystem.theme.Light
+import com.suhel.llamabro.demo.designsystem.theme.LightDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.models.Capability
 import com.suhel.llamabro.demo.models.Catalog
@@ -206,7 +206,7 @@ class ModelsPageListTest {
         show()
         val name = rule.onNodeWithText("Qwen3 Embedding 0.6B")
         assertEquals(
-            Light.ink,
+            LightDemoColors.ink,
             name
                 .layout()
                 .layoutInput.style.color,

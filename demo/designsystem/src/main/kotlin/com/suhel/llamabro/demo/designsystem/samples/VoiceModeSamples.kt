@@ -1,8 +1,15 @@
 package com.suhel.llamabro.demo.designsystem.samples
 
+import android.content.res.Configuration
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.components.VoicePhase
 import com.suhel.llamabro.demo.designsystem.components.VoiceView
 import com.suhel.llamabro.demo.designsystem.components.VoiceViewActions
@@ -50,24 +57,40 @@ internal fun VoiceModeSample(phase: VoicePhase) {
     CompositionLocalProvider(LocalAnimatorDurationScale provides 0f) { VoiceView(state, actions) }
 }
 
-@Preview(name = "Ready", widthDp = 360, heightDp = 780)
+/** Voice mode's four phases one under another, for the gallery: each view is a phone's height. */
+@Composable
+internal fun VoiceModeSamples() {
+    Column {
+        for (phase in VoicePhase.entries) {
+            Box(Modifier.fillMaxWidth().height(VOICE_SAMPLE_HEIGHT.dp)) { VoiceModeSample(phase) }
+        }
+    }
+}
+
+private const val VOICE_SAMPLE_HEIGHT = 780
+
+/** Light and dark at a phone's size. */
+@Preview(name = "Light", widthDp = 360, heightDp = VOICE_SAMPLE_HEIGHT)
+@Preview(
+    name = "Dark",
+    widthDp = 360,
+    heightDp = VOICE_SAMPLE_HEIGHT,
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+)
+private annotation class VoiceModePreviews
+
+@VoiceModePreviews
 @Composable
 private fun VoiceReadyPreview() = DemoTheme { VoiceModeSample(VoicePhase.Ready) }
 
-@Preview(name = "Listening", widthDp = 360, heightDp = 780)
+@VoiceModePreviews
 @Composable
 private fun VoiceListeningPreview() = DemoTheme { VoiceModeSample(VoicePhase.Listening) }
 
-@Preview(name = "Thinking", widthDp = 360, heightDp = 780)
+@VoiceModePreviews
 @Composable
 private fun VoiceThinkingPreview() = DemoTheme { VoiceModeSample(VoicePhase.Thinking) }
 
-@Preview(name = "Speaking, light", widthDp = 360, heightDp = 780)
-@Preview(
-    name = "Speaking, dark",
-    widthDp = 360,
-    heightDp = 780,
-    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
-)
+@VoiceModePreviews
 @Composable
 private fun VoiceSpeakingPreview() = DemoTheme { VoiceModeSample(VoicePhase.Speaking) }

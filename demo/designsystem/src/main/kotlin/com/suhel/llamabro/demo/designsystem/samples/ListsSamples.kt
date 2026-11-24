@@ -6,16 +6,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.suhel.llamabro.demo.designsystem.components.CardTint
+import com.suhel.llamabro.demo.designsystem.components.ChatHistoryEntry
+import com.suhel.llamabro.demo.designsystem.components.ChatHistoryGroup
+import com.suhel.llamabro.demo.designsystem.components.ChatHistoryList
 import com.suhel.llamabro.demo.designsystem.components.ChatRow
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DialogCard
 import com.suhel.llamabro.demo.designsystem.components.FitLevel
-import com.suhel.llamabro.demo.designsystem.components.GroupedLazyList
 import com.suhel.llamabro.demo.designsystem.components.GroupedList
-import com.suhel.llamabro.demo.designsystem.components.LineRow
-import com.suhel.llamabro.demo.designsystem.components.ListEntry
-import com.suhel.llamabro.demo.designsystem.components.ListGroup
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.ModelRow
 import com.suhel.llamabro.demo.designsystem.components.NavRow
@@ -26,6 +24,7 @@ import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.SectionLabel
 import com.suhel.llamabro.demo.designsystem.components.SectionNote
 import com.suhel.llamabro.demo.designsystem.components.SheetFrame
+import com.suhel.llamabro.demo.designsystem.components.SidebarChatRow
 import com.suhel.llamabro.demo.designsystem.components.StatusPill
 import com.suhel.llamabro.demo.designsystem.components.SwipeToRemove
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
@@ -54,14 +53,14 @@ internal fun ListsSamples() {
         }
         // the sidebar's places and history (D126)
         NavRow(DemoIcons.Models, "Models", onClick = {}, note = "3 on this phone")
-        LineRow("Explain mixture of experts", trailing = "11:02 am")
-        GroupedLazyList(
+        SidebarChatRow("Explain mixture of experts", trailing = "11:02 am")
+        ChatHistoryList(
             listOf(
-                ListGroup(
+                ChatHistoryGroup(
                     "Today",
                     listOf(
-                        ListEntry(1, "Portfolio bio", true, "2:14 pm"),
-                        ListEntry(2, "Monstera brown edges", false, "9:40 am"),
+                        ChatHistoryEntry(1, "Portfolio bio", true, "2:14 pm"),
+                        ChatHistoryEntry(2, "Monstera brown edges", false, "9:40 am"),
                     ),
                 ),
             ),
@@ -124,13 +123,13 @@ internal fun ListsSheetSamples() {
         SheetFrame {
             QuantHeader("Quant", "Size", "On this phone")
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                QuantRow("Q3_K_M", "1.9 GB", "Fits", CardTint.TooBig, selected = false)
-                QuantRow("IQ4_XS", "2.4 GB", "Runs well", CardTint.Great, selected = false)
-                QuantRow("Q4_K_M", "2.8 GB", "Runs well", CardTint.Great, selected = true, edgeLabel = "Recommended")
-                QuantRow("Q8_0", "4.5 GB", "Slow", CardTint.Slow, selected = false)
+                QuantRow("Q3_K_M", "1.9 GB", "Fits", FitLevel.TooBig, selected = false)
+                QuantRow("IQ4_XS", "2.4 GB", "Runs well", FitLevel.Great, selected = false)
+                QuantRow("Q4_K_M", "2.8 GB", "Runs well", FitLevel.Great, selected = true, edgeLabel = "Recommended")
+                QuantRow("Q8_0", "4.5 GB", "Slow", FitLevel.Slow, selected = false)
             }
             Section("Image reader") {
-                QuantRow("BF16", "0.7 GB", "Included", CardTint.Great, selected = false, included = true)
+                QuantRow("BF16", "0.7 GB", "Included", FitLevel.Great, selected = false, included = true)
             }
         }
     }

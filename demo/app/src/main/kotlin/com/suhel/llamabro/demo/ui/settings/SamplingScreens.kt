@@ -57,7 +57,7 @@ fun SamplingModelsContent(
             GroupedList {
                 if (rows.isEmpty()) row { ListRow("No models yet", subtitle = "Get a model to set its values") }
                 for (r in rows) {
-                    row {
+                    row(key = r.key) {
                         ListRow(
                             r.name,
                             subtitle = changedLine(r.changed),
@@ -170,7 +170,7 @@ fun GroupScope.samplingSliders(
     onChange: (Knob, Float) -> Unit,
 ) {
     for ((knob, v) in values) {
-        row {
+        row(key = knob) {
             SliderRow(
                 knob.label,
                 v.value,

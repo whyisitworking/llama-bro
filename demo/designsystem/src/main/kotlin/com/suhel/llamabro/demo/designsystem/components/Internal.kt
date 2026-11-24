@@ -1,14 +1,21 @@
 package com.suhel.llamabro.demo.designsystem.components
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import com.suhel.llamabro.demo.designsystem.theme.DemoColors
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 
@@ -70,3 +77,28 @@ internal fun Modifier.bubbleIn(end: Boolean, fraction: Float = 0.8f): Modifier =
         val width = if (constraints.hasBoundedWidth) constraints.maxWidth else placeable.width
         layout(width, placeable.height) { placeable.placeRelative(if (end) width - placeable.width else 0, 0) }
     }
+
+/**
+ * A dialog over the whole window, edge to edge: no dim of its own (the content draws its own backdrop) and system bars
+ * that draw over it, light bars ([lightBars], dark icons, over a light backdrop) or dark ones.
+ */
+@Composable
+internal fun FullScreenDialog(onDismissRequest: () -> Unit, lightBars: Boolean, content: @Composable () -> Unit) {
+    Dialog(
+        onDismissRequest = onDismissRequest,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        val view = LocalView.current
+        val window = (view.parent as? DialogWindowProvider)?.window
+        SideEffect {
+            window?.let {
+                it.setDimAmount(0f)
+                WindowCompat.getInsetsController(it, view).apply {
+                    isAppearanceLightStatusBars = lightBars
+                    isAppearanceLightNavigationBars = lightBars
+                }
+            }
+        }
+        content()
+    }
+}

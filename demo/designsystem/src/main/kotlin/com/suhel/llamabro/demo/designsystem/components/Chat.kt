@@ -105,18 +105,18 @@ private fun Modifier.messageActions(onLongClick: (() -> Unit)?): Modifier =
     }
 
 /**
- * The user's message: an ink bubble on the right with canvas text, its tail corner bottom end, at most 80% of the
- * row; attached [images] above it, each opening with [onImageClick] (its index) when given; the [time] in its corner
- * (the chat list layout only). A voice message (D76) is its [voice] clip in a bubble of the same shape, played and
- * paused with [onVoiceToggle], the time after its length, with its [caption] under it in muted [DemoType.bodyMedium]
- * when voice mode captioned it (D100).
+ * The user's message: a soft neutral bubble (the theme's `bubble` colour) on the right with ink text, its tail corner
+ * bottom end, at most 80% of the row; attached [images] above it, each opening with [onImageClick] (its index) when
+ * given; the [time] in its corner (the chat list layout only). A voice message (D76) is its [voice] clip in a bubble of
+ * the same shape, played and paused with [onVoiceToggle], the time after its length, with its [caption] under it in
+ * muted [DemoType.bodyMedium] when voice mode captioned it (D100).
  */
 @Composable
 fun UserBubble(
     text: String,
     modifier: Modifier = Modifier,
-    images: List<ImageBitmap> = emptyList(),
     time: String? = null,
+    images: List<ImageBitmap> = emptyList(),
     onLongClick: (() -> Unit)? = null,
     onImageClick: ((index: Int) -> Unit)? = null,
     voice: VoiceClip? = null,
@@ -197,8 +197,8 @@ fun UserBubble(
 @Composable
 fun ModelBubble(
     content: @Composable () -> Unit,
-    time: String,
     modifier: Modifier = Modifier,
+    time: String? = null,
     speed: String? = null,
     onLongClick: (() -> Unit)? = null,
 ) {
@@ -216,7 +216,9 @@ fun ModelBubble(
             verticalArrangement = Arrangement.spacedBy(DemoSpacing.inline),
         ) {
             Box(Modifier.align(Alignment.Start)) { content() }
-            Text(if (speed != null) "$time · $speed" else time, color = colors.muted, style = DemoType.bodySmall)
+            if (time != null || speed != null) {
+                Text(listOfNotNull(time, speed).joinToString(" · "), color = colors.muted, style = DemoType.bodySmall)
+            }
         }
     }
 }

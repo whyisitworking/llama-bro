@@ -37,6 +37,7 @@ import com.suhel.llamabro.demo.designsystem.samples.ScreenSamples
 import com.suhel.llamabro.demo.designsystem.samples.SheetSamples
 import com.suhel.llamabro.demo.designsystem.samples.SurfacesSamples
 import com.suhel.llamabro.demo.designsystem.samples.ThemeSamples
+import com.suhel.llamabro.demo.designsystem.samples.VoiceModeSamples
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
@@ -75,6 +76,7 @@ private val Groups: List<Pair<String, @Composable () -> Unit>> =
         "Rows" to { RowsSamples() },
         "Rows on a sheet" to { RowsSheetSamples() },
         "Screen" to { ScreenSamples() },
+        "Voice mode" to { VoiceModeSamples() },
     )
 
 @Composable

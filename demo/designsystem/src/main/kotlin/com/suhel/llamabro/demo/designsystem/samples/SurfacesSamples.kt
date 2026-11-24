@@ -11,10 +11,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.suhel.llamabro.demo.designsystem.components.CardTint
 import com.suhel.llamabro.demo.designsystem.components.DemoCard
 import com.suhel.llamabro.demo.designsystem.components.EdgeChip
 import com.suhel.llamabro.demo.designsystem.components.FactCard
+import com.suhel.llamabro.demo.designsystem.components.FitLevel
 import com.suhel.llamabro.demo.designsystem.components.FitText
 import com.suhel.llamabro.demo.designsystem.components.ModelName
 import com.suhel.llamabro.demo.designsystem.components.PrimaryButton
@@ -30,7 +30,7 @@ internal fun PickCard(
     line: String,
     size: String,
     fit: String,
-    tint: CardTint,
+    level: FitLevel?,
 ) {
     val c = LocalDemoColors.current
     DemoCard(modifier = Modifier.fillMaxWidth(), onClick = {}) {
@@ -41,7 +41,7 @@ internal fun PickCard(
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(size, color = c.muted, style = DemoType.bodyMedium)
-                FitText(fit, tint)
+                if (level != null) FitText(fit, level)
             }
         }
     }
@@ -53,11 +53,11 @@ internal fun SurfacesSamples() {
     val c = LocalDemoColors.current
     SampleFrame {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            PickCard("Qwen3.5 0.8B", "Instant replies, everyday questions", "0.7 GB", "Runs great", CardTint.Great)
-            PickCard("Gemma 3 4B", "Thoughtful writing and ideas", "2.5 GB", "Runs well", CardTint.Plain)
-            PickCard("Deep", "Thinks first, reads images", "2.8 GB", "A bit slow", CardTint.Slow)
-            PickCard("Qwen3.5 35B", "Needs a computer, not a phone", "21 GB", "Too big", CardTint.TooBig)
-            PickCard("Get more models", "Search Hugging Face", "", "", CardTint.Accent)
+            PickCard("Qwen3.5 0.8B", "Instant replies, everyday questions", "0.7 GB", "Runs great", FitLevel.Great)
+            PickCard("Gemma 3 4B", "Thoughtful writing and ideas", "2.5 GB", "Runs well", FitLevel.Well)
+            PickCard("Deep", "Thinks first, reads images", "2.8 GB", "A bit slow", FitLevel.Slow)
+            PickCard("Qwen3.5 35B", "Needs a computer, not a phone", "21 GB", "Too big", FitLevel.TooBig)
+            PickCard("Get more models", "Search Hugging Face", "", "", null)
         }
         DemoCard(modifier = Modifier.fillMaxWidth(), selected = true, edgeLabel = "Default") {
             Text("Gemma 3 4B", color = c.ink, style = DemoType.title)
@@ -82,7 +82,7 @@ internal fun SheetSamples() {
                 style = DemoType.body,
             )
             DemoCard(modifier = Modifier.fillMaxWidth()) {
-                FitText("Runs great on this phone", CardTint.Great)
+                FitText("Runs great on this phone", FitLevel.Great)
             }
             Column(Modifier.padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

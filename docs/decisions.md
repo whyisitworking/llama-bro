@@ -1435,7 +1435,7 @@ Decision:
 - The head: "Llama Bro" in the serif at Regular weight (`DemoType.sidebarTitle`, 22/28) on the 24 dp line, and New
   chat as a 48 dp ink icon at its end (`DrawerHead`). Then the search field, "Search chats", wired to the shell's
   existing chat search, 16 dp from the sides; with a query and no match the list's place says "No chats match.".
-- The history (`GroupedLazyList` of `LineRow`s): quiet sentence-case labels (`SectionLabel` quiet: 13 sp, soft), 24 dp
+- The history (`ChatHistoryList` of `SidebarChatRow`s): quiet sentence-case labels (`SectionLabel` quiet: 13 sp, soft), 24 dp
   above a group (8 dp for the first) and 4 dp under the label's 20 sp line; each chat one line, the title in
   `DemoType.rowLine` (15/20 Regular) and its time from `ChatListFormat.rowTime` (12 sp, soft) at the end; rows 12 dp
   from the drawer's edges with 12 dp inside, so the labels and the titles share a 24 dp line; the open chat on the

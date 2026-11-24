@@ -19,12 +19,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.suhel.llamabro.demo.data.ChatSummary
+import com.suhel.llamabro.demo.designsystem.components.ChatHistoryEntry
+import com.suhel.llamabro.demo.designsystem.components.ChatHistoryGroup
+import com.suhel.llamabro.demo.designsystem.components.ChatHistoryList
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DrawerFoot
 import com.suhel.llamabro.demo.designsystem.components.DrawerHead
-import com.suhel.llamabro.demo.designsystem.components.GroupedLazyList
-import com.suhel.llamabro.demo.designsystem.components.ListEntry
-import com.suhel.llamabro.demo.designsystem.components.ListGroup
 import com.suhel.llamabro.demo.designsystem.components.NavRow
 import com.suhel.llamabro.demo.designsystem.components.Notice
 import com.suhel.llamabro.demo.designsystem.components.SearchField
@@ -126,12 +126,12 @@ fun DrawerContent(
                 )
             }
         } else {
-            GroupedLazyList(
+            ChatHistoryList(
                 groups.map { group ->
-                    ListGroup(
+                    ChatHistoryGroup(
                         group.group.label,
                         group.chats.map {
-                            ListEntry(
+                            ChatHistoryEntry(
                                 it.id,
                                 it.title,
                                 it.id == currentChatId,

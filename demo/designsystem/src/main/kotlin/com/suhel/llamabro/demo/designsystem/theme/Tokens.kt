@@ -38,11 +38,8 @@ class DemoColors(
     /** Content on an [accent] fill (a button's label, the send glyph): near-white in light, near-black in dark. */
     val onAccent: Color,
     val accentSoft: Color,
-    val greatTint: Color,
     val greatInk: Color,
-    val slowTint: Color,
     val slowInk: Color,
-    val tooBigTint: Color,
     val tooBigInk: Color,
     /** A destructive action ("Remove"): not the sand of "slow here", which is a fit and not a warning. */
     val danger: Color,
@@ -50,7 +47,7 @@ class DemoColors(
     val isDark: Boolean,
 )
 
-val Light =
+val LightDemoColors =
     DemoColors(
         canvas = Color(0xFFF2F2F5),
         surface = Color(0xFFFBFBFC),
@@ -63,17 +60,14 @@ val Light =
         accent = Color(0xFF3A3A3D),
         onAccent = Color(0xFFFBFBFC),
         accentSoft = Color(0xFFE8E8ED),
-        greatTint = Color(0xFFEDF0EC),
         greatInk = Color(0xFF3E5641),
-        slowTint = Color(0xFFF3EEE5),
         slowInk = Color(0xFF73572F),
-        tooBigTint = Color(0xFFE6E6EB),
         tooBigInk = Color(0xFF5A5A5F),
         danger = Color(0xFFA23B2F),
         isDark = false,
     )
 
-val Dark =
+val DarkDemoColors =
     DemoColors(
         canvas = Color(0xFF0B0B0C),
         surface = Color(0xFF161618),
@@ -86,14 +80,11 @@ val Dark =
         accent = Color(0xFFC8C8CD),
         onAccent = Color(0xFF161618),
         accentSoft = Color(0xFF28282B),
-        greatTint = Color(0xFF1A1F1B),
         greatInk = Color(0xFFA9C3AA),
-        slowTint = Color(0xFF221E18),
         slowInk = Color(0xFFD3B588),
-        tooBigTint = Color(0xFF1E1E21),
         tooBigInk = Color(0xFFAAAAB0),
         danger = Color(0xFFE59A90),
         isDark = true,
     )
 
-val LocalDemoColors = staticCompositionLocalOf { Light }
+val LocalDemoColors = staticCompositionLocalOf { LightDemoColors }

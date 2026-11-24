@@ -54,7 +54,7 @@ class ModelsPageRowTest {
      * found, with a plain space: the no-break space is the line's, not the words'.
      */
     @Test fun aTitlesNoBreakSpaceReadsAsASpace() {
-        show { DialogCard("Remove Qwen3.5\u00A00.8B?", "This frees 0.7 GB.", "Remove", {}, "Keep", {}) }
+        show { DialogCard("Remove Qwen3.5\u00A00.8B?", "This frees 0.7 GB.", "Remove", {}, {}, dismissLabel = "Keep") }
         assertEquals(1, rule.onAllNodesWithText("Remove Qwen3.5 0.8B?").fetchSemanticsNodes().size)
     }
 

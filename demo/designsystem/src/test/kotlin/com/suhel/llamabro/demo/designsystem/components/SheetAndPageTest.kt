@@ -35,7 +35,7 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
-import com.suhel.llamabro.demo.designsystem.theme.Light
+import com.suhel.llamabro.demo.designsystem.theme.LightDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -246,7 +246,7 @@ class SheetAndPageTest {
                 .layout()
                 .layoutInput.style
         assertEquals(DemoType.pageBody.fontSize, body.fontSize)
-        assertEquals(Light.muted, body.color)
+        assertEquals(LightDemoColors.muted, body.color)
         for (heading in listOf("Introduction", "Usage")) {
             val style =
                 rule
@@ -255,7 +255,7 @@ class SheetAndPageTest {
                     .layoutInput.style
             assertEquals(heading, DemoType.quietLabel.fontSize, style.fontSize)
             assertEquals(heading, DemoType.quietLabel.fontWeight, style.fontWeight)
-            assertEquals(heading, Light.soft, style.color)
+            assertEquals(heading, LightDemoColors.soft, style.color)
         }
     }
 

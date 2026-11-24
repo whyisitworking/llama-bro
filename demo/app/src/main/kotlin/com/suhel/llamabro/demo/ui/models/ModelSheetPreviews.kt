@@ -203,8 +203,8 @@ internal fun CancelDownloadPreview() {
                 "0.9 GB has arrived. Cancelling deletes it.",
                 "Cancel download",
                 {},
-                "Keep",
                 {},
+                dismissLabel = "Keep",
                 danger = true,
             )
         }

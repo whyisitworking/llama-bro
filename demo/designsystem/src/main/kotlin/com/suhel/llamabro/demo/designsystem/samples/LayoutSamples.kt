@@ -10,17 +10,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.components.BottomTab
 import com.suhel.llamabro.demo.designsystem.components.BottomTabs
+import com.suhel.llamabro.demo.designsystem.components.ChatHistoryEntry
+import com.suhel.llamabro.demo.designsystem.components.ChatHistoryGroup
+import com.suhel.llamabro.demo.designsystem.components.ChatHistoryList
 import com.suhel.llamabro.demo.designsystem.components.DemoDrawer
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DrawerFoot
 import com.suhel.llamabro.demo.designsystem.components.DrawerHead
-import com.suhel.llamabro.demo.designsystem.components.GroupedLazyList
 import com.suhel.llamabro.demo.designsystem.components.IconAction
 import com.suhel.llamabro.demo.designsystem.components.InitialAvatar
 import com.suhel.llamabro.demo.designsystem.components.LayoutKind
 import com.suhel.llamabro.demo.designsystem.components.LayoutPreviewCard
-import com.suhel.llamabro.demo.designsystem.components.ListEntry
-import com.suhel.llamabro.demo.designsystem.components.ListGroup
 import com.suhel.llamabro.demo.designsystem.components.NavRow
 import com.suhel.llamabro.demo.designsystem.components.SearchField
 import com.suhel.llamabro.demo.designsystem.components.TopBar
@@ -85,16 +85,16 @@ internal fun DrawerSample() {
                     .padding(horizontal = DemoSpacing.gutter)
                     .padding(top = DemoSpacing.compact, bottom = DemoSpacing.inline),
             )
-            GroupedLazyList(
+            ChatHistoryList(
                 listOf(
-                    ListGroup(
+                    ChatHistoryGroup(
                         "Today",
                         listOf(
-                            ListEntry(1, "Portfolio bio", true, "2:14 pm"),
-                            ListEntry(2, "Trip plan", false, "9:40 am"),
+                            ChatHistoryEntry(1, "Portfolio bio", true, "2:14 pm"),
+                            ChatHistoryEntry(2, "Trip plan", false, "9:40 am"),
                         ),
                     ),
-                    ListGroup("This week", listOf(ListEntry(3, "What is a quant", false, "Wed"))),
+                    ChatHistoryGroup("This week", listOf(ChatHistoryEntry(3, "What is a quant", false, "Wed"))),
                 ),
                 onClick = {},
                 onLongClick = {},

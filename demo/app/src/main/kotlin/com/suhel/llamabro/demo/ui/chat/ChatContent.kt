@@ -55,6 +55,7 @@ import com.suhel.llamabro.demo.designsystem.components.WakeHairline
 import com.suhel.llamabro.demo.designsystem.components.messageMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -224,6 +225,7 @@ private fun MessageList(
     // ahead of the list, which is not the reader being away
     val away by remember(busy) { derivedStateOf { listState.canScrollForward && !(busy && follow.following) } }
     val scope = rememberCoroutineScope()
+    val still = animationsDisabled()
     MessageColumn(
         listState,
         Modifier.nestedScroll(readerScrolls).testTag("message_list"),
@@ -245,7 +247,7 @@ private fun MessageList(
     ) {
         items(rows, key = { it.key }, contentType = { it.type }) { item ->
             // a finished reply takes the streaming row's place: it is already on screen, so it does not fade in again
-            Box(Modifier.messageMotion(this, appear = item !is ReplyItem)) {
+            Box(Modifier.messageMotion(this, still, appear = item !is ReplyItem)) {
                 MessageRow(item, style, actions, showActions = !busy && item.key == lastReplyKey)
             }
         }
@@ -253,7 +255,7 @@ private fun MessageList(
         // ChatViewModel.streaming), so when a reply ends the list keeps the reader's place in it
         if ((busy || streamingKey != STREAMING) && streamingKey !in rowKeys) {
             item(key = streamingKey, contentType = STREAMING) {
-                Box(Modifier.messageMotion(this)) { StreamingHost(shown, style, actions) }
+                Box(Modifier.messageMotion(this, still)) { StreamingHost(shown, style, actions) }
             }
         }
     }

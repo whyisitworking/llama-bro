@@ -283,7 +283,7 @@ data class ComposerState(
  * records; without it, a tap records.
  */
 @Immutable
-data class VoiceActions(
+data class ComposerVoiceActions(
     val onRecord: () -> Unit,
     val onDiscard: () -> Unit,
     val onSend: () -> Unit,
@@ -293,7 +293,7 @@ data class VoiceActions(
     val onDiscardDictation: () -> Unit = {},
 ) {
     companion object {
-        val None = VoiceActions({}, {}, {})
+        val None = ComposerVoiceActions({}, {}, {})
     }
 }
 
@@ -325,7 +325,7 @@ fun Composer(
     onThink: () -> Unit,
     modifier: Modifier = Modifier,
     attachments: (@Composable () -> Unit)? = null,
-    voice: VoiceActions = VoiceActions.None,
+    voice: ComposerVoiceActions = ComposerVoiceActions.None,
 ) {
     val colors = LocalDemoColors.current
     val shape = DemoShapes.composer
@@ -412,7 +412,7 @@ fun Composer(
 
 /** The bar's end: send the recording, the voice-mode button (D100), the mic alone (D76), or the mic and send. */
 @Composable
-private fun BarEnd(state: ComposerState, voice: VoiceActions, onSend: () -> Unit, onStop: () -> Unit) {
+private fun BarEnd(state: ComposerState, voice: ComposerVoiceActions, onSend: () -> Unit, onStop: () -> Unit) {
     val colors = LocalDemoColors.current
     val recording = state.recording
     val dictation = state.dictation
@@ -534,7 +534,7 @@ private fun SendButton(state: ComposerState, onSend: () -> Unit, onStop: () -> U
  * reads it as "Dictate" with "Record a voice message" as its long-press action. Without it, a tap records.
  */
 @Composable
-private fun MicButton(voice: VoiceActions) {
+private fun MicButton(voice: ComposerVoiceActions) {
     val dictate = voice.onDictate
     if (dictate == null) {
         BarButton(DemoIcons.Mic, stringResource(R.string.ds_record), voice.onRecord)

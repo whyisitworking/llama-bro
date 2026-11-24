@@ -43,9 +43,9 @@ import com.suhel.llamabro.demo.designsystem.components.IconAction
 import com.suhel.llamabro.demo.designsystem.components.TopBar
 import com.suhel.llamabro.demo.designsystem.components.screenEnter
 import com.suhel.llamabro.demo.designsystem.components.screenExit
-import com.suhel.llamabro.demo.designsystem.theme.Dark
+import com.suhel.llamabro.demo.designsystem.theme.DarkDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
-import com.suhel.llamabro.demo.designsystem.theme.Light
+import com.suhel.llamabro.demo.designsystem.theme.LightDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
@@ -410,9 +410,9 @@ private fun EmptyChatScreen(chrome: ChatChrome) {
 }
 
 /**
- * The status and navigation bar icons follow the app's own theme choice, not just the system's: a Light app on a dark
- * phone gets dark icons, so the clock stays readable. (`enableEdgeToEdge()` reads the system setting once; calling it
- * again from here leaked each activity's compose view, so only the icon appearance is set.)
+ * The status and navigation bar icons follow the app's own theme choice, not just the system's: a light-theme app on a
+ * dark phone gets dark icons, so the clock stays readable. (`enableEdgeToEdge()` reads the system setting once;
+ * calling it again from here leaked each activity's compose view, so only the icon appearance is set.)
  */
 @Composable
 private fun SystemBars(theme: ThemeMode) {
@@ -432,6 +432,8 @@ private fun SystemBars(theme: ThemeMode) {
         // what shows behind the status bar and under a sheet's scrim is the window's own background, which follows the
         // phone's day or night setting: a dark app on a light phone would show a light strip, so it follows the app's
         // own choice
-        activity.window.setBackgroundDrawable((if (dark) Dark.canvas else Light.canvas).toArgb().toDrawable())
+        activity.window.setBackgroundDrawable(
+            (if (dark) DarkDemoColors.canvas else LightDemoColors.canvas).toArgb().toDrawable(),
+        )
     }
 }

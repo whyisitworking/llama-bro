@@ -60,13 +60,14 @@ import kotlin.math.sin
  * A message list's row (its [row] scope) that fades in when it arrives (a sent message, a day, the reply starting)
  * and glides when the rows above it change size; the rows of a chat that opens are already there and do not fade.
  * [appear] is false for a row that replaces one already on screen (a finished reply taking the place of the streaming
- * one), which would otherwise blink.
+ * one), which would otherwise blink. Instant when [still] (animations off); the list reads that once
+ * ([animationsDisabled]) rather than every row.
  */
-fun Modifier.messageMotion(row: LazyItemScope, appear: Boolean = true): Modifier =
+fun Modifier.messageMotion(row: LazyItemScope, still: Boolean, appear: Boolean = true): Modifier =
     with(row) {
         this@messageMotion.animateItem(
-            fadeInSpec = if (appear) tween(DemoMotion.ENTER_MILLIS, easing = DemoMotion.enter) else null,
-            placementSpec = tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard),
+            fadeInSpec = if (appear && !still) tween(DemoMotion.ENTER_MILLIS, easing = DemoMotion.enter) else null,
+            placementSpec = if (still) null else tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard),
             fadeOutSpec = null,
         )
     }
@@ -259,21 +260,30 @@ fun <T> rowSizeSpec(): FiniteAnimationSpec<T> = listPlaceSpec()
 /**
  * Something that comes and goes above the message bar (a note, a problem, the editing line): it unfolds from its top
  * and fades in, and folds away quicker. [value] is what to show, or null; while it folds away it keeps showing the last
- * value, so the line does not go blank before it leaves.
+ * value, so the line does not go blank before it leaves. Instant with animations off.
  */
 @Composable
 fun <T : Any> Reveal(value: T?, modifier: Modifier = Modifier, content: @Composable (T) -> Unit) {
     val last = remember { mutableStateOf(value) }
     SideEffect { if (value != null) last.value = value }
+    val still = animationsDisabled()
     AnimatedVisibility(
         visible = value != null,
         modifier = modifier,
         enter =
-            fadeIn(tween(DemoMotion.ENTER_MILLIS, easing = DemoMotion.enter)) +
-                expandVertically(tween(DemoMotion.ENTER_MILLIS, easing = DemoMotion.enter), Alignment.Top),
+            if (still) {
+                EnterTransition.None
+            } else {
+                fadeIn(tween(DemoMotion.ENTER_MILLIS, easing = DemoMotion.enter)) +
+                    expandVertically(tween(DemoMotion.ENTER_MILLIS, easing = DemoMotion.enter), Alignment.Top)
+            },
         exit =
-            fadeOut(tween(DemoMotion.EXIT_MILLIS, easing = DemoMotion.exit)) +
-                shrinkVertically(tween(DemoMotion.EXIT_MILLIS, easing = DemoMotion.exit), Alignment.Top),
+            if (still) {
+                ExitTransition.None
+            } else {
+                fadeOut(tween(DemoMotion.EXIT_MILLIS, easing = DemoMotion.exit)) +
+                    shrinkVertically(tween(DemoMotion.EXIT_MILLIS, easing = DemoMotion.exit), Alignment.Top)
+            },
     ) {
         (value ?: last.value)?.let { content(it) }
     }

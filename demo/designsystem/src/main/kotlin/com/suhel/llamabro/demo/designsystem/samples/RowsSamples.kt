@@ -10,6 +10,7 @@ import com.suhel.llamabro.demo.designsystem.components.SheetFrame
 import com.suhel.llamabro.demo.designsystem.components.SliderRow
 import com.suhel.llamabro.demo.designsystem.components.Stack
 import com.suhel.llamabro.demo.designsystem.components.SwitchRow
+import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import java.util.Locale
 
 /** Settings as a grouped list, an action as a group of one, a selectable list, sliders: every use of [ListRow]. */
@@ -99,3 +100,11 @@ internal fun RowsSheetSamples() {
         }
     }
 }
+
+@LightDarkPreviews
+@Composable
+private fun RowsSamplesPreview() = DemoTheme { RowsSamples() }
+
+@LightDarkPreviews
+@Composable
+private fun RowsSheetSamplesPreview() = DemoTheme { RowsSheetSamples() }

@@ -43,12 +43,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.suhel.llamabro.demo.designsystem.components.CardTint
 import com.suhel.llamabro.demo.designsystem.components.Composer
 import com.suhel.llamabro.demo.designsystem.components.ComposerState
 import com.suhel.llamabro.demo.designsystem.components.DemoCard
 import com.suhel.llamabro.demo.designsystem.components.DemoSheet
 import com.suhel.llamabro.demo.designsystem.components.DsTags
+import com.suhel.llamabro.demo.designsystem.components.FitLevel
 import com.suhel.llamabro.demo.designsystem.components.FitText
 import com.suhel.llamabro.demo.designsystem.components.Gap
 import com.suhel.llamabro.demo.designsystem.components.GroupedList
@@ -71,7 +71,7 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
-import com.suhel.llamabro.demo.designsystem.theme.Light
+import com.suhel.llamabro.demo.designsystem.theme.LightDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.LocalAnimatorDurationScale
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import org.junit.Assert.assertEquals
@@ -95,22 +95,22 @@ class ComponentBehaviourTest {
         rule.setContent {
             DemoTheme(ThemeMode.Light) {
                 Column(Modifier.width(360.dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    QuantRow("Q2_K", "1.6 GB", "Fits", CardTint.TooBig, selected = false)
+                    QuantRow("Q2_K", "1.6 GB", "Fits", FitLevel.TooBig, selected = false)
                     QuantRow(
                         "Q4_K_M",
                         "2.8 GB",
                         "Runs well",
-                        CardTint.Great,
+                        FitLevel.Great,
                         selected = true,
                         edgeLabel = "Recommended",
                     )
-                    QuantRow("Q8_0", "4.5 GB", "Slow", CardTint.Slow, selected = false)
-                    QuantRow("BF16", "0.7 GB", "Included", CardTint.Great, selected = false, included = true)
+                    QuantRow("Q8_0", "4.5 GB", "Slow", FitLevel.Slow, selected = false)
+                    QuantRow("BF16", "0.7 GB", "Included", FitLevel.Great, selected = false, included = true)
                     QuantRow(
                         "UD-Q4_K_XL-with-a-long-name",
                         "12.4 GB",
                         "A long label that cannot fit",
-                        CardTint.Plain,
+                        FitLevel.Well,
                         selected = false,
                     )
                 }
@@ -129,26 +129,26 @@ class ComponentBehaviourTest {
         rule.setContent {
             DemoTheme(ThemeMode.Light) {
                 Column(
-                    Modifier.width(360.dp).background(Light.canvas).padding(16.dp),
+                    Modifier.width(360.dp).background(LightDemoColors.canvas).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    for (tint in CardTint.entries) {
-                        Box(Modifier.testTag("card_$tint")) {
-                            DemoCard { FitText("Runs great", tint, Modifier.testTag("fit_$tint")) }
+                    for (level in FitLevel.entries) {
+                        Box(Modifier.testTag("card_$level")) {
+                            DemoCard { FitText("Runs great", level, Modifier.testTag("fit_$level")) }
                         }
                     }
                 }
             }
         }
-        for (tint in CardTint.entries) {
-            val card = rule.onNodeWithTag("card_$tint").captureToImage().toPixelMap()
+        for (level in FitLevel.entries) {
+            val card = rule.onNodeWithTag("card_$level").captureToImage().toPixelMap()
             // the card's straight left edge, clear of the corners, the shadow and the text: the surface, whatever the fit
-            assertClose("$tint fill is the surface", Light.surface, card[12, card.height / 2])
-            val fit = rule.onNodeWithTag("fit_$tint", useUnmergedTree = true).captureToImage().toPixelMap()
-            val ink = tint.ink(Light)
+            assertClose("$level fill is the surface", LightDemoColors.surface, card[12, card.height / 2])
+            val fit = rule.onNodeWithTag("fit_$level", useUnmergedTree = true).captureToImage().toPixelMap()
+            val ink = level.ink(LightDemoColors)
             var best = Int.MAX_VALUE
             for (x in 0 until fit.width) for (y in 0 until fit.height) best = minOf(best, distance(ink, fit[x, y]))
-            assertTrue("$tint label drawn in its ink (closest channel distance $best)", best <= 8)
+            assertTrue("$level label drawn in its ink (closest channel distance $best)", best <= 8)
         }
     }
 
@@ -157,7 +157,7 @@ class ComponentBehaviourTest {
         rule.setContent {
             DemoTheme(ThemeMode.Light) {
                 Column(
-                    Modifier.width(360.dp).background(Light.canvas).padding(16.dp),
+                    Modifier.width(360.dp).background(LightDemoColors.canvas).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     PrimaryButton("Get Qwen3.5 0.8B", onClick = {}, modifier = Modifier.testTag("on"))
@@ -168,8 +168,8 @@ class ComponentBehaviourTest {
         val on = rule.onNodeWithTag("on").captureToImage().toPixelMap()
         val off = rule.onNodeWithTag("off").captureToImage().toPixelMap()
         // the fill at the middle of the pill, clear of the corners and the label
-        assertClose("enabled fill is the accent", Light.accent, on[on.width / 2, 8])
-        assertClose("disabled fill is the hairline", Light.hairline, off[off.width / 2, 8])
+        assertClose("enabled fill is the accent", LightDemoColors.accent, on[on.width / 2, 8])
+        assertClose("disabled fill is the hairline", LightDemoColors.hairline, off[off.width / 2, 8])
     }
 
     @Test
@@ -177,7 +177,7 @@ class ComponentBehaviourTest {
         rule.setContent {
             DemoTheme(ThemeMode.Light) {
                 Column(
-                    Modifier.width(360.dp).background(Light.canvas).padding(16.dp),
+                    Modifier.width(360.dp).background(LightDemoColors.canvas).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Box(Modifier.testTag("on")) { DemoCard(selected = true) { Text("Chosen") } }
@@ -188,8 +188,8 @@ class ComponentBehaviourTest {
         val on = rule.onNodeWithTag("on").captureToImage().toPixelMap()
         val off = rule.onNodeWithTag("off").captureToImage().toPixelMap()
         // inside the 2 dp border at the card's straight left edge
-        assertClose("selected border", Light.accent, on[2, on.height / 2])
-        assertTrue("unselected has no accent edge", distance(Light.accent, off[2, off.height / 2]) > 30)
+        assertClose("selected border", LightDemoColors.accent, on[2, on.height / 2])
+        assertTrue("unselected has no accent edge", distance(LightDemoColors.accent, off[2, off.height / 2]) > 30)
     }
 
     @Test
@@ -348,14 +348,16 @@ class ComponentBehaviourTest {
     fun wakeHairlineFillsToTheLoadsProgress() {
         rule.setContent {
             DemoTheme(ThemeMode.Light) {
-                Box(Modifier.width(300.dp).background(Light.canvas)) { WakeHairline(active = true, progress = 0.5f) }
+                Box(
+                    Modifier.width(300.dp).background(LightDemoColors.canvas),
+                ) { WakeHairline(active = true, progress = 0.5f) }
             }
         }
         rule.waitForIdle()
         val map = rule.onNodeWithTag(DsTags.WAKE_HAIRLINE).captureToImage().toPixelMap()
         val y = map.height / 2
-        assertEquals("filled up to the value: the accent", Light.accent, map[map.width / 4, y])
-        assertEquals("beyond it: the soft track", Light.accentSoft, map[map.width * 3 / 4, y])
+        assertEquals("filled up to the value: the accent", LightDemoColors.accent, map[map.width / 4, y])
+        assertEquals("beyond it: the soft track", LightDemoColors.accentSoft, map[map.width * 3 / 4, y])
     }
 
     @Test
@@ -366,7 +368,7 @@ class ComponentBehaviourTest {
             // the seam animationsDisabled() reads instead of Settings.Global, so the phone's setting is never touched
             CompositionLocalProvider(LocalAnimatorDurationScale provides scale) {
                 DemoTheme(ThemeMode.Light) {
-                    Box(Modifier.width(300.dp).background(Light.canvas)) { WakeHairline(active = true) }
+                    Box(Modifier.width(300.dp).background(LightDemoColors.canvas)) { WakeHairline(active = true) }
                 }
             }
         }
@@ -425,7 +427,7 @@ class ComponentBehaviourTest {
         rule.setContent {
             CompositionLocalProvider(LocalAnimatorDurationScale provides scale) {
                 DemoTheme(ThemeMode.Light) {
-                    Box(Modifier.background(Light.canvas).testTag("dots")) { TypingDots() }
+                    Box(Modifier.background(LightDemoColors.canvas).testTag("dots")) { TypingDots() }
                 }
             }
         }

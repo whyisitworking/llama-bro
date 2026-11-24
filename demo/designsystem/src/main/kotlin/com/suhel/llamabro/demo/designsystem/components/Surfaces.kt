@@ -81,7 +81,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.R
-import com.suhel.llamabro.demo.designsystem.theme.DemoColors
 import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
@@ -93,24 +92,6 @@ import com.suhel.llamabro.demo.designsystem.theme.scrim
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import androidx.compose.ui.semantics.text as titleText
-
-/**
- * What a model's fit says, as a word and its colour ([FitText]): [Great] a sage green, [Slow] a sand brown, [TooBig] a
- * grey; "runs well" is [Plain], the muted ink. A fit is never a card fill (D48): a card says *selected* with its border
- * and nothing else, so one signal means one thing. [Accent] is ink text for emphasis, against [Plain]'s muted one
- * (the accent is the ink, D69).
- */
-enum class CardTint { Plain, Great, Slow, TooBig, Accent }
-
-/** The text colour that goes with the fit (a fit label's colour). */
-internal fun CardTint.ink(colors: DemoColors): Color =
-    when (this) {
-        CardTint.Plain -> colors.muted
-        CardTint.Great -> colors.greatInk
-        CardTint.Slow -> colors.slowInk
-        CardTint.TooBig -> colors.tooBigInk
-        CardTint.Accent -> colors.accent
-    }
 
 /**
  * A card: 12 dp corners on the surface (the canvas on a sheet), no edge, 16 dp of padding inside. A card on the
@@ -597,7 +578,16 @@ fun DemoDialog(
     content: (@Composable () -> Unit)? = null,
 ) {
     BasicAlertDialog(onDismissRequest = onDismiss, modifier = modifier) {
-        DialogCard(title, text, confirmLabel, onConfirm, dismissLabel, onDismiss, danger = danger, content = content)
+        DialogCard(
+            title,
+            text,
+            confirmLabel,
+            onConfirm,
+            onDismiss,
+            dismissLabel = dismissLabel,
+            danger = danger,
+            content = content,
+        )
     }
 }
 
@@ -614,9 +604,9 @@ fun DialogCard(
     text: String,
     confirmLabel: String,
     onConfirm: () -> Unit,
-    dismissLabel: String?,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    dismissLabel: String? = null,
     danger: Boolean = false,
     content: (@Composable () -> Unit)? = null,
 ) {

@@ -11,35 +11,46 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Stable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -55,6 +66,7 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import kotlinx.coroutines.delay
 
 /**
  * A list row (Material's list item): an optional [leading] icon, the [title] over an optional [subtitle], then at the
@@ -104,9 +116,9 @@ fun ListRow(
                     when {
                         subtitle != null -> DemoSize.rowTwoLine
 
+                        // a dense row is one touch target tall
                         dense -> DemoSize.target
 
-                        // a dense row is one touch target tall
                         else -> DemoSize.field
                     },
             ).padding(horizontal = DemoSpacing.item, vertical = DemoSpacing.block),
@@ -326,6 +338,12 @@ private fun TitleFirst(
     }
 }
 
+/**
+ * How long a slider holds a value the caller was handed, for the caller to apply it (the settings write is async); a
+ * new `value` ends the hold sooner. Well above a slow write, so the old value never shows in between.
+ */
+private const val APPLY_MILLIS = 3_000L
+
 /** A row's title wraps rather than give way; past this many lines it ellipsises. */
 private const val TITLE_LINES = 3
 
@@ -333,16 +351,31 @@ private const val TITLE_LINES = 3
 private const val SUBTITLE_LINES = 2
 private const val SUBTITLE_LINES_LARGE = 3
 
-/** What a [GroupedList] collects: its rows, in order. */
-@Stable
-class GroupScope internal constructor() {
-    internal val rows = mutableListOf<@Composable () -> Unit>()
+/**
+ * Where a [GroupedList]'s rows are added, as a ColumnScope is a Column's: only the adding, with no state of its own to
+ * read, so it is honestly immutable; the rows are collected by a private implementation.
+ */
+@Immutable
+interface GroupScope {
+    /**
+     * Adds a row to the group. A row that can come and go above others gives a [key] that is its own (a setting's
+     * name), so the rows after it keep the state they remember (a slider's drag); by default a row is its place among
+     * the rows without a key, so a keyed row coming or going shifts none of them.
+     */
+    fun row(key: Any? = null, content: @Composable () -> Unit)
+}
 
-    /** Adds a row to the group. */
-    fun row(content: @Composable () -> Unit) {
-        rows += content
+/** What a [GroupedList] collects: its rows, in order. */
+private class GroupRows : GroupScope {
+    val rows = mutableListOf<Pair<Any?, @Composable () -> Unit>>()
+
+    override fun row(key: Any?, content: @Composable () -> Unit) {
+        rows += key to content
     }
 }
+
+/** The fallback key of a row given none: its place among the unkeyed rows, which cannot equal a caller's key. */
+private data class Slot(val n: Int)
 
 /**
  * A group of rows in one card (Android's settings pattern): a 1 dp divider, inset 16 dp, between the rows, none after
@@ -352,9 +385,10 @@ class GroupScope internal constructor() {
 @Composable
 fun GroupedList(modifier: Modifier = Modifier, content: GroupScope.() -> Unit) {
     val colors = LocalDemoColors.current
-    val rows = GroupScope().apply(content).rows
+    val rows = GroupRows().apply(content).rows
+    var unkeyed = 0
     DemoCard(modifier.fillMaxWidth(), contentPadding = PaddingValues(0.dp)) {
-        rows.forEachIndexed { index, row ->
+        rows.forEachIndexed { index, (rowKey, row) ->
             if (index > 0) {
                 Box(
                     Modifier
@@ -365,7 +399,7 @@ fun GroupedList(modifier: Modifier = Modifier, content: GroupScope.() -> Unit) {
                         .background(colors.hairline),
                 )
             }
-            row()
+            key(rowKey ?: Slot(unkeyed++)) { row() }
         }
     }
 }
@@ -442,8 +476,19 @@ fun SliderRow(
     note: String? = null,
 ) {
     val colors = LocalDemoColors.current
-    var moving by remember(value) { mutableStateOf<Float?>(null) }
-    val shown = moving ?: value
+    // under the finger, then held after it lifts, so the value the caller is applying doesn't flicker back to the old
+    // one first; a value the caller never applied (it clamped, or ignored it) goes back to the one it has after a
+    // while, and a new `value` ends the hold. `moving` is not keyed by `value`: a write landing mid-drag must not
+    // drop the drag
+    var moving by remember { mutableStateOf<Float?>(null) }
+    var released by remember(value) { mutableStateOf<Float?>(null) }
+    LaunchedEffect(released) {
+        if (released != null) {
+            delay(APPLY_MILLIS)
+            released = null
+        }
+    }
+    val shown = moving ?: released ?: value
     Column(
         modifier
             .fillMaxWidth()
@@ -469,7 +514,13 @@ fun SliderRow(
         Slider(
             value = shown,
             onValueChange = { moving = it },
-            onValueChangeFinished = { moving?.let(onValueChange) },
+            onValueChangeFinished = {
+                moving?.let {
+                    onValueChange(it)
+                    released = it
+                }
+                moving = null
+            },
             valueRange = range,
             steps = steps,
             modifier =
@@ -490,4 +541,75 @@ fun SliderRow(
                 ),
         )
     }
+}
+
+/**
+ * A row that is removed by swiping it to the start. The swipe only asks: [onRemove] is called and the row springs
+ * back, so the screen can confirm first. Swiping is not the only way: a screen reader gets a "[label]" action. Not
+ * [enabled], the row neither swipes nor offers the action, but stays the same node: a list's row whose model lands on
+ * the phone keeps its composition, so its footer folds away and its pill fades in.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SwipeToRemove(
+    label: String,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    /** The row's own corners, so the swipe's ground matches the card it uncovers (a model row's, D123). */
+    shape: Shape = DemoShapes.card,
+    content: @Composable () -> Unit,
+) {
+    val colors = LocalDemoColors.current
+    // the state keeps the callback it was made with (Material saves it), and a list's row can outlive its first
+    // entry (a suggestion that is got and lands is one composition): the swipe calls the latest [onRemove]
+    val remove by rememberUpdatedState(onRemove)
+
+    // The swipe only asks: `confirmValueChange` answers "no" so the row springs back while the screen confirms. The
+    // callback is deprecated in favour of dynamic anchors, but the replacements tried (an effect on `currentValue`,
+    // with `reset()`) left the row stuck after a second swipe on the phone; this one is the tested behaviour.
+    @Suppress("DEPRECATION")
+    val state =
+        androidx.compose.material3.rememberSwipeToDismissBoxState(
+            confirmValueChange = { target ->
+                if (target == SwipeToDismissBoxValue.EndToStart) remove()
+                false
+            },
+        )
+    SwipeToDismissBox(
+        state = state,
+        modifier =
+            modifier.semantics {
+                if (enabled) {
+                    customActions =
+                        listOf(
+                            CustomAccessibilityAction(label) {
+                                onRemove()
+                                true
+                            },
+                        )
+                }
+            },
+        enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = enabled,
+        gesturesEnabled = enabled,
+        backgroundContent = {
+            // only while the row is being pulled: at rest the label would sit in the tree, unseen, for a screen reader
+            // to read
+            if (state.dismissDirection == SwipeToDismissBoxValue.EndToStart) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .clip(shape)
+                        .background(colors.canvas)
+                        .padding(end = DemoSpacing.item),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    // a removal speaks in the danger colour, on a ground the contrast test holds it to 4.5:1 against
+                    Text(label, color = colors.danger, style = DemoType.label)
+                }
+            }
+        },
+        content = { content() },
+    )
 }

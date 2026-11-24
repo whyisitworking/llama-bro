@@ -14,7 +14,7 @@ import org.junit.Test
 class ThemeTest {
     @Test
     fun everyMaterialColourRoleIsAToken() {
-        for (colors in listOf(Light, Dark)) {
+        for (colors in listOf(LightDemoColors, DarkDemoColors)) {
             val tokens =
                 with(colors) {
                     setOf(
@@ -26,11 +26,8 @@ class ThemeTest {
                         accent,
                         onAccent,
                         accentSoft,
-                        greatTint,
                         greatInk,
-                        slowTint,
                         slowInk,
-                        tooBigTint,
                         tooBigInk,
                         danger,
                         Color.Transparent,
@@ -55,7 +52,7 @@ class ThemeTest {
 
     @Test
     fun schemeKeepsReferenceCsNamedRoles() {
-        for (c in listOf(Light, Dark)) {
+        for (c in listOf(LightDemoColors, DarkDemoColors)) {
             val s = c.toScheme()
             assertEquals(c.canvas, s.background)
             assertEquals(c.surface, s.surface)
@@ -74,10 +71,10 @@ class ThemeTest {
     @Test
     fun aFailureIsInDangerNotTheSlowSand() {
         // R4: sand says "slow here", a fit; a failure that reaches a Material error container is the danger ink
-        for (c in listOf(Light, Dark)) {
+        for (c in listOf(LightDemoColors, DarkDemoColors)) {
             val s = c.toScheme()
             assertEquals(c.danger, s.onErrorContainer)
-            assertTrue(s.errorContainer != c.slowTint)
+            assertTrue(s.onErrorContainer != c.slowInk)
         }
     }
 

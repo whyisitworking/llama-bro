@@ -112,25 +112,23 @@ fun ModelName(name: String, modifier: Modifier = Modifier, realName: String? = n
     }
 }
 
-/** What the voice view's orb is doing (D100). */
-enum class OrbMood { Still, Listening, Thinking, Speaking }
-
 /**
- * The orb at the voice view's size (D100), alive with the conversation: [Still] when ready; while [Listening] it
- * swells with the voice's [level] (0 to 1) and a hairline ring spreads from it; while [Thinking] a soft highlight turns
- * inside it; while [Speaking] it moves with the reply's [level]. With animations off it holds still in every mood, and
- * the screen's state line carries the meaning.
+ * The orb at the voice view's size (D100), alive with the conversation: still while the [phase] is
+ * [VoicePhase.Ready]; while [VoicePhase.Listening] it swells with the voice's [level] (0 to 1) and a hairline ring
+ * spreads from it; while [VoicePhase.Thinking] a soft highlight turns inside it; while [VoicePhase.Speaking] it moves
+ * with the reply's [level]. With animations off it holds still in every phase, and the screen's state line carries the
+ * meaning.
  */
 @Composable
-fun VoiceOrb(mood: OrbMood, level: Float, modifier: Modifier = Modifier) {
+fun VoiceOrb(phase: VoicePhase, level: Float, modifier: Modifier = Modifier) {
     val colors = LocalDemoColors.current
     val still = animationsDisabled()
     val clamped = level.coerceIn(0f, 1f)
     val swell =
         when {
             still -> 0f
-            mood == OrbMood.Listening -> LISTEN_SWELL * clamped
-            mood == OrbMood.Speaking -> SPEAK_SWELL * clamped
+            phase == VoicePhase.Listening -> LISTEN_SWELL * clamped
+            phase == VoicePhase.Speaking -> SPEAK_SWELL * clamped
             else -> 0f
         }
     val scale by animateFloatAsState(
@@ -138,7 +136,7 @@ fun VoiceOrb(mood: OrbMood, level: Float, modifier: Modifier = Modifier) {
         tween(DemoMotion.SWAP_MILLIS, easing = DemoMotion.standard),
         label = "orb",
     )
-    val turning = mood == OrbMood.Thinking && !still
+    val turning = phase == VoicePhase.Thinking && !still
     val angle =
         if (turning) {
             val turn = rememberInfiniteTransition(label = "orb turn")
@@ -155,7 +153,7 @@ fun VoiceOrb(mood: OrbMood, level: Float, modifier: Modifier = Modifier) {
     val tint = DemoBrand.rose.copy(alpha = if (colors.isDark) 0.35f else 0.22f)
     val size = DemoSize.orbVoice
     Box(modifier.size(size), contentAlignment = Alignment.Center) {
-        if (mood == OrbMood.Listening && !still) {
+        if (phase == VoicePhase.Listening && !still) {
             Canvas(Modifier.fillMaxSize()) {
                 val radius = this.size.minDimension / 2 * (RING_FROM + RING_SPREAD * clamped)
                 drawCircle(
@@ -176,7 +174,7 @@ fun VoiceOrb(mood: OrbMood, level: Float, modifier: Modifier = Modifier) {
             val center = Offset(this.size.width * 0.34f, this.size.height * 0.28f)
             val radius = hypot(this.size.width - center.x, this.size.height - center.y)
             drawCircle(Brush.radialGradient(colorStops = Stops, center = center, radius = radius))
-            if (mood == OrbMood.Thinking) {
+            if (phase == VoicePhase.Thinking) {
                 // the light turns about the centre, starting where the gradient is lit
                 val r = this.size.minDimension / 2
                 val rad = Math.toRadians(angle.toDouble())

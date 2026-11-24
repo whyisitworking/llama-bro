@@ -38,7 +38,7 @@ import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.designsystem.components.DownloadStage
 import com.suhel.llamabro.demo.designsystem.components.DownloadView
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
-import com.suhel.llamabro.demo.designsystem.theme.Light
+import com.suhel.llamabro.demo.designsystem.theme.LightDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
@@ -430,7 +430,7 @@ class ModelsScreenTest {
             ?.invoke(layouts)
         assertEquals(
             "Remove is drawn in the danger ink",
-            Light.danger,
+            LightDemoColors.danger,
             layouts
                 .single()
                 .layoutInput.style.color,

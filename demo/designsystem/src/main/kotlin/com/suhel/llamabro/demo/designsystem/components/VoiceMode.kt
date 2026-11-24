@@ -27,7 +27,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,7 +44,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -59,10 +57,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.DialogWindowProvider
-import androidx.core.view.WindowCompat
 import com.suhel.llamabro.demo.designsystem.R
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
@@ -125,7 +119,7 @@ fun VoiceView(
     ) {
         VoiceTopBar(state.model, state.voice, actions.onClose)
         Spacer(Modifier.weight(1f))
-        VoiceOrb(state.phase.mood(), state.level)
+        VoiceOrb(state.phase, state.level)
         Spacer(Modifier.height(DemoSpacing.hero))
         Text(
             stringResource(state.phase.line()),
@@ -380,14 +374,6 @@ private fun StopButton(onStop: () -> Unit) {
     }
 }
 
-private fun VoicePhase.mood(): OrbMood =
-    when (this) {
-        VoicePhase.Ready -> OrbMood.Still
-        VoicePhase.Listening -> OrbMood.Listening
-        VoicePhase.Thinking -> OrbMood.Thinking
-        VoicePhase.Speaking -> OrbMood.Speaking
-    }
-
 private fun VoicePhase.line(): Int =
     when (this) {
         VoicePhase.Ready -> R.string.ds_voice_ready
@@ -427,21 +413,7 @@ fun VoiceDialog(
     notice: (@Composable () -> Unit)? = null,
 ) {
     val dark = LocalDemoColors.current.isDark
-    Dialog(
-        onDismissRequest = actions.onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
-        val view = LocalView.current
-        val window = (view.parent as? DialogWindowProvider)?.window
-        SideEffect {
-            window?.let {
-                it.setDimAmount(0f)
-                WindowCompat.getInsetsController(it, view).apply {
-                    isAppearanceLightStatusBars = !dark
-                    isAppearanceLightNavigationBars = !dark
-                }
-            }
-        }
+    FullScreenDialog(onDismissRequest = actions.onClose, lightBars = !dark) {
         VoiceView(state, actions, modifier, notice)
     }
 }

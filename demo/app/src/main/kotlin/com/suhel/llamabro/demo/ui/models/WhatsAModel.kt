@@ -40,6 +40,6 @@ fun WhatsAModelDialog(onDismiss: () -> Unit) {
 @Composable
 internal fun WhatsAModelPreview() {
     PreviewFrame {
-        DialogCard(WHATS_A_MODEL_TITLE, WHATS_A_MODEL_TEXT, "Got it", {}, null, {}) { FitKey(fitKey) }
+        DialogCard(WHATS_A_MODEL_TITLE, WHATS_A_MODEL_TEXT, "Got it", {}, {}) { FitKey(fitKey) }
     }
 }

@@ -16,6 +16,7 @@ import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.Stack
 import com.suhel.llamabro.demo.designsystem.components.TopBar
 import com.suhel.llamabro.demo.designsystem.components.TopBarTitle
+import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 
@@ -65,3 +66,11 @@ internal fun GapSamples() {
         }
     }
 }
+
+@LightDarkPreviews
+@Composable
+private fun ScreenSamplesPreview() = DemoTheme { ScreenSamples() }
+
+@LightDarkPreviews
+@Composable
+private fun GapSamplesPreview() = DemoTheme { GapSamples() }

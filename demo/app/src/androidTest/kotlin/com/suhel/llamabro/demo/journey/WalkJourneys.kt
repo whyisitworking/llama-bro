@@ -18,8 +18,8 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.components.DsGutterContainerKey
 import com.suhel.llamabro.demo.designsystem.components.DsGutterKey
-import com.suhel.llamabro.demo.designsystem.theme.Dark
-import com.suhel.llamabro.demo.designsystem.theme.Light
+import com.suhel.llamabro.demo.designsystem.theme.DarkDemoColors
+import com.suhel.llamabro.demo.designsystem.theme.LightDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.testing.withAccessibilityChecks
@@ -83,7 +83,7 @@ class WalkJourneys : Journey() {
      * once showed a light strip there).
      */
     private fun assertTheWindowFollowsTheTheme(theme: ThemeMode) {
-        val expected = (if (theme == ThemeMode.Dark) Dark.canvas else Light.canvas).toArgb()
+        val expected = (if (theme == ThemeMode.Dark) DarkDemoColors.canvas else LightDemoColors.canvas).toArgb()
         val actual = (compose.activity.window.decorView.background as? ColorDrawable)?.color
         assertEquals("the window's background in ${theme.name}", expected, actual)
     }

@@ -42,13 +42,13 @@ import com.suhel.llamabro.demo.audio.VoiceRecorder
 import com.suhel.llamabro.demo.chat.LimitAction
 import com.suhel.llamabro.demo.chat.Thinking
 import com.suhel.llamabro.demo.data.AppLayout
+import com.suhel.llamabro.demo.designsystem.components.ComposerVoiceActions
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DemoSheet
 import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
-import com.suhel.llamabro.demo.designsystem.components.VoiceActions
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.ui.Screens
@@ -132,7 +132,7 @@ fun ChatScreen(
     var shareRequest by rememberSaveable(stateSaver = ShareRequestSaver) { mutableStateOf<ShareCardContent?>(null) }
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(vm::attach) }
-    val voice = rememberVoiceActions(vm.voice, vm.dictation, vm.voiceMode::open)
+    val voice = rememberComposerVoiceActions(vm.voice, vm.dictation, vm.voiceMode::open)
     val playing = vm.player.clip.collectAsStateWithLifecycle()
     val reading = vm.reading.collectAsStateWithLifecycle()
     val talks = vm.talks.collectAsStateWithLifecycle()
@@ -294,11 +294,11 @@ private fun limitAction(
  * The voice-mode button asks the same way, then opens voice mode with [onTalk] (D100); refused, the same line.
  */
 @Composable
-private fun rememberVoiceActions(
+private fun rememberComposerVoiceActions(
     voice: VoiceComposer?,
     dictation: DictationComposer?,
     onTalk: () -> Unit,
-): VoiceActions {
+): ComposerVoiceActions {
     val context = LocalContext.current
     var asked by remember { mutableStateOf(MicUse.Record) }
     val ask =
@@ -325,9 +325,9 @@ private fun rememberVoiceActions(
         }
         val talk = { withMicrophone(MicUse.Talk, onTalk) }
         if (voice == null) {
-            VoiceActions({}, {}, {}, onTalk = talk)
+            ComposerVoiceActions({}, {}, {}, onTalk = talk)
         } else {
-            VoiceActions(
+            ComposerVoiceActions(
                 onRecord = { withMicrophone(MicUse.Record, voice::start) },
                 onDiscard = voice::discard,
                 onSend = voice::send,

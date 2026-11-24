@@ -10,7 +10,7 @@ import kotlin.math.pow
 class SegmentContrastTest {
     @Test
     fun theChosenSegmentStandsOffItsTrackInBothThemesOnAScreenAndOnASheet() {
-        for ((name, c) in listOf("light" to Light, "dark" to Dark)) {
+        for ((name, c) in listOf("light" to LightDemoColors, "dark" to DarkDemoColors)) {
             for (onSheet in listOf(false, true)) {
                 val s = segmentColors(c, onSheet)
                 assertTrue("$name sheet=$onSheet edge on track", contrast(s.edge, s.track) >= 3.0)
