@@ -38,6 +38,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.suhel.llamabro.demo.BuildConfig
 import com.suhel.llamabro.demo.data.AppLayout
 import com.suhel.llamabro.demo.designsystem.components.BottomTabs
 import com.suhel.llamabro.demo.designsystem.components.DemoDrawer
@@ -55,6 +56,7 @@ import com.suhel.llamabro.demo.designsystem.theme.DarkDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.LightDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 import com.suhel.llamabro.demo.ui.Screens
@@ -62,7 +64,10 @@ import com.suhel.llamabro.demo.ui.models.ModelsRoute
 import com.suhel.llamabro.demo.ui.settings.AboutScreen
 import com.suhel.llamabro.demo.ui.settings.AppearanceScreen
 import com.suhel.llamabro.demo.ui.settings.DefaultModelScreen
+import com.suhel.llamabro.demo.ui.settings.GlassScreen
+import com.suhel.llamabro.demo.ui.settings.GlassTuner
 import com.suhel.llamabro.demo.ui.settings.InstructionsScreen
+import com.suhel.llamabro.demo.ui.settings.LocalGlassTuner
 import com.suhel.llamabro.demo.ui.settings.MemoryScreen
 import com.suhel.llamabro.demo.ui.settings.SamplingModelScreen
 import com.suhel.llamabro.demo.ui.settings.SamplingModelsScreen
@@ -103,6 +108,8 @@ private val settingsRoutes =
         sampling = Routes.SAMPLING,
         about = Routes.ABOUT,
         voice = Routes.VOICE,
+        // the glass tuner is a debug build's only (D151): a release has no row and no route
+        glass = Routes.GLASS.takeIf { BuildConfig.DEBUG },
     )
 
 /**
@@ -123,22 +130,29 @@ fun AppShell(
     val firstRun by shell.startsWithFirstRun.collectAsStateWithLifecycle()
     val seen by shell.seenFirstRun.collectAsStateWithLifecycle()
     SystemBars(theme)
+    // a debug build's glass is the tuner's, changed on Settings › Glass (D151); a release draws the default
+    val tuner = remember { GlassTuner().takeIf { BuildConfig.DEBUG } }
     DemoTheme(theme) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(LocalDemoColors.current.canvas)
-                // the benchmarks (UI Automator) find the screens by their tags
-                .semantics { testTagsAsResourceId = true }
-                .testTag("shell_root"),
+        CompositionLocalProvider(
+            LocalGlassTuner provides tuner,
+            LocalGlass provides (tuner?.theme ?: LocalGlass.current),
         ) {
-            // the start destination is decided once, when both the layout and first run are known
-            val start = firstRun
-            val shown = layout
-            // first run's seen flag too: the Models page's intro is drawn from it on the first frame
-            if (shown != null && start != null && seen != null) {
-                Shell(screens, shown, start, shell, settings, chatScreen)
-                SideEffect(onReady)
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(LocalDemoColors.current.canvas)
+                    // the benchmarks (UI Automator) find the screens by their tags
+                    .semantics { testTagsAsResourceId = true }
+                    .testTag("shell_root"),
+            ) {
+                // the start destination is decided once, when both the layout and first run are known
+                val start = firstRun
+                val shown = layout
+                // first run's seen flag too: the Models page's intro is drawn from it on the first frame
+                if (shown != null && start != null && seen != null) {
+                    Shell(screens, shown, start, shell, settings, chatScreen)
+                    SideEffect(onReady)
+                }
             }
         }
     }
@@ -407,6 +421,7 @@ private fun Graph(
             if (key != null) SamplingModelScreen(settings, key, back)
         }
         composable(Routes.ABOUT) { AboutScreen(back) }
+        if (BuildConfig.DEBUG) composable(Routes.GLASS) { GlassScreen(back) }
     }
 }
 

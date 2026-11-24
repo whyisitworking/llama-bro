@@ -146,6 +146,16 @@ fun SettingsHome(onBack: () -> Unit, onOpen: (String) -> Unit, routes: SettingsR
                         onClick = { onOpen(routes.about) },
                     )
                 }
+                routes.glass?.let { glass ->
+                    row {
+                        ListRow(
+                            "Glass",
+                            subtitle = "Tune the glass (debug build)",
+                            chevron = true,
+                            onClick = { onOpen(glass) },
+                        )
+                    }
+                }
             }
         }
     }
@@ -162,6 +172,8 @@ data class SettingsRoutes(
     val sampling: String,
     val about: String,
     val voice: String,
+    /** The glass tuner, in a debug build only (D151); null hides its row. */
+    val glass: String? = null,
 )
 
 @Composable

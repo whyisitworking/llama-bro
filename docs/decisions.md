@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D150 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D151 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -184,6 +184,7 @@ its amendments to know what holds now.
 | [D148](#d148-pages-scroll-edge-to-edge-under-floating-bars-the-drawer-holds-still-under-the-page) Pages scroll edge to edge under floating bars; the drawer holds still under the page | 2026-11-24 | |
 | [D149](#d149-the-demos-debug-build-installs-beside-the-release-with-its-own-name-and-icon) The demo's debug build installs beside the release, with its own name and icon | 2026-11-24 | |
 | [D150](#d150-replies-in-the-serif-the-rest-in-nunito-sans) Replies in the serif, the rest in Nunito Sans | 2026-11-25 | |
+| [D151](#d151-a-debug-build-tunes-the-glass-on-the-phone) A debug build tunes the glass on the phone | 2026-11-25 | |
 
 **Repository and process**
 
@@ -2329,5 +2330,21 @@ exact model answers must be readable, and at 18 sp two lines fit the 64 dp bar. 
 font at 300, 400 and 500), a humanist face, rounder and more open than Geist; the user's own messages, the controls
 and the labels stay in it, so who speaks is told by the face before a word is read. Geist is removed.
 Consequences: Amends D125's type (its accent and selection outline stand). `replyBody`'s line is now on the 4 dp grid,
-so the grid test has no exception. Next free IDs: D151, F183.
+so the grid test has no exception.
+
+<a id="d151"></a>
+### D151. A debug build tunes the glass on the phone
+
+Status: Decided (2026-11-25)
+
+Context: The glass (D148) was tuned by round trips: a value changed, a release built and installed, a screenshot
+sent. Its look depends on the phone's screen and the page under it, so it is best judged on the phone, by eye.
+Decision: A debug build has Settings › Glass: a slider for every value of `GlassTheme` (a chip's and a panel's edge
+width, refraction, colour split, blur, tint, rim light and width, and tint without blur; the bars' blur, colour
+split, tint, reach past the bar and how much of it is full), each applied across the app as it is let go, through a
+`GlassTuner` the shell provides as `LocalGlass`. Copy values puts them on the clipboard as the Kotlin of
+`GlassTheme.Default`; Reset brings the defaults back. The values last until the app closes. A release build has no
+row, no route and no tuner (`BuildConfig.DEBUG`), and draws `GlassTheme.Default`.
+Consequences: The chosen values still go into `GlassTheme.Default` by hand, so the release and every test draw the
+committed glass. Next free IDs: D152, F183.
 
