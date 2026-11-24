@@ -286,7 +286,8 @@ fi
 # nothing of the demo is left running for the next session's pre-flight to find, and the lock goes, also on Ctrl-C
 let_device_go() {
     local app
-    for app in com.suhel.llamabro.demo com.suhel.llamabro.demo.test com.suhel.llamabro.demo.benchmark; do
+    # the debug build and its tests; never the release beside them (the person's own app)
+    for app in com.suhel.llamabro.demo.debug com.suhel.llamabro.demo.debug.test com.suhel.llamabro.demo.benchmark; do
         adb -s "${DEMO_DEVICE:-}" shell am force-stop "$app" > /dev/null 2>&1
     done
     rm -f "$device_lock"
@@ -298,7 +299,7 @@ if [ $wants_device -eq 1 ]; then
     # installed build they can't replace (another key, a higher version) would be deleted with its data, so it refuses
     if device_lock="$(ANDROID_SERIAL="${DEMO_DEVICE:-}" bash "$root/sdk/scripts/device-preflight.sh" $$ 2> "$logs/preflight.log")" &&
         gradle :demo:app:assembleDebug -q >> "$logs/preflight.log" 2>&1 &&
-        ANDROID_SERIAL="${DEMO_DEVICE:-}" bash "$root/sdk/scripts/installed-guard.sh" com.suhel.llamabro.demo \
+        ANDROID_SERIAL="${DEMO_DEVICE:-}" bash "$root/sdk/scripts/installed-guard.sh" com.suhel.llamabro.demo.debug \
             "$root/demo/app/build/outputs/apk/debug/app-debug.apk" 2>> "$logs/preflight.log"; then
         trap let_device_go EXIT
         echo PASS; cat "$logs/preflight.log"

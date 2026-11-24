@@ -2269,4 +2269,20 @@ drawer (`DemoDrawer`) no longer moves: it lies on a new `panel` colour, a step l
 and the page slides right off it (a drag on the page or the menu button), casting a soft shadow on it and dimmed by the
 scrim; closed, it is not composed. A followed chat keeps its end in view when the message bar grows.
 Consequences: Amends D145's push drawer and the solid top bars of the earlier screens. Material's drawer is gone, so
-the drag and fling are the app's own (`AnchoredDraggableState`). Next free IDs: D149, F183.
+the drag and fling are the app's own (`AnchoredDraggableState`).
+
+<a id="d149"></a>
+### D149. The demo's debug build installs beside the release, with its own name and icon
+
+Status: Decided (2026-11-24)
+
+Context: A device run uninstalls the app it tests, also after its own install failed, and the owner's release build
+(their chats and downloaded models) can't be replaced by a debug-signed one: the first device run deleted it, and the
+guard added after (`sdk/scripts/installed-guard.sh`) only refuses to run while it is installed.
+Decision: The debug build is `com.suhel.llamabro.demo.debug` (`applicationIdSuffix`, version name `-debug`), named
+"Llama Bro Debug", its icon the release's with an amber band across the bottom (a dot on the themed icon). The device
+steps, the guard and the real-model run name that package and never stop or touch the release.
+Consequences: Both builds can be on one phone, each with its own data; the device tests run while the release stays.
+The benchmark builds still use the release's package (they are built from the release), so `--perf` would still
+replace the release. Next free IDs: D150, F183.
+

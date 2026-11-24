@@ -16,7 +16,7 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:label="Llama Bro"
+        android:label="${appLabel}"
         android:theme="@style/Theme.Demo">
         <activity
             android:name=".MainActivity"

@@ -25,7 +25,7 @@ from pathlib import Path
 
 from phone import Phone
 
-PACKAGE = "com.suhel.llamabro.demo"
+PACKAGE = "com.suhel.llamabro.demo.debug"  # the debug build, beside any installed release
 results = {}
 log_lines = []
 

@@ -35,6 +35,7 @@ android {
         versionName = providers.gradleProperty("demo.versionName").orNull ?: "1.0"
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "com.suhel.llamabro.demo.testing.DemoTestRunner"
+        manifestPlaceholders["appLabel"] = "Llama Bro"
     }
 
     testOptions {
@@ -75,6 +76,11 @@ android {
 
     buildTypes {
         debug {
+            // beside the installed release, never over it: a test run can't uninstall the person's own app and its data
+            // (Gradle removes the app it tests); its own name and an amber band on its icon tell the two apart
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            manifestPlaceholders["appLabel"] = "Llama Bro Debug"
             // the coverage gate (scripts/coverage.py) reads what the unit tests and the device tests cover together
             enableUnitTestCoverage = true
             enableAndroidTestCoverage = true

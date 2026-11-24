@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <!-- Debug only: every component in both themes, for a reviewer on the phone:
-             adb shell am start -n com.suhel.llamabro.demo/com.suhel.llamabro.demo.designsystem.GalleryActivity -->
+             adb shell am start -n com.suhel.llamabro.demo.debug/com.suhel.llamabro.demo.designsystem.GalleryActivity -->
         <activity
             android:name="com.suhel.llamabro.demo.designsystem.GalleryActivity"
             android:exported="true"

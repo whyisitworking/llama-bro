@@ -146,7 +146,7 @@ class Phone:
     # ---- the app and the system --------------------------------------------------------------------------------
     def start(self):
         # the main activity by name: a debug build has a second launcher entry (LeakCanary's) that `monkey` may pick
-        self.shell(f"am start -n {self.package}/.MainActivity >/dev/null 2>&1")
+        self.shell(f"am start -n {self.package}/com.suhel.llamabro.demo.MainActivity >/dev/null 2>&1")
 
     def force_stop(self):
         self.shell(f"am force-stop {self.package}")
