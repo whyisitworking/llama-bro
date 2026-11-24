@@ -18,7 +18,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import java.util.Base64
+import kotlin.io.encoding.Base64
 
 /**
  * `Conversation.toJson()` format: `{"version":3,"system":…,"settings":{…},"messages":[…]}`, where settings holds the
@@ -151,13 +151,13 @@ internal object ConversationJson {
         put("mime", mime)
         when (source) {
             is MediaSource.File -> put("path", source.path)
-            is MediaSource.Bytes -> put("data", Base64.getEncoder().encodeToString(source.bytes))
-            is MediaSource.Descriptor -> put("data", Base64.getEncoder().encodeToString(read(source)))
+            is MediaSource.Bytes -> put("data", Base64.encode(source.bytes))
+            is MediaSource.Descriptor -> put("data", Base64.encode(read(source)))
         }
     }
 
     private fun mediaSource(p: JsonObject): MediaSource =
-        p.str("path")?.let { MediaSource.file(it) } ?: MediaSource.bytes(Base64.getDecoder().decode(p.need("data")))
+        p.str("path")?.let { MediaSource.file(it) } ?: MediaSource.bytes(Base64.decode(p.need("data")))
 
     private fun toolCallJson(call: ToolCall): JsonObject =
         buildJsonObject {

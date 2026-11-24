@@ -1,7 +1,8 @@
-public final class com/suhel/llamabro/testing/FakeLlamaBro {
+public final class com/suhel/llamabro/testing/FakeLlamaBro : java/lang/AutoCloseable {
 	public fun <init> ()V
 	public fun <init> (Lkotlin/jvm/functions/Function1;)V
 	public synthetic fun <init> (Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
 	public final fun contextExceeded (II)V
 	public final fun embeddings ([[F)V
 	public final fun error (ILjava/lang/String;Ljava/lang/String;)V

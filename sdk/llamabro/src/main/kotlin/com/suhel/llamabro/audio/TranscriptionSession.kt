@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
  */
 public class TranscriptionSession internal constructor(
     link: RealtimeLink,
-    private val events0: ReceiveChannel<TranscriptionEvent>,
+    private val channel: ReceiveChannel<TranscriptionEvent>,
     /** upstream's session id */
     public val id: String,
     /** Whether text streams while the audio arrives (upstream's streaming ASR), rather than once per commit. */
@@ -40,7 +40,7 @@ public class TranscriptionSession internal constructor(
      * ends, and fails with `LlamaBroException.ModelClosed` when the model is closed under it, or with
      * `LlamaBroException.ServerError` on an event the SDK can't read.
      */
-    public val events: Flow<TranscriptionEvent> = events0.receiveAsFlow()
+    public val events: Flow<TranscriptionEvent> = channel.receiveAsFlow()
 
     /**
      * Audio: [length] samples of 16-bit mono PCM from [offset], at [inputSampleRate] (`input_audio_buffer.append`), as

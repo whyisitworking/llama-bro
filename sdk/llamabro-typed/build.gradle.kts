@@ -31,6 +31,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(project(":llamabro-testing"))
+    testImplementation(testFixtures(project(":llamabro")))
     kspTest(project(":llamabro-typed-ksp"))
 }
 

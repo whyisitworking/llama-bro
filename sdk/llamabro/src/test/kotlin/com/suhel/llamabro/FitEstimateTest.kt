@@ -57,7 +57,6 @@ class FitEstimateTest {
             assertEquals(3805L * 1024 * 1024, estimate.bytesAtMinimum)
             assertEquals(4300L * 1024 * 1024, estimate.bytesAtCeiling)
             assertEquals(5632L * 1024 * 1024, estimate.budgetBytes)
-            assertEquals(FitEstimate.Method.Projection, estimate.method)
             val config = Json.parseToJsonElement(requireNotNull(sent)).jsonObject
             assertEquals(listOf("HTP0"), config.getValue("devices").jsonArray.map { it.jsonPrimitive.content })
             assertEquals("5632", config.getValue("memory_budget_mib").jsonPrimitive.content)
@@ -72,7 +71,6 @@ class FitEstimateTest {
             assertNull(estimate.contextTokens)
             assertNull(estimate.budgetBytes)
             assertEquals(0L, estimate.bytesAtMinimum)
-            assertEquals(FitEstimate.Method.Projection, estimate.method)
         }
 
     @Test fun dflashWithoutDraftFailsBeforeNativeInit() {

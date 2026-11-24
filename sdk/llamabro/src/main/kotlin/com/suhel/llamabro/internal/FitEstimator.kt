@@ -63,7 +63,6 @@ internal class FitEstimator(
             budgetBytes = nullableLong("budget_mib")?.times(BYTES_PER_MIB),
             device = candidate.kind,
             deviceName = candidate.deviceName,
-            method = FitEstimate.Method.Projection,
         )
     }
 }

@@ -100,7 +100,7 @@ class RuntimeTest {
             val runtime = runtime(engine, LlamaBroConfig { logger = lines.logger })
             runtime.devices()
             runtime.devices()
-            runtime.load(ModelSource.file("/m.gguf"), ModelConfig())
+            runtime.load(ModelSource.file("/m.gguf"), ModelConfig.Default)
             engine.logListener!!(3, "once\n")
             assertEquals(listOf(LogLevel.Error to "once"), lines.all)
         }

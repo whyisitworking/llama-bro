@@ -37,6 +37,24 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
   - `FakeLlamaBro.voiceEvents` is now **`realtimeEvents`** (it records transcription sessions too). New:
     `speaks = false` makes every `speak` fail `NotSupported`, and `speechError(status, type, message)` queues an error
     for the next one.
+- **Value types made consistent** (D102), breaking changes from 2.0.0-alpha:
+  - **`ModelConfig` is an immutable value**, built and derived like `LlamaBroConfig`: `ModelConfig { contextSize = … }`,
+    `config.copy { threads = 6 }`, `ModelConfig.Default`. `loadModel`, `estimateFit` and `memoryBudgetBytes` take either
+    the builder lambda, whose receiver is now `ModelConfig.Builder` (code that only sets fields in the lambda compiles
+    unchanged; a `ModelConfig.() -> Unit` you stored becomes `ModelConfig.Builder.() -> Unit`), or a `ModelConfig`.
+    It is a plain class, not a data class, so settings can be added without breaking callers: it has value `equals`,
+    `hashCode` and `toString` over its settings, and no `componentN` or generated `copy` (use `copy { … }`). A negative
+    `memoryReserveMib` throws `IllegalArgumentException` when the config is made, not when it is used.
+  - **The progress listener is not part of a `ModelConfig`**: `onProgress { … }` in the builder lambda still works, and
+    with a config value it is `loadModel(source, config) { progress -> … }` (a parameter `onProgress`, null by default).
+    `equals` and `copy` ignore it.
+  - **`FitEstimate` is a data class** (value `equals`, `hashCode`, `toString`, `copy`), and `FitEstimate.Method` and `FitEstimate.method` are gone: the estimate was
+    always a projection.
+  - **`LlamaBro.withHostEngine` is removed** from the artifact. It was a test seam; the repository's own host tests
+    use `hostLlamaBro` from core's test fixtures.
+  - **`FakeLlamaBro` is `AutoCloseable`**: `close()` deletes the temporary directory it keeps its slots and media in.
+    After it, loading a model or sending a request on one fails with `IllegalStateException("FakeLlamaBro was closed")`
+    instead of an error about a missing directory. A fake nobody closes has its directory removed when the JVM exits.
 - **`compact`, `addToolResult` and `askAgain` are `Conversation` members again**: the same calls compile unchanged
   once their imports (`com.suhel.llamabro.conversation.compact`, `.addToolResult`, `.askAgain`) are removed; for Java
   callers and binaries, `CompactionKt.compact` and the whole `ConversationKt` class are gone. `canCompact` stays an

@@ -118,7 +118,7 @@ class HubDeviceTest {
                 assertEquals(setOf(HubFile.Role.Model, HubFile.Role.Mmproj), plan.files.map { it.role }.toSet())
 
                 val llama = LlamaBro.create(context)
-                val fitConfig: ModelConfig.() -> Unit = {
+                val fitConfig: ModelConfig.Builder.() -> Unit = {
                     contextSize = ContextSize.Auto
                     ramCacheMib = 0
                 }

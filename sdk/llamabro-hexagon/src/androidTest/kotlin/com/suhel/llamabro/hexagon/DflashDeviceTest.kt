@@ -67,7 +67,7 @@ class DflashDeviceTest {
             for (withDraft in listOf(true, false)) {
                 val settled = settleMemory()
                 val candidate = ModelSource.file(modelPath) { if (withDraft) draft = draftPath }
-                val config: ModelConfig.() -> Unit = {
+                val config: ModelConfig.Builder.() -> Unit = {
                     devicePolicy = DevicePolicy.Only(DeviceKind.Npu)
                     contextSize = ContextSize.Auto
                     // The test is about DFlash, not the prompt cache, so it uses none (as F88's fit test): this phone, short

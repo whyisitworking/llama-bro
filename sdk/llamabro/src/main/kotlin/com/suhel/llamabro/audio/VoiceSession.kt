@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
  */
 public class VoiceSession internal constructor(
     link: RealtimeLink,
-    private val events0: ReceiveChannel<VoiceEvent>,
+    private val channel: ReceiveChannel<VoiceEvent>,
     /** upstream's session id */
     public val id: String,
     /** The rate [append] takes, from the session's config: the model's own unless set. */
@@ -39,7 +39,7 @@ public class VoiceSession internal constructor(
      * ends, and fails with `LlamaBroException.ModelClosed` when the model is closed under it, or with
      * `LlamaBroException.ServerError` on an event the SDK can't read. Events not yet collected are kept.
      */
-    public val events: Flow<VoiceEvent> = events0.receiveAsFlow()
+    public val events: Flow<VoiceEvent> = channel.receiveAsFlow()
 
     /**
      * The user's audio: [length] samples of 16-bit mono PCM from [offset], at [inputSampleRate]

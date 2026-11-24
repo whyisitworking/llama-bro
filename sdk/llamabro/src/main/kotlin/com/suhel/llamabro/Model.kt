@@ -39,6 +39,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
 
@@ -67,9 +68,7 @@ public class Model internal constructor(
     public val info: ModelInfo = ModelInfo.parse(engineModel.infoJson)
 
     private val closed = AtomicBoolean(false)
-    private val gate =
-        java.util.concurrent.locks
-            .ReentrantReadWriteLock()
+    private val gate = ReentrantReadWriteLock()
 
     /** True while a close waits on the gate for a request entering native code; tests wait on it. */
     internal val closeQueued: Boolean get() = gate.hasQueuedThreads()

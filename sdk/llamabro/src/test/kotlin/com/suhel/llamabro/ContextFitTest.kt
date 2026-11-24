@@ -159,7 +159,7 @@ class ContextFitTest {
             val e = FakeEngine()
             // D45: the reserve defaults to D34's 512 MiB and is the app's to change, for Auto and UpTo and the estimate
             // alike
-            assertEquals(MemoryBudget.RESERVE_MIB, ModelConfig().memoryReserveMib.toLong())
+            assertEquals(MemoryBudget.RESERVE_MIB, ModelConfig.Default.memoryReserveMib.toLong())
             LlamaBro(runtime(e, 8 * gib)).loadModel(ModelSource.file("/m.gguf")) { memoryReserveMib = 128 }.close()
             assertEquals(8L * 1024 - 1024 - 1024 - 128, budgetIn(e.loadConfigs.last()))
             LlamaBro(runtime(e, 8 * gib))
@@ -173,7 +173,6 @@ class ContextFitTest {
                     runtime(e, 8 * gib),
                 ).estimateFit(ModelSource.file("/m.gguf")) { memoryReserveMib = 0 }
             assertEquals(8L * 1024 - 1024 - 1024, budgetIn(e.fitConfigs.last()))
-            assertTrue(estimate.method == FitEstimate.Method.Projection)
             try {
                 LlamaBro(runtime(e, 8 * gib)).loadModel(ModelSource.file("/m.gguf")) { memoryReserveMib = -1 }
                 fail("a negative reserve is refused")
@@ -248,7 +247,7 @@ class ContextFitTest {
         assertEquals(null, model.loadReport.memoryWarning)
     }
 
-    private fun loadWithInfo(info: String, configure: ModelConfig.() -> Unit = {}): LoadReport {
+    private fun loadWithInfo(info: String, configure: ModelConfig.Builder.() -> Unit = {}): LoadReport {
         val e = FakeEngine().apply { model.infoJson = info }
         return runBlocking {
             LlamaBro(

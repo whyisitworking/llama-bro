@@ -15,6 +15,59 @@ import java.io.File
 
 class ModelConfigTest {
     @Test
+    fun aConfigIsAValueDerivedWithCopy() {
+        val phone = ModelConfig { contextSize = ContextSize.Fixed(4096) }
+        val faster = phone.copy { threads = 6 }
+        assertEquals(null, phone.threads)
+        assertEquals(6, faster.threads)
+        assertEquals(ContextSize.Fixed(4096), faster.contextSize)
+        assertEquals(phone, ModelConfig { contextSize = ContextSize.Fixed(4096) })
+    }
+
+    @Test
+    fun aConfigHasValueSemanticsAndIgnoresTheProgressListener() {
+        val a = ModelConfig { threads = 4 }
+        val b =
+            ModelConfig {
+                threads = 4
+                onProgress { }
+            }
+        assertEquals(a, b)
+        assertEquals(a.hashCode(), b.hashCode())
+        assertEquals(a.toString(), b.toString())
+        assertTrue(a.toString(), a.toString().contains("threads=4"))
+        assertFalse(a == a.copy { threads = 5 })
+    }
+
+    @Test
+    fun aNegativeReserveFailsWhenTheConfigIsMade() {
+        assertTrue(runCatching { ModelConfig { memoryReserveMib = -1 } }.exceptionOrNull() is IllegalArgumentException)
+        assertTrue(
+            runCatching { ModelConfig.Default.copy { memoryReserveMib = -1 } }.exceptionOrNull()
+                is IllegalArgumentException,
+        )
+    }
+
+    @Test
+    fun theProgressListenerOfAConfigValueLoadIsAParameter() =
+        runTest {
+            val engine = FakeEngine().apply { progress = listOf(0.5f, 1f) }
+            val seen = mutableListOf<LoadProgress>()
+            testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf"), ModelConfig.Default) { seen += it }
+            assertTrue(seen.isNotEmpty())
+            assertTrue(seen.all { it is LoadProgress.Loading })
+        }
+
+    @Test
+    fun aConfigValueLoadsAModel() =
+        runTest {
+            val engine = FakeEngine()
+            testLlamaBro(engine).loadModel(ModelSource.file("/m.gguf"), ModelConfig { parallelSlots = 2 })
+            val cfg = Json.parseToJsonElement(engine.loadConfigs.single()).jsonObject
+            assertEquals(2, cfg["n_parallel"]!!.jsonPrimitive.int)
+        }
+
+    @Test
     fun defaultsMatchPhoneDefaults() =
         runTest {
             val engine = FakeEngine()

@@ -43,7 +43,7 @@ class HostNativeLoadCancelTest {
             assumeTrue("host end-to-end runs from sdk/scripts/check.sh", lib != null && modelPath != null)
             val engine = Statuses(JniEngine)
             val llama = LlamaBro(LlamaBroRuntime(engine, tempDir(), lib, LlamaBroConfig.Default))
-            val config: ModelConfig.() -> Unit = { contextSize = ContextSize.Fixed(4096) }
+            val config: ModelConfig.Builder.() -> Unit = { contextSize = ContextSize.Fixed(4096) }
 
             val firstTick = CompletableDeferred<Unit>()
             var outcome: Throwable? = null

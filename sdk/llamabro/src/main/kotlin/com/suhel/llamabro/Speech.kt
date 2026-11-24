@@ -133,7 +133,7 @@ internal class WavStream {
         if (!ok) throw ErrorMapping.unreadable("speech", message())
     }
 
-    private fun ByteArray.ascii(at: Int) = String(this, at, ID, Charsets.US_ASCII)
+    private fun ByteArray.ascii(at: Int) = decodeToString(at, at + ID)
 
     private fun ByteArray.u16(at: Int) = (this[at].toInt() and BYTE) or ((this[at + 1].toInt() and BYTE) shl BITS)
 

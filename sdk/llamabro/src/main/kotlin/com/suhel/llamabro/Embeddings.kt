@@ -18,9 +18,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.util.Base64
+import kotlin.io.encoding.Base64
 
 /**
  * How llama-server scales each embedding vector (its `embd_normalize`, `common_embd_normalize`). [Euclidean], the
@@ -150,8 +148,20 @@ private suspend fun Model.embedInput(
     }
 }
 
+private const val FLOAT_BYTES = 4
+private const val BYTE_MASK = 0xFF
+private const val BYTE_BITS = 8
+
 /** llama-server's base64 is the vector's memory, in the machine's byte order: little-endian on every target. */
 private fun decode(base64: String): FloatArray {
-    val buffer = ByteBuffer.wrap(Base64.getDecoder().decode(base64)).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
-    return FloatArray(buffer.remaining()).also { buffer.get(it) }
+    val bytes = Base64.decode(base64)
+    return FloatArray(bytes.size / FLOAT_BYTES) { i ->
+        val at = i * FLOAT_BYTES
+        Float.fromBits(
+            (bytes[at].toInt() and BYTE_MASK) or
+                ((bytes[at + 1].toInt() and BYTE_MASK) shl BYTE_BITS) or
+                ((bytes[at + 2].toInt() and BYTE_MASK) shl 2 * BYTE_BITS) or
+                (bytes[at + 3].toInt() shl 3 * BYTE_BITS),
+        )
+    }
 }

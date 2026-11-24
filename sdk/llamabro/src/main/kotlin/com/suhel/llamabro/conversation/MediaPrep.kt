@@ -42,6 +42,7 @@ internal object MediaPrep {
         read: (MediaSource.Descriptor) -> ByteArray,
     ): List<Message> {
         val snapshot = history.value
+        // by identity: two descriptors of one file are two reads, as the caller made them
         val unread = IdentityHashMap<MediaSource.Descriptor, ByteArray>()
         snapshot
             .flatMap { (it as? Message.User)?.content.orEmpty() }

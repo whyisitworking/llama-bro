@@ -40,7 +40,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * server, would.
  */
 @OptIn(InternalLlamaBroApi::class)
-public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
+public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) : AutoCloseable {
     /** The model's context size (`Model.info.contextSize`); set it before loading. */
     public var contextSize: Int = 8192
 
@@ -125,12 +125,15 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) {
     /** The body of every speech request (`Model.speak`), as JSON, in order. */
     public val speechRequests: List<String> get() = synchronized(lock) { speech.toList() }
 
+    private val filesDir = Files.createTempDirectory("llamabro-fake").toFile()
+
     /** The [LlamaBro] to hand to the code under test. */
-    public val llamaBro: LlamaBro =
-        LlamaBro.withEngine(
-            FakeEngine(this),
-            Files.createTempDirectory("llamabro-fake").toFile().apply { deleteOnExit() },
-        )
+    public val llamaBro: LlamaBro = LlamaBro.withEngine(FakeEngine(this), filesDir)
+
+    /** Deletes the temporary directory the fake keeps its saved slots and media in; call it when the test ends. */
+    override fun close() {
+        filesDir.deleteRecursively()
+    }
 
     init {
         script()

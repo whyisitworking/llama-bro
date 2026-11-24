@@ -11,10 +11,13 @@ import com.suhel.llamabro.testing.FakeWire.notSupported
 import com.suhel.llamabro.testing.FakeWire.q
 import com.suhel.llamabro.testing.FakeWire.serverError
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.put
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Base64
@@ -78,13 +81,39 @@ internal class FakeModel(
     private val streams: Boolean,
     private val live: Boolean,
 ) : EngineModel {
-    override val infoJson: String = """{"n_ctx":$nCtx,"n_ctx_train":$nCtx,"n_params":0,"size":0,"desc":"FakeLlamaBro",
-            "metadata":{},"props":{"total_slots":$slots,"voices":${voices.joinToString(
-        ",",
-        "[",
-        "]",
-    ) { q(it) }},"chat_template":"","modalities":{"vision":$vision,"video":false,"audio":$audio},
-            "chat_template_caps":{"supports_tools":true,"supports_parallel_tool_calls":true,"supports_system_role":true}}}"""
+    override val infoJson: String =
+        buildJsonObject {
+            put("n_ctx", nCtx)
+            put("n_ctx_train", nCtx)
+            put("n_params", 0)
+            put("size", 0)
+            put("desc", "FakeLlamaBro")
+            put("metadata", JsonObject(emptyMap()))
+            put(
+                "props",
+                buildJsonObject {
+                    put("total_slots", slots)
+                    put("voices", JsonArray(voices.map(::JsonPrimitive)))
+                    put("chat_template", "")
+                    put(
+                        "modalities",
+                        buildJsonObject {
+                            put("vision", vision)
+                            put("video", false)
+                            put("audio", audio)
+                        },
+                    )
+                    put(
+                        "chat_template_caps",
+                        buildJsonObject {
+                            put("supports_tools", true)
+                            put("supports_parallel_tool_calls", true)
+                            put("supports_system_role", true)
+                        },
+                    )
+                },
+            )
+        }.toString()
 
     override fun request(
         endpoint: String,

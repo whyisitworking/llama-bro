@@ -42,16 +42,28 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
      * @throws LlamaBroException.ModelLoadFailed
      * @throws LlamaBroException.DeviceUnavailable with [DevicePolicy.Only] when no device of that kind could load it
      *   (or none is in the app), or when every device [DevicePolicy.Auto] or [DevicePolicy.Prefer] tried failed.
-     * @throws IllegalArgumentException if [ModelConfig.memoryReserveMib] is negative, or [Speculative.DFlash] is set
-     *   on a [ModelSource.file] with no draft.
+     * @throws IllegalArgumentException if [ModelConfig.memoryReserveMib] is negative (when the config is made), or
+     *   [Speculative.DFlash] is set on a [ModelSource.file] with no draft.
      * @throws IllegalStateException if the runtime was already initialised in this process with another
      *   [LlamaBroConfig].
      * @throws Exception whatever a [RemoteModelSource]'s [RemoteModelSource.fetch] throws, unchanged: for the hub's
      *   `hub.model(…)` a `HubException` (`Network` when it is offline with nothing installed, `Unauthorized`,
      *   `NotFound`, `InsufficientStorage`), so catch those where the source can fail.
      */
-    public suspend fun loadModel(source: ModelSource, configure: ModelConfig.() -> Unit = {}): Model =
-        runtime.load(source, ModelConfig().apply(configure))
+    public suspend fun loadModel(source: ModelSource, configure: ModelConfig.Builder.() -> Unit = {}): Model {
+        val builder = ModelConfig.Builder(ModelConfig.Default).apply(configure)
+        return runtime.load(source, builder.build(), builder.progressListener)
+    }
+
+    /**
+     * [loadModel] with a [ModelConfig] kept as a value (a phone profile, derived with [ModelConfig.copy]). The
+     * progress listener is a parameter, not part of the value: [onProgress] is called as `onProgress {}` is above.
+     */
+    public suspend fun loadModel(
+        source: ModelSource,
+        config: ModelConfig,
+        onProgress: ((LoadProgress) -> Unit)? = null,
+    ): Model = runtime.load(source, config, onProgress)
 
     /**
      * Projects the chosen device's memory and context from GGUF headers without loading weights. A
@@ -61,8 +73,12 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
      *   hub's `hub.model(…)` a `HubException` (`Network` when it is offline with nothing installed, `Unauthorized`,
      *   `NotFound`).
      */
-    public suspend fun estimateFit(source: ModelSource, configure: ModelConfig.() -> Unit = {}): FitEstimate =
-        runtime.estimateFit(source, ModelConfig().apply(configure))
+    public suspend fun estimateFit(source: ModelSource, configure: ModelConfig.Builder.() -> Unit = {}): FitEstimate =
+        estimateFit(source, ModelConfig(configure))
+
+    /** [estimateFit] with a [ModelConfig] kept as a value. */
+    public suspend fun estimateFit(source: ModelSource, config: ModelConfig): FitEstimate =
+        runtime.estimateFit(source, config)
 
     /**
      * The memory, in bytes, that [ContextSize.Auto] would let a model use if it loaded now with [configure]'s
@@ -73,10 +89,13 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
      * It moves with free memory, so it's a hint, not a promise. Null where the SDK can't read the phone's memory
      * (a test engine).
      *
-     * @throws IllegalArgumentException if [ModelConfig.memoryReserveMib] is negative.
+     * @throws IllegalArgumentException if [ModelConfig.memoryReserveMib] is negative (when the config is made).
      */
-    public suspend fun memoryBudgetBytes(configure: ModelConfig.() -> Unit = {}): Long? =
-        runtime.memoryBudgetBytes(ModelConfig().apply(configure))
+    public suspend fun memoryBudgetBytes(configure: ModelConfig.Builder.() -> Unit = {}): Long? =
+        memoryBudgetBytes(ModelConfig(configure))
+
+    /** [memoryBudgetBytes] with a [ModelConfig] kept as a value. */
+    public suspend fun memoryBudgetBytes(config: ModelConfig): Long? = runtime.memoryBudgetBytes(config)
 
     /** The backend devices ggml loaded. Initialises the native runtime if needed; runs on `Dispatchers.IO`. */
     public suspend fun devices(): List<DeviceInfo> = runtime.devices()
@@ -161,18 +180,6 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
             filesDir: File,
             config: LlamaBroConfig = LlamaBroConfig.Default,
         ): LlamaBro = LlamaBro(LlamaBroRuntime(engine, filesDir, null, config))
-
-        /**
-         * A [LlamaBro] over the real native core built for this machine, for other modules' host end-to-end tests
-         * (`llamabro-typed`'s `HostTypedTest`). [libDir] holds the host build's libraries, which must also be on
-         * `java.library.path`.
-         */
-        @InternalLlamaBroApi
-        public fun withHostEngine(
-            libDir: String,
-            filesDir: File,
-            config: LlamaBroConfig = LlamaBroConfig.Default,
-        ): LlamaBro = LlamaBro(LlamaBroRuntime(JniEngine, filesDir, libDir, config))
     }
 }
 

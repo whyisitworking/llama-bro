@@ -51,6 +51,11 @@ android {
         }
     }
 
+    // LlamaBro.withHostEngine for other modules' host tests (llamabro-typed's HostTypedTest): kept out of the release AAR
+    testFixtures {
+        enable = true
+    }
+
     // run by sdk/scripts/check.sh: any warning fails the build
     lint {
         // arm64-v8a only, by design

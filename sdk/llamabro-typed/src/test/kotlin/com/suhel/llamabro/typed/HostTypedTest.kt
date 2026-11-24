@@ -1,13 +1,12 @@
 package com.suhel.llamabro.typed
 
 import com.suhel.llamabro.ContextSize
-import com.suhel.llamabro.InternalLlamaBroApi
-import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.Typed
 import com.suhel.llamabro.chat.Reasoning
 import com.suhel.llamabro.chat.Sampling
+import com.suhel.llamabro.hostLlamaBro
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import org.junit.AfterClass
@@ -56,7 +55,6 @@ class HostTypedTest {
             assertTrue("the model didn't think: $typed", !(typed as Typed.Value).reasoning.isNullOrBlank())
         }
 
-    @OptIn(InternalLlamaBroApi::class)
     private companion object {
         val greedy =
             Sampling {
@@ -72,7 +70,7 @@ class HostTypedTest {
             val lib = System.getProperty("llamabro.host.lib")
             val modelPath = System.getProperty("llamabro.host.model")
             assumeTrue("host end-to-end runs from sdk/scripts/check.sh", lib != null && modelPath != null)
-            val llama = LlamaBro.withHostEngine(lib, Files.createTempDirectory("llamabro-typed").toFile())
+            val llama = hostLlamaBro(lib, Files.createTempDirectory("llamabro-typed").toFile())
             return llama
                 .loadModel(ModelSource.file(modelPath)) { contextSize = ContextSize.Fixed(4096) }
                 .also { loaded = it }

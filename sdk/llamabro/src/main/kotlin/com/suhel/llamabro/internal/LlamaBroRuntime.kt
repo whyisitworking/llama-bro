@@ -210,9 +210,8 @@ internal class LlamaBroRuntime(
         return done
     }
 
-    suspend fun load(source: ModelSource, builder: ModelConfig): Model {
+    suspend fun load(source: ModelSource, builder: ModelConfig, listener: ((LoadProgress) -> Unit)? = null): Model {
         builder.validateSource(source)
-        val listener = builder.progressListener
         return coroutineScope {
             // progress arrives on the loading (or downloading) thread; it's handed to the caller's context, keeping the
             // latest value
@@ -269,9 +268,8 @@ internal class LlamaBroRuntime(
     }
 
     /** [MemoryBudget.budgetMib] with no side files, in bytes (F97); reads memory on [ioDispatcher]. */
-    suspend fun memoryBudgetBytes(builder: ModelConfig): Long? {
-        builder.validateReserve()
-        return withContext(ioDispatcher) { memorySnapshot() }?.let { memory ->
+    suspend fun memoryBudgetBytes(builder: ModelConfig): Long? =
+        withContext(ioDispatcher) { memorySnapshot() }?.let { memory ->
             MemoryBudget.budgetMib(
                 memory.available,
                 memory.threshold,
@@ -280,7 +278,6 @@ internal class LlamaBroRuntime(
                 builder.memoryReserveMib.toLong(),
             ) * BYTES_PER_MIB
         }
-    }
 
     /**
      * After a close, the NPU's buffers come back about a second after the native close returns (F124): a budget read
