@@ -364,6 +364,8 @@ Material 3 roles, a screen naming a role and never a size. Each role carries siz
 | `titleSmall` | 14 / 20 | Medium | Nunito Sans | the model's name under a top bar, a group heading inside a card |
 | `body` | 16 / 24 | Regular | Nunito Sans | the user's messages, descriptions, field text |
 | `replyBody` | 17 / 28 | Regular | serif | a reply's running text (D150) |
+| `replyH1`, `replyH2`, `replyH3` | 24 / 32, 21 / 28, 18 / 28 | SemiBold | serif | a reply's headings (D150) |
+| `replyH4` | 17 / 28 | Medium | serif | a reply's H4 to H6 (D150) |
 | `rowLine` | 15 / 20 | Regular | Nunito Sans | a one-line row of a long list, the sidebar's chats and places (D126) |
 | `bodyMedium` | 14 / 20 | Regular | Nunito Sans | a row's subtitle, a card's description, a state line |
 | `quietLabel` | 13 / 20 | Regular | Nunito Sans | a quiet sentence-case section label, a model page's headings and "About" (D123) |

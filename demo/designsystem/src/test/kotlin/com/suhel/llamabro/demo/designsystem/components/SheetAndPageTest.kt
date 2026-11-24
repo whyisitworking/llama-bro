@@ -260,16 +260,22 @@ class SheetAndPageTest {
     }
 
     @Test
-    fun aReplysHeadingsKeepTheScreenTitleRole() {
-        val reply = MarkdownBlocks(listOf(MarkdownBlock.Heading(1, listOf(MarkdownSpan("Steps")))))
+    fun aReplysHeadingsTakeTheSerifLadder() {
+        // D150: a reply's H1 to H4 in its serif heading roles, H5 and H6 as H4
+        val levels = listOf(1 to DemoType.replyH1, 2 to DemoType.replyH2, 3 to DemoType.replyH3, 6 to DemoType.replyH4)
+        val reply =
+            MarkdownBlocks(levels.map { (level, _) -> MarkdownBlock.Heading(level, listOf(MarkdownSpan("H$level"))) })
         rule.setContent { DemoTheme(ThemeMode.Light) { MarkdownText(reply, onCopyCode = {}) } }
-        assertEquals(
-            DemoType.screenTitle.fontSize,
-            rule
-                .onNodeWithText("Steps")
-                .layout()
-                .layoutInput.style.fontSize,
-        )
+        for ((level, role) in levels) {
+            val style =
+                rule
+                    .onNodeWithText("H$level")
+                    .layout()
+                    .layoutInput.style
+            assertEquals("H$level size", role.fontSize, style.fontSize)
+            assertEquals("H$level weight", role.fontWeight, style.fontWeight)
+            assertEquals("H$level face", role.fontFamily, style.fontFamily)
+        }
     }
 
     @Test

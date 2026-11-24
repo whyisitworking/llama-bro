@@ -7,6 +7,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.suhel.llamabro.demo.designsystem.R
 
@@ -16,19 +17,27 @@ import com.suhel.llamabro.demo.designsystem.R
  * and Medium are two weights of the same file.
  */
 @OptIn(ExperimentalTextApi::class)
-private val SourceSerif =
+private fun sourceSerif(opticalSize: TextUnit?): FontFamily =
     FontFamily(
-        Font(
-            R.font.source_serif_4,
-            FontWeight.Normal,
-            variationSettings = FontVariation.Settings(FontVariation.weight(400)),
-        ),
-        Font(
-            R.font.source_serif_4,
-            FontWeight.Medium,
-            variationSettings = FontVariation.Settings(FontVariation.weight(500)),
-        ),
+        // Regular, Medium and SemiBold, each its own weight of the variable font, never a synthesised bold
+        listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold).map { weight ->
+            val axes =
+                listOfNotNull(FontVariation.weight(weight.weight), opticalSize?.let { FontVariation.opticalSizing(it) })
+            Font(R.font.source_serif_4, weight, variationSettings = FontVariation.Settings(*axes.toTypedArray()))
+        },
     )
+
+/** The serif at its default optical size: the hero roles, a card's name, the sidebar's title. */
+private val SourceSerif = sourceSerif(null)
+
+/**
+ * The serif cut for reading at a reply's size (D150): Source Serif 4's optical-size axis at 17, its text design, with
+ * sturdier hairlines and looser fit than the display cut, for minutes of reading.
+ */
+private val SourceSerifText = sourceSerif(17.sp)
+
+/** The serif cut for a reply's headings (D150): the display design, finer and tighter, as headings are set. */
+private val SourceSerifDisplay = sourceSerif(24.sp)
 
 /**
  * Nunito Sans (SIL OFL, res/raw/nunito_sans_ofl.txt), the app's sans (D150, in place of D125's Geist): a humanist face,
@@ -61,7 +70,9 @@ private val NunitoSans =
  * | [title] | 16 / 24 | Medium | sans |
  * | [titleSmall] | 14 / 20 | Medium | sans |
  * | [body] | 16 / 24 | Regular | sans |
- * | [replyBody] | 17 / 28 | Regular | serif |
+ * | [replyBody] | 17 / 28 | Regular | serif (text cut) |
+ * | [replyH1] / [replyH2] / [replyH3] | 24 / 32, 21 / 28, 18 / 28 | SemiBold | serif (display cut) |
+ * | [replyH4] | 17 / 28 | Medium | serif (text cut) |
  * | [bodyMedium] | 14 / 20 | Regular | sans |
  * | [bodySmall] | 12 / 16 | Regular | sans |
  * | [label] | 14 / 20 | Medium | sans |
@@ -107,12 +118,31 @@ object DemoType {
      */
     val replyBody =
         TextStyle(
-            fontFamily = SourceSerif,
+            fontFamily = SourceSerifText,
             fontWeight = FontWeight.Normal,
             fontSize = 17.sp,
             lineHeight = 28.sp,
             letterSpacing = 0.sp,
         )
+
+    /*
+     * A reply's headings (D150), in the serif like its text, a ladder by size first and weight second: H1 to H3
+     * SemiBold (600) at 24, 21 and 18 sp, H4 to H6 Medium (500) at the text's own size, so the deepest heading is told
+     * from a bold phrase (also 600) by its own line, not by weight alone. Light on a dark ground reads heavier, so no
+     * level goes past SemiBold.
+     */
+
+    /** A reply's H1. */
+    val replyH1 = serifHeading(FontWeight.SemiBold, size = 24, line = 32)
+
+    /** A reply's H2. */
+    val replyH2 = serifHeading(FontWeight.SemiBold, size = 21, line = 28)
+
+    /** A reply's H3. */
+    val replyH3 = serifHeading(FontWeight.SemiBold, size = 18, line = 28)
+
+    /** A reply's H4, H5 and H6: the text's size, a step heavier than it. */
+    val replyH4 = replyBody.copy(fontWeight = FontWeight.Medium)
     val bodyMedium = sans(FontWeight.Normal, size = 14, line = 20, tracking = 0.2)
     val bodySmall = sans(FontWeight.Normal, size = 12, line = 16, tracking = 0.4)
     val label = sans(FontWeight.Medium, size = 14, line = 20, tracking = 0.1)
@@ -176,6 +206,15 @@ object DemoType {
             fontSize = 14.sp,
             lineHeight = 20.sp,
             letterSpacing = 0.2.sp,
+        )
+
+    private fun serifHeading(weight: FontWeight, size: Int, line: Int) =
+        TextStyle(
+            fontFamily = SourceSerifDisplay,
+            fontWeight = weight,
+            fontSize = size.sp,
+            lineHeight = line.sp,
+            letterSpacing = 0.sp,
         )
 
     private fun sans(weight: FontWeight, size: Int, line: Int, tracking: Double) =

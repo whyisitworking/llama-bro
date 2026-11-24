@@ -2314,8 +2314,11 @@ Context: With the glass and the lowered white point in (D148), the owner asked f
 is crisp and narrow, closer to a code editor than a conversation, and a reply, read for minutes at a time, is where
 the type matters most. The owner chose from a side-by-side of the same reply in Geist, the serif, Figtree and Nunito
 Sans.
-Decision: A reply's running text (`replyBody`) is Source Serif 4, 17 / 28 sp, no tracking: a reply reads like a set
-page. Every sans role is Nunito Sans (SIL OFL, `res/font/nunito_sans.ttf` from Google Fonts' repository, the variable
+Decision: A reply's running text (`replyBody`) is Source Serif 4, 17 / 28 sp, no tracking, at the font's text optical
+size (17): a reply reads like a set page. Its headings are the serif too, at the display optical size (24), on a
+calibrated ladder, size first and weight second: H1 24 / 32, H2 21 / 28, H3 18 / 28 at SemiBold (600), H4 to H6 the
+text's 17 / 28 at Medium (500); bold in the text is a true SemiBold, not a synthesised one; light on a dark ground
+reads heavy, so nothing in a reply goes past 600. Every sans role is Nunito Sans (SIL OFL, `res/font/nunito_sans.ttf` from Google Fonts' repository, the variable
 font at 300, 400 and 500), a humanist face, rounder and more open than Geist; the user's own messages, the controls
 and the labels stay in it, so who speaks is told by the face before a word is read. Geist is removed.
 Consequences: Amends D125's type (its accent and selection outline stand). `replyBody`'s line is now on the 4 dp grid,

@@ -148,14 +148,18 @@ fun MarkdownText(
 private val LocalPage = staticCompositionLocalOf { false }
 
 /**
- * A heading's role: a reply's in the screen title and title roles; on a page every level is the quiet label, soft and
- * Regular (D123), so nothing in the card's scroll outweighs its own lines.
+ * A heading's role: a reply's in the serif like its text, a calibrated ladder from H1 to H4 and deeper (D150); on a
+ * page every level is the quiet label, soft and Regular (D123), so nothing in the card's scroll outweighs its own
+ * lines.
  */
 @Composable
 private fun headingStyle(level: Int): TextStyle =
     when {
-        !LocalPage.current -> if (level <= 2) DemoType.screenTitle else DemoType.title
-        else -> DemoType.quietLabel
+        LocalPage.current -> DemoType.quietLabel
+        level == 1 -> DemoType.replyH1
+        level == 2 -> DemoType.replyH2
+        level == 3 -> DemoType.replyH3
+        else -> DemoType.replyH4
     }
 
 /**
