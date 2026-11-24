@@ -29,8 +29,9 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
     (`top_k`, `top_p`, …), `stop`, the reasoning fields (`reasoning_format`, reasoning budget) and the chat-template
     fields (`chat_template_kwargs`, e.g. `enable_thinking`) now go through `extra`, as in
     `extra = """{"reasoning_format":"none"}"""`. The request is the same for the same settings. Breaking: a
-    `maxTokens` below 1 is refused (`IllegalArgumentException`; null means no limit), and `extra` may not set
-    `response_format` (refused when set: upstream accepts only json and the SDK parses a JSON reply).
+    `maxTokens` below 1 is refused (`IllegalArgumentException`; null means no limit), and `extra` may not set the
+    fields the SDK sets, `response_format` (upstream accepts only json and the SDK parses a JSON reply), `stream`,
+    `stream_options` and `return_progress` (refused when set).
   - For Java callers the JVM facade classes changed: `TranscriptionKt` now holds `transcribe`; `transcriptionSession` is
     in `TranscriptionSessionsKt` and `voiceSession` in `VoiceSessionsKt`; `TranscribeKt` and `VoiceKt` are gone.
   - `TranscriptionConfig` has `extra`, a JSON Merge Patch for the transcription `session.update`, as `VoiceConfig` has.
@@ -51,8 +52,8 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
     default, on both overloads: `loadModel(source, onProgress = { p -> … }) { contextSize = … }` where the builder
     lambda was, and `loadModel(source, config) { p -> … }` with a config value. A builder lambda you hold in a variable
     is passed as `configure = lambda`. `estimateFit` and `memoryBudgetBytes` never took a listener.
-  - **`FitEstimate` is a data class** (value `equals`, `hashCode`, `toString`, `copy`), and `FitEstimate.Method` and `FitEstimate.method` are gone: the estimate was
-    always a projection.
+  - **`FitEstimate` is a data class** (value `equals`, `hashCode`, `toString`), and `FitEstimate.Method`
+    and `FitEstimate.method` are gone: the estimate was always a projection.
   - **`LlamaBro.withHostEngine` is removed** from the artifact. It was a test seam; the repository's own host tests
     use `hostLlamaBro` from core's test fixtures.
   - **`FakeLlamaBro` is `AutoCloseable`**: `close()` deletes the temporary directory it keeps its slots and media in.

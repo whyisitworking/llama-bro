@@ -7,10 +7,21 @@ extern "C" {
 #endif
 
 // Errors have one shape. Every call that can fail returns an lb_status and takes `char ** error_json` last: on failure
-// *error_json is {"error": "<the specific reason>"} (lb_model_load and lb_fit_estimate add "code" for some, below), on LB_OK it is NULL;
-// free it with lb_string_free. error_json may be NULL when the caller doesn't want the reason. The status says what
-// kind of failure it was, the message which one. Calls that can't fail (lb_version, lb_runtime_devices,
-// lb_runtime_backends) return their value directly.
+// *error_json is {"error": "<the specific reason>"} (lb_model_load and lb_fit_estimate add "code" for some, below), on
+// LB_OK it is NULL; free it with lb_string_free. error_json may be NULL when the caller doesn't want the reason. The
+// status says what kind of failure it was, the message which one. Calls that can't fail (lb_version,
+// lb_runtime_devices, lb_runtime_backends) return their value directly.
+//
+// Threads. Nothing here is tied to the thread that made a call, and the bridge keeps no global lock across a model's
+// work. lb_runtime_init is serialised: concurrent calls run one at a time, the first config wins and the same config
+// again is a no-op. lb_runtime_set_log may be called from any thread at any time. Everything below needs
+// lb_runtime_init to have returned (calls made before it answer LB_ERR_NOT_INITIALIZED where they have a status);
+// lb_model_load and lb_fit_estimate then each work on their own state, so different threads may run them at the same
+// time, for different models (they compete for memory and cores as any two llama.cpp loads do). On one loaded model,
+// lb_model_info, lb_model_request(_with) and a request's lb_request_cancel / lb_request_send / lb_request_free may all
+// run concurrently from several threads, from inside callbacks included; the one exception is lb_model_free, see
+// there. A request's callback is called one event at a time, on the request's own thread (a realtime request's from
+// its two conversation threads, never two at once).
 typedef enum {
     LB_OK = 0,
     LB_ERR_INVALID_ARG = 1,          // the caller's mistake: bad JSON, unknown config key or endpoint, a bad attachment
@@ -19,7 +30,7 @@ typedef enum {
     LB_ERR_LOAD_FAILED = 4,          // a model file is missing or llama.cpp could not load or measure it
     LB_ERR_INTERNAL = 5,
     LB_ERR_CANCELLED = 6,            // lb_model_load's progress callback said stop; lb_request_send after the end
-    LB_ERR_CLOSED = 7,               // a call made while lb_model_free waits for in-flight requests (see there)
+    LB_ERR_CLOSED = 7,               // seen by a call made during lb_model_free, e.g. from a request or log callback
 } lb_status;
 
 typedef enum { LB_EVENT_CHUNK = 0, LB_EVENT_DONE = 1, LB_EVENT_CANCELLED = 2 } lb_event;
@@ -33,13 +44,18 @@ typedef void (*lb_log_cb)(void * user, lb_log_level level, const char * text);
 // LB_ERR_CANCELLED), true to go on. Once it has returned false it is not called again.
 typedef bool (*lb_progress_cb)(void * user, float progress);
 // CHUNK: http_status is the response status (200, or 4xx/5xx with an error body); data is the bytes as
-// llama-server would send them (SSE events for streams, the whole body otherwise).
+// llama-server would send them (SSE events for streams, the whole body otherwise). data is valid only during the call:
+// copy what you keep. It is not NUL-terminated and may be binary (speech is audio), so len counts, not strlen.
 // Exactly one terminal event (DONE or CANCELLED) per request, always last, with data NULL.
-// Called on the request's own thread.
+// Called on the request's own thread. `user` (lb_model_request's) stays valid for the callback until the terminal
+// event has returned, whether or not the request was freed meanwhile; after that the bridge never touches it.
 typedef void (*lb_request_cb)(void * user, lb_event event, int http_status, const char * data, size_t len);
 
-const char * lb_version(void);                                         // "llamabro <ver> llama.cpp b12653"
-void lb_string_free(char * s);                                         // frees every char* this API returns
+// "llamabro <ver> llama.cpp b12653": a static string, never freed.
+const char * lb_version(void);
+// Frees every char* this API returns (error_json, out_json, lb_runtime_devices' and lb_runtime_backends' strings); NULL
+// is fine.
+void lb_string_free(char * s);
 
 // config: {"backend_dir": "<dir>", "log_level": "warn", "backends": [...]}, all optional. The CPU backend is loaded by
 // file name (libllamabro-ggml-cpu-*.so, the best variant for this CPU); without backend_dir the dynamic linker finds
@@ -58,8 +74,7 @@ char * lb_runtime_backends(void);                                      // [{"nam
 // object with fits, n_ctx, n_ctx_min, used_min_mib, used_max_mib and budget_mib (free with lb_string_free). Fails as
 // lb_model_load does: LB_ERR_NOT_INITIALIZED, LB_ERR_INVALID_ARG for the config, LB_ERR_LOAD_FAILED (with "code":
 // "file_not_found" for a file that can't be opened, worded as lb_model_load words it; the only code it sets) when a
-// file can't be read or measured;
-// LB_ERR_INTERNAL for anything unexpected, out of memory included.
+// file can't be read or measured; LB_ERR_INTERNAL for anything unexpected, out of memory included.
 lb_status lb_fit_estimate(const char * config_json, char ** out_json, char ** error_json);
 
 // On LB_ERR_LOAD_FAILED, error_json is {"error": "<why, with llama.cpp's own reason>"}, plus "code": "file_not_found"
@@ -109,7 +124,8 @@ lb_status lb_model_info(lb_model * model, char ** out_json, char ** error_json);
 // lb_model_request_with below is the same call with attachments; this one sends none.
 // LB_ERR_INVALID_ARG for the caller's mistakes, each with its own message: a NULL model, endpoint, cb or out; an
 // unknown endpoint; realtime with a body or attachments, or on a model without it; params_json that isn't a JSON
-// object of strings. LB_ERR_CLOSED while lb_model_free is waiting for in-flight requests. On failure *out stays NULL and cb is never called.
+// object of strings. LB_ERR_CLOSED while lb_model_free is waiting for in-flight requests. On failure *out stays NULL
+// and cb is never called.
 lb_status lb_model_request(lb_model * model, const char * endpoint, const char * params_json,
                            const char * body, size_t body_len, lb_request_cb cb, void * user,
                            lb_request ** out, char ** error_json);
@@ -152,25 +168,33 @@ typedef struct {
 lb_status lb_model_request_with(lb_model * model, const char * endpoint, const char * params_json,
                                 const char * body, size_t body_len, const lb_attachment * atts, size_t n_atts,
                                 lb_request_cb cb, void * user, lb_request ** out, char ** error_json);
-void lb_request_cancel(lb_request * req);      // idempotent; the terminal event follows soon after
+void lb_request_cancel(lb_request * req);      // idempotent; the terminal event follows soon after; NULL is fine
 // Realtime only: one client event (a WebSocket text message, e.g. {"type":"input_audio_buffer.append",...}), copied
 // and queued in order. LB_ERR_INVALID_ARG for another endpoint's request; LB_ERR_CANCELLED once the conversation has
 // closed (cancelled, or ended by the server). May be called from inside the callback.
 lb_status lb_request_send(lb_request * req, const char * msg, size_t len, char ** error_json);
-void lb_request_free(lb_request * req);        // never blocks; may be called from inside the callback
+// Releases the caller's hold on the request; never blocks and may be called from inside the callback. Free every
+// request exactly once, before or after its terminal event: the request's memory lives until both the free and the
+// terminal event have happened, and `user` stays valid for the callback until the terminal event either way. Freeing
+// does not cancel: a request still running runs to its end (call lb_request_cancel to stop it). A request outlives
+// lb_model_free, which waits for the terminal events but not for the frees, so it still needs freeing afterwards.
+// Any call on a request after its lb_request_free is undefined. NULL is fine.
+void lb_request_free(lb_request * req);
 // Lifetime: the model is deleted when this returns, so lb_model_free must not run concurrently with, or before, any
 // other call on the same model, except while this free is still waiting for in-flight requests to end: a call made
-// during that wait finds the model closing and gets LB_ERR_CLOSED. LB_ERR_CLOSED does not make a call that races the
-// end of the free safe; the caller serialises frees against every other call on the model, as the Kotlin layer does
-// with its gate lock.
+// during that wait finds the model closing and gets LB_ERR_CLOSED. LB_ERR_CLOSED is seen by a call made during
+// lb_model_free, e.g. from a request or log callback; any other concurrency with lb_model_free is undefined: the caller
+// serialises frees against every other call on the model, as the Kotlin layer does with its gate lock. NULL is fine.
 void lb_model_free(lb_model * model);          // cancels in-flight requests, waits for their terminal
                                                // events, stops the loop, joins the worker thread
 
 // Bridge-only (upstream has no such call): reads the whole file behind fd, from offset 0 with pread or with read when
 // it can't seek, and leaves fd open. For an app that keeps a descriptor's media as bytes (D84). On success *out
-// (free with lb_buffer_free) and *out_len are set; else LB_ERR_INVALID_ARG and error_json {"error": "..."}.
+// (free with lb_buffer_free) and *out_len are set. Errors have the usual shape: LB_ERR_INVALID_ARG with error_json
+// {"error": "..."} for a NULL out or out_len or a descriptor that can't be read, LB_ERR_INTERNAL for anything
+// unexpected, out of memory included.
 lb_status lb_read_fd(int fd, uint8_t ** out, size_t * out_len, char ** error_json);
-void lb_buffer_free(uint8_t * buf);
+void lb_buffer_free(uint8_t * buf);            // NULL is fine
 #ifdef __cplusplus
 }
 #endif

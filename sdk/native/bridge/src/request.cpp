@@ -659,25 +659,25 @@ void lb_request_free(lb_request * r) {
 }
 
 lb_status lb_read_fd(int fd, uint8_t ** out, size_t * out_len, char ** error_json) {
-    if (out) *out = nullptr;
-    if (out_len) *out_len = 0;
-    if (error_json) *error_json = nullptr;
-    if (!out || !out_len) return LB_ERR_INVALID_ARG;
-    malloc_buffer data;
-    try {
+    return lb_guard(LB_ERR_INTERNAL, error_json, [&]() -> lb_status {
+        if (out) *out = nullptr;
+        if (out_len) *out_len = 0;
+        if (error_json) *error_json = nullptr;
+        if (!out || !out_len) {
+            lb_set_error(error_json, !out ? "out is NULL" : "out_len is NULL");
+            return LB_ERR_INVALID_ARG;
+        }
+        malloc_buffer data;  // out of memory reaches lb_guard as LB_ERR_INTERNAL, as in lb_fit_estimate
         if (const int e = fd < 0 ? EBADF : read_fd(fd, data)) {
             lb_set_error(error_json, fd_error(fd, e));
             return LB_ERR_INVALID_ARG;
         }
         data.resize(data.size());  // never NULL, even for an empty file
-    } catch (const std::bad_alloc &) {
-        lb_set_error(error_json, "descriptor " + std::to_string(fd) + " is too large to read into memory");
-        return LB_ERR_INVALID_ARG;
-    }
-    *out = data.p;
-    *out_len = data.n;
-    data.p = nullptr;  // the caller's now
-    return LB_OK;
+        *out = data.p;
+        *out_len = data.n;
+        data.p = nullptr;  // the caller's now
+        return LB_OK;
+    });
 }
 
 void lb_buffer_free(uint8_t * buf) { std::free(buf); }

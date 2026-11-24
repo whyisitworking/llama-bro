@@ -1863,6 +1863,18 @@ static void read_fd_reads_whole_file_and_leaves_it_open() {
     LB_CHECK(buf == nullptr && err != nullptr);
     LB_CHECK(json::parse(err).at("error").get<std::string>().find("descriptor 4000") != std::string::npos);
     lb_string_free(err);
+
+    // a NULL out or out_len is the caller's mistake, in the one error shape, before any read
+    err = nullptr;
+    LB_CHECK(lb_read_fd(0, nullptr, &len, &err) == LB_ERR_INVALID_ARG);
+    LB_CHECK(err != nullptr && json::parse(err).at("error").get<std::string>() == "out is NULL");
+    lb_string_free(err);
+    err = nullptr;
+    buf = nullptr;
+    LB_CHECK(lb_read_fd(0, &buf, nullptr, &err) == LB_ERR_INVALID_ARG);
+    LB_CHECK(buf == nullptr && err != nullptr);
+    LB_CHECK(json::parse(err).at("error").get<std::string>() == "out_len is NULL");
+    lb_string_free(err);
 }
 
 // only chat-completions routes get placeholders filled: Anthropic's source.data on /v1/messages is the caller's own,
