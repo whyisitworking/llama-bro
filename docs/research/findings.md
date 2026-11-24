@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the [decision records](../decisions.md) (`D<n>`), the [research history](history.md), which summarises each phase, and the experiments under [`research/`](../../research/).
-> **Status:** living document, updated 2026-11-23 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181)
+> **Status:** living document, updated 2026-11-24 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182)
 
 Labels such as P1, PA, PF, PD and PH name the project's phases, and W1 to W9 the workstreams of a phase; the
 [research history](history.md#summary-of-the-phases) summarises each. "Task <n>", "T<n>" and "Feeds:" name the steps
@@ -2058,10 +2058,32 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   pauses and falls back to `transcribe` as Llama Chat does).
 - **Feeds:** D138, D139, D140.
 
+## Test determinism (F182)
+
+### F182. A `derivedStateOf` read on one thread while another writes its inputs can keep a stale value for good
+
+- **Finding:** Outside composition, two writes to a snapshot state in the global snapshot reuse one state record in
+  place, so its identity and snapshot id do not change. A `derivedStateOf` that recomputes on another thread between
+  them caches the first value under a hash that still matches, and it returns that value until some later write lands
+  in a new global snapshot. Writing through `Snapshot.withMutableSnapshot` does not help: the derived state can record
+  the new snapshot id against a result computed from the old values. A plain `State` whose `value` reads the inputs on
+  each read never goes stale. In the demo, `ChatViewModel.composerState` was such a `derivedStateOf`: its `barInputs`
+  are written from whichever thread the engine's flows emit on, and `ChatViewModelTest` (Main unconfined) read it from
+  the test thread, so under load "waiting for the mic" sometimes timed out with the mic long since known. On a phone,
+  writes and reads both run on the main thread, so the app was not seen to fail.
+- **Evidence:** a JVM probe (2,000 rounds; one thread writes 1..20, another reads 200 times, then the final value is
+  checked): 168-451 stale with plain writes, 660-746 stale with `withMutableSnapshot`, 0 stale with an uncached getter.
+  `DerivedSnapshotState.ResultRecord.isValid` and `readableHash`, `writableRecord` (reuse when
+  `readData.snapshotId == snapshot.snapshotId`) in compose-runtime 1.12.1.
+- **Means:** `composerState` is built on each read, not cached; a view model's `derivedStateOf` is only for state
+  written and read on one thread.
+- **Feeds:** the demo's `ChatViewModel.composerState`.
+
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F182 | A `derivedStateOf` read on one thread while another writes its inputs can stay stale for good; a plain getter cannot | ChatViewModel |
 | F181 | Live transcription needs a streaming audio encoder (refused otherwise); a transcription prompt replaces the instruction; streamed speech is one WAV header then PCM (24 kHz on the tiny LFM3) | D138, D139, D140 |
 | F180 | The upgrade to b12653: contract identical on the Mac and the NPU (76/76); upstream #32434 fixes 0004's bug, so 0004 is dropped; six patches apply unchanged | D10, D91, D93, D137, F153, F163 |
 | F179 | The Hexagon skeletons hold llama.cpp's code, qaic-generated FastRPC glue and inline SDK-header code (headers marked Qualcomm proprietary); the SDK agreement is not public; llama.cpp's official b12479 release ships the same files from the same image, approved by the ggml-hexagon code owner | D133, D93 |

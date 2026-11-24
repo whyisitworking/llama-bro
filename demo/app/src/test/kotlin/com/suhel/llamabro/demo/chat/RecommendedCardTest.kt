@@ -5,6 +5,7 @@ import com.suhel.llamabro.chat.Sampling
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.SettingsRepository
+import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.testing.FakeLlamaBroHub
@@ -13,10 +14,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -36,17 +38,27 @@ class RecommendedCardTest {
     @get:Rule val folder = TemporaryFolder()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    @After fun stop() = scope.cancel()
+    /**
+     * Where the lookups run for the tests that check a lookup did not start: every launched lookup has run once it is
+     * idle, so a stray one is counted rather than raced.
+     */
+    private val lookups = TestCoroutineScheduler()
+    private val lookupScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(lookups))
+
+    @After fun stop() {
+        scope.cancel()
+        lookupScope.cancel()
+    }
 
     private var now = 0L
 
-    private fun store(recommended: suspend (HfModel) -> HubCard): SamplingStore {
+    private fun store(lookupsOn: CoroutineScope = scope, recommended: suspend (HfModel) -> HubCard): SamplingStore {
         val settings =
             SettingsRepository(
                 PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "s.preferences_pb") },
             )
         val chats = ChatRepository(FakeChatDao(), ImageStore(File(folder.root, "images")), System::currentTimeMillis)
-        return SamplingStore(settings, chats, recommended, scope) { now }
+        return SamplingStore(settings, chats, recommended, lookupsOn) { now }
     }
 
     @Test fun theFilesValuesWinOverTheBaseModels() {
@@ -123,17 +135,19 @@ class RecommendedCardTest {
         runBlocking {
             val asked = AtomicInteger()
             val store =
-                store {
+                store(lookupScope) {
                     asked.incrementAndGet()
                     HubCard(null)
                 }
             val swift = HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M")
             assertEquals(Catalog.byKey(swift)?.sampling, store.card(swift))
+            lookups.advanceUntilIdle()
             assertEquals(0, asked.get())
             assertNull(store.card(other))
-            withTimeout(5_000) { while (asked.get() == 0) delay(10) }
-            delay(100)
+            lookups.advanceUntilIdle()
+            assertEquals(1, asked.get())
             assertNull(store.card(other))
+            lookups.advanceUntilIdle()
             assertEquals("an answer, even none, is kept", 1, asked.get())
         }
 
@@ -153,7 +167,7 @@ class RecommendedCardTest {
             turn.join(5_000)
             assertFalse("the turn waited for the lookup", turn.isAlive)
             assertEquals("nothing is sent: the file's own values apply", listOf(null, null), cards)
-            withTimeout(5_000) { while (asked.get() == 0) delay(10) }
+            eventually("the lookup starts") { asked.get() > 0 }
             assertEquals("one lookup under way, not one per turn", 1, asked.get())
         }
 
@@ -161,19 +175,20 @@ class RecommendedCardTest {
         runBlocking {
             val asked = AtomicInteger()
             val store =
-                store {
+                store(lookupScope) {
                     asked.incrementAndGet()
                     throw IOException("no route")
                 }
             store.card(other)
-            withTimeout(5_000) { while (asked.get() == 0) delay(10) }
-            delay(100)
+            lookups.advanceUntilIdle()
+            assertEquals(1, asked.get())
             repeat(3) { store.card(other) }
-            delay(100)
+            lookups.advanceUntilIdle()
             assertEquals("backed off", 1, asked.get())
             now += 5 * 60_000L
             store.card(other)
-            withTimeout(5_000) { while (asked.get() < 2) delay(10) }
+            lookups.advanceUntilIdle()
+            assertEquals("asked again later", 2, asked.get())
         }
 
     @Test fun anOfflineAnswerServesNowAndIsAskedAgainLater() =
@@ -182,18 +197,21 @@ class RecommendedCardTest {
             val fileOnly = CardSampling(Knobs.of(Knob.TopK to 40f))
             val asked = AtomicInteger()
             val store =
-                store {
+                store(lookupScope) {
                     if (asked.incrementAndGet() == 1) HubCard(fileOnly, final = false) else HubCard(thing)
                 }
             store.card(other)
-            withTimeout(5_000) { while (store.card(other) == null) delay(10) }
+            lookups.advanceUntilIdle()
             assertEquals(fileOnly, store.card(other))
+            lookups.advanceUntilIdle()
             assertEquals("not asked again at once", 1, asked.get())
             now += 5 * 60_000L
-            withTimeout(5_000) { while (store.card(other) != thing) delay(10) }
+            assertEquals("the offline answer serves until the next one comes", fileOnly, store.card(other))
+            lookups.advanceUntilIdle()
+            assertEquals(thing, store.card(other))
             now += 5 * 60_000L
             store.card(other)
-            delay(100)
+            lookups.advanceUntilIdle()
             assertEquals("a final answer is kept", 2, asked.get())
         }
 
@@ -201,7 +219,7 @@ class RecommendedCardTest {
         runBlocking {
             val store = store { HubCard(thing) }
             assertNull("the first turn goes without", store.card(other))
-            withTimeout(5_000) { while (store.card(other) == null) delay(10) }
+            eventually("the answer comes") { store.card(other) != null }
             assertEquals(thing, store.card(other))
         }
 }

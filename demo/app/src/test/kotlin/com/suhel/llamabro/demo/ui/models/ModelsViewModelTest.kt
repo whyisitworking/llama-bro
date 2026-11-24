@@ -2,11 +2,11 @@ package com.suhel.llamabro.demo.ui.models
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.viewModelScope
 import androidx.paging.testing.asSnapshot
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.designsystem.components.DownloadStage
+import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.FakeScheduler
@@ -25,6 +25,7 @@ import com.suhel.llamabro.demo.models.SizeFilter
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.models.installed
 import com.suhel.llamabro.demo.ui.keepAlive
+import com.suhel.llamabro.demo.ui.shutDown
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.SearchSort
 import kotlinx.coroutines.CompletableDeferred
@@ -33,7 +34,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,7 +44,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -95,11 +94,12 @@ class ModelsViewModelTest {
     private val day = 24L * 3600 * 1000
     private val now = 1_800_000_000_000L
 
-    @Before fun main() = Dispatchers.setMain(StandardTestDispatcher())
+    private val main = StandardTestDispatcher()
+
+    @Before fun setUpMain() = Dispatchers.setMain(main)
 
     @After fun stop() {
-        viewModels.forEach { it.viewModelScope.cancel() }
-        Dispatchers.resetMain()
+        shutDown(main, viewModels)
         scope.cancel()
         testHub.close()
     }
@@ -162,9 +162,6 @@ class ModelsViewModelTest {
     /** Waits in real time for what the repository's threads deliver, while the test dispatcher keeps running. */
     private suspend fun <T> Flow<T>.arrives(predicate: (T) -> Boolean): T =
         withContext(Dispatchers.Default) { withTimeout(5_000) { first(predicate) } }
-
-    private suspend fun until(condition: () -> Boolean) =
-        withContext(Dispatchers.Default) { withTimeout(5_000) { while (!condition()) delay(10) } }
 
     /** The page as it is once the library is read: typing after this is in virtual time alone. */
     private suspend fun ModelsViewModel.ready(): Browse = browse.arrives { it != null }!!
@@ -707,7 +704,7 @@ class ModelsViewModelTest {
             assertTrue("dismissing keeps the model", testHub.onPhone(swift))
             vm.askRemove(model)
             vm.confirmRemove()
-            until { !testHub.onPhone(swift) }
+            withContext(Dispatchers.Default) { eventually("the model is deleted") { !testHub.onPhone(swift) } }
             assertNull(vm.pendingRemove.value)
         }
 

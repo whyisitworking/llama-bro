@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.suhel.llamabro.demo.data.db.ChatDatabase
 import com.suhel.llamabro.demo.data.db.HubRepoEntity
+import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.hub.testing.FakeLlamaBroHub
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -13,10 +14,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -130,7 +129,7 @@ class HubRepositoryTest {
             // gate opens, rather than the second arriving after the first had finished
             val one = async(start = CoroutineStart.UNDISPATCHED) { repository.refreshFiles("a/b") }
             val two = async(start = CoroutineStart.UNDISPATCHED) { repository.refreshFiles("A/B") }
-            withTimeout(5_000) { while (filesCalls.get() == 0) delay(5) }
+            eventually("the request is asked") { filesCalls.get() > 0 }
             assertTrue(repository.files("a/b").first().refreshing)
             gate!!.complete(Unit)
             one.await()

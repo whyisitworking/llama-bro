@@ -13,9 +13,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -38,7 +38,14 @@ class VoiceModeHolderTest {
     private val chats by lazy { ChatRepository(FakeChatDao(), ImageStore(File(folder.root, "i")), { 0L }, audio) }
     private val started = mutableListOf<VoiceChat>()
 
-    @After fun stop() = scope.cancel()
+    /** The holder's own launches, run on the test's thread: once idle, an open has either happened or never will. */
+    private val holderRuns = TestCoroutineScheduler()
+    private val holderScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(holderRuns))
+
+    @After fun stop() {
+        holderScope.cancel()
+        scope.cancel()
+    }
 
     private fun conversation(chat: VoiceChat): VoiceConversation {
         started += chat
@@ -58,19 +65,17 @@ class VoiceModeHolderTest {
     }
 
     private fun holder(hasMessages: Boolean, chat: VoiceChat? = VoiceChat(7, key, "LFM3 Omni 2B")) =
-        VoiceModeHolder(scope, ::conversation, { chat }) { hasMessages }
-
-    private suspend fun opened(h: VoiceModeHolder) = withTimeout(5_000) { while (h.open.value == null) delay(10) }
+        VoiceModeHolder(holderScope, ::conversation, { chat }) { hasMessages }
 
     @Test fun aChatWithMessagesSaysVoiceStartsFresh() =
         runBlocking {
             val h = holder(hasMessages = true)
             h.open()
-            opened(h)
+            holderRuns.advanceUntilIdle()
             assertTrue(h.open.value!!.startsFresh)
             assertEquals(7L, started.single().chatId)
             h.open() // already open: nothing new
-            delay(100)
+            holderRuns.advanceUntilIdle()
             assertEquals(1, started.size)
             h.close()
             assertNull(h.open.value)
@@ -80,7 +85,7 @@ class VoiceModeHolderTest {
         runBlocking {
             val h = holder(hasMessages = false)
             h.open()
-            opened(h)
+            holderRuns.advanceUntilIdle()
             assertFalse(h.open.value!!.startsFresh)
         }
 
@@ -88,12 +93,12 @@ class VoiceModeHolderTest {
         runBlocking {
             val noChat = holder(hasMessages = false, chat = null)
             noChat.open()
-            delay(100)
+            holderRuns.advanceUntilIdle()
             assertNull(noChat.open.value)
-            val none = VoiceModeHolder(scope, null, { VoiceChat(1, key, "x") }) { false }
+            val none = VoiceModeHolder(holderScope, null, { VoiceChat(1, key, "x") }) { false }
             assertFalse(none.available)
             none.open()
-            delay(100)
+            holderRuns.advanceUntilIdle()
             assertNull(none.open.value)
         }
 }

@@ -5,6 +5,7 @@ import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.SettingsRepository
+import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.TestHub
@@ -15,10 +16,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -56,11 +55,6 @@ class ChatEngineStartTest {
         testHub.close()
     }
 
-    private suspend fun until(what: String, condition: suspend () -> Boolean) {
-        withTimeoutOrNull(10_000) { while (!condition()) delay(10) }
-            ?: throw AssertionError("timed out waiting for: $what")
-    }
-
     @Test fun aNewChatStartedOnAModelUsesItAndMakesNoChatUntilItsFirstMessage() =
         runBlocking {
             fake.reply { content("hi") }
@@ -69,13 +63,14 @@ class ChatEngineStartTest {
             settings.setLastModel(swift.toString())
             settings.pinDefault(swift.toString())
             val chat = engine.open(0, startModel = deep)
-            until("the model is known") { chat.current.value != null }
+            eventually("the model is known") { chat.current.value != null }
             assertEquals("the model asked for wins over the default", deep, chat.current.value)
-            delay(200)
+            // the open's lookup sets the Think level last, so it has ended: a chat it made would exist by now
+            eventually("the lookup ended") { chat.think.value != null }
             assertEquals("no chat until the first message", 0L, chat.chatId.value)
             assertTrue("no chat row", chats.chats().first().isEmpty())
             chat.send("hello", emptyList())
-            until("answered") { chat.messages.value.size == 2 }
+            eventually("answered") { chat.messages.value.size == 2 }
             assertEquals(deep.toString(), chats.modelKey(chat.chatId.value))
             assertTrue("no switch divider", chat.messages.value.none { it.kind == MessageKind.Switch })
             chat.close()
@@ -85,7 +80,7 @@ class ChatEngineStartTest {
         runBlocking {
             // the header was blank for a new chat with no model on the phone or chosen
             val chat = engine.open(0)
-            until("looked up") { chat.name.value.isNotEmpty() }
+            eventually("looked up") { chat.name.value.isNotEmpty() }
             assertEquals(NO_MODEL_TITLE, chat.name.value)
         }
 
@@ -95,8 +90,8 @@ class ChatEngineStartTest {
             testHub.install(swift)
             models.changed()
             val chat = engine.open(0)
-            until("looked up") { chat.name.value == NO_MODEL_TITLE }
-            until("no model, not waking") { chat.model.value == ChatModelState.NoModel }
+            eventually("looked up") { chat.name.value == NO_MODEL_TITLE }
+            eventually("no model, not waking") { chat.model.value == ChatModelState.NoModel }
             chat.close()
         }
 
@@ -105,16 +100,16 @@ class ChatEngineStartTest {
             testHub.install(swift)
             models.changed()
             val chat = engine.open(0)
-            until("looked up") { chat.name.value == NO_MODEL_TITLE }
+            eventually("looked up") { chat.name.value == NO_MODEL_TITLE }
             chat.switchModel(swift)
-            until("the chat's model is the one chosen") { chat.current.value == swift }
-            until("the chat row exists with that model") {
+            eventually("the chat's model is the one chosen") { chat.current.value == swift }
+            eventually("the chat row exists with that model") {
                 chat.chatId.value != 0L && chats.modelKey(chat.chatId.value) == swift.toString()
             }
-            until("the model wakes") {
+            eventually("the model wakes") {
                 chat.model.value.let { it is ChatModelState.Waking || it is ChatModelState.Ready }
             }
-            until("remembered for the next new chat") { settings.settings.first().lastModel == swift.toString() }
+            eventually("remembered for the next new chat") { settings.settings.first().lastModel == swift.toString() }
             assertEquals("Qwen3.5 0.8B", chat.name.value)
             assertTrue("no switch divider", chat.messages.value.none { it.kind == MessageKind.Switch })
             chat.close()
@@ -127,8 +122,8 @@ class ChatEngineStartTest {
             settings.pinDefault(swift.toString())
             val chat = engine.open(0)
             chat.switchModel(deep) // at once: the lookup of the default may not have answered yet
-            until("the chat's model is the one chosen") { chat.current.value == deep }
-            until("the chat is named for it") { chat.name.value == "Qwen3.5 4B" }
+            eventually("the chat's model is the one chosen") { chat.current.value == deep }
+            eventually("the chat is named for it") { chat.name.value == "Qwen3.5 4B" }
             assertEquals("the lookup's default doesn't replace the switch", deep, chat.current.value)
             chat.close()
         }

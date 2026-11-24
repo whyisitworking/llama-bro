@@ -26,7 +26,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -64,11 +63,12 @@ class ModelSheetViewModelTest {
     private val deepQ4 = HfModel.parse("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")
     private val whole = 2_740_937_888L + reader
 
-    @Before fun main() = Dispatchers.setMain(UnconfinedTestDispatcher())
+    private val main = UnconfinedTestDispatcher()
+
+    @Before fun setUpMain() = Dispatchers.setMain(main)
 
     @After fun stop() {
-        viewModels.forEach { it.shutDown() }
-        Dispatchers.resetMain()
+        shutDown(main, viewModels)
     }
 
     private fun viewModel(

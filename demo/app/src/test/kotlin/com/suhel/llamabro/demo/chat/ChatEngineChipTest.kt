@@ -11,6 +11,7 @@ import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.loadConfig
+import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.TestHub
@@ -19,17 +20,16 @@ import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -83,11 +83,6 @@ class ChatEngineChipTest {
         testHub.close()
     }
 
-    private suspend fun until(what: String, condition: suspend () -> Boolean) {
-        withTimeoutOrNull(10_000) { while (!condition()) delay(10) }
-            ?: throw AssertionError("timed out waiting for: $what")
-    }
-
     private suspend fun newChat(): ChatEngine.ChatHandle {
         settings.setLastModel(swift.toString())
         testHub.install(swift)
@@ -96,7 +91,7 @@ class ChatEngineChipTest {
     }
 
     private suspend fun answered(chat: ChatEngine.ChatHandle, count: Int) =
-        until("answered $count") {
+        eventually("answered $count") {
             chat.messages.value.count { it.kind == MessageKind.Assistant && it.state == MessageState.Done } == count
         }
 
@@ -222,7 +217,7 @@ class ChatEngineChipTest {
             fake.reply { content("Done.") }
             val chat = newChat()
             chat.send("go", emptyList())
-            until("streaming") { chat.streaming.value != null }
+            eventually("streaming") { chat.streaming.value != null }
             val model = ready().model
             // NPU, then back to Automatic, while the reply streams: an older wait must not free the model
             settings.setChip(ChipChoice.Npu)
@@ -263,7 +258,7 @@ class ChatEngineChipTest {
             repeat(3) { fake.reply { content("Done.") } }
             val a = newChat()
             a.send("go", emptyList())
-            until("A streams") { a.streaming.value != null }
+            eventually("A streams") { a.streaming.value != null }
             val model = ready().model
 
             settings.setChip(ChipChoice.Gpu)
@@ -293,12 +288,16 @@ class ChatEngineChipTest {
             repeat(2) { fake.reply { content("Done.") } }
             val chat = newChat()
             chat.send("go", emptyList())
-            until("streaming") { chat.streaming.value != null }
+            eventually("streaming") { chat.streaming.value != null }
             val model = ready().model
 
             settings.setChip(ChipChoice.Gpu)
-            val change = async { memory.loadConfigChanged { LoadConfig(ChipChoice.Gpu.policy) } }
-            delay(100)
+            eventually("the engine says a reply is under way") { engine.replying.value }
+            // undispatched: the change has reached its wait for the reply's end when async returns
+            val change =
+                async(start = CoroutineStart.UNDISPATCHED) {
+                    memory.loadConfigChanged { LoadConfig(ChipChoice.Gpu.policy) }
+                }
             assertEquals("Moves to the GPU after this reply.", runsOnLine(ready(), ChipChoice.Gpu, replying = true))
             // the person left Settings: the wait goes with its screen
             change.cancelAndJoin()
@@ -329,12 +328,16 @@ class ChatEngineChipTest {
             }
             val chat = newChat()
             chat.send("go", emptyList())
-            until("streaming") { chat.streaming.value?.text == "slow" }
+            eventually("streaming") { chat.streaming.value?.text == "slow" }
             val loaded = ready().model
 
             settings.setChip(ChipChoice.Cpu)
-            val change = async { memory.loadConfigChanged { LoadConfig(ChipChoice.Cpu.policy) } }
-            delay(200)
+            eventually("the engine says a reply is under way") { engine.replying.value }
+            // undispatched: the change has reached its wait for the reply's end when async returns
+            val change =
+                async(start = CoroutineStart.UNDISPATCHED) {
+                    memory.loadConfigChanged { LoadConfig(ChipChoice.Cpu.policy) }
+                }
             // the reply goes on, on the model it started on
             assertFalse(change.isCompleted)
             assertSame(loaded, ready().model)

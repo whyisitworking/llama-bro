@@ -9,6 +9,7 @@ import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.NewMessage
 import com.suhel.llamabro.demo.data.SettingsRepository
+import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.ModelRepository
@@ -22,12 +23,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -56,7 +54,9 @@ class ShellViewModelTest {
     }
     private val swift = "unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M"
 
-    @Before fun main() = Dispatchers.setMain(UnconfinedTestDispatcher())
+    private val main = UnconfinedTestDispatcher()
+
+    @Before fun setUpMain() = Dispatchers.setMain(main)
 
     private val viewModels = mutableListOf<ShellViewModel>()
     private val collectors = CoroutineScope(Dispatchers.Unconfined)
@@ -64,9 +64,8 @@ class ShellViewModelTest {
     private val testHub = TestHub()
 
     @After fun stop() {
-        viewModels.forEach { it.shutDown() }
+        shutDown(main, viewModels)
         collectors.cancel()
-        Dispatchers.resetMain()
         scope.cancel()
         testHub.close()
     }
@@ -109,11 +108,12 @@ class ShellViewModelTest {
         return id
     }
 
-    private suspend fun <T> awaitValue(read: () -> T, timeout: Long = 5_000, ok: (T) -> Boolean): T =
-        withTimeout(timeout) {
-            while (!ok(read())) delay(10)
-            read()
-        }
+    /** The first value [read] gives that is [ok]: the one checked, not a later read that may have moved on. */
+    private suspend fun <T> awaitValue(read: () -> T, ok: (T) -> Boolean): T {
+        var last = read()
+        eventually("the view model's state") { read().also { last = it }.let(ok) }
+        return last
+    }
 
     private fun viewModelOver(hub: TestHub) =
         ShellViewModel(

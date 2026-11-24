@@ -11,6 +11,7 @@ import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.ReplyLength
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.loadConfig
+import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.TestHub
@@ -23,12 +24,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
@@ -87,11 +86,6 @@ class ChatEngineLengthTest {
         testHub.close()
     }
 
-    private suspend fun until(what: String, condition: suspend () -> Boolean) {
-        withTimeoutOrNull(10_000) { while (!condition()) delay(10) }
-            ?: throw AssertionError("timed out waiting for: $what")
-    }
-
     private suspend fun newChat(): ChatEngine.ChatHandle {
         settings.setLastModel(swift.toString())
         testHub.install(swift)
@@ -100,7 +94,7 @@ class ChatEngineLengthTest {
     }
 
     private suspend fun answered(chat: ChatEngine.ChatHandle, count: Int) =
-        until("answered $count") {
+        eventually("answered $count") {
             chat.messages.value.count { it.kind == MessageKind.Assistant && it.state == MessageState.Done } == count
         }
 
@@ -197,7 +191,7 @@ class ChatEngineLengthTest {
             repeat(3) { fake.reply { content("Done.") } }
             val a = newChat()
             a.send("go", emptyList())
-            until("A streams") { a.streaming.value != null }
+            eventually("A streams") { a.streaming.value != null }
             val model = ready().model
 
             settings.setContext(ContextChoice.UpTo4k)
@@ -237,7 +231,7 @@ class ChatEngineLengthTest {
             }
             val chat = newChat()
             chat.send("tell me everything", emptyList())
-            until("failed") { chat.messages.value.any { it.state == MessageState.Failed } }
+            eventually("failed") { chat.messages.value.any { it.state == MessageState.Failed } }
             val limit = Limits.contextExceeded("Qwen3.5 0.8B")
             val reply = chat.messages.value.last()
             assertEquals(MessageKind.Assistant, reply.kind)
@@ -246,7 +240,7 @@ class ChatEngineLengthTest {
             assertEquals(limit, chat.limit.value)
 
             chat.send("shorter", emptyList())
-            until("cut") {
+            eventually("cut") {
                 chat.messages.value
                     .lastOrNull()
                     ?.state == MessageState.Cut

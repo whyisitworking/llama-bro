@@ -19,6 +19,7 @@ import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.TokenStore
+import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
@@ -34,15 +35,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
-import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -53,6 +51,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Settings › Memory's chip choice as the screen reads it (D72): the kinds marked, and the line under the choice. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -84,15 +83,16 @@ class SettingsViewModelChipTest {
     }
     private val viewModels = mutableListOf<SettingsViewModel>()
 
-    @Before fun main() = Dispatchers.setMain(UnconfinedTestDispatcher())
+    private val main = UnconfinedTestDispatcher()
+
+    @Before fun setUpMain() = Dispatchers.setMain(main)
 
     /** The model is on the phone: the host loads the hub's installed copy, as the app's does. */
     @Before fun installModel() = testHub.install(swift)
 
     @After fun stop() {
         gate.complete(Unit)
-        viewModels.forEach { it.shutDown() }
-        Dispatchers.resetMain()
+        shutDown(main, viewModels)
         collectors.cancel()
         runBlocking { host.release() }
         scope.cancel()
@@ -109,22 +109,23 @@ class SettingsViewModelChipTest {
             facts,
         ).also { viewModels += it }
 
-    private suspend fun <T> until(what: String, read: () -> T, condition: (T) -> Boolean) {
-        withTimeoutOrNull(10_000) { while (!condition(read())) delay(10) }
-            ?: throw AssertionError("timed out waiting for: $what (last: ${read()})")
-    }
-
     @Test fun theChipsAreThePhonesOnceTheSdkAnswers() =
         runBlocking {
             val phone = DeviceFacts(8L shl 30, DeviceKind.Gpu, setOf(DeviceKind.Gpu, DeviceKind.Cpu))
             val chips = viewModel { phone }.chips.keepAlive(collectors)
-            until("the phone's chips", { chips.value }) { it == setOf(DeviceKind.Gpu, DeviceKind.Cpu) }
+            eventually("the phone's chips") { chips.value == setOf(DeviceKind.Gpu, DeviceKind.Cpu) }
         }
 
     @Test fun unknownFactsMarkNothingMissing() =
         runBlocking {
-            val chips = viewModel { DeviceFacts.Fallback }.chips.keepAlive(collectors)
-            delay(100)
+            val asked = AtomicBoolean()
+            val chips =
+                viewModel {
+                    asked.set(true)
+                    DeviceFacts.Fallback
+                }.chips.keepAlive(collectors)
+            // the answer is emitted right after it is asked, on the same unconfined collector
+            eventually("the SDK is asked") { asked.get() }
             assertEquals(DeviceKind.entries.toSet(), chips.value)
         }
 
@@ -137,14 +138,14 @@ class SettingsViewModelChipTest {
             // loaded for the GPU on a phone with a CPU only (the fake): where it runs and why
             settings.setChip(ChipChoice.Gpu)
             host.use(swift, LoadConfig(ChipChoice.Gpu.policy))
-            until("the fallback", { line.value }) { it == "Running on the CPU: this phone has no GPU." }
+            eventually("the fallback") { line.value == "Running on the CPU: this phone has no GPU." }
 
             // the choice changed, and the model loaded for the GPU is still in memory: when it moves
             settings.setChip(ChipChoice.Automatic)
-            until("the move", { line.value }) { it == "Moves to the fastest chip with the next message." }
+            eventually("the move") { line.value == "Moves to the fastest chip with the next message." }
 
             host.release()
-            until("nothing loaded", { line.value }) { it == null }
+            eventually("nothing loaded") { line.value == null }
         }
 
     @Test fun choosingAChipAndBackDuringAReplyKeepsTheModel() =
@@ -155,16 +156,16 @@ class SettingsViewModelChipTest {
             fake.reply { content("Done.") }
             val chat = engine.open(0)
             chat.send("go", emptyList())
-            until("streaming", { chat.streaming.value }) { it != null }
+            eventually("streaming") { chat.streaming.value != null }
             val model = (host.state.value as HostState.Ready).model
 
             // NPU, then straight back to Automatic, while the reply streams
             val vm = viewModel { DeviceFacts.Fallback }
             vm.setChip(ChipChoice.Npu)
             vm.setChip(ChipChoice.Automatic)
-            until("saved", { runBlocking { settings.settings.first().chip } }) { it == ChipChoice.Automatic }
+            eventually("saved") { settings.settings.first().chip == ChipChoice.Automatic }
             gate.complete(Unit)
-            until("answered", { chat.messages.value.count { it.state == MessageState.Done } }) { it == 2 }
+            eventually("answered") { chat.messages.value.count { it.state == MessageState.Done } == 2 }
             vm.awaitLoadChange()
             // the model loaded for Automatic, what is chosen now, stays
             assertSame(model, (host.state.value as? HostState.Ready)?.model)
@@ -177,7 +178,7 @@ class SettingsViewModelChipTest {
         fake.reply { content("Done.") }
         val chat = engine.open(0)
         chat.send("go", emptyList())
-        until("streaming", { chat.streaming.value }) { it != null }
+        eventually("streaming") { chat.streaming.value != null }
         return chat
     }
 
@@ -188,9 +189,9 @@ class SettingsViewModelChipTest {
             val vm = viewModel { DeviceFacts.Fallback }
             vm.setContext(ContextChoice.UpTo32k)
             vm.setContext(ContextChoice.Automatic)
-            until("saved", { runBlocking { settings.settings.first().context } }) { it == ContextChoice.Automatic }
+            eventually("saved") { settings.settings.first().context == ContextChoice.Automatic }
             gate.complete(Unit)
-            until("answered", { chat.messages.value.count { it.state == MessageState.Done } }) { it == 2 }
+            eventually("answered") { chat.messages.value.count { it.state == MessageState.Done } == 2 }
             vm.awaitLoadChange()
             assertSame(model, (host.state.value as? HostState.Ready)?.model)
         }
@@ -202,10 +203,10 @@ class SettingsViewModelChipTest {
             // one wait at a time: the context change replaces the chip change's, and reads both choices when it ends
             vm.setChip(ChipChoice.Npu)
             vm.setContext(ContextChoice.UpTo8k)
-            until("saved", { runBlocking { settings.settings.first().context } }) { it == ContextChoice.UpTo8k }
+            eventually("saved") { settings.settings.first().context == ContextChoice.UpTo8k }
             assertTrue(host.state.value is HostState.Ready)
             gate.complete(Unit)
-            until("answered", { chat.messages.value.count { it.state == MessageState.Done } }) { it == 2 }
+            eventually("answered") { chat.messages.value.count { it.state == MessageState.Done } == 2 }
             vm.awaitLoadChange()
             assertEquals(HostState.Idle, host.state.value)
             // the chip saved just before is kept: only the wait was replaced

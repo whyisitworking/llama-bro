@@ -76,6 +76,10 @@ public class Model internal constructor(
     private val gate =
         java.util.concurrent.locks
             .ReentrantReadWriteLock()
+
+    /** True while a close waits on the gate for a request entering native code; tests wait on it. */
+    internal val closeQueued: Boolean get() = gate.hasQueuedThreads()
+
     private val closedSignal = CompletableDeferred<Unit>()
     private val active = mutableSetOf<ActiveCall<*>>()
 

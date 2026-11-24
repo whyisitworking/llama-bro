@@ -477,6 +477,7 @@ struct collector {
     std::condition_variable cv;
     std::vector<std::string> chunks;
     std::vector<int> statuses;
+    std::vector<clk::time_point> t_chunks;  // arrival of each chunk
     int n_terminal = 0;
     int terminal = -1;              // lb_event of the terminal event
     bool chunk_after_terminal = false;
@@ -492,6 +493,7 @@ struct collector {
                 if (c->n_terminal > 0) c->chunk_after_terminal = true;
                 c->chunks.emplace_back(data, len);
                 c->statuses.push_back(status);
+                c->t_chunks.push_back(clk::now());
             } else {
                 LB_CHECK(data == nullptr);
                 c->n_terminal++;
@@ -508,6 +510,36 @@ struct collector {
         std::unique_lock<std::mutex> lk(mtx);
         LB_CHECK(cv.wait_for(lk, std::chrono::seconds(120), [&] { return chunks.size() >= n || n_terminal > 0; }));
         LB_CHECK(chunks.size() >= n);
+    }
+    // waits for n chunks that contain needle
+    void wait_chunks_containing(const std::string & needle, size_t n) {
+        std::unique_lock<std::mutex> lk(mtx);
+        const auto count = [&] {
+            size_t k = 0;
+            for (const auto & ch : chunks) k += ch.find(needle) != std::string::npos;
+            return k;
+        };
+        LB_CHECK(cv.wait_for(lk, std::chrono::seconds(120), [&] { return count() >= n || n_terminal > 0; }));
+        LB_CHECK(count() >= n);
+    }
+    // median gap between consecutive chunks that contain needle (all chunks when it is empty), in ms
+    double median_gap_ms(const std::string & needle = "") {
+        std::lock_guard<std::mutex> lk(mtx);
+        std::vector<clk::time_point> ts;
+        for (size_t i = 0; i < chunks.size(); i++) {
+            if (needle.empty() || chunks[i].find(needle) != std::string::npos) ts.push_back(t_chunks[i]);
+        }
+        std::vector<double> gaps;
+        for (size_t i = 1; i < ts.size(); i++) {
+            gaps.push_back(std::chrono::duration<double, std::milli>(ts[i] - ts[i - 1]).count());
+        }
+        LB_CHECK(!gaps.empty());
+        std::sort(gaps.begin(), gaps.end());
+        return gaps[gaps.size() / 2];
+    }
+    size_t chunk_count() {
+        std::lock_guard<std::mutex> lk(mtx);
+        return chunks.size();
     }
     void wait_terminal() {
         std::unique_lock<std::mutex> lk(mtx);
@@ -595,55 +627,60 @@ static void chat_stream_ends_with_done_marker() {
     lb_model_free(m);
 }
 
+// Cancel latency is bounded by the stream's own pace, not by milliseconds: a loaded machine slows the decode and the
+// cancel alike. Nothing reaches the caller after a cancel (request.cpp drops it), so the chunks after it say nothing.
 static void cancel_during_decode() {
     lb_model * m = load_test_model();
     collector c;
     lb_request * req = start(m, "chat", chat_body("Write a long story about a dragon.", 512, true), c);
-    c.wait_chunks(5);
+    c.wait_chunks(8);
+    const double token_ms = c.median_gap_ms();
     const auto t_cancel = clk::now();
     lb_request_cancel(req);
     lb_request_cancel(req);  // idempotent
     c.wait_terminal();
-    const auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(c.t_terminal - t_cancel).count();
-    std::fprintf(stderr, "cancel -> terminal: %lld ms\n", (long long) dt);
+    const double dt = std::chrono::duration<double, std::milli>(c.t_terminal - t_cancel).count();
+    std::fprintf(stderr, "cancel -> terminal: %.0f ms, a token every %.0f ms\n", dt, token_ms);
     LB_CHECK(c.terminal == LB_EVENT_CANCELLED && c.n_terminal == 1);
-    LB_CHECK(dt <= 500);
+    LB_CHECK(dt <= 5 * token_ms + 50);
     lb_request_free(req);
     lb_model_free(m);
 }
 
-static void cancel_during_prefill() {
+// A cancel before the first result: the request still ends cancelled, once, and writes nothing.
+static void cancel_before_first_result() {
     lb_model * m = load_test_model();
     collector c;
     lb_request * req = start(m, "chat", chat_body(long_prompt(3000), 16, true), c);
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    const auto t_cancel = clk::now();
     lb_request_cancel(req);
     c.wait_terminal();
-    const auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(c.t_terminal - t_cancel).count();
-    std::fprintf(stderr, "cancel -> terminal: %lld ms\n", (long long) dt);
-    LB_CHECK(c.terminal == LB_EVENT_CANCELLED);
-    LB_CHECK(dt <= 2000);
+    LB_CHECK(c.terminal == LB_EVENT_CANCELLED && c.n_terminal == 1);
+    LB_CHECK(c.chunks.empty());
     lb_request_free(req);
     lb_model_free(m);
 }
 
 // Typed chat always sends return_progress: each n_batch pass then yields a result, so the stream sees the
-// cancel after one pass instead of at the 1 s polling tick (F23).
+// cancel after one pass instead of at the 1 s polling tick (F23). Small batches keep a pass well under the tick
+// (512 tokens of the 4B take about 6 s on a laptop CPU, longer than the tick, which would then always win). Progress
+// chunks prove the prefill is under way and give the pass length; the bound, two passes, is under the tick unless the
+// machine is so loaded that a pass outlasts it, and then the tick ends the stream inside the bound anyway.
 static void cancel_during_prefill_with_progress() {
-    lb_model * m = load_test_model();
+    lb_model * m = load_test_model({{"n_batch", 16}, {"n_ubatch", 16}});
     collector c;
     json body = chat_body(long_prompt(3000), 16, true);
     body["return_progress"] = true;
     lb_request * req = start(m, "chat", body, c);
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    c.wait_chunks_containing("prompt_progress", 3);
+    const double pass_ms = c.median_gap_ms("prompt_progress");
     const auto t_cancel = clk::now();
     lb_request_cancel(req);
     c.wait_terminal();
-    const auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(c.t_terminal - t_cancel).count();
-    std::fprintf(stderr, "cancel -> terminal: %lld ms\n", (long long) dt);
-    LB_CHECK(c.terminal == LB_EVENT_CANCELLED);
-    LB_CHECK(dt <= 1000);
+    const double dt = std::chrono::duration<double, std::milli>(c.t_terminal - t_cancel).count();
+    std::fprintf(stderr, "cancel -> terminal: %.0f ms, a pass every %.0f ms\n", dt, pass_ms);
+    LB_CHECK(c.terminal == LB_EVENT_CANCELLED && c.n_terminal == 1);
+    LB_CHECK(stream_content(c.chunks).empty());
+    LB_CHECK(dt <= 2 * pass_ms + 50);
     lb_request_free(req);
     lb_model_free(m);
 }
@@ -667,8 +704,8 @@ static void unknown_endpoint_invalid_arg() {
     collector c;
     lb_request * req = nullptr;
     LB_CHECK(lb_model_request(m, "nope", nullptr, "{}", 2, collector::cb, &c, &req) == LB_ERR_INVALID_ARG);
+    // refused before any request thread exists, so nothing can call back later
     LB_CHECK(req == nullptr);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     LB_CHECK(c.chunks.empty() && c.n_terminal == 0);
     lb_model_free(m);
 }
@@ -2376,7 +2413,7 @@ int main(int argc, char ** argv) {
         {"chat_nonstream_ok", chat_nonstream_ok},
         {"chat_stream_ends_with_done_marker", chat_stream_ends_with_done_marker},
         {"cancel_during_decode", cancel_during_decode},
-        {"cancel_during_prefill", cancel_during_prefill},
+        {"cancel_before_first_result", cancel_before_first_result},
         {"cancel_during_prefill_with_progress", cancel_during_prefill_with_progress},
         {"context_exceeded_returns_counts", context_exceeded_returns_counts},
         {"unknown_endpoint_invalid_arg", unknown_endpoint_invalid_arg},

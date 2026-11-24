@@ -2,9 +2,9 @@ package com.suhel.llamabro.demo.ui.models
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.data.SettingsRepository
+import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.FakeScheduler
@@ -14,6 +14,7 @@ import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.SearchModel
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.ui.keepAlive
+import com.suhel.llamabro.demo.ui.shutDown
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -21,7 +22,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
@@ -32,7 +32,6 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -82,11 +81,12 @@ class ModelsFirstPaintTest {
     private val day = 24L * 3600 * 1000
     private val now = 1_800_000_000_000L
 
-    @Before fun main() = Dispatchers.setMain(StandardTestDispatcher())
+    private val main = StandardTestDispatcher()
+
+    @Before fun setUpMain() = Dispatchers.setMain(main)
 
     @After fun stop() {
-        viewModels.forEach { it.viewModelScope.cancel() }
-        Dispatchers.resetMain()
+        shutDown(main, viewModels)
         scope.cancel()
         testHub.close()
     }
@@ -145,9 +145,6 @@ class ModelsFirstPaintTest {
     /** Waits in real time for what the repository's threads deliver, while the test dispatcher keeps running. */
     private suspend fun <T> Flow<T>.arrives(predicate: (T) -> Boolean): T =
         withContext(Dispatchers.Default) { withTimeout(5_000) { first(predicate) } }
-
-    private suspend fun until(condition: () -> Boolean) =
-        withContext(Dispatchers.Default) { withTimeout(5_000) { while (!condition()) delay(10) } }
 
     /** The page as it is once the library is read: typing after this is in virtual time alone. */
     private suspend fun ModelsViewModel.ready(): Browse = browse.arrives { it != null }!!
@@ -228,7 +225,9 @@ class ModelsFirstPaintTest {
                     .single()
             // a library row lacked its fit and maker until its card was opened
             assertNotNull("its fit, from its own file", vm.fit(row).arrives { it != null })
-            until { "someone/foo-2b-gguf" in cache.factsAskedOnce }
+            withContext(Dispatchers.Default) {
+                eventually("its repo facts are asked for") { "someone/foo-2b-gguf" in cache.factsAskedOnce }
+            }
         }
 
     // search finds a catalog model by name whatever its fit; browse suggests only what runs well

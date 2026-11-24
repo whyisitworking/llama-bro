@@ -5,6 +5,8 @@ import com.suhel.llamabro.demo.chat.HostState
 import com.suhel.llamabro.demo.chat.LoadConfig
 import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.data.SettingsRepository
+import com.suhel.llamabro.demo.eventually
+import com.suhel.llamabro.demo.letAWrongActionLand
 import com.suhel.llamabro.demo.models.TestHub.Refusal
 import com.suhel.llamabro.hub.CachedModel
 import com.suhel.llamabro.hub.HfModel
@@ -15,7 +17,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
@@ -76,7 +77,9 @@ class ModelRepositoryTest {
     private fun ModelRepository.settle() {
         val before = scheduler.cancelled.count { it == bystander }
         pause(bystander)
-        runBlocking { withTimeout(5_000) { while (scheduler.cancelled.count { it == bystander } == before) delay(10) } }
+        runBlocking {
+            eventually("the steps asked before it ran") { scheduler.cancelled.count { it == bystander } > before }
+        }
     }
 
     /** A host over the fake engine that loads the hub's installed copies, as the app's does. */
@@ -207,7 +210,9 @@ class ModelRepositoryTest {
             val host = host()
             val lease = host.hold(swift, LoadConfig())
             val removal = async { repository(host).remove(swift) }
-            delay(200)
+            // the remove has closed the 0.8B and now waits in that close for the reply's lease
+            eventually("the remove closes the 0.8B") { host.state.value == HostState.Idle }
+            letAWrongActionLand()
             assertFalse(removal.isCompleted)
             assertTrue("still on the phone", testHub.onPhone(swift))
             lease.release()
@@ -221,9 +226,13 @@ class ModelRepositoryTest {
             val host = host()
             val lease = host.hold(swift, LoadConfig())
             val next = async { host.hold(other, LoadConfig()) }
-            withTimeout(10_000) { while ((host.state.value as? HostState.Waking)?.outgoing?.key != swift) delay(10) }
+            eventually("the load waits to replace the 0.8B") {
+                (host.state.value as? HostState.Waking)?.outgoing?.key == swift
+            }
             val removal = async { repository(host).remove(swift) }
-            delay(200)
+            eventually("the remove stops the 0.8B's work") { swift in scheduler.cancelled }
+            // the host shows no sign of a close waiting on an outgoing model, so give a wrong delete time to happen
+            letAWrongActionLand()
             assertTrue("still on the phone", testHub.onPhone(swift))
             // the 0.8B's reply ends: it closes and is deleted, and the load waiting to replace it goes on
             lease.release()
@@ -244,7 +253,10 @@ class ModelRepositoryTest {
             val repo = repository(host)
             val first = async { repo.remove(swift) }
             val second = async { repo.remove(swift) }
-            delay(200)
+            eventually("the first remove closes the 0.8B") { host.state.value == HostState.Idle }
+            eventually("both removes stop the 0.8B's work") { scheduler.cancelled.count { it == swift } == 2 }
+            // the host shows no sign of a second close waiting on the same model, so give a wrong delete time to happen
+            letAWrongActionLand()
             assertFalse(first.isCompleted)
             assertFalse(second.isCompleted)
             assertTrue("still on the phone", testHub.onPhone(swift))
@@ -262,11 +274,15 @@ class ModelRepositoryTest {
             val host = host()
             val lease = host.hold(swift, LoadConfig())
             val next = async { host.hold(other, LoadConfig()) }
-            withTimeout(10_000) { while ((host.state.value as? HostState.Waking)?.outgoing?.key != swift) delay(10) }
+            eventually("the load waits to replace the 0.8B") {
+                (host.state.value as? HostState.Waking)?.outgoing?.key == swift
+            }
             val removeNext = async { repository(host).remove(other) }
-            withTimeout(10_000) { while (host.state.value != HostState.Idle) delay(10) }
+            eventually("the remove closes the next model") { host.state.value == HostState.Idle }
             val removeOutgoing = async { repository(host).remove(swift) }
-            delay(200)
+            eventually("the remove stops the 0.8B's work") { swift in scheduler.cancelled }
+            // the host shows no sign of a close waiting on an outgoing model, so give a wrong delete time to happen
+            letAWrongActionLand()
             assertFalse(removeOutgoing.isCompleted)
             assertTrue("still on the phone", testHub.onPhone(swift))
             lease.release()
@@ -319,9 +335,14 @@ class ModelRepositoryTest {
             testHub.refuse(other, Refusal.Network)
             repo.stateBecomes(other) { it is DownloadStatus.Failed }
             scheduler.enqueued.clear()
+            assertTrue(swift.toString() in settings.settings.first().downloadsNeedingToken)
 
             repo.tokenSaved()
-            delay(300) // the store answers off this thread; a start would have shown by now
+            // the 0.8B's Get clears its need for a token as its step runs; the settle waits out the rest of that step
+            eventually("the 0.8B is asked again") {
+                swift.toString() !in settings.settings.first().downloadsNeedingToken
+            }
+            repo.settle()
             assertEquals("the 0.8B waits for the 4B under way", emptyList<HfModel>(), scheduler.enqueued)
             testHub.install(other)
             scheduler.awaitEnqueued(swift) // the network failure is not the token's business: only the 0.8B starts
@@ -559,8 +580,9 @@ class ModelRepositoryTest {
                     .toSet(),
             )
             // one new scan for the library, plus `changed`'s own look at which downloads finished
-            withTimeout(5_000) { while (scans.get() < 3) delay(10) }
-            delay(100)
+            eventually("the scans") { scans.get() >= 3 }
+            // no event marks the last scan, so a stray fourth one is given a moment to show
+            letAWrongActionLand()
             assertEquals(3, scans.get())
         }
 

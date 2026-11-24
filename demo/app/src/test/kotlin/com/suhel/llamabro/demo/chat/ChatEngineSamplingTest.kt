@@ -7,6 +7,8 @@ import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
+import com.suhel.llamabro.demo.eventually
+import com.suhel.llamabro.demo.letAWrongActionLand
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.TestHub
@@ -19,7 +21,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
@@ -67,10 +68,6 @@ class ChatEngineSamplingTest {
         testHub.close()
     }
 
-    private suspend fun until(what: String, condition: suspend () -> Boolean) {
-        withTimeoutOrNull(10_000) { while (!condition()) delay(10) } ?: throw AssertionError("timed out: $what")
-    }
-
     private suspend fun newChat(): ChatEngine.ChatHandle {
         settings.setLastModel(swift.toString())
         testHub.install(swift)
@@ -89,7 +86,7 @@ class ChatEngineSamplingTest {
             fake.reply { content("Hi.") }
             val chat = newChat()
             chat.send("Hello", emptyList())
-            until("answered") { rows(chat).lastOrNull()?.state == MessageState.Done }
+            eventually("answered") { rows(chat).lastOrNull()?.state == MessageState.Done }
             // Think is Off: Qwen3.5 0.8B's card without thinking, and the answer's share of the limit
             val body = request(0)
             assertEquals(1f, body.float("temperature"))
@@ -112,8 +109,7 @@ class ChatEngineSamplingTest {
             models.changed()
             val chat = engine.open(0)
             chat.send("Hello", emptyList())
-            withTimeoutOrNull(10_000) { while (rows(chat).lastOrNull()?.state != MessageState.Done) delay(10) }
-                ?: throw AssertionError("the turn waited for the lookup")
+            eventually("the turn goes on without the lookup") { rows(chat).lastOrNull()?.state == MessageState.Done }
             // nothing the hub didn't say is sent, so the file's own values apply (F17)
             assertFalse(request(0).containsKey("temperature"))
         }
@@ -148,8 +144,9 @@ class ChatEngineSamplingTest {
                 })
             settings.setLastModel(thing.toString())
             val chat = engine.open(0)
-            until("the model is known") { chat.current.value == thing }
-            delay(300)
+            eventually("the model is known") { chat.current.value == thing }
+            // the library has been read and lacks it: the lookup would have started from that
+            eventually("the model is missing") { chat.model.value is ChatModelState.Missing }
             assertFalse("asked before the model was on the phone", asked.isCompleted)
             testHub.install(thing)
             models.changed()
@@ -161,13 +158,13 @@ class ChatEngineSamplingTest {
             fake.reply { content("One.") }
             val chat = newChat()
             chat.send("Hello", emptyList())
-            until("answered") { rows(chat).lastOrNull()?.state == MessageState.Done }
+            eventually("answered") { rows(chat).lastOrNull()?.state == MessageState.Done }
             store.setModel(swift, Knob.Temperature, 0.5f)
             store.setModel(swift, Knob.TopK, 30f)
             store.setChat(chat.chatId.value, Knob.Temperature, 0.2f)
             fake.reply { content("Two.") }
             chat.send("Again", emptyList())
-            until("answered again") {
+            eventually("answered again") {
                 rows(chat).count {
                     it.state == MessageState.Done &&
                         it.kind == MessageKind.Assistant
@@ -190,13 +187,13 @@ class ChatEngineSamplingTest {
             }
             val chat = newChat()
             chat.send("Count to four", emptyList())
-            until("cut") { rows(chat).lastOrNull()?.state == MessageState.Cut }
+            eventually("cut") { rows(chat).lastOrNull()?.state == MessageState.Cut }
             val cut = rows(chat).last()
             assertEquals("One, two,", cut.text)
 
             fake.reply { content(" three, four.") }
             chat.continueReply(cut.position)
-            until("continued") { rows(chat).lastOrNull()?.state == MessageState.Done }
+            eventually("continued") { rows(chat).lastOrNull()?.state == MessageState.Done }
             assertEquals(listOf(MessageKind.User, MessageKind.Assistant), rows(chat).map { it.kind })
             assertEquals("One, two, three, four.", rows(chat).last().text)
             assertEquals("Counting.", rows(chat).last().reasoning)
@@ -216,13 +213,14 @@ class ChatEngineSamplingTest {
             }
             val chat = newChat()
             chat.send("One", emptyList())
-            until("cut") { rows(chat).lastOrNull()?.state == MessageState.Cut }
+            eventually("cut") { rows(chat).lastOrNull()?.state == MessageState.Cut }
             val cut = rows(chat).last()
             fake.reply { content("Next.") }
             chat.send("Two", emptyList())
-            until("answered") { rows(chat).lastOrNull()?.state == MessageState.Done }
+            eventually("answered") { rows(chat).lastOrNull()?.state == MessageState.Done }
             chat.continueReply(cut.position)
-            delay(200)
+            // a refused continue changes no state on the handle's own scope: there is nothing to wait on
+            letAWrongActionLand()
             assertEquals(2, fake.chatRequests.size)
             assertEquals(MessageState.Cut, rows(chat).first { it.id == cut.id }.state)
         }

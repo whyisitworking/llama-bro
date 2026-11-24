@@ -11,6 +11,7 @@ import com.suhel.llamabro.demo.data.NewMessage
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
+import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DownloadFailure
 import com.suhel.llamabro.demo.models.FakeScheduler
@@ -27,7 +28,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -89,11 +89,6 @@ class ChatEngineTest {
         models.changed()
     }
 
-    private suspend fun until(what: String, timeoutMillis: Long = 10_000, condition: suspend () -> Boolean) {
-        withTimeoutOrNull(timeoutMillis) { while (!condition()) delay(10) }
-            ?: throw AssertionError("timed out waiting for: $what")
-    }
-
     private suspend fun rows(handle: ChatEngine.ChatHandle): List<StoredMessage> = handle.messages.value
 
     private fun reply(text: String, reasoning: String? = null) =
@@ -114,7 +109,12 @@ class ChatEngineTest {
             reply("Hello there.", reasoning = "thinking it over")
             val chat = newChat()
             chat.send("Hi", emptyList())
-            until("reply done") { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
+            eventually("reply done") {
+                rows(chat).any {
+                    it.kind == MessageKind.Assistant &&
+                        it.state == MessageState.Done
+                }
+            }
             val all = rows(chat)
             assertEquals(listOf(MessageKind.User, MessageKind.Assistant), all.map { it.kind })
             val a = all[1]
@@ -131,10 +131,10 @@ class ChatEngineTest {
             settings.setLastModel(swift.toString())
             testHub.refuse(swift, TestHub.Refusal.Unauthorized)
             val chat = engine.open(0)
-            until("the model says its download stopped") { chat.model.value is ChatModelState.DownloadFailed }
+            eventually("the model says its download stopped") { chat.model.value is ChatModelState.DownloadFailed }
             // the held message is still waiting for it: the line says why, and what the user can do about it
             chat.send("hello", emptyList())
-            until("held") { rows(chat).size == 1 }
+            eventually("held") { rows(chat).size == 1 }
             assertEquals(MessageState.Held, rows(chat).single().state)
             assertEquals(
                 Limits.forDownload(DownloadFailure(DownloadFailure.Kind.Unauthorized, retryable = false)),
@@ -142,7 +142,7 @@ class ChatEngineTest {
             )
 
             chat.retryDownload()
-            until("the download was started again") { scheduler.enqueued == listOf(swift) }
+            eventually("the download was started again") { scheduler.enqueued == listOf(swift) }
         }
 
     @Test fun heldMessagesAreAnsweredInOrderOnce() =
@@ -153,14 +153,14 @@ class ChatEngineTest {
             testHub.downloading(swift)
             val chat = engine.open(0)
             chat.send("one", emptyList())
-            until("first held") { rows(chat).size == 1 }
+            eventually("first held") { rows(chat).size == 1 }
             chat.send("two", emptyList())
-            until("both held") { rows(chat).size == 2 }
+            eventually("both held") { rows(chat).size == 2 }
             assertEquals(listOf(MessageState.Held, MessageState.Held), rows(chat).map { it.state })
             assertEquals(0, fake.chatRequests.size)
 
             onPhone(swift) // the download finished
-            until("both answered") {
+            eventually("both answered") {
                 rows(chat).count { it.kind == MessageKind.Assistant && it.state == MessageState.Done } ==
                     2
             }
@@ -180,12 +180,12 @@ class ChatEngineTest {
             }
             val chat = newChat()
             chat.send("go", emptyList())
-            until("started") { rows(chat).any { it.kind == MessageKind.Assistant } && chat.busy.value }
-            until("text arrived") { chat.streaming.value?.text == "part one " }
+            eventually("started") { rows(chat).any { it.kind == MessageKind.Assistant } && chat.busy.value }
+            eventually("text arrived") { chat.streaming.value?.text == "part one " }
             chat.stop()
-            until("stopped") { rows(chat).any { it.state == MessageState.Stopped } }
+            eventually("stopped") { rows(chat).any { it.state == MessageState.Stopped } }
             assertEquals("part one ", rows(chat).first { it.kind == MessageKind.Assistant }.text)
-            until("idle") { !chat.busy.value }
+            eventually("idle") { !chat.busy.value }
         }
 
     @Test fun regenerateReplacesTheReplyAndRebuildsFromHistory() =
@@ -194,11 +194,11 @@ class ChatEngineTest {
             reply("second")
             val chat = newChat()
             chat.send("question", emptyList())
-            until(
+            eventually(
                 "first answered",
             ) { rows(chat).any { it.state == MessageState.Done && it.kind == MessageKind.Assistant } }
             chat.regenerate(1)
-            until("regenerated") {
+            eventually("regenerated") {
                 rows(chat).let { r ->
                     r.lastOrNull()?.text == "second" &&
                         r.last().state == MessageState.Done
@@ -215,9 +215,9 @@ class ChatEngineTest {
             reply("a2")
             val chat = newChat()
             chat.send("original", emptyList())
-            until("answered") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
+            eventually("answered") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
             chat.edit(0, "edited")
-            until("re-answered") {
+            eventually("re-answered") {
                 rows(chat).let { r ->
                     r.size == 2 && r[1].text == "a2" && r[1].state == MessageState.Done
                 }
@@ -233,16 +233,16 @@ class ChatEngineTest {
             val chat = newChat()
             onPhone(deep)
             chat.send("hello", emptyList())
-            until("answered") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
+            eventually("answered") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
             chat.switchModel(deep)
-            until("divider") { rows(chat).any { it.kind == MessageKind.Switch } }
+            eventually("divider") { rows(chat).any { it.kind == MessageKind.Switch } }
             assertEquals("Switched to Qwen3.5 4B", rows(chat).first { it.kind == MessageKind.Switch }.text)
-            until("recorded") {
+            eventually("recorded") {
                 settings.settings.first().lastModel == deep.toString() &&
                     chats.modelKey(chat.chatId.value) == deep.toString()
             }
             chat.send("more", emptyList())
-            until("answered by deep") {
+            eventually("answered by deep") {
                 rows(chat).let { r ->
                     r.size == 5 && r.last().kind == MessageKind.Assistant &&
                         r.last().state == MessageState.Done
@@ -256,9 +256,9 @@ class ChatEngineTest {
         runBlocking {
             reply("hi")
             val chat = newChat()
-            until("named") { chat.name.value == "Qwen3.5 0.8B" && chat.current.value == swift }
+            eventually("named") { chat.name.value == "Qwen3.5 0.8B" && chat.current.value == swift }
             chat.switchModel(deep)
-            until("switched") { chat.name.value == "Qwen3.5 4B" && chat.current.value == deep }
+            eventually("switched") { chat.name.value == "Qwen3.5 4B" && chat.current.value == deep }
             Unit
         }
 
@@ -266,7 +266,7 @@ class ChatEngineTest {
         runBlocking {
             reply("ok")
             val chat = newChat()
-            until("the model is known") { chat.name.value.isNotEmpty() }
+            eventually("the model is known") { chat.name.value.isNotEmpty() }
             assertFalse(chat.send("   ")) // nothing to send
             assertTrue(chat.send("hello"))
             streamer = null
@@ -278,8 +278,8 @@ class ChatEngineTest {
             settings.setLastModel(llamaKey.toString())
             onPhone(llamaKey)
             val chat = engine.open(0)
-            until("the model is known") { chat.current.value == llamaKey }
-            until("ready") { chat.model.value is ChatModelState.Ready }
+            eventually("the model is known") { chat.current.value == llamaKey }
+            eventually("ready") { chat.model.value is ChatModelState.Ready }
             assertFalse(chat.send("what is this?", listOf("pic.jpg")))
             assertTrue(
                 chat.limit.value
@@ -299,9 +299,9 @@ class ChatEngineTest {
             }
             val chat = newChat()
             chat.send("go")
-            until("streaming") { chat.streaming.value != null }
+            eventually("streaming") { chat.streaming.value != null }
             chat.close()
-            until(
+            eventually(
                 "saved as stopped",
             ) { chats.messages(chat.chatId.value).first().any { it.state == MessageState.Stopped } }
         }
@@ -312,7 +312,7 @@ class ChatEngineTest {
             settings.setInstructions("a nurse", "short answers")
             val chat = newChat()
             chat.send("hi", emptyList())
-            until("answered") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
+            eventually("answered") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
             val body = fake.chatRequests.single()
             assertTrue(body, body.contains("About me: a nurse") && body.contains("How to answer: short answers"))
         }
@@ -324,10 +324,10 @@ class ChatEngineTest {
             settings.setInstructions("a nurse", "short answers")
             val chat = newChat()
             chat.send("first", emptyList())
-            until("answered") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
+            eventually("answered") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
             settings.setInstructions("a pilot", "long answers")
             chat.send("second", emptyList())
-            until("answered again") { rows(chat).let { r -> r.size == 4 && r[3].state == MessageState.Done } }
+            eventually("answered again") { rows(chat).let { r -> r.size == 4 && r[3].state == MessageState.Done } }
             val second = fake.chatRequests.last()
             assertTrue(second, second.contains("About me: a pilot") && !second.contains("a nurse"))
             assertTrue("the history is rebuilt, not lost", second.contains("first") && second.contains("one"))
@@ -338,7 +338,7 @@ class ChatEngineTest {
             reply("ok")
             val chat = newChat()
             chat.send("hi", emptyList())
-            until("answered") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
+            eventually("answered") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
             assertTrue(!fake.chatRequests.single().contains("\"system\""))
         }
 
@@ -347,7 +347,7 @@ class ChatEngineTest {
             fake.contextExceeded(promptTokens = 9_000, contextSize = 4_096)
             val chat = newChat()
             chat.send("a very long message", emptyList())
-            until("limit shown") { chat.limit.value != null }
+            eventually("limit shown") { chat.limit.value != null }
             assertEquals(LimitAction.StartNewChat, chat.limit.value!!.action)
             assertEquals("This chat is longer than Qwen3.5 0.8B can hold.", chat.limit.value!!.line)
             assertTrue(rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Failed })
@@ -360,14 +360,16 @@ class ChatEngineTest {
             fake.reply { content("Hi!") }
             val chat = newChat()
             chat.send("hello", emptyList())
-            until("answered") { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
+            eventually(
+                "answered",
+            ) { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
             // a note, not a wall (F128): the reply came, and the line offers a smaller size
             assertEquals(Limits.memoryWarning("Qwen3.5 0.8B"), chat.limit.value)
             assertEquals(LimitAction.TrySmallerSize, chat.limit.value!!.action)
             // the model stays loaded with its note; the next turn doesn't say it again
             fake.reply { content("Again.") }
             chat.send("once more", emptyList())
-            until("answered twice") {
+            eventually("answered twice") {
                 rows(chat).count { it.kind == MessageKind.Assistant && it.state == MessageState.Done } == 2
             }
             assertEquals(null, chat.limit.value)
@@ -376,7 +378,7 @@ class ChatEngineTest {
             fake.failLoad(LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory, "not enough memory", times = 1)
             fake.reply { content("Back.") }
             chat.send("and again", emptyList())
-            until("answered three times") {
+            eventually("answered three times") {
                 rows(chat).count { it.kind == MessageKind.Assistant && it.state == MessageState.Done } == 3
             }
             assertEquals(Limits.memoryWarning("Qwen3.5 0.8B"), chat.limit.value)
@@ -388,7 +390,7 @@ class ChatEngineTest {
             fake.failLoad(LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory, "not enough memory", times = 100)
             val chat = newChat()
             chat.send("hello", emptyList())
-            until("limit shown") { chat.limit.value != null }
+            eventually("limit shown") { chat.limit.value != null }
             assertEquals(LimitAction.TrySmallerSize, chat.limit.value!!.action)
             assertEquals(LimitAction.Retry, chat.limit.value!!.second)
             assertEquals("Qwen3.5 0.8B needs more memory than this phone has free right now.", chat.limit.value!!.line)
@@ -404,7 +406,7 @@ class ChatEngineTest {
             fake.failLoad(LlamaBroException.ModelLoadFailed.Reason.Other, "the file is corrupt", times = 100)
             val chat = newChat()
             chat.send("hello", emptyList())
-            until("limit shown") { chat.limit.value != null }
+            eventually("limit shown") { chat.limit.value != null }
             assertEquals(LimitAction.Retry, chat.limit.value!!.action)
             assertEquals("Qwen3.5 0.8B didn't start. Try again.", chat.limit.value!!.line)
         }
@@ -415,9 +417,9 @@ class ChatEngineTest {
             settings.setLastModel(llama.toString())
             onPhone(llama, swift)
             val chat = engine.open(0)
-            until("model ready") { chat.model.value is ChatModelState.Ready }
+            eventually("model ready") { chat.model.value is ChatModelState.Ready }
             chat.send("look", listOf("a.jpg"))
-            until("limit shown") { chat.limit.value != null }
+            eventually("limit shown") { chat.limit.value != null }
             assertEquals("Llama 3.2 3B can't see images. Qwen3.5 0.8B can.", chat.limit.value!!.line)
             assertEquals(LimitAction.UseVisionModel, chat.limit.value!!.action)
             assertEquals(0, fake.chatRequests.size)
@@ -429,10 +431,10 @@ class ChatEngineTest {
             // a stored chat whose model is not in the library
             val id = chats.createChat(deep.toString())
             val chat = engine.open(id)
-            until("missing") { chat.model.value is ChatModelState.Missing }
+            eventually("missing") { chat.model.value is ChatModelState.Missing }
             assertEquals("Qwen3.5 4B", (chat.model.value as ChatModelState.Missing).name)
             chat.send("hello?", emptyList())
-            until("held") { rows(chat).size == 1 }
+            eventually("held") { rows(chat).size == 1 }
             assertEquals(0, fake.chatRequests.size) // nothing is sent to a model that isn't there
         }
 
@@ -444,7 +446,7 @@ class ChatEngineTest {
             settings.pinDefault(deep.toString())
             val chat = engine.open(0)
             chat.send("hello", emptyList())
-            until("answered") { rows(chat).size == 2 }
+            eventually("answered") { rows(chat).size == 2 }
             assertEquals(deep.toString(), chats.modelKey(chat.chatId.value))
         }
 
@@ -458,9 +460,10 @@ class ChatEngineTest {
             }
             val chat = newChat()
             chat.send("one", emptyList())
-            until("busy") { chat.busy.value }
-            chat.send("two", emptyList())
-            delay(200)
+            eventually("busy") { chat.busy.value }
+            // send refuses before it stores anything; the reply row shows the rows have caught up with the first
+            assertFalse(chat.send("two", emptyList()))
+            eventually("the reply row shows") { rows(chat).any { it.kind == MessageKind.Assistant } }
             assertEquals(1, rows(chat).count { it.kind == MessageKind.User })
             chat.stop()
         }
@@ -468,8 +471,9 @@ class ChatEngineTest {
     @Test fun emptyOrBlankMessageIsNotSent() =
         runBlocking {
             val chat = newChat()
-            chat.send("   ", emptyList())
-            delay(200)
+            // send refuses before it makes the chat or stores anything
+            assertFalse(chat.send("   ", emptyList()))
+            assertEquals(0L, chat.chatId.value)
             assertEquals(0, rows(chat).size)
         }
 
@@ -478,7 +482,7 @@ class ChatEngineTest {
             reply("ok")
             val chat = newChat()
             chat.send("hi", emptyList())
-            until("answered") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
+            eventually("answered") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
             // Qwen3.5 0.8B thinks (catalog), so Think defaults to Off and the request says thinking is off
             assertEquals(ThinkLevel.Off, chat.think.value)
             assertTrue(fake.chatRequests.single().contains("enable_thinking"))
@@ -504,7 +508,7 @@ class ChatEngineTest {
             )
             val chat = engine.open(id)
             chat.send("and now", emptyList())
-            until("answered") { rows(chat).let { r -> r.size == 4 && r[3].state == MessageState.Done } }
+            eventually("answered") { rows(chat).let { r -> r.size == 4 && r[3].state == MessageState.Done } }
             val body = fake.chatRequests.single()
             assertTrue(
                 body,
@@ -518,10 +522,10 @@ class ChatEngineTest {
             reply("two")
             val chat = newChat()
             chat.send("a", emptyList())
-            until("first") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
+            eventually("first") { rows(chat).let { r -> r.size == 2 && r[1].state == MessageState.Done } }
             settings.setInstructions("a pilot", "")
             chat.send("b", emptyList())
-            until("second") { rows(chat).let { r -> r.size == 4 && r[3].state == MessageState.Done } }
+            eventually("second") { rows(chat).let { r -> r.size == 4 && r[3].state == MessageState.Done } }
             assertTrue(fake.chatRequests.last().contains("About me: a pilot"))
         }
 
@@ -531,10 +535,10 @@ class ChatEngineTest {
             reply("recovered")
             val chat = newChat()
             chat.send("hi", emptyList())
-            until("failed") { rows(chat).any { it.state == MessageState.Failed } }
+            eventually("failed") { rows(chat).any { it.state == MessageState.Failed } }
             assertEquals("That didn't work.", rows(chat).first { it.state == MessageState.Failed }.failure)
             chat.regenerate(1)
-            until("recovered") {
+            eventually("recovered") {
                 rows(chat).let { r ->
                     r.lastOrNull()?.text == "recovered" &&
                         r.last().state == MessageState.Done
@@ -559,9 +563,9 @@ class ChatEngineTest {
                 }
             val chat = newChat()
             chat.send("go", emptyList())
-            until("streaming") { chat.streaming.value?.text == "slow" }
+            eventually("streaming") { chat.streaming.value?.text == "slow" }
             chat.regenerate(1)
-            until("regenerated") {
+            eventually("regenerated") {
                 rows(chat).let { r ->
                     r.lastOrNull()?.text == "fast" &&
                         r.last().state == MessageState.Done
@@ -581,11 +585,11 @@ class ChatEngineTest {
             onPhone(deep)
             val chat = newChat()
             chat.send("go", emptyList())
-            until("streaming") { chat.streaming.value?.text == "slow" }
+            eventually("streaming") { chat.streaming.value?.text == "slow" }
             chat.switchModel(deep)
-            until("switched") { rows(chat).any { it.kind == MessageKind.Switch } }
+            eventually("switched") { rows(chat).any { it.kind == MessageKind.Switch } }
             assertTrue(rows(chat).any { it.state == MessageState.Stopped })
-            until("idle") { !chat.busy.value }
+            eventually("idle") { !chat.busy.value }
         }
 
     @Test fun deletingAChatWhileStreamingCancelsIt() =
@@ -598,11 +602,11 @@ class ChatEngineTest {
             }
             val chat = newChat()
             chat.send("go", emptyList())
-            until("streaming") { chat.streaming.value?.text == "slow" }
+            eventually("streaming") { chat.streaming.value?.text == "slow" }
             val id = chat.chatId.value
             engine.delete(id).join()
             assertNull(chats.modelKey(id))
-            until("idle") { !chat.busy.value }
+            eventually("idle") { !chat.busy.value }
         }
 
     @Test fun downloadFailureLines() {

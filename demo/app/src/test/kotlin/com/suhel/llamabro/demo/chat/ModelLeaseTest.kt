@@ -13,6 +13,8 @@ import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
+import com.suhel.llamabro.demo.eventually
+import com.suhel.llamabro.demo.letAWrongActionLand
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.ModelRepository
@@ -22,18 +24,17 @@ import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -84,11 +85,6 @@ class ModelLeaseTest {
         testHub.close()
     }
 
-    private suspend fun until(what: String, condition: suspend () -> Boolean) {
-        withTimeoutOrNull(10_000) { while (!condition()) delay(10) }
-            ?: throw AssertionError("timed out waiting for: $what")
-    }
-
     private suspend fun isClosed(model: Model): Boolean =
         try {
             model.rawRequest(Endpoint.Control, "{}").toList()
@@ -107,7 +103,7 @@ class ModelLeaseTest {
     private fun replies(chat: ChatEngine.ChatHandle) = chat.messages.value.filter { it.kind == MessageKind.Assistant }
 
     private suspend fun answered(chat: ChatEngine.ChatHandle, count: Int) =
-        until("answered $count") { replies(chat).count { it.state == MessageState.Done } == count }
+        eventually("answered $count") { replies(chat).count { it.state == MessageState.Done } == count }
 
     /** A streamer whose first turn writes a word, then waits for [gate] before the fake answers. */
     private fun firstTurnWaitsFor(gate: CompletableDeferred<Unit>) {
@@ -130,17 +126,20 @@ class ModelLeaseTest {
             repeat(2) { fake.reply { content("Done.") } }
             val a = newChat()
             a.send("go", emptyList())
-            until("A streams") { a.streaming.value != null }
+            eventually("A streams") { a.streaming.value != null }
             val first = (host.state.value as HostState.Ready).model
 
             val b = engine.open(0)
             b.switchModel(big)
-            until("B is on the 4B") { b.name.value == "Qwen3.5 4B" }
+            eventually("B is on the 4B") { b.name.value == "Qwen3.5 4B" }
             b.send("hi", emptyList())
             // B waits behind A's reply with the wake line; A's model stays open under it
-            until("B wakes") { (host.state.value as? HostState.Waking)?.key == big }
-            until("B shows the wake line") { b.model.value is ChatModelState.Waking }
-            delay(200)
+            eventually("B wakes") { (host.state.value as? HostState.Waking)?.key == big }
+            eventually("B shows the wake line") { b.model.value is ChatModelState.Waking }
+            eventually("the 4B waits to replace A's model") {
+                (host.state.value as? HostState.Waking)?.outgoing?.model === first
+            }
+            letAWrongActionLand()
             assertFalse(isClosed(first))
             assertTrue(replies(b).isEmpty())
             assertEquals("slow ", a.streaming.value?.text)
@@ -159,7 +158,8 @@ class ModelLeaseTest {
         runBlocking {
             val lease = host.hold(swift, LoadConfig())
             val next = async { host.hold(big, LoadConfig()) }
-            delay(200)
+            eventually("the 4B waits for the lease") { (host.state.value as? HostState.Waking)?.key == big }
+            letAWrongActionLand()
             assertFalse(next.isCompleted)
             assertFalse(isClosed(lease.model))
             // the wake line, and the model still in memory until its lease is released
@@ -194,11 +194,11 @@ class ModelLeaseTest {
         runBlocking {
             val lease = host.hold(swift, LoadConfig())
             val waiting = async { host.hold(big, LoadConfig()) }
-            delay(100)
+            eventually("the 4B waits for the lease") { (host.state.value as? HostState.Waking)?.key == big }
             waiting.cancelAndJoin()
             lease.release()
             // the load of the 4B goes on and lands; the cancelled wait took no lease on it, so it can be released
-            until("the 4B is loaded") { (host.state.value as? HostState.Ready)?.key == big }
+            eventually("the 4B is loaded") { (host.state.value as? HostState.Ready)?.key == big }
             val loaded = (host.state.value as HostState.Ready).model
             assertTrue(host.release())
             assertTrue(isClosed(loaded))
@@ -210,9 +210,10 @@ class ModelLeaseTest {
             val lease = host.hold(swift, LoadConfig())
             // deleting the model in use while its reply streams: the release waits for the lease
             val release = async { host.release() }
-            until("released") { host.state.value == HostState.Idle }
+            eventually("released") { host.state.value == HostState.Idle }
             val next = async { host.hold(big, LoadConfig()) }
-            delay(200)
+            eventually("the 4B waits for the 0.8B to close") { (host.state.value as? HostState.Waking)?.key == big }
+            letAWrongActionLand()
             // the 4B doesn't load beside the 0.8B
             assertFalse(next.isCompleted)
             assertFalse(release.isCompleted)
@@ -235,7 +236,7 @@ class ModelLeaseTest {
             val host = ModelHost(fake.llamaBro, { model -> hub.installedModel(model).also { sourced += model } }, scope)
             val lease = host.hold(swift, LoadConfig())
             val waiting = async { host.hold(big, LoadConfig()) }
-            until("the 4B waits") { (host.state.value as? HostState.Waking)?.key == big }
+            eventually("the 4B waits") { (host.state.value as? HostState.Waking)?.key == big }
             waiting.cancelAndJoin()
             // the 0.8B again, under another config: it replaces the 4B's load before that one started
             val again = async { host.hold(swift, LoadConfig(DevicePolicy.Prefer(DeviceKind.Cpu))) }
@@ -252,10 +253,11 @@ class ModelLeaseTest {
         runBlocking {
             val lease = host.hold(swift, LoadConfig())
             val first = async { host.release() }
-            until("released") { host.state.value == HostState.Idle }
+            eventually("released") { host.state.value == HostState.Idle }
             // nothing is current now, but the 0.8B is still open under its reply
-            val second = async { host.release() }
-            delay(200)
+            // the state is Idle before and after, so nothing shows this release waiting: started undispatched, it has
+            // reached its wait for the closing model when async returns
+            val second = async(start = CoroutineStart.UNDISPATCHED) { host.release() }
             assertFalse(second.isCompleted)
             lease.release()
             assertTrue(second.await())
@@ -274,10 +276,10 @@ class ModelLeaseTest {
             val host = ModelHost(fake.llamaBro, gated, scope)
             val lease = host.hold(swift, LoadConfig())
             val next = async { host.hold(big, LoadConfig()) }
-            until("the 4B waits") { (host.state.value as? HostState.Waking)?.outgoing != null }
+            eventually("the 4B waits") { (host.state.value as? HostState.Waking)?.outgoing != null }
             lease.release()
-            until("the 0.8B closed") { isClosed(lease.model) }
-            until("nothing in memory") { host.state.value == HostState.Waking(big) }
+            eventually("the 0.8B closed") { isClosed(lease.model) }
+            eventually("nothing in memory") { host.state.value == HostState.Waking(big) }
             assertNull(host.state.value.inMemory())
             gate.complete(Unit)
             val bigLease = next.await()
@@ -290,7 +292,8 @@ class ModelLeaseTest {
         runBlocking {
             val lease = host.hold(swift, LoadConfig())
             val release = async { host.release() }
-            delay(200)
+            eventually("released") { host.state.value == HostState.Idle }
+            letAWrongActionLand()
             assertFalse(release.isCompleted)
             assertFalse(isClosed(lease.model))
             lease.release()

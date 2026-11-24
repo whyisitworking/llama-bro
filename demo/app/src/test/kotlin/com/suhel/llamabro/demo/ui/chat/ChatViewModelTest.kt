@@ -2,7 +2,6 @@ package com.suhel.llamabro.demo.ui.chat
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.demo.chat.ChatEngine
 import com.suhel.llamabro.demo.chat.Dictation
@@ -20,11 +19,13 @@ import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
+import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.models.installedModel
+import com.suhel.llamabro.demo.ui.shutDown
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CompletableDeferred
@@ -32,18 +33,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -92,22 +89,15 @@ class ChatViewModelTest {
     private val engine by lazy { ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope) }
     private val viewModels = mutableListOf<ChatViewModel>()
 
-    @Before fun main() = Dispatchers.setMain(UnconfinedTestDispatcher())
+    private val main = UnconfinedTestDispatcher()
+
+    @Before fun setUpMain() = Dispatchers.setMain(main)
 
     @After fun stop() {
-        viewModels.forEach { it.viewModelScope.cancel() }
+        shutDown(main, viewModels)
         runBlocking { host.release() }
-        Dispatchers.resetMain()
         scope.cancel()
         testHub.close()
-    }
-
-    private suspend fun until(what: String, condition: () -> Boolean) {
-        try {
-            withTimeout(10_000) { while (!condition()) delay(10) }
-        } catch (e: TimeoutCancellationException) {
-            throw AssertionError("timed out waiting for $what")
-        }
     }
 
     private suspend fun viewModel(
@@ -212,9 +202,9 @@ class ChatViewModelTest {
         runBlocking {
             settings.setHears(swift.toString(), true)
             val hearing = viewModel(recorder = microphone(1))
-            until("the mic") { hearing.composerState.value.showsMic }
+            eventually("the mic") { hearing.composerState.value.showsMic }
             val deaf = viewModel(model = plain, recorder = microphone(1))
-            until("the model is known") {
+            eventually("the model is known") {
                 deaf.hears.value == false &&
                     deaf.handle.name.value
                         .isNotEmpty()
@@ -228,9 +218,9 @@ class ChatViewModelTest {
             settings.setVoices(omni.toString(), listOf("female"))
             val started = mutableListOf<VoiceChat>()
             val talking = viewModel(model = omni, voiceMode = voiceModeFor(started))
-            until("the voice-mode button") { talking.composerState.value.showsTalk }
+            eventually("the voice-mode button") { talking.composerState.value.showsTalk }
             talking.voiceMode.open()
-            until("voice mode opens") { talking.voiceMode.open.value != null }
+            eventually("voice mode opens") { talking.voiceMode.open.value != null }
             assertFalse(
                 "a new chat has no earlier messages",
                 talking.voiceMode.open.value!!
@@ -244,7 +234,7 @@ class ChatViewModelTest {
             assertNull(talking.voiceMode.open.value)
 
             val quiet = viewModel(voiceMode = voiceModeFor(started))
-            until("the model is known") {
+            eventually("the model is known") {
                 quiet.handle.name.value
                     .isNotEmpty()
             }
@@ -258,22 +248,22 @@ class ChatViewModelTest {
             fake.transcription("call the bank tomorrow.")
             settings.setHears(swift.toString(), true)
             val vm = viewModel(recorder = microphone(1), dictating = 10)
-            until("the mic and its hint") { vm.composerState.value.showsMic && vm.composerState.value.micHint }
+            eventually("the mic and its hint") { vm.composerState.value.showsMic && vm.composerState.value.micHint }
             vm.onText("Remind me to")
             vm.dictation!!.start()
-            until("listening") { vm.composerState.value.dictation != null }
+            eventually("listening") { vm.composerState.value.dictation != null }
             // the mic leaves while dictating: neither a voice message nor voice mode can start
             assertFalse(vm.composerState.value.showsMic)
-            until("the voice was heard") {
+            eventually("the voice was heard") {
                 vm.dictation!!
                     .shown.value
                     ?.dictation
                     ?.millis == 500L + QUIET_BLOCKS * 50
             }
             vm.dictation!!.finish()
-            until("the words in the draft") { vm.composer.value.text == "Remind me to call the bank tomorrow." }
-            until("the bar is back") { vm.composerState.value.dictation == null }
-            until("the hint is gone") { !vm.composerState.value.micHint }
+            eventually("the words in the draft") { vm.composer.value.text == "Remind me to call the bank tomorrow." }
+            eventually("the bar is back") { vm.composerState.value.dictation == null }
+            eventually("the hint is gone") { !vm.composerState.value.micHint }
         }
 
     @Test fun discardingADictationLeavesTheDraftAsItWas() =
@@ -282,15 +272,15 @@ class ChatViewModelTest {
             fake.streamsAudio = true
             settings.setHears(swift.toString(), true)
             val vm = viewModel(recorder = microphone(1), dictating = 400)
-            until("the mic") { vm.composerState.value.canRecord }
+            eventually("the mic") { vm.composerState.value.canRecord }
             vm.onText("Hello")
             vm.dictation!!.start()
-            until("listening") {
+            eventually("listening") {
                 vm.composerState.value.dictation
                     ?.preparing == false
             }
             vm.dictation!!.discard()
-            until("the bar is back") { vm.composerState.value.dictation == null }
+            eventually("the bar is back") { vm.composerState.value.dictation == null }
             assertEquals("Hello", vm.composer.value.text)
         }
 
@@ -300,39 +290,39 @@ class ChatViewModelTest {
             settings.setHears(swift.toString(), true)
             reply("I hear you")
             val vm = viewModel(recorder = microphone(10))
-            until("the mic") { vm.composerState.value.showsMic }
+            eventually("the mic") { vm.composerState.value.showsMic }
             val voice = vm.voice!!
             voice.start()
             // the recorder's take is the bar's source: the bar's own state is drawn from it each frame
-            until("the recording stopped and waits") { voice.take.value?.live == false }
+            eventually("the recording stopped and waits") { voice.take.value?.live == false }
             assertEquals("0:01", ChatViewModel.recordingState(voice.take.value!!).elapsed)
             voice.send()
-            until("the voice message") { vm.rows.value.any { it is UserItem && it.voice != null } }
-            until("the take is let go") { voice.take.value == null }
+            eventually("the voice message") { vm.rows.value.any { it is UserItem && it.voice != null } }
+            eventually("the take is let go") { voice.take.value == null }
             val sent = (vm.rows.value.first { it is UserItem } as UserItem).voice!!
             assertEquals("0:01", sent.length)
             assertTrue(sent.file.exists())
-            until("the reply") { vm.rows.value.any { it is ReplyItem && it.text == "I hear you" } }
+            eventually("the reply") { vm.rows.value.any { it is ReplyItem && it.text == "I hear you" } }
         }
 
     @Test fun discardingARecordingDeletesItAndARefusedMicSaysWhereToAllowIt() =
         runBlocking {
             settings.setHears(swift.toString(), true)
             val vm = viewModel(recorder = microphone(2))
-            until("the mic") { vm.composerState.value.showsMic }
+            eventually("the mic") { vm.composerState.value.showsMic }
             vm.voice!!.refused()
-            until("the line") { vm.limit.value?.action == LimitAction.OpenAppSettings }
+            eventually("the line") { vm.limit.value?.action == LimitAction.OpenAppSettings }
             vm.voice!!.start()
-            until("the line goes once recording starts") { vm.limit.value == null }
-            until("the recording stopped") {
+            eventually("the line goes once recording starts") { vm.limit.value == null }
+            eventually("the recording stopped") {
                 vm.voice!!
                     .take.value
                     ?.live == false
             }
             vm.voice!!.discard()
-            until("the take is let go") { vm.voice!!.take.value == null }
+            eventually("the take is let go") { vm.voice!!.take.value == null }
             val folder = audio.file("x").parentFile!!
-            until("the recording is deleted") { folder.listFiles().orEmpty().isEmpty() }
+            eventually("the recording is deleted") { folder.listFiles().orEmpty().isEmpty() }
         }
 
     @Test fun sendClearsTheComposer() =
@@ -342,9 +332,9 @@ class ChatViewModelTest {
             vm.onText("Hi there")
             assertEquals("Hi there", vm.composerState.value.text)
             vm.send()
-            until("the bar is empty") { vm.composerState.value.text == "" }
+            eventually("the bar is empty") { vm.composerState.value.text == "" }
             assertEquals(emptyList<String>(), vm.composer.value.attachments)
-            until("the reply") { vm.rows.value.any { it is ReplyItem && it.text == "hello" } }
+            eventually("the reply") { vm.rows.value.any { it is ReplyItem && it.text == "hello" } }
             assertEquals("Hi there", (vm.rows.value.first() as UserItem).text)
         }
 
@@ -354,11 +344,11 @@ class ChatViewModelTest {
             val id = chats.createChat(swift.toString())
             val vm = viewModel(chatId = id)
             // the handle looks its chat's model up as it opens: deleted first, it finds none and the send just stops
-            until("the chat's model") { vm.handle.current.value == swift }
+            eventually("the chat's model") { vm.handle.current.value == swift }
             chats.delete(id)
             vm.onText("Hi there")
             vm.send()
-            until("the line") { vm.problem.value != null }
+            eventually("the line") { vm.problem.value != null }
             assertEquals("That message couldn't be sent.", vm.problem.value)
             assertEquals("Hi there", vm.composer.value.text)
         }
@@ -379,7 +369,7 @@ class ChatViewModelTest {
             val vm = viewModel(saved = saved)
             vm.onText("half a thought")
             vm.attachWith { "pic.jpg" }
-            until("attached") { vm.composer.value.attachments == listOf("pic.jpg") }
+            eventually("attached") { vm.composer.value.attachments == listOf("pic.jpg") }
             val again = viewModel(saved = restored(saved))
             assertEquals(ComposerDraft("half a thought", listOf("pic.jpg")), again.composer.value)
             assertTrue(again.composerState.value.hasAttachment)
@@ -393,13 +383,13 @@ class ChatViewModelTest {
             assertEquals(0L, ChatViewModel.chatIdToOpen(saved, 0))
             vm.onText("Hi there")
             vm.send()
-            until("the chat exists") { vm.handle.chatId.value != 0L }
+            eventually("the chat exists") { vm.handle.chatId.value != 0L }
             val id = vm.handle.chatId.value
-            until("its id is saved") { saved.get<Long>(ChatViewModel.CHAT_ID_KEY) == id }
+            eventually("its id is saved") { saved.get<Long>(ChatViewModel.CHAT_ID_KEY) == id }
             val after = restored(saved)
             assertEquals(id, ChatViewModel.chatIdToOpen(after, 0))
             val reopened = viewModel(saved = after, chatId = ChatViewModel.chatIdToOpen(after, 0))
-            until("the restored screen shows the chat") {
+            eventually("the restored screen shows the chat") {
                 reopened.rows.value.any { it is UserItem && it.text == "Hi there" }
             }
         }
@@ -416,7 +406,7 @@ class ChatViewModelTest {
     @Test fun thinkBulbHiddenWhenTheModelCantThink() =
         runBlocking {
             val vm = viewModel(plain)
-            until("the model is known") {
+            eventually("the model is known") {
                 vm.header.value.name
                     .isNotEmpty()
             }
@@ -426,9 +416,9 @@ class ChatViewModelTest {
     @Test fun thinkChipShowsForAModelThatThinks() =
         runBlocking {
             val vm = viewModel(swift)
-            until("the chip") { vm.composerState.value.think == ThinkLevel.Off }
+            eventually("the chip") { vm.composerState.value.think == ThinkLevel.Off }
             vm.setThink(ThinkLevel.Balanced)
-            until("the level") { vm.composerState.value.think == ThinkLevel.Balanced }
+            eventually("the level") { vm.composerState.value.think == ThinkLevel.Balanced }
         }
 
     @Test fun editPutsTextInComposer() =
@@ -437,7 +427,7 @@ class ChatViewModelTest {
             val vm = viewModel()
             vm.onText("What is rain?")
             vm.send()
-            until("answered") {
+            eventually("answered") {
                 vm.rows.value.any { it is ReplyItem && !it.stopped } &&
                     vm.handle.messages.value
                         .all { it.state == MessageState.Done }
@@ -451,7 +441,7 @@ class ChatViewModelTest {
             reply("second answer")
             vm.onText("What is snow?")
             vm.send()
-            until("replaced") {
+            eventually("replaced") {
                 vm.rows.value
                     .filterIsInstance<UserItem>()
                     .singleOrNull()
@@ -467,7 +457,7 @@ class ChatViewModelTest {
             val vm = viewModel()
             vm.onText("one")
             vm.send()
-            until("answered") {
+            eventually("answered") {
                 vm.handle.messages.value.size == 2 &&
                     vm.handle.messages.value
                         .all { it.state == MessageState.Done }
@@ -488,7 +478,7 @@ class ChatViewModelTest {
             val vm = viewModel()
             vm.onText("write a lot")
             vm.send()
-            until("answered") {
+            eventually("answered") {
                 vm.handle.messages.value.size == 2 &&
                     vm.handle.messages.value
                         .all { it.state == MessageState.Done }
@@ -515,9 +505,8 @@ class ChatViewModelTest {
         runBlocking {
             val vm = viewModel()
             var n = 0
+            // Main is unconfined and the save never suspends: each pick has finished when attachWith returns
             repeat(6) { vm.attachWith { "pic${n++}.jpg" } }
-            until("four attached") { vm.composer.value.attachments.size == 4 }
-            delay(100)
             assertEquals(listOf("pic0.jpg", "pic1.jpg", "pic2.jpg", "pic3.jpg"), vm.composer.value.attachments)
             vm.removeAttachment("pic1.jpg")
             assertEquals(listOf("pic0.jpg", "pic2.jpg", "pic3.jpg"), vm.composer.value.attachments)
@@ -529,22 +518,22 @@ class ChatViewModelTest {
             fake.failLoad(LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory, "not enough memory", times = 1)
             reply("Hi!")
             val vm = viewModel()
-            until("the model is known") {
+            eventually("the model is known") {
                 vm.header.value.name
                     .isNotEmpty()
             }
             vm.onText("hello")
             vm.send()
-            until("the note") { vm.limit.value?.dismissible == true }
+            eventually("the note") { vm.limit.value?.dismissible == true }
             vm.notes.close(vm.limit.value)
-            until("closed") { vm.limit.value == null }
+            eventually("closed") { vm.limit.value == null }
 
             // a line the chat waits on has no close button, and closing does nothing to it
             fake.failLoad(LlamaBroException.ModelLoadFailed.Reason.Other, "the file is corrupt", times = 100)
             engine.releaseModelIfIdle()
             vm.onText("again")
             vm.send()
-            until("the retry line") { vm.limit.value?.action == LimitAction.Retry }
+            eventually("the retry line") { vm.limit.value?.action == LimitAction.Retry }
             assertEquals(false, vm.limit.value!!.dismissible)
             vm.notes.close(vm.limit.value)
             assertEquals(LimitAction.Retry, vm.limit.value?.action)
@@ -553,15 +542,15 @@ class ChatViewModelTest {
     @Test fun picturesSentToAModelThatCantSeeKeepTheDraftAndSayWhy() =
         runBlocking {
             val vm = viewModel(plain)
-            until("the model is known") {
+            eventually("the model is known") {
                 vm.header.value.name
                     .isNotEmpty()
             }
             vm.onText("what is this?")
             vm.attachWith { "pic.jpg" }
-            until("attached") { vm.composer.value.attachments.size == 1 }
+            eventually("attached") { vm.composer.value.attachments.size == 1 }
             vm.send()
-            until("the limit line") {
+            eventually("the limit line") {
                 vm.limit.value
                     ?.line
                     ?.contains("can't see images") == true
@@ -575,14 +564,14 @@ class ChatViewModelTest {
         runBlocking {
             val vm = viewModel()
             vm.attachWith { throw IOException("not an image") }
-            until("the line") { vm.problem.value != null }
+            eventually("the line") { vm.problem.value != null }
             assertEquals("That photo couldn't be opened.", vm.problem.value)
             assertTrue(
                 vm.composer.value.attachments
                     .isEmpty(),
             )
             vm.attachWith { "ok.jpg" }
-            until("attached") { vm.composer.value.attachments == listOf("ok.jpg") }
+            eventually("attached") { vm.composer.value.attachments == listOf("ok.jpg") }
             assertNull(vm.problem.value) // a good pick clears it
         }
 
@@ -610,7 +599,7 @@ class ChatViewModelTest {
                 }
             } // five in flight at once, room for four
             gate.complete(Unit)
-            until("four attached and one deleted") { vm.composer.value.attachments.size == 4 && deleted.size == 1 }
+            eventually("four attached and one deleted") { vm.composer.value.attachments.size == 4 && deleted.size == 1 }
         }
 
     @Test fun whileEditingNoPhotoCanBeAdded() =
@@ -619,7 +608,7 @@ class ChatViewModelTest {
             val vm = viewModel()
             vm.onText("one")
             vm.send()
-            until("answered") {
+            eventually("answered") {
                 vm.handle.messages.value.size == 2 &&
                     vm.handle.messages.value
                         .all { it.state == MessageState.Done }
@@ -630,8 +619,8 @@ class ChatViewModelTest {
                     .position,
             )
             assertFalse(vm.composerState.value.canAttach)
+            // Main is unconfined and the save never suspends: a pick that were taken would be in the draft by now
             vm.attachWith { "late.jpg" }
-            delay(100)
             assertTrue(
                 vm.composer.value.attachments
                     .isEmpty(),
@@ -645,13 +634,13 @@ class ChatViewModelTest {
             val vm = viewModel()
             vm.onText("try this")
             vm.send()
-            until("failed") {
+            eventually("failed") {
                 vm.handle.messages.value
                     .lastOrNull()
                     ?.state == MessageState.Failed
             }
             vm.retry()
-            until("replaced") {
+            eventually("replaced") {
                 vm.rows.value
                     .filterIsInstance<ReplyItem>()
                     .singleOrNull()
@@ -674,10 +663,10 @@ class ChatViewModelTest {
             val vm = viewModel(styles = styles)
             vm.onText("hi")
             vm.send()
-            until("answered") { vm.rows.value.any { it is ReplyItem } }
+            eventually("answered") { vm.rows.value.any { it is ReplyItem } }
             assertTrue(vm.rows.value.none { it is DayItem })
             styles.value = MessageStyle.Bubbles
-            until("day label and times") {
+            eventually("day label and times") {
                 vm.rows.value.any { it is DayItem } &&
                     (vm.rows.value.first { it is UserItem } as UserItem).time != null
             }
@@ -689,7 +678,7 @@ class ChatViewModelTest {
             val vm = viewModel()
             vm.onText("hi")
             vm.send()
-            until("answered") {
+            eventually("answered") {
                 vm.handle.messages.value.size == 2 &&
                     vm.handle.messages.value
                         .all { it.state == MessageState.Done }
@@ -720,10 +709,10 @@ class ChatViewModelTest {
                     background = scope,
                 )
             vm.attachWith { "draft.jpg" }
-            until("attached") { vm.composer.value.attachments == listOf("draft.jpg") }
+            eventually("attached") { vm.composer.value.attachments == listOf("draft.jpg") }
             val onCleared = ChatViewModel::class.java.getDeclaredMethod("onCleared").apply { isAccessible = true }
             onCleared.invoke(vm)
-            until("deleted") { deleted == listOf("draft.jpg") }
+            eventually("deleted") { deleted == listOf("draft.jpg") }
         }
 
     private companion object {

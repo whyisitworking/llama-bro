@@ -2,7 +2,6 @@ package com.suhel.llamabro.demo.ui.models
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.models.Catalog
@@ -16,6 +15,7 @@ import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.RepoFile
 import com.suhel.llamabro.demo.models.SearchModel
 import com.suhel.llamabro.demo.models.TestHub
+import com.suhel.llamabro.demo.ui.shutDown
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +27,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
@@ -64,11 +63,12 @@ class OneFitTest {
     }
     private val viewModels = mutableListOf<ModelsViewModel>()
 
-    @Before fun main() = Dispatchers.setMain(StandardTestDispatcher())
+    private val main = StandardTestDispatcher()
+
+    @Before fun setUpMain() = Dispatchers.setMain(main)
 
     @After fun stop() {
-        viewModels.forEach { it.viewModelScope.cancel() }
-        Dispatchers.resetMain()
+        shutDown(main, viewModels)
         scope.cancel()
         testHub.close()
     }

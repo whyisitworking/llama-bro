@@ -9,6 +9,7 @@ import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
 import com.suhel.llamabro.demo.designsystem.components.VoicePhase
+import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.TestHub
@@ -21,7 +22,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
@@ -82,10 +82,6 @@ class VoiceConversationTest {
         testHub.close()
     }
 
-    private suspend fun until(what: String, condition: suspend () -> Boolean) {
-        withTimeoutOrNull(10_000) { while (!condition()) delay(10) } ?: throw AssertionError("timed out: $what")
-    }
-
     private suspend fun conversation(): Pair<Long, VoiceConversation> {
         testHub.install(omni)
         models.changed()
@@ -119,7 +115,7 @@ class VoiceConversationTest {
         mic.reads.set(0)
         mic.allow(10)
         voice.talkStart()
-        until("the microphone is heard") { mic.reads.get() >= 10 }
+        eventually("the microphone is heard") { mic.reads.get() >= 10 }
         voice.talkEnd()
     }
 
@@ -136,11 +132,11 @@ class VoiceConversationTest {
             }
             val (chatId, voice) = conversation()
             voice.open()
-            until("the session opened") { voice.ui.value.voice == "female" }
+            eventually("the session opened") { voice.ui.value.voice == "female" }
             say(voice)
-            until("the reply is saved") { rows(chatId).size == 2 }
-            until("the caption is saved") { rows(chatId)[0].text.isNotEmpty() }
-            until("back to ready") { voice.ui.value.phase == VoicePhase.Ready }
+            eventually("the reply is saved") { rows(chatId).size == 2 }
+            eventually("the caption is saved") { rows(chatId)[0].text.isNotEmpty() }
+            eventually("back to ready") { voice.ui.value.phase == VoicePhase.Ready }
 
             val (user, reply) = rows(chatId)
             assertEquals(MessageKind.User, user.kind)
@@ -168,7 +164,7 @@ class VoiceConversationTest {
             fake.voiceReply { text("Hi.") }
             val (chatId, voice) = conversation()
             say(voice)
-            until("the reply is saved") { rows(chatId).size == 2 }
+            eventually("the reply is saved") { rows(chatId).size == 2 }
             assertEquals("", rows(chatId)[0].text)
             assertNull(rows(chatId)[1].voice)
             assertEquals(1, (host.state.value as HostState.Ready).config.slots)
@@ -179,13 +175,13 @@ class VoiceConversationTest {
         runBlocking {
             val (chatId, voice) = conversation()
             voice.open()
-            until("open") { voice.ui.value.voice != null }
+            eventually("open") { voice.ui.value.voice != null }
             // one 50 ms block at most, under a fifth of a second however late the release is handled
             mic.allow(1)
             voice.talkStart()
             voice.talkEnd()
             // Ready after the microphone closed is the tap's end; a turn would have gone to Thinking with a row
-            until("the tap is over") { mic.closedOnce && voice.ui.value.phase == VoicePhase.Ready }
+            eventually("the tap is over") { mic.closedOnce && voice.ui.value.phase == VoicePhase.Ready }
             assertTrue(rows(chatId).isEmpty())
             assertTrue("input_audio_buffer.commit" !in sentTypes())
             assertEquals(VoicePhase.Ready, voice.ui.value.phase)
@@ -199,7 +195,7 @@ class VoiceConversationTest {
             mic.allow(1)
             voice.talkStart()
             voice.talkEnd()
-            until("the model is held and the turn is over") {
+            eventually("the model is held and the turn is over") {
                 engine.replying.value && mic.closedOnce && voice.ui.value.phase == VoicePhase.Ready
             }
             assertTrue(rows(chatId).isEmpty())
@@ -213,11 +209,11 @@ class VoiceConversationTest {
             speaker.holdDrain = CompletableDeferred()
             val (chatId, voice) = conversation()
             say(voice)
-            until("speaking") { voice.ui.value.phase == VoicePhase.Speaking }
+            eventually("speaking") { voice.ui.value.phase == VoicePhase.Speaking }
             voice.stop()
-            until("ready") { voice.ui.value.phase == VoicePhase.Ready }
+            eventually("ready") { voice.ui.value.phase == VoicePhase.Ready }
             assertTrue(speaker.stops.get() > 0)
-            until("the reply is kept") { rows(chatId).size == 2 }
+            eventually("the reply is kept") { rows(chatId).size == 2 }
             voice.close()
         }
 
@@ -228,9 +224,9 @@ class VoiceConversationTest {
             speaker.blockWrites = CountDownLatch(1)
             val (_, voice) = conversation()
             say(voice)
-            until("speaking") { voice.ui.value.phase == VoicePhase.Speaking && speaker.played.get() > 0 }
+            eventually("speaking") { voice.ui.value.phase == VoicePhase.Speaking && speaker.played.get() > 0 }
             voice.stop()
-            until("ready") { voice.ui.value.phase == VoicePhase.Ready }
+            eventually("ready") { voice.ui.value.phase == VoicePhase.Ready }
             assertEquals("speech played on after Stop", 0, speaker.writesAfterStop.get())
             voice.close()
         }
@@ -243,11 +239,11 @@ class VoiceConversationTest {
             fake.voiceReply { text("B.") }
             val (chatId, voice) = conversation()
             say(voice)
-            until("the first reply") { rows(chatId).size == 2 }
+            eventually("the first reply") { rows(chatId).size == 2 }
             voice.pause()
-            until("the model is free to go") { !engine.replying.value }
+            eventually("the model is free to go") { !engine.replying.value }
             say(voice)
-            until("the second reply") { rows(chatId).size == 4 }
+            eventually("the second reply") { rows(chatId).size == 4 }
             assertEquals(2, sentTypes().count { it == "session.update" })
             assertEquals(listOf("First.", "A.", "Second.", "B."), rows(chatId).map { it.text })
             voice.close()
@@ -259,7 +255,7 @@ class VoiceConversationTest {
             language = Locale.FRENCH
             val (_, voice) = conversation()
             voice.open()
-            until("open") { voice.ui.value.voice == "male" }
+            eventually("open") { voice.ui.value.voice == "male" }
             assertTrue(fake.voiceEvents.first().contains(""""voice":"male","language":"fr""""))
             voice.close()
         }
@@ -269,7 +265,7 @@ class VoiceConversationTest {
             settings.setVoice("robot")
             val (_, voice) = conversation()
             voice.open()
-            until("open") { voice.ui.value.voice == "female" }
+            eventually("open") { voice.ui.value.voice == "female" }
             voice.close()
         }
 
@@ -278,7 +274,7 @@ class VoiceConversationTest {
             micFails = true
             val (_, voice) = conversation()
             voice.talkStart()
-            until("the line") { voice.limit.value != null }
+            eventually("the line") { voice.limit.value != null }
             assertEquals(Limits.microphone(), voice.limit.value)
             assertEquals(VoicePhase.Ready, voice.ui.value.phase)
             voice.close()

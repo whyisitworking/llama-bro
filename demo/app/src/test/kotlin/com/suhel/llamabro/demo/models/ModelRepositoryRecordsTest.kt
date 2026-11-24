@@ -7,12 +7,12 @@ import androidx.test.core.app.ApplicationProvider
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.db.ChatDatabase
 import com.suhel.llamabro.demo.data.db.HubFilesEntity
+import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
@@ -67,9 +67,7 @@ class ModelRepositoryRecordsTest {
     }
 
     private suspend fun ModelRepository.recordIs(wanted: DownloadRecord?) =
-        withTimeout(5_000) {
-            while (record(swift).first() != wanted) delay(10)
-        }
+        eventually("the record is $wanted") { record(swift).first() == wanted }
 
     @Test fun getKeepsTheRecordAndANewRepositoryOverTheSameDatabaseReadsIt() =
         runBlocking {

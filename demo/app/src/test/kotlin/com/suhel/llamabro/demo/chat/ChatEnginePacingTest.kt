@@ -8,6 +8,7 @@ import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
+import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
@@ -24,7 +25,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -87,11 +87,6 @@ class ChatEnginePacingTest {
         models.changed()
     }
 
-    private suspend fun until(what: String, timeoutMillis: Long = 10_000, condition: suspend () -> Boolean) {
-        withTimeoutOrNull(timeoutMillis) { while (!condition()) delay(10) }
-            ?: throw AssertionError("timed out waiting for: $what")
-    }
-
     private suspend fun rows(handle: ChatEngine.ChatHandle): List<StoredMessage> = handle.messages.value
 
     private fun reply(text: String, reasoning: String? = null) =
@@ -117,7 +112,7 @@ class ChatEnginePacingTest {
             val watcher = scope.launch { chat.streaming.collect { it?.let { s -> seen += s.text } } }
             val start = System.currentTimeMillis()
             chat.send("go", emptyList())
-            until("done") { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
+            eventually("done") { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
             watcher.cancel()
             val frames = (System.currentTimeMillis() - start) / frameMillis + 1
             assertTrue("one update per frame, not per delta: ${seen.size} in $frames frames", seen.size <= frames)
@@ -136,10 +131,10 @@ class ChatEnginePacingTest {
             }
             val chat = newChat()
             chat.send("go", emptyList())
-            until("started") { chat.busy.value }
+            eventually("started") { chat.busy.value }
             val before = dao.messageUpdates.get()
             val start = System.currentTimeMillis()
-            until(
+            eventually(
                 "done",
                 20_000,
             ) { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
@@ -167,7 +162,7 @@ class ChatEnginePacingTest {
             val start = System.currentTimeMillis()
             val watcher = scope.launch { chat.messages.collect { emissions++ } }
             chat.send("go", emptyList())
-            until("done") { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
+            eventually("done") { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
             watcher.cancel()
             // the bound follows the time the reply took: a loaded machine stretches the reply, and writes with it
             val elapsed = System.currentTimeMillis() - start

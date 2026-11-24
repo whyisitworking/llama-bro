@@ -3,6 +3,9 @@ package com.suhel.llamabro
 import com.suhel.llamabro.spi.Engine
 import com.suhel.llamabro.spi.EngineModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.collect
@@ -13,9 +16,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.locks.LockSupport
 import kotlin.concurrent.thread
+import kotlin.coroutines.CoroutineContext
 
 /** Races between closing or cancelling and native calls. */
 class ModelLifecycleTest {
@@ -40,7 +47,9 @@ class ModelLifecycleTest {
         val a = thread { runCatching { runBlocking { model.rawRequest(Endpoint.Props, "").collect() } } }
         assertTrue(entered.await(5, TimeUnit.SECONDS))
         val b = thread { model.close() }
-        Thread.sleep(200)
+        // the signal that close got as far as it may: its native close is queued behind the request on the model's
+        // gate (or, with the bug, the native close already ran)
+        awaitTrue("the native close waiting for the request") { model.closeQueued || engine.model.closed }
         assertFalse("native model freed while a request was entering it", engine.model.closed)
         release.countDown()
         a.join(5_000)
@@ -132,11 +141,13 @@ class ModelLifecycleTest {
         runBlocking {
             val s = SlowClose()
             val join = async(Dispatchers.Default) { s.model.closeAndJoin() }
+            // what the native close had done at the moment closeAndJoin returned, whenever that was
+            val closedAtReturn = CompletableDeferred<Boolean>()
+            join.invokeOnCompletion { closedAtReturn.complete(s.engine.model.closed) }
             assertTrue(s.closing.await(5, TimeUnit.SECONDS))
-            Thread.sleep(100)
-            assertFalse("closeAndJoin returned before the native close", join.isCompleted)
             s.release.countDown()
             withTimeout(5_000) { join.await() }
+            assertTrue("closeAndJoin returned before the native close", closedAtReturn.await())
             assertTrue(s.engine.model.closed)
             s.model.closeAndJoin() // a second call returns at once
         }
@@ -167,24 +178,38 @@ class ModelLifecycleTest {
     fun loadWaitsForPendingClose() =
         runBlocking {
             val s = SlowClose()
-            s.engine.makeModel = { FakeModel().also { it.onClose = s.engine.model.onClose } }
+            val made = Collections.synchronizedList(mutableListOf<FakeModel>())
+            s.engine.makeModel = { FakeModel().also { it.onClose = s.engine.model.onClose }.also { made += it } }
+            val io = CountingDispatcher()
             val llama =
                 LlamaBro(
                     com.suhel.llamabro.internal
-                        .LlamaBroRuntime(s.engine, tempDir(), "/b", LlamaBroConfig.Default),
+                        .LlamaBroRuntime(s.engine, tempDir(), "/b", LlamaBroConfig.Default, io),
                 )
             val first = llama.loadModel(ModelSource.file("/a.gguf"))
             val firstEngine = s.engine.loadConfigs.size
+            // whether the first model's native close had finished when the second native load began
+            val firstFreedAtLoad = CompletableDeferred<Boolean>()
+            s.engine.loadError = {
+                firstFreedAtLoad.complete(made.first().closed)
+                null
+            }
             first.close()
-            val second = async(Dispatchers.Default) { llama.loadModel(ModelSource.file("/b.gguf")) }
-            Thread.sleep(150)
+            assertTrue("the native close never started", s.closing.await(5, TimeUnit.SECONDS))
+            // started undispatched, the load runs on this thread until it first suspends: parked behind the close it
+            // asks nothing of the IO dispatcher, while a load that didn't wait would already have gone there to load
+            val dispatchesBefore = io.dispatches.get()
+            val second =
+                async(Dispatchers.Default, CoroutineStart.UNDISPATCHED) { llama.loadModel(ModelSource.file("/b.gguf")) }
             assertEquals(
-                "the second load started before the first model was freed",
-                firstEngine,
-                s.engine.loadConfigs.size,
+                "the second load went on before the first model was freed",
+                dispatchesBefore,
+                io.dispatches.get(),
             )
+            assertEquals(firstEngine, s.engine.loadConfigs.size)
             s.release.countDown()
             withTimeout(5_000) { second.await() }
+            assertTrue("the second load started before the first model was freed", firstFreedAtLoad.await())
             assertEquals(firstEngine + 1, s.engine.loadConfigs.size)
         }
 
@@ -206,4 +231,23 @@ class ModelLifecycleTest {
             assertEquals(seen.sorted(), seen)
             assertEquals("delivered on the caller's context", setOf(Thread.currentThread()), threads)
         }
+
+    /** The runtime's IO dispatcher, counting the work handed to it. */
+    private class CountingDispatcher : CoroutineDispatcher() {
+        val dispatches = AtomicInteger()
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            dispatches.incrementAndGet()
+            Dispatchers.IO.dispatch(context, block)
+        }
+    }
+
+    /** Polls [condition] every millisecond; fails naming [what] after 5 s, a hang bound, not a latency check. */
+    private fun awaitTrue(what: String, condition: () -> Boolean) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (!condition()) {
+            if (System.nanoTime() > deadline) throw AssertionError("timed out waiting for: $what")
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1))
+        }
+    }
 }

@@ -9,6 +9,8 @@ import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
+import com.suhel.llamabro.demo.eventually
+import com.suhel.llamabro.demo.letAWrongActionLand
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.NotOnPhone
@@ -25,7 +27,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -86,11 +87,6 @@ class ChatEngineTurnTest {
         models.changed()
     }
 
-    private suspend fun until(what: String, timeoutMillis: Long = 10_000, condition: suspend () -> Boolean) {
-        withTimeoutOrNull(timeoutMillis) { while (!condition()) delay(10) }
-            ?: throw AssertionError("timed out waiting for: $what")
-    }
-
     private fun rows(handle: ChatEngine.ChatHandle): List<StoredMessage> = handle.messages.value
 
     private fun reply(text: String) =
@@ -121,9 +117,9 @@ class ChatEngineTurnTest {
             val chat = newChat()
             try {
                 chat.send("go", emptyList())
-                until("waking") { chat.busy.value && host.state.value is HostState.Waking }
+                eventually("waking") { chat.busy.value && host.state.value is HostState.Waking }
                 chat.stop()
-                until("the turn ended") { !chat.busy.value }
+                eventually("the turn ended") { !chat.busy.value }
                 // the question waits for its model; no reply row was made, so none is left streaming
                 assertEquals(listOf(MessageKind.User), rows(chat).map { it.kind })
                 assertEquals(MessageState.Held, rows(chat).single().state)
@@ -141,14 +137,19 @@ class ChatEngineTurnTest {
             val chat = newChat()
             try {
                 chat.send("go", emptyList())
-                until("waking") { chat.busy.value && host.state.value is HostState.Waking }
+                eventually("waking") { chat.busy.value && host.state.value is HostState.Waking }
                 chat.edit(0, "changed")
-                until("edited") { rows(chat).map { it.text } == listOf("changed") }
+                eventually("edited") { rows(chat).map { it.text } == listOf("changed") }
             } finally {
                 gate.complete(Unit)
             }
-            until("answered") { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
-            delay(200) // a second, stale turn would have written by now
+            eventually(
+                "answered",
+            ) { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
+            // a second, stale turn would hold a turn open past the answer
+            eventually("every turn ended") { !engine.replying.value }
+            // the pump reads the rows between turns with nothing under way, so a stale turn may still be on its way
+            letAWrongActionLand()
             assertEquals(listOf("changed", "the answer"), rows(chat).map { it.text })
             assertEquals(1, fake.chatRequests.size)
         }
@@ -163,11 +164,11 @@ class ChatEngineTurnTest {
             }
             val chat = newChat()
             chat.send("go", emptyList())
-            until("streaming") { chat.streaming.value?.text == "slow" }
+            eventually("streaming") { chat.streaming.value?.text == "slow" }
             assertFalse(engine.releaseModelIfIdle())
             assertTrue(host.state.value is HostState.Ready)
             chat.stop()
-            until("idle") { !chat.busy.value }
+            eventually("idle") { !chat.busy.value }
             assertTrue(engine.releaseModelIfIdle())
             assertEquals(HostState.Idle, host.state.value)
         }
@@ -177,12 +178,12 @@ class ChatEngineTurnTest {
             reply("First.")
             val chat = newChat()
             chat.send("Hi", emptyList())
-            until("first reply") { rows(chat).count { it.state == MessageState.Done } == 2 }
+            eventually("first reply") { rows(chat).count { it.state == MessageState.Done } == 2 }
             // the app went to the background (or the person unloaded it): the next send loads the model again
             assertTrue(engine.releaseModelIfIdle())
             reply("Second.")
             chat.send("Again", emptyList())
-            until("second reply, or a failure") {
+            eventually("second reply, or a failure") {
                 rows(chat).count { it.kind == MessageKind.Assistant && it.state != MessageState.Streaming } == 2
             }
             assertEquals("Second.", rows(chat).last().text)
@@ -192,18 +193,22 @@ class ChatEngineTurnTest {
     @Test fun aTurnWaitsForTheRecoveryOfStaleReplies() =
         runBlocking {
             val recovered = CompletableDeferred<Unit>()
+            val waiting = CompletableDeferred<Unit>()
             reply("hi")
             settings.setLastModel(swift.toString())
             onPhone(swift)
             val chat =
                 ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope, beforeTurn = {
+                    waiting.complete(Unit)
                     recovered.await()
                 }).open(0)
             chat.send("go", emptyList())
-            delay(200)
+            eventually("the turn waits for the recovery") { waiting.isCompleted }
             assertTrue(rows(chat).none { it.kind == MessageKind.Assistant })
             recovered.complete(Unit)
-            until("answered") { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
+            eventually(
+                "answered",
+            ) { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
         }
 
     @Test fun deletingAChatFromElsewhereStopsItsReplyFirst() =
@@ -222,12 +227,12 @@ class ChatEngineTurnTest {
             }
             val chat = newChat()
             chat.send("go", emptyList())
-            until("streaming") { chat.streaming.value?.text == "slow" }
+            eventually("streaming") { chat.streaming.value?.text == "slow" }
             val id = chat.chatId.value
             engine.delete(id).join()
             assertTrue("the reply ended before the chat went", ended)
             assertNull(chats.modelKey(id))
-            until("idle") { !chat.busy.value }
+            eventually("idle") { !chat.busy.value }
         }
 
     @Test fun deletingAChatWithAnotherMessageHeldStartsNoAnswerToIt() =
@@ -246,16 +251,18 @@ class ChatEngineTurnTest {
             }
             settings.setLastModel(swift.toString())
             val chat = engine.open(0)
-            until("the model is known") { chat.current.value == swift }
+            eventually("the model is known") { chat.current.value == swift }
             assertTrue(chat.send("one", emptyList()))
             assertTrue(chat.send("two", emptyList()))
             onPhone(swift)
-            until("streaming") { chat.streaming.value?.text == "slow" }
+            eventually("streaming") { chat.streaming.value?.text == "slow" }
             val id = chat.chatId.value
             engine.delete(id).join()
             assertNull(chats.modelKey(id))
-            until("idle") { !chat.busy.value }
-            delay(300)
+            eventually("idle") { !chat.busy.value }
+            // a turn the delete failed to stop could start in the pump's gap between turns, after replying went false
+            eventually("no turn under way") { !engine.replying.value }
+            letAWrongActionLand()
             assertEquals("no answer started after the delete", 1, calls.get())
         }
 
@@ -266,14 +273,17 @@ class ChatEngineTurnTest {
             reply("one")
             val chat = newChat()
             assertTrue(chat.send("first", emptyList()))
-            until("answered") { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
+            eventually(
+                "answered",
+            ) { rows(chat).any { it.kind == MessageKind.Assistant && it.state == MessageState.Done } }
             val id = chat.chatId.value
             engine.delete(id).join()
             assertFalse("the deleted chat refuses the message", chat.send("second", emptyList()))
             chat.edit(0, "edited")
             chat.regenerate(1)
             chat.continueReply(1)
-            delay(300)
+            // these refuse on the handle's own scope and change no state when they do: there is nothing to wait on
+            letAWrongActionLand()
             assertTrue(chats.messages(id).first().isEmpty())
             assertEquals(1, fake.chatRequests.size)
         }
@@ -281,11 +291,11 @@ class ChatEngineTurnTest {
     @Test fun aModelGoneSinceItWasChosenSaysSoInsteadOfTryAgain() =
         runBlocking {
             val chat = newChat()
-            until("named") { chat.name.value.isNotEmpty() }
+            eventually("named") { chat.name.value.isNotEmpty() }
             // its files go, and the library hasn't been read again: the load finds it gone
             assertTrue(hub.delete(swift))
             chat.send("hi", emptyList())
-            until("the line") { chat.limit.value != null }
+            eventually("the line") { chat.limit.value != null }
             assertEquals(Limits.modelGone(chat.name.value), chat.limit.value)
             assertEquals(Limits.modelGone("Seer"), Limits.forLoadFailure("Seer", NotOnPhone(swift)))
         }

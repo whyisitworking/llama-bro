@@ -3,7 +3,6 @@ package com.suhel.llamabro.demo.ui.chat
 import android.net.Uri
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.State
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -363,24 +362,34 @@ class ChatViewModel(
      */
     private val barInputs = mutableStateOf(BarInputs())
 
-    /** What the design system's message bar draws, derived synchronously from the draft (no Think bulb: null). */
+    /**
+     * What the design system's message bar draws, derived synchronously from the draft (no Think bulb: null).
+     *
+     * Built on each read rather than cached by `derivedStateOf`: [barInputs] is written from whichever thread its flows
+     * emit on, and a `derivedStateOf` read on another thread can keep a stale value for good (F182). A read inside
+     * composition still observes [draft] and [barInputs].
+     */
     val composerState: State<ComposerState> =
-        derivedStateOf {
-            val d = draft.value
-            val bar = barInputs.value
-            ComposerState(
-                text = d.text,
-                canAttach = d.editing == null,
-                think = bar.think,
-                busy = bar.busy,
-                hasAttachment = d.attachments.isNotEmpty(),
-                canRecord = voice != null && bar.hears && d.editing == null,
-                recording = bar.take?.let(::recordingState),
-                canTalk = voiceMode.available && bar.talks && d.editing == null,
-                dictation = bar.dictation?.let(::dictationBar),
-                micHint = bar.micHint,
-            )
+        object : State<ComposerState> {
+            override val value: ComposerState get() = composerStateNow()
         }
+
+    private fun composerStateNow(): ComposerState {
+        val d = draft.value
+        val bar = barInputs.value
+        return ComposerState(
+            text = d.text,
+            canAttach = d.editing == null,
+            think = bar.think,
+            busy = bar.busy,
+            hasAttachment = d.attachments.isNotEmpty(),
+            canRecord = voice != null && bar.hears && d.editing == null,
+            recording = bar.take?.let(::recordingState),
+            canTalk = voiceMode.available && bar.talks && d.editing == null,
+            dictation = bar.dictation?.let(::dictationBar),
+            micHint = bar.micHint,
+        )
+    }
 
     init {
         viewModelScope.launch {
