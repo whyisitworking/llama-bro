@@ -22,6 +22,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -100,6 +101,22 @@ class ChatEngineTurnTest {
         onPhone(swift)
         return engine.open(0)
     }
+
+    /** An edit's or a regenerate's cut, held at the database until [release]; [reached] once it waits there. */
+    private class HeldCut {
+        private val waiting = CompletableDeferred<Unit>()
+        private val gate = CompletableDeferred<Unit>()
+        val reached: Boolean get() = waiting.isCompleted
+
+        suspend fun hold() {
+            waiting.complete(Unit)
+            gate.await()
+        }
+
+        fun release() = gate.complete(Unit)
+    }
+
+    private fun holdTheCut(): HeldCut = HeldCut().also { cut -> dao.beforeDeleteFrom = { cut.hold() } }
 
     /** A load that waits for [gate]: the model stays waking until the test opens it. */
     private fun slowLoad(gate: CompletableDeferred<Unit>) {
@@ -285,7 +302,12 @@ class ChatEngineTurnTest {
             assertTrue(chat.send("two", emptyList()))
             onPhone(swift)
             eventually("streaming") { chat.streaming.value?.text == "re: one" }
+            val cut = holdTheCut()
             chat.edit(0, "changed")
+            // the edit cuts only once it holds the turn: by then the stopped turn's pump has gone on, or given way
+            eventually("the edit cuts (a pump that went on to the next message holds the turn)") { cut.reached }
+            assertEquals(listOf("one"), asked.toList())
+            cut.release()
             eventually("the edit answered") {
                 assertFalse("the cut message was answered: $asked", "two" in asked)
                 rows(chat).map { it.text } == listOf("changed", "re: changed") &&
@@ -294,6 +316,29 @@ class ChatEngineTurnTest {
             eventually("no turn under way") { !engine.replying.value }
             letAWrongActionLand()
             assertEquals(listOf("one", "changed"), asked.toList())
+        }
+
+    @Test fun aSendWhileAnEditCutsWaitsForItAndLandsAfterTheEdit() =
+        runBlocking {
+            reply("First.")
+            val chat = newChat()
+            assertTrue(chat.send("first", emptyList()))
+            eventually("answered") { rows(chat).count { it.state == MessageState.Done } == 2 }
+            reply("Edited.")
+            reply("Second.")
+            val cut = holdTheCut()
+            chat.edit(0, "changed")
+            eventually("the edit cuts") { cut.reached }
+            // stored now, the message would sit after the rows the cut is removing, and go with them: it waits
+            val sent = async { chat.send("second", emptyList()) }
+            letAWrongActionLand()
+            assertFalse("the send waits for the edit", sent.isCompleted)
+            cut.release()
+            assertTrue("the send is taken once the edit is done", sent.await())
+            eventually("both answered") {
+                rows(chat).map { it.text } == listOf("changed", "Edited.", "second", "Second.") &&
+                    rows(chat).all { it.state == MessageState.Done }
+            }
         }
 
     @Test fun aChatDeletedFromTheDrawerTakesNoMoreMessages() =

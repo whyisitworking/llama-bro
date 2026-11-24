@@ -1,12 +1,10 @@
 package com.suhel.llamabro.demo.ui.chat
 
-import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -28,7 +26,6 @@ import com.suhel.llamabro.demo.designsystem.components.DictationBar
 import com.suhel.llamabro.demo.designsystem.components.MarkdownBlocks
 import com.suhel.llamabro.demo.designsystem.components.RecordingState
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
-import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.ui.shell.ChatListFormat
 import com.suhel.llamabro.demo.voice.Dictation
 import com.suhel.llamabro.demo.voice.ReadAloud
@@ -52,16 +49,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.time.ZoneId
 import java.util.Locale
 import kotlin.math.roundToInt
-
-/** What the top bar shows: the model's name, and while it downloads the ring's fraction and the label beside it. */
-@Immutable
-data class ChatHeader(val name: String, val downloadFraction: Float?, val downloadLabel: String?)
 
 /** The reply being written, ready to draw: its text parsed, its thoughts and how long it has thought. */
 @Immutable
@@ -100,10 +91,10 @@ class ChatViewModel(
     private val saveImage: suspend (Uri) -> String,
     /** Deletes a draft's pictures (removed from the bar, or left with a draft nobody sent). */
     private val discardImages: suspend (List<String>) -> Unit,
+    /** Decodes a draft picture's preview (it is called off the main thread); null when the file can't be read. */
+    private val draftThumbnail: (String) -> ImageBitmap?,
     /** Whether a draft picture's file is still there; a restored draft drops the names whose file is gone. */
     private val draftPictureExists: (String) -> Boolean = { true },
-    /** Where a draft picture's file is (`draft/`), for its preview. */
-    private val draftFile: (String) -> File = { File(it) },
     private val zone: ZoneId = ZoneId.systemDefault(),
     private val locale: Locale = Locale.getDefault(),
     private val clock: () -> Long = System::currentTimeMillis,
@@ -175,26 +166,7 @@ class ChatViewModel(
         )
 
     val header: StateFlow<ChatHeader> =
-        combine(handle.name, handle.model) { name, model ->
-            val downloading = (model as? ChatModelState.Downloading)?.status
-            when (downloading) {
-                is DownloadStatus.Downloading -> {
-                    ChatHeader(
-                        name,
-                        fraction(downloading.bytesDone, downloading.bytesTotal),
-                        downloadLabel(downloading),
-                    )
-                }
-
-                is DownloadStatus.Partial -> {
-                    ChatHeader(name, fraction(downloading.bytesDone, downloading.bytesTotal), null)
-                }
-
-                else -> {
-                    ChatHeader(name, null, null)
-                }
-            }
-        }.stateIn(viewModelScope, eager, ChatHeader("", null, null))
+        combine(handle.name, handle.model, ChatHeader::of).stateIn(viewModelScope, eager, ChatHeader("", null, null))
 
     /** The chat's title, for the chat list layout's header. */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -253,7 +225,9 @@ class ChatViewModel(
     /** The note the person closed; the line leaves it out (the engine's own limit is left as it is). */
     val notes = ClosedNotes()
 
-    private val sending = Mutex()
+    // the pictures of a send under way are the send's until it ends: whatever empties the bar meanwhile keeps them
+    private val sending =
+        Sending(inBar = { draft.value.attachments }, discard = { background.launch { discardImages(it) } })
 
     /** The bar's dictation (D140); null without a microphone. */
     val dictation: DictationComposer? =
@@ -458,23 +432,15 @@ class ChatViewModel(
             updateDraft { ComposerDraft() }
             return
         }
-        if (!sending.tryLock()) return
+        if (!sending.tryStart()) return
+        sending.carry(d.attachments)
         viewModelScope.launch {
             try {
                 if (handle.send(d.text, d.attachments)) {
                     // what was typed or picked meanwhile stays; what was sent goes
                     updateDraft {
-                        it.copy(
-                            attachments = it.attachments - d.attachments,
-                            text =
-                                if (it.text ==
-                                    d.text
-                                ) {
-                                    ""
-                                } else {
-                                    it.text
-                                },
-                        )
+                        val text = it.text.takeIf { typed -> typed != d.text }.orEmpty()
+                        it.copy(attachments = it.attachments - d.attachments, text = text)
                     }
                     _problem.value = null
                 }
@@ -484,7 +450,7 @@ class ChatViewModel(
                 // the database refused the message (its chat went meanwhile): the draft stays, and the bar says so
                 _problem.value = "That message couldn't be sent."
             } finally {
-                sending.unlock()
+                sending.end()
             }
         }
     }
@@ -503,9 +469,9 @@ class ChatViewModel(
         discardDropped(updateDraft { ComposerDraft(text = m.text, editing = position) })
     }
 
-    /** Deletes the pictures of a draft ([before]) that a new one replaced. */
+    /** Deletes the pictures of a draft ([before]) that a new one replaced, but not those a send under way carries. */
     private fun discardDropped(before: ComposerDraft) {
-        val dropped = before.attachments - draft.value.attachments.toSet()
+        val dropped = sending.notCarried(before.attachments - draft.value.attachments.toSet())
         if (dropped.isNotEmpty()) viewModelScope.launch { discardImages(dropped) }
     }
 
@@ -562,18 +528,12 @@ class ChatViewModel(
 
     private fun ComposerDraft.canTakePhoto() = attachments.size < ChatEngine.MAX_IMAGES && editing == null
 
-    /** A draft picture, downscaled once more for its 64 dp preview (the saved one is at most 1024 px). */
+    /** A draft picture's 64 dp preview. */
     suspend fun thumbnail(name: String): ImageBitmap? =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val options = BitmapFactory.Options().apply { inSampleSize = 2 } // half of 1024 px is sharp for 64 dp
-                BitmapFactory.decodeFile(draftFile(name).path, options)?.asImageBitmap()
-            }.getOrNull()
-        }
+        withContext(Dispatchers.IO) { runCatching { draftThumbnail(name) }.getOrNull() }
 
     fun removeAttachment(name: String) {
-        updateDraft { it.copy(attachments = it.attachments - name) }
-        viewModelScope.launch { discardImages(listOf(name)) }
+        discardDropped(updateDraft { it.copy(attachments = it.attachments - name) })
     }
 
     /** The first 600 characters of the reply at [position], for the share card. */
@@ -596,23 +556,10 @@ class ChatViewModel(
             .firstOrNull { it.position == position }
             ?.let { ChatItems.speed(it.wordsPerSecond) }
 
-    private fun fraction(done: Long, total: Long): Float =
-        if (total > 0) {
-            (done.toFloat() / total).coerceIn(0f, 1f)
-        } else {
-            0f
-        }
-
-    private fun downloadLabel(s: DownloadStatus.Downloading): String {
-        val pct = (fraction(s.bytesDone, s.bytesTotal) * 100).roundToInt()
-        val eta = s.etaSeconds?.let { " · about ${if (it < 60) "$it s" else "${(it + 30) / 60} min"}" }.orEmpty()
-        return "$pct%$eta"
-    }
-
     override fun onCleared() {
         // the chat is gone: its engine handle ends, and pictures attached to a draft nobody sent are deleted, with a
-        // recording nobody sent
-        val left = draft.value.attachments
+        // recording nobody sent; a send under way keeps its pictures, and deletes those it didn't store when it ends
+        val left = sending.notCarried(draft.value.attachments, closing = true)
         voiceMode.close()
         dictation?.discard()
         readAloud?.stop()

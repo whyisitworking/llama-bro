@@ -65,11 +65,13 @@ class ImageStore(private val dir: File) {
 
     /**
      * Moves a sent draft's pictures into the messages' folder and returns the names it moved. Each is stamped [now]
-     * before the move (a rename keeps the time), so a sweep never takes one between the move and the row naming it. A
-     * name with no draft file (one a sent message already holds) is left as it is.
+     * before the move (a rename keeps the time), so a sweep never takes one between the move and the row naming it.
+     * When a name has no draft file (deleted meanwhile, or one a sent message already holds) nothing is moved and the
+     * answer is null: the message would name a picture that is gone, or share another message's file.
      */
-    suspend fun commit(names: List<String>, now: Long): List<String> =
+    suspend fun commit(names: List<String>, now: Long): List<String>? =
         withContext(Dispatchers.IO) {
+            if (names.any { !draftFile(it).exists() }) return@withContext null
             dir.mkdirs()
             names.filter { name ->
                 val from = draftFile(name)

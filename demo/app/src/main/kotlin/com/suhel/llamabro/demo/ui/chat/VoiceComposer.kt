@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 
 /**
  * The message bar's voice messages (D76): recording one for a model that hears, keeping it when the screen is left,
@@ -24,8 +23,8 @@ class VoiceComposer(
     private val scope: CoroutineScope,
     /** Whether a recording may start now: the model hears and no message is being edited. */
     private val canRecord: () -> Boolean,
-    /** The bar's own send lock, so a voice message and a typed one never go at once. */
-    private val sending: Mutex,
+    /** The bar's own send, so a voice message and a typed one never go at once, and the photos it carries. */
+    private val sending: Sending,
     /** The photos in the bar, which go with the voice message; [onSent] gets the ones that went. */
     private val photos: () -> List<String>,
     private val onSent: (photos: List<String>) -> Unit,
@@ -73,7 +72,7 @@ class VoiceComposer(
 
     /** Sends the recording as a voice message; when the engine refuses it, the recording stays in the bar. */
     fun send() {
-        if (!sending.tryLock()) return
+        if (!sending.tryStart()) return
         scope.launch {
             try {
                 val voice = recorder.finish()
@@ -81,7 +80,7 @@ class VoiceComposer(
                     recorder.discard()
                     return@launch
                 }
-                val sent = photos()
+                val sent = photos().also(sending::carry)
                 if (handle.send("", sent, voice)) {
                     recorder.clear()
                     onSent(sent)
@@ -93,7 +92,7 @@ class VoiceComposer(
                 // stays in the bar and the bar says so, rather than the app crashing
                 problem("That message couldn't be sent.")
             } finally {
-                sending.unlock()
+                sending.end()
             }
         }
     }

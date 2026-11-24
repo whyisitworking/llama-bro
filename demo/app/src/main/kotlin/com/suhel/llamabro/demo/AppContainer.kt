@@ -1,8 +1,11 @@
 package com.suhel.llamabro.demo
 
 import android.annotation.SuppressLint
+import android.graphics.BitmapFactory
 import android.os.StatFs
 import android.util.Log
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
@@ -302,7 +305,7 @@ class AppContainer(
         engine.open(chatId, startModel),
         styles ?: settings.settings.map { it.layout.messageStyle() },
         saveImage = { images.save(it, app.contentResolver) },
-        draftFile = images::draftFile,
+        draftThumbnail = { draftThumbnail(images.draftFile(it)) },
         discardImages = { images.deleteDrafts(it) },
         draftPictureExists = { images.draftFile(it).exists() },
         clock = clock,
@@ -365,3 +368,9 @@ class AppContainer(
  */
 private val logFailures =
     CoroutineExceptionHandler { _, e -> Log.e("AppContainer", "background work failed", e) }
+
+/** A draft picture, downscaled once more for its 64 dp preview (the saved one is at most 1024 px). */
+private fun draftThumbnail(file: File): ImageBitmap? {
+    val options = BitmapFactory.Options().apply { inSampleSize = 2 } // half of 1024 px is sharp for 64 dp
+    return BitmapFactory.decodeFile(file.path, options)?.asImageBitmap()
+}

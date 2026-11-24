@@ -229,9 +229,9 @@ class ChatRepository(
 
     /**
      * Moves the pictures of a message about to be stored out of the draft folder and into the messages' own; returns
-     * the names it moved.
+     * the names it moved, or null, moving none, when one of them is no longer in the draft ([ImageStore.commit]).
      */
-    suspend fun commitDraftImages(names: List<String>): List<String> = imageStore.commit(names, clock())
+    suspend fun commitDraftImages(names: List<String>): List<String>? = imageStore.commit(names, clock())
 
     /** Puts the [names] a commit moved back in the draft folder: the message was not stored. */
     suspend fun returnDraftImages(names: List<String>) = imageStore.uncommit(names)

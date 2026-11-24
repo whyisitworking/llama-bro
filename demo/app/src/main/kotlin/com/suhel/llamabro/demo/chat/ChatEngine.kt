@@ -362,40 +362,76 @@ class ChatEngine(
         /**
          * Whether the message was taken: false while a reply is coming, for an empty message, when the chat has no
          * model at all, and for pictures or a [voice] message sent to a model that can't see or hear them (the limit
-         * line says so). The caller keeps the draft when this is false. A taken message is stored as held and answered
-         * as soon as its model is on the phone. Runs on [confined], as a switch does, so the two never both create
-         * the chat.
+         * line says so). The caller keeps the draft when this is false.
+         * A taken message is stored as held and answered as soon as its model is on the phone. One sent while an edit,
+         * a regenerate or a switch is under way waits for it ([rewrites]), so an edit's cut never takes it away and a
+         * switch's model answers it after its divider. Runs on [confined], as a switch does, so the two never both
+         * create the chat.
          */
         suspend fun send(text: String, images: List<String> = emptyList(), voice: NewVoice? = null): Boolean =
             withContext(confined) { take(text, images, voice) }
 
         private suspend fun take(text: String, images: List<String>, voice: NewVoice?): Boolean {
-            // a chat deleted from the drawer takes nothing more: its rows would point at a chat that is gone
-            if (_busy.value || deleting) return false
-            if (text.isBlank() && images.isEmpty() && voice == null) return false
-            val key =
-                choice.value.key ?: initialModelKey()?.also { choice.value = ModelChoice.Chosen(it) } ?: return false
+            rewrites.first { it == 0 }
             val names = images.take(MAX_IMAGES)
-            val ready = model.value as? ChatModelState.Ready
-            // the model's own answer once it is loaded; until then what the catalog says about it
+            val empty = text.isBlank() && names.isEmpty() && voice == null
+            val id = if (empty || !canTake()) null else chatFor(names.isNotEmpty(), voice != null)
+            if (id == null) return false
+            _limit.value = null
+            store(id, text.trim(), names, voice)
+            return true
+        }
+
+        /**
+         * The chat a message with [pictures] or a [voice] message goes to, created now if it is new; null when it
+         * can't be taken: the chat has no model, or the model that will answer it can't see or hear it (the limit line
+         * says so).
+         */
+        private suspend fun chatFor(pictures: Boolean, voice: Boolean): Long? {
+            val key =
+                choice.value.key ?: initialModelKey()?.also { choice.value = ModelChoice.Chosen(it) } ?: return null
+            if (refuses(key, pictures, voice)) return null
+            val id = ensureChat() ?: return null
+            // creating the chat suspends: a switch may have run meanwhile, and its model is the one that answers
+            val answering = choice.value.key
+            val refused = answering == null || (answering != key && refuses(answering, pictures, voice))
+            return id.takeUnless { refused }
+        }
+
+        /**
+         * A message can be taken now: no reply is coming, the chat isn't being deleted from the drawer (its rows would
+         * point at a chat that is gone).
+         */
+        private fun canTake(): Boolean = !_busy.value && !deleting
+
+        /**
+         * Whether [key]'s model refuses the message's [pictures] or [voice] message; the limit line then says why. Its
+         * own answer once it is loaded, else what the catalog says about it.
+         */
+        private fun refuses(key: HfModel, pictures: Boolean, voice: Boolean): Boolean {
+            val ready = (model.value as? ChatModelState.Ready)?.takeIf { it.name == Names.of(key) }
             val sees = ready?.sees ?: Catalog.byKey(key)?.sees ?: false
             val hears = ready?.hears == true
-            refusal(sees, hears, names.isNotEmpty(), voice != null, currentName(), visionModelName())?.let {
-                _limit.value = it
-                return false
-            }
-            val id = ensureChat() ?: return false
-            _limit.value = null
+            val refused = refusal(sees, hears, pictures, voice, Names.of(key), visionModelName()) ?: return false
+            _limit.value = refused
+            return true
+        }
+
+        /**
+         * Stores a taken message as held, its pictures moved out of the draft, and answers what is held. A picture no
+         * longer in the draft fails the send, storing nothing: the row would name a file that is gone or another's.
+         */
+        private suspend fun store(id: Long, text: String, names: List<String>, voice: NewVoice?) {
             // one unit, whatever happens to the caller: a stored row may resume as cancelled, and its pictures must
             // then stay where the row names them
             withContext(NonCancellable) {
-                val moved = chats.commitDraftImages(names)
+                val moved = checkNotNull(chats.commitDraftImages(names)) { "a picture of the message is gone" }
                 try {
                     chats.append(
                         id,
                         NewMessage(
                             MessageKind.User,
-                            text.trim(),
+                            text,
                             names,
                             state = MessageState.Held,
                             sentAt = clock(),
@@ -413,7 +449,6 @@ class ChatEngine(
                 }
                 pump()
             }
-            return true
         }
 
         /** Stops the turn, whether the model is still waking (the message stays held) or the reply is streaming. */
@@ -457,7 +492,7 @@ class ChatEngine(
 
         fun switchModel(key: HfModel) {
             rewriting {
-                if (deleting) return@rewriting
+                if (deleting) return@rewriting false
                 // an empty chat has no model to switch from: choosing one just sets it, with no divider
                 val switching = isSwitch(messages.value)
                 // the in-memory model changes first, so a message sent right after is answered by the new one, and a
@@ -465,11 +500,12 @@ class ChatEngine(
                 invalidate()
                 _limit.value = null
                 choice.value = ModelChoice.Chosen(key)
-                val id = ensureChat() ?: return@rewriting
+                val id = ensureChat() ?: return@rewriting false
                 syncThink()
                 if (switching) chats.append(id, switchNotice(key, Names.of(key), clock()))
                 chats.setModel(id, key.toString())
                 settings.setLastModel(key.toString())
+                true
             }
         }
 
@@ -492,43 +528,46 @@ class ChatEngine(
         ) {
             rewriting {
                 beforeTurn() // startup recovery must not run between the cut and the append
-                if (deleting) return@rewriting
+                if (deleting) return@rewriting false
                 _limit.value = null
-                val id = _chatId.value.takeIf { it != 0L } ?: return@rewriting
+                val id = _chatId.value.takeIf { it != 0L } ?: return@rewriting false
                 val before = messages.value
-                val kept = keep(before) ?: return@rewriting
+                val kept = keep(before) ?: return@rewriting false
                 chats.truncateFrom(id, position, keepImages = kept)
                 invalidate()
                 modelToRestate(before, position, choice.value.key)?.let {
                     chats.append(id, switchNotice(it, Names.of(it), clock()))
                 }
                 then(id, before)
+                true
             }
         }
 
         /**
-         * Rewrites (an edit, a regenerate, a switch) are under way; [pump] answers nothing while one is. Read and
-         * written on [confined] only.
+         * Rewrites (an edit, a regenerate, a switch) are under way; [pump] answers nothing while one is, and [send]
+         * waits for none to be. Written on [confined] only.
          */
-        private var rewrites = 0
+        private val rewrites = MutableStateFlow(0)
 
         /**
-         * Runs [block], a change to the chat's rows or model, with no turn under way, then answers what is held. The
-         * turn is stopped, and [rewrites] keeps [pump] from starting the next held message's turn meanwhile: a pump
-         * whose stopped turn had made its reply row would otherwise go on to the next one while [block] cuts it
-         * away. [block] then runs under [turn], so no pump's turn can run beside it.
+         * Runs [block], a change to the chat's rows or model, with no turn under way, then answers what is held when
+         * [block] says it changed something. The turn is stopped, and [rewrites] keeps [pump] from starting the next
+         * held message's turn meanwhile (and [send] waits): a pump whose stopped turn had made its
+         * reply row would otherwise go on to the next one while [block] cuts it away. [block] then runs under [turn],
+         * so no pump's turn can run beside it. A [block] that changed nothing leaves what is held as a Stop would, so
+         * a Stop while the model wakes isn't undone by it.
          */
-        private fun rewriting(block: suspend () -> Unit) {
+        private fun rewriting(block: suspend () -> Boolean) {
             hs.launch {
-                rewrites++
-                try {
-                    stopAndWait()
-                    turn.withLock { block() }
-                } finally {
-                    rewrites--
-                }
-                // also when [block] changed nothing: a pump that gave way to it may have left messages held
-                pump()
+                rewrites.value++
+                val changed =
+                    try {
+                        stopAndWait()
+                        turn.withLock { block() }
+                    } finally {
+                        rewrites.value--
+                    }
+                if (changed) pump()
             }
         }
 
@@ -562,7 +601,7 @@ class ChatEngine(
         private fun pump() {
             hs.launch {
                 turn.withLock {
-                    while (!deleting && rewrites == 0) {
+                    while (!deleting && rewrites.value == 0) {
                         val id = _chatId.value.takeIf { it != 0L } ?: return@withLock
                         val key = choice.value.key ?: return@withLock
                         val lib = library.value ?: return@withLock
@@ -579,7 +618,7 @@ class ChatEngine(
                         // the load as it waits for a reply
                         // the chat may have started going, or a rewrite may have begun, while its rows were read;
                         // nothing suspends from here until the turn is [running], where a rewrite's stop finds it
-                        if (deleting || rewrites > 0) return@withLock
+                        if (deleting || rewrites.value > 0) return@withLock
                         var replied = false
                         runAsCurrent { answer(id, key, held) { replied = true } }
                         if (!replied) return@withLock
@@ -697,7 +736,8 @@ class ChatEngine(
         fun continueReply(position: Int) {
             hs.launch {
                 turn.withLock {
-                    if (deleting) return@withLock
+                    // a rewrite under way is about to cut or switch the chat this would continue
+                    if (deleting || rewrites.value > 0) return@withLock
                     val id = _chatId.value.takeIf { it != 0L } ?: return@withLock
                     val key = choice.value.key ?: return@withLock
                     val rows = chats.messages(id).first()

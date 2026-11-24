@@ -3,6 +3,7 @@ package com.suhel.llamabro.demo.data
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -30,11 +31,18 @@ class ImageStoreDraftTest {
     @Test fun sendingMovesThePicturesIntoTheMessagesFolderStampedNow() =
         runBlocking {
             val draft = staged("a.jpg").also { it.setLastModified(1_000L) }
-            assertEquals(listOf("a.jpg"), store.commit(listOf("a.jpg", "never-staged.jpg"), now = 5_000_000L))
+            assertEquals(listOf("a.jpg"), store.commit(listOf("a.jpg"), now = 5_000_000L))
             assertFalse(draft.exists())
             assertTrue(store.file("a.jpg").exists())
             assertEquals(5_000_000L, store.file("a.jpg").lastModified())
-            assertFalse("a name with no draft file is left as it is", store.file("never-staged.jpg").exists())
+        }
+
+    @Test fun aNameWithNoDraftFileMovesNothing() =
+        runBlocking {
+            staged("a.jpg")
+            assertNull("a picture deleted meanwhile", store.commit(listOf("a.jpg", "never-staged.jpg"), now = 1L))
+            assertTrue(store.draftFile("a.jpg").exists())
+            assertFalse(store.file("a.jpg").exists())
         }
 
     @Test fun aMessageThatWasNotStoredGivesItsPicturesBackToTheDraft() =
@@ -46,11 +54,10 @@ class ImageStoreDraftTest {
             assertFalse(store.file("a.jpg").exists())
         }
 
-    @Test fun aResentNameMovesNothingSoNothingGoesBack() =
+    @Test fun aSentNameIsRefusedSoTwoMessagesNeverShareAFile() =
         runBlocking {
             store.file("sent.jpg").apply { parentFile!!.mkdirs() }.writeBytes(byteArrayOf(1))
-            assertEquals(emptyList<String>(), store.commit(listOf("sent.jpg"), now = 1L))
-            store.uncommit(emptyList())
+            assertNull(store.commit(listOf("sent.jpg"), now = 1L))
             assertTrue(store.file("sent.jpg").exists())
         }
 

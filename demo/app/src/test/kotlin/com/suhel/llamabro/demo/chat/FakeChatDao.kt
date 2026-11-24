@@ -132,7 +132,11 @@ class FakeChatDao : ChatDao() {
 
     override suspend fun allImages(): List<String> = messages.value.map { it.images }.filter { it.isNotEmpty() }
 
+    /** Awaited before a chat is cut from a position: a test holds an edit's or a regenerate's cut open. */
+    var beforeDeleteFrom: suspend () -> Unit = {}
+
     override suspend fun deleteFrom(chatId: Long, position: Int) {
+        beforeDeleteFrom()
         messages.update { list -> list.filterNot { it.chatId == chatId && it.position >= position } }
     }
 
