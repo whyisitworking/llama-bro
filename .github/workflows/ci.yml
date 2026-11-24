@@ -25,7 +25,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NDK: "29.0.14206865"
   CMAKE: "4.1.2"
 
 jobs:
@@ -55,7 +54,7 @@ jobs:
           distribution: temurin
           java-version: "25"
       - name: NDK and CMake
-        run: .github/scripts/android-packages.sh "ndk;${NDK}" "cmake;${CMAKE}"
+        run: .github/scripts/android-packages.sh "ndk;$(tr -d '[:space:]' <sdk/native/ndk.version)" "cmake;${CMAKE}"
       - uses: gradle/actions/setup-gradle@v5
       - name: Public API matches the reviewed dumps
         run: >
@@ -100,7 +99,7 @@ jobs:
           distribution: temurin
           java-version: "25"
       - name: NDK and CMake
-        run: .github/scripts/android-packages.sh "ndk;${NDK}" "cmake;${CMAKE}"
+        run: .github/scripts/android-packages.sh "ndk;$(tr -d '[:space:]' <sdk/native/ndk.version)" "cmake;${CMAKE}"
       - uses: gradle/actions/setup-gradle@v5
       # ktlint, detekt and the import check; detekt resolves types, so the core module configures its native build,
       # which patches the llama.cpp submodule

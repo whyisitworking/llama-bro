@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     id("llamabro.library")
+    id("llamabro.backend")
     id("llamabro.publish")
 }
 
@@ -10,21 +11,12 @@ description = "The optional Qualcomm Hexagon NPU backend for Llama Bro."
 // by sdk/native/scripts/build-backends.sh. Being on the classpath is enough: the core finds it through the manifest.
 android {
     namespace = "com.suhel.llamabro.hexagon"
+}
 
-    defaultConfig {
-        ndk { abiFilters += "arm64-v8a" }
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    }
-
-    sourceSets.getByName("main") {
-        jniLibs.directories += backendsOut.resolve("jniLibs").path
-        // the skeletons run on the DSP, which opens them from a file path: assets, copied out at start (F19, F36)
-        assets.directories += backendsOut.resolve("assets").path
-    }
-
-    lint {
-        disable += "ChromeOsAbiSupport"
-    }
+llamabroBackend {
+    name = "hexagon"
+    // the skeletons run on the DSP, which opens them from a file path: assets, copied out at start (F19, F36)
+    assets = true
 }
 
 kotlin {
@@ -43,7 +35,3 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.runner)
 }
-
-// built by the root project's buildBackends (sdk/native/scripts/build-backends.sh, Docker)
-val backendsOut: File get() = projectDir.resolve("../native/build/android-backends/hexagon").canonicalFile
-tasks.named("preBuild") { dependsOn(":buildBackends") }

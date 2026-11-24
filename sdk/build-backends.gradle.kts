@@ -10,6 +10,7 @@ tasks.register<Exec>("buildBackends") {
     dependsOn(":llamabro:prepareLlama")
     inputs.file(native.resolve("build/llama.cpp/.lb-stamp"))
     inputs.file(native.resolve("CMakeLists.txt"))
+    inputs.file(native.resolve("ndk.version"))
     inputs.file(native.resolve("scripts/build-backends.sh"))
     outputs.dir(native.resolve("build/android-backends"))
     commandLine("bash", native.resolve("scripts/build-backends.sh").path)

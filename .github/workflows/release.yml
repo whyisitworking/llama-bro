@@ -38,7 +38,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  NDK: "29.0.14206865"
   CMAKE: "4.1.2"
 
 jobs:
@@ -70,7 +69,7 @@ jobs:
           distribution: temurin
           java-version: "25"
       - name: NDK and CMake
-        run: .github/scripts/android-packages.sh "ndk;${NDK}" "cmake;${CMAKE}"
+        run: .github/scripts/android-packages.sh "ndk;$(tr -d '[:space:]' <sdk/native/ndk.version)" "cmake;${CMAKE}"
       - uses: gradle/actions/setup-gradle@v5
 
       # a tag names the version; a manual run is 0.0.0 with the commit; the run number keeps every build's code higher
@@ -143,7 +142,7 @@ jobs:
           distribution: temurin
           java-version: "25"
       - name: NDK and CMake
-        run: .github/scripts/android-packages.sh "ndk;${NDK}" "cmake;${CMAKE}"
+        run: .github/scripts/android-packages.sh "ndk;$(tr -d '[:space:]' <sdk/native/ndk.version)" "cmake;${CMAKE}"
       - uses: gradle/actions/setup-gradle@v5
 
       # a published version can never change, so the tag must name exactly the version the build stamps

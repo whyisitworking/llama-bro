@@ -11,8 +11,9 @@ set -euo pipefail
 aar="${1:?usage: check-aar.sh AAR [CORE_AAR]}"
 core="${2:-}"
 sdk_dir="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
-readelf="$(ls "$sdk_dir"/ndk/29.0.14206865/toolchains/llvm/prebuilt/*/bin/llvm-readelf 2>/dev/null | head -1 || true)"
-[ -x "$readelf" ] || { echo "FAIL: llvm-readelf from NDK 29.0.14206865 not found"; exit 1; }
+ndk_version="$(tr -d '[:space:]' < "$(dirname "$0")/../native/ndk.version")"  # the SDK's one NDK pin
+readelf="$(ls "$sdk_dir"/ndk/"$ndk_version"/toolchains/llvm/prebuilt/*/bin/llvm-readelf 2>/dev/null | head -1 || true)"
+[ -x "$readelf" ] || { echo "FAIL: llvm-readelf from NDK $ndk_version not found"; exit 1; }
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT

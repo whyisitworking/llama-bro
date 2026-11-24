@@ -10,7 +10,7 @@ description =
 
 android {
     namespace = "com.suhel.llamabro"
-    ndkVersion = "29.0.14206865"
+    ndkVersion = projectDir.resolve("../native/ndk.version").readText().trim() // the SDK's one NDK pin
 
     defaultConfig {
         ndk {

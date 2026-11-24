@@ -4,7 +4,7 @@
 #   opencl:  libllamabro-ggml-opencl.so, linked against the image sysroot's libOpenCL.so; the phone's own
 #            libOpenCL.so is used at run time (<uses-native-library>), so none is shipped.
 # It runs this repo's sdk/native/CMakeLists.txt with LB_BACKENDS, so ggml-base comes from the same file and options
-# as the AGP build and the backend links it by the same soname. The image's NDK is the SDK's (29.0.14206865,
+# as the AGP build and the backend links it by the same soname. The image's NDK is the SDK's (ndk.version,
 # checked below), so one libc++_shared.so serves every library in the APK.
 # Output, one directory per backend module: sdk/native/build/android-backends/hexagon/{jniLibs/arm64-v8a,
 # assets/llamabro/htp} (each skeleton plus its .sha256, which the app checks after copying it out: SkeletonInstall.kt)
@@ -14,7 +14,7 @@ set -euo pipefail
 
 native="$(cd "$(dirname "$0")/.." && pwd)"
 image="ghcr.io/snapdragon-toolchain/arm64-android:v0.8"
-ndk_rev="29.0.14206865"
+ndk_rev="$(tr -d '[:space:]' < "$native/ndk.version")"  # the SDK's one NDK pin
 out="$native/build/android-backends"
 skels="v73 v75 v79 v81 v85"
 

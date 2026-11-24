@@ -5,7 +5,7 @@ For how the project is put together, read [docs/architecture.md](docs/architectu
 
 ## Setup
 
-- JDK 17, the Android SDK (API 37), NDK 29.0.14206865 and CMake 4.1.2. The core library (`sdk/llamabro`) needs nothing
+- JDK 17, the Android SDK (API 37), the NDK pinned in `sdk/native/ndk.version` and CMake 4.1.2. The core library (`sdk/llamabro`) needs nothing
   else: Gradle's `prepareLlama` task builds the patched llama.cpp copy from the submodule and `sdk/native/patches/`
   (bash and git only).
 - **Docker, running,** for the NPU and GPU backend modules (`sdk/llamabro-hexagon`, `sdk/llamabro-opencl`) and anything

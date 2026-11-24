@@ -129,9 +129,10 @@ target_link_libraries(llamabro PRIVATE server-context ${CMAKE_THREAD_LIBS_INIT})
 # follows the standard JNI function table, so a copy of it is used.
 option(LB_HOST_JNI "Build the JNI layer into the host libllamabro (needs the NDK's jni.h)" OFF)
 if(LB_HOST_JNI AND NOT ANDROID)
-    file(GLOB lb_ndk_jni "$ENV{ANDROID_HOME}/ndk/29.0.14206865/toolchains/llvm/prebuilt/*/sysroot/usr/include/jni.h")
+    file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/ndk.version" lb_ndk_version LIMIT_COUNT 1)  # the SDK's one NDK pin
+    file(GLOB lb_ndk_jni "$ENV{ANDROID_HOME}/ndk/${lb_ndk_version}/toolchains/llvm/prebuilt/*/sysroot/usr/include/jni.h")
     if(NOT lb_ndk_jni)
-        message(FATAL_ERROR "LB_HOST_JNI: jni.h not found under $ENV{ANDROID_HOME}/ndk/29.0.14206865 (set ANDROID_HOME)")
+        message(FATAL_ERROR "LB_HOST_JNI: jni.h not found under $ENV{ANDROID_HOME}/ndk/${lb_ndk_version} (set ANDROID_HOME)")
     endif()
     list(GET lb_ndk_jni 0 lb_ndk_jni)
     configure_file("${lb_ndk_jni}" "${CMAKE_BINARY_DIR}/jni-include/jni.h" COPYONLY)

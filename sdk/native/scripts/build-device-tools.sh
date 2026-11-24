@@ -14,7 +14,7 @@ set -euo pipefail
 
 native="$(cd "$(dirname "$0")/.." && pwd)"
 image="ghcr.io/snapdragon-toolchain/arm64-android:v0.8"
-ndk_rev="29.0.14206865"
+ndk_rev="$(tr -d '[:space:]' < "$native/ndk.version")"  # the SDK's one NDK pin
 name="${LB_DEVICE_TOOLS_NAME:-android-device-tools}"
 extra="${LB_EXTRA_CMAKE_ARGS:-}"
 targets="${LB_EXTRA_TARGETS:-}"
