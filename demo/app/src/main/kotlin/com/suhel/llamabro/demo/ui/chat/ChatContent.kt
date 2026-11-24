@@ -157,10 +157,12 @@ private fun ChatTopBar(bar: ChatBar, layout: AppLayout, actions: ChatScreenActio
 @Composable
 private fun SidebarTitle(header: ChatHeader, onSwitcher: () -> Unit) {
     Inline(Gap.Block) {
+        // the model's whole name, on two lines if it needs them: which model answers must be read, not guessed (D150)
         TopBarTitle(
             header.name,
             chevron = true,
             onClick = onSwitcher,
+            lines = 2,
             modifier = Modifier.weight(1f, fill = false).testTag("model_title"),
         )
         DownloadIndicator(header)

@@ -76,17 +76,19 @@ data class GlassTheme(val chip: GlassStyle, val panel: GlassStyle, val bar: BarG
                     chip = chip,
                     // under text: a denser veil and a stronger blur, so what is typed and read on it stays calm
                     // over what passes under (the veil is blended into the glass, keeping its lights and darks)
-                    panel = chip.copy(veil = 0.6f, blur = 16.dp),
+                    panel = chip.copy(veil = 0.45f, blur = 10.dp),
                     bar =
                         BarGlass(
                             blur = 24.dp,
                             dispersion = 8.dp,
-                            veil = 0.55f,
+                            // blended in by the shader: lighter than a flat veil, or the dark theme crushes the blur's
+                            // colour to near-black
+                            veil = 0.35f,
                             bareVeil = 0.8f,
-                            // the blur recedes into the bar: content stays sharp until it slides under the bar's
-                            // parts, then softens toward the screen's edge
-                            fade = 8.dp,
-                            hold = 0.3f,
+                            // the blur recedes into the bar but is full under its parts: content is sharp until it
+                            // nears them, fully frosted beneath them
+                            fade = 16.dp,
+                            hold = 0.55f,
                         ),
                 )
             }

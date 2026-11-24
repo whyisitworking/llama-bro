@@ -129,6 +129,8 @@ fun TopBarTitle(
     onClick: (() -> Unit)? = null,
     /** The Models page's title (D123): light and a step larger, naming the page without weight. */
     light: Boolean = false,
+    /** How many lines the title may wrap to before it is cut: 2 for a model's name, which must be read whole (D150). */
+    lines: Int = 1,
 ) {
     val colors = LocalDemoColors.current
     // on a floating bar a title that opens something is a raised pill of its own (D148); a page's name is just text
@@ -146,13 +148,14 @@ fun TopBarTitle(
     ) {
         val chevronOnTitle = chevron && subtitle == null
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // at large font a model's name wraps rather than lose its end: the name is never what gets cut first
+            // a model's name wraps rather than lose its end (always where [lines] allows, at large font anywhere): the
+            // name is never what gets cut first
             Text(
                 title,
                 Modifier.weight(1f, fill = false),
                 color = colors.ink,
                 style = if (light) DemoType.screenTitleLight else DemoType.screenTitle,
-                maxLines = if (isLargeText()) 2 else 1,
+                maxLines = maxOf(lines, if (isLargeText()) 2 else 1),
                 overflow = TextOverflow.Ellipsis,
             )
             if (chevronOnTitle) {
