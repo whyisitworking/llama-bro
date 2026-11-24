@@ -18,13 +18,10 @@ import com.suhel.llamabro.demo.data.NewMessage
 import com.suhel.llamabro.demo.data.NewVoice
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
-import com.suhel.llamabro.demo.data.loadConfig
 import com.suhel.llamabro.demo.data.modelForNewChat
 import com.suhel.llamabro.demo.data.settings.CardSampling
 import com.suhel.llamabro.demo.data.settings.Knobs
 import com.suhel.llamabro.demo.models.Catalog
-import com.suhel.llamabro.demo.models.DownloadFailure
-import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.Names
@@ -40,7 +37,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -62,7 +58,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.ContinuationInterceptor
 
 /**
@@ -99,146 +94,6 @@ internal fun sdkStream(
     return if (options.continues) convo.resume(configure) else convo.send(text, *media, options = configure)
 }
 
-/** The divider line for a switch to [key]. */
-internal fun switchNotice(key: HfModel, name: String, now: Long) =
-    NewMessage(MessageKind.Switch, "Switched to $name", modelKey = key.toString(), sentAt = now)
-
-/** Whether choosing a model now switches from another one: only once the chat has a question in it. */
-internal fun isSwitch(rows: List<StoredMessage>): Boolean = rows.any { it.kind == MessageKind.User }
-
-/**
- * After a cut at [position] (an edit, a regenerate): the model to say "Switched to" for again, or null. The cut can
- * remove the divider that named the model answering, while the model in use stays the latest one; when the last
- * divider or reply that is left names another model than [current], the transcript must say so, or a reply would
- * stand under a divider for a model that did not write it.
- */
-internal fun modelToRestate(rows: List<StoredMessage>, position: Int, current: HfModel?): HfModel? {
-    val answering =
-        rows
-            .lastOrNull {
-                it.position < position &&
-                    (it.kind == MessageKind.Switch || it.kind == MessageKind.Assistant) &&
-                    it.modelKey != null
-            }?.modelKey
-    return current?.takeIf { answering != null && answering != it.toString() }
-}
-
-/** Whether [reply] can be continued in a chat on [key]: cut at its length limit, and written by that model (D60). */
-internal fun canContinue(reply: StoredMessage, key: HfModel): Boolean =
-    reply.kind == MessageKind.Assistant && reply.state == MessageState.Cut && reply.modelKey == key.toString()
-
-/** The state of a chat's model that isn't on the phone: still arriving, its download failed, or missing. */
-internal fun missingOrDownloading(name: String, status: DownloadStatus): ChatModelState =
-    when (status) {
-        is DownloadStatus.Downloading, is DownloadStatus.Partial -> ChatModelState.Downloading(status)
-        is DownloadStatus.Failed -> ChatModelState.DownloadFailed(name, status.failure)
-        else -> ChatModelState.Missing(name)
-    }
-
-/**
- * The chat's model as the composer sees it. Loaded, the model says whether it sees, hears and talks; otherwise the
- * catalog says whether it sees, [heard] (the models that heard on their last load) whether it hears (D76), and
- * [talking] (those that spoke on their last load) whether it talks (D100).
- */
-internal fun readyOrWaking(
-    key: HfModel,
-    name: String,
-    hostState: HostState,
-    heard: Set<String> = emptySet(),
-    talking: Set<String> = emptySet(),
-): ChatModelState =
-    when {
-        hostState is HostState.Waking && hostState.key == key -> {
-            ChatModelState.Waking(hostState.progress)
-        }
-
-        hostState is HostState.Ready && hostState.key == key -> {
-            ChatModelState.Ready(
-                name,
-                hostState.model.info.supportsVision,
-                Thinking.canThink(hostState.model.info, Catalog.byKey(key)),
-                hears = hostState.model.info.supportsAudio,
-                talks = hostState.model.info.supportsAudio && hostState.model.info.supportsSpeech,
-            )
-        }
-
-        else -> {
-            // not loaded: what its last load showed, else the catalog's word for any quant of the repo, so a suggested
-            // model that talks shows the mic and voice mode before its first load (a model that talks hears)
-            val catalog = Catalog.byRepo(key.repo)
-            val catalogTalks = catalog?.talks == true
-            ChatModelState.Ready(
-                name,
-                catalog?.sees ?: false,
-                catalog?.thinks ?: false,
-                hears = key.toString() in heard || catalogTalks,
-                talks = key.toString() in talking || catalogTalks,
-            )
-        }
-    }
-
-/**
- * Why model [name] can't take a message's pictures or voice message, when it can't see or hear them, or null when it
- * can; [visionModel] is a model on the phone that sees.
- */
-internal fun refusal(
-    sees: Boolean,
-    hears: Boolean,
-    pictures: Boolean,
-    voice: Boolean,
-    name: String,
-    visionModel: String?,
-): Limit? =
-    when {
-        pictures && !sees -> Limits.noVision(name, visionModel)
-        voice && !hears -> Limits.cantHear(name)
-        else -> null
-    }
-
-/** Records whether the model heard on this load, so the mic shows before its next load (D76). */
-private suspend fun rememberHearing(settings: SettingsRepository, key: HfModel, hears: Boolean) {
-    val known = key.toString() in settings.hearingModels.first()
-    if (known != hears) settings.setHears(key.toString(), hears)
-}
-
-/**
- * Records what the model heard and spoke with on this load (D76, D100): the mic and the voice-mode button show before
- * its next load, and Settings › Voice lists its voices.
- */
-internal suspend fun rememberSenses(settings: SettingsRepository, key: HfModel, info: ModelInfo) {
-    rememberHearing(settings, key, info.supportsAudio)
-    val voices = if (info.supportsAudio) info.voices else emptyList()
-    if (settings.talkingModels.first()[key.toString()].orEmpty() != voices) settings.setVoices(key.toString(), voices)
-}
-
-/**
- * What a chat knows of its model: not looked up yet ([Unknown]), looked up with none chosen ([None]: a new chat and no
- * model for new chats), or [Chosen], by the lookup, the first send or a switch.
- */
-internal sealed interface ModelChoice {
-    data object Unknown : ModelChoice
-
-    data object None : ModelChoice
-
-    data class Chosen(val key: HfModel) : ModelChoice
-}
-
-/** The choice once the lookup found [found]: a key the first send or a switch chose meanwhile stands. */
-internal fun ModelChoice.lookedUp(found: HfModel?): ModelChoice =
-    this as? ModelChoice.Chosen ?: found?.let(ModelChoice::Chosen) ?: ModelChoice.None
-
-/** The chosen model's key; null while unknown or when none is chosen. */
-internal val ModelChoice.key: HfModel? get() = (this as? ModelChoice.Chosen)?.key
-
-/** What the chat's model state is derived from. */
-private data class ModelInputs(
-    val choice: ModelChoice,
-    val library: List<LibraryModel>?,
-    val host: HostState,
-    val heard: Set<String>,
-    val talking: Set<String>,
-)
-
 /** The reply being written right now. It is not in [ChatHandle.messages] until the row changes state. */
 data class StreamingReply(
     val messageId: Long,
@@ -251,57 +106,6 @@ data class StreamingReply(
 
 /** The chat voice mode talks in (D100): its id, its model and the model's name. */
 data class VoiceChat(val chatId: Long, val key: HfModel, val name: String)
-
-/**
- * An audio feature's hold on the loaded [model] (voice mode D100, dictation D140, reading aloud D141): [release] it
- * once, when the feature is done with it. Features acquire it through [holdUncancelled].
- */
-class ModelHold(val model: Model, private val onRelease: () -> Unit) {
-    private val released = AtomicBoolean(false)
-
-    fun release() {
-        if (released.compareAndSet(false, true)) onRelease()
-    }
-}
-
-/**
- * [hold] run to its end even when the caller is cancelled meanwhile (a model load can't be stopped halfway by it): a
- * hold that arrives for a cancelled caller is released rather than dropped, and the caller then sees the cancellation.
- */
-suspend fun holdUncancelled(hold: suspend () -> ModelHold?): ModelHold? {
-    val held = withContext(NonCancellable) { hold() }
-    if (!currentCoroutineContext().isActive) held?.release()
-    currentCoroutineContext().ensureActive()
-    return held
-}
-
-/** What the chat knows about its model, for the header, the composer and the held-message note. */
-sealed interface ChatModelState {
-    data class Downloading(val status: DownloadStatus?) : ChatModelState
-
-    /** The model is loading; [progress] is how far, 0 to 1, once the SDK has said. */
-    data class Waking(val progress: Float? = null) : ChatModelState
-
-    /** [hears]: the model takes voice messages (D76); [talks]: it holds a spoken conversation, voice mode (D100). */
-    data class Ready(
-        val name: String,
-        val sees: Boolean,
-        val canThink: Boolean,
-        val hears: Boolean = false,
-        val talks: Boolean = false,
-    ) : ChatModelState
-
-    data class Missing(val name: String) : ChatModelState
-
-    /** A new chat with no model chosen yet (none by default, none last used): nothing is loading. */
-    data object NoModel : ChatModelState
-
-    /** The model is on its way but the download stopped: [failure] says why (a token, the network, the disk). */
-    data class DownloadFailed(val name: String, val failure: DownloadFailure) : ChatModelState
-}
-
-/** A new chat's header before any model is chosen: what the title's switcher is for. */
-internal const val NO_MODEL_TITLE = "Choose a model"
 
 /**
  * Drives chats through the SDK's `Conversation`. Room is the source of truth: a conversation is rebuilt from stored
@@ -330,8 +134,8 @@ class ChatEngine(
      */
     private val card: (HfModel) -> CardSampling? = { Catalog.byRepo(it.repo)?.sampling },
 ) {
-    /** Turns under way in every chat, from the load to the end of the reply: the engine's own count, in and out. */
-    private val activeTurns = MutableStateFlow(0)
+    private val leases = ModelLeases(host, settings)
+    private val activeTurns get() = leases.activeTurns
 
     /**
      * A reply is being loaded for or written, in any chat: the model can't be unloaded now, and a reply that goes on
@@ -341,98 +145,13 @@ class ChatEngine(
         activeTurns.map { it > 0 }.stateIn(scope, SharingStarted.Eagerly, false)
 
     /**
-     * The loaded model whose note (memory or chip) was shown: once per load, in whichever chat loads it first. A model
-     * loaded again (after it was freed, or after a switch) is a new object, so its note is shown again.
-     */
-    @Volatile private var noted: java.lang.ref.WeakReference<Model>? = null
-
-    /**
-     * A lease on the model for [key] (shown as [name]) on the chip and context chosen in Settings › Memory (D72), or
-     * null when it didn't load: [limit] then says why. When the SDK loaded it although its memory check doubted it
-     * (F128), or on another chip than the one chosen, [limit] says so on every load of it: the note travels with the
-     * loaded model into every turn, so a turn on a model already loaded doesn't say it again. The turn releases the
-     * lease when it ends: until then the model stays open, and another chat's load of another model waits for it.
-     */
-    private suspend fun load(
-        key: HfModel,
-        name: String,
-        limit: MutableStateFlow<Limit?>,
-        slots: Int = 1,
-    ): ModelHost.Lease? {
-        val chosen =
-            settings.settings
-                .first()
-                .loadConfig
-                .copy(slots = slots)
-        val lease =
-            try {
-                // this turn is counted: another one may be streaming from the model, so a chip or context changed
-                // meanwhile waits for it (ModelMemory.loadConfigChanged) instead of closing the model under that reply
-                host.hold(key, chosen) { activeTurns.value > 1 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (
-                @Suppress("TooGenericExceptionCaught") e: Exception,
-            ) {
-                limit.value = Limits.forLoadFailure(name, e)
-                    ?: Limit("$name didn't start. Try again.", LimitAction.Retry, "Retry")
-                return null
-            }
-        var handedOver = false
-        try {
-            val loaded = lease.model
-            // one line holds one note: the memory note wins, since it warns that other apps may close and offers a
-            // smaller size; where the model runs stays in Settings › Memory and the model sheet
-            val report = loaded.loadReport
-            val note =
-                if (report.memoryWarning != null) {
-                    Limits.memoryWarning(name)
-                } else {
-                    report.fallbackFrom(lease.config.policy)?.let { Limits.chipFallback(name, it) }
-                }
-            if (note != null && firstNote(loaded)) limit.value = note
-            handedOver = true
-            return lease
-        } finally {
-            // a throw here hands the turn no lease to release, so it must not leave the model held
-            if (!handedOver) lease.release()
-        }
-    }
-
-    @Synchronized
-    private fun firstNote(loaded: Model): Boolean {
-        if (noted?.get() === loaded) return false
-        noted = java.lang.ref.WeakReference(loaded)
-        return true
-    }
-
-    /**
      * A hold on [key]'s model (shown as [name]) for an audio feature, loaded with [slots] (two while voice mode
      * captions what the person says, D99; one otherwise, through [ChatHandle.holdModel]), or null when it didn't load:
      * [limit] then says why. The hold counts as a turn until [ModelHold.release]: the model isn't freed under it, and
      * the app stays alive while it runs (D59).
      */
-    suspend fun holdModel(key: HfModel, name: String, slots: Int, limit: MutableStateFlow<Limit?>): ModelHold? {
-        activeTurns.update { it + 1 }
-        var lease: ModelHost.Lease? = null
-        var handedOver = false
-        try {
-            lease = load(key, name, limit, slots) ?: return null
-            rememberSenses(settings, key, lease.model.info)
-            handedOver = true
-        } finally {
-            // no model, or a throw after the load: the caller gets no hold to release, so nothing may stay held
-            if (!handedOver) {
-                lease?.release()
-                activeTurns.update { it - 1 }
-            }
-        }
-        val held = checkNotNull(lease)
-        return ModelHold(held.model) {
-            held.release()
-            activeTurns.update { it - 1 }
-        }
-    }
+    suspend fun holdModel(key: HfModel, name: String, slots: Int, limit: MutableStateFlow<Limit?>): ModelHold? =
+        leases.hold(key, name, slots, limit)
 
     /**
      * Releases the loaded model unless a turn is loading it or streaming from it (the app went to the background); the
@@ -693,55 +412,35 @@ class ChatEngine(
 
         /** Asks again from [position]. */
         fun regenerate(position: Int) {
-            hs.launch {
-                stopAndWait()
-                beforeTurn() // startup recovery must not run between the cut and the append
-                if (deleting) return@launch
-                _limit.value = null
-                val id = _chatId.value.takeIf { it != 0L } ?: return@launch
+            rewriteFrom(
+                position,
                 // the user's message first: with none before this reply there is nothing to ask again
-                val user =
-                    messages.value.lastOrNull { it.position < position && it.kind == MessageKind.User }
-                        ?: return@launch
-                val before = messages.value
-                chats.truncateFrom(id, position)
-                invalidate()
-                modelToRestate(before, position, choice.value.key)?.let {
-                    chats.append(id, switchNotice(it, Names.of(it), clock()))
-                }
+                keep = { rows -> emptySet<String>().takeIf { rows.any { row -> row.isUserBefore(position) } } },
+            ) { _, before ->
+                val user = before.last { it.isUserBefore(position) }
                 chats.update(user.id, MessageChange(state = MessageState.Held))
-                pump()
             }
         }
 
         fun edit(position: Int, text: String) {
             if (text.isBlank()) return
-            hs.launch {
-                stopAndWait()
-                beforeTurn() // startup recovery must not run between the cut and the append
-                if (deleting) return@launch
-                _limit.value = null
-                val id = _chatId.value.takeIf { it != 0L } ?: return@launch
-                val before = messages.value
-                val old = before.firstOrNull { it.position == position } ?: return@launch
-                chats.truncateFrom(id, position, keepImages = old.images.mapTo(mutableSetOf()) { it.name })
-                invalidate()
-                modelToRestate(before, position, choice.value.key)?.let {
-                    chats.append(id, switchNotice(it, Names.of(it), clock()))
-                }
+            rewriteFrom(
+                position,
+                keep = { rows ->
+                    rows.firstOrNull { it.position == position }?.images?.mapTo(mutableSetOf()) { it.name }
+                },
+            ) { id, before ->
+                val old = before.first { it.position == position }
                 chats.append(
                     id,
                     NewMessage(
                         MessageKind.User,
                         text.trim(),
-                        old.images.map {
-                            it.name
-                        },
+                        old.images.map { it.name },
                         state = MessageState.Held,
                         sentAt = clock(),
                     ),
                 )
-                pump()
             }
         }
 
@@ -770,6 +469,37 @@ class ChatEngine(
         }
 
         // ---- the engine ----------------------------------------------------------------------------------
+
+        /**
+         * Cuts the chat from [position] and asks again (an edit, a regenerate): stops the turn, then, with [keep]
+         * saying which pictures of the cut rows stay (null: nothing to rewrite), cuts, says "Switched to" again where
+         * the cut removed it ([modelToRestate]), runs [then] with the chat's id and the rows before the cut, and answers
+         * what is held.
+         */
+        private fun rewriteFrom(
+            position: Int,
+            keep: (List<StoredMessage>) -> Set<String>?,
+            then: suspend (id: Long, before: List<StoredMessage>) -> Unit,
+        ) {
+            hs.launch {
+                stopAndWait()
+                beforeTurn() // startup recovery must not run between the cut and the append
+                if (deleting) return@launch
+                _limit.value = null
+                val id = _chatId.value.takeIf { it != 0L } ?: return@launch
+                val before = messages.value
+                val kept = keep(before) ?: return@launch
+                chats.truncateFrom(id, position, keepImages = kept)
+                invalidate()
+                modelToRestate(before, position, choice.value.key)?.let {
+                    chats.append(id, switchNotice(it, Names.of(it), clock()))
+                }
+                then(id, before)
+                pump()
+            }
+        }
+
+        private fun StoredMessage.isUserBefore(position: Int) = this.position < position && kind == MessageKind.User
 
         private fun invalidate() {
             conversation = null
@@ -817,10 +547,7 @@ class ChatEngine(
                         // the chat may have started going while its rows were read
                         if (deleting) return@withLock
                         var replied = false
-                        val job = hs.launch { answer(id, key, held) { replied = true } }
-                        running = job
-                        job.join()
-                        if (running === job) running = null
+                        runAsCurrent { answer(id, key, held) { replied = true } }
                         if (!replied) return@withLock
                     }
                 }
@@ -828,16 +555,8 @@ class ChatEngine(
         }
 
         /** Answers [user]; [onReply] runs once the reply row exists (the load worked and was not stopped). */
-        private suspend fun answer(id: Long, key: HfModel, user: StoredMessage, onReply: () -> Unit) {
-            activeTurns.update { it + 1 }
-            _busy.value = true
-            var lease: ModelHost.Lease? = null
-            try {
-                beforeTurn()
-                val held = load(key, Names.of(key), _limit) ?: return
-                lease = held
-                val loaded = held.model
-                syncThink(loaded.info)
+        private suspend fun answer(id: Long, key: HfModel, user: StoredMessage, onReply: () -> Unit) =
+            leasedTurn(key) { loaded ->
                 val hears = loaded.info.supportsAudio
                 rememberSenses(settings, key, loaded.info)
                 val rows = chats.messages(id).first()
@@ -872,11 +591,38 @@ class ChatEngine(
                     turnOptions(id, key, _think.value, continues = false),
                     draft,
                 )
+            }
+
+        /**
+         * One turn's frame, for an answer and a continue: counted and busy from before the load to its end, with
+         * [block] run on the loaded model under a lease released when it ends; nothing runs when the load fails.
+         */
+        private suspend fun leasedTurn(key: HfModel, block: suspend (Model) -> Unit) {
+            activeTurns.update { it + 1 }
+            _busy.value = true
+            var lease: ModelHost.Lease? = null
+            try {
+                beforeTurn()
+                val held = leases.load(key, Names.of(key), _limit) ?: return
+                lease = held
+                syncThink(held.model.info)
+                block(held.model)
             } finally {
                 lease?.release()
                 _busy.value = false
                 activeTurns.update { it - 1 }
             }
+        }
+
+        /**
+         * Runs [block] as the turn [stop] cancels ([running]) and waits for it; a newer turn that took its place
+         * meanwhile stays.
+         */
+        private suspend fun runAsCurrent(block: suspend () -> Unit) {
+            val job = hs.launch { block() }
+            running = job
+            job.join()
+            if (running === job) running = null
         }
 
         /**
@@ -925,10 +671,7 @@ class ChatEngine(
                     val user = rows.lastOrNull { it.kind == MessageKind.User && it.position < position }
                     if (reply == null || user == null) return@withLock
                     _limit.value = null
-                    val job = hs.launch { continueTurn(id, key, rows, reply, user) }
-                    running = job
-                    job.join()
-                    if (running === job) running = null
+                    runAsCurrent { continueTurn(id, key, rows, reply, user) }
                 }
             }
         }
@@ -939,46 +682,32 @@ class ChatEngine(
             rows: List<StoredMessage>,
             reply: StoredMessage,
             user: StoredMessage,
-        ) {
-            activeTurns.update { it + 1 }
-            _busy.value = true
-            var lease: ModelHost.Lease? = null
-            try {
-                beforeTurn()
-                val held = load(key, Names.of(key), _limit) ?: return
-                lease = held
-                val loaded = held.model
-                syncThink(loaded.info)
-                // the chat before the reply, then the reply as far as it got, its thinking with it
-                val history =
-                    History.forModel(rows, upTo = reply.position, hears = loaded.info.supportsAudio) +
-                        Message.Assistant(content = reply.text, reasoning = reply.reasoning)
-                // a one-off: kept, this conversation would hold the reply twice once the next message is sent
-                invalidate()
-                val convo = loaded.conversation(systemPrompt(), history)
-                chats.update(reply.id, MessageChange(state = MessageState.Streaming))
-                val draft =
-                    ReplyDraft(
-                        clock,
-                        loaded.loadReport.device.label,
-                        ReplyDraft.Continued(reply.text, reply.reasoning, reply.reasoningMillis),
-                        loaded.loadReport.contextSize,
-                    )
-                stream(
-                    convo,
-                    reply.id,
-                    user,
-                    "",
-                    emptyArray(),
-                    turnOptions(id, key, _think.value, continues = true),
-                    draft,
+        ) = leasedTurn(key) { loaded ->
+            // the chat before the reply, then the reply as far as it got, its thinking with it
+            val history =
+                History.forModel(rows, upTo = reply.position, hears = loaded.info.supportsAudio) +
+                    Message.Assistant(content = reply.text, reasoning = reply.reasoning)
+            // a one-off: kept, this conversation would hold the reply twice once the next message is sent
+            invalidate()
+            val convo = loaded.conversation(systemPrompt(), history)
+            chats.update(reply.id, MessageChange(state = MessageState.Streaming))
+            val draft =
+                ReplyDraft(
+                    clock,
+                    loaded.loadReport.device.label,
+                    ReplyDraft.Continued(reply.text, reply.reasoning, reply.reasoningMillis),
+                    loaded.loadReport.contextSize,
                 )
-                invalidate()
-            } finally {
-                lease?.release()
-                _busy.value = false
-                activeTurns.update { it - 1 }
-            }
+            stream(
+                convo,
+                reply.id,
+                user,
+                "",
+                emptyArray(),
+                turnOptions(id, key, _think.value, continues = true),
+                draft,
+            )
+            invalidate()
         }
 
         private suspend fun stream(
