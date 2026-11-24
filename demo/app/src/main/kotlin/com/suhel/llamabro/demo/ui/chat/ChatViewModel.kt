@@ -463,7 +463,19 @@ class ChatViewModel(
             try {
                 if (handle.send(d.text, d.attachments)) {
                     // what was typed or picked meanwhile stays; what was sent goes
-                    updateDraft { if (it.text == d.text && it.attachments == d.attachments) ComposerDraft() else it }
+                    updateDraft {
+                        it.copy(
+                            attachments = it.attachments - d.attachments,
+                            text =
+                                if (it.text ==
+                                    d.text
+                                ) {
+                                    ""
+                                } else {
+                                    it.text
+                                },
+                        )
+                    }
                     _problem.value = null
                 }
             } catch (e: CancellationException) {
@@ -479,7 +491,7 @@ class ChatViewModel(
 
     /** A starter chip fills the bar and sends. */
     fun sendStarter(text: String) {
-        updateDraft { ComposerDraft(text = text) }
+        discardDropped(updateDraft { ComposerDraft(text = text) })
         send()
     }
 
@@ -488,7 +500,13 @@ class ChatViewModel(
     /** Opens the user message at [position] in the bar; sending replaces it and what followed (`edit`). */
     fun startEdit(position: Int) {
         val m = handle.messages.value.firstOrNull { it.position == position && it.kind == MessageKind.User } ?: return
-        updateDraft { ComposerDraft(text = m.text, editing = position) }
+        discardDropped(updateDraft { ComposerDraft(text = m.text, editing = position) })
+    }
+
+    /** Deletes the pictures of a draft ([before]) that a new one replaced. */
+    private fun discardDropped(before: ComposerDraft) {
+        val dropped = before.attachments - draft.value.attachments.toSet()
+        if (dropped.isNotEmpty()) viewModelScope.launch { discardImages(dropped) }
     }
 
     fun cancelEdit() {

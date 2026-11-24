@@ -19,6 +19,7 @@ import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.models.installedModel
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.testing.FakeLlamaBro
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,6 +27,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -295,6 +297,53 @@ class ChatEngineTest {
             assertFalse("the draft's copy is gone", draft.exists())
             assertTrue(images.file("p.jpg").exists())
             eventually("the row names it") { rows(chat).firstOrNull()?.images == listOf(images.file("p.jpg")) }
+        }
+
+    private fun staged(name: String): File =
+        images.draftFile(name).apply {
+            parentFile!!.mkdirs()
+            writeBytes(byteArrayOf(1))
+        }
+
+    @Test fun aSendCancelledOnceItsMessageIsStoredKeepsItsPictureWhereTheRowNamesIt() =
+        runBlocking {
+            // the database stored the row, and the call resumes cancelled: the picture must not go back to the draft
+            val seer = Catalog.suggested.first { it.sees }.key
+            settings.setLastModel(seer.toString())
+            val draft = staged("p.jpg")
+            val chat = engine.open(0)
+            eventually("the model is known") { chat.current.value == seer }
+            val stored = CompletableDeferred<Unit>()
+            val resume = CompletableDeferred<Unit>()
+            dao.afterInsertMessage = {
+                stored.complete(Unit)
+                resume.await()
+            }
+            val send = scope.launch { chat.send("what is this?", listOf("p.jpg")) }
+            stored.await()
+            send.cancel()
+            resume.complete(Unit)
+            send.join()
+            assertFalse(draft.exists())
+            assertTrue(images.file("p.jpg").exists())
+            eventually("the row names it") { rows(chat).firstOrNull()?.images == listOf(images.file("p.jpg")) }
+        }
+
+    @Test fun aSendThatIsNotStoredGivesBackOnlyThePicturesItMoved() =
+        runBlocking {
+            val seer = Catalog.suggested.first { it.sees }.key
+            settings.setLastModel(seer.toString())
+            staged("a.jpg")
+            val chat = engine.open(0)
+            eventually("the model is known") { chat.current.value == seer }
+            assertTrue(chat.send("first", listOf("a.jpg")))
+            staged("b.jpg")
+            dao.beforeInsertMessage = { error("disk full") }
+            assertTrue(runCatching { chat.send("again", listOf("a.jpg", "b.jpg")) }.isFailure)
+            assertTrue("the first message keeps its picture", images.file("a.jpg").exists())
+            assertFalse(images.draftFile("a.jpg").exists())
+            assertTrue("the new picture is the draft's again", images.draftFile("b.jpg").exists())
+            assertFalse(images.file("b.jpg").exists())
         }
 
     @Test fun closingAHandleStopsItsReplyAndItsObservers() =

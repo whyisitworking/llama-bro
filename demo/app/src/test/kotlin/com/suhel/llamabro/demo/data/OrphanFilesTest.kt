@@ -11,12 +11,12 @@ import java.io.File
 
 /**
  * The pictures and recordings no row names: a cut chat takes its own with it, and a sweep finds the stray ones, never
- * a draft's pictures, which only the chat screen's saved state names (A12).
+ * a recent draft's pictures, which only the chat screen's saved state names (A12).
  */
 class OrphanFilesTest {
     @get:Rule val folder = TemporaryFolder()
 
-    private val now = 10 * DAY
+    private val now = 30 * DAY
     private val images by lazy { ImageStore(folder.newFolder("images")) }
     private val audio by lazy { AudioStore(folder.newFolder("audio")) }
     private val chats by lazy { ChatRepository(FakeChatDao(), images, { now }, audio) }
@@ -51,6 +51,7 @@ class OrphanFilesTest {
             val freshStray = picture("fresh.jpg", ageMillis = DAY / 2)
             val named = picture("named.jpg", ageMillis = 5 * DAY)
             val draft = images.draftFile("draft.jpg").apply { parentFile!!.mkdirs() }.written(5 * DAY)
+            val abandoned = images.draftFile("abandoned.jpg").written(15 * DAY)
             chats.append(id, NewMessage(MessageKind.User, "look", listOf("named.jpg")))
             val freshRecording = audio.file("fresh.wav").written(DAY / 2)
             val recording = audio.file("kept.wav").written(5 * DAY)
@@ -60,7 +61,8 @@ class OrphanFilesTest {
             assertFalse("an old picture no row names is swept", oldStray.exists())
             assertTrue("a recent one may be mid-send", freshStray.exists())
             assertTrue("a row's picture stays", named.exists())
-            assertTrue("a draft's pictures live in saved state, so the draft folder is left", draft.exists())
+            assertTrue("a draft's pictures live in saved state, so a recent draft's are left", draft.exists())
+            assertFalse("an abandoned draft's are swept after 14 days", abandoned.exists())
             assertTrue(freshRecording.exists())
             assertTrue(recording.exists())
             assertFalse(strayRecording.exists())

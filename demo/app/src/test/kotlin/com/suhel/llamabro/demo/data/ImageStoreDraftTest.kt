@@ -30,7 +30,7 @@ class ImageStoreDraftTest {
     @Test fun sendingMovesThePicturesIntoTheMessagesFolderStampedNow() =
         runBlocking {
             val draft = staged("a.jpg").also { it.setLastModified(1_000L) }
-            store.commit(listOf("a.jpg", "never-staged.jpg"), now = 5_000_000L)
+            assertEquals(listOf("a.jpg"), store.commit(listOf("a.jpg", "never-staged.jpg"), now = 5_000_000L))
             assertFalse(draft.exists())
             assertTrue(store.file("a.jpg").exists())
             assertEquals(5_000_000L, store.file("a.jpg").lastModified())
@@ -44,6 +44,14 @@ class ImageStoreDraftTest {
             store.uncommit(listOf("a.jpg"))
             assertTrue(store.draftFile("a.jpg").exists())
             assertFalse(store.file("a.jpg").exists())
+        }
+
+    @Test fun aResentNameMovesNothingSoNothingGoesBack() =
+        runBlocking {
+            store.file("sent.jpg").apply { parentFile!!.mkdirs() }.writeBytes(byteArrayOf(1))
+            assertEquals(emptyList<String>(), store.commit(listOf("sent.jpg"), now = 1L))
+            store.uncommit(emptyList())
+            assertTrue(store.file("sent.jpg").exists())
         }
 
     @Test fun removingADraftsPictureNeverTouchesASentOne() =

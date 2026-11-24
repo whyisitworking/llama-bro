@@ -88,11 +88,17 @@ class FakeChatDao : ChatDao() {
 
     override suspend fun message(id: Long): MessageEntity? = messages.value.firstOrNull { it.id == id }
 
+    /** Awaited before and after each message is inserted: a test fails an insert, or holds one that is stored. */
+    var beforeInsertMessage: suspend () -> Unit = {}
+    var afterInsertMessage: suspend () -> Unit = {}
+
     override suspend fun insertMessage(message: MessageEntity): Long {
+        beforeInsertMessage()
         // Room's foreign key: a message for a chat that is gone (deleted meanwhile) is refused, as SQLite refuses it
         check(chats.value.any { it.id == message.chatId }) { "FOREIGN KEY constraint failed: chat ${message.chatId}" }
         val id = messageIds.incrementAndGet()
         messages.update { it + message.copy(id = id) }
+        afterInsertMessage()
         return id
     }
 

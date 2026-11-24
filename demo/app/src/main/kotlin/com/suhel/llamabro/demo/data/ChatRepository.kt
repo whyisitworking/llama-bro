@@ -215,19 +215,25 @@ class ChatRepository(
      * Deletes the recordings and the pictures no row names and that are older than a day, which a crash or a death
      * between saving a file and writing its row leaves behind. A draft's pictures are recorded only in the chat screen's
      * saved state, which survives a process death for days and which this class cannot read: they are staged in the
-     * image store's draft folder, which a sweep leaves alone. Recordings and dictation clips are never held across a
-     * process.
+     * image store's draft folder, swept only of pictures older than [DRAFT_AGE_MILLIS], which an abandoned draft (the
+     * task swiped away, the process killed before the screen closed) leaves behind. That is also why a draft restored
+     * after more than 14 days loses its pictures, which the bar then reports as gone. Recordings and dictation clips
+     * are never held across a process.
      */
     suspend fun sweepOrphans() {
         val cutoff = clock() - ORPHAN_AGE_MILLIS
         audioStore?.deleteUnreferenced(dao.allAudio().toSet(), cutoff)
         imageStore.deleteUnreferenced(dao.allImages().flatMapTo(mutableSetOf(), ::imageNames), cutoff)
+        imageStore.deleteStaleDrafts(clock() - DRAFT_AGE_MILLIS)
     }
 
-    /** Moves the pictures of a message about to be stored out of the draft folder and into the messages' own. */
-    suspend fun commitDraftImages(names: List<String>) = imageStore.commit(names, clock())
+    /**
+     * Moves the pictures of a message about to be stored out of the draft folder and into the messages' own; returns
+     * the names it moved.
+     */
+    suspend fun commitDraftImages(names: List<String>): List<String> = imageStore.commit(names, clock())
 
-    /** Puts them back in the draft folder: the message was not stored. */
+    /** Puts the [names] a commit moved back in the draft folder: the message was not stored. */
     suspend fun returnDraftImages(names: List<String>) = imageStore.uncommit(names)
 
     private fun MessageEntity.toStored() =
@@ -254,6 +260,9 @@ class ChatRepository(
 
     private companion object {
         const val ORPHAN_AGE_MILLIS = 24 * 60 * 60 * 1000L
+
+        /** How long a draft's pictures outlive their draft's last pick: far past any saved state a person returns to. */
+        const val DRAFT_AGE_MILLIS = 14 * ORPHAN_AGE_MILLIS
 
         fun imageNames(joined: String): List<String> = joined.split('\n').filter { it.isNotEmpty() }
     }

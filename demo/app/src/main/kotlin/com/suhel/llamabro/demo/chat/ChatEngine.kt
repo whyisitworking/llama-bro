@@ -386,27 +386,33 @@ class ChatEngine(
             }
             val id = ensureChat() ?: return false
             _limit.value = null
-            chats.commitDraftImages(names)
-            try {
-                chats.append(
-                    id,
-                    NewMessage(
-                        MessageKind.User,
-                        text.trim(),
-                        names,
-                        state = MessageState.Held,
-                        sentAt = clock(),
-                        voice = voice,
-                    ),
-                )
-            } catch (
-                @Suppress("TooGenericExceptionCaught") e: Exception,
-            ) {
-                // not stored: the draft keeps its pictures (even when this call was cancelled)
-                withContext(NonCancellable) { chats.returnDraftImages(names) }
-                throw e
+            // one unit, whatever happens to the caller: a stored row may resume as cancelled, and its pictures must
+            // then stay where the row names them
+            withContext(NonCancellable) {
+                val moved = chats.commitDraftImages(names)
+                try {
+                    chats.append(
+                        id,
+                        NewMessage(
+                            MessageKind.User,
+                            text.trim(),
+                            names,
+                            state = MessageState.Held,
+                            sentAt = clock(),
+                            voice = voice,
+                        ),
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (
+                    @Suppress("TooGenericExceptionCaught") e: Exception,
+                ) {
+                    // not stored: the draft gets back the pictures this send moved, never one a sent message holds
+                    chats.returnDraftImages(moved)
+                    throw e
+                }
+                pump()
             }
-            pump()
             return true
         }
 

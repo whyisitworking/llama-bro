@@ -13,8 +13,8 @@ import kotlin.math.max
 /**
  * Pictures attached to messages: downscaled to a long side of at most 1024 px, saved as JPEG quality 85. A picture
  * picked for a message not yet sent is staged in `draft/` under [dir]; sending the message [commit]s it into [dir]
- * itself, where a message's pictures live. The draft folder is the one place a sweep leaves alone, since a draft's names
- * are held only in the chat screen's saved state, which this class cannot read.
+ * itself, where a message's pictures live. A draft's names are held only in the chat screen's saved state, which this
+ * class cannot read, so the draft folder is swept only of pictures far older than a draft is kept ([deleteStaleDrafts]).
  */
 class ImageStore(private val dir: File) {
     private val drafts = File(dir, DRAFT_DIR)
@@ -64,24 +64,39 @@ class ImageStore(private val dir: File) {
     }
 
     /**
-     * Moves a sent draft's pictures into the messages' folder, stamped [now] so a sweep never takes one between the move
-     * and the row naming it. A name with no draft file is left as it is.
+     * Moves a sent draft's pictures into the messages' folder and returns the names it moved. Each is stamped [now]
+     * before the move (a rename keeps the time), so a sweep never takes one between the move and the row naming it. A
+     * name with no draft file (one a sent message already holds) is left as it is.
      */
-    suspend fun commit(names: List<String>, now: Long) {
+    suspend fun commit(names: List<String>, now: Long): List<String> =
         withContext(Dispatchers.IO) {
             dir.mkdirs()
-            names.forEach { name ->
+            names.filter { name ->
                 val from = draftFile(name)
-                if (from.exists() && from.renameTo(file(name))) file(name).setLastModified(now)
+                if (!from.exists()) return@filter false
+                val stamped = from.setLastModified(now)
+                val moved = from.renameTo(file(name))
+                // a stamp that failed before the move is tried once more on the moved file
+                if (moved && !stamped) file(name).setLastModified(now)
+                moved
             }
         }
-    }
 
-    /** Undoes [commit] for a message that could not be stored, so the draft still has its pictures. */
+    /** Undoes [commit] for a message that could not be stored, with the names it moved: the draft has them again. */
     suspend fun uncommit(names: List<String>) {
         withContext(Dispatchers.IO) {
             drafts.mkdirs()
             names.forEach { name -> if (file(name).exists()) file(name).renameTo(draftFile(name)) }
+        }
+    }
+
+    /**
+     * Deletes the draft pictures last written before [cutoff] (epoch millis): left by a draft nobody sent or discarded
+     * (the task swiped away, the process killed before the screen closed).
+     */
+    suspend fun deleteStaleDrafts(cutoff: Long) {
+        withContext(Dispatchers.IO) {
+            drafts.listFiles()?.filter { it.isFile && it.lastModified() < cutoff }?.forEach { it.delete() }
         }
     }
 

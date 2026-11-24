@@ -90,6 +90,9 @@ class ChatViewModelTest {
     private val engine by lazy { ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope) }
     private val viewModels = mutableListOf<ChatViewModel>()
 
+    /** The draft pictures the view models built by [viewModel] deleted. */
+    private val discarded: MutableList<String> = Collections.synchronizedList(mutableListOf())
+
     private val main = UnconfinedTestDispatcher()
 
     @Before fun setUpMain() = Dispatchers.setMain(main)
@@ -118,7 +121,7 @@ class ChatViewModelTest {
             engine.open(chatId),
             styles,
             saveImage = { "pic.jpg" },
-            discardImages = {},
+            discardImages = { discarded += it },
             savedState = saved,
             background = scope,
             draftPictureExists = draftPictureExists,
@@ -439,6 +442,28 @@ class ChatViewModelTest {
             eventually("the chip") { vm.composerState.value.think == ThinkLevel.Off }
             vm.setThink(ThinkLevel.Balanced)
             eventually("the level") { vm.composerState.value.think == ThinkLevel.Balanced }
+        }
+
+    @Test fun aStarterOrAnEditThatReplacesTheDraftDeletesItsPictures() =
+        runBlocking {
+            reply("first answer")
+            val vm = viewModel()
+            vm.attachWith { "starter.jpg" }
+            assertEquals(listOf("starter.jpg"), vm.composer.value.attachments)
+            vm.sendStarter("What is rain?")
+            eventually("deleted") { discarded.toList() == listOf("starter.jpg") }
+            eventually("answered") {
+                vm.handle.messages.value.size == 2 &&
+                    vm.handle.messages.value
+                        .all { it.state == MessageState.Done }
+            }
+            vm.attachWith { "edit.jpg" }
+            vm.startEdit(
+                vm.handle.messages.value
+                    .first { it.kind == MessageKind.User }
+                    .position,
+            )
+            eventually("deleted") { discarded.toList() == listOf("starter.jpg", "edit.jpg") }
         }
 
     @Test fun editPutsTextInComposer() =
