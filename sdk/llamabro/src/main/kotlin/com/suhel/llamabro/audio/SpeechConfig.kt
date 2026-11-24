@@ -5,8 +5,9 @@ import com.suhel.llamabro.internal.JsonMergePatch
 
 /**
  * How `Model.speak` speaks: upstream's speech request (`POST /v1/audio/speech`, `handle_tts_impl`). Each field goes to
- * the server only when set, so an unset one keeps upstream's and the model's default (D98). A model that doesn't take
- * a setting, such as [speed] on LFM3, refuses the request with upstream's message.
+ * the server only when set, so an unset one keeps upstream's and the model's default
+ * ([D98](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d98)). A model that doesn't take a
+ * setting, such as [speed] on LFM3, refuses the request with upstream's message.
  */
 public class SpeechConfig internal constructor(
     /** One of the model's voices ([com.suhel.llamabro.ModelInfo.voices]); null speaks with the model's first. */

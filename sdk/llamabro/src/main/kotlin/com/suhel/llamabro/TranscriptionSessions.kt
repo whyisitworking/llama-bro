@@ -10,9 +10,10 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Opens a live transcription with this model (D138): upstream's `/v1/realtime` with `intent=transcription`, in memory,
- * set up as upstream's own client does (`ui/lib/voice/src/realtime.ts`). Returns once the server has taken the setup
- * (`session.updated`).
+ * Opens a live transcription with this model
+ * ([D138](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d138)): upstream's `/v1/realtime`
+ * with `intent=transcription`, in memory, set up as upstream's own client does (`ui/lib/voice/src/realtime.ts`).
+ * Returns once the server has taken the setup (`session.updated`).
  *
  * Upstream transcribes this way only on a model with a streaming audio encoder: live when its template has a
  * transcription prompt (LFM3, Voxtral Realtime), otherwise per commit on a model that holds realtime conversations,

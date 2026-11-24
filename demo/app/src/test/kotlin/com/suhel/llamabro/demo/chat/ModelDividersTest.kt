@@ -37,7 +37,8 @@ class ModelDividersTest {
     }
 
     @Test fun aCutAwayDividerIsStatedAgainWhenTheModelInUseDiffers() {
-        // question, Qwen3.5 0.8B's reply, "Switched to Qwen3.5 4B", question, Qwen3.5 4B's reply; Qwen3.5 0.8B is in use again: cut at the second question
+        // question, Qwen3.5 0.8B's reply, "Switched to Qwen3.5 4B", question, Qwen3.5 4B's reply; Qwen3.5 0.8B is in
+        // use again: cut at the second question
         val rows =
             listOf(
                 row(0, MessageKind.User),

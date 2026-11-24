@@ -53,7 +53,9 @@ private fun ThinkLevel.hint() =
         ThinkLevel.Deep -> "Takes as long as it needs"
     }
 
-/** The engine's level as the design system draws it; each `when` fails to compile when an entry is added to one enum. */
+/**
+ * The engine's level as the design system draws it; each `when` fails to compile when an entry is added to one enum.
+ */
 internal fun Think.level(): ThinkLevel =
     when (this) {
         Think.Off -> ThinkLevel.Off

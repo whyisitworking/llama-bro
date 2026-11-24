@@ -856,8 +856,8 @@ class ChatEngine(
 
         /**
          * A hold on the chat's model for dictation (D140) or reading a reply aloud (D141), loaded as for a turn (one
-         * slot), so a send after it finds the model as it was; null with no model chosen or when it didn't load, [limit]
-         * then saying why.
+         * slot), so a send after it finds the model as it was; null with no model chosen or when it didn't load,
+         * [limit] then saying why.
          */
         suspend fun holdModel(): ModelHold? {
             val key = choice.value.key ?: return null

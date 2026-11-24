@@ -31,7 +31,9 @@ internal class FakeEngine : Engine {
     /** Reported through onProgress during each load, like llama.cpp's load progress. */
     var progress: List<Float> = emptyList()
 
-    /** Runs after each [progress] step the load went on from, on the loading thread: block here to model a slow read. */
+    /**
+     * Runs after each [progress] step the load went on from, on the loading thread: block here to model a slow read.
+     */
     var onStep: (Float) -> Unit = {}
 
     /** The step whose onProgress said stop, as the native load stops at that tick (D67); null if none did. */

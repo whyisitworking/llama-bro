@@ -3,9 +3,10 @@ package com.suhel.llamabro
 import android.os.ParcelFileDescriptor
 
 /**
- * Where a picture's or a clip's bytes are (D84): a [File], an open [Descriptor] (a `content://` URI has no path) or
- * [Bytes] in memory. A file and a descriptor are read natively, so the Java heap never holds them; bytes cross into
- * native memory once.
+ * Where a picture's or a clip's bytes are
+ * ([D84](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d84)): a [File], an open [Descriptor]
+ * (a `content://` URI has no path) or [Bytes] in memory. A file and a descriptor are read natively, so the Java heap
+ * never holds them; bytes cross into native memory once.
  *
  * In a conversation, a descriptor is read once into bytes when its message is added, off the main thread: from then on
  * the chat keeps the bytes (later turns and `toJson` use them) and the app may close the descriptor. `Model.chat` and
@@ -15,7 +16,9 @@ public sealed class MediaSource {
     /**
      * A file the native side opens and reads on each request that sends it; it must stay there until the reply ends. In
      * a chat, llama-server reads it while the request runs, through a link in the SDK's media folder rather than a
-     * base64 copy (D84, F157: about 100 ms less per turn with three voice notes).
+     * base64 copy ([D84](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d84),
+     * [F157](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f157): about 100 ms less
+     * per turn with three voice notes).
      */
     public data class File internal constructor(public val path: String) : MediaSource()
 

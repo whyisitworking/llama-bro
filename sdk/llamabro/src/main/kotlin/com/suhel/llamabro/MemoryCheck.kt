@@ -1,11 +1,14 @@
 package com.suhel.llamabro
 
 /**
- * What a load does when the memory check says the model may not fit ([ModelConfig.memoryCheck], F128).
+ * What a load does when the memory check says the model may not fit ([ModelConfig.memoryCheck],
+ * [F128](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f128)).
  *
  * The check compares llama.cpp's projection of the model with the memory Android reports as available. It can't see
  * the memory Android frees by closing cached apps when the app in front needs it, so on a phone with background apps it
- * says "doesn't fit" for models that load and run (F128). Hence the default is to warn.
+ * says "doesn't fit" for models that load and run
+ * ([F128](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f128)). Hence the default is
+ * to warn.
  */
 public enum class MemoryCheck {
     /**

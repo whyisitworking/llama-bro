@@ -10,7 +10,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 
 /**
- * What the loaded model is, from the GGUF and llama-server's `/props` (findings F16).
+ * What the loaded model is, from the GGUF and llama-server's `/props` (findings
+ * [F16](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f16)).
  * @property templateCaps llama-server's `chat_template_caps` (boolean entries).
  * @property metadata every GGUF key as a string.
  */
@@ -34,13 +35,17 @@ public data class ModelInfo internal constructor(
     public val hasMtp: Boolean,
     /**
      * The voices the model speaks with (llama-server's `voices` in `/props`), e.g. `["female", "male"]`; empty for a
-     * model that doesn't speak. A voice session takes one as `VoiceConfig.voice` (D100).
+     * model that doesn't speak. A voice session takes one as `VoiceConfig.voice`
+     * ([D100](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d100)).
      */
     public val voices: List<String>,
     public val templateCaps: Map<String, Boolean>,
     public val metadata: Map<String, String>,
 ) {
-    /** The model speaks: it has [voices], so a voice session can answer in speech (D100). */
+    /**
+     * The model speaks: it has [voices], so a voice session can answer in speech
+     * ([D100](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d100)).
+     */
     public val supportsSpeech: Boolean get() = voices.isNotEmpty()
 
     // the template and the metadata run to kilobytes: a log line shows their size only

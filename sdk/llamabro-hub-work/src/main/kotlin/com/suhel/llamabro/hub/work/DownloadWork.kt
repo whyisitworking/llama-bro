@@ -25,8 +25,10 @@ import java.util.concurrent.TimeUnit
  * default, any network: the app's call, so pass Wi-Fi only, charging or storage-not-low as it sees fit; with a
  * constraint other than network or storage, such as charging, it isn't expedited, as WorkManager requires), runs
  * expedited where the quota allows, and retries a retryable [com.suhel.llamabro.hub.HubException] with exponential
- * backoff; each try resumes the partial files (F114-F116). Watch it through the hub's
- * [progress][com.suhel.llamabro.hub.LlamaBroHub.progress], or through WorkManager with [downloadWorkName] and
+ * backoff; each try resumes the partial files
+ * ([F114](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f114) to
+ * [F116](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f116)). Watch it through the
+ * hub's [progress][com.suhel.llamabro.hub.LlamaBroHub.progress], or through WorkManager with [downloadWorkName] and
  * [DownloadWorkProgress].
  *
  * [mmproj] and [draft] are [com.suhel.llamabro.hub.PlanOptions]'s, with its defaults. [constraints] don't make the
@@ -55,7 +57,8 @@ public fun defaultDownloadConstraints(): Constraints =
 
 /**
  * Cancels the download [enqueueDownload] started with the same arguments. The partial files stay, so enqueuing it
- * again resumes (F114); [com.suhel.llamabro.hub.LlamaBroHub.delete] removes them.
+ * again resumes ([F114](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f114));
+ * [com.suhel.llamabro.hub.LlamaBroHub.delete] removes them.
  */
 public fun WorkManager.cancelDownload(model: HfModel, mmproj: Boolean = true, draft: DraftRequest? = null): Operation =
     cancelUniqueWork(downloadWorkName(model, mmproj, draft))

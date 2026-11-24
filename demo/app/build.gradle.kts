@@ -98,7 +98,8 @@ android {
         warningsAsErrors = true
         checkDependencies = false
         // targetSdk 36 is the newest AGP 9.1.0 supports; the app is arm64-v8a only by design (demo design §3)
-        // the Gradle wrapper (now the repository root's, which lint finds above the demo) is pinned on purpose, and so are the versions in the shared catalog (updated deliberately, not by lint)
+        // the Gradle wrapper (now the repository root's, which lint finds above the demo) is pinned on purpose, and so
+        // are the versions in the shared catalog (updated deliberately, not by lint)
         disable +=
             setOf(
                 "OldTargetApi",

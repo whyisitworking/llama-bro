@@ -23,6 +23,7 @@ topic, and within a topic newest first. The index lists every ID.
 
 ## Vulkan on the Adreno 830, retried (F174)
 
+<a id="f174"></a>
 ### F174. At b12479 ggml-vulkan still fails on the Adreno 830, now on every mat-vec type; Qualcomm's three upstream fixes and a patch of ours make it run correctly, but prompts are 4 times slower than on the CPU and 14 times slower than on OpenCL, and replies are 10% slower than on the CPU
 
 - **Finding:**
@@ -112,6 +113,7 @@ topic, and within a topic newest first. The index lists every ID.
 
 ## Voice mode (F163–F173)
 
+<a id="f173"></a>
 ### F173. Patch 0008's tail guard holds for a male voice, Q8_0, Spanish, German and Japanese: every runaway stopped, a clean reply loses at most a last word said after a 3 s pause; outside English the model runs away far more often and speaks most languages unintelligibly
 
 - **Finding:** Replayed over 500 new captioned replies (100 seeds each), the guard's thresholds (3 s of near-silence, or 5 frames per text token plus 13; F167) stop every runaway and cut no clean reply early, beyond two German replies that lose a last word said after a 3 s pause. English with a male voice: no runaway, no stop, the most headroom (78% of the length limit, at most 29 quiet frames). Q8_0, female, English: no runaway, two replies stopped, one looping ("That night, that night...") at 21.8 s of 41 s and one at its garbled last sentence (2.6 s); every unstopped English reply says its whole caption. Spanish runs away in 11 of 100, seven times English's rate; the guard stops all 11, ten at 16-58 s, and one at 115 s whose caption itself loops (181 words), so the length limit is far, and whose garbled speech stays loud. Its 9 other stops fall on speech already gone wrong; the most they remove is 4 caption words after a loop. German replies are one sentence (10 s) and never run away; 4 are stopped on the quiet rule, two of them before a last "bitte" said after the 3 s pause. Japanese replies all read the misheard question back, 49 of 100 run away, and the guard ends 98 of 100 at 6.9-11.9 s (93 on the length rule; 11.9 s is 1.45 times the question's own spoken length); their speech is unintelligible stopped or not. Looser lengths only trade stops: 6 frames per token spares 3 Spanish stops but misses two of F167's failures. The thresholds stay. Apart from the guard: in this mode the model's German, French, Japanese and Chinese speech is barely intelligible, and with an English instruction German and Japanese read the question back; the answering instruction must be in the reply's language.
@@ -119,6 +121,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** Patch 0008 and D96 stand unchanged; the thresholds are not English-only. Outside English the guard matters more, since runaways are far more common, and a reply-length cap (D95's maximum reply length) remains the bound for a reply whose caption itself loops. The voice mode is fit for English and Spanish only as measured; a language picker should not offer German, French, Japanese or Chinese speech for LFM3-Omni-2B without a listening test, and the session's answering instruction should be in the reply's language.
 - **Feeds:** D95, D96, F166, F167; patch 0008.
 
+<a id="f172"></a>
 ### F172. Two fit measurements at once crashed the app: upstream's measurement swaps llama.cpp's process-wide log callback and restores it when it ends
 
 - **Finding:** `common_fit_measure` holds a `common_fit_log_scope` while it reads a model's headers: the scope saves llama.cpp's log callback, installs its own (which forwards through a pointer to itself), and puts the saved one back when it ends. The callback is process-wide, so two measurements at once interleave: the second saves the first one's callback as "the original", the first ends and its scope's stack frame is gone, and the second's callback then forwards through that dead frame to a garbage function pointer. The demo crashed twice this way on the phone (SIGSEGV at pc 0 under `llama_log_internal`, from `lb_fit_estimate` → `common_fit_measure`), when the model sheet estimated several sizes at once; a load's automatic context runs the same measurement, so an estimate during a load could hit it too.
@@ -126,6 +129,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** The bridge runs every fit measurement one at a time (`config.cpp`, `g_fit_mutex`). A measurement reads only headers and takes well under a second, so the cost is small. Upstream's own server measures once at start, so it never meets this; an upstream issue could make the scope thread-safe.
 - **Feeds:** D101, F58, F88.
 
+<a id="f171"></a>
 ### F171. On the phone's NPU patch 0008 ends LFM3-Omni's runaway speech too, and leaves clean replies whole
 
 - **Finding:** Twenty captioned replies on the NPU, one per server seed (1-20), each from a fresh server: all twenty end by themselves. The guard of patch 0008 ended one, seed 4, by its length rule (274 frames for 52 text tokens, 12 quiet); its caption is whole, and the maintainer heard it speak the caption, then lose its place until the guard ended it. The other nineteen speak 0.30-0.43 s of audio per caption word (seed 4: 0.55), the longest 20.9 s (seed 9), which the maintainer heard clear and steady to its end. The NPU speaks them at 1.25-1.62 times real time, the shorter replies slower since the first 1.5 s go to the question.
@@ -133,6 +137,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** D96's phone check is done: the thresholds measured on the Mac (F167) hold on the NPU. One runaway in 20 is above F167's 1.6% but within chance for so few seeds.
 - **Feeds:** D96, F167.
 
+<a id="f170"></a>
 ### F170. On the phone's NPU a realtime voice turn answers 0.3 s after the user stops, speaks at 1.65 times real time and stops 80 ms after a cancel; captioning the user's words costs 0.6 s alone, 0.8 s more before the reply, or 0.3 s on a second slot
 
 - **Finding:** With the audio sent at real time, as a microphone gives it, the session has encoded it by the commit (committed within 3 ms), and the reply's first text comes 0.13-0.15 s and its first audio 0.29-0.31 s after the commit; sent all at once, as F166 did, the first audio is 1.5-1.6 s after it, the question's encoding. The 20.3 s reply took 12.2-12.4 s from the commit: 1.64-1.66 times real time. `response.cancel` 2 s into the audio ends the reply 79-84 ms later (`response.done`, status `cancelled`); closing the socket frees the slot in 1.0 s, the handler's polling of its connection (F168), and a new session's first event follows in 10 ms. The server takes about 1.8 GB of the phone's available memory with the model loaded and a reply made (5.7 → 3.9 GB), nearly all in buffers shared with the NPU: its own RSS is 76-89 MB. A session holds its slot while it is open, so with one slot a transcription request waits until the session ends (it timed out after 20 s). Transcribing the 5.3 s question (`/v1/audio/transcriptions`, the same model) takes 0.59-0.61 s warm (1.7 s the first time) and gives its words exactly. With two slots (`-np 2`, twice the context, the same per slot), transcribing the turn after the commit and then asking for the reply moves the first audio to 1.04-1.26 s (from 0.32); transcribing while the reply is made gives the transcript 1.7 s after the commit, moves the first audio to 0.59-0.63 s and slows the reply to 1.49-1.51 times real time. Two slots cost about 0.1-0.4 GB more (the readings drift by 0.3 GB between runs).
@@ -140,6 +145,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** The voice session answers as soon as a push-to-talk button is released, and its speech stays ahead of playback. `cancelReply` stops speech within one 80 ms frame; a new session after `close` can open at once, but its slot is free only after about 1 s. Captioning the user's words in the SDK would need a second slot (`parallelSlots = 2`, more memory), since a session holds its slot; done in parallel it costs 0.3 s before the first audio, and done before the reply 0.8 s. The app can already get the words itself with `transcribe` on a second slot.
 - **Feeds:** D95, D98, F166, F168, F169.
 
+<a id="f169"></a>
 ### F169. Upstream's realtime conversation sends no transcript of the user's speech; only a transcription session transcribes, one commit at a time
 
 - **Finding:** In a `/v1/realtime` session of type `realtime` (the conversation), a committed turn becomes a user item whose content is `input_audio` with no transcript, and no `conversation.item.input_audio_transcription.*` event follows: `on_commit` returns right after the commit unless the session's type is `transcription`. Only a transcription session transcribes, and it does so instead of answering: each commit is transcribed on its own with the model's speech-recognition prompt, then the slot is cleared. The session type is fixed once the first audio or message has gone in. So one session can't both answer the user and caption the user's words, and the reply's text (`response.output_text.delta`) is the only caption a conversation gives.
@@ -147,6 +153,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** The Kotlin voice session (D98) has no event for the user's words. Captioning them needs a second pass over the turn's audio (for example `Model.transcribe` on the same model, which shares the one slot and may delay the reply) or a patch to upstream's handler; the cost of the second pass is measured on the phone in the voice plan's step 4 before choosing.
 - **Feeds:** D95, D98.
 
+<a id="f168"></a>
 ### F168. Upstream's realtime handler runs unchanged on an in-memory connection and sends the same events as over a WebSocket; a session has no seed of its own
 
 - **Finding:** `server_realtime_conversation` reads and writes only through `server_http_context::ws_conn` (`read`, `send`, `is_open`, `close`), sends text messages only, and polls `is_open` while it waits for the slot, so a connection made of a queue and the caller's callback runs it with no HTTP layer, and a closed connection ends it within a polling tick. It sends from two threads (its reader of client events and its result loop). Fed the same scripted events with the same seed, the in-memory session and upstream `llama-server` over a real WebSocket send identical events, ids aside: a spoken turn answered in text and speech (47 events: 12 text and 20 audio deltas), two turns answered in text, a transcription session (8139 events) and two bad events answered with errors. The sampling of a realtime response takes the server's `--seed` and nothing per request, so the comparison needs a fixed server seed.
@@ -154,6 +161,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** The voice session needs no network port: the C API carries it as a request (D97). The callback of a realtime request runs on two upstream threads, one call at a time, unlike a plain request's single thread. A seeded realtime test needs the model config's `seed`.
 - **Feeds:** D95, D97, F56.
 
+<a id="f167"></a>
 ### F167. About 1.6% of LFM3-Omni's captioned replies lose their place after the text ends and never sample the end of audio; a guard on silence and length stops all of them and no clean reply
 
 - **Finding:** In text-and-audio replies (`/v1/realtime`, `output_modalities: ["text", "audio"]`) the model writes its text ahead of its speech, and after `<|text_end|>` speaks the rest with audio alone until a frame samples the end-of-audio code. In 10 of 600 replies to the same 7 s question it loses its place near the end: the voice stops at the last words it had reached and the audio turns to near-silence with bursts of noise (the "ghastly sounds" of F166) or to garbled speech, and the end code's probability stays under 0.03 for over a thousand frames where a clean reply reaches 0.98, so the audio runs until the context is full (2-6 minutes). The rate does not depend on the session's prompt (3 of 200 seeds without one, 1 of 200 with the model card's trained "Respond with interleaved text and audio.", 2 of 200 fresh seeds across both), on CPU load or on our patches: plain upstream b12479 does it, and upstream's loop matches Liquid's reference (`Lfm3OmniForConditionalGeneration._generate`: 6 text and 12 audio slots, audio alone after `<|text_end|>`, any codebook's code 2016 ends it, no cap but the caller's `max_new_tokens`). The depthformer's confidence does not warn of it (top-code probability 0.22-0.29 in both kinds), but the audio does: clean replies use at most 0.37 s of audio per text token (median 0.28) and never fall quiet for 3 s after the text ends, while failures fall silent within seconds of losing their place or run long. Ending the speech at 3 s of near-silence (80 ms frames under RMS 0.004) or at 5 frames per text token plus 13 stops all 10 failures (seed 111: at 34.4 s of 145 s; the maintainer heard its speech stop at about 32 s) and no clean reply, in the 400 replies the thresholds were chosen on and in 200 fresh ones. Patch 0008 does this in LFM3's speech helper, ending the response with an end-of-audio frame; left to continue after a forced end, the model reopened interleaving and looped silently until the context was full.
@@ -161,6 +169,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** The voice mode's captioned replies need the guard: without it about one reply in sixty plays minutes of noise. The thresholds are this model's (LFM3-Omni-2B, English, one voice), set from one question; another model or language needs its own measurement. The trained prompt is still worth sending (tighter replies, median 25 s against 38 s), and a maximum reply length stays useful as a last bound. Upstream's loop is not wrong, so this is reported as the model's behaviour with the data, not as a bug.
 - **Feeds:** D95, D96, F154, F166; patch 0008.
 
+<a id="f166"></a>
 ### F166. Upstream's realtime conversation with LFM3-Omni-2B needs a voice, a language and an instruction to answer; with all three one session speaks a whole reply in one steady voice, 1.6 times real time on the NPU with captions
 
 - **Finding:** One turn of `/v1/realtime` (a spoken question of 7 s, then `response.create`) behaves very differently by session setup. With no voice, language or instructions, text-and-audio output (`output_modalities: ["text", "audio"]`, the captioned mode D95 chose) ends its text after 9 s but never ends its audio: the depthformer never samples the end code, so frames run until the 4,096-token context is full, about 300 s, and the maintainer heard the speech turn into "ghastly sounds" after about 20 s. Audio-only output stops by itself but speaks a language that is not English. With a voice and language set (`audio.output.voice: "female"`, `language: "en"`), upstream's system prompt becomes "Speak in English using a female voice." and the model reads the question back instead of answering. With those plus an instruction to answer ("You are a helpful voice assistant. Answer the user's spoken question in your own words."), every run stops by itself with a fitting story (25-27 s of audio on the Mac), and the maintainer heard one steady voice from start to end. The same setup without voice and language also works, but its pauses grow unnaturally towards the end. On the phone's NPU (setup with all three, polling on) two stories of 19.8 s and 21.5 s took 12.7 and 13.3 s: 1.56-1.61 times real time, the first audio 1.9 s after `response.create`, no unsupported op. The maintainer found both clear and steady, with one short phrase in each hard to make out through a heavy accent. Plain upstream b12479, with none of our patches, runs on in the same way, so the patches play no part.
@@ -168,6 +177,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** D85's open question is answered for the voice mode: inside one realtime session a reply is one generation and keeps its voice, so no speaker reference or temperature change is needed. A voice session must set a voice, a language and an answering instruction; without them the captioned mode can speak noise for minutes, so the SDK's session needs those in its configuration, and a cap on output tokens is worth having (`max_output_tokens`). Speech in the captioned mode runs at 1.6 times real time on the NPU, slower than `/tts`'s 2.3-2.4 (F165) since the text is generated too, and still ahead of playback. The first audio after a fully sent question is 1.9 s on the NPU; in a live session the audio is encoded while the user speaks, measured in step 4 of the plan.
 - **Feeds:** D85, D95, F154, F165.
 
+<a id="f165"></a>
 ### F165. At b12479 the speech patches still apply and are still needed, and 0006 can ride on upstream's two output flags: an embeddings-only output skips the LM head, byte-identical audio, the same 4.5 ms per frame saved on the NPU as the old version
 
 - **Finding:** On b12479 (`d92ea9bb1`) patches 0005 and 0007 apply unchanged and 0006 had one rejected hunk: upstream's `llama_batch_ext` migration (#32356) has LFM3's speech helper decode a sampled token with `decode(sampled)` instead of `llama_batch_get_one` + `decode(batch)`, so the head goes back on just before that call. All three are still needed: `lfm3a-gen.cpp` is unchanged, Hexagon still lacks `ARANGE`, nothing upstream skips the text head for audio frames, and `htp-drv.cpp` still reads without blocking only `#ifdef _WIN32`. Upstream's new batch API has `llama_batch_ext_set_output_embd` and `_set_output_logits`, documented as "for now equivalent", with a `TODO: have dedicated output flags` in `llama-batch.h`; the one other caller of `set_output_embd`, YuE2's NAR decode (`mtmd.cpp`), reads only embeddings. Making the flags differ, so that a decode whose outputs all ask for embeddings only leaves the head out of the graph, gives the same skip as the b12352 patch's context-wide `llama_set_logits`, with no new API and no per-batch toggling in the server. On the Mac CPU (LFM3-Omni-2B Q4_K_M, the 55-word `/tts` of `device-speech`, seed 42, 20.0 s of audio, three alternating rounds): upstream without 0006 6.89-6.96 s, the b12352-style 0006 5.99-6.26 s, the re-cut 6.18-6.27 s; every WAV byte-identical across the three builds. The skip is about 2.9 ms per 80 ms frame on the CPU. On the phone's NPU (`GGML_HEXAGON_OPPOLL=1`, as `device-speech`), three builds in alternating order, three runs each at thermal status 0: without 0006 37.5-39.7 ms per frame (2.01-2.14 times real time), the old 0006 33.6-34.2 (2.34-2.38), the re-cut 33.2-34.4 (2.33-2.41); means 38.3, 33.8, 33.8 ms, so both versions save 4.5 ms per frame (F156: 4.1 at b12352). All nine WAVs are identical (19.84 s), and no run reports an unsupported op.
@@ -175,6 +185,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** the speech patches ship again on the voice branch, and 0006 is re-cut on the output flags (D94); once upstream makes the flags differ, only the helper's frame hunk and the server's sample skip remain. Speech on the NPU runs 2.3-2.4 times real time at b12479, as at b12352 (F162).
 - **Feeds:** D86, D90, D94, F155, F156, F162.
 
+<a id="f164"></a>
 ### F164. Since b12479 a load's staging buffer returns its pages on macOS as soon as it is freed, so the Mac's peak memory for the DFlash fit test fell 543 MiB; the projection did not move
 
 - **Finding:** At b12479 `dflash_fit_matches_load_rss` (Qwen3.5-4B with the DFlash draft, 4096 tokens, answered once) peaks at 5,149-5,153 MiB of footprint on a quiet Mac, nothing compressed, against 5,587-5,770 at b12352 (F160). Upstream's projection is unchanged, 5,793 MiB, so the ratio went from 1.00-1.04 to 1.125, past the test's bound of 1.12. The cause is one upstream commit, #31438 (`3e41ae69d`, `llama-model-loader.cpp`): the staging buffer that weights pass through on their way to a non-host buffer is now allocated from ggml's CPU buffer type, which on Apple uses `vm_allocate`, so freeing it gives its pages back at once. Before, it was a `std::vector`, whose freed pages stayed in the process's footprint, and the buffer holds the largest tensor (Qwen3.5-4B's token embedding is about 500 MiB). The projection never counted the buffer, so at b12352 it matched the peak only because that buffer's leftover pages filled the gap.
@@ -182,6 +193,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** an app on Apple hardware sees less peak memory during a load. On Android the CPU buffer type allocates with `posix_memalign`, and the change was not measured there. The test's upper bound goes from 1.12 to 1.20 (chosen 2026-11-17): F90's double-counted recurrent state (+754 MiB) would now read about 1.27, so the bound still catches it. The fit projection itself is upstream's and stays as it is.
 - **Feeds:** F58, F90, F160, D93; `dflash_fit_matches_load_rss`.
 
+<a id="f163"></a>
 ### F163. The upgrade to b12479: the contract still holds on the Mac and the NPU, two patches needed porting to the server refactor, and the delta-net gate still pays (+67%)
 
 - **Finding:** At b12479 (`d92ea9bb1`, upstream master on 2026-11-17, 127 commits after b12352; untagged on the day, since tagged `b12479` by upstream) the SDK matches upstream llama-server on every contract case on the Mac and on the phone's NPU, where all 76 cases are identical (no near-tie split this time, D80). The web client moved from `tools/ui` to `ui/apps/chat` and is now called Llama Chat. Its compaction code changed only its imports (`$lib/...` to `#lib/.../index.ts`), so the 400-case golden is identical apart from its source path. The hub's golden is unchanged. Patches 0001 and 0002 apply unchanged, and neither can be dropped: Hexagon's gate is still `K == 1` (`htp-kparams.cpp:567`), GDN replay (#31669) and the BF16 NEON path (#30432) are still open PRs, and `vec.cpp` still has no ARM BF16 dot product. Patches 0003 and 0004 no longer applied after upstream's server refactor (#32154, `server_slot_sched` with a prompt running hash). 0003 ports with no change in behaviour: the progress callback, the three load stages and the setter sit where they did. For 0004, the SWA threshold moved unchanged into `server_prompt::get_reuse` (`server-slot-sched.cpp:23`), still `n_swa > 0 ? pos_eval - n_swa + 2 : pos_eval`, so upstream still has the hybrid-SWA cache bug (F153). The port passes `get_reuse` the SWA window only when the memory can be partly removed, else 0, at its one caller; that is the same rule as before. With MTP on the NPU, the gate (0001) still makes prefill much faster: 381-394 t/s without it, 635-655 with it (means 388 and 648, +67%; F149 measured +61% at b12352). With MTP off it changes nothing (912 and 900 t/s).
@@ -192,6 +204,7 @@ topic, and within a topic newest first. The index lists every ID.
 
 ## PH: the headline API (F139–F162)
 
+<a id="f162"></a>
 ### F162. With NPU polling on, Android's DSP library logs an error for every empty poll and drowns the app's log; upstream's Windows path, a no-block read, removes it at the same speed
 
 - **Finding:** `GGML_HEXAGON_OPPOLL=1` (`LlamaBroConfig.npuPolling`, on by default since D86) makes ggml-hexagon read the DSP queue with a zero timeout in a loop. On Android, `dspqueue_read` with a zero timeout returns "expired" and has Qualcomm's `libcdsprpc` log an error line (`dspqueue_cpu.c:1864 … wait_signal_locked … DSPQUEUE_SIGNAL_RESP_PACKET`) for every empty poll. An app loading LFM3-1.7B on the NPU wrote about 82,000 such lines in a few seconds, and the phone's log flow control (`LOGS OVER PROC QUOTA(300) … DROPPED`) then dropped the app's own lines too, so the minified acceptance build's "loaded" line never reached logcat and `check.sh --device` failed. Nothing is logged while the NPU is idle. Upstream's `htp-drv.cpp` already sends a zero-timeout read to `dspqueue_read_noblock`, which answers "would block" without logging, but only under `#ifdef _WIN32`. Doing the same on every platform (patch 0007) leaves one info line per queue, and the speech speed is unchanged.
@@ -200,6 +213,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Speed on a cool phone (2026-11-17, later):** the 2.26-2.27 above came straight after about 25 minutes of device gates (thermal status 0-1, but a warm phone). On branch `voice/speech-npu` (patches 0001-0007, polling on), with the phone cooled (NPU sensors 34-36 °C, status 0) and a minute between runs, `device-speech` gave 2.39, 2.37 and 2.38 times real time, the same as D86's 2.40. So patch 0007 costs nothing, and a warm phone loses about 5%.
 - **Feeds:** D86, F156; patch 0007.
 
+<a id="f161"></a>
 ### F161. A quick Pause→Resume can't run two writers within one hub; two hubs reaching one cache through a link failed instead of waiting, since the JVM refuses a second lock on a file it already locks
 
 - **Finding:** `BlobDownloader` writes each blob under `Locks`: a coroutine mutex per lock-file path plus a kernel `FileChannel.lock`. A cancelled transfer keeps the lock until its write loop really exits, so a resumed download of the same blob waits for it, and within one hub there is never a second writer. The mutex was keyed by `absolutePath`, so two hub objects on one cache whose folders are spelled differently (a symlink, as `/data/data` is to `/data/user/0`) took different mutexes; the second `FileChannel.lock()` on the same file in the same JVM then threw `OverlappingFileLockException` rather than blocking, and the resumed download failed with `HubException.Network`. `LlamaBroHub.create` already gives one hub per canonical folder (D70), so an app reaches this only through two hubs built another way. The mutex is now keyed by the lock file's `fileKey()` (device and inode), exactly the key the JVM's lock table uses, with the canonical path where a file system has no key; the second hub then waits and resumes the same partial.
@@ -207,6 +221,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** W5's note that a quick Resume can start a new worker while the old one still writes the same partial does not hold for the SDK's worker, since the hub serialises; the demo's own `awaitStopped` covers only its UI state. The identity key stays as cheap insurance (D89).
 - **Feeds:** D89, D44, D70.
 
+<a id="f160"></a>
 ### F160. On macOS a process's peak RSS under-counts its memory when the host is short of it; the peak footprint holds steady, so the DFlash fit test measures that
 
 - **Finding:** `dflash_fit_matches_load_rss` compared the projection for Qwen3.5-4B with the DFlash draft at 4096 tokens (5,793 MiB) with the process's peak RSS (`ru_maxrss`). macOS compresses resident pages when the host runs short of memory, and compressed pages leave the resident set, so the peak RSS followed the host's state. It read 5,081-5,781 MiB in seven runs of one build on a 32 GB Mac with 23 GB of swap in use, 4,558-5,151 MiB while another process held 14 GiB, and it gave the 2026-11-15 failure (ratio 1.27 against the bound 1.18). The task's peak footprint (`TASK_VM_INFO` `ledger_phys_footprint_peak`) counts compressed pages. In the same quiet runs it read 5,587-5,770 MiB (ratio 1.00-1.04), and it read 5,770 under the 14 GiB load with a peak of 2,022 MiB of the process compressed (`compressed_peak`, the most compressed at any moment of the run). Twice under that load it fell to 5,189-5,251 (1.10-1.12), so heavy pressure can still lower it, likely through swap (not confirmed). The weights are read into memory, not mapped (`--load-mode none`, F58), so the footprint holds them. The host build has no Metal, so no GPU memory goes uncounted.
@@ -214,6 +229,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** the test measures the peak footprint on macOS (peak RSS on Linux), and its bound tightens from 0.90-1.18 to 0.95-1.12. Against the footprint, F90's double-counted recurrent state (+754 MiB) would read 1.13-1.17, which the old bound let through. When the test fails with a compressed peak above a tenth of the process, it says the host was short of memory. F90's 5,208 MiB peak was itself an under-count; its conclusion stands, and the projection is closer than F90 measured (within 4% of the footprint).
 - **Feeds:** F58, F90; `dflash_fit_matches_load_rss`.
 
+<a id="f159"></a>
 ### F159. Fixed ports let concurrent SDK checks collide, and a port held by another process can answer a check's health poll; ports the OS picks remove both
 
 - **Finding:** `sdk/scripts/check.sh` used fixed ports on this machine: 18181 for the host contract (`LB_CONTRACT_PORT`), 18182 for its extra models, 18185 for its audio cases, 18183 for `e2e`, and 18190/18191 for the fake Hugging Face server. The device contract and device speech used the same port at both ends of their adb forward (18182, 18183). With two full checks running in two worktrees, the second `llama-server` cannot bind its port and exits. The step's health poll on the fixed port can then be answered by the other check's server, or by an adb forward another session left behind (F150), so requests reach a different build's server or the phone. Now every server on this machine listens on port 0 and the script reads the port back from that server's own output (`llama-server`'s "listening on", `fake_hub.py`'s first line). adb picks this machine's end of each forward (`adb forward tcp:0`). The ports on the phone stay fixed, which the one-session-per-phone pre-flight (`sdk/scripts/device-preflight.sh`) makes safe. Fixed ports remain available through `LB_CONTRACT_PORT`, `LB_E2E_PORT`, `LB_HUB_API_PORT`, `LB_HUB_CDN_PORT`, `LB_DEVICE_CONTRACT_PORT`/`LB_DEVICE_CONTRACT_HOST_PORT` and `LB_SPEECH_PORT`/`LB_SPEECH_HOST_PORT`.
@@ -221,6 +237,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** full SDK checks can run in several worktrees on one machine at once; the device steps still need the phone to themselves, and the pre-flight refuses when another session holds it (a live lock, a stray forward or reverse, a running server or test app). `demo/scripts/check.sh` still bound its fake hub to fixed ports and took no phone lock when this was written; its move to the same scheme is part of W9 step 4's demo work. **2026-11-17, later:** done: the demo's check uses ports the OS picks for its fake hub and the same pre-flight and phone lock.
 - **Feeds:** F150; `docs/testing.md` (SDK checks: ports, device pre-flight).
 
+<a id="f158"></a>
 ### F158. Integer type bounds cost little in llama.cpp's grammar; an unsupported `pattern` is dropped silently
 
 - **Finding:** On the host (llama.cpp at `ph-main`'s submodule, LFM3-1.7B's vocabulary loaded vocab-only, no inference), schemas were measured with integers unbounded and bounded to their Kotlin type's range, through upstream's `json_schema_to_grammar` and grammar sampler. One `Int` field grows the GBNF from 190 to 2,289 bytes; a forecast (a string and four `Int`s) from 564 to 9,215 bytes (`Short` bounds 2,607, `Byte` 1,087); twelve `Int`s plus a list of `{x, y}` from 1,175 to 31,612 bytes. Conversion plus sampler build stays under 1 ms per request (0.06 → 0.73 ms for the largest; 1.4 ms in a noisier run). Checking a sampled token against the grammar, upstream's usual path, goes from about 1.8 µs to 3.3-3.8 µs per token; the full-vocabulary pass, run only when a sampled token is rejected, from 5.8-6.0 to 9.1-10.5 ms. A `Long`'s bounds are int64's limits, which upstream treats as unbounded (its integer rule already caps at 16 digits). Separately, upstream at this version turns an unsupported `pattern` into "any string" with only a log warning (an unanchored pattern, `\d`, `\w`, `\p{…}`, lookarounds, POSIX classes); only a malformed one (unbalanced parentheses) throws, which llama-server answers with 400 `invalid_request_error`.
@@ -228,6 +245,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** bounding `Byte`, `Short` and `Int` by default costs a larger grammar but well under a millisecond per request and microseconds per token on the common path (D88). The phone was not measured; expect a few times the host cost, still small. `@LbPattern`'s failure mode is mostly silent, not an error at the first request; the docs say so.
 - **Feeds:** D88, D63, F143.
 
+<a id="f157"></a>
 ### F157. Chat media sent as file:// instead of base64 halves a voice-note turn on the phone, with no llama.cpp change; a raw-buffer patch adds little
 
 - **Finding:** In a chat holding three voice notes (2.3 MB of WAV) on LFM3-Omni-2B on the NPU, a text turn takes
@@ -244,6 +262,7 @@ topic, and within a topic newest first. The index lists every ID.
   that folder.
 - **Feeds:** D84, D87; F152, F153.
 
+<a id="f156"></a>
 ### F156. Speech on the NPU alone reaches 2.4 times real time once the speech graph has no CPU op, the host thread polls and the unused text head is skipped; faster than the split
 
 - **Finding:** A per-stage timer on the phone (LFM3-Omni-2B `/tts`, 55 words, seed 42) splits each 80 ms frame into
@@ -280,6 +299,7 @@ topic, and within a topic newest first. The index lists every ID.
   (`mtmd-model.cpp`); `-fa on` adds ~3% on the NPU. These are upstream-worthy facts for the maintainer to report.
 - **Feeds:** D37, D53, D85; F154, F155.
 
+<a id="f155"></a>
 ### F155. LFM3-Omni's speech part gives empty audio on the NPU because Hexagon tiles a weight that a lookup also reads; keeping such weights flat fixes it, but the CPU stays faster for the speech part
 
 - **Finding:** With everything on the NPU, `/tts` returns an empty WAV (F154) because Hexagon's runtime repacking
@@ -310,6 +330,7 @@ topic, and within a topic newest first. The index lists every ID.
   and kept at `research/ph/speech-output/hexagon-keep-shared-weights-flat.patch`.
 - **Feeds:** D37, D53, D85; F154.
 
+<a id="f154"></a>
 ### F154. LFM3-Omni-2B speaks on the phone at 1.7 times real time with the model on the NPU and its speech part on the CPU; long texts must be spoken a sentence at a time
 
 - **Finding:** Through upstream `llama-server`'s `/tts` on the phone, LFM3-Omni-2B (Q4_K_M, Q8_0 mmproj, 24 kHz mono)
@@ -331,6 +352,7 @@ topic, and within a topic newest first. The index lists every ID.
   user decides. The NPU's silent empty output is an upstream gap worth reporting.
 - **Feeds:** D37, D53, D65; F56, F74.
 
+<a id="f153"></a>
 ### F153. On the LFM3 family (hybrid with SWA layers), the prompt cache reuses neither the live state nor the latest checkpoint, because the SWA threshold rejects them
 
 - **Finding:** The cache stop in F152 is not about media. LFM3 models (`sliding_window: 256`: LFM3-1.7B, LFM3-Omni-2B,
@@ -391,6 +413,7 @@ topic, and within a topic newest first. The index lists every ID.
   ms), so D84's no-base64 patch is worth more than F152 measured.
 - **Feeds:** D84, F152; D65, D17; patch 0004 (`sdk/native/patches/README.md`).
 
+<a id="f152"></a>
 ### F152. Speech input on the phone: LFM3-Omni-2B transcribes exactly; audio costs 12.6 tokens a second; earlier voice notes slow later turns, mostly because the cache stops before the last clip
 
 - **Finding:** On the phone's NPU, LFM3-Omni-2B (Q4_K_M, Q8_0 encoder) transcribes a 30.5 s spoken clip word for word
@@ -411,6 +434,7 @@ topic, and within a topic newest first. The index lists every ID.
   bridge keeps writing chat media's base64 for now. Cause: F153.
 - **Feeds:** D65, D84, D76.
 
+<a id="f151"></a>
 ### F151. Typed output on the phone: clean JSON with Think off and with a thinking budget; with no budget the model thinks as if chatting, for minutes or until it runs out
 
 - **Finding:** On the phone's NPU, `generate<Person>("A person named Bob aged 30.")` returns `Value(Person("Bob", 30))`
@@ -429,6 +453,7 @@ topic, and within a topic newest first. The index lists every ID.
   schema or an instruction in the prompt) would be a deviation from upstream and needs an A/B first; not done.
 - **Feeds:** D63.
 
+<a id="f150"></a>
 ### F150. W5 on the phone: the hub's device steps and the demo's device tests pass; three failures are the phone, not the change
 
 - **Finding:** With W5 built (the development branch), `sdk/scripts/check.sh --device` passes `device` and `hub-device`, and
@@ -453,6 +478,7 @@ topic, and within a topic newest first. The index lists every ID.
   refuse it. Two sessions must never share the phone during a device check. All are carried to W9.
 - **Feeds:** D64, D75.
 
+<a id="f149"></a>
 ### F149. A one-line Hexagon gate gives NPU prefill with MTP the same +61% as the head/tail split, and drifts less than upstream's own MTP on/off
 - **Finding:** At b12352 the Hexagon backend runs gated delta-net on its fast chunked HMX kernel only when K == 1 (`htp-kparams.cpp:565`), so with MTP (K = 4) prompts fall to the slow recurrent kernel (F7). ggml's contract says that when `n_tokens > K` only slot 0 (the final state) is guaranteed (`ggml.h:2423`), and CUDA's chunked kernel already relies on it (`gated_delta_net.cu:276`). Letting the Hexagon gate also accept `n_tokens > K` is one line in the backend, and the HMX kernel already writes the final state where slot 0 is. On the phone it is as fast as the head/tail split and changes nothing with MTP off. Its replies drift no more than upstream's own switch between its two kernels.
 - **Evidence:** [upstream-notes.md](../../research/ph/delta-net/upstream-notes.md) §8; OnePlus 13, Qwen3.5 4B Q4_K_M on `HTP0`, upstream llama-server at b12352 built three ways (no patch, the head/tail split, the gate), thermal status 0. Prefill of 2,071 tokens with MTP on, three rotating rounds: 406 t/s with no patch, 651 (+60%) with the split, 654 (+61%) with the gate; MTP off: 907 with no patch, 899 with the gate. Correctness, the 19 greedy requests of P0's test A (up to 8k tokens, as F8): no patch MTP off against on, 16/19 identical, chosen-token |Δlogprob| p95 0.041, max 0.32 (the reference); no patch against the gate, both MTP on, 15/19, p95 0.031, max 0.32; no patch MTP off against the gate MTP on, 17/19, max 0.10; the split repeats F8 (16/19, p95 0.037, max 0.39). Every divergence is at a near-tie (top-2 gap ≤ 0.20); MTP acceptance 0.62-0.66 in every run.
@@ -461,6 +487,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Upstream replay (2026-11-16):** open PR #31669 replaces the K snapshots with replay, so every delta-net call is K = 1. On the phone, with it and `LLAMA_RS_REPLAY=1`, NPU prefill with MTP is 847 t/s against 396 with replay off (+114%) and 672 with the gate (+70%); MTP off is 911 (PR head `a18ecc4`, replay confirmed in the server log; an earlier head gave 832, 386, 653, 904). Its replies are as close to MTP off as snapshots' (17/19 identical, p95 0.031, max 0.10; acceptance 0.62 against 0.63) ([upstream-notes.md](../../research/ph/delta-net/upstream-notes.md)). So replay supersedes the gate once it is merged and on by default.
 - **Feeds:** D10, D80, F7, F8, F121.
 
+<a id="f148"></a>
 ### F148. On the phone, a cancelled 4B load returns in 0.4-1.8 s on the CPU and about 1 s on the NPU, against 6-11 s for a full load
 
 - **Finding:** With D67 built, cancelling `loadModel` (Qwen3.5 4B Q4_K_M) about a second after it starts made it return in 418 ms and 1,816 ms on the CPU and 970 ms and 971 ms on the NPU; each was followed by a full load of the same model on the same device, which succeeded (11.3 s and 9.8 s on the CPU, 5.9 s and 6.8 s on the NPU), so a cancelled load leaves nothing behind. A cancel saves 5-10 s against waiting the load out, but D67's "well under a second while weights are read" holds only for the first CPU run. Not measured, inferred: in the second CPU run the file was already in the page cache, so a second in the weights were read and the load was in context creation, which can't be stopped (F145); the steady ~1 s on the NPU is likely its session teardown.
@@ -468,6 +495,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** cancelling a load is worth it and safe; the sub-second figure in D67 is optimistic. Where the time goes after a stop (freeing, NPU teardown, the unstoppable stages) is not yet measured.
 - **Feeds:** D67.
 
+<a id="f147"></a>
 ### F147. On the phone, with no logger, init's native lines reach logcat under `llamabro`
 
 - **Finding:** After D66, a runtime created with no logger at `LogLevel.Debug` and asked only for its devices (no model) wrote ten lines to logcat under `llamabro` while it started: the CPU, Hexagon and OpenCL backends loading, the Hexagon driver and architecture (v79), and the Adreno 830 OpenCL device. All are `Info`, so at the default `Warn` none appears, which a first run at the default level showed; nothing during init on this phone is a warning. llama-server's own lines are still not routed (F22).
@@ -475,6 +503,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** D66's phone check passes: the logcat default and the early attach work in production.
 - **Feeds:** D66.
 
+<a id="f146"></a>
 ### F146. Recommended sampling is machine-readable on the Hub only sometimes, and a fine-tune carries its original's base tag
 
 - **Finding:** Of six open base models, four carry sampling values in `generation_config.json` (Qwen3-4B 0.6/20/0.95, Qwen2.5-3B-Instruct 0.7/20/0.8 with repetition 1.05, SmolLM3-3B, DeepSeek-R1-Distill-Qwen-1.5B), Phi-4-mini and Granite 4.1 carry none, and Qwen3.5-4B has no such file (its values are in the card's text, per mode). Gated models (Gemma 3, Llama 3.2) answer 401 without a token. The file holds one set of values, so a model's thinking and non-thinking values can't both be expressed. Of three popular GGUF uploads, only ggml-org's LFM3-Omni carries `general.sampling.*` (greedy), which llama.cpp applies at load (F17); unsloth's Qwen3.5 and bartowski's Gemma 3 carry none. The Hub's GGUF summary (`expand[]=gguf`) gives the architecture, context length and chat template, no sampling. A GGUF's `general.base_model` can be wrong (bartowski's Gemma 3 instruct names the pretrained model); the Hub's tags tell a re-upload (`base_model:quantized:X`) from a fine-tune (`base_model:finetune:X`), and the demo's search groups on either, so a fine-tune folds into its original.
@@ -482,6 +511,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** search reports recommended values only where they exist, with their source, and groups only quantized re-uploads (D68).
 - **Feeds:** D68.
 
+<a id="f145"></a>
 ### F145. A cancelled load runs to its end and is then freed; llama.cpp could abort its weight reading, but llama-server's progress callback never asks it to
 
 - **Finding:** The native load can't be interrupted, so the runtime runs it under `NonCancellable`, frees the model when it finishes and then rethrows the cancellation: nothing leaks, but the caller waits for the whole load and the free (seconds for a 4B on the CPU or NPU, about a minute for a first GPU load, F63). Cancellation is checked only between device attempts. llama.cpp aborts reading weights when the progress callback returns `false` (the load returns -2, cancelled), and the image encoder loads through the same callback, but llama-server installs its own progress callback, which always returns `true`. Creating the context, the warm-up decode, compiling GPU kernels and setting up the NPU session have no callback and can't be aborted.
@@ -489,6 +519,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** a real abort needs a small patch to llama-server's callback (D67).
 - **Feeds:** D67.
 
+<a id="f144"></a>
 ### F144. With no app logger, no native line reaches logcat, and an app's logger misses everything said during init
 
 - **Finding:** `LlamaBroRuntime.init()` runs the native init (`common_init`, the CPU backend, then Hexagon and OpenCL) and attaches the app's `Logger` only after it succeeds, so an app's logger never sees init's lines, and a failing init throws before the logger is attached. `LlamaBroConfig.Default` and `HubConfig.Default` have no logger; then the bridge hands each line to llama.cpp's default, which writes to stdout and stderr, and an Android app's stdout and stderr are discarded, so by default not even an error reaches logcat. Backend discovery failures found in Kotlin (a missing manifest entry, a skeleton install that throws) are only kept for `backends()`.
@@ -496,6 +527,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** attach the logger before init, and give Android a default destination (D66).
 - **Feeds:** D66.
 
+<a id="f143"></a>
 ### F143. With a schema, llama-server lets the model think first, writes required fields before optional ones, and calls no tools
 
 - **Finding:** A request with `response_format` gets a grammar that is not lazy: the model's thinking block, then the JSON, optionally inside a ```json fence that is not part of the content. The parser checks for a schema before tools, so in that request the tools stay in the prompt but cannot be called. The grammar writes an object's required fields first, in the schema's order, then its optional fields in order; keys keep their insertion order. It enforces integer minimum and maximum, string `pattern`, length and `format` (date, time, date-time, uuid), list item counts, `enum`, `const`, `anyOf`/`oneOf`, `$ref` and closed objects; a `number` has no bounds. A type list such as `["string","null"]` becomes `anyOf`.
@@ -503,6 +535,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** typed output works with Think on. A typed turn in a conversation cannot call its tools; the tools stay in the prompt so its cache holds. Declaration order is the order the model writes, so a reasoning field declared before the answer comes first; a field with a default moves after the required ones. Only the limits the grammar enforces get annotations; decimal bounds are left out.
 - **Feeds:** D63.
 
+<a id="f142"></a>
 ### F142. Keep rules make reflection survive R8, but not its other costs: only a processor gives build-time errors and Multiplatform
 
 - **Finding:** Keeping the annotated classes and members, `kotlin.Metadata` and the runtime-visible annotations lets reflection find tools by name in a minified app. Reading Kotlin parameter names, nullability and defaults still needs `kotlin-reflect`, mistakes still surface at runtime, the kept classes can't be shrunk, and `kotlin-reflect` is JVM-only, so it rules out the planned Kotlin Multiplatform bindings. A KSP processor has none of these costs.
@@ -510,6 +543,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** typed tools are generated by KSP only; no reflection path.
 - **Feeds:** D61.
 
+<a id="f141"></a>
 ### F141. Small models choose tools worse as the tool count and the prompt grow; a tool's description is what the model chooses by
 
 - **Finding:** Giving a model on edge hardware fewer, relevant tools improves its choice and cuts run time by up to 70% and power by up to 40% (Paramanayakam et al., DATE 2025). Several benchmarks report accuracy falling as the tool count grows, worst for small models, and one 2026 preprint attributes it to the prompt's length rather than the count. Descriptions help the choice (OpenAI's guide asks for the function, each parameter and the output to be described; an enterprise ablation found description length and quality matter), but long descriptions across many tools hurt (OSWorld-MCP, 158 tools).
@@ -517,6 +551,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** an app registers a few tools per conversation. A tool's description is required; a parameter's is optional, since a clear name already says it and every description costs prompt on a phone.
 - **Feeds:** D61.
 
+<a id="f140"></a>
 ### F140. A call to a tool that doesn't exist goes back to the model as an error in tools/ui; Llama Bro stops the turn instead
 
 - **Finding:** tools/ui answers a call to an unregistered name with `Error: Unknown tool: <name>` as that call's result and continues the loop. LangGraph's `ToolNode` does the same and lists the valid names; the Vercel AI SDK throws `NoSuchToolError` unless the app adds a repair function; the OpenAI Agents SDK raises `ModelBehaviorError` and ends the run (a pull request to send it back to the model was declined). Llama Bro's loop finds no handler for the name and treats it as a manual tool, so the turn stops with `ToolCallsPending` for a call the app never registered.
@@ -524,6 +559,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** the loop follows tools/ui: an unknown name is an error result and the loop goes on. Listing the valid names, as LangGraph does, is a deviation that would need a measurement first.
 - **Feeds:** D62.
 
+<a id="f139"></a>
 ### F139. llama-server passes only a tool's name, description and parameters to the template; the description is optional and tools open the prompt
 
 - **Finding:** Parsing a request's tools keeps `name`, `description` (default `""`), `parameters` and `defer_loading`, and the template is given that list again, so anything else on a function, such as the `response` declaration Gemma 4's template can render, never reaches the model. Most templates write each tool as JSON, so a missing description is simply absent; Gemma 4 writes an empty one. Qwen3.5's template writes the tools at the very start of the prompt, before the system message. `defer_loading` (a tool withheld until a `tool_reference` names it) is rendered only by the LFM3 template at b12352.
@@ -535,6 +571,7 @@ topic, and within a topic newest first. The index lists every ID.
 
 ## After PD: pictures on the NPU, llama.cpp b12352, memory, sampling (F120–F138)
 
+<a id="f138"></a>
 ### F138. The held-message note was missed a second time, in another test, and a turn test timed out once under the full suite
 
 - **Finding:** On 2026-11-14 the emulator gate failed `FirstRunTest.getOpensTheChatAndHoldsAMessage` once: "Qwen3.5 0.8B will answer the moment it's here" did not appear within 15 s. It passed 10 of 10 in the class's rerun and in the next device step. This is the same note `downloadSurvivesProcessDeath` missed once (F132), so two tests, one symptom. Separately, `ChatEngineTurnTest.stopWhileTheModelWakesEndsTheTurnAndKeepsTheMessageHeld` timed out waiting for "waking" once in a full unit run and passed 4 of 4 alone and in the next full run.
@@ -543,6 +580,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** not root-caused; to revisit. Next steps: make the test dump the screen's semantics when the wait times out, so a third miss shows whether the message was stored and what the chat thought of its model; keep each failing run's logcat. The held note is shown when a message is held for a model that is not on the phone yet, so a real miss would sit between the download state and the chat's rows.
 - **Feeds:** testing, F132.
 
+<a id="f137"></a>
 ### F137. A cut reply continues seamlessly on the phone, from its answer or from inside its thinking, and the reasoning budget ends the thinking before an answer
 
 - **Finding:** With Qwen3.5 0.8B on the NPU, greedy: a reply cut at 24 tokens in its answer ("1, 2, … 8, ") continued with "9, 10, … 30" when sent back as the last message, no restart and no repeat; a reply cut at 24 tokens inside its thinking (after `"strawberry`) continued the thought and then answered, and the continued thinking and answer match the uncut reply word for word. A 128-token reasoning budget ended the thinking and the model answered correctly ("3") in 254 tokens, finishing by itself well inside a 1,024-token limit.
@@ -550,6 +588,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** Continue needs nothing from the SDK beyond sending the reply back with its thinking; the demo's Continue is that (D60). The budget's forced end works on a small model, closing the open test from PD.
 - **Feeds:** D60, demo design §4.7.
 
+<a id="f136"></a>
 ### F136. The leading local apps keep sampling per model, one lets a chat override it, and almost none guard against a loop by default
 
 - **Finding:** Of ten apps read on 2026-11-14, sampling is per model in Jan, GPT4All, Ollama (its Modelfile) and LM Studio (per-model defaults and `model.yaml`; its presets are named bundles for any model); Open WebUI layers a chat over the account over the model over global defaults, showing "N modified" or "Default". Recommended values come only from a curated list (LM Studio's `model.yaml`, Google AI Edge Gallery's allowlist); none reads them from the GGUF, which llama-server itself does (F17). Replies are unlimited by default in Jan, Ollama, llama-server and PocketPal; GPT4All caps at 4,096 tokens, the Gallery at 1,024 or 4,096 per model. Only GPT4All has a repetition guard on by default (repeat penalty 1.18); KoboldCpp alone documents continuing a cut reply, and LM Studio has continue in its developer mode.
@@ -558,6 +597,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Feeds:** D60.
 
 
+<a id="f135"></a>
 ### F135. Restoring a chat's slot from disk saves 90% of the prompt time after a reload, at 97 KB a token
 
 - **Finding:** After the model is freed and loaded again, restoring the chat's slot from a file (llama-server's `/slots/0?action=save|restore`, reachable through `rawRequest(Endpoint.SlotsAction)`) brings the next message's prompt from 3.5 s to 0.3 s for a 3,074-token chat on Qwen3.5 4B (NPU), with the same greedy answer; save and restore take 0.2 to 0.4 s each. The file is large: 297 MB for those 3,076 tokens, about 97 KB a token, so a full 8k context would be about 800 MB. The load itself (4 to 5 s) is unchanged, so the whole wait goes from about 8 s to about 5 s.
@@ -565,6 +605,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** Worth building for long chats with limits: one file, the chat that was open, written when the model is freed and deleted when it is used, the chat changes or is deleted; skipped for short chats, where the saving is under a second. The disk it needs (hundreds of MB) is the cost to weigh.
 - **Feeds:** D59.
 
+<a id="f134"></a>
 ### F134. Android sends TRIM_MEMORY_BACKGROUND only under pressure, not on Home
 
 - **Finding:** On leaving the app (Home), the application gets `onTrimMemory(TRIM_MEMORY_UI_HIDDEN)` (20) at once, and no `TRIM_MEMORY_BACKGROUND` (40) while memory is plentiful: the process stays the "previous app" (oom adj 700, process state 15) for minutes. Level 40 is the signal that Android is moving the app towards the cached list, so freeing the model on it does not undo a grace period on every Home.
@@ -572,6 +613,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** `BackgroundRelease` frees the model on level 40 and above, idle only, under every Settings choice; level 20 is left to the timer.
 - **Feeds:** D59, demo design §4.6.
 
+<a id="f133"></a>
 ### F133. A chat failed its next message after its model was freed
 
 - **Finding:** A chat reused its SDK `Conversation` whenever the model's key was unchanged, but a conversation belongs to one loaded `Model`. After the model was freed (the minute in the background, now also Unload) and loaded again, the next message in that chat went to the closed model and failed with "That didn't work.".
@@ -579,6 +621,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** The handle keeps the `Model` its conversation was made on and rebuilds the conversation from the stored messages when the loaded model is another instance.
 - **Feeds:** D59, demo design §4.6.
 
+<a id="f132"></a>
 ### F132. The demo gate passed two runs that tested nothing
 
 - **Finding:** `demo/scripts/check.sh` reported a step as passed when it ran no test, in two ways: `--only` with a space-separated list ("lint quality") was accepted, matched no step and printed ALL PASS; and a device step whose install failed (an emulator with 142 MB free of 10 GB) ended in a successful Gradle build with zero tests, which counted as PASS.
@@ -586,54 +629,63 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** `--only` takes commas or spaces; a run in which no step ran fails ("NO STEP RAN"); each device step fails when its results report no test, and clears the results of an earlier run first, so a stale file can't count. A test step's PASS now means tests ran. The held-note miss is watched as a possible flake.
 - **Feeds:** [testing](../testing.md) (the gates), D58 (verified with the fixed gate).
 
+<a id="f131"></a>
 ### F131. The drawer's scrim was the ink colour, a light veil over the page in dark
 - **Finding:** The Sidebar layout's drawer dimmed the page with `colors.ink` at 32%. Ink is the text colour, near-white in the dark theme, so opening the drawer laid a bright haze over a dark page. The sheets already used the theme's scrim (the canvas at 50% in dark).
 - **Evidence:** the maintainer's report on the phone, 2026-11-14; `DemoDrawer` in `components/Layout.kt` against `DemoSheet` in `Surfaces.kt`.
 - **Means:** the drawer uses the theme's scrim like every other overlay; the demo design states the rule.
 - **Feeds:** the demo design's colour rules.
 
+<a id="f130"></a>
 ### F130. A touch target that reaches past its row is cut by the row's parent, and accessibility sees only the rest
 - **Finding:** Two 48 dp targets drawn as overlays past their rows, to keep the visible spacing tight, failed the accessibility touch-target check: the thinking fold measured 41 dp, and the section label's "What's a model?" 35 dp. Compose reports a node's bounds clipped to every ancestor's layout bounds, so the part of a target outside its parent is gone for accessibility services, whatever the pointer input does.
 - **Evidence:** the emulator device gate, 2026-11-14: `ChatScreenTest.foldedThoughtExpands` and six `FirstRunTest` cases, `AccessibilityViewCheckException` with bounds `[42,439][355,547]` (41 dp) and `[730,937][1038,1028]` (35 dp).
 - **Means:** every target is a real 48 dp of layout (as Material's `minimumInteractiveComponentSize` does). The spacing works around it: the fold's row is the gap to the reply, and a label with an action is a 48 dp subheader. The design doc's spacing rule says so.
 - **Feeds:** the demo design's spacing rule (§8.3), the design system's fold and section label.
 
+<a id="f129"></a>
 ### F129. A splash screen kept until the first composition hangs every Compose UI test at launch
 - **Finding:** With the AndroidX splash kept on screen until `AppShell` composed and called `onReady`, every instrumented test that launches `MainActivity` hung in `Instrumentation.startActivitySync`. Under a Compose test rule the composition waits for the test's clock, which the test can't advance before the activity has launched; the launch waits for the first frame, which the splash withholds. A normal launch is unaffected (real frame clock): it drew in about 1 s on the emulator and the phone.
 - **Evidence:** the emulator device gate stalled for about 3 hours on the first app test (`SmokeTest.theRuntimeReportsAtLeastOneDevice`), 2026-11-13. A jdb thread dump showed the runner in `startActivitySync` under `ActivityScenarioRule.before`, with every dispatcher thread idle. `dumpsys activity` showed the splash window up and `firstWindowDrawn=false`. With readiness taken from the data, both smoke tests pass in 3 s.
 - **Means:** the splash waits for the shell's data (the settings and the first library scan), read in the activity's scope with a 2 s cap, never for a composition. The cap also means a failed read can't hold the splash. The gate needs a time limit per test run, so a hang fails in minutes, not hours.
 - **Feeds:** the demo's splash (architecture fix 10), testing.md's device gate.
 
+<a id="f128"></a>
 ### F128. The memory budget refuses models that run: it ignores the cached apps Android closes first
 - **Finding:** On the OnePlus 13 with everyday apps open, the demo refused Qwen3.5 4B for memory. Measured the same way at another moment: `MemAvailable` 5.7 GB, while Android's own "Free RAM" was 7.8 GB, 3.2 GB of it held by cached background apps. Upstream llama-server b12352 then loaded Qwen3.5 4B with its F16 projector on the NPU at a 4096-token context and answered; `MemAvailable` fell to 2.2 GB (the model took about 3.45 GB), and Android closed about 25 cached apps (Chrome, Files, Wellbeing and others) to make room, as it does for the app in front, while the model's process stayed up. The SDK's budget at that moment is `MemAvailable` less Android's low-memory threshold, the projector's file (0.67 GB), the whole prompt cache (1 GB, which fills only as a chat grows) and the 512 MiB reserve: about 2 GB, so it would have refused. The SDK's waiting for memory after a close (F124) is a separate, smaller cause.
 - **Evidence:** `/proc/meminfo` and `dumpsys meminfo` before and after the load, and the processes that disappeared, 2026-11-13.
 - **Means:** the refusal is a false negative on a phone with background apps, which is every phone. Decided in D57: the SDK itself now warns by default (`MemoryCheck.Warn`, `LoadReport.memoryWarning`) and the demo shows a note. Still open: whether the budget should count the memory that cached apps free (an app can't read their size directly) and charge the prompt cache as it grows, not up front.
 - **Feeds:** D33, D34, D45, D57, the demo's memory note.
 
+<a id="f127"></a>
 ### F127. Upstream PR #30432's NEON path makes the phone's CPU encode a BF16 projector 5.3x faster, with nothing else changed
 - **Finding:** ggml-cpu's `ggml_vec_dot_bf16` (`ggml/src/ggml-cpu/vec.cpp:139`) has SIMD paths for x86, RISC-V, POWER and s390 but none for ARM, so on a phone a BF16 matmul runs a scalar loop summed in double; llamafile's `sgemm` has no ARM BF16 case either, and none of the Android CPU variants enables BF16 (`ggml/src/CMakeLists.txt:536-542`). Upstream knows (issue #29917) and has an open fix, PR #30432 (19 lines: 8 BF16 values per step, widened exactly to F32, two F32 FMA accumulators, the scalar loop for the tail). Carried as patch 0002 at b12352, on the phone (thermal 0, an external cooler on the phone from this run on): Qwen3.5 0.8B's BF16 projector on the CPU 16.5 s without it and 3.1 s with it (16.55/16.54/16.59 against 3.16/3.10/3.08, alternating); the F16 projector 2.16 s in both; greedy CPU text replies byte-identical (Q4_K uses no BF16 matmul); answers right. The host check passes with it (contract identical).
 - **Evidence:** `research/b12352/bf16-neon-ab.sh` and `build-at.sh` (`PATCHES=`), 2026-11-13; the PR's diff at head `cde3115c`, reviewed line by line; upstream's open PR and issue, read 2026-11-13.
 - **Means:** the slow CPU encoder (F123) is fixed for BF16 without changing floating-point rules (F126). The patch is carried until #30432 or another ARM BF16 path is in the pin (D55); `sdk/native/patches/README.md` records when to drop each patch.
 - **Feeds:** D55, F123, F126, D10.
 
+<a id="f126"></a>
 ### F126. -ffp-model=fast does not speed up CPU text generation, and it changes greedy replies
 - **Finding:** Qwen3.5 4B Q4_K_M on the phone's CPU, b12352 with its CPU variants built with default floating-point rules against `-ffp-model=fast -fno-finite-math-only` (F123's flag), three alternating rounds at thermal status 0 to 1: prefill of 2,071 tokens 63.2 against 61.2 t/s, decode of 128 tokens 14.7 against 14.3 t/s (round 3: 61.2 and 61.4, 14.5 and 14.7), so no gain beyond thermal drift; Q4_K's matmuls run on integer dot products the flag doesn't touch. Three of five greedy replies differ (wording from the 15th word, a code block instead of a sentence, a colon inside or outside bold), all still correct.
 - **Evidence:** `research/b12352/cpu-flags-ab.sh`, 2026-11-13.
 - **Means:** the flag's one measured gain is the CPU image encoder with a BF16 projector (18 s to 5 s, F123), a path that runs only without an NPU or with `encoderDevice = Only(Cpu)`; its cost is CPU output that differs from upstream's standard Android build everywhere. Not taken. The F16 projector (1.8 to 2.5 s with unchanged numerics) is the better lever, but the hub mirrors `-hf`'s choice, so preferring it would be a deviation or a catalog choice (open).
 - **Feeds:** F123, D52, the hub or catalog choice of projector (open).
 
+<a id="f125"></a>
 ### F125. At b12352 every drafting mode still aborts the GPU, and Vulkan's crash has no fix yet
 - **Finding:** Upstream llama-server b12352 on the Adreno 830, Qwen3.5 4B, `-dev GPUOpenCL -ngl 99` with `GGML_OPENCL_COOPK_DP4A=0` (F75): MTP (`--spec-type draft-mtp --spec-draft-n-max 4`), DFlash (`--spec-type draft-dflash` with its Q8_0 draft) and n-gram (`--spec-default`, once a long repeat makes it draft) each abort the process on the first drafted batch, with F80's error: `clEnqueueNDRangeKernel` -54 (`CL_INVALID_WORK_GROUP_SIZE`), now at `ggml-opencl.cpp:1366`. Without drafting the same server answers (600 tokens, 15.9 t/s). OpenCL's speculative-verification work in this release (`c19043f`, `4b77dee`) does not reach this kernel. A short n-gram request seemed to pass, but only because it never drafted (`ngram-mod` needs a 24-token match). Vulkan was not run: F64 named two upstream fixes a retry needs, the Q4_K pipeline crash (#28635) and the wrong output (#30821 or a successor), and neither is in b12352; its one Qualcomm change (`78ffbaa`) is a flash-attention speed fix.
 - **Evidence:** the OpenCL build of b12352's device tools (`build-device-tools.sh` with `LB_EXTRA_TARGETS=ggml-opencl`), 2026-11-13; `git log b12052..b12352 -- ggml/src/ggml-vulkan`.
 - **Means:** unchanged: the SDK never drafts on the GPU, and the reason in `loadReport` now names b12352. Vulkan stays out (D31). Retry both with the next upgrade.
 - **Feeds:** F80, F67, D31, D52.
 
+<a id="f124"></a>
 ### F124. Since b12352 an NPU model's memory is not in the app's PSS, and comes back about a second after close
 - **Finding:** Qwen3.5 4B on the NPU, upstream llama-server: process PSS 607 MiB at b12052 and 76 MiB at b12352, while the phone's MemAvailable falls by about the same amount in both (3,189 and 3,023 MiB). The weights now live in DSP buffers that PSS does not attribute to the process. After `closeAndJoin()` returns, most of an NPU model's memory is still in use for about a second: Qwen3.5 4B, used memory 8,149 MiB right after close, 6,038 MiB one second later and flat for the next 29 s (below the 6,145 MiB before the load). In a test that runs straight after another, the earlier model's 2.2 GB is still out at the start.
 - **Evidence:** `/proc/<pid>/smaps_rollup` and `/proc/meminfo` around a load of each build, 2026-11-13; `LifecycleDeviceTest` on the phone at b12352: `closeThenLoadNeverHoldsTwoModels` peak 3,163 MiB while switching (Qwen 3,162, Llama 2,394), `closeDuringGenerationFreesMemory` sampled every second for 30 s after close; the full-flavor suite, 20 of 20 after the tests measured used memory and waited up to 5 s (memory back 201 ms into the wait).
 - **Means:** PSS can no longer show what a model on the NPU costs. The lifecycle tests measure the phone's used memory (`ActivityManager` total minus available) instead; `MemoryBudget` already reads available memory. Not a leak: the memory returns by itself. But an app that loads the next model at once would see about 2 GB less available memory for that second, so `ContextSize.Auto` and the fit check could choose a smaller context. Open: whether `closeAndJoin()` should wait for the memory to settle on the NPU.
 - **Feeds:** P2 T6 lifecycle tests, D33 (memory budget), F121.
 
+<a id="f123"></a>
 ### F123. The phone's CPU encodes a BF16 projector about 3.4x slower in the SDK's build than in upstream's Snapdragon preset; b12352 changed nothing (corrected)
 - **Finding:** Qwen3.5 0.8B, a 640x480 picture, model on the NPU and the encoder on the CPU (`--no-mmproj-offload`), phone cool: built the same way (upstream llama.cpp, `GGML_CPU_ALL_VARIANTS`, default floating-point rules, as the SDK builds), b12052 and b12352 take the same time, 18.3 and 18.1 s (two runs each). The first comparison (5.4 s at b12052 against 18.1 s at b12352) set the P0 spike's build against the SDK's: the spike used upstream's `arm64-android-snapdragon` preset (one CPU library, `-march=armv8.7a+fp16+dotprod+i8mm -ffp-model=fast -fvectorize -flto`). So there was no upstream regression to bisect. The same weights as F16 take 1.8 to 2.5 s.
 - **Evidence:** upstream llama-server built at both commits by one script, and b12352's CPU variants rebuilt with only the fast floating-point flags, timed back to back on the phone, 2026-11-13; the preset in `sdk/native/third_party/llama.cpp/docs/backend/snapdragon/CMakeUserPresets.json`.
@@ -641,12 +693,14 @@ topic, and within a topic newest first. The index lists every ID.
 - **Fixed for BF16 (2026-11-13):** upstream PR #30432, carried as patch 0002, adds the missing ARM path: 16.5 s to 3.1 s (F127, D55).
 - **Feeds:** D53, the CPU build's flags (open), a hub or catalog choice of projector (open).
 
+<a id="f122"></a>
 ### F122. The patched llama.cpp copy kept upstream's file times, so an upgrade linked stale objects
 - **Finding:** `prepare-llama.sh` unpacked the submodule with `git archive | tar -x`, which gives every file its commit time. b12352's sources are older than objects an Android build of b12052 had made hours earlier, so ninja kept a stale `speculative.cpp.o` and the link failed (`llama_model_target_layer_ids` declared C++ in b12052's `llama-ext.h`, C in b12352's `llama.h`). A cached CMake variable also kept the old build name, b12052, in `lb_version()`.
 - **Evidence:** the AGP link error and the object and source times, 2026-11-13; `version_names_build` and `props_build_info_names_llama_build` failing in a build directory made before the upgrade.
 - **Means:** the copy is unpacked with `tar -m` (files get the current time), and `LB_LLAMA_BUILD` is a plain variable. An upgrade could have shipped a library that mixed two builds and still linked.
 - **Feeds:** D52.
 
+<a id="f121"></a>
 ### F121. The upgrade to b12352: the contract still holds, the NPU reads pictures again, and the delta-net patch still pays
 - **Finding:** At b12352 (2026-11-12, 300 builds after b12052) the SDK matches upstream llama-server on every contract case on the Mac and on the phone's NPU, and the `tools/ui` goldens are unchanged. The NPU now encodes Qwen3.5 0.8B's pictures correctly ("Red and blue.", "Green and yellow.") at 0.35 s, so F120's fault is fixed upstream (likely the precision work, `d6be065` or `494d0f4`; not bisected). The re-ported delta-net head/tail patch still makes NPU prefill with MTP about 66% faster: 644 against 387 t/s (Qwen3.5 4B, 2,071 tokens, three alternating runs each, thermal status 0), as F8 found at b12052; upstream's fast NPU kernel still needs K == 1 (`htp-kparams.cpp:565`).
 - **What changed for the SDK:** `common_fit_measure` takes a list of model paths (external PLE files, `5f490d7`); a new route, `/v1/audio/speech` (OpenAI's speech shape over `/tts`), added as `Endpoint.Speech` with a contract case; `-hf` tags match only at a token boundary (`4b29d02`, `4c4ca5b`), ported to the hub, whose golden table gained four plan cases and a repository; ggml-hexagon opens its skeleton by absolute path from `GGML_HEXAGON_LIBHTP_DIR` (`76a6773`), which the SDK now uses (D54); NPU memory left PSS (F124); the phone's CPU encodes BF16 projectors slowly in the SDK's build, which turned out not to be a b12352 change (F123, fixed by F127). The HF token rule upstream added (`bbc2e4b`) the hub already had. `server.cpp`'s two functions the bridge copies, and the backend loader it ports, are unchanged. Nothing the bridge uses was removed (`8ca5a80`).
@@ -654,6 +708,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Means:** the pin moves to b12352 (D52), the image encoder goes back to following the model (D53). Open from the release: FP8 KV cache (`202c1a2`), external PLE or shard files (`--ple`/`--shard`), OpenCL's speculative-verification work (`c19043f`, `4b77dee`), which may make GPU drafting worth retesting (F80), and Vulkan to retry (D31).
 - **Feeds:** D10, D52, D53, D54, F8, F120.
 
+<a id="f120"></a>
 ### F120. The NPU computed Qwen3.5 0.8B's image encoder wrongly; the encoder had been on the NPU since P2 T6, and no test asked a model what it saw
 - **Finding:** On the OnePlus 13, with the model on the NPU (`HTP0`), Qwen3.5 0.8B answers a 640x480 picture that is red on the left and blue on the right with "The left half is blue and the right half is black." The same files are right ("Red and blue") when the image encoder (the mmproj) runs on the CPU or on OpenCL, with the language model still on the NPU. It is the same in upstream llama-server (b12052) as in the SDK: upstream also puts the encoder on the model's GPU-type device, so the SDK matched upstream and both were wrong. The projector's format is not the cause: the BF16 projector converted to F16 gives the same wrong answer on the NPU. Qwen3.5 4B's F16 projector is right on the NPU, so only some encoders break; Gemma 3 4B's wrong answers in F119 fit the same cause but were not rerun. Switching off ggml-hexagon's matmul (`GGML_HEXAGON_OPFILTER=MUL_MAT`), op fusion or the HMX paths did not help. Filtering other op groups crashed the server, so the faulty op is not isolated.
 - **What changed:** in P1 every model ran on the CPU, and the encoder with it. P2 (2026-11-06, D32) made `DevicePolicy.Auto` pick the NPU and put the encoder on the model's device ("not the first GPU"). The demo app has shipped the Hexagon backend since its first commit and has always used `Auto`, so on this phone its pictures were never encoded on the CPU. The code-quality pass (F105) did not change the image path: the demo's `Content.Image` and the SDK's `ChatJson.part` are unchanged by it, and the fault reproduces in upstream llama-server with no project code.
@@ -663,6 +718,7 @@ topic, and within a topic newest first. The index lists every ID.
 - **Superseded in part by F121 (2026-11-13):** b12352 fixes the NPU encoder; D51 gave way to D53.
 - **Feeds:** D51, F119.
 
+<a id="f119"></a>
 ### F119. The models do not appear to see an attached picture in the demo app on the phone (resolved by F120)
 - **Finding:** Found by the end-to-end run's step 3 (an image sent to Qwen3.5 0.8B), which only asserts that a reply arrives and so passed. The replies show that the picture is not used. Qwen3.5 0.8B answered "I am a text-based AI model and I don't see images in this conversation. Can you share the picture with me?" to a solid blue picture. Gemma 3 4B (a vision model; 3 further tries too) answered "Multicolored" to the same blue picture and, for a picture that is red on the left and blue on the right, "a classic joke about the distribution of jelly beans … White on the left, Brown on the right": invented. So the picture does not reach the model in a usable form, on both models. The app side is right: the stored files (`files/images/*.jpg`) are the right 640x480 JPEGs (pixels (220,30,30) and (20,60,220); (30,90,200)), the chat shows the right thumbnail, and `ChatEngine` passes the bytes to `Conversation.send(text, *images)` as `Content.Image(bytes, "image/jpeg")`. The SDK side passed its own image contract case (`t2-14-image`, SDK against upstream llama-server) on the host and on the phone's NPU. So the break is between them or on the phone. Candidates not yet tested: the mime type hard-coded as `image/jpeg`, the vision encoder on the phone's NPU backend (`DevicePolicy.Auto`), the projector not being loaded for these two models (both have their `mmproj-BF16.gguf` on the phone), and the way the message's image part is placed in the chat template. Not tested: the same pictures on the CPU backend, through the acceptance app, or on the Mac with the same files.
 - **Evidence:** the two test pictures and the answers' screenshots from the end-to-end run (raw output not kept); the hub folder on the phone (`mmproj-BF16.gguf` beside both models); `ChatEngine.kt` (the `Content.Image` line); `sdk/native/tests/contract/make-requests.py` (`t2-14-image` needs the projector).
@@ -672,60 +728,70 @@ topic, and within a topic newest first. The index lists every ID.
 - **Resolved (2026-11-13):** ggml-hexagon computed some image encoders wrongly at b12052 (F120); first worked around with the encoder on the CPU (D51), then fixed upstream in b12352, so the encoder follows the model again (F121, D53).
 - **Feeds:** a task after PD, F120, D51.
 
+<a id="f118"></a>
 ### F118. A model sheet could park itself low with its size cards and Get button cut off below the screen
 - **Finding:** On the OnePlus 13 the model sheet (opened from Get models) was, on some first opens, left parked at 73 % of the screen's height showing only its header, the by-line, the description and the Basic / Advanced switch; the size cards and the **Get** button were below the screen's edge, so a person would have to drag the sheet up to find them. The sheet opens on "Looking at the sizes…" and grows into the cards when the list arrives; Material's modal sheet kept the offset it had animated to for the first, short height. It was intermittent: 1 of 3 and 1 of 8 cold opens in two trials, and the end-to-end run's step 4 failed on it three times ("did not see Get … within 30 s"; the sheet was there, its Get button was not on screen). A second open of the same sheet (sizes cached) was always right. Not seen on the emulator.
 - **Evidence:** a screenshot of the failing step (the sheet parked low); `uiautomator dump`: the Drag handle at y = 2,341 of 3,168 instead of 1,118; 12 cold opens after the fix and 15 more, 0 parked (27 of 27), against 2 of 11 before. The fix: `DemoSheet` expands again, one frame after it, whenever its content's height changes. `ComponentBehaviourTest.aSheetThatGrowsAfterOpeningKeepsItsContentOnScreen` guards it (the original is intermittent, so that test alone would not have caught it).
 - **Means:** fixed in the design system for every sheet whose content grows after it opens. The count is small (27 clean opens); a rate below about 1 in 10 could still hide in it, and the end-to-end run opens the sheet again on every run.
 - **Feeds:** T13.
 
+<a id="f117"></a>
 ### F117. The phone was found in airplane mode after a test run; nothing the project does sets it, and the cause is not established
 - **Finding:** After the phone runs of 2026-11-12 the OnePlus 13 had `airplane_mode_on = 1`. Nothing in the project can set it (no `airplane`, `cmd connectivity` or radio command anywhere in `demo/` or `sdk/scripts/`; T13's rule is that airplane mode is never toggled). The runs that touched the phone were the instrumented tests, the journeys (one opens the notification shade), the monkey (random taps and swipes, restricted to the app, system keys and app switching off) and the end-to-end script (taps by coordinates). The log buffer is 256 KiB (F114), so the moment of the change was gone by the time it was looked for; the same runs also lost the adb connection once and the screen lock engaged between commands. The likely paths are a random swipe or tap of the monkey reaching the quick settings tile, or a stray tap while the screen was changing; neither is proven.
 - **Evidence:** `adb shell settings get global airplane_mode_on` = 1; `grep -ri airplane demo sdk/scripts` empty; `MonkeyTest.kt` (the flags); the logcat line `isAirplaneModeOn = true`.
 - **Means:** the monkey no longer runs on the phone (the emulator runs it, ALL PASS), and `check.sh` stops with a plain message when the phone is locked or in airplane mode before the journeys and the real-model run, so a run cannot fail later in a way that looks like the app's fault. The phone's setting was changed by something not identified, and was left for the phone's owner to switch back.
 - **Feeds:** T13.
 
+<a id="f116"></a>
 ### F116. Where Material is silent the app had been built from its own numbers: a pattern audit against the leading chat apps
 - **Finding:** The spec's "chosen" rows (the composer, the user's bubble, reply actions, section gaps, empty-chat chips) had never been compared with how ChatGPT, Claude, Gemini, Google Messages or the others do them. An audit (teardown sites, Gemini's and Google Messages' redesign write-ups, a streaming-UI article; no leader publishes pixel values, so no number was verified) found: **matches:** the single-row pill with **+** at the start, attach behind it, send at the end and stop while streaming (Gemini, ChatGPT, Claude, Grok, Perplexity); open, unbubbled assistant text with an action row on the latest reply; "Thought for N s"; the model name with a chevron in the top bar; the empty-chat greeting and starter chips; a navigation drawer. **Differences, changed:** the user's bubble (the app's was near-black in light and near-white in dark; the leaders use a soft neutral), send always live when empty (the leaders show it only when there is something to send), the Think chip outside the bar (the leaders keep a tool chip in it), no way back to the latest message after scrolling up. **Differences, kept:** the "Switched to X" divider (no leader has one; useful because the models differ), the size cards and fit words (no precedent; leaders do not download models), letter avatars for models. **Not verified:** exact radii, padding and colours of any leader; haptics; dark palettes; WhatsApp, Telegram and iMessage (their pages were not reachable).
 - **Evidence:** the audit's sources: ai-design-patterns.pages.dev and aiuxplayground.com teardowns of ChatGPT, Claude, Grok, Perplexity and DeepSeek; 9to5google.com on Gemini's and Google Messages' redesigns; smashingmagazine.com on streaming UI. The audit also wrongly said replies carry actions under every reply, which was not so (`ChatContent.kt`: `showActions = !busy && item.key == lastReplyKey`).
 - **Means:** D49. The limit: "what the leaders do" here rests on secondary sources, not on measured apps; the bubble colours are the app's own. The rule going forward: a value Material does not give is checked against the leaders first and recorded as chosen with that check, or not used.
 - **Feeds:** D49, T13.
 
+<a id="f115"></a>
 ### F115. Four small edge cases in the chat that the end-to-end run met
 - **Finding:** (1) **A stale model divider after an edit.** Choosing Swift in an empty chat appended "Switched to Swift" as the chat's first line; the run then switched to Writer ("Switched to Writer"), and editing the first message cut the chat back to that message, which removed the later divider but kept the model: the new reply came from Writer (13 words/s, the header said Writer) under a banner that still said "Switched to Swift". (2) **Choosing a model in an empty chat adds a divider** ("Switched to Swift" above the first message) though nothing was switched from. (3) **A stopped reply that only thought** shows a blank preview line in the chat list ("Swift:" and nothing) where "Stopped" would say what happened. (4) The first switch to Writer, minutes after its download, answered "Writer needs more memory than this phone has free right now" with 7.3 GB available; the same model loaded in a new chat nine minutes later and the same mid-chat switch passed on the rerun (`MemAvailable` 3.7 GB while loaded). Not reproduced; treated as the moment's memory (the 3.3 GB just written was in the page cache), but the app's limit line does not offer a plain retry for it ("Try a smaller size" only opens the size sheet).
 - **Evidence:** `ChatEngine.switchModel` and `edit`/`truncateFrom` (`chat/ChatEngine.kt`); screenshots from the run (the chat after the edit, the Chat list); `Limits.insufficientMemory`; `adb shell grep Mem /proc/meminfo` before and after.
 - **Means:** none breaks a journey; all four are rough edges a person would notice. **Fixed 2026-11-12 (all four):** no divider for the first model of an empty chat; an edit cut that removes a divider re-appends the divider for the model that answers; the list preview says "Stopped" for a reply with no answer text; the memory line offers "Try again" first.
 - **Feeds:** T13.
 
+<a id="f114"></a>
 ### F114. Facts about driving the real phone from outside (T13's script)
 - **Finding:** (1) A **debug build has two launcher entries** (`MainActivity` and LeakCanary's `LeakLauncherActivity`); `monkey -p <pkg> -c LAUNCHER 1` may start LeakCanary's, so the first run looked for 60 s at a screen that was never the app. The script starts `<pkg>/.MainActivity` by name. (2) **logcat's ring buffer is 256 KiB** on this phone: a 20-minute download pushed the hub's resume lines out, so the log is read early after the relaunch and again as the run goes. (3) A **Clear all in Recents kills the app**: touching the phone mid-run broke the first attempt. (4) `uiautomator dump` text for the composer's Think chip also matches the **"Thinking" fold** in the transcript: the script takes the lowest node whose text is "Think" or starts "Think ·". (5) `ChatScreenTest` clipboard tests failed once on the emulator (three reads returned null, a focus loss) and passed on the rerun of the whole device check.
 - **Evidence:** `demo/scripts/e2e/phone.py` and `real_model_e2e.py`; the first run's "did not see first run within 60 s"; `adb logcat -g` (256 KiB); the device check logs (FAIL 618 s, then PASS 670 s with no change in the tests).
 - **Means:** the script is a fair gate again; a phone run must be left untouched; a clipboard failure on the emulator alone is not a regression until it repeats.
 - **Feeds:** T13.
 
+<a id="f113"></a>
 ### F113. A small model can loop without end in its answer, and nothing in the app ends it: Think Quick looped on a fresh install, Think Deep never finished
 - **Finding:** Swift (Qwen3.5 0.8B) was asked "How many R letters are in strawberry? Think it through." on the OnePlus 13. **Quick** finished once in 16.5 s ("Thought for 9 s"); on three other tries it looped. The clearest picture (final run) shows the thinking **finished normally** ("Thought for 8 s", inside Quick's 512-token budget) and the **answer** then listing the letters over and over ("1. s - s, 2. t - t, 3. r - 1st R, …", then the same again) for the whole 150 s the script waited. Earlier on the same chat the answer looped as "Wait, is the 'r' in 'be'?…" for over ten minutes. **Deep** (no budget) was still going after 150 s. **Stop** ended every one at once and kept the reply as "Stopped". Nothing in the app (no maximum reply length, no repeat guard) ends such a loop by itself. So the reasoning budget is not the issue: the loop is in the answer.
 - **Evidence:** the end-to-end run's results (`think_quick_still_going_after_s` / `think_deep_still_going_after_s` and `*_stop_worked`; raw output not kept); `Thinking.kt` (the budgets cover the reasoning only; no level sets a maximum for the reply). Background research for the decision: hosted APIs always cap output; llama-server, Ollama and PocketPal ship no cap and no penalty by default; Qwen3.5's model card recommends `presence_penalty` and warns that the 0.8B loops more than its siblings; the repeat penalty is not recommended.
 - **Means:** a loop is a normal event on a phone-sized model and Stop is the only exit. Open decision (deferred on 2026-11-12 to after PD): a per-level cap on the whole reply (for instance 1,536 Off, 2,048 Quick, 4,096 Balanced, 8,192 Deep, ended as "Stopped at the length limit" with Retry) and Qwen's recommended `presence_penalty`; and a Settings page where the sampling values can be changed with a "reset to the model's default". Not decided: D50 when it is. **Decided 2026-11-14 (D60):** a per-level limit on the whole reply with Continue, the card's presence penalty, and per-model and per-chat sampling.
 - **Feeds:** T13, a possible D50 after PD.
 
+<a id="f112"></a>
 ### F112. Writer was fetched as a file the library could not name: the catalog's key was not the size picker's Recommended file
 - **Finding:** The catalog said Writer is `gemma-3-4b-it-qat-GGUF:UD-Q4_K_XL`, but the size picker's Recommended tier is `Q4_K_M` whenever a repo has it (the plan's own rule, `Sizes.kt`). "Get Writer" on the phone therefore downloaded `Q4_K_M` (2,489,894,016 bytes) plus the vision file, and the library, which gives a friendly name only to the catalog's own key, listed it as "Gemma 3 4B": two names for one model (D48's "one name per model" broken), and the sizes on the Writer card (2.54 GB) did not match the download. Found by the end-to-end run, which waited 20 minutes for a "Writer" row that could not appear.
 - **Evidence:** the phone's hub folder (`gemma-3-4b-it-qat-Q4_K_M.gguf` and `mmproj-BF16.gguf` in the snapshot, plans for three sizes); `huggingface.co/api/models/unsloth/gemma-3-4b-it-qat-GGUF/tree/main` (Q4_K_M 2,489,894,016; UD-Q4_K_XL 2,537,530,496); the Models screen ("Gemma 3 4B 2.5 GB").
 - **Means:** fixed: the catalog's Writer key and size are `Q4_K_M` (catalog, previews, the catalog pin notes, the plan's table), and `CatalogTest.everyCatalogFileIsWhatTheSizePickerRecommends` fails if a catalog key is ever not the Recommended quant. Not changed: a person who picks another size in the sheet still gets the real name in the library (the stated rule).
 - **Feeds:** T13, D48.
 
+<a id="f111"></a>
 ### F111. The photo picker is two different things, and the Google Photos one needs Done
 - **Finding:** `sendAnImage` found no picture on the OnePlus 13 ("the photo picker showed no picture") because it looked for AOSP's `icon_thumbnail` ids. Android 16 phones with Google Photos open `com.google.android.photopicker`: no resource ids, each picture described "Photo taken on …", and a multi-select grid where a tap only ticks a picture and **Done** hands it back; the journey also has to wait for the app to be in front again before it looks for the app's own UI. The driver now takes either picker, presses Done where it is asked, and waits for the app. The picker shows the real gallery, and each run adds a blue test picture to it (named `journey-<time>.jpg`): six were left in the phone's gallery and removed by name (`content delete … _display_name LIKE 'journey-%'`).
 - **Evidence:** `ChatJourneys.sendAnImage` on the phone: 1 test, 0 failed, 0 skipped; the failing runs' messages; `Robot.pickFirstPhoto`.
 - **Means:** the phone gate for the chat journeys is real (the emulator's missing picker is no longer the only reason the test is skipped). Anyone running it on a phone with a gallery should expect it to add a picture and clean up with the command above.
 - **Feeds:** PD T11, design system v2 step 8, T13.
 
+<a id="f110"></a>
 ### F110. The monkey's random "flip" event aborts the run on the emulator
 - **Finding:** `MonkeyTest` ran Android's `monkey` with its default event mix, which includes a keyboard-lid flip. The emulator refuses to inject it (`FileNotFoundException: /dev/input/event0: open failed: EACCES`), monkey reports "Monkey aborted due to error" and the test fails with "monkey stopped early", on whichever seed happens to draw a flip first. It failed in three of five full runs on 2026-11-12 and passed on rerun; the assertion's tail showed only the permission line. `--pct-flip 0` removes it (a lid flip means nothing on a phone); all three seeds then pass (3 of 3, twice, and through `check.sh`).
 - **Evidence:** the monkey log of the failing runs ("** Monkey aborted due to error." after "Got IOException performing flip"; raw output not kept); `MonkeyTest.kt` (the command); `check.sh --device --only quality,monkey` PASS.
 - **Means:** the monkey step is a fair gate again: a failure now means a crash or an ANR.
 - **Feeds:** PD T11, design system v2 step 8.
 
+<a id="f109"></a>
 ### F109. The screens do not share a layout system: gutters, gaps, type roles and states differ by screen, because nothing owns them
 - **Finding:** An audit of every route, sheet and state (58 pictures looked at, both themes) found: (1) **Gutters differ by place.** Screens use 16 dp; the composer and the limit and token banners 12 dp (they stick out past the text and bubbles); the model sheet 20 dp; the model switcher, Think menu and message menu 36 dp for their section label and 41 dp for their rows; "Get more models" sits at about 28 dp, which matches neither the card edge nor the card text. (2) **Proximity is broken.** A section label is as far from its own content as from the content above it (24 dp each side on Appearance, Models, Instructions), so labels float; Save sits 8 dp under its field while labels get 24; in the chat, `31 words/s` and timestamps touch the text above and the action row is far below the reply (open style) or nearly touches the composer (bubbles); option rows in the Phi sheet are 44 and 28 px apart. (3) **The type has too little contrast:** row title 15 sp, subtitle 13 sp, card description 15 sp again, caption 11 sp; the user's text, the reply, the list and the code are all about 15 sp. Row titles are bold only when the row is tinted (Models, Get models bold; Settings, drawer, sheets regular); sheet titles are serif while screen titles are sans. (4) **Components differ.** Two primaries (near-black on Get, Save, New chat; navy on the FAB, send, selection, links); in Get models and the quant list a card's tint means fit, a navy border means selected and a badge means recommended, with the badge straddling a card's top edge; "Get more models" is bare text on two screens; Settings, About and Storage are bare text rows with no group, divider or chevron; the drawer lists destinations and chats in one style; the About values sit in a column at 68 % of the width; trailing text such as "not used yet" stops 47 dp short of the card's padding edge while "Runs great" sits on it; the empty chat's chips are left-aligned under a centered hero. (5) **Defects:** the token field has a search icon; the disabled Save is white on grey (contrast fails); the send button shows a grey halo in some states; in dark theme the status bar band looks lighter than the screen while a sheet is open (not confirmed); model tiles mix lowercase and sentence-case lines ("can think first, or not" beside "Uses about 1.0 GB"); a model has a nickname on first run and its real name on Get models.
 - **Evidence:** the audit's pictures (raw output not kept); `DemoRow` in `designsystem/.../components/Lists.kt` (one component with 10 parameters: an `inset` default of 12 dp that callers override with 0 or pad over, a title weight that depends on `tint`, a `weight(2f)` text column that leaves trailing text mid-row); `ModelSwitcherSheet.kt` (16 dp sheet padding plus the row's inset), `SettingsScreens.kt` (`inset = 0.dp`), `LibraryScreen.kt` (literal `16.dp`, `24.dp`, `8.dp`); `DemoType` (7 sizes, 28 22 20 17 15 13 11, the iOS text-style sizes, no ratio, 2 sp apart for the three styles used 100 times); `DemoSpacing` (5 steps; no layout primitive uses them for a screen's gutter).
@@ -733,24 +799,28 @@ topic, and within a topic newest first. The index lists every ID.
 - **Resolution (2026-11-12):** all five groups are fixed in design system v2 and checked against the pictures and the code (two review rounds): the gutter is 16 dp on every screen and sheet (a test asserts it), labels sit 4 dp over their content, the type is Material's roles, one primary, one signal per state, sentence case, one name per model, the composer padded on one 16 dp line. The dark-theme band was wider than the audit saw: the activity's window background follows the phone's day or night setting, so a dark app on a light phone showed a light strip behind the status bar on every screen (sheets only made it visible); the window now follows the app's own theme and the walk asserts it. Left as they are, with reasons: the model card's trailing layout, dp literals inside `:designsystem`, the gap under "Picked for your phone".
 - **Feeds:** D48, PD design system v2, T13.
 
+<a id="f108"></a>
 ### F108. Every performance budget is met on the phone; the heap budget measures what the heap holds, not what ART sets aside
 - **Finding:** On the OnePlus 13, release build with the Baseline Profile and 10 iterations each, cold start is 116 ms to initial display and 198 ms to full display (budgets 450 and 700; without the profile 123 and 236 ms); flinging the Chat list of 300 chats and a chat of 300 messages finishes every frame early (P90 −9.0 and −7.3 ms); streaming 60 tokens a second for 20 s has frameOverrun P90 −1.4 ms, `ChatEngine.onDelta` 5 µs and `Markdown.parse` 0.18 ms a call; the model sheet and the layout switch have P90 −6.0 and −4.5 ms. Macrobenchmark's heap metric is the size ART sets aside: it saw-tooths from 19 MB to 50 to 75 MB inside each stream and reads 56 MB to 89 MB median (up to 139 MB at the end of the full suite) while the heap holds 10 to 23 MB and the baseline stays flat (the same process for ten runs): no leak, only the generational collector's headroom. The gate samples Heap Alloc from `dumpsys meminfo` (median of the run peaks 21.2 MB, budget 64) and reports the footprint.
 - **Evidence:** `demo/scripts/perf.py` and the macrobenchmark result files it reads (the results table was not kept); the polling of `dumpsys meminfo` through the ten streams, 2026-11-11.
 - **Means:** how T12 differs from its plan, so no one reads more into it than it proves. (1) The benchmark builds swap the container through a class found by name (`BenchmarkContainerSource`, in `src/benchmark/kotlin`, kept by `proguard-rules.pro`), because a manifest `android:name` override did not apply to the build types the Baseline Profile plugin creates; the production code only calls `ContainerFactory`. (2) The generated profile is in `demo/app/src/release/generated/baselineProfiles/` (the plugin's place), not `src/main/baseline-prof.txt`. (3) The budgets are checked by `perf.py` from the result files, because `MacrobenchmarkRule.measureRepeated` returns nothing a test could assert on; `check.sh --device --perf` runs both. (4) `UNLOCKED` is suppressed for the clock-lock check an unrooted phone cannot pass. (5) The heap budget's definition was changed to Heap Alloc (decided 2026-11-11). (6) The fake engine and hub mean the numbers are the app's own; the model's cost is T13's. Not covered: both message styles in the chat fling, a trace section around `ChatRepository.update`.
 - **Feeds:** PD T12, Reference I, T13.
 
+<a id="f107"></a>
 ### F107. The journeys found four defects in the screens; each was fixed
 - **Finding:** (1) A download that stopped (a model behind a token, the network, the disk) reached the chat as "<Name> isn't on this phone any more", and a held message kept saying it would be answered "the moment it's here": `ChatModelState` had no word for a failed download. It has now (`DownloadFailed`), the chat shows the plain line of Reference G with its button (Add token, Retry), Retry starts the download again, and saving a token restarts the downloads refused for want of one (`ModelRepository.tokenSaved`). (2) Switching from Sidebar to Chat list inside a chat left nothing beneath the chat, so its Back did nothing; Back from such a chat now goes to the list. (3) A phone with no system photo picker (this emulator image has none) crashed on "Add a photo" with `ActivityNotFoundException`; it says "This phone has no photo picker." now. (4) Reference G says "Try a smaller size" opens the model's sheet on Smaller; the app opened the model switcher, which lists the models on the phone, not the sizes of this one. Decided (2026-11-11): the spec stands. It now opens this model's own sheet on Smaller (`ModelSheetRoute(startTier = Smaller)` from the chat), and Get starts that file and moves the chat to it, the question held.
 - **Evidence:** `GatedJourney.gatedModelNeedsAToken`, `ChatEngineTest.aRefusedDownloadBecomesAPlainLineAndRetryStartsItAgain`, `ModelRepositoryTest.savingATokenRestartsOnlyTheDownloadsRefusedForWantOfOne`; `ShellJourneys.bothLayoutsJourney` (Back did nothing before the fix); `ChatJourneys.aPhoneWithNoPhotoPickerSaysSoInsteadOfCrashing` (the first run of `sendAnImage` died with the exception); `ChatJourneys.memoryRefusalJourney` (the sheet opens on Smaller and Get enqueues the Q3_K_M file), `ModelSheetViewModelTest.aSheetOpenedOnSmallerStartsOnTheSmallerSize`.
 - **Means:** how the journeys differ from the plan, so no one reads more into them than they prove. They run in the light theme; `WalkJourneys.everyScreenInBothThemes` walks every screen and sheet in both, with the accessibility check on each once it settled. Process death cannot be made by the test (the instrumentation shares the app's process): `downloadSurvivesProcessDeath` stops the worker as the system does and restarts the activity, and the SDK's `hub-resume` check is the real kill. The monkey runs inside the instrumentation (fake hub and engine, three seeds of 10 000 events) rather than on a `benchmark` build, which T12 had not yet made. `sendAnImage` needs a phone with a photo picker (it is skipped on this emulator, so the gate needs the phone). The system asks about notifications once per install, so `NotificationDeniedJourney` runs first on a fresh install in its own run.
 - **Feeds:** PD T11, F106, Reference G, Reference L.
 
+<a id="f106"></a>
 ### F106. A test can fail a load the way the native side does, and the accessibility check flags a surface that is still moving
 - **Finding:** (1) `FakeLlamaBro.failLoad(reason, message, times)` makes `load` throw the `NativeError` the native bridge would (`file_not_found`, `insufficient_memory`, `other`), so the app's memory-limit and retry lines are tested against the SDK's own error path rather than a hand-made exception; `NativeError` became public under `@InternalLlamaBroApi` for it (`llamabro.api` +6 lines). (2) The Compose accessibility check runs right after an action, while a drawer or a sheet is still sliding in, and reports the 48 dp menu button or sheet row as 45 dp because the moving surface clips it; the shell tests turn the check off across the move and on again once the screen is idle.
 - **Evidence:** `ChatEngineTest.insufficientMemoryBecomesAPlainLimit`, `aLoadThatFailsForAnotherReasonSaysSoAndOffersRetry`; `sdk/scripts/check.sh` ALL PASS (host, API dump updated); `ShellTest` 15 of 15 on the API 35 emulator (the first run showed the 45 dp reports; the same views pass once settled).
 - **Means:** the menu button and the sheet rows are 48 dp (`IconAction` sets `size(48.dp)`); the check stays on for every settled screen.
 - **Feeds:** PD T11, F104.
 
+<a id="f105"></a>
 ### F105. ktlint and detekt are wired into the root build; the ktlint Gradle plugin finds no sources under AGP 9, so the CLI runs instead
 - **Finding:** (1) `org.jlleitschuh.gradle.ktlint` 14.0.1 creates only a script check and a format task for Android modules on AGP 9.1 (built-in Kotlin has no `org.jetbrains.kotlin.android` plugin to hook its source-set tasks on) and defaults to ktlint 1.5.0; the root build therefore runs the pinned ktlint 1.8.0 command-line jar (the `shadowed` variant) in a `JavaExec`. (2) detekt 2.0.0-alpha.3 (built against Kotlin 2.3.x, Gradle 9.3.1, AGP 9.1.x) works with AGP 9 and creates per-variant tasks; 2.0 renamed rule options (`threshold` became `allowed*`; `MatchingDeclarationName` moved to `naming`). (3) The first run reported 13.5 thousand ktlint findings in 265 files and 611 detekt findings; `ktlintFormat` fixed all but 203. (4) ktlint's `binary-expression-wrapping` wrote conditions like `if (x !=` / `null` / `) {` in 29 places and `when-entry-bracing` braced 94 one-line entries; both are disabled in `.editorconfig` and the results tidied by script. (5) Real defects found: two dangling KDocs (`Catalog.byRepo`, `NativeBridge`), 148 inline fully-qualified names, constant names in PascalCase, three files not named for their declaration, `ChatEngine.stream` of 103 lines with eight responsibilities (now `ReplyDraft` plus four small functions), and `ChatEngineTest.until` ignoring its `what` argument.
 - **Evidence:** the 2026-11 code-beauty pass (the ktlint and detekt build wiring, the reformat, the clean-up); `demo/scripts/check.sh` and `sdk/scripts/check.sh` both ALL PASS with the new `quality` step (the SDK's contract, JVM and end-to-end steps unchanged by the formatting); 66 detekt findings baselined in the SDK modules (`sdk/*/detekt-baseline.xml`: `LlamaBroHub`, `BlobDownloader`, `HttpTransport`, `HeaderFetch`, `Transfers`, `ModelConfig.toJson`, `Conversation.streamReply`, and magic numbers in the acceptance app), 2026-11-11.
@@ -761,30 +831,35 @@ T9 follow-up (same day): `ChatScreen` is a thin route (view model, platform: cli
 
 Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatActionsSheets` (one sheet whose content swaps between `ActionsContent` and `RenameContent`), and every settings page (`AppearanceContent`, `InstructionsContent`, `DefaultModelContent`, `TokenContent`, `AboutContent`) are stateless with previews of each state; `SettingsViewModel.hasToken` is derived from a write counter. Reading the previews found misaligned left edges (the Chats title at 27 dp, settings rows at 26 dp and the drawer's selected row wider than its button, against a 16 dp gutter), fixed at the cause: `DemoRow(inset)`, the `TopBar`'s leading space, drawer rows at 4 dp, Default model as cards. Spacing now comes from `DemoSpacing` (4, 8, 12, 16, 24 dp) and type from `DemoType`; `demo/scripts/check.sh` fails on a size in sp or a dp literal in a padding, gap or spacer of `:app`. The demo's phone tests also run on an arm64 emulator (`DEMO_DEVICE=emulator-5554`, API 35: API 37's image breaks Compose's test input injection).
 
+<a id="f104"></a>
 ### F104. T10's screens are built on derived state, and the SDK's plan and estimate types can't be built in a test, so the app reads them as plain values
 - **Finding:** (1) Under the architecture rule of declarative, flow-derived state, every T10 view model exposes `StateFlow`s made with `combine`, `flatMapLatest` and `stateIn(WhileSubscribed(5 s))`; only genuine input is a mutable flow (the query, the mode, the pick, "Retry"). Per-row work (a fit, a download's progress, a real estimate) is a flow asked for when the row first appears, so a late result recomposes that row alone. A sheet's view model lives in a store that is cleared when the sheet leaves the screen (`rememberSheetViewModelOwner`), which cancels its estimates; the activity's own store would have kept them until the whole screen closed. (2) `HubPlan` and `FitEstimate` have internal constructors, so a JVM test can't build them: `HubGateway.estimate(model)` returns `HubEstimate` (plain sizes and the projection), and `RealHubGateway` converts. (3) The hub can list complete models but not partial downloads, so the library's "Downloading" needs the app to keep the keys: `AppSettings.pendingDownloads`, added on Get, removed on cancel, remove, or when the model appears in `cached()`; a paused download stays listed with Resume. (4) Without `AppContainer.discovery` as an injectable, the phone tests would have needed a fake HTTP server; `HfSearchTest` already covers the HTTP layer, so the phone tests stand a `FakeDiscovery` in. (5) Every screen is a thin route (view model, `collectAsStateWithLifecycle`) over a stateless screen over small parts, each with `@Preview`s for its states in light and dark; `:demo:app` runs them as screenshot tests (`Screenshots.kt`), and the design system gained `DemoDialog`, `DialogCard`, `SwipeToRemove` (with a screen-reader action), `FactCard`, and a public `SheetFrame`.
 - **Evidence:** `demo/app/src/test/.../ui/{firstrun,models}/*ViewModelTest.kt` (51 tests; a deliberate break of the debounce, the Basic fallback and the parallelism limit each failed its test, 2026-11-10); 68 screenshot-test pictures reviewed against the mockups (the pictures and the screenshot tests are not in the public repository); `ModelRepositoryTest` (four new tests for the downloading list).
 - **Means:** T9's chat screen got the same treatment afterwards (see F105). The mockup says "120 GB free", the plan "6.1 GB of 126 GB free space used": the library follows the mockup. For a model the app doesn't ship (a search result), the sheet shows the repo alone, not "by <owner>", because the repo's owner is the uploader and not the maker.
 - **Feeds:** PD T10, PD T9, D46.
 
+<a id="f103"></a>
 ### F103. A review of T9 found a chat handle that outlived its screen, a message lost on refusal, and a crash on a bad photo
 - **Finding:** A review of commit cba016d by a reader with no part in writing T9 found, confirmed in the code: (1) every `ChatEngine.open` started about six coroutines in the app-wide scope that never ended, so each chat opened leaked a database observer and a pump, and two handles on one chat could answer one held message twice; (2) a photo that couldn't be decoded threw in `viewModelScope` and killed the process; (3) `send` cleared the draft before the engine said yes, so a message with pictures for a model that can't see them was lost and its files leaked; (4) a layout switch kept the rows built for the old style; (5) edit mode dropped new photos; (6) tapping the model already in use added a "Switched to" divider and stopped the reply; (7) Retry stacked a second reply on a failed one and the limit line stayed; (8) the share card named the current model, not the model that wrote the reply; (9) a share-card write failure crashed and an old card was deleted while another app might still read it; and tests that could not fail (the waking hairline is always in the tree; the photo test never checked the thumbnail). All are fixed in the follow-up commit, each with a test that fails without the fix. Not changed: "Get more models" still opens the library, because the `get_models` route is T10's.
 - **Evidence:** the review report (2026-11-10); `ChatEngineTest` (`closingAHandleStopsItsReplyAndItsObservers`, `sendSaysWhetherItWasTaken`, `picturesToAModelThatCantSeeAreRefusedWithTheLine`), `ChatViewModelTest` (nine new tests), `ChatScreenTest` (five new tests).
 - **Means:** every handle now has its own scope and `close()`, called from `ChatViewModel.onCleared`; leaving a chat stops its reply (saved as stopped). `send` is `suspend` and returns whether the message was taken. A rule for T10 and T11: anything a screen opens in the engine is closed with the screen.
 - **Feeds:** PD T7, PD T9, PD T10, PD T11.
 
+<a id="f102"></a>
 ### F102. A Light or Dark choice in the app left the status bar's icons for the system's setting, so the clock vanished on a mismatch
 - **Finding:** `enableEdgeToEdge()` reads the phone's dark mode once. With the phone dark and the app set to Light, the T9 screenshots show white status icons on the light canvas (the time is unreadable). `AppShell` now sets the icon appearance (`WindowInsetsController`) whenever the theme choice changes (`SystemBars`). The first attempt, calling `enableEdgeToEdge()` again from the composition, made LeakCanary report each activity's compose view as leaked in every shell test, so only the appearance is set.
 - **Evidence:** a T9 screenshot before the fix (the clock is a ghost; raw output not kept); `ChatShellTest.systemBarIconsFollowTheAppTheme` (after), 2026-11-10.
 - **Means:** the T8 theme setting was incomplete. Fixed in T9.
 - **Feeds:** PD T8, PD T9.
 
+<a id="f101"></a>
 ### F101. T9's accessibility checks found what T3's component checks missed: long-press targets 37–40 dp tall and an unlabelled sheet handle; the screen also drew a ghost reply row
 - **Finding:** `enableAccessibilityChecks()` on the whole screen failed on (1) message bubbles and replies, whose long-press area was only as tall as the text (37–40 dp; `UserBubble`, `ModelBubble`, `OpenReply`), (2) the bottom sheet's drag handle (no label, 36 × 24 dp). Both are in `:designsystem` and passed T3 because no component test put them in a real list or opened a sheet. Both now get a 48 dp touch area and the handle a label. The bubbles' area grows without moving anything. The handle is Material's own plain 48 dp box, which makes every sheet 24 dp taller than the mockups draw (15 screenshot references re-recorded): two versions that kept the mockups' pixels (a bigger box laid out around the bar; the content pulled up over the box) either failed the check or failed it whenever a sheet's first row was tappable and covered the handle's lower half. The tests also found a real bug: the stored placeholder row of a reply being written was drawn next to the streaming row, an empty clickable ghost; `ChatItems` now leaves it to the streaming item. On the OnePlus 13 the system zooms an activity open for about a second, and an accessibility check made then reads every button at about three quarters of its size; the tests wait for the window to settle before the first action (`ChatScreenTest.settleWindow`).
 - **Evidence:** the `ChatScreenTest` runs of 2026-11-10 (first run 12 failures of 31, last run 31 of 31 pass); `ChatItemsTest.theReplyBeingWrittenIsNotAStoredRow`.
 - **Means:** component tests with accessibility checks are not enough: each screen that uses a component in a new role needs its own check. Reference K's recomposition test needs the list to stop scrolling before it counts (new rows scrolling in are compositions, not recompositions).
 - **Feeds:** PD T3, PD T9.
 
+<a id="f100"></a>
 ### F100. The message bar floated far above the keyboard: the window resized for the keyboard and the screen padded for it too
 - **Finding:** Found while the tests ran, then reproduced in the real app: with the keyboard up, the bar sat about 260 dp above it with a hole between, and the empty chat's title was pushed off the top. `MainActivity` drew edge to edge and the screen used `imePadding()`, but the manifest left `windowSoftInputMode` unset, so the system also resized the window. `adjustNothing` fixed it: the bar now sits on the keyboard.
 - **Evidence:** screenshots of 2026-11-10 (the fixed state is the T9 streaming screenshots; raw output not kept), the manifest line in `demo/app/src/main/AndroidManifest.xml`.
@@ -793,6 +868,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 
 ## PD demo app (PD T1, read from the SDK and upstream b12052)
 
+<a id="f97"></a>
 ### F97. An app can't show a fit label for a list of models without the memory budget, which is internal
 - **Finding:** The budget `ContextSize.Auto` fits a model to is computed only inside the runtime, from Android's memory at load time, the prompt cache and the reserve. An app listing search results has no public way to get it. `hub.estimateFit` gives a full answer, but it needs a plan and GGUF header reads per file (F88), about five requests per search row.
   - **Thinking isn't in `/props` either.** At b12052 `/props`' `chat_template_caps` has no "can think" flag: its keys are `supports_*` for tools (`supports_tools`, `supports_tool_calls`, `supports_parallel_tool_calls`, `supports_object_arguments`), the system role, typed and string content, `supports_reasoning_effort` and `supports_preserve_reasoning`. llama-server decides thinking with `common_chat_templates_support_enable_thinking`, which `/props` doesn't export. The app infers it instead (PD plan, Changes to the design, 2).
@@ -800,6 +876,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** The SDK exposes the budget as `LlamaBro.memoryBudgetBytes(configure)`: the snapshot and `MemoryBudget.budgetMib` with no side files, in bytes; null where memory can't be read (the fake engine). Its KDoc says it moves with free memory and is a hint, not a promise. Tested by `MemoryBudgetApiTest`.
 - **Feeds:** PD T1, PD T5, D42, D45, F88.
 
+<a id="f96"></a>
 ### F96. An app that stores its own chats can't start a `Conversation` from them; the SDK only restores its own JSON
 - **Finding:** `Model.conversation` always starts empty, and `restoreConversation` needs `Conversation.toJson` output. An app whose chats live in its own database (PD's Room) can't rebuild a `Conversation` after an edit, a regenerate, a model switch or a reopened chat without writing the SDK's JSON format itself.
 - **Evidence:** `sdk/llamabro/src/main/kotlin/com/suhel/llamabro/Model.kt:269` passed `emptyList()` as the history to the internal constructor, which already takes one; `restoreConversation` decodes `ConversationJson` only, 2026-11-09.
@@ -808,6 +885,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 
 ## Hub (P3 planning, read from upstream b12052)
 
+<a id="f99"></a>
 ### F99. The SDK's DFlash test passed in 4 of 4 runs, each right after a fresh install of the test app; F95 did not recur
 - **Finding:** The `f95-dflash-repeat` script ran `DflashDeviceTest` four times on the OnePlus 13. Before each run it uninstalled the hexagon test app, pushed Qwen3.5 and the draft, and let Gradle install the APK, so each run was the first after an install, as F95's failing run was. All four passed: the reply equals upstream's byte for byte (the test's assertion) and `draft_n` is 435. Decode 32.7-33.5 t/s. `MemAvailable` before the load 6.9-8.1 GB, after the reply 1.3-1.5 GB.
   - **Discarded:** a first attempt never started Gradle (wrong wrapper path, exit 127) and its printed results were stale files from an earlier run; deleted. The script now removes old result files before each trial.
@@ -815,6 +893,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** with F98 (upstream, 24 of 24) and F90's earlier runs, F95's divergence has now not recurred in 28 further runs, including the fresh-install case. The one-token divergence stays unexplained and unreproduced; it does not block P3. Treat it as a rare event: if `DflashDeviceTest` fails again, keep the XML and the logcat of that run and compare with F95.
 - **Feeds:** F95, F98, F90, D41.
 
+<a id="f98"></a>
 ### F98. Upstream llama-server with DFlash on the NPU matched F73's greedy reply in 24 of 24 asks over 8 fresh loads; F95's divergence stays unexplained
 - **Finding:** [`f95.sh`](../../research/p3/f95-dflash-repeat/f95.sh) ran upstream llama-server (b12052 build on the phone, `-dev HTP0 -ngl 99`, `-md Qwen3.5-4B-DFlash-Q8_0.gguf --spec-type draft-dflash --spec-draft-n-max 15 -fa on`, `-c 8192`, `--load-mode none`) through 8 fresh server starts of 3 json-greedy asks each (seed 42, temperature 0, `cache_prompt` false, thinking off). Every one of the 24 replies equals the reference reply recorded in F73's DFlash run byte for byte. Each ask: `draft_n` 435, 225 accepted, decode 31.8-32.8 t/s, prefill 565-604 t/s. Thermal status 2-3.
   - **Not covered:** the first run after a fresh app install, where F95 happened. The test uses the shell binary, not the SDK's app, so no install precedes the first run.
@@ -823,6 +902,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** upstream does not diverge in this setting, so F95 is not shown to be NPU numerics. It stays open: the candidates are the first NPU graph build after an install, or an earlier draft load in the same process (F90's `Auto` load before the fixed one). Next probe: `DflashDeviceTest` repeated right after reinstalling the APK, with and without the earlier `Auto` loads.
 - **Feeds:** F95, F73, F90, D41.
 
+<a id="f95"></a>
 ### F95. DFlash on the NPU once diverged from upstream's greedy reply at one token, in 1 of 6 runs; not reproduced, not root-caused
 - **Finding:** `DflashDeviceTest` was run six times in a row on the OnePlus 13 (NPU, `Fixed(8192)`, `Speculative.DFlash()`, seed 42, temperature 0), each time after an `Auto` load of the same model with the draft (16,384 tokens) and one without.
   - **The first run**, right after the test APK was reinstalled, diverged at one token: `"cmake_flag": "-DGGML_BLAS=ON -DGGML_BLAS_VENDOR=BLIS"` where upstream wrote `"[See BLIS.md"`. Everything after that token differed.
@@ -839,6 +919,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
   - Open: upstream llama-server did not diverge in 24 of 24 asks over 8 fresh loads (F98), and the SDK's own test passed 4 of 4 right after fresh installs (F99). Not reproduced, not root-caused.
 - **Feeds:** D41, F73, F90, P3 T6.
 
+<a id="f94"></a>
 ### F94. The end-of-phase review found no Critical or High issue; its five Medium and seven of its nine Low findings are fixed with tests
 - **Finding:** A review by a reader with no part in writing the code covered P3 in full (every commit of `phase/p3-hub` plus the T9 sample logger). It found the six review-focus items met and both API dumps equal to Reference B.
   - **Medium, all fixed:**
@@ -864,6 +945,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
   - **Open:** verifying a large partial before resuming. Only per-chunk checkpoints written by the SDK, or Hugging Face's Xet chunk hashes (F93's CDN is Xet), can do that; a whole-file SHA-256 can't. **Settled 2026-11-10 (D47):** leave as is; the partial is re-hashed on resume.
 - **Feeds:** P3 T9 Step 4, F90, F91, D44.
 
+<a id="f93"></a>
 ### F93. One real download from huggingface.co: killed at 51%, resumed with Range (206 from Xet's CDN), both files verified, chat answers
 - **Finding:** `unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M` at 6ab4614: the model (532,517,120 bytes) and the BF16 mmproj (207,346,528 bytes) through `samples/background-download` on the OnePlus 13 over Wi-Fi, with no token.
   - **The run:**
@@ -881,6 +963,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
   - P3's done-when holds on the real Hub as well as the fake one.
 - **Feeds:** P3 T9 Step 2, D39, D40, D43, F92.
 
+<a id="f92"></a>
 ### F92. Kill and resume passes on the phone; the force-stop case stalled only because the sample's notification prompt was left open, which kept the relaunch in the background where the OEM freezer stops it
 - **Finding:**
   - **The done-when passes.** With `step_hub_resume` on the OnePlus 13, against the fake Hub at 30 MiB/s, on a 1.5 GiB file:
@@ -902,6 +985,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
   - An app on such a phone has to get its notification permission, or be in the foreground, before a background resume can run as a foreground service. Otherwise the OEM may freeze the download: the hub can't prevent that (D9), and the sample shows the request.
 - **Feeds:** P3 T8 Step 4, D9, F91.
 
+<a id="f91"></a>
 ### F91. A review of P3 T1–T8 found the hub's state read on the caller's thread, five differences from upstream and a late job notification; all fixed except two listed deviations
 - **Finding:** Three read-only reviews covered the T1–T8 work (committed through 91cab2a, plus the uncommitted T8 sample) against the plan and upstream b12052; each claim used below was checked against the code.
   - **The SDK's main-thread rule:** `progress()` and `download()` read the plan record and the cache tree on the caller's thread the first time a selection was seen, and the background sample calls `progress()` on the main thread.
@@ -949,6 +1033,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** The port is closer to `-hf` than T3 and T4 left it. The "Deviations from upstream" table in the P3 plan now lists the three deviations kept and the open parallelism default.
 - **Feeds:** P3 T3–T8, D40, D42, F89, §11.2–§11.3.
 
+<a id="f90"></a>
 ### F90. With DFlash, ContextSize.Auto's projection is right: upstream keeps 15 recurrent-state copies for the target (+754 MiB), and a real host load lands within 4%; on the phone the reply matches upstream byte for byte
 - **Finding:**
   - **Phone run, `DflashDeviceTest` on the OnePlus 13, NPU, `Fixed(8192)`, `Speculative.DFlash()`:**
@@ -979,6 +1064,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
   - Review focus 6 holds: the projection is not below the measurement.
 - **Feeds:** D41, P3 T6 Steps 4–5, F73, F66.
 
+<a id="f89"></a>
 ### F89. One download at a time beat four on the phone
 - **Finding:** Four 400 MiB split files over the unthrottled local fake Hub took 6,881 and 6,618 ms with one transfer, versus 16,365 and 12,599 ms with four transfers, in alternating 1/4/4/1 order. The two ranges do not overlap; one transfer was about 2.1 times faster on average. Hashing a 2,735,111,724-byte partial during resume took 2,042 ms before new bytes arrived.
 - **Evidence:** `HubMeasureTest.parallelismAndResumeVerification` on the OnePlus 13, Android log tag `LlamaBroHubMeasure`, 2026-11-09; 1,677,721,600 bytes per four-file trial.
@@ -986,36 +1072,42 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** The Hub defaults to one download at a time. The measurement test retains a four-transfer override so a future phone or CDN can be checked before changing that choice.
 - **Feeds:** P3 T8, §11.2.
 
+<a id="f88"></a>
 ### F88. Header-only Hub fit matches the real GGUF and load on the phone
 - **Finding:** The Hub fetched 24 MiB of Qwen3.5 header data in two bounded range requests (8 MiB, then 16 MiB). Its sparse-file estimate and an estimate from the complete model and projector both chose 16,384 tokens; an actual CPU load chose 16,384. The projected memory at 4,096 tokens was 3,989,831,680 bytes. The header estimate took 775 ms. The projector needed only a sparse file of its declared length. With the default RAM cache, a 159 MiB drop in the phone's memory budget between estimates crossed the 4,096-token threshold, so the device comparison used `ramCacheMib = 0` for all three calls.
 - **Evidence:** `HubDeviceTest.estimateBeforeDownloadMatchesLoad`, the fake Hub's range log and Android log on the OnePlus 13, 2026-11-09; `fit_estimate_on_stub_equals_real` also passed for Qwen3.5, Gemma 3 and Llama 3.2 on the host.
 - **Means:** D42 can expose llama.cpp's projection before weights are downloaded. Its context choice is sensitive to available memory at call time, so a later load can choose a different context when the budget changes.
 - **Feeds:** D42, P3 T7, F85.
 
+<a id="f87"></a>
 ### F87. The fake Hub must consume POST bodies before reusing HTTP/1.1 connections
 - **Finding:** The JVM transport tests received HTTP 501 (`Unsupported method ('{}GET')`) after `POST /_reset` because the fake server had not consumed its two-byte `{}` request body. Java reused the connection, so those bytes prefixed the next request line. Reading `Content-Length` bytes in `/_reset` made all eight transport tests pass.
 - **Evidence:** `sdk/scripts/hub-fake/fake_hub.py`, `sdk/llamabro-hub/src/test/kotlin/com/suhel/llamabro/hub/HttpTransportTest.kt`, `:llamabro-hub:testDebugUnitTest`, 2026-11-08.
 - **Means:** Keep the fake server compatible with persistent JVM clients; its tests alone use fresh requests and did not expose this failure.
 - **Feeds:** P3 T2–T5.
 
+<a id="f86"></a>
 ### F86. Relative symlinks work in the sample's noBackupFilesDir and survive a cache-tree move
 - **Finding:** On the OnePlus 13, an app-owned relative snapshot symlink read the blob before and after renaming the enclosing directory; both reads returned `hi`. The phone remained unlocked and no setting changed.
 - **Evidence:** [`research/p3/header-fit/results.md`](../../research/p3/header-fit/results.md), 2026-11-08.
 - **Means:** P3 can use upstream's relative-symlink cache layout in `noBackupFilesDir`; T4 still tests the degraded copy/move fallback.
 - **Feeds:** D39, §11.2, P3 T1/T4.
 
+<a id="f85"></a>
 ### F85. Sparse GGUF headers match full main-model memory projections on host and phone
 - **Finding:** For Qwen3.5 4B, Gemma 3 4B and Llama 3.2 3B, every real/stub device-memory line matched at contexts 4096 and 16384: six host pairs and twelve phone CPU/NPU pairs. Header lengths were 10,969,408, 6,541,184 and 7,837,984 bytes. After Android `truncate` restored sparse tails expanded by `adb push`, allocated bytes were 10,981,376, 6,545,408 and 7,847,936. The standalone projector and DFlash commands fail for both full files and stubs because those are not main models; paired checks (the sidecar verified with its main model) were adopted for T6–T7.
 - **Evidence:** [`research/p3/header-fit/results.md`](../../research/p3/header-fit/results.md), 2026-11-08; the host and phone console outputs were not kept.
 - **Means:** T7 uses llama.cpp's header-only `Projection` for main models. Sidecars are verified with their main model in T6–T7, not inferred from standalone fit results.
 - **Feeds:** D42, §11.2, P3 T1/T6/T7, F84.
 
+<a id="f84"></a>
 ### F84. The model loader checks tensor offsets against the file's size only, and the fit's dry run allocates nothing: a header-only file padded to full size may be enough for a memory projection (To verify, P3 T1)
 - **Finding:** `llama_model_loader` rejects a tensor only if `offs + ggml_nbytes(tensor)` passes `file->size()` (`src/llama-model-loader.h:45`), and upstream's memory-fit pass loads with `no_alloc` and no mmap (`src/llama-model-loader.cpp:1356`, `common_fit_measure`, which the bridge already calls: `bridge/src/config.cpp:285`). So a file holding only the GGUF header (metadata and tensor infos) at the start, extended to the real size as a sparse file, might give the same projection as the real file without reading any weights. Not run yet: whether anything in the dry run touches tensor data, and how big the header is (the tokenizer's vocabulary sits in it, so several MB for large vocabularies), are open.
 - **Evidence:** source at b12052 as cited.
 - **Means:** A pre-download "does it fit" check could fetch the header with HTTP `Range` and run llama.cpp's own projection (D33) instead of a guessed formula. P3 T1 tries it on the host and the phone before anything is built on it; the fallback is the file size plus the context cache computed from the header's metadata, reported as an estimate.
 - **Feeds:** D42, P3 T1/T7, D33, PD (recommendations).
 
+<a id="f83"></a>
 ### F83. Upstream never checks a download's content: blobs are named by their SHA-256 but not hashed, and resume trusts the partial file; upstream ships its own resolution test with synthetic and real repo listings
 - **Finding:**
   - **No hash.** `common/download.cpp` writes `blobs/<oid>.downloadInProgress`, renames it to `blobs/<oid>` when the GET ends and never computes a digest; with `skip_etag` (every `-hf` file) an existing blob is a cache hit (`common_download_file_single_online`, `cache_hit`). A partial file is resumed by size alone (`Range: bytes=<size>-`). The Hub's LFS `oid` is the file's SHA-256 (64 hex digits); non-LFS files carry the git blob SHA-1 (40 digits, `is_valid_oid` accepts both). GGUFs are LFS files.
@@ -1024,6 +1116,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** P3's done-when ("resumes and verifies") goes beyond upstream: the hub hashes every LFS file before it enters the cache (D40). The port's file choice is checked against upstream's on upstream's own cases, run through upstream's code (a golden, like tools/ui's, F31).
 - **Feeds:** D40, P3 T3/T4, §11.2, §12.
 
+<a id="f82"></a>
 ### F82. How `-hf` resolves, caches and resumes, step by step
 - **Finding:**
   - **Reference.** `user/model[:tag]`; the tag is everything after the last `:` (`common_download_split_repo_tag`). Repo ids are checked (`is_valid_repo_id`: one `/`, `[A-Za-z0-9_]` with `.`, `-`, `/` only between them, at most 256 chars). There is no revision option: the commit is `main`'s from `GET {endpoint}api/models/{repo}/refs`, else the first valid branch, written to `refs/<branch>` (`get_repo_commit`). The endpoint is `MODEL_ENDPOINT`, else `HF_ENDPOINT`, else `https://huggingface.co/` (`common/common.cpp:1580`). A token is sent only if it looks like one (`hf_` + at least 34 alphanumerics, `is_valid_hf_token`).
@@ -1037,6 +1130,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** The port's behaviour list for P3 T3–T5, with these deliberate differences: no `preset.ini` (the SDK has no router; such a repo resolves its GGUFs as if the file weren't there, and the plan says so), sizes kept from the tree (`size`, `lfs.size`) for progress and the free-space check, the token sent only to the endpoint's host and never across a redirect (§11.4), a SHA-256 check (D40), and the sidecar kinds the SDK can use (mmproj, DFlash; MTP heads live inside the GGUFs measured so far, F67; EAGLE-3 and DSpark out by D36).
 - **Feeds:** D39–D41, P3 T3–T5, §11.2.
 
+<a id="f81"></a>
 ### F81. Upstream's downloader can't run inside the SDK: llama.cpp is built without OpenSSL, so its HTTP client has no HTTPS
 - **Finding:** `sdk/native/CMakeLists.txt:33` forces `LLAMA_OPENSSL OFF`, and `common/http.h`'s client is cpp-httplib, which needs OpenSSL for `https://`. Hugging Face is HTTPS only. So calling `common_download_get_hf_plan` or `common_models_handler_apply` through the C API would fail on the phone; making it work means building and shipping OpenSSL in the core AAR (and keeping a TLS stack patched), for code that is a few hundred lines of HTTP and file handling.
 - **Evidence:** the CMake line; `common/http.h` (`common_http_client`), at b12052.
@@ -1045,6 +1139,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 
 ## Feature spike (PF)
 
+<a id="f74"></a>
 ### F74. Text to speech (Qwen3-TTS 1.7B) works on the CPU and on the NPU with its codec on the CPU, intelligible but slower than real time; the NPU codec aborts, the GPU runs on; the SDK can't return audio bytes
 - **Finding:**
   - **Speed** (upstream llama-server, `ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF` Q4_K_M + mmproj Q8_0, a reference voice, one round). CPU: real-time factor 0.20–0.52 (8 s of speech in 18–40 s, 22 s in 44–48 s), first streamed audio after 2.4 s. NPU with the codec on the CPU (`--no-mmproj-offload`): RTF 0.37–0.59, first streamed audio after **0.3–0.5 s**. No chip reaches real time: streamed speech would stall about every second.
@@ -1056,6 +1151,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** Not usable for live speech on this phone (below real time everywhere), and not reachable through the SDK at all until requests can return bytes. Usable for generating audio ahead of time on the CPU, or on the NPU with the codec on the CPU. Supporting it needs a byte-returning request (e.g. `rawRequestBytes` returning `Flow<ByteArray>`, also useful for any binary endpoint) and a way to keep the mmproj on the CPU (a `ModelConfig` option mapping to `--no-mmproj-offload`). Both are small, in P4. **Decided (2026-11-06): D37**, out of 1.0.
 - **Feeds:** PF T4, P4 Breadth (binary replies, typed TTS), F65 (mmproj device), F69.
 
+<a id="f73"></a>
 ### F73. Draft models for Qwen3.5 4B: DFlash decodes JSON 2.3× faster than off and 1.5× faster than MTP on the NPU, but loses on prose and the CPU and needs about 2.9 GB more memory; EAGLE-3 and DSpark lose everywhere
 - **Finding:**
   - **Sidecars exist for Qwen3.5 4B**, so no Qwen3 stand-in was needed: DFlash from its authors (`z-lab/Qwen3.5-4B-DFlash`), EAGLE-3 and DSpark only from the community (`yuyijiong/…-Eagle3`, `shanjiaz/…-DSpark-b16-…`). Upstream's converter handles all three with only the target's config and tokenizer (no target weights); Q8_0 GGUFs are 685 / 259 / 696 MB. All three load on the NPU and CPU and draft on Qwen3.5's hybrid graph.
@@ -1066,6 +1162,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** DFlash passes the plan's bar for structured output on the NPU (beats off and MTP beyond noise, two rounds) and fails it for prose and on the CPU, like MTP (F68) but more strongly. It fits only as an opt-in for JSON or tool-call apps on the NPU that can spare about 3 GB, never in `Speculative.Auto`. Shipping it needs the sidecar as a second download (P3 Hub: a `ModelSource` that names a draft file next to the model, with its checksum), a bridge `speculative` type `dflash` with `-md`, `--spec-draft-n-max 15` and `-fa on` (`config.cpp:175` takes `none`/`mtp` today), and the memory in `ContextSize.Auto`'s budget. EAGLE-3 and DSpark are left out with these checkpoints; a better-trained one could be measured with the same script. **Decided (2026-11-06): D36**, an opt-in once P3 can download a sidecar; EAGLE-3 and DSpark out.
 - **Feeds:** PF T3, P3 Hub (sidecar download), P2 (`Speculative`, `config.cpp`, `ContextSize.Auto`), F66, F68, F72.
 
+<a id="f72"></a>
 ### F72. n-gram speculation (`ngram-mod`, upstream's `--spec-default`): code edits decode 7× faster on the NPU and 2.3× on the CPU with identical replies, prose untouched; partly matching output wins on the NPU but loses on the CPU
 - **Finding:**
   - **How it drafts.** The n-gram types look up the recent tokens in earlier text and propose what followed, with no extra model. Several types can be listed; `common/speculative.cpp` tries them in a fixed priority (n-gram types first, then draft models, MTP last) and uses the first that has a draft, so `ngram-mod,draft-mtp` drafts from n-grams when the context repeats and from MTP otherwise. ngram-mod's pool is shared across requests and slots, so a reply can draft from an earlier one.
@@ -1078,6 +1175,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Shipped (2026-11-07):** `Speculative.Ngram(then: Mtp? = null)`; bridge `speculative` type `ngram` with an optional `mtp_n_max` (`--spec-type ngram-mod[,draft-mtp]`, n-match 24, n-min 48, n-max 64). Host tests `ngram_config_maps_to_ngram_mod`, `ngram_drafts_and_keeps_the_reply` (drafts, greedy reply identical); JVM `ModelConfigTest.ngramSentAndReported`; device `NgramDeviceTest` on the NPU through the SDK, a 12-line copy prompt: off 15.4 t/s, `Ngram()` 43.8 t/s with an identical reply, `Ngram(then = Mtp(4))` 46.1 t/s. `check.sh --device` all pass.
 - **Feeds:** PF T2, P2 (`Speculative`, `config.cpp`), F67, F68, D10.
 
+<a id="f70"></a>
 ### F70. Backend sampling never beats off: 0.5–3% slower decode on the NPU, noise on the CPU and GPU; the same replies
 - **Finding:**
   - **Where it runs.** On the NPU every sampler of the default chain is offloaded (`-lv 4` marks each with `+`), with no fallback. On OpenCL `top-p` falls back to the CPU on every request ("device 'GPUOpenCL' does not have support for op ARGSORT"); the rest runs on the GPU. On the CPU the chain runs in the graph on the CPU, so nothing moves.
@@ -1089,6 +1187,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 
 ## Backends (P2 execution)
 
+<a id="f80"></a>
 ### F80. Any drafting aborts the GPU backend, F75's switch on or not; the P2 review's findings and what changed
 - **Finding:**
   - **Drafting on OpenCL.** With `GGML_OPENCL_COOPK_DP4A=0` (F75) MTP still aborts ggml-opencl on the first drafted batch (`ggml-opencl.cpp:1319`, error -54, F67's failure), and so does n-gram drafting (`--spec-default`), which F72 never ran on the GPU. A process abort can't be caught, and `DevicePolicy.Auto` and `Prefer` could place an app's `Speculative.Mtp` or `Ngram` load on the GPU (after an NPU failure, e.g. `noskel`, F78). **Fixed:** with drafting set, the GPU is skipped with that reason in `loadReport`, and `Only(Gpu)` throws `DeviceUnavailable` (`draftingNeverLoadsOnTheGpu`).
@@ -1106,6 +1205,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** Speculative decoding is an NPU and CPU feature until ggml-opencl's kernel is fixed; retry with each llama.cpp upgrade (the same check as F75's switch).
 - **Feeds:** F67, F72, F75, F78, D26, D33, D35, P2 T11.
 
+<a id="f79"></a>
 ### F79. Sizes at the end of P2: the core AAR has 20.5 MB of native code, the NPU AAR adds 5.1 MB and the GPU AAR 3.9 MB; a sample APK with all three is 30.2 MB
 - **Finding** (release builds, stripped, arm64-v8a, 2026-11-07, after D38 dropped `libomp.so`):
 
@@ -1122,6 +1222,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** P5's size budget starts here. The biggest levers, none taken yet: one CPU variant instead of seven (about 5.9 MB, at a speed cost on newer cores), only the skeleton for the phone's chip (Play feature delivery or per-device splits, about 3.7 MB), and upstream's own library sizes.
 - **Feeds:** F25, D38, P5 (size budget).
 
+<a id="f78"></a>
 ### F78. P2 acceptance: each sample flavor gets the device its artifacts allow, a broken NPU skeleton falls back to the GPU with the reason, and every flavor's minified build loads
 - **Finding:**
   - **Flavors** (`samples/minimal`, one per set of backend artifacts, same `applicationId`): `cpu` (core only), `gpu` (+ `llamabro-opencl`), `full` (+ `llamabro-hexagon`), and `noskel`, `full` with an empty `libggml-htp-v79.so` in the app's own assets (which win over the library's). `DevicePolicy.Auto` picks `Cpu`, `Gpu`, `Npu` with no attempts, and on `noskel` `Gpu` after one attempt: `Npu`, `hexagon didn't load: installer … failed: …MismatchException: libggml-htp-v79.so in the APK has SHA-256 e3b0c442…, expected b…`. Chat streams and stop is fast on each.
@@ -1143,6 +1244,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** P2's done-when (design §13 as amended by D23, D29, D31) is met on this phone: one AAR per backend, each making its device available alone, `Auto` choosing the best shipped one and reporting what it skipped and why. `check.sh --device` runs every flavor.
 - **Feeds:** P2 T10, T11, D29, D31, D32, F28, F61.
 
+<a id="f77"></a>
 ### F77. The SDK's CPU path uses OpenMP and the phone's upstream baseline doesn't; same median speed, but OpenMP had the only two slow runs
 - **Finding:**
   - **The difference.** The SDK's `CMakeLists.txt` leaves `GGML_OPENMP` at llama.cpp's default (on), so `libggml-base.so` needs `libomp.so` (shipped in the AAR, F25). Upstream's Snapdragon preset (`docs/backend/snapdragon/CMakeUserPresets.json`) sets it off, and that preset built every `llama-server` the phone spikes compared against (`/data/local/tmp/lb-spike/P`, no `libomp.so`). The difference surfaced when the device contract's first build lacked `libomp.so` (F76). OpenMP only decides how ggml spreads CPU work over threads, not what it computes.
@@ -1151,6 +1253,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** CPU speed comparisons between the SDK and the shell (F67, F72) hold at the median. Turning OpenMP off matches upstream's Android preset and the measured baseline and drops `libomp.so` (0.97 MB, F25) from the AAR; two outliers in six runs are not enough on their own to prove that OpenMP causes slow runs. **Decided (2026-11-07): off (D38).**
 - **Feeds:** F25, F67, F72, P2 T10/T11 (AAR size), P5 (size budget).
 
+<a id="f76"></a>
 ### F76. The contract on the NPU: 75/75 identical after one fix; on Android the SDK answered 500 for a named `tool_choice` and for malformed JSON, because `libllamabro.so` hid the type info that upstream's catches need
 - **Finding:**
   - **The contract runs on the phone** (P2 T9). Both `llama-server` and `lb-run` are built in the Snapdragon image from the same tree and `CMakeLists.txt` (`build-device-tools.sh`), run from `/data/local/tmp`, and get the host contract's 77 requests with Qwen3.5 4B, its mmproj and `-dev HTP0 -ngl 99`. Both logs show `offloaded 34/34 layers` and `HTP0 model buffer size = 2856.64 MiB`, so neither fell back to the CPU, and the replies read correctly ("Tokyo"; the four inner planets; `{"name": "Bob", "age": 30}`), so the match isn't two equal garbage answers (F71). With the fix below: **75/75 identical** (2 skipped by design, as on the host).
@@ -1163,6 +1266,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** The device contract is `check.sh --device`'s `device-contract` step. It checks the NPU only, as the plan says. Any exception type caught across a library boundary is covered by the exported type info; a test that only runs on the host can't catch this class of bug, so the device contract is what guards it.
 - **Feeds:** P2 T9, F25, D21, design §12, P5 (CI on a phone).
 
+<a id="f75"></a>
 ### F75. F71's cause: ggml-opencl's cooperative-K DP4A Q4_K kernel is wrong on the Adreno 830 for matmuls of 2–4 rows, which llama-server sends for every model with checkpoints (Qwen3.5, Gemma 3) and for speculative verification; `GGML_OPENCL_COOPK_DP4A=0` fixes it
 - **Finding:**
   - **The kernel.** `kernel_gemm_coopk_q4_k_q8_1_dp4a` (ggml-org/llama.cpp#30741), which ggml-opencl runs only when a matmul has 2 to 4 activation rows (`ggml_cl_coopk_dp4a_narrow_on`, on Adreno A8X/X2E unless the compiler is E17), gives garbage on this phone (Adreno 830, driver `0800.77`, compiler `E031.47.18.56`). `test-backend-ops` with Qwen3.5's and Llama's matmul shapes: 210/240 pass; the 30 failures are exactly the Q4_K cases with n = 2, 3, 4, Llama's shapes too (NMSE 0.63–0.98). n = 1, 8, 19, 64, 512 pass, and every Q5_K and Q6_K case passes. With `GGML_OPENCL_COOPK_DP4A=0`: 240/240. Turning off only the next kernels in line (`GGML_OPENCL_COOPK_Q4_K_BIN=0`, `GGML_OPENCL_Q4_K_BIN_DP4A=0`) doesn't help.
@@ -1180,12 +1284,14 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
   Either way, the GPU device test should compare the reply's text with the CPU's (for a model where they agree) instead of with itself.
 - **Feeds:** F71, D32, P2 (T6 `Auto`, T9 contract, device tests), F63, F65, F67 (MTP on OpenCL), PF T2–T3 (GPU arms skipped because of F71).
 
+<a id="f71"></a>
 ### F71. OpenCL gives garbage for Qwen3.5 4B (`8888…` for every prompt) while Llama 3.2 3B is correct: F63 and F65 checked only that the GPU's replies repeat
 - **Finding:** With upstream llama-server (`/data/local/tmp/lb-spike/P`, b12052 + the delta-net patch), `-dev GPUOpenCL -ngl 99` and the SDK's load settings, Qwen3.5 4B Q4_K_M answers greedy prompts with `8888888…`, for a 19-token prompt and a 2K-token one alike; with backend sampling on, `otareotare…`. The same server on the CPU answers correctly, and Llama 3.2 3B Q4_K_M answers correctly on OpenCL and on the CPU. F63's "every OpenCL greedy reply was identical to the other OpenCL runs; for Qwen it differs from the CPU's" and F65's "`Only(Gpu)` … two greedy replies identical" compared checksums only: identical garbage passes both.
 - **Evidence:** [`research/pf/backend-sampling/opencl-check/`](../../research/pf/backend-sampling/opencl-check/) (`oc.sh`), and the GPU replies of PF T1, 2026-11-06. Not known at the time: which op is wrong (Qwen3.5's gated delta net and SSM conv layers are what Llama doesn't have; ggml-opencl has kernels for both, and the delta-net patch changes how the graph splits those), and whether the SDK's own OpenCL build does the same.
 - **Means:** Until fixed, OpenCL can't serve Qwen3.5: `DevicePolicy.Auto` puts the GPU second (D32), so on a phone without the NPU it would pick a backend that answers garbage. P2 needs a reply check that reads the text (or compares with the CPU's for a model where the two agree), the op found, and then a fix (an upstream issue or a patch in `sdk/native/patches/`) or OpenCL kept away from such models. It also bounds every GPU result in PF: speed on the GPU means nothing for Qwen3.5 until this is fixed.
 - **Feeds:** P2 (T6 `Auto` order, T9 contract, device tests), D32, F63, F65, PF T2–T4 (GPU arms). **Cause found: F75** (the Q4_K cooperative-K DP4A kernel on 2–4-row matmuls; the SDK's AAR does the same).
 
+<a id="f69"></a>
 ### F69. Load-time llama-server features the SDK can't reach: embeddings and rerank (a bug: their endpoints always fail), KV-cache type, LoRA; four more need an A/B test
 - **Finding:**
   - Requests reach almost all of llama-server (design §3.3), but `ModelConfig` maps to 17 load keys (`config.cpp`), and several features are switched on only at load.
@@ -1198,6 +1304,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Shipped (2026-11-06):** `ModelConfig.task` (`ModelTask.Generate`, `Embedding(pooling)`, `Rerank`), `kvCacheType` (llama.cpp's nine types, default F16) and `loraAdapters`; bridge keys `embeddings`, `pooling`, `reranking`, `kv_cache_type`, `lora`. Host tests are upstream's own server tests on upstream's test models (`sdk/scripts/fetch-test-models.sh`): bge-small mean pooling gives a normalized vector, jina-reranker-tiny ranks document 2 first and 3 last, the stories15M LoRA at scales 0/0.3/0.7/1 gives each expected text, q8_0 KV loads Qwen3.5 4B and chats, and a model whose head size (48) q8_0's 32-blocks don't divide fails with upstream's reason. Device `TaskDeviceTest`, every chip: bge-small lands on the NPU under `Auto` (512 tokens, 74 MiB) and its vectors agree with the CPU's (cosine 0.9999996 on the NPU and on the GPU); jina-reranker ranks the relevant document first everywhere, but **the NPU moves the near-zero scores**: CPU 0.2009 / 0.0366 / 0.0083 / −0.0058 (the Mac's CPU gives the same; the GPU is within 0.002), NPU 0.2062 / 0.0036 / 0.0151 / 0.0115 for documents 2 / 1 / 0 / 3, so document 1, not 3, comes last. Upstream llama-server on HTP0 returns the same NPU scores, so it's the backend's precision, not the SDK. An app that needs a reranker's exact order beyond the top results can load it with `DevicePolicy.Only(DeviceKind.Cpu)`: these models are tiny. The four A/B items were run in the PF feature spike (F70, F72, F73, F74).
 - **Feeds:** design §3.3, §8, P4 Breadth, P3 Hub (sidecars).
 
+<a id="f68"></a>
 ### F68. MTP's gain depends on the output: on the NPU structured output (JSON) decodes 34–51% faster, prose 7–21% slower; why an earlier prototype saw it win
 - **Finding:**
   - **The earlier prototype measured another workload, not another engine.** Same GGUF (`Qwen3.5-4B-Q4_K_M.gguf`, 2 834 975 040 bytes, Unsloth's file with the MTP layer), same delta-net fix. Its wins were tool-call JSON, mostly greedy: 16 → 25–28 t/s with 82–96% of drafts accepted. Its own sampled prose lost the same way F67 did: a temp-0.7 poem went 15.7 → 10–12 t/s at 22–32% accepted. F67 measured only sampled prose (a summary at the model's default sampling).
@@ -1214,6 +1321,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** F67's measurement stands, but its "MTP adds nothing on this phone" holds for prose only. `Speculative.Auto` stays off: a chat app's output is mostly prose, the rule (plan T8) was "faster on prefill and decode", and MTP always costs prefill. An app whose replies are mostly structured (agents, tool calls, JSON) on the NPU should set `Speculative.Mtp(4)`: about 1.5× decode. The KDoc, `loadReport.speculativeReason` and `sdk/README.md` say so. Draft 4 beats 3 for JSON on the NPU; for prose both lose. Not for the CPU (no gain) or the GPU (F67's crash).
 - **Feeds:** P2 T8, D10 (upstream evidence), design §8; PD (an agent demo would turn MTP on).
 
+<a id="f67"></a>
 ### F67. MTP is slower on the CPU and the NPU and crashes the OpenCL backend, so `Speculative.Auto` leaves it off on every chip
 - **Finding:**
   - **Measured** with upstream llama-server (b12052 + the delta-net patch), Qwen3.5 4B Q4_K_M, the SDK's settings (8192 context, `--load-mode none --fit off`), MTP off vs `--spec-type draft-mtp --spec-draft-n-max 3`, prompts of 512 and 2048 tokens (llama.cpp's `docs/build.md` plus a summarise instruction), 256-token replies, seed 42, 5 rounds, a fresh load per arm, arms alternating (F6). Medians, 2K prompt:
@@ -1232,6 +1340,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** (Prose only: refined by F68, structured output on the NPU gains 1.5×.) MTP adds nothing for prose on this phone today, and on the GPU it kills the app. Re-measure with `mtp.sh` when the llama.cpp pin moves (P5) and flip `MtpPolicy` per chip if one wins. The OpenCL crash is worth an upstream issue in P5 (D10's rules).
 - **Feeds:** P2 T8, D10 (upstream evidence), design §8, readiness gap 4.
 
+<a id="f65"></a>
 ### F65. `DevicePolicy` resolves in Kotlin, one load per device; on the phone `Auto` picks the NPU and reproduces the shell's reply byte for byte, and the GPU's first-load minute is paid once per install
 - **Finding:**
   - **Native.** The model config takes `devices` (names resolved with `ggml_backend_dev_by_name`, the CPU and unknown names rejected as `parse_device_list` does, never through `--device`, F35) and `n_gpu_layers`. A missing or empty `devices` is CPU only (`{nullptr}`, as `--device none`), so llama.cpp's "every GPU-type device" default (F32) is never reached. The image encoder follows the model's device (`mmproj_use_gpu`, `mmproj_device`), because upstream otherwise puts it on "the first GPU", which with both artifacts could be another chip. `lb_model_info` reports `devices`.
@@ -1242,6 +1351,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** An app adds artifacts and gets the fastest chip that loads, with reasons when it doesn't. The host test for a registered fake GPU device (plan T6 Step 2) wasn't written: the test backend has no devices, and the phone covers real ones. D24's memory pre-check ("skip a device that can't hold the model") isn't implemented: no backend's memory figure is usable (F64); T7 decides what budget it could use. The SDK README has a "Faster chips" section.
 - **Feeds:** D24, D32, design §9, P2 T6, T7, T10, F32, F35, F36, F63.
 
+<a id="f64"></a>
 ### F64. ggml-vulkan fails on the Adreno 830 (known driver bugs, upstream unfixed): Q4_K loads abort the process, Q8_0 runs with wrong output; and Vulkan's reported memory is an overcount
 - **Finding:**
   - **Build.** `libllamabro-ggml-vulkan.so` (31.4 MB, nearly all precompiled shaders; AAR 6.1 MB) builds on the Mac with NDK 29.0.14206865 and the same Android settings. The Docker image has no host C++ compiler for ggml-vulkan's shader generator and no `vulkan.hpp`. It uses Khronos' Vulkan-Headers and SPIRV-Headers at **1.3.275**, the NDK sysroot's own `vulkan_core.h` version and the one upstream's Vulkan CI builds with (Ubuntu 24.04's `libvulkan-dev`); `scripts/fetch-deps.sh` downloads them with pinned SHA-256s. ggml-vulkan finds SPIRV-Headers but never links its target (upstream relies on the system include directory), so the SDK's CMake adds the include path to `ggml-vulkan`; upstream's files are untouched. It NEEDs `libvulkan.so` (an NDK system library, no `<uses-native-library>`). Upstream's CI never builds Vulkan for Android. The AAR alone makes `Vulkan0` available (`VulkanDeviceTest`).
@@ -1253,6 +1363,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** As built, `llamabro-vulkan` would let `Prefer(Vulkan)` or `Only(Vulkan)` take an app down on a Snapdragon 8 Elite phone, a crash `loadReport` can't catch, and give wrong answers on Q8_0. D23 planned to verify Vulkan on this Adreno, and it fails that verification. **Decided: Vulkan is dropped from 1.0 (D31)**; the recipe stays for a retry. T6 and T7 can't take any backend's memory figure as given: the budget comes from Android (D22), and D24's "Auto skips a device that can't hold the model" needs it too.
 - **Feeds:** D23, D24, D22, design §9, P2 T5, T6, T7, T10, D10 (a possible upstream issue report), P4/P5 (Vulkan revisited with a newer llama.cpp or driver); retried at b12479 in F174.
 
+<a id="f63"></a>
 ### F63. OpenCL on the Adreno 830: about 3× faster prefill than the CPU, the same decode, and 2.5× slower loads (about a minute the first time)
 - **Finding:**
   - **Build.** `libllamabro-ggml-opencl.so` (11.1 MB; AAR 0.94 MB) comes from the same Docker run as Hexagon (`LB_BACKENDS=hexagon;opencl`, F62), with upstream's defaults: kernels embedded, Adreno kernels on, OpenCL 3.0. The image's NDK sysroot carries the OpenCL headers and a link-time `libOpenCL.so` (soname `libOpenCL.so`), which is where the P0 spike's build found them too. Stock NDKs don't ship these; the NDK on the development Mac has them as well, but the build doesn't rely on that. At run time the phone's `/vendor/lib64/libOpenCL.so` is used, reached through `<uses-native-library libOpenCL.so required=false>` (it's in the vendor's `public.libraries`). No loader is shipped. Each backend has its own output directory, and the Docker task is the root project's `buildBackends`.
@@ -1271,6 +1382,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** For a chat app, OpenCL helps long prompts (about 3× prefill) but not reply speed, and costs about 10 s more per load. The first load cost about a minute, most likely the Adreno driver compiling ggml's OpenCL kernels before caching them; where that cache lives, and whether an app pays it once or on every process start, was left to verify in T6, the first time an app loads a model on the GPU (answered in F65). T6's `Auto` order (NPU → OpenCL → CPU) stands, but `loadReport` and the docs should name the load cost. T4 Step 1's `openclChatMatchesItself` moves to T6 (`Only(OpenCl)`), like T3's reply check, because a model load needs T6's device choice. Because an emulator appeared in adb on the development Mac, `check.sh` runs with `ANDROID_SERIAL` set to the phone; Gradle's device tests honour it.
 - **Feeds:** design §9, P2 T4, T6 (`Auto` order, load cost, the first-load kernel cache), T8 (MTP per backend), T10, F62, P5 (sizes).
 
+<a id="f62"></a>
 ### F62. `llamabro-hexagon` builds from the SDK's own CMake inside Qualcomm's image with the SDK's exact NDK, and the AAR alone makes HTP0 available
 - **Finding:**
   - **Build.** `sdk/native/scripts/build-backends.sh` runs `sdk/native/CMakeLists.txt` with `-DLB_BACKENDS=hexagon` inside `ghcr.io/snapdragon-toolchain/arm64-android:v0.8`, with AGP's Android settings (API 29, `c++_shared`, Release). It builds only `ggml-hexagon` (renamed `libllamabro-ggml-hexagon.so` by the same prefix rule as the core, F25) and `htp-v73/v75/v79/v81/v85`. The image's NDK is **29.0.14206865**, the SDK's own, so no NDK download is needed; the script checks the revision. F34's "r28b" came from an older line in upstream's README. The Hexagon SDK's CMake also needs `PREBUILT_LIB_DIR=android_aarch64`, as upstream's Snapdragon preset sets it; without it, configuration fails in `hexagon_fun.cmake:99`.
@@ -1280,6 +1392,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** An app gets the NPU by adding the dependency. T3 Step 4's greedy reply on HTP0 moves to T6: loading a model on a chosen device needs `devices`/`n_gpu_layers` in the model config, which T6 adds. Without an explicit choice llama.cpp would pick every GPU-type device (F32), and fit skips HTP0 because it reports no memory (F36's log). The image has no OpenCL SDK under `/opt` (no `OPENCL_SDK_ROOT`), so T4 must find or fetch one. `check.sh` needs Docker: `:llamabro-hexagon`'s `buildHexagonBackend` task reruns the image build whenever the patched copy, `CMakeLists.txt` or the script changes (an unchanged tree is up to date and skips it).
 - **Feeds:** design §9, D20, D24, P2 T3, T4, T6, F18, F34, F36, F61, P5 (sizes, CI image).
 
+<a id="f61"></a>
 ### F61. Optional backends load by name from the runtime config; a failure is reported with ggml's own reason and never stops the runtime
 - **Finding:**
   - **Native.** `lb_runtime_init` takes `backends: [{name, files, env}]`. After the CPU backend, under the init lock, it sets each backend's env with `setenv` and loads each file by name with `ggml_backend_load`, before `llama_backend_init`, so the F35 scan still never runs. A failure is recorded and init still returns OK. ggml says why only in its error log (`load_backend: failed to load <file>: <dlerror>`, or `failed to initialize backend from <file>: ggml_backend_init returned NULL`), so the bridge keeps that line with its error capture, as for model loads (F51). `lb_runtime_backends()` returns `[{name, loaded, error, devices}]`, `cpu` first, and `[]` before init. Malformed entries are `LB_ERR_INVALID_ARG`: not an array, missing name or files, non-string env values, unknown keys, the reserved name `cpu`, or a name listed twice.
@@ -1289,6 +1402,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** T3–T5 only add artifacts: each implements `BackendInstaller` (Hexagon copies its skeleton there, T3) and declares the `<meta-data>`. Nothing else in the core changes for a new backend. A backend whose library crashes inside `ggml_backend_init` (a driver fault) still takes the process down; only failures that return can be reported.
 - **Feeds:** D24, P2 T2–T6, review focus 1 and 3, F35, F51, F54.
 
+<a id="f36"></a>
 ### F36. An ordinary app, debuggable or not, loads the unsigned HTP skeleton from `noBackupFilesDir` and runs a model on the NPU
 - **Finding:** On the OnePlus 13 (SM8750, HTP v79, Android 16), an app copies `libggml-htp-v79.so` from its assets to `noBackupFilesDir/llamabro/htp/` and sets `ADSP_LIBRARY_PATH` (and `CDSP*_LIBRARY_PATH`, F19) to that directory before any ggml call. With that, FastRPC opens the skeleton from there and starts an unsigned protection domain (`/vendor/dsp/cdsp/fastrpc_shell_unsigned_3`) for the app's own user (`u0_a630`). Qwen3.5 4B Q4_K_M then loads with all 34/34 layers on HTP0 (2856.64 MiB model buffer, KV and recurrent state on HTP0 too), exactly as from the shell (F19). This holds for a **non-debuggable release build** (no `DEBUGGABLE` flag) as well as a debug build. The 16-token greedy reply is byte-identical to the shell run of the same build and request (F4). Speeds: decode 15.2 / 16.5 t/s (debug / release) against 16.1 from the shell; prefill 42.5 / 43.4 against 48.1, on single runs. None of T1's fallbacks were needed. Two log lines are harmless: FastRPC first looks for the skeleton in `<dir>/cdsp/` (not found, error 0x2) before `<dir>/`, and a `dspqueue` invoke error 0x80000414 appears in the shell run too. Packaging needs: `<uses-native-library>` for `libcdsprpc.so` (a vendor public library on this phone) and for `libOpenCL.so` when the process links ggml-opencl; a model file the app can read (a file pushed by adb into the app's external dir needed `chmod 644`).
 - **Evidence:** probe app [`research/p2/htp-probe/`](../../research/p2/htp-probe/README.md) (upstream `llama_server()` run in the app's process from the spike's `P` libraries), 2026-11-05. The logcat of the release run showed `Successfully opened file …/no_backup/llamabro/htp/./libggml-htp-v79.so`, `fastrpc_shell_unsigned_3`, `remote_handle64_open … on domain 3`, `load_tensors: offloaded 34/34 layers`, `HTP0 model buffer size = 2856.64 MiB` and `debuggable=false`. Reply in all three runs: `"\n\n<think>\nHere's a thinking process that leads to the story above:\n\n"`.
@@ -1297,6 +1411,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 
 ## Memory (P2)
 
+<a id="f66"></a>
 ### F66. Upstream's fit misjudges a phone, its projection over every device is a safe budget measure, and one OEM's `availMem` hides reclaimable driver pools
 - **Finding:**
   - **Upstream's fit can't size a context here.** It compares projected use with device memory only and assumes the host is unlimited (`fit.h`). On the CPU alone it compares the Host row with total RAM (F33), and that row leaves out `CPU_REPACK` (2.6 GB of Qwen3.5 4B's weights): "projected to use 909 MiB of host memory" for a 3.5 GB load. HTP0 reports 0/0, so fit can't use it ("did not report memory; --fit will not use it"), and with `n_gpu_layers` set it aborts. On any failure llama-server logs a warning and loads the **training context**: with `-c 0` and a tight target the CPU load went on at 262 144 tokens (`fit.cpp:540-550`).
@@ -1308,6 +1423,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** The context is never llama.cpp's 262K fallback and never more than the phone can take at load. "Three free-memory levels" (plan T7 Step 2) weren't run separately: the budget is read at each load, and the device tests ran at different levels as the pools filled. The ceiling's reasoning is in the `ContextSize` KDoc and `sdk/README.md`. D24's memory pre-check is no longer needed: a load that can't fit fails in its dry run, before allocating.
 - **Feeds:** D22, D33, D34, D24, design §8, P2 T7, T10, PD (recommendations: the same dry run can tell before download whether a model fits).
 
+<a id="f60"></a>
 ### F60. The unmap patch keeps mmap's load speed with one copy of the weights, but the first draft crashed on tied embeddings
 - **Finding:**
   - **The first draft (F59, 5 lines) crashed.** It unmapped each tensor right after copying it. Every load then segfaulted at the first decode, for both Qwen3.5 4B and Llama 3.2 3B. Both tie `output` to `token_embd`: one file range is loaded twice (`TENSOR_DUPLICATED`, `llama-model-loader.cpp:1384-1397`). `output` is copied into `CPU_REPACK`, while `token_embd` is used in place from the mapping (in another context, loaded in another `load_all_data` call), so unmapping the copy removed the embedding's pages.
@@ -1318,6 +1434,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** **Decided: `none` (D30)**; the patch is not shipped and stays in the research folder ([`unmap-copied-weights.patch`](../../research/p2/f50-load-mode/unmap-copied-weights.patch)) for an upstream PR. The two options were, both with one copy of the weights after load: `none` (no patch, about 1.2 s / 0.8 s slower, never above the final memory) or mmap + this patch (mmap's speed, carried as patch 0002 until upstream takes it, a brief peak as high as today's while loading). The same tie trap applies to any range-sharing tensors, so an upstream PR (D10) should come with a test of a tied-embedding model. No search for an existing issue or PR yet.
 - **Feeds:** F50, F58, F59, D30, design §8, D10 (upstream PR), P5.
 
+<a id="f59"></a>
 ### F59. Direct I/O is no faster than `none`, and a five-line upstream patch could keep mmap's load speed without the second copy
 - **Finding:**
   - **`--load-mode dio` loses.** Same memory as `none` (3395–3403 MiB for Qwen3.5 4B) but slower: mean 7.43 s, against 6.93 s for `none` and 5.77 s for `auto` (mmap), warm cache. Direct I/O skips the page cache but still goes through the staging buffer, and on a warm cache the cache was the fast part.
@@ -1327,6 +1444,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** `dio` is out. The choice is `none` (shipped now, no patch, about 1.2 s slower than mmap) or mmap plus this patch (about mmap's speed, one more patch to carry until upstream takes it). Either keeps a single copy of the weights. The patch would have to win its own A/B first (design reference rule).
 - **Feeds:** F58, design §8 (`load_mode`), D10 (upstream PRs), P2 T3–T5, P5.
 
+<a id="f58"></a>
 ### F58. Reading the weights instead of mapping them (upstream `--load-mode none`) removes F50's second copy: 38% less memory for about 1 s more load
 - **Finding:** With upstream's default `--load-mode auto` (mmap), the CPU backend repacks most weights into its own buffers, but llama.cpp unmaps only the file's head and tail outside the tensors it serves straight from the mapping (`mmap_used`, `llama-model-loader.cpp:1745, 1872-1879`). So the repacked tensors' pages stay mapped and resident next to their copy (F50). Upstream's own loader warns about the combination ("consider using --load-mode none", `:1259`). With `--load-mode none`, every tensor is read into its buffer and nothing stays mapped. On the phone (CPU, `-c 4096`) PSS drops from 5426–5494 to 3391–3395 MiB for Qwen3.5 4B and from 4363 to 2754 MiB for Llama 3.2 3B. Anonymous memory grows by about 0.5 GB (Qwen) and 0.3 GB (Llama), for the tensors that aren't repacked and used to be served from the mapping. Warm-cache load time grows from 5.9–6.6 to 7.3–8.2 s (Qwen, one 18.5 s outlier) and from 4.6–4.7 to 5.5–5.6 s (Llama). Decode and prefill speed are the same within noise.
 - **Evidence:** A/B with llama-server from the P0 spike's `P` build (b12052 + delta-net patch), arms alternating within each round, 5 rounds for Qwen and 4 for Llama, OnePlus CPH2649 (SM8750), thermal status 0–1, 2026-11-05: [`research/p2/f50-load-mode/results.md`](../../research/p2/f50-load-mode/results.md), script `ab.sh` beside it. The SDK with the new default, through `check.sh --device` (all steps green, contract and e2e with `--load-mode none` on both sides): `LifecycleDeviceTest` gives Qwen loaded at 3489 MiB (native heap 3449; PA T4 measured 5558, F49), Qwen then Llama at 3442 and 2725 MiB (was 5545 and 4335, F48), and a model-switch peak of 3443 MiB (was 5545). Every page cache was warm; cold loads weren't measured (dropping the cache needs root).
@@ -1336,6 +1454,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 
 ## Phone test setup (PA T8)
 
+<a id="f57"></a>
 ### F57. Running the sample's device tests outside `check.sh` uninstalls the app and deletes the models pushed into it
 - **Finding:** `connectedDebugAndroidTest` uninstalls the app under test when it finishes unless `-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true` is set, and Android deletes an app's data with it. The acceptance models live in the sample's `files/` (pushed with `run-as … cp`), so one plain run of a single test class deleted all three. `check.sh` always sets the flag, which is why this never happened before. Qwen3.5 4B and Llama 3.2 3B were restored from local copies; Gemma 3 4B (`gemma-3-4b-it-qat-UD-Q4_K_XL.gguf`) had no local copy and was downloaded again (2026-11-05: `unsloth/gemma-3-4b-it-qat-GGUF` at commit `165f274`, 2 537 530 496 bytes, SHA-256 `ccd7e4b7…382c72` matched). A local copy is kept now.
 - **Evidence:** 2026-11-05, during PA T8: `:samples:minimal:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=…SampleUiTest` (2/2 passed), then `check.sh --device`: 14 of 17 sample tests failed with "missing model …/files/Qwen3.5-4B-Q4_K_M.gguf" (and the same for the others); `run-as … ls files/` showed only the profile installer's files, dated at the reinstall.
@@ -1344,12 +1463,14 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 
 ## Audio routes (read for P4, 2026-11-05)
 
+<a id="f55"></a>
 ### F55. File transcription needs only the request's `files` filled, so the audio can come from a path or a descriptor with no upload
 - **Finding:** llama-server's `POST /v1/audio/transcriptions` handler reads the audio from `server_http_req::files["file"]`, an in-memory `uploaded_file` (`raw_buffer data`, a byte vector) that llama-server's HTTP layer fills from the multipart upload; nothing else in the handler depends on HTTP. The bridge builds `server_http_req` itself (as for every route, F1), so it can fill `files` too. Then an app passes a file path or an open file descriptor (an Android `content://` URI's `ParcelFileDescriptor`): the bridge reads the file once, natively, and calls upstream's handler unchanged. No base64, no bytes through Kotlin or JNI, no copy on disk. In memory there is the bridge's buffer, one copy upstream makes (`out_files.push_back(it->second.data)`), and the decoded audio, as in llama-server itself; the copy could become a move with a one-line patch, only if an A/B test shows it matters (audio files are small: about 2 MB per minute of 16 kHz WAV). `Content.Audio` in chat messages is different: llama-server's `input_audio` is base64 in JSON, so large files belong on this route.
 - **Evidence:** b12052 `tools/server/server-http.h:43-47` (`uploaded_file`), `:55` (`files`); `server-chat.cpp:683-695` (`convert_transcriptions_to_chatcmpl`: "No input file found for transcription" without `files["file"]`, then the copy at `:693`); `server-context.cpp:6080` (`post_transcriptions_oai`). Read, not built: there is no audio model in the test set.
 - **Means:** P4 adds a C API request variant with file attachments (form name plus path or fd) and a typed `transcribe(AudioSource.file(…) | .fd(…))`, with `Endpoint.Transcriptions` for raw use. The contract case runs the same audio through llama-server's multipart upload and through the path.
 - **Feeds:** P4 (audio), §14 Q1, F53 (why transcription was left out).
 
+<a id="f56"></a>
 ### F56. Live transcription needs no WebSocket: upstream's realtime handler is written against an abstract connection the bridge can implement in memory
 - **Finding:** `/v1/realtime` is registered as a WebSocket, but its handler (`ws_realtime`) takes a `server_http_context::ws_conn &`, an interface with a blocking `read()`, a thread-safe `send()`, `is_open()` and `close()`. llama-server's HTTP layer supplies a WebSocket implementation; the bridge can supply one backed by two in-memory queues, as it supplies `server_http_req` for the other routes, so the handler runs unchanged and nothing opens a port. Audio arrives as OpenAI-realtime `input_audio_buffer.append` events, PCM16 mono at the model's rate in base64 (about 43 KB of text per second at 16 kHz, small next to the model's audio encoding), `input_audio_buffer.commit` ends an utterance, and the handler streams transcript deltas and a `…transcription.completed` event per item. The handler runs on one thread for the connection's life. It needs a model that supports it: Voxtral Realtime, or an ASR model opened with `intent=transcription` (a query param, so the existing params map carries it); others get upstream's "does not support realtime transcription" error. A loopback WebSocket would instead bring back the 6 MB HTTP layer (F2), a port other apps can reach, and its threads.
 - **Evidence:** b12052 `tools/server/server-http.h:78-89` (`ws_conn`, `ws_handler_t`); `server-context.cpp:6113` (the audio format comment), `:6134` (`live_asr`, `intent=transcription`), `:6141` (the error), `:6229-6232` (`input_audio_buffer.append`, base64 decode). Read, not built.
@@ -1358,6 +1479,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 
 ## Testing seam (PA T7)
 
+<a id="f54"></a>
 ### F54. The engine seam is public but opt-in, and the API dump can't show the opt-in
 - **Finding:** `Engine`, `EngineModel`, `EngineRequest` and `RequestSink` (package `com.suhel.llamabro.internal`) and `LlamaBro.withEngine(engine, filesDir)` are public under `@InternalLlamaBroApi`, a `@RequiresOptIn` marker at level ERROR, so app code that touches them doesn't compile without `@OptIn`. The SDK opts in module-wide (`compilerOptions.optIn`); `llamabro-testing` opts in on `FakeLlamaBro` alone, and its own tests use none of it. BCV's dump lists the seam like any public API and doesn't show the marker, so a reader of `llamabro.api` must know the `internal` package is the seam. The SDK's JVM tests keep their own `FakeEngine` (finer control: blocking closes, cancel races, load progress); `llamabro-testing` has a separate fake rather than a shared source directory, since both already run the real `Model` and `Conversation`. `RequestSink` moved files but kept its name, so the R8 keep rule (F28) still matches.
 - **Evidence:** `api/llamabro.api` diff in PA T7 (the four interfaces and `withEngine` with no annotation); `FakeLlamaBroTest`, 8 tests, 2026-11-05: a screen model with a text reply, the tool loop running the app's handler, `ContextExceeded` then `compact` and `resume` (6 chat requests, the summary among them), event order, `ask` throwing `Incomplete` on length, an unscripted request failing as `ServerError` with "no reply scripted", the context size, and `JsonArgs.parse` with nested objects and lists.
@@ -1366,6 +1488,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 
 ## Routes and names (PA T6)
 
+<a id="f53"></a>
 ### F53. Every single-model llama-server route works in-process except transcriptions; the contract needed an id-blind comparison for the new shapes
 - **Finding:** Of the routes `server_register_routes` (b12052 `tools/server/server.cpp:170-218`) maps for one model, the C API mapped 14 handlers and now maps all 27: `infill`, `responses`, `responses_input_tokens`, `messages`, `messages_count_tokens`, `embeddings_native` (`POST /embeddings`), `tts`, `systemone`, `props_set` (`POST /props`), `models`, `health`, `lora_adapters` and `lora_adapters_set` were added. Each answers exactly as llama-server. Left out: `/v1/audio/transcriptions`, whose handler reads the audio from `req.files` (a multipart upload the HTTP layer parses; the C API takes a JSON body), and the routes that belong to the HTTP layer or the router (`/v1/realtime` WebSocket, `/cors-proxy`, `/tools`, `/models/load`, `/v1/stream`, `/v1/streams/lookup`, GCP compat). The Responses and Anthropic shapes carry random ids (`resp_…`, `msg_…`, `chatcmpl-…`) and wall-clock times (`created_at`, `completed_at`) nested inside events, where `compare.py` dropped them only at the top level, so those cases use a new `compare: "events"` mode that compares every data payload without them. Separately, a test that checks an exception's `cause` must walk the chain: kotlinx.coroutines' stack-trace recovery (on in JVM tests, where assertions are enabled) rethrows a copy of a `LlamaBroException` whose `cause` is the original.
 - **Evidence:** contract on Qwen3.5 4B with the projector, 2026-11-05: 71/75 identical with the old comparison, the four differences only ids and timestamps (checked with a nested id- and timestamp-blind diff), then 75/75. Real answers: `infill` (Qwen3.5 has FIM tokens: "return a + b"), both token counts (267, 16), `health`, `models`, `lora_adapters` (`[]`), `lora_adapters_set` (`{"success":true}`); the same 501 `not_supported_error` from both for `embeddings_native` (no `--embeddings`), `tts`, `systemone` (not a decision model) and `props_set` (no `--props`). `HostNativeTest.everyEndpointReachesAHandler` sends all 27 `Endpoint` constants to the real core and checks that none gets the bridge's unknown-endpoint error; its control, a made-up name, does. Its first version checked `e.cause is NativeError` and passed for every route while its control failed: the cause was the recovered copy's original.
@@ -1374,6 +1497,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 
 ## Errors (PA T5)
 
+<a id="f51"></a>
 ### F51. llama.cpp says why a model failed to load only in its log; the bridge now puts that line in the error
 - **Finding:** `server_context::load_model` returns `false` and `llama_model_load` logs the reason (`LLAMA_LOG_ERROR "error loading model: …"`), so the C API's error was only "failed to load model: <path>". Upstream llama-server is no better: it prints the line and exits. The bridge now catches ERROR lines logged on the loading thread (a thread-local capture in its log trampoline, which `lb_runtime_init` now always installs and which forwards to llama.cpp's default logger when the app has none) and appends the first one. A model or mmproj file that can't be opened is checked before the load and gets `"code": "file_not_found"`. Other reasons (damaged file, unknown architecture, out of memory) stay `Other`, with upstream's text in the message: classifying them would key a table to upstream's log wording (decided 2026-11-05: keep T5 slim).
 - **Evidence:** upstream llama-server b12052 on the host, one bad file each, stderr:
@@ -1390,6 +1514,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** `ModelLoadFailed.reason` is `FileNotFound` or `Other`; the message is what an app shows. More reasons can be added before 1.0 if the demo app shows that an app needs them.
 - **Feeds:** PA T5, design §6.1.
 
+<a id="f52"></a>
 ### F52. A pre-encode still samples one token, unseeded, so the end-to-end test compared a random token
 - **Finding:** tools/ui's pre-encode (`n_predict: 0`, no sampling fields, ported in T3) gets a response with one predicted token (`predicted_n: 1`), sampled with llama-server's random default seed. `HostNativeTest` compared that token between the SDK's core and upstream, so it failed whenever the two draws differed (here an end token vs " I"). It had passed since T3 by chance. The test now compares a pre-encode's cache counters and usage, not its `choices`. The SDK's behaviour is unchanged: the token is discarded, as in tools/ui.
 - **Evidence:** `check.sh --device` on 2026-11-05: `e2e` failed at record #15 (`finish_reason` `stop` vs `length`, identical `cache_n` 267, `prompt_n` 112, `predicted_n` 1); then `--only e2e` failed once and passed once. After the change it passed three runs in a row. `HostNativeTest.normalize`.
@@ -1398,6 +1523,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 
 ## Lifecycle and memory (PA T4)
 
+<a id="f50"></a>
 ### F50. A loaded model's weights are resident twice on the phone: the mapped file and a repacked copy
 - **Finding:** With Qwen3.5 4B Q4_K_M (2.83 GB file) loaded at `n_ctx` 4096, the process's PSS is about 5.5 GB: 2.6 GB of the mapped GGUF and 2.9 GB of `[anon:libc_malloc]`. The malloc part is about the size of the weights, which fits the CPU backend's repacked weight buffers (`CPU_REPACK`, ARM): the repack reads every mapped page, and those file pages stay resident though the CPU no longer reads them. Not investigated further in PA (no change to loading in that phase).
 - **Evidence:** `LifecycleDeviceTest` with a per-mapping PSS dump from `/proc/self/smaps` (removed after the diagnosis), three load/close cycles on the OnePlus CPH2649 (SM8750), 2026-11-04: loaded 5514–5561 MiB, `libc_malloc` 2909–2919 MiB, the GGUF mapping 2602–2615 MiB.
@@ -1405,12 +1531,14 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Feeds:** P2 (context fit, memory budget), P5 (size and memory levers).
 - **Resolved by F58** (2026-11-05): the SDK now loads with upstream's `--load-mode none`, so the mapped half is gone.
 
+<a id="f49"></a>
 ### F49. Closing a model returned none of its memory to the system until the bridge purged the allocator
 - **Finding:** After `lb_model_free` the process kept about 2.9 GB of `[anon:libc_malloc]` (the freed repacked weights, F50, and KV cache): bionic's allocator keeps freed pages for reuse. It is not a leak (three load/close cycles stay flat at about 2.9 GB; the next load reuses them), but an app that closes a model to free memory got none back. `mallopt(M_PURGE, 0)` (API 28+) right after the free returns it: PSS after closing went from 2962 to 82 MiB (baseline before the first load 43 MiB).
 - **Evidence:** `LifecycleDeviceTest.closeDuringGenerationFreesMemory` failed (baseline 43 MiB, loaded 4850 MiB, after close 2976 MiB, of which native heap 2937 MiB) and passes with the purge (baseline 54, loaded 5558, after 43 MiB); the cycle diagnosis is in F50's evidence. `bridge/src/model.cpp` `lb_model_free`. P1 behaved the same: its blocking `close()` ran the same free.
 - **Means:** `lb_model_free` purges on Android, so the C API gives the memory back for every binding (Kotlin now; Flutter and KMP later). The purge runs on the closing thread, which since T4 is never the caller's (`Model.close()` hands it to the background). llama-server never needs this: it frees by exiting.
 - **Feeds:** PA T4, design §3.2 (model lifecycle), §8.
 
+<a id="f48"></a>
 ### F48. Native init costs about 13 ms on the phone, so it moved off `getInstance`
 - **Finding:** In a cold process, loading `libllamabro.so` takes 7.5–8.3 ms and `lb_runtime_init` (backend loading and the CPU variant scoring of F29) 4.5–5.4 ms; `lb_runtime_devices` 0.1 ms. That is over the plan's 2 ms bar for staying eager on the main thread, so `LlamaBro.getInstance` runs no native code: the first `loadModel` or `devices()` (now `suspend`) initialises the runtime on `Dispatchers.IO`, once, and a config conflict is reported from that call as `LlamaBroException.InvalidRequest` (was `IllegalStateException` from `getInstance`).
 - **Evidence:** a one-off device test (`InitTimingDeviceTest`, not kept) run alone three times on the CPH2649 (SM8750), 2026-11-04: `loadLibrary` 8.26 / 7.46 / 7.84 ms, init 4.51 / 5.38 / 5.16 ms. JVM: `RuntimeTest.initRunsOnFirstUseNotOnCreation`, `configMismatchThrowsInvalidRequestOnFirstUse`.
@@ -1419,6 +1547,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 
 ## API guardrails (PA execution)
 
+<a id="f47"></a>
 ### F47. Conversation options: which requests get them, and tools/ui's pre-encode sends no template switches
 - **Finding:**
   - **tools/ui's pre-encode sends messages and tools only**, with `n_predict: 0` and `stream: false`: no `chat_template_kwargs`, no sampling (`tools/ui/src/lib/services/chat.service.ts` `preEncode`). The SDK keeps that whatever the conversation's defaults (test `preEncodeBodyFollowsToolsUi`). Adding prompt-shaping options there (`enable_thinking`) was considered and not taken: it would differ from upstream, so it needs an A/B test showing tokens saved on the next turn first (reference rule).
@@ -1431,6 +1560,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** A new public `RequestOptions` holds every option except messages and tools; `ChatRequest.Builder` extends its builder, so `ChatRequest { }`, `defaults { }` and `send(...) { }` share one DSL. `Conversation.Builder.sampling`/`reasoning` are gone (`defaults { }` replaces them).
 - **Feeds:** PA T3, design §6.1/§7, D8.
 
+<a id="f46"></a>
 ### F46. Request types as builders: P1's bodies unchanged, every upstream field classified, one deliberate change
 - **Finding:**
   - **Bodies unchanged.** A golden of nine full request bodies, recorded from P1's code before the change and covering every P1 field, is reproduced byte for byte by the new builders (`bodiesMatchP1`). The one difference is deliberate: `extra` with a nested `chat_template_kwargs` now keeps `enable_thinking` (F43).
@@ -1442,6 +1572,7 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 - **Means:** `ChatRequest`, `Sampling`, `Reasoning`, `LlamaBroConfig` are built with `X { }` and changed with `copy { }`; `Timings`, `Usage`, `ChatEvent.Done`, `ModelInfo`, `DeviceInfo` are classes with internal constructors; `ModelConfig` is the `loadModel { }` scope itself. Public classes use `internal constructor`, not `private`, so the dump shows only real API (D26).
 - **Feeds:** D26, PA T2, PA T5, P2 T8.
 
+<a id="f45"></a>
 ### F45. Neither ABI tool sets itself up for an AGP 9 library; BCV's tasks, wired by hand, do the job
 - **Finding:**
   - **KGP's own ABI validation** (2.3.10) supports `kotlin-android` projects, but with AGP 9's built-in Kotlin the `kotlin` extension never gets `abiValidation`, before or after evaluation (`Unresolved reference 'abiValidation'`; runtime probe: extensions `[ext, sourceSets]`). AGP 9 applies `com.android.library` only, not `org.jetbrains.kotlin.android`.
@@ -1457,18 +1588,21 @@ Shell and settings follow (same day): `DrawerContent`, `ChatListContent`, `ChatA
 
 A review of the public Kotlin API before P2 added to it, each claim checked against the code (paths below are under `sdk/llamabro/src/main/kotlin/com/suhel/llamabro/`). Verdict: the engine core is sound; the public API needed a revision pass before anything was built on it (D25, the PA plan).
 
+<a id="f44"></a>
 ### F44. Quality tooling a public library is expected to have is missing
 - **Finding:** There is no CI, no API compatibility check, no lint or static analysis (Android lint, detekt/ktlint, clang-tidy), no sanitizer run, and no generated API docs. `explicitApi()` is on and R8 rules ship (F28), but nothing stops an accidental public-API break.
 - **Evidence:** no `.github/`; `sdk/llamabro/build.gradle.kts` has `explicitApi()` (line 53) and no ABI or lint configuration; `sdk/scripts/check.sh` has no api, lint or sanitizer step; design §12 lists ABI validation, HWASan and Dokka, none of them run yet.
 - **Means:** The API check and lint come in PA (they guard the revision itself); CI, HWASan and Dokka stay in P5 (design §12).
 - **Feeds:** D26, PA T1, P5.
 
+<a id="f43"></a>
 ### F43. `extraJson` is merged one level deep, so it can silently undo typed fields
 - **Finding:** `extraJson` replaces whole top-level keys. `{"chat_template_kwargs": {...}}` drops `Reasoning.enableThinking`, which the SDK sends inside that object; `{"stream": false}` turns the always-streaming `Model.chat` into a single non-streamed body that the stream decoder doesn't expect.
 - **Evidence:** `internal/ChatJson.kt:52` (`enable_thinking` inside `chat_template_kwargs`), `:54-56` (`stream`, `stream_options`), `:58-60` (`JsonObject(base + extra)`).
 - **Means:** Merge extra JSON as a JSON Merge Patch (RFC 7396: objects merge recursively, `null` removes a key), and reject `stream` and `stream_options` in it, since the typed calls own them.
 - **Feeds:** PA T2.
 
+<a id="f42"></a>
 ### F42. Several public types can't grow without breaking callers, and some names clash
 - **Finding:**
   - `Endpoint` is an enum of the 14 routes the C API maps. Upstream b12052 serves more: `/infill`, `/lora-adapters`, `/v1/responses` (+ `input_tokens`), `/v1/messages` (+ `count_tokens`), `/tts`, `/v1/audio/transcriptions`, `/models`, `/health`, `POST /props`, `/v1/systemone`, the non-OpenAI `POST /embeddings` (the bridge maps only the OpenAI handler), and the WebSocket `/v1/realtime`. So "any llama-server endpoint" (design §6.1) isn't true yet, at the C API level either, and adding a route later changes a public enum.
@@ -1478,6 +1612,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** Complete the route table in the C API and make `Endpoint` a class with constants; settle the event and finish-reason sets before 1.0 and treat later additions as a major change; rename the clashing events.
 - **Feeds:** PA T6, design §14 Q1.
 
+<a id="f41"></a>
 ### F41. Errors lose their cause and some outcomes come back as generic or silent results
 - **Finding:**
   - `LlamaBroException` takes only a message, so the native or I/O cause is lost; `ModelLoadFailed` can't tell a missing file from an unsupported model or out-of-memory.
@@ -1488,6 +1623,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** Every SDK exception carries a `cause`; `ModelLoadFailed` gets a reason; `ask()` throws typed exceptions for every non-answer, `Length` included; busy is a typed error raised on collection, with an `isBusy` state; unknown counts are null; `canCompact` is public.
 - **Feeds:** PA T5.
 
+<a id="f40"></a>
 ### F40. Lifecycle: `close()` blocks, load progress is dropped, the sample ties the model to an Activity
 - **Finding:**
   - `Model.close()` cancels requests and joins the worker thread; it is `@WorkerThread`, and a streaming request can take up to about 1 s to notice the cancel (F23). `AutoCloseable.use { }` and `onDestroy` callers will block the main thread.
@@ -1498,18 +1634,21 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** `close()` returns at once and finishes in the background, with `suspend fun closeAndJoin()` for callers that must wait; `loadModel` takes a progress callback; native init moves off the caller's thread; the sample holds the model in a `ViewModel`.
 - **Feeds:** PA T4, PD.
 
+<a id="f39"></a>
 ### F39. An app can't fake the SDK in its own tests
 - **Finding:** `Model`, `Conversation` and `LlamaBro` have internal constructors and are final; `chat`, `conversation` and `restoreConversation` are extension functions; `JsonArgs` has an internal constructor. An app's unit test can't create any of them, so testing a ViewModel that uses the SDK needs a phone and a model. The SDK's own tests already have the right seam: the internal `Engine` interface with a `FakeEngine` that speaks llama-server's SSE.
 - **Evidence:** `Model.kt:30, 212, 232, 245`; `LlamaBro.kt:10`; `conversation/Conversation.kt:43`; `conversation/JsonArgs.kt:16`; `internal/Engine.kt`; the JVM tests' `FakeEngine`.
 - **Means:** Ship a `llamabro-testing` artifact that drives the real `Model` and `Conversation` code from a scripted fake engine (D27), rather than turning the public classes into interfaces apps could implement.
 - **Feeds:** D27, PA T7.
 
+<a id="f38"></a>
 ### F38. `Conversation`, the beginner path, can't reach half of what a chat request can do
 - **Finding:** `Conversation` builds every request from `sampling`, `reasoning` and its tools only. `responseFormat`, `stop`, `toolChoice`, `parallelToolCalls` and `extraJson` can't be set, and nothing can change for a single `send` (say, a JSON answer for one turn). An app that outgrows these must drop to `Model.chat` and rebuild the history, tool loop and compaction itself.
 - **Evidence:** `conversation/Conversation.kt:104-126` (Builder), `:240-245` (`request()` sets four fields); `chat/ChatRequest.kt:9-19`.
 - **Means:** `Conversation` takes the same request options as `Model.chat`, as defaults in its builder plus per-send overrides.
 - **Feeds:** PA T3.
 
+<a id="f37"></a>
 ### F37. The request types are public data classes, so every new field breaks binary compatibility
 - **Finding:** `ChatRequest`, `Sampling`, `Reasoning`, `Timings`, `Usage`, `ContextUsage`, `DeviceInfo` and the event classes are `data class`es (the request types with constructor defaults). Adding a property changes the constructor, `copy()` and `componentN()` signatures, so code compiled against the old version fails at run time. They will grow: `Sampling` has 11 fields, while llama-server's completion schema has 70 request fields, about 30 of them sampling (`typical_p`, `dynatemp_*`, `xtc_*`, `dry_*`, `mirostat*`, `top_n_sigma`, `adaptive_*`, `n_probs`, `min_keep`, `logit_bias`, `ignore_eos`, …). No check would catch the break (F44).
 - **Evidence:** `chat/ChatRequest.kt:9`, `chat/Sampling.kt:11-23`; upstream `tools/server/server-schema.cpp:13-485` (`make_llama_cmpl_schema`, 70 `add(new field_*)` calls).
@@ -1518,6 +1657,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## Verification
 
+<a id="f31"></a>
 ### F31. Every layer is now checked against upstream in one command, and the first full run is green
 - **Finding:** `sdk/scripts/check.sh` runs eight checks; each compares with upstream where upstream exists. First full run, 2026-11-04:
 
@@ -1541,6 +1681,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## Backends (P2 planning, read from upstream b12052)
 
+<a id="f35"></a>
 ### F35. ggml's own backend scan runs unless a backend is already loaded, and it obeys `GGML_BACKEND_PATH`
 - **Finding:**
   - `llama_backend_init()` calls `ggml_backend_load_all()` when no backend is registered. That scans the executable's directory and the current directory for `libggml-<name>*.so` and loads the library named by the environment variable `GGML_BACKEND_PATH`. P1's bridge called `llama_backend_init()` before loading its own CPU backend, so the scan always ran: setting `GGML_BACKEND_PATH` added a second CPU device to the SDK (host test `backend_path_env_ignored`: RED with 2 CPU devices).
@@ -1550,6 +1691,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** `lb_runtime_init` loads the CPU backend before `llama_backend_init()`, so the scan never runs and backends come only from the SDK's list (`backend_path_env_ignored` GREEN). P2 must not use the `--device` handler: it sets `common_params.devices` itself from `ggml_backend_dev_by_name` (P2 T6), and no other config key may map to the four handlers above.
 - **Feeds:** design §9, D24, P2 T2/T6.
 
+<a id="f34"></a>
 ### F34. What each backend needs to build: Hexagon only in Qualcomm's Linux image, Vulkan needs headers the NDK lacks
 - **Finding:**
   - **Hexagon.** The ARM-side `libggml-hexagon.so` needs the Hexagon SDK too, not just the skeletons: `build_idl(htp/htp_iface.idl)` runs the SDK's `qaic` to generate `htp_iface_stub.c`, and the stub includes `${HEXAGON_SDK_ROOT}/incs`. The skeletons `libggml-htp-v73/v75/v79/v81/v85.so` are `ExternalProject`s built with the Hexagon toolchain. Both exist only in the Linux image `snapdragon-toolchain/arm64-android:v0.8`, whose NDK was believed to be r28b; the SDK's core is built with NDK 29, and all ARM libraries in one process share one `libc++_shared.so`, so the image's build would need NDK 29 added. **Corrected by F62:** the v0.8 image's NDK is 29.0.14206865, the SDK's own; r28b was an older line in upstream's README.
@@ -1560,6 +1702,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** Hexagon and OpenCL are built in the Docker image with NDK 29 as the toolchain; Vulkan is built with the normal NDK plus pinned Vulkan-Headers and SPIRV-Headers. Whether an app may use an unsigned skeleton is P2's first test.
 - **Feeds:** design §9, D20, P2 T1, T3-T5, P5 CI.
 
+<a id="f33"></a>
 ### F33. Upstream `--fit` isn't a RAM guard on a phone: ggml-cpu reports all RAM as free
 - **Finding:**
   - `--fit` is on by default (`common_params::fit_params = true`). With `n_ctx = 0` it starts from the training context and lowers it, not below `fit_params_min_ctx` (4096), until projected use leaves `fit_params_target` (1 GiB) free per device (`common/fit.cpp`, step 2).
@@ -1571,6 +1714,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** D22: keep upstream's fit, and give it the phone's real budget through `--fit-target`, computed from `ActivityManager.MemoryInfo`. P1's `min(8192, n_ctx_train)` goes away. The reserve is measured in P2 T7.
 - **Feeds:** D7, D22, design §8, P2 T7, PD (recommendations).
 
+<a id="f32"></a>
 ### F32. llama.cpp uses every GPU-type device by default, and both Hexagon and OpenCL are GPU-type
 - **Finding:** Without `--device`, `llama_model_load` adds every device of type `GPU` (deduplicated only by `device_id`), and integrated GPUs only from one backend. The Hexagon backend (`HTP0`...) and the OpenCL backend both report `GGML_BACKEND_DEVICE_TYPE_GPU`. So with both AARs present, llama-server's default would split one model's layers across the NPU and the Adreno GPU.
 - **Evidence:** `src/llama.cpp:221-268`; `ggml-hexagon.cpp:2958-2959`; `ggml-opencl.cpp:17176-17177`.
@@ -1579,12 +1723,14 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## SDK build and C API (P1)
 
+<a id="f30"></a>
 ### F30. On Android 16, ART's GetStringUTFChars already returns real UTF-8
 - **Finding:** A model path holding CJK and an emoji (`模型😀.gguf`) loaded through the old JNI code, which read strings with `GetStringUTFChars`. The JNI specification only promises modified UTF-8, which encodes characters outside the BMP differently, so the P1 review expected this to fail; on this phone it does not.
 - **Evidence:** `NativeBridgeDeviceTest.loadsFromNonBmpPath` passed before the fix (OnePlus 13, Android 16, F20).
 - **Means:** The JNI layer now converts with `String.getBytes("UTF-8")`, which the specification covers on every Android version down to minSdk 29; the test stays as a guard. Nothing was observed failing, so this is a robustness change, not a bug fix.
 - **Feeds:** P1 cleanup, `sdk/native/jni/lb_jni.cpp`.
 
+<a id="f29"></a>
 ### F29. The CPU backend loads by name from the APK: no extraction, our own library names, private symbols
 - **Finding:**
   - ggml's directory scan is only `ggml_backend_load_best`; `ggml_backend_load(path)` is a plain `dlopen`, and Android can `dlopen` a library by name straight from an uncompressed APK. The bridge now opens each CPU variant by file name, asks its `ggml_backend_score`, and loads the best (a port of `ggml_backend_load_best`, `ggml/src/ggml-backend-reg.cpp`). CMake passes the file names in. No patch.
@@ -1595,12 +1741,14 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** Supersedes F25's extraction requirement. P2's GPU and NPU backends load the same way (by name). The Hexagon NPU skeleton is different: the DSP loader reads it from a file through `ADSP_LIBRARY_PATH`, which is why an earlier prototype extracted all its libraries; design §9 ships the skeleton as an asset and copies it to `noBackupFilesDir`.
 - **Feeds:** D4, design §9, P2, P5 (size budget, packaging docs).
 
+<a id="f28"></a>
 ### F28. An app's R8 renamed the classes JNI_OnLoad looks up: the SDK ships consumer keep rules
 - **Finding:** A minified release build of the sample aborted in `JNI_OnLoad`: R8 renamed `NativeBridge`, `RequestSink`, `NativeError` and the listener interfaces, which the JNI layer finds by name. The AAR now ships `consumer-rules.pro` keeping them, and `JNI_OnLoad` checks every lookup and returns `JNI_ERR` (so `System.loadLibrary` throws `UnsatisfiedLinkError` with a log line) instead of aborting on a null class. With the rules, the minified sample loads Llama 3.2 3B and streams a reply (62.9 t/s prefill, 17.9 t/s decode on 6 tokens).
 - **Evidence:** logcat of the minified sample before (abort at `JNI_OnLoad+460`) and after; `sdk/llamabro/consumer-rules.pro`; `sdk/samples/minimal` release build type (minified, debug-signed).
 - **Means:** The sample's release build is the regression check for keep rules. Any class the native code looks up by name must be listed in `consumer-rules.pro`.
 - **Feeds:** P1 cleanup, P5 (publishing).
 
+<a id="f27"></a>
 ### F27. P1 device acceptance: Qwen3.5 passes everything; Gemma 3 has no tools; Llama 3.2 3B loops on tool calls
 - **Finding:** `AcceptanceTest` (P1 T12) on the OnePlus 13 (F20), CPU, through the public API only:
 
@@ -1619,12 +1767,14 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** P1's done-when holds for Qwen3.5 on all four checks and for Gemma and Llama on chat, stop and the context error. Tool use needs a template with tool support (Gemma 3 has none) and a model that stops calling (Llama 3.2 3B does not at temperature 0). Open question: whether the acceptance test should use the model card's sampling for Llama, or count this as a model limit. The 52-70 s follow-up after a stopped long prompt is worth showing in PD's UI design.
 - **Feeds:** design §13 P1 done-when, P1 T12, PD (stop UX, capability-aware tools).
 
+<a id="f26"></a>
 ### F26. tools/ui keeps the compaction node at the end of the history, with a kept-step count
 - **Finding:** `tools/ui` appends the compaction node after the steps it preserves and stores `kept: preserve` on it (`stores/chat/index.svelte.ts:1709`). `sliceAtLastCompaction` then builds what the model reads: the system prefix, the node framed as a user message, the last `kept` steps before the node, and everything after it (`utils/compaction.ts`). The framed copy keeps the compaction type, so it never counts as a step. Five of the upstream unit cases (`compactionTokensBefore`) read per-message timings, which only matter for tools/ui's context gauge.
 - **Evidence:** `tools/ui/src/lib/utils/compaction.ts`, `tests/unit/compaction.test.ts`, `stores/chat/index.svelte.ts:1600-1800` (summary request, rollback on finish reason `length`, pre-encode after compaction when all slots are idle).
 - **Means:** Decided (2026-11-04): `Message.Compaction(summary, keptSteps)` is appended at the end exactly like tools/ui (an earlier plan placed it "at the cut", which gives the same requests but could not run the upstream cases unchanged). 17 upstream cases are ported one for one in `CompactionTest`. The 5 `compactionTokensBefore` cases are not ported: SDK messages carry no timings, and `Conversation.contextUsage` covers the current size.
 - **Feeds:** design §7.2, P1 T11, PD (a context gauge would need per-message timings).
 
+<a id="f25"></a>
 ### F25. Android packaging: backends must be named, extracted, and the CPU AAR is 21.6 MB of native code
 > **Partly superseded by F29** (2026-11-04): the backends no longer need extracting, and the library names and sizes changed. The point about naming the backend targets for AGP still holds.
 
@@ -1637,6 +1787,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** P1 T12's sample app sets `useLegacyPackaging = true`. Before P5, decide whether the SDK can avoid the extraction requirement (for example by loading each backend by name, which Android can open straight from the APK) or must document it. The size budget for P5 starts from these numbers.
 - **Feeds:** D4, design §9, P1 T6, T12, P5 (size budget, docs).
 
+<a id="f24"></a>
 ### F24. The C API matches upstream llama-server byte for byte on the host; build info needed a fix
 - **Finding:**
   - The contract test (`sdk/native/tests/contract/run.sh`: the spike's 20-request T2 set, through host `llama-server` and through the C API, same tree, same flags) gives **20/20 identical**, all status 200, 1,174 chunks on each side. This repeats F1 for the SDK's own bridge.
@@ -1645,6 +1796,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** The per-upgrade check (design §12) is in place and passing. Any build of a llama.cpp copy outside its own repo must provide build info this way.
 - **Feeds:** D12, design §12, P1 T5, P5 CI.
 
+<a id="f23"></a>
 ### F23. A streaming request notices cancel at its next result or at the 1-second poll
 - **Finding:** While a stream waits for the server, `server_response_reader::next` blocks for up to `HTTP_POLLING_SECONDS` (1 s) and checks `should_stop` only between waits. During prefill, a result arrives only at the end of each `n_batch` pass (and only with `return_progress`). So the bridge sees the cancel after `min(1 s poll, rest of the current pass)`; the server then stops at the end of that pass (F9).
   - Host CPU, Qwen3.5-4B Q4_K_M, no Metal or BLAS: prefill 109 t/s (1,513 tokens in 13.8 s), so one 512-token pass takes about 4.7 s. Cancel 200 ms into a 3,000-token prompt reaches the terminal event in 800-810 ms with or without `return_progress`, and with `n_batch` 128 too: the 1-second poll always fires first.
@@ -1653,6 +1805,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** After a cancel, the bridge's terminal event arrives within about 1 s whatever the model's speed; the slot itself frees at the end of the current pass, as F9 measured. The 1-second bound comes from upstream's polling constant, so "stop is fast" tests should bound the terminal event at about 1 s, not at one pass. Also: `recv_with_timeout` would call `std::terminate()` if the result queue stopped while a request waits (`:464-467`). In b12052 nothing stops the result queue (`server_context::terminate()` stops only the task queue, `server-context.cpp:5208-5210`), so an undrained request would instead wait forever. `lb_model_free` drains every request before terminating the loop. (Corrected after the P1 final review, 2026-11-04.)
 - **Feeds:** P1 T4, T6 (`cancelDuringPrefillFast`), T7, T12 (`stopIsFast`), design §6.1 (cancel).
 
+<a id="f22"></a>
 ### F22. llama-server's own log lines can't be redirected without a patch
 - **Finding:** Two log channels exist. llama and ggml log through `llama_log_set`, which takes a callback. llama-server's own lines (`SRV_*`, `SLT_*`, `COM_*`) go straight to `common_log`, whose worker thread writes to stdout/stderr or a file and has no callback hook.
 - **Evidence:** `common/log.h` (no callback API; `common_log_set_file`, `common_log_set_verbosity_thold` only); `common/log.cpp:94-155` (`fprintf` to `stdout`/`stderr`); `common/common.cpp:415` (`common_init` installs `common_log_default_callback` for llama/ggml).
@@ -1661,12 +1814,14 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## Tooling and device facts (spike sessions 1-2)
 
+<a id="f21"></a>
 ### F21. Quality tests on the Mac run at about 95 tokens/s in total
 - **Finding:** Qwen3.5-4B Q4_K_M under Metal on the development Mac (`Mac17,2`, 32 GB) generates about 95 tokens/s across 16 parallel slots. GSM8K answers average about 400 tokens, so one run takes about 4 s.
 - **Evidence:** a 48-problem timing run (203 s) before the test B pilot; [`research/p0/scripts/b-run.py`](../../research/p0/scripts/b-run.py)
 - **Means:** Before starting a generation-based quality test, estimate its runtime: 2,400 runs take about 3 hours. Prefer offline logprob analysis where it answers the question (F12).
 - **Feeds:** the method for any future quality test.
 
+<a id="f20"></a>
 ### F20. The test phone and how to drive it
 - **Finding:**
   - **Device:** OnePlus 13 `CPH2649`, SM8750 (Hexagon v79), Android 16 (API 36), 15.5 GB RAM.
@@ -1678,12 +1833,14 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** Device test scripts in P1 T6/T12 and P2 reuse these patterns. Test conventions: never change device settings; check that the phone is unlocked first.
 - **Feeds:** P1 T6, P1 T12, P2.
 
+<a id="f19"></a>
 ### F19. On-device Hexagon runtime: environment that works from a shell
 - **Finding:** Upstream's `scripts/snapdragon/run.py` sets `LD_LIBRARY_PATH`, `ADSP_LIBRARY_PATH`, `CDSP_LIBRARY_PATH` and `CDSP1/2/3_LIBRARY_PATH` to the library directory. With that, `-dev HTP0 -ngl 99` put 34/34 layers (2.86 GB) on the NPU. This was verified as the shell user in `/data/local/tmp`, **not** from inside an app.
 - **Evidence:** [`research/p0/scripts/phone.sh`](../../research/p0/scripts/phone.sh) `run`; [session1.md](../../research/p0/results/session1.md) setup line
 - **Means:** Loading the HTP skeleton from an app-private directory (design §9: extract to `noBackupFilesDir`, set `ADSP_LIBRARY_PATH`) was still **To verify**, and it was P2's first risk to test. **Verified by F36** (2026-11-05): it works from an app, debug and release.
 - **Feeds:** design §9, P2.
 
+<a id="f18"></a>
 ### F18. Hexagon build recipe
 - **Finding:** The build that works:
   - **Image:** Docker image `ghcr.io/snapdragon-toolchain/arm64-android:v0.8`, run with `--platform linux/amd64`.
@@ -1696,6 +1853,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## Engine: in-process server-context (spike session 1)
 
+<a id="f1"></a>
 ### F1. Embedding `server-context` gives llama-server's exact behaviour and speed
 - **Finding:** Calling llama-server's route handlers in-process (no HTTP) produced byte-identical output, the same speed and the same memory as the `llama-server` binary.
 - **Evidence:** [session1.md](../../research/p0/results/session1.md):
@@ -1706,12 +1864,14 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** The engine design in design §3 holds. Fallback §3.7 isn't needed.
 - **Feeds:** D12 (passed), design §3, P1 Tasks 3-5.
 
+<a id="f2"></a>
 ### F2. The HTTP layer is the size cost the SDK avoids
 - **Finding:** The in-process harness adds 1.27 MB stripped. llama-server's HTTP layer is 6.25 MB.
 - **Evidence:** [t1-sizes.md](../../research/p0/results/t1-sizes.md)
 - **Means:** No size reason to keep HTTP. Track `libllamabro.so` size per release.
 - **Feeds:** design §3.5, P1 Task 6 Step 4, P5 size budget.
 
+<a id="f3"></a>
 ### F3. Startup must mirror `server.cpp` main() step by step
 - **Finding:** Parity needs, in this order:
   1. `server_prepare_params`
@@ -1724,12 +1884,14 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** The bridge copies this sequence and the `static` helpers word for word.
 - **Feeds:** P1 Task 3.
 
+<a id="f4"></a>
 ### F4. NPU output is deterministic
 - **Finding:** Two runs on HTP0 give identical output (U vs U: 20/20).
 - **Evidence:** [session1.md](../../research/p0/results/session1.md) T2.
 - **Means:** Byte-exact parity tests work on the NPU too, not only the CPU.
 - **Feeds:** P2 contract tests.
 
+<a id="f5"></a>
 ### F5. Slot selection can lose a conversation's cache when switching chats
 - **Finding:** Chat B shares chat A's system prompt and tools, so prompt-similarity slot selection puts B into A's slot (similarity 0.957). On the way back, A matches that slot at 79%, so the RAM cache isn't consulted and A is partly re-processed (409 of 743 tokens).
 - **Evidence:**
@@ -1741,18 +1903,21 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## Phone performance (spike sessions 1-2)
 
+<a id="f6"></a>
 ### F6. The phone throttles under sustained NPU load
 - **Finding:** Thermal status reaches 3 after about 4 minutes of continuous NPU work, even on AC power. A one-off comparison made on a warmer phone looked 25% slower.
 - **Evidence:** [session1.md](../../research/p0/results/session1.md) finding 4; [session2.md](../../research/p0/results/session2.md) header.
 - **Means:** Benchmarks alternate the builds within a round and compare only within a round. Device benchmarks in later phases follow the same rule.
 - **Feeds:** method for P2 and the `bench/` tooling.
 
+<a id="f7"></a>
 ### F7. MTP halves NPU prefill upstream
 - **Finding:** With MTP on, upstream NPU prefill falls from 724 to 377 t/s (564 tokens). The fast HMX chunked delta-net kernel needs K == 1, MTP uses K = 4, so the whole prompt falls back to the recurrent kernel.
 - **Evidence:** [session1.md](../../research/p0/results/session1.md) T3; `ggml-hexagon/htp-kparams.cpp:551-556`
 - **Means:** Without a fix, MTP is a bad default on the NPU.
 - **Feeds:** F8, D10, P2 `Speculative.Auto`.
 
+<a id="f8"></a>
 ### F8. The delta-net head/tail patch fixes F7
 - **Finding:** Running the prompt head with K = 1:
   - NPU prefill with MTP on: +56%, +69% and +63% at 564, 2,368 and 9,883 tokens
@@ -1763,18 +1928,21 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** The patch ships in every build.
 - **Feeds:** D10 (ships), P1 Task 1, P2.
 
+<a id="f9"></a>
 ### F9. Stop during a long prompt waits for a whole `n_batch` pass
 - **Finding:** The server checks for cancel between passes of up to `n_batch` tokens. At the upstream 2048, freeing the slot took 1.7-2.6 s on the NPU; at 512 it took 0.37-0.44 s, with the same prefill speed (compared within a round, F6) and the same memory.
 - **Evidence:** [session1.md](../../research/p0/results/session1.md) T5; [session2.md](../../research/p0/results/session2.md) test C
 - **Means:** Default `n_batch` = 512.
 - **Feeds:** D17, design §8, P1 Task 3, the Task 4/6 cancel tests.
 
+<a id="f10"></a>
 ### F10. A bigger `n_ubatch` doesn't help
 - **Finding:** Values of 1024 and 2048 weren't faster than 512 beyond noise, and 2048 costs 136 MB more.
 - **Evidence:** [session2.md](../../research/p0/results/session2.md) test C
 - **Means:** Keep upstream's 512.
 - **Feeds:** D17, design §8.
 
+<a id="f11"></a>
 ### F11. Checkpoints are large; upstream's cache budget doesn't fit a phone
 - **Finding:**
   - One checkpoint is 50.25 MiB for Qwen3.5-4B, and a chat creates 2 per turn.
@@ -1786,12 +1954,14 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## Sampling (test B, stopped)
 
+<a id="f12"></a>
 ### F12. At Qwen3.5's main settings, vLLM's sampler order equals llama's
 - **Finding:** With temperature 1.0 and min_p 0, the temperature and min-p steps do nothing, so both chains reduce to penalties -> top-k -> top-p. Order matters only when temperature is not 1.0 (Qwen's 0.7 general and 0.6 coding rows) or min_p > 0.
 - **Evidence:** reasoning from the chain definitions (`common/common.h` sampler sequence), plus the model card rows (Qwen3.5-4B README)
 - **Means:** A generation test at those settings only measures noise. If order is ever tested, compare the distributions offline from logprobs at temperature other than 1.
 - **Feeds:** D18.
 
+<a id="f13"></a>
 ### F13. GSM8K baseline and seed noise for Qwen3.5-4B
 - **Finding:** Upstream scores 91.8% (487 runs, 200 problems; non-thinking mode, card reasoning row 1.0 / 0.95 / 20 / min_p 0 / presence 1.5).
   - 3.9% of runs hit the 2,048-token limit; median 409 tokens.
@@ -1800,12 +1970,14 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** Detecting a 2-point quality change needs on the order of a thousand problems x several seeds (hours). Sampler changes aren't worth that unless something motivates them.
 - **Feeds:** D18; the method for any future quality test.
 
+<a id="f14"></a>
 ### F14. Per-request `repeat_last_n: -1` is rejected
 - **Finding:** The request schema requires `repeat_last_n` >= 0 (400 error). Only the command-line flag accepts -1.
 - **Evidence:** a live request against b12052 `llama-server`; `tools/server/server-schema.cpp`
 - **Means:** To cover the whole context, send the slot's context size. `Sampling.repeatLastN` documents this.
 - **Feeds:** P1 Task 8.
 
+<a id="f15"></a>
 ### F15. Sampler order is already a per-request option
 - **Finding:** The `samplers` request field changes the chain; `generation_settings.samplers` echoes it.
 - **Evidence:** a live request against b12052 `llama-server`
@@ -1814,6 +1986,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## Models and metadata
 
+<a id="f16"></a>
 ### F16. Most of what an app needs about a model is in the GGUF and readable at runtime
 - **Finding:**
   - **Every GGUF key is readable:** `llama_model_meta_*` (`include/llama.h:631-643`).
@@ -1824,6 +1997,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 - **Means:** `Model.info` returns the typed fields plus a map of every key. Capabilities come from the model, not a hand-kept list.
 - **Feeds:** design §6.1 `model.info`, P1 Tasks 3 and 7, PD (capability-aware UI).
 
+<a id="f17"></a>
 ### F17. Recommended sampling can live in the GGUF, and llama.cpp applies it automatically
 - **Finding:** llama.cpp defines `general.sampling.*` keys (`src/llama-arch.cpp:186-197`), and `common/common.cpp:1114-1167` uses them as defaults unless the caller set that field. The Unsloth Qwen3.5-4B file has none, so model-card values must come from the app or a catalog.
 - **Evidence:** source; the same GGUF dump as F16
@@ -1832,6 +2006,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## Model rows from the search list (F175)
 
+<a id="f175"></a>
 ### F175. Recommended-file size from parameter count: a Q4_K_M file takes 5.2 bits per weight, an image reader adds 28.5% of it, and that sizes every catalog file within 9%
 
 - **Finding:** The Hub's search list reports each GGUF repo's parameter count (`gguf.total`, `expand[]=gguf`), so a
@@ -1866,6 +2041,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## The search's "Fits this phone" cap (F176)
 
+<a id="f176"></a>
 ### F176. "Fits this phone" is a parameter cap of budget × 8 / 5.2: about 6.6 billion on an 8 GiB phone, 9.9 billion on a 12 GiB one; the Hub filters on each upload's own count and accepts it as a plain number
 
 - **Finding:** A row's fit label is Too big exactly when its file leaves no headroom in the memory budget
@@ -1894,6 +2070,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## The Models page's measured jitter (F177)
 
+<a id="f177"></a>
 ### F177. The merged Models screen moved after its first frame on every open: its card re-expanded up to five times over ~0.9 s and the list dropped ~20 dp when storage landed; the rebuilt card rises once into its compact height on the phone, one size per file
 
 - **Finding:** The models audit captured the merged Models screen (D116) on the phone: every state in light and dark
@@ -1934,6 +2111,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## The README's benchmark (F178)
 
+<a id="f178"></a>
 ### F178. The README's benchmark run: 37 arms on the OnePlus 13
 
 - **Finding:** One run of `sdk/scripts/bench.sh` (speed, extras, ladder; one round per arm, thermal status ≤ 1 before
@@ -1970,6 +2148,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## Redistributing the Hexagon skeletons (F179)
 
+<a id="f179"></a>
 ### F179. The Hexagon skeletons carry only llama.cpp's code, FastRPC glue generated by Qualcomm's IDL compiler and inline code from the SDK's headers; upstream llama.cpp publishes the same files in its official releases
 
 - **Finding:** D133 left open whether `llamabro-hexagon` may be published, since its NPU skeletons
@@ -2001,6 +2180,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## The b12653 upgrade (F180)
 
+<a id="f180"></a>
 ### F180. The upgrade to b12653: the contract still holds on the Mac and the NPU, and upstream's own fix replaces patch 0004
 
 - **Finding:** At b12653 (`7d9b931df`, upstream's tag on 2026-11-23, 174 commits after b12479) the SDK matches
@@ -2040,6 +2220,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## Live transcription and speech (F181)
 
+<a id="f181"></a>
 ### F181. Upstream transcribes live only on a model with a streaming audio encoder; a transcription prompt replaces the instruction; streamed speech is one WAV header then PCM
 
 - **Finding:** At b12653: (1) `/v1/realtime` with `intent=transcription` gives a live session (text as audio
@@ -2060,6 +2241,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 ## Test determinism (F182)
 
+<a id="f182"></a>
 ### F182. A `derivedStateOf` read on one thread while another writes its inputs can keep a stale value for good
 
 - **Finding:** Outside composition, two writes to a snapshot state in the global snapshot reuse one state record in

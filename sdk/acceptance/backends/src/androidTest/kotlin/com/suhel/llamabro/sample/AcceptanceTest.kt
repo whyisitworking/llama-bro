@@ -31,7 +31,8 @@ import java.io.File
  * public API only, for each model named in the instrumentation argument `models` (file names in the app's filesDir).
  * Each flavor ships a different set of backends: `DevicePolicy.Auto` must pick its device ([BuildConfig.AUTO_DEVICE]);
  * `full` runs every test, `cpu`, `gpu` and `noskel` (the forced NPU failure) device choice, one chat and stop:
- *   ./gradlew -p sdk :samples:minimal:connectedFullDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.models=a.gguf,b.gguf
+ *   ./gradlew -p sdk :samples:minimal:connectedFullDebugAndroidTest
+ *   -Pandroid.testInstrumentationRunnerArguments.models=a.gguf,b.gguf
  * Results go to logcat under the tag "Acceptance" and to the app's filesDir/acceptance.log:
  *   adb shell run-as com.suhel.llamabro.sample cat files/acceptance.log
  */

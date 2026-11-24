@@ -19,10 +19,14 @@ import java.nio.file.Files
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * A [LlamaBroHub] for an app's JVM tests: no phone, no network (D70, D75). Pass [hub] to the code under test. It is the
- * real hub, over a scripted Hugging Face Hub and a temporary folder, so `model`, `download`, `progress`, `hasUpdate`,
- * `search`, `files`, `recommendedSampling` and the installed-copy rule (D64) run as in the app, as `FakeLlamaBro` runs
- * the real `Model` over a scripted engine (D27).
+ * A [LlamaBroHub] for an app's JVM tests: no phone, no network
+ * ([D70](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d70),
+ * [D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)). Pass [hub] to the code under
+ * test. It is the real hub, over a scripted Hugging Face Hub and a temporary folder, so `model`, `download`,
+ * `progress`, `hasUpdate`, `search`, `files`, `recommendedSampling` and the installed-copy rule
+ * ([D64](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d64)) run as in the app, as
+ * `FakeLlamaBro` runs the real `Model` over a scripted engine
+ * ([D27](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d27)).
  *
  * ```
  * val fakeHub = FakeLlamaBroHub {
@@ -41,7 +45,8 @@ import kotlin.time.Duration.Companion.milliseconds
  * Downloads write the scripted files, so `llama.loadModel(fakeHub.hub.model("unsloth/Qwen3-4B-GGUF:Q4_K_M"))` on a
  * `FakeLlamaBro` fetches and loads them. Failures, as `HubException`s: a repo not declared is `NotFound`, a
  * [Repo.gated] one `Unauthorized`; [rateLimit], [offline] and [freeBytes] give `RateLimited`, `Network` and
- * `InsufficientStorage`. The hub takes no token provider, since a token sends requests over the real network (F82).
+ * `InsufficientStorage`. The hub takes no token provider, since a token sends requests over the real network
+ * ([F82](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f82)).
  */
 public class FakeLlamaBroHub(script: FakeLlamaBroHub.() -> Unit = {}) : Closeable {
     private val cacheDir: File = Files.createTempDirectory("llamabro-hub-fake").toFile()
@@ -66,7 +71,9 @@ public class FakeLlamaBroHub(script: FakeLlamaBroHub.() -> Unit = {}) : Closeabl
     /**
      * How long each file's download takes, sent in four steps. With 0 a download may report only its start and its
      * end; set it to a few hundred milliseconds to see the bytes move, or to cancel one midway and resume it. A
-     * cancelled download stops within a few milliseconds and keeps its partial file, as on the phone (F114-F116).
+     * cancelled download stops within a few milliseconds and keeps its partial file, as on the phone
+     * ([F114](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f114) to
+     * [F116](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f116)).
      */
     public var downloadMillis: Long
         get() = scripted.downloadMillis

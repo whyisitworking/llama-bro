@@ -1,6 +1,6 @@
 // What the optional backend modules (hexagon, opencl) share: arm64-v8a only, the instrumentation runner, and the
-// libraries `sdk/native/scripts/build-backends.sh` builds for them, wired in as jniLibs (and assets) once the module has
-// said which directory is its own. Built by the root project's buildBackends before anything reads them.
+// libraries `sdk/native/scripts/build-backends.sh` builds for them, wired in as jniLibs (and assets) once the module
+// has said which directory is its own. Built by the root project's buildBackends before anything reads them.
 import com.android.build.api.dsl.LibraryExtension
 import com.android.build.api.variant.LibraryAndroidComponentsExtension
 

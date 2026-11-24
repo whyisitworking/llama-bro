@@ -93,7 +93,8 @@ class ModelDiscoveryTest {
         assertEquals(15L, foo.downloads)
         assertTrue(foo.sees)
         assertEquals("foo-1b", foo.groupKey)
-        // the busier upload doesn't see, the other does: the row's icon follows what it says, so its fit counts a reader
+        // the busier upload doesn't see, the other does: the row's icon follows what it says, so its fit counts a
+        // reader
         assertEquals(listOf(Capability.SeesImages), foo.capabilities)
     }
 

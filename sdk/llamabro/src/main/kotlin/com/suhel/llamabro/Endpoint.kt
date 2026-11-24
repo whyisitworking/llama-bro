@@ -2,7 +2,8 @@ package com.suhel.llamabro
 
 /**
  * A llama-server route reachable through [Model.rawRequest], one constant per route the C API maps (`llamabro.h`
- * lists them, and the few it leaves out with the reason). A class, not an enum, so a new route isn't a break (D26).
+ * lists them, and the few it leaves out with the reason). A class, not an enum, so a new route isn't a break
+ * ([D26](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d26)).
  */
 public class Endpoint private constructor(internal val nativeName: String, private val route: String) {
     override fun toString(): String = route
@@ -51,8 +52,9 @@ public class Endpoint private constructor(internal val nativeName: String, priva
 
         /**
          * `POST /v1/audio/transcriptions`. llama-server takes its audio as a multipart upload; here the body is the
-         * form fields as a JSON object of strings, and the audio goes beside it (D84), which [Model.rawRequest] can't
-         * send: use [transcribe].
+         * form fields as a JSON object of strings, and the audio goes beside it
+         * ([D84](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d84)), which
+         * [Model.rawRequest] can't send: use [transcribe].
          */
         public val Transcriptions: Endpoint =
             Endpoint("transcriptions", "POST /v1/audio/transcriptions")

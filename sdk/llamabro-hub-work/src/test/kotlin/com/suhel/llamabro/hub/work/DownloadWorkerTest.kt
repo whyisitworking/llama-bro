@@ -42,10 +42,10 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * The worker on the JVM through work-testing's [TestListenableWorkerBuilder]. The repo has no Robolectric, so most tests
- * reach the hub through the worker's [ModelDownloads] seam; the public `LlamaBroWorkerFactory(hub)` runs over a real
- * hub built by `FakeLlamaBroHub` (llamabro-hub-testing), which stands in for Android's StorageManager. The notifications
- * are a test double; the default notifications and WorkManager's KEEP are covered by the androidTest.
+ * The worker on the JVM through work-testing's [TestListenableWorkerBuilder]. The repo has no Robolectric, so most
+ * tests reach the hub through the worker's [ModelDownloads] seam; the public `LlamaBroWorkerFactory(hub)` runs over a
+ * real hub built by `FakeLlamaBroHub` (llamabro-hub-testing), which stands in for Android's StorageManager. The
+ * notifications are a test double; the default notifications and WorkManager's KEEP are covered by the androidTest.
  */
 class DownloadWorkerTest {
     private val model = HfModel("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M")

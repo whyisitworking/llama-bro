@@ -4,7 +4,8 @@ import com.suhel.llamabro.internal.JsonMergePatch
 
 /**
  * How a transcription session is set up: the `session.update` upstream's client sends on `/v1/realtime` with
- * `intent=transcription` (`ui/lib/voice/src/realtime.ts`). Each field goes to the server only when set (D98).
+ * `intent=transcription` (`ui/lib/voice/src/realtime.ts`). Each field goes to the server only when set
+ * ([D98](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d98)).
  *
  * [language] and [prompt] reach a session that transcribes per commit ([TranscriptionSession.isLive] false); a live
  * session (upstream's streaming ASR, `SERVER_TASK_TYPE_TRANSCRIBE_RT`) takes neither, as upstream reads neither there.
@@ -21,7 +22,8 @@ public class TranscriptionConfig internal constructor(
     public val inputSampleRate: Int?,
     /**
      * A JSON object applied to the `session` of the `session.update` last, as a JSON Merge Patch (RFC 7396): any
-     * upstream session field the typed ones don't cover, as [VoiceConfig.extra] does for a conversation (D143).
+     * upstream session field the typed ones don't cover, as [VoiceConfig.extra] does for a conversation
+     * ([D143](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d143)).
      *
      * Don't patch `audio.input.format`: it changes what the server expects, while `append` still sends 16-bit PCM.
      */

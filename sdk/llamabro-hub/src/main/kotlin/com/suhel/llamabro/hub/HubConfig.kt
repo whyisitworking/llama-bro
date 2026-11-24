@@ -6,7 +6,10 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
-/** Settings for Hub requests and the local cache. Pass them to [LlamaBroHub.create] (D70). */
+/**
+ * Settings for Hub requests and the local cache. Pass them to [LlamaBroHub.create]
+ * ([D70](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d70)).
+ */
 public class HubConfig internal constructor(
     /** The Hub API root, including its trailing slash. */
     public val endpoint: String,
@@ -14,7 +17,10 @@ public class HubConfig internal constructor(
     public val cacheDir: File?,
     /** Minimum time between reported progress updates. */
     public val progressInterval: Duration,
-    /** Receives diagnostic messages; null logs to logcat under `llamabro-hub` at `Warn` and above (D66). */
+    /**
+     * Receives diagnostic messages; null logs to logcat under `llamabro-hub` at `Warn` and above
+     * ([D66](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d66)).
+     */
     public val logger: Logger?,
     internal val token: (suspend () -> String?)?,
 ) {
@@ -29,7 +35,10 @@ public class HubConfig internal constructor(
         /** Minimum time between reported progress updates; at least 100 milliseconds. */
         public var progressInterval: Duration = from.progressInterval
 
-        /** Receives diagnostic messages; null logs to logcat under `llamabro-hub` at `Warn` and above (D66). */
+        /**
+         * Receives diagnostic messages; null logs to logcat under `llamabro-hub` at `Warn` and above
+         * ([D66](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d66)).
+         */
         public var logger: Logger? = from.logger
         private var tokenProvider: (suspend () -> String?)? = from.token
 

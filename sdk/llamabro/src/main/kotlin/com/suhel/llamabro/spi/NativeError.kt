@@ -19,7 +19,10 @@ public class NativeError(public val status: Int, public val errorJson: String) :
         /** `LB_ERR_INTERNAL`: the bridge failed on something unexpected (out of memory, an exception). */
         public const val INTERNAL: Int = 5
 
-        /** `LB_ERR_CANCELLED`: the load's progress callback said stop (D67). */
+        /**
+         * `LB_ERR_CANCELLED`: the load's progress callback said stop
+         * ([D67](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d67)).
+         */
         public const val CANCELLED: Int = 6
 
         /** `LB_ERR_CLOSED`: the model is being freed, so it takes no new request. */

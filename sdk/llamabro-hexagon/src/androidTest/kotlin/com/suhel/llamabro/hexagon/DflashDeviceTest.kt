@@ -63,15 +63,17 @@ class DflashDeviceTest {
         runBlocking<Unit> {
             assertTrue("missing main GGUF: $modelPath", File(modelPath).isFile)
             assertTrue("missing DFlash GGUF: $draftPath", File(draftPath).isFile)
-            // Auto first, with the draft first, while the most memory is free; each load waits for the last one's memory.
+            // Auto first, with the draft first, while the most memory is free; each load waits for the last one's
+            // memory.
             for (withDraft in listOf(true, false)) {
                 val settled = settleMemory()
                 val candidate = ModelSource.file(modelPath) { if (withDraft) draft = draftPath }
                 val config: ModelConfig.Builder.() -> Unit = {
                     devicePolicy = DevicePolicy.Only(DeviceKind.Npu)
                     contextSize = ContextSize.Auto
-                    // The test is about DFlash, not the prompt cache, so it uses none (as F88's fit test): this phone, short
-                    // of the draft's 6,060 MiB with the default 1 GiB cache, then has room and the success path runs (D45).
+                    // The test is about DFlash, not the prompt cache, so it uses none (as F88's fit test): this phone,
+                    // short of the draft's 6,060 MiB with the default 1 GiB cache, then has room and the success path
+                    // runs (D45).
                     ramCacheMib = 0
                     speculative = if (withDraft) Speculative.DFlash() else Speculative.Off
                 }
@@ -80,8 +82,9 @@ class DflashDeviceTest {
                     try {
                         llama.loadModel(candidate, config)
                     } catch (e: LlamaBroException.ModelLoadFailed) {
-                        // With the draft, Qwen 4B needs about 6.1 GB at the minimum context (F90). On a phone with less even
-                        // so, a refusal is the right answer; it must agree with the estimate made just before (memory moves).
+                        // With the draft, Qwen 4B needs about 6.1 GB at the minimum context (F90). On a phone with less
+                        // even so, a refusal is the right answer; it must agree with the estimate made just before
+                        // (memory moves).
                         if (!withDraft ||
                             e.reason != LlamaBroException.ModelLoadFailed.Reason.InsufficientMemory
                         ) {

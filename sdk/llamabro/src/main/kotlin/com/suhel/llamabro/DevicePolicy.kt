@@ -1,8 +1,10 @@
 package com.suhel.llamabro
 
 /**
- * The kind of chip a model runs on (D32). Apps choose by kind; the SDK maps it to the backend and device this phone
- * has (`hexagon`/`HTP0`, `opencl`/`GPUOpenCL`) and names them in [LoadReport].
+ * The kind of chip a model runs on
+ * ([D32](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d32)). Apps choose by kind; the SDK
+ * maps it to the backend and device this phone has (`hexagon`/`HTP0`, `opencl`/`GPUOpenCL`) and names them in
+ * [LoadReport].
  */
 public enum class DeviceKind {
     /** The neural processor (`llamabro-hexagon` on Snapdragon). */
@@ -15,11 +17,16 @@ public enum class DeviceKind {
     Cpu,
 }
 
-/** Where [LlamaBro.loadModel] puts a model ([ModelConfig.devicePolicy]). The choice is always explicit (F32). */
+/**
+ * Where [LlamaBro.loadModel] puts a model ([ModelConfig.devicePolicy]). The choice is always explicit
+ * ([F32](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f32)).
+ */
 public sealed interface DevicePolicy {
     /**
-     * The fastest kind that loads: NPU, then GPU, then CPU (D24, D31). A device that fails to load is skipped, with
-     * its reason in [LoadReport.attempts].
+     * The fastest kind that loads: NPU, then GPU, then CPU
+     * ([D24](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d24),
+     * [D31](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d31)). A device that fails to load
+     * is skipped, with its reason in [LoadReport.attempts].
      */
     public data object Auto : DevicePolicy
 
@@ -42,7 +49,10 @@ public data class LoadReport internal constructor(
     public val attempts: List<Attempt>,
     /** The context the model was loaded with, in tokens. */
     public val contextSize: Int,
-    /** Why that size: set by the app, the training context fits, or fitted to the memory available (D33). */
+    /**
+     * Why that size: set by the app, the training context fits, or fitted to the memory available
+     * ([D33](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d33)).
+     */
     public val contextReason: String,
     /**
      * What decodes: [Speculative.Mtp] when the MTP head drafts tokens, [Speculative.Ngram] when the app set it, else

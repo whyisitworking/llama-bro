@@ -2,7 +2,8 @@ package com.suhel.llamabro.chat
 
 /**
  * An OpenAI-shaped chat request, sent to llama-server's `/v1/chat/completions` handler: messages, tools and
- * [options]. Unset fields are left out, so the GGUF's and llama-server's defaults apply (D18).
+ * [options]. Unset fields are left out, so the GGUF's and llama-server's defaults apply
+ * ([D18](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d18)).
  *
  * ```
  * val request = ChatRequest {

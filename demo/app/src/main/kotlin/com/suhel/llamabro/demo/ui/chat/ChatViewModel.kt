@@ -115,7 +115,8 @@ class ChatViewModel(
     /** Plays the chat's voice messages (D76). */
     val player: VoicePlayer = audio?.player ?: VoicePlayer.None
 
-    // each message's parse, by id; rebuilt from the messages now listed on every emission, so it never outgrows the chat
+    // each message's parse, by id; rebuilt from the messages now listed on every emission, so it never outgrows the
+    // chat
     private val parsed = HashMap<Long, Pair<String, MarkdownBlocks>>()
 
     private fun itemsFor(style: MessageStyle) =

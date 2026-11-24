@@ -29,8 +29,9 @@ android {
         abortOnError = true
         warningsAsErrors = true
         checkDependencies = false
-        // the Gradle wrapper (the repository root's, found above this module) is pinned on purpose, and so are the versions in the shared catalog (updated deliberately, not by lint)
-        // the Lifecycle library ships a lint check built for a newer lint API than this AGP version loads
+        // the Gradle wrapper (the repository root's, found above this module) is pinned on purpose, and so are the
+        // versions in the shared catalog (updated deliberately, not by lint) the Lifecycle library ships a lint check
+        // built for a newer lint API than this AGP version loads
         disable +=
             setOf(
                 "AndroidGradlePluginVersion",

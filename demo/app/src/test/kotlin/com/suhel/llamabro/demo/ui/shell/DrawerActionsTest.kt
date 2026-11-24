@@ -25,8 +25,8 @@ import org.robolectric.annotation.GraphicsMode
 import java.time.ZoneOffset
 
 /**
- * The Sidebar drawer (demo design §4.2, D126): New chat at its head and Models and Settings as labelled rows at its foot,
- * all on screen around a list of chats with their times; Models says how many models are on the phone; the search
+ * The Sidebar drawer (demo design §4.2, D126): New chat at its head and Models and Settings as labelled rows at its
+ * foot, all on screen around a list of chats with their times; Models says how many models are on the phone; the search
  * filters, and says so when nothing matches.
  */
 @RunWith(AndroidJUnit4::class)

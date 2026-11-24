@@ -5,7 +5,9 @@ import com.suhel.llamabro.internal.JsonMergePatch
 /**
  * How `Model.transcribe` transcribes: upstream's transcription request (`POST /v1/audio/transcriptions`), which
  * llama-server runs as a chat request. Each field goes to the server only when set, so an unset one keeps upstream's
- * and the model's default (D98). The one-shot call takes a builder like the rest of the audio family (D143).
+ * and the model's default ([D98](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d98)). The
+ * one-shot call takes a builder like the rest of the audio family
+ * ([D143](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d143)).
  *
  * Besides the sampling fields a chat request has (`top_k`, `top_p`, …), `stop`, the reasoning fields
  * (`reasoning_format`, the reasoning budget) and the chat-template fields (`chat_template_kwargs`, e.g.

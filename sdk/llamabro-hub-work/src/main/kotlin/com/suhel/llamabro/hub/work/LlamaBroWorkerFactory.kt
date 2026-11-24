@@ -12,7 +12,9 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * Creates the worker behind [enqueueDownload] with the app's own [LlamaBroHub], so the download uses the app's
- * config (token provider, logger, cache folder) with no global (D70, D75).
+ * config (token provider, logger, cache folder) with no global
+ * ([D70](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d70),
+ * [D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)).
  *
  * Register it in WorkManager's [androidx.work.Configuration], from an `Application` that implements
  * `Configuration.Provider`:

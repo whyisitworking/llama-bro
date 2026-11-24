@@ -22,9 +22,11 @@ import kotlin.coroutines.cancellation.CancellationException
 public class LbToolCallContext(public val callId: String, public val toolName: String, public val rawArguments: String)
 
 /**
- * A tool with typed arguments and result (D61), made by [tool] and registered with [Conversation.Builder.tool] or in
- * a [Toolbox]. The arguments' JSON Schema, sent to the model, comes from [argsSerializer] through [typedSchema] with
- * [json], which also decodes the arguments and encodes the result, every field included (D88).
+ * A tool with typed arguments and result
+ * ([D61](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d61)), made by [tool] and registered
+ * with [Conversation.Builder.tool] or in a [Toolbox]. The arguments' JSON Schema, sent to the model, comes from
+ * [argsSerializer] through [typedSchema] with [json], which also decodes the arguments and encodes the result, every
+ * field included ([D88](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d88)).
  */
 public class TypedTool<A, R> internal constructor(
     public val name: String,
@@ -123,22 +125,29 @@ private fun firstLine(e: SerializationException): String =
         ?.ifEmpty { null } ?: "they don't match the schema"
 
 /**
- * A typed tool (D61): [handler] gets the decoded arguments, with the call's [LbToolCallContext] as its receiver, and
- * captures whatever the app injected. It runs where the agent loop calls it, so a blocking handler switches to
- * `Dispatchers.IO` itself. What it throws decides what the model sees, as for a raw tool (D62): an `LbToolError`
- * sends `Error: <message>`, an `LbToolAbort` ends the turn, any other exception sends `Error: the tool failed`.
+ * A typed tool ([D61](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d61)): [handler] gets the
+ * decoded arguments, with the call's [LbToolCallContext] as its receiver, and captures whatever the app injected. It
+ * runs where the agent loop calls it, so a blocking handler switches to `Dispatchers.IO` itself. What it throws decides
+ * what the model sees, as for a raw tool
+ * ([D62](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d62)): an `LbToolError` sends `Error:
+ * <message>`, an `LbToolAbort` ends the turn, any other exception sends `Error: the tool failed`.
  *
  * @param args the arguments' serializer; their schema must be an object. Arguments that don't decode send
  *   `Error: invalid arguments: <reason>` and the loop goes on, the reason being kotlinx-serialization's (`missing
  *   field 'days'`, bad JSON, a custom serializer's own `SerializationException`). Any other exception thrown while
  *   decoding, such as a `require` or `check` in the arguments class's `init`, sends `Error: invalid arguments` without
- *   its message (D62),
+ *   its message ([D62](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d62)),
  *   and is the cause of the `LbToolError`. To explain to the model, throw an [LbToolError] from the `init`: its
  *   message is sent.
- * @param result the result's serializer: a `String` is sent as is, `Unit` as `Done` (D81), anything else as JSON
- *   with every field, also those at their default (D88). A `String?` sends `null` when null; a `Unit?` sends `Done`.
- *   No schema for the result reaches the model (F139), so say what it means in [description].
- * @param requiresApproval a call pauses the turn until `approve` or `deny` (D62).
+ * @param result the result's serializer: a `String` is sent as is, `Unit` as `Done`
+ *   ([D81](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d81)), anything else as JSON with
+ *   every field, also those at their default
+ *   ([D88](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d88)). A `String?` sends `null` when
+ *   null; a `Unit?` sends `Done`. No schema for the result reaches the model
+ *   ([F139](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f139)), so say what it
+ *   means in [description].
+ * @param requiresApproval a call pauses the turn until `approve` or `deny`
+ *   ([D62](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d62)).
  * @param json decodes the arguments and encodes the result; its settings shape the schema too.
  * @throws IllegalArgumentException for a name that doesn't match `^[a-zA-Z0-9_-]{1,64}$`, a blank description, or
  *   arguments without an object schema (see [typedSchema] for the types it refuses).

@@ -7,10 +7,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 
 /**
- * A spoken conversation with a model that listens and talks (D95): upstream's `/v1/realtime` conversation, in memory.
- * Open it with `Model.voiceSession`. The app gives the user's audio with [append] and ends each turn with [commit];
- * the SDK has no turn detection of its own. The reply arrives on [events] as text ([VoiceEvent.ReplyText], the
- * captions) and speech ([VoiceEvent.ReplyAudio]), then [VoiceEvent.ReplyDone].
+ * A spoken conversation with a model that listens and talks
+ * ([D95](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d95)): upstream's `/v1/realtime`
+ * conversation, in memory. Open it with `Model.voiceSession`. The app gives the user's audio with [append] and ends
+ * each turn with [commit]; the SDK has no turn detection of its own. The reply arrives on [events] as text
+ * ([VoiceEvent.ReplyText], the captions) and speech ([VoiceEvent.ReplyAudio]), then [VoiceEvent.ReplyDone].
  *
  * The sending calls queue the event and return at once; they are safe from any thread and answer false once the
  * session has ended (closed, the model closed, or the server ended it). The server answers a client event it refuses

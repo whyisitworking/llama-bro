@@ -70,8 +70,9 @@ class Robot {
     }
 
     /**
-     * Opens the shade at its notifications. UI Automator's `openNotification` left a ColorOS phone on the Home screen, and its
-     * shade has no `notification_stack_scroller`, so the shell's own command asks for the notifications instead.
+     * Opens the shade at its notifications. UI Automator's `openNotification` left a ColorOS phone on the Home screen,
+     * and its shade has no `notification_stack_scroller`, so the shell's own command asks for the notifications
+     * instead.
      */
     fun openNotificationShade() {
         shell("cmd statusbar expand-notifications")

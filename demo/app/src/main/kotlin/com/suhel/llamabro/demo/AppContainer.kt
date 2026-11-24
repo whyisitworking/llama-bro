@@ -273,7 +273,8 @@ class AppContainer(
     override fun switcherViewModel(handle: ChatEngine.ChatHandle) =
         SwitcherViewModel(
             library = models.library,
-            // the estimates follow the chip chosen in Settings › Memory (D72), which the other pane can change meanwhile
+            // the estimates follow the chip chosen in Settings › Memory (D72), which the other pane can change
+            // meanwhile
             facts =
                 settings.settings
                     .map { it.chip }
@@ -317,7 +318,10 @@ class AppContainer(
         audio = chatAudio(),
     )
 
-    /** The chat's audio features: the recorder, the player, voice mode, dictation and read-aloud (D76, D100, D140, D141). */
+    /**
+     * The chat's audio features: the recorder, the player, voice mode, dictation and read-aloud (D76, D100, D140,
+     * D141).
+     */
     private fun chatAudio() =
         ChatAudio(
             recorder = VoiceRecorder(audio, microphone, scope),

@@ -32,8 +32,9 @@ import java.io.File
 
 /**
  * A picture of every markdown construct a reply may use, parsed by [Markdown] and drawn by [MarkdownText], kept as a
- * regression preview of the renderer (D74): `adb pull /sdcard/Android/data/com.suhel.llamabro.demo/files/screens/markdown`.
- * They are looked at, not compared: a pass means each sample parsed and rendered.
+ * regression preview of the renderer (D74): `adb pull
+ * /sdcard/Android/data/com.suhel.llamabro.demo/files/screens/markdown`. They are looked at, not compared: a pass means
+ * each sample parsed and rendered.
  */
 @RunWith(Parameterized::class)
 class MarkdownScreenshotsTest(private val theme: ThemeMode) {

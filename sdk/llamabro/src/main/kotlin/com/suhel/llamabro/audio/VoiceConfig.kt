@@ -3,11 +3,14 @@ package com.suhel.llamabro.audio
 import com.suhel.llamabro.internal.JsonMergePatch
 
 /**
- * How a voice session is set up: upstream's `session.update` (`/v1/realtime`, D95). Each field goes to the server only
- * when set, so an unset one keeps upstream's default; the SDK picks none of its own (D98).
+ * How a voice session is set up: upstream's `session.update` (`/v1/realtime`,
+ * [D95](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d95)). Each field goes to the server
+ * only when set, so an unset one keeps upstream's default; the SDK picks none of its own
+ * ([D98](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d98)).
  *
  * LFM3-Omni needs [voice], [language] and an instruction to answer in [instructions]: without them, a reply in
- * text and speech can speak noise for minutes, speak another language, or read the question back (F166). A cap on
+ * text and speech can speak noise for minutes, speak another language, or read the question back
+ * ([F166](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f166)). A cap on
  * [maxOutputTokens] bounds a reply that runs on.
  */
 public class VoiceConfig internal constructor(
@@ -17,7 +20,10 @@ public class VoiceConfig internal constructor(
     public val language: String?,
     /** The session's system instructions; fixed once the first audio or message has gone in. */
     public val instructions: String?,
-    /** What a reply is made of: text and audio by default, the captioned mode of D95. Never empty. */
+    /**
+     * What a reply is made of: text and audio by default, the captioned mode of
+     * [D95](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d95). Never empty.
+     */
     public val outputModalities: Set<OutputModality>,
     /** The longest reply in tokens; null leaves upstream's `"inf"`. */
     public val maxOutputTokens: Int?,

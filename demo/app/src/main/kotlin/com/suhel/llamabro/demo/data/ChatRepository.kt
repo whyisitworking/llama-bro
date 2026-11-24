@@ -213,12 +213,12 @@ class ChatRepository(
 
     /**
      * Deletes the recordings and the pictures no row names and that are older than a day, which a crash or a death
-     * between saving a file and writing its row leaves behind. A draft's pictures are recorded only in the chat screen's
-     * saved state, which survives a process death for days and which this class cannot read: they are staged in the
-     * image store's draft folder, swept only of pictures older than [DRAFT_AGE_MILLIS], which an abandoned draft (the
-     * task swiped away, the process killed before the screen closed) leaves behind. That is also why a draft restored
-     * after more than 14 days loses its pictures, which the bar then reports as gone. Recordings and dictation clips
-     * are never held across a process.
+     * between saving a file and writing its row leaves behind. A draft's pictures are recorded only in the chat
+     * screen's saved state, which survives a process death for days and which this class cannot read: they are staged
+     * in the image store's draft folder, swept only of pictures older than [DRAFT_AGE_MILLIS], which an abandoned draft
+     * (the task swiped away, the process killed before the screen closed) leaves behind. That is also why a draft
+     * restored after more than 14 days loses its pictures, which the bar then reports as gone. Recordings and dictation
+     * clips are never held across a process.
      */
     suspend fun sweepOrphans() {
         val cutoff = clock() - ORPHAN_AGE_MILLIS
@@ -261,7 +261,9 @@ class ChatRepository(
     private companion object {
         const val ORPHAN_AGE_MILLIS = 24 * 60 * 60 * 1000L
 
-        /** How long a draft's pictures outlive their draft's last pick: far past any saved state a person returns to. */
+        /**
+         * How long a draft's pictures outlive their draft's last pick: far past any saved state a person returns to.
+         */
         const val DRAFT_AGE_MILLIS = 14 * ORPHAN_AGE_MILLIS
 
         fun imageNames(joined: String): List<String> = joined.split('\n').filter { it.isNotEmpty() }

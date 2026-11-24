@@ -38,7 +38,10 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 
-/** A turn's life as one job: the load and the reply, stopped, waited for, released (the engine's set-up as ChatEngineTest's). */
+/**
+ * A turn's life as one job: the load and the reply, stopped, waited for, released (the engine's set-up as
+ * ChatEngineTest's).
+ */
 class ChatEngineTurnTest {
     @get:Rule val folder = TemporaryFolder()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

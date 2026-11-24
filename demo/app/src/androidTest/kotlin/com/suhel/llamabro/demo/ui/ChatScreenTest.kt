@@ -875,7 +875,9 @@ class ChatScreenTest {
 
     // ---- performance ----------------------------------------------------------------------------
 
-    /** [pairs] questions and answers: few enough that every row stays on screen, so none leaves and re-enters the list. */
+    /**
+     * [pairs] questions and answers: few enough that every row stays on screen, so none leaves and re-enters the list.
+     */
     private fun seedLongChat(pairs: Int = 5): Long =
         runBlocking {
             val chat = app.container.chats.createChat(swift.toString())
@@ -908,8 +910,8 @@ class ChatScreenTest {
         counter.reset()
         compose.waitUntil(20_000) { compose.onAllNodes(hasTestTag("streaming_reply")).fetchSemanticsNodes().isEmpty() }
         val earlier = counter.counts.filterKeys { it != "row-streaming" }.filterKeys { k -> k.startsWith("row-m-") }
-        // the rows that existed before the turn don't recompose (the finished reply's row is new, so it may compose once)
-        // four seeded rows and the new question
+        // the rows that existed before the turn don't recompose (the finished reply's row is new, so it may compose
+        // once) four seeded rows and the new question
         val old = earlier.filterKeys { k -> k.removePrefix("row-m-").toLong() <= 5L }
         // the one exception: the reply that was the latest loses its Copy, Share and Regenerate actions when the new
         // reply starts, so it recomposes a couple of times, never once per token (30 tokens arrive in this window)

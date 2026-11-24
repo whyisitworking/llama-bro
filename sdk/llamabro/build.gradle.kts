@@ -53,7 +53,8 @@ android {
         }
     }
 
-    // LlamaBro.withHostEngine for other modules' host tests (llamabro-typed's HostTypedTest): kept out of the release AAR
+    // LlamaBro.withHostEngine for other modules' host tests (llamabro-typed's HostTypedTest): kept out of the release
+    // AAR
     testFixtures {
         enable = true
     }

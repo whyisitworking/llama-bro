@@ -17,7 +17,8 @@ import java.nio.file.Files
 internal class HubLoggerTest {
     @Before fun reset() = hub.reset()
 
-    // D66: with no app logger the hub's warnings go to the default (logcat `llamabro-hub` in production); the app's wins.
+    // D66: with no app logger the hub's warnings go to the default (logcat `llamabro-hub` in production); the app's
+    // wins.
     @Test fun hubWarningsGoToDefaultLoggerWhenAppGivesNone() =
         runBlocking {
             val cache = Files.createTempDirectory("hub-default-logger-").toFile()

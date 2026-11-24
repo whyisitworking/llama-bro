@@ -34,7 +34,8 @@ class MonkeyTest : Journey() {
         val packageName = InstrumentationRegistry.getInstrumentation().targetContext.packageName
         val command =
             "monkey -p $packageName -s $seed --throttle $THROTTLE_MILLIS --pct-syskeys 0 --pct-appswitch 0 " +
-                // a keyboard-lid flip is meaningless on a phone, and the emulator refuses to inject it: monkey then aborts the run
+                // a keyboard-lid flip is meaningless on a phone, and the emulator refuses to inject it: monkey then
+                // aborts the run
                 "--pct-anyevent 0 --pct-nav 0 --pct-majornav 0 --pct-trackball 0 --pct-flip 0 " +
                 "--ignore-security-exceptions $EVENTS"
         val output =

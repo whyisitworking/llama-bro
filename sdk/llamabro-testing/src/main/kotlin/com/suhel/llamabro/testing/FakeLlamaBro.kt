@@ -13,8 +13,9 @@ import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * A [LlamaBro] for an app's JVM tests: no phone, no model, no native code (D27). Pass [llamaBro] to the code under
- * test. Each chat request takes the next scripted [reply] (or error), answered as llama-server streams it, so the
+ * A [LlamaBro] for an app's JVM tests: no phone, no model, no native code
+ * ([D27](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d27)). Pass [llamaBro] to the code
+ * under test. Each chat request takes the next scripted [reply] (or error), answered as llama-server streams it, so the
  * real `Model`, `Conversation`, agent loop and compaction run on it.
  *
  * ```
@@ -103,7 +104,8 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) : AutoCloseable 
 
     /**
      * What went beside each of [chatRequests], at the same index (empty when nothing did): the files whose
-     * `lb-attachment:<name>` placeholders the native side would write into the body (D84).
+     * `lb-attachment:<name>` placeholders the native side would write into the body
+     * ([D84](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d84)).
      */
     @InternalLlamaBroApi
     public val chatAttachments: List<List<EngineAttachment>> get() = synchronized(lock) { chatMedia.toList() }

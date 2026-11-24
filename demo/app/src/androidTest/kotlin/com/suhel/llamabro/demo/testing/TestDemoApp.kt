@@ -43,7 +43,9 @@ class TestDemoApp : DemoApp() {
         super.onCreate()
     }
 
-    /** Every instrumented test talks to the fake Hugging Face server that `demo/scripts/check.sh` starts (adb reverse). */
+    /**
+     * Every instrumented test talks to the fake Hugging Face server that `demo/scripts/check.sh` starts (adb reverse).
+     */
     override val hubEndpoint: String get() = "http://127.0.0.1:18190/"
 
     /** Tests run their own recovery (`container.chats.recoverInterrupted()`), so nothing touches storage at launch. */

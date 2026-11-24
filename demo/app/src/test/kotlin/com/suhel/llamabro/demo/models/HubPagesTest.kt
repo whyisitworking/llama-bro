@@ -41,8 +41,8 @@ import java.io.IOException
 import java.util.Collections
 
 /**
- * A search's pages through Paging 3 (models-search design §1, §2): the mediator fetches the Hub's pages into Room in the
- * Hub's order with the next cursor, and Room's rows are what the list shows, offline too.
+ * A search's pages through Paging 3 (models-search design §1, §2): the mediator fetches the Hub's pages into Room in
+ * the Hub's order with the next cursor, and Room's rows are what the list shows, offline too.
  */
 @OptIn(ExperimentalPagingApi::class)
 @RunWith(RobolectricTestRunner::class)

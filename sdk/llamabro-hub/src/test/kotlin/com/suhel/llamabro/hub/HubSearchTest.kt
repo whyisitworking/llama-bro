@@ -609,9 +609,9 @@ internal class HubSearchTest {
 
     @Test fun anUnreadableOrCorruptLocalHeaderFallsBackToTheHub() =
         runBlocking {
-            // A directory where the file was: nothing is installed any more, so there is no local header to read. Then a
-            // header that doesn't parse, and one that ends early, both at the recorded size, so the copy still counts as
-            // installed and the local read fails. No read permission is used: a root run ignores it.
+            // A directory where the file was: nothing is installed any more, so there is no local header to read. Then
+            // a header that doesn't parse, and one that ends early, both at the recorded size, so the copy still counts
+            // as installed and the local read fails. No read permission is used: a root run ignores it.
             val spoilers =
                 listOf<(File) -> Unit>(
                     { blob ->

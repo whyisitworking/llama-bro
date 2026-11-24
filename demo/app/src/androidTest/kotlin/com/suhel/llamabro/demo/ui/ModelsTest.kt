@@ -85,9 +85,9 @@ import java.time.ZoneId
 
 /**
  * Finding, fetching and keeping models: the Models page (its sections, its search and its rows), a model's card and
- * the downloads on their rows. The screens run bare in an activity, over the SDK's fake hub (search, downloads and what is on the phone are
- * its own, D70) with real file sizes stood in for the sheet, so a test can supply the recomposition counter and stays
- * fast and exact.
+ * the downloads on their rows. The screens run bare in an activity, over the SDK's fake hub (search, downloads and what
+ * is on the phone are its own, D70) with real file sizes stood in for the sheet, so a test can supply the recomposition
+ * counter and stays fast and exact.
  */
 @OptIn(ExperimentalTestApi::class)
 class ModelsTest {

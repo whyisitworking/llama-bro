@@ -142,7 +142,8 @@ class ComponentBehaviourTest {
         }
         for (level in FitLevel.entries) {
             val card = rule.onNodeWithTag("card_$level").captureToImage().toPixelMap()
-            // the card's straight left edge, clear of the corners, the shadow and the text: the surface, whatever the fit
+            // the card's straight left edge, clear of the corners, the shadow and the text: the surface, whatever the
+            // fit
             assertClose("$level fill is the surface", LightDemoColors.surface, card[12, card.height / 2])
             val fit = rule.onNodeWithTag("fit_$level", useUnmergedTree = true).captureToImage().toPixelMap()
             val ink = level.ink(LightDemoColors)
@@ -326,14 +327,15 @@ class ComponentBehaviourTest {
             }
         }
         val bar = rule.onNodeWithTag("bar").getBoundsInRoot()
-        // one line of text (16 above, its own height, 4 below) over a row of 48 dp targets with 4 dp under them: the line
-        // is about 19 dp (the body role trims its line box), so the bar is about 91 dp; the range allows other fonts
+        // one line of text (16 above, its own height, 4 below) over a row of 48 dp targets with 4 dp under them: the
+        // line is about 19 dp (the body role trims its line box), so the bar is about 91 dp; the range allows other
+        // fonts
         assertTrue("one-line bar height ${bar.height.value}", bar.height.value in 88f..98f)
         val attach = rule.onNodeWithContentDescription(string(R.string.ds_attach)).getBoundsInRoot()
         val think = rule.onNodeWithContentDescription("Think", substring = true).getBoundsInRoot()
         val send = rule.onNodeWithContentDescription(string(R.string.ds_send)).getBoundsInRoot()
-        // each button's press is a 36 dp circle (D73), 10 dp from the bar's bottom; + is 10 dp from the start, send 10 dp
-        // from the end, so each circle's centre stays 28 dp in, concentric with the corner (18 + 10 = 28)
+        // each button's press is a 36 dp circle (D73), 10 dp from the bar's bottom; + is 10 dp from the start, send 10
+        // dp from the end, so each circle's centre stays 28 dp in, concentric with the corner (18 + 10 = 28)
         for ((name, button) in listOf("+" to attach, "think" to think, "send" to send)) {
             assertEquals("$name is 36 dp", 36f, (button.right - button.left).value, 1f)
             assertEquals("$name from the bottom", 10f, bar.bottom.value - button.bottom.value, 1f)

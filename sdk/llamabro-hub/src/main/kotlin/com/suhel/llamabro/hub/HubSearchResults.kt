@@ -74,9 +74,11 @@ public class SearchCursor(
 }
 
 /**
- * A model found by search: its quantized uploads grouped under the original they were made from (D68). Only repos
- * tagged `base_model:quantized:X` group under X; a fine-tune, merge or adapter is a model of its own, though it names
- * the same base (F146). Grouping is within one page: a later page can hold more uploads of the same model.
+ * A model found by search: its quantized uploads grouped under the original they were made from
+ * ([D68](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d68)). Only repos tagged
+ * `base_model:quantized:X` group under X; a fine-tune, merge or adapter is a model of its own, though it names the same
+ * base ([F146](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f146)). Grouping is
+ * within one page: a later page can hold more uploads of the same model.
  */
 public class SearchResult internal constructor(
     /** The original's repo id (`Qwen/Qwen3-4B`) for grouped uploads, else the repo's own id. */
@@ -135,7 +137,10 @@ public class GgufSummary internal constructor(
     public val hasChatTemplate: Boolean,
 )
 
-/** A repo's GGUF files as [LlamaBroHub.files] lists them: sizes, and no verdict on whether they fit (D68). */
+/**
+ * A repo's GGUF files as [LlamaBroHub.files] lists them: sizes, and no verdict on whether they fit
+ * ([D68](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d68)).
+ */
 public class RepoFiles internal constructor(
     /** The repo id. */
     public val repo: String,
@@ -166,7 +171,7 @@ public class Quantization internal constructor(
     /**
      * Bytes of the image or audio encoder (the `mmproj` file) [LlamaBroHub.model] fetches with this quantisation, by
      * the same choice it makes when it downloads (llama.cpp's `-hf` rule); 0 when the repo has none. From the listing
-     * alone: no file is read (D101).
+     * alone: no file is read ([D101](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d101)).
      */
     public val encoderBytes: Long,
 ) {
@@ -174,9 +179,12 @@ public class Quantization internal constructor(
 }
 
 /**
- * A model's recommended sampling from both places the Hub can hold it, each null when absent (D68, D79). Nothing is
- * applied: [fromFile] is what loads by default, since llama.cpp applies a GGUF's own values at load (F17); the app
- * chooses whether to use [fromBaseModel] instead. Fields a source doesn't set stay null in its [Sampling].
+ * A model's recommended sampling from both places the Hub can hold it, each null when absent
+ * ([D68](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d68),
+ * [D79](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d79)). Nothing is applied: [fromFile]
+ * is what loads by default, since llama.cpp applies a GGUF's own values at load
+ * ([F17](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f17)); the app chooses whether
+ * to use [fromBaseModel] instead. Fields a source doesn't set stay null in its [Sampling].
  */
 public class RecommendedSampling internal constructor(
     /** The GGUF header's `general.sampling.*`: what the model runs with unless the app sets its own. */

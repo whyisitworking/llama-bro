@@ -4,7 +4,8 @@ import com.suhel.llamabro.InternalLlamaBroApi
 
 /**
  * The native layer as the Kotlin API sees it: the JNI engine in production, a fake in tests. Public only for
- * `llamabro-testing` (D27, D104); apps never implement it.
+ * `llamabro-testing` ([D27](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d27),
+ * [D104](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d104)); apps never implement it.
  */
 @InternalLlamaBroApi
 public interface Engine {
@@ -25,13 +26,15 @@ public interface Engine {
 
     /**
      * `lb_model_load`. A real engine throws on failure. [onProgress] answers whether to go on: `false` stops the load
-     * at that tick, and the engine frees what it read and throws [NativeError] with [NativeError.CANCELLED] (D67).
+     * at that tick, and the engine frees what it read and throws [NativeError] with [NativeError.CANCELLED]
+     * ([D67](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d67)).
      */
     public fun load(configJson: String, onProgress: (Float) -> Boolean): EngineModel
 
     /**
-     * `lb_read_fd`: the whole file behind [fd], read from offset 0, and [fd] left open with its offset unchanged (D84:
-     * a descriptor in chat content is read once into bytes). Throws [NativeError] when it can't be read.
+     * `lb_read_fd`: the whole file behind [fd], read from offset 0, and [fd] left open with its offset unchanged
+     * ([D84](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d84): a descriptor in chat content
+     * is read once into bytes). Throws [NativeError] when it can't be read.
      */
     public fun readFd(fd: Int): ByteArray
 }
@@ -44,11 +47,12 @@ public interface EngineModel {
     /**
      * `lb_model_request_with` (`lb_model_request` when [attachments] is empty): [endpoint] is the C API's name for the
      * route (`llamabro.h`). One method with no overloads, so a wrapper delegating with `by` can't miss one.
-     * [attachments] go beside the body (D84): a transcription's `file`, or, on the chat routes, the file behind each
-     * `lb-attachment:<name>` placeholder in a content part's `image_url.url` or `input_audio.data`, which the native
-     * side writes into the body as a data URL. They are read before this returns, so a descriptor may be closed and
-     * bytes reused once it has. Callbacks may arrive before this returns. A real engine throws if the request couldn't
-     * start.
+     * [attachments] go beside the body
+     * ([D84](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d84)): a transcription's `file`,
+     * or, on the chat routes, the file behind each `lb-attachment:<name>` placeholder in a content part's
+     * `image_url.url` or `input_audio.data`, which the native side writes into the body as a data URL. They are read
+     * before this returns, so a descriptor may be closed and bytes reused once it has. Callbacks may arrive before this
+     * returns. A real engine throws if the request couldn't start.
      */
     public fun request(
         endpoint: String,
@@ -63,9 +67,11 @@ public interface EngineModel {
 }
 
 /**
- * A file sent beside a request (`lb_attachment`, D84): [name] is the placeholder's (`"0"` for `lb-attachment:0`) or the
- * form field (`"file"` for a transcription), [mime] its type (`audio/wav`, `image/png`), and the bytes come from one
- * source: a path or a descriptor, read natively, or bytes, copied across JNI once.
+ * A file sent beside a request (`lb_attachment`,
+ * [D84](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d84)): [name] is the placeholder's
+ * (`"0"` for `lb-attachment:0`) or the form field (`"file"` for a transcription), [mime] its type (`audio/wav`,
+ * `image/png`), and the bytes come from one source: a path or a descriptor, read natively, or bytes, copied across JNI
+ * once.
  */
 @InternalLlamaBroApi
 public sealed class EngineAttachment {
@@ -89,9 +95,10 @@ public interface EngineRequest {
     public fun cancel()
 
     /**
-     * `lb_request_send`: one client event of a realtime request (D97), copied and queued in order. Answers the
-     * `lb_status`: [SEND_OK], [SEND_NOT_REALTIME] for another endpoint's request, or [SEND_CANCELLED] once the
-     * conversation has closed. Never after [free].
+     * `lb_request_send`: one client event of a realtime request
+     * ([D97](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d97)), copied and queued in order.
+     * Answers the `lb_status`: [SEND_OK], [SEND_NOT_REALTIME] for another endpoint's request, or [SEND_CANCELLED] once
+     * the conversation has closed. Never after [free].
      */
     public fun send(message: ByteArray): Int = SEND_NOT_REALTIME
 

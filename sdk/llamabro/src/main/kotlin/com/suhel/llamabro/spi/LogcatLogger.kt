@@ -6,7 +6,9 @@ import com.suhel.llamabro.LogLevel
 import com.suhel.llamabro.Logger
 
 /**
- * The default sink when the app gives no [Logger] (D66): logcat under [tag], so init's lines are not lost (F144).
+ * The default sink when the app gives no [Logger]
+ * ([D66](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d66)): logcat under [tag], so init's
+ * lines are not lost ([F144](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f144)).
  * Lines below [minLevel] are dropped, for callers (the hub) that do not filter by level themselves.
  */
 @InternalLlamaBroApi

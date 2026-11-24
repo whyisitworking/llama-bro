@@ -88,12 +88,16 @@ public class LlamaBroHub internal constructor(
 
     /**
      * The model [ref] names (`owner/repo[:tag][#file]`, as `-hf`) as a source for `llama.loadModel` and
-     * `llama.estimateFit` (D64, D75). Building it does no I/O. On load, the installed copy (the last download that
-     * completed) loads with no network request at all; with none it resolves and downloads as `-hf` does (F82),
-     * resuming a partial (F114-F116), and the load reports the download as `LoadProgress.Fetching`. [plan] never
-     * changes what loads; a newer commit replaces the installed copy only when the app asks ([hasUpdate], then
-     * [download]) and that download completes. `estimateFit` on it reads the installed files when complete, else only
-     * GGUF headers.
+     * `llama.estimateFit` ([D64](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d64),
+     * [D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)). Building it does no I/O. On
+     * load, the installed copy (the last download that completed) loads with no network request at all; with none it
+     * resolves and downloads as `-hf` does
+     * ([F82](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f82)), resuming a partial
+     * ([F114](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f114) to
+     * [F116](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f116)), and the load
+     * reports the download as `LoadProgress.Fetching`. [plan] never changes what loads; a newer commit replaces the
+     * installed copy only when the app asks ([hasUpdate], then [download]) and that download completes. `estimateFit`
+     * on it reads the installed files when complete, else only GGUF headers.
      *
      * The source's failures reach `loadModel` and `estimateFit` unchanged, as [HubException]s:
      * [HubException.Network] offline with nothing installed (the first launch with no connection),
@@ -113,8 +117,10 @@ public class LlamaBroHub internal constructor(
      * Whether the Hub's newest commit of [model] has files that differ from the installed copy (the last download that
      * completed): an online look that changes nothing in the cache. False when nothing is installed (with no request)
      * or when the Hub can't be reached (no route to it). [download] fetches the newest files; until it completes,
-     * [model] and [source] keep loading the installed copy (D64). Once it completes, the files only the replaced copy
-     * used are removed, so an update doesn't double the storage; files another selection or tag uses stay.
+     * [model] and [source] keep loading the installed copy
+     * ([D64](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d64)). Once it completes, the
+     * files only the replaced copy used are removed, so an update doesn't double the storage; files another selection
+     * or tag uses stay.
      *
      * @throws HubException.Unauthorized or [HubException.RateLimited] when the Hub refuses the look,
      * [HubException.NotFound] when the repo is gone, and [HubException.Network] when the Hub answers with an error
@@ -144,8 +150,11 @@ public class LlamaBroHub internal constructor(
 
     /**
      * Searches the Hub's GGUF repos for [query] (empty for all), grouping each model's quantized uploads under the
-     * original (D68, F146). Sizes come from [files]; whether one fits is the app's call (`memoryBudgetBytes()` or
-     * `llama.estimateFit(hub.model(…))`). The token goes only to the endpoint's host (F82).
+     * original ([D68](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d68),
+     * [F146](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f146)). Sizes come from
+     * [files]; whether one fits is the app's call (`memoryBudgetBytes()` or `llama.estimateFit(hub.model(…))`). The
+     * token goes only to the endpoint's host
+     * ([F82](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f82)).
      *
      * @throws HubException.Network when the Hub can't be reached, [HubException.RateLimited] or
      * [HubException.Unauthorized] when it refuses.
@@ -166,8 +175,9 @@ public class LlamaBroHub internal constructor(
 
     /**
      * The GGUF files of [repo] (`owner/name`) at its newest commit: each quantisation once with its bytes (split files
-     * summed) and whether an image encoder is there (D68). Changes nothing in the cache; when the Hub can't be reached
-     * it answers from the cache, with [RepoFiles.offline] set, as [plan] does.
+     * summed) and whether an image encoder is there
+     * ([D68](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d68)). Changes nothing in the
+     * cache; when the Hub can't be reached it answers from the cache, with [RepoFiles.offline] set, as [plan] does.
      *
      * @throws HubException.NotFound, [HubException.Unauthorized] or [HubException.Network] as [plan] does.
      * @throws IllegalArgumentException if [repo] is not a valid repo id.
@@ -178,7 +188,8 @@ public class LlamaBroHub internal constructor(
     /**
      * The model card of [repo] (the original model's repo, not a GGUF upload's): its `README.md` at `main` as
      * markdown, with the YAML front matter removed, or null when the repo has none. At most 512 KiB are read. The
-     * token goes only to the endpoint's host (F82).
+     * token goes only to the endpoint's host
+     * ([F82](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f82)).
      *
      * @throws HubException.Network when the Hub can't be reached, [HubException.RateLimited] or
      * [HubException.Unauthorized] when it refuses (a gated repo without a token).
@@ -189,7 +200,8 @@ public class LlamaBroHub internal constructor(
     /**
      * The original model [repo] (`owner/name`, usually a GGUF upload) was quantized from: its `base_model:quantized:`
      * tag, or null when the repo has none. A fact the Hub states; nothing is guessed from names. One request; the
-     * token goes only to the endpoint's host (F82).
+     * token goes only to the endpoint's host
+     * ([F82](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f82)).
      *
      * @throws HubException.NotFound, [HubException.Unauthorized], [HubException.RateLimited] or
      * [HubException.Network] as [files] does.
@@ -198,8 +210,11 @@ public class LlamaBroHub internal constructor(
     public suspend fun baseModel(repo: String): String? = searches.baseModelOf(operationTransport(), repo)
 
     /**
-     * The sampling recommended for [model] from both places the Hub can hold it, each null when absent (D68, D79):
-     * [RecommendedSampling.fromFile], the GGUF header's `general.sampling.*`, which is what loads by default (F17), and
+     * The sampling recommended for [model] from both places the Hub can hold it, each null when absent
+     * ([D68](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d68),
+     * [D79](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d79)):
+     * [RecommendedSampling.fromFile], the GGUF header's `general.sampling.*`, which is what loads by default
+     * ([F17](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f17)), and
      * [RecommendedSampling.fromBaseModel], the base model's `generation_config.json`, found through the repo's
      * `base_model:quantized:` tag. Nothing is applied. The header is read from disk when the model (as [model] fetches
      * it, with any options) is on the phone, else with range requests (the header only, from 8 MiB) that leave nothing
@@ -266,8 +281,9 @@ public class LlamaBroHub internal constructor(
 
     /**
      * Shares one transfer per selection; collecting again after cancellation resumes partials. When it completes, its
-     * files become the installed copy that [model] and [source] load (D64), and the files only the replaced copy used
-     * (an older commit's) are removed; files another selection or tag still uses stay.
+     * files become the installed copy that [model] and [source] load
+     * ([D64](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d64)), and the files only the
+     * replaced copy used (an older commit's) are removed; files another selection or tag still uses stay.
      *
      * Fails with a [HubException]: [HubException.Network] for a connection or I/O failure (retryable). A [delete] of
      * the model while it runs stops it and ends the flow with a [HubException.Network] that is not retryable, so a
@@ -390,7 +406,8 @@ public class LlamaBroHub internal constructor(
 
     /**
      * Lists the models in the local cache that load from it, without a network request: complete selections only, so a
-     * stopped download (its projector or a split part missing) is left out (D89).
+     * stopped download (its projector or a split part missing) is left out
+     * ([D89](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d89)).
      */
     public suspend fun cached(): List<CachedModel> =
         withContext(Dispatchers.IO) {
@@ -428,7 +445,9 @@ public class LlamaBroHub internal constructor(
 
     /**
      * The installed copy of [model] as a core source, from disk only and never the network: the files of the last
-     * download that completed, wherever `refs/main` has moved since (D64). [HubException.NotFound] when there is none.
+     * download that completed, wherever `refs/main` has moved since
+     * ([D64](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d64)). [HubException.NotFound]
+     * when there is none.
      */
     public suspend fun source(model: HfModel, configure: PlanOptions.() -> Unit = {}): ModelSource =
         withContext(Dispatchers.IO) { copies.source(model, PlanOptions().apply(configure)) }
@@ -437,10 +456,12 @@ public class LlamaBroHub internal constructor(
         private val created = mutableMapOf<String, Pair<HubConfig, LlamaBroHub>>()
 
         /**
-         * The hub for [config]'s cache folder (D70): one per folder. The first call for a folder creates it; a later
-         * call with the same endpoint and progress interval returns the same object, keeping the first logger and token
-         * provider, so a DI container can hold it as a singleton (D106). Hubs on different folders coexist, so an app
-         * can move its models without a restart.
+         * The hub for [config]'s cache folder
+         * ([D70](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d70)): one per folder. The
+         * first call for a folder creates it; a later call with the same endpoint and progress interval returns the
+         * same object, keeping the first logger and token provider, so a DI container can hold it as a singleton
+         * ([D106](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d106)). Hubs on different
+         * folders coexist, so an app can move its models without a restart.
          *
          * Does no network, no native code and no disk I/O beyond resolving the folder: cheap on the main thread.
          *
@@ -466,13 +487,18 @@ public class LlamaBroHub internal constructor(
         }
 
         /**
-         * A hub over another [transport] and [storage], for `llamabro-hub-testing`'s `FakeLlamaBroHub` (D75), as
-         * `LlamaBro.withEngine` is for `FakeLlamaBro` (D27). The cache is [HubConfig.cacheDir], which must be set,
-         * since there is no app folder to default to; the hub is not registered with [create]. An `IOException` from
-         * [transport] is a retryable [HubException.Network], as the network's is.
+         * A hub over another [transport] and [storage], for `llamabro-hub-testing`'s `FakeLlamaBroHub`
+         * ([D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)), as
+         * `LlamaBro.withEngine` is for `FakeLlamaBro`
+         * ([D27](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d27)). The cache is
+         * [HubConfig.cacheDir], which must be set, since there is no app folder to default to; the hub is not
+         * registered with [create]. An `IOException` from [transport] is a retryable [HubException.Network], as the
+         * network's is.
          *
          * @throws IllegalArgumentException if [config] has no cache folder, or has a token provider: with a token the
-         * hub sends its requests through its own HTTP transport (F82), so a scripted Hub would not see them.
+         * hub sends its requests through its own HTTP transport
+         * ([F82](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f82)), so a scripted
+         * Hub would not see them.
          */
         @InternalLlamaBroApi
         public fun withTransport(transport: Transport, storage: Storage, config: HubConfig): LlamaBroHub {

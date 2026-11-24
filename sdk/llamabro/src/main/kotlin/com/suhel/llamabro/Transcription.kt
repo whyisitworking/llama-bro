@@ -17,13 +17,16 @@ import kotlinx.serialization.json.put
 
 /**
  * What is said in [source] (`POST /v1/audio/transcriptions`), on a model that hears ([ModelInfo.supportsAudio]): a
- * [Transcript] with the text, [Transcript.truncated] when it was cut at `maxTokens` (D63, D84, D136). Upstream's
- * transcription response has no finish reason, so a cut is inferred from the reply having as many tokens as
- * `maxTokens` (`output_tokens >= max_tokens`); with no `maxTokens`, a transcript stopped by the context's end is not
- * truncated. [configure] sets the language (e.g. `"fr"`), the prompt (words to expect, or the model's instruction in
- * place of its own), `maxTokens`, `temperature`, `seed` and `extra` ([TranscribeConfig]), as upstream reads them:
- * llama-server runs a transcription as a chat request. It is a builder like [speak] and the sessions, one shape across
- * the audio family (D143).
+ * [Transcript] with the text, [Transcript.truncated] when it was cut at `maxTokens`
+ * ([D63](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d63),
+ * [D84](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d84),
+ * [D136](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d136)). Upstream's transcription
+ * response has no finish reason, so a cut is inferred from the reply having as many tokens as `maxTokens`
+ * (`output_tokens >= max_tokens`); with no `maxTokens`, a transcript stopped by the context's end is not truncated.
+ * [configure] sets the language (e.g. `"fr"`), the prompt (words to expect, or the model's instruction in place of its
+ * own), `maxTokens`, `temperature`, `seed` and `extra` ([TranscribeConfig]), as upstream reads them: llama-server runs
+ * a transcription as a chat request. It is a builder like [speak] and the sessions, one shape across the audio family
+ * ([D143](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d143)).
  *
  * The clip must be WAV, MP3 or FLAC, the formats llama.cpp decodes. A file or descriptor is read natively during the
  * call, off the caller's thread; the app may close a descriptor once this returns.

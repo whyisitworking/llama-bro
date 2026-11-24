@@ -3,7 +3,8 @@ package com.suhel.llamabro
 /**
  * A point-in-time report from a download: the hub's, or any [RemoteModelSource]'s fetch (an app's own server, a test
  * fake), which a load reports as [LoadProgress.Fetching]. In core so that core can carry it without knowing Hugging
- * Face (D71, D75).
+ * Face ([D71](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d71),
+ * [D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)).
  */
 public data class DownloadProgress(
     /** Current operation. */

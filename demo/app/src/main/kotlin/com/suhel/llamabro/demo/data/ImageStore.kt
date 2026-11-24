@@ -14,7 +14,8 @@ import kotlin.math.max
  * Pictures attached to messages: downscaled to a long side of at most 1024 px, saved as JPEG quality 85. A picture
  * picked for a message not yet sent is staged in `draft/` under [dir]; sending the message [commit]s it into [dir]
  * itself, where a message's pictures live. A draft's names are held only in the chat screen's saved state, which this
- * class cannot read, so the draft folder is swept only of pictures far older than a draft is kept ([deleteStaleDrafts]).
+ * class cannot read, so the draft folder is swept only of pictures far older than a draft is kept
+ * ([deleteStaleDrafts]).
  */
 class ImageStore(private val dir: File) {
     private val drafts = File(dir, DRAFT_DIR)

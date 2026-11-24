@@ -99,8 +99,8 @@ class HostNativeTest {
 
     private companion object {
         /**
-         * The body as the bridge hands it to llama-server (D84): each placeholder replaced by its attachment's data URL,
-         * written here independently of the bridge, so upstream's replay gets the same request.
+         * The body as the bridge hands it to llama-server (D84): each placeholder replaced by its attachment's data
+         * URL, written here independently of the bridge, so upstream's replay gets the same request.
          */
         fun withDataUrls(body: String, attachments: List<EngineAttachment>): String =
             attachments.fold(body) { b, a ->

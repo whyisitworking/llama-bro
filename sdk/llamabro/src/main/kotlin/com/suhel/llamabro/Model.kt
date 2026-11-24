@@ -231,7 +231,8 @@ public class Model internal constructor(
 
     /**
      * [close], then suspends until the native shutdown has finished and the model's memory is freed. A streaming
-     * request notices the cancel at its next result or within about 1 s (llama-server's polling interval, F23).
+     * request notices the cancel at its next result or within about 1 s (llama-server's polling interval,
+     * [F23](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f23)).
      */
     public suspend fun closeAndJoin() {
         close()
@@ -296,9 +297,10 @@ internal fun Model.chatInternal(request: ChatRequest, onCompletionId: ((String) 
 /**
  * A new [com.suhel.llamabro.conversation.Conversation] (level 1), with an optional system prompt.
  *
- * [history] starts it from messages the app stored itself (F96): user, assistant, tool-result and compaction
- * messages, in order, without the system prompt, which has its own parameter. The next request sends them before the
- * new message. To continue a conversation saved with `toJson`, use [restoreConversation].
+ * [history] starts it from messages the app stored itself
+ * ([F96](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f96)): user, assistant,
+ * tool-result and compaction messages, in order, without the system prompt, which has its own parameter. The next
+ * request sends them before the new message. To continue a conversation saved with `toJson`, use [restoreConversation].
  *
  * @throws IllegalArgumentException if [history] contains a system message.
  */

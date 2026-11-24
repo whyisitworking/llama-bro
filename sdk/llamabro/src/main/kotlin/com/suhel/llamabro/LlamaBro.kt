@@ -15,7 +15,9 @@ import com.suhel.llamabro.spi.LogcatLogger
 import java.io.File
 
 /**
- * The SDK's entry point: one per process (D6). Models are loaded from it as independent handles.
+ * The SDK's entry point: one per process
+ * ([D6](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d6)). Models are loaded from it as
+ * independent handles.
  */
 public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime) {
     /**
@@ -33,11 +35,13 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
      * after the last tick finish first (creating the context, warm-up, compiling GPU kernels, opening an NPU
      * session; with an image encoder or a draft, the text model's context and warm-up come before their stages, and a
      * cancel then stops at the next stage's tick). The model they produce is then freed and `CancellationException`
-     * thrown, so a cancelled call leaves nothing open either way (D67). A device or encoder fallback or a
-     * [MemoryCheck.Warn] retry isn't started after a cancel.
+     * thrown, so a cancelled call leaves nothing open either way
+     * ([D67](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d67)). A device or encoder
+     * fallback or a [MemoryCheck.Warn] retry isn't started after a cancel.
      *
      * A [RemoteModelSource] is fetched first ([LoadProgress.Fetching]), then its local files load as above; a cancel
-     * during the fetch starts no load (D75).
+     * during the fetch starts no load
+     * ([D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)).
      *
      * @throws LlamaBroException.ModelLoadFailed
      * @throws LlamaBroException.DeviceUnavailable with [DevicePolicy.Only] when no device of that kind could load it
@@ -67,7 +71,8 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
 
     /**
      * Projects the chosen device's memory and context from GGUF headers without loading weights. A
-     * [RemoteModelSource] lends its headers through [RemoteModelSource.withHeaders] and downloads no weights (D75).
+     * [RemoteModelSource] lends its headers through [RemoteModelSource.withHeaders] and downloads no weights
+     * ([D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)).
      *
      * @throws Exception whatever a [RemoteModelSource]'s [RemoteModelSource.withHeaders] throws, unchanged: for the
      *   hub's `hub.model(…)` a `HubException` (`Network` when it is offline with nothing installed, `Unauthorized`,
@@ -84,7 +89,8 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
      * The memory, in bytes, that [ContextSize.Auto] would let a model use if it loaded now with [configure]'s
      * settings (the prompt cache and [ModelConfig.memoryReserveMib] come out of it), before side files such as an
      * image encoder or LoRA adapters. Compare it with a model file's size for a quick fit label without reading the
-     * file (F97); [estimateFit] gives the full projection.
+     * file ([F97](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f97)); [estimateFit]
+     * gives the full projection.
      *
      * It moves with free memory, so it's a hint, not a promise. Null where the SDK can't read the phone's memory
      * (a test engine).
@@ -111,10 +117,11 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
         private var createdConfig: LlamaBroConfig? = null
 
         /**
-         * The process's runtime (D70). The first call creates it; a later call with the same settings (log level, NPU
-         * polling) returns the same object, so a DI container can hold it as a singleton, and the first call's logger
-         * stays in use (D106). The native runtime exists once per process, so different settings throw at once,
-         * before anything is built.
+         * The process's runtime ([D70](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d70)).
+         * The first call creates it; a later call with the same settings (log level, NPU polling) returns the same
+         * object, so a DI container can hold it as a singleton, and the first call's logger stays in use
+         * ([D106](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d106)). The native runtime
+         * exists once per process, so different settings throw at once, before anything is built.
          *
          * Runs no native code, so it's cheap on the main thread: the native runtime starts in the first [loadModel]
          * or [devices].
@@ -171,8 +178,9 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
         }
 
         /**
-         * A [LlamaBro] over another engine, for `llamabro-testing`'s `FakeLlamaBro` (D27). [filesDir] stands in for
-         * `noBackupFilesDir` (saved slots go under it).
+         * A [LlamaBro] over another engine, for `llamabro-testing`'s `FakeLlamaBro`
+         * ([D27](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d27)). [filesDir] stands in
+         * for `noBackupFilesDir` (saved slots go under it).
          */
         @InternalLlamaBroApi
         public fun withEngine(
@@ -187,9 +195,18 @@ public class LlamaBro internal constructor(private val runtime: LlamaBroRuntime)
 public data class DeviceInfo internal constructor(
     public val name: String,
     public val description: String,
-    /** The chip kind, from the backend that added it (D29, D32); ggml's own type calls the NPU a GPU (F32). */
+    /**
+     * The chip kind, from the backend that added it
+     * ([D29](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d29),
+     * [D32](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d32)); ggml's own type calls the
+     * NPU a GPU ([F32](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f32)).
+     */
     public val kind: DeviceKind,
-    /** Bytes, as ggml reports them; not a usable budget on a phone (F33, F64). */
+    /**
+     * Bytes, as ggml reports them; not a usable budget on a phone
+     * ([F33](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f33),
+     * [F64](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f64)).
+     */
     public val memoryFree: Long,
     public val memoryTotal: Long,
 )

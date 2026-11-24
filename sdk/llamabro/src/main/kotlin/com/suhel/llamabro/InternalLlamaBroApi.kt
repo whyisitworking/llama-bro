@@ -1,10 +1,13 @@
 package com.suhel.llamabro
 
 /**
- * Marks the seams the test fakes are built on: the engine seam under `llamabro-testing`'s `FakeLlamaBro` (D27), the
- * hub's transport seam under `llamabro-hub-testing`'s `FakeLlamaBroHub` (D75), the host engine under other modules'
- * host end-to-end tests, and the raw tool registration under `llamabro-typed`'s typed tools (D61). Apps don't opt in:
- * test against the fakes instead. Anything marked can change in any release.
+ * Marks the seams the test fakes are built on: the engine seam under `llamabro-testing`'s `FakeLlamaBro`
+ * ([D27](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d27)), the hub's transport seam under
+ * `llamabro-hub-testing`'s `FakeLlamaBroHub`
+ * ([D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)), and the raw tool registration
+ * under `llamabro-typed`'s typed tools
+ * ([D61](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d61)). Apps don't opt in: test against
+ * the fakes instead. Anything marked can change in any release.
  */
 @RequiresOptIn(
     message =

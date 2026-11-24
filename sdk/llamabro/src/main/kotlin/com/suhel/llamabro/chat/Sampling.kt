@@ -6,7 +6,9 @@ import kotlin.reflect.KProperty
 /**
  * Per-request sampling: every sampling field of llama-server's completion schema
  * (`tools/server/server-schema.cpp`, `make_llama_cmpl_schema`), under llama-server's names in camelCase.
- * Unset (null) = the GGUF's `general.sampling.*` default, else llama-server's (D18, F17).
+ * Unset (null) = the GGUF's `general.sampling.*` default, else llama-server's
+ * ([D18](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d18),
+ * [F17](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f17)).
  *
  * Build one with `Sampling { temperature = 0.2f }`; change one with [copy]. Fields not listed here (for example
  * `n_probs`) go through `ChatRequest.extra`.
@@ -20,11 +22,18 @@ public class Sampling internal constructor(private val values: Map<String, Any>)
     public val frequencyPenalty: Float? get() = get("frequency_penalty")
     public val repeatPenalty: Float? get() = get("repeat_penalty")
 
-    /** Must be ≥ 0 per request (F14); to cover the whole context, pass the context size. */
+    /**
+     * Must be ≥ 0 per request
+     * ([F14](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f14)); to cover the whole
+     * context, pass the context size.
+     */
     public val repeatLastN: Int? get() = get("repeat_last_n")
     public val seed: Long? get() = get("seed")
 
-    /** The sampler chain order, e.g. `listOf("top_k", "top_p", "min_p", "temperature")` (F15). */
+    /**
+     * The sampler chain order, e.g. `listOf("top_k", "top_p", "min_p", "temperature")`
+     * ([F15](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f15)).
+     */
     public val samplers: List<String>? get() = get("samplers")
 
     /** `max_tokens` (llama-server's `n_predict`); null = until the model stops or the context is full. */

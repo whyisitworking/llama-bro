@@ -36,7 +36,9 @@ import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
-/** A model the catalog lacks starts from the hub's recommended sampling (D60, D79): the file's, else the base model's. */
+/**
+ * A model the catalog lacks starts from the hub's recommended sampling (D60, D79): the file's, else the base model's.
+ */
 class RecommendedCardTest {
     @get:Rule val folder = TemporaryFolder()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

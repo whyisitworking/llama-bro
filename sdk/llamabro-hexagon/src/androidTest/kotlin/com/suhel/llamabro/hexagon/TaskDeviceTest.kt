@@ -120,8 +120,9 @@ class TaskDeviceTest {
                                 .jsonPrimitive.int,
                         )
                         if (m.loadReport.device == DeviceKind.Npu) {
-                            // the NPU moves the near-zero scores (upstream llama-server on HTP0 gives the same: 0.0151, 0.0036,
-                            // 0.2062, 0.0115), so document 1, not 3, comes last there (F69); compare with upstream's NPU run
+                            // the NPU moves the near-zero scores (upstream llama-server on HTP0 gives the same: 0.0151,
+                            // 0.0036, 0.2062, 0.0115), so document 1, not 3, comes last there (F69); compare with
+                            // upstream's NPU run
                             val score =
                                 results.associate {
                                     it.getValue("index").jsonPrimitive.int to

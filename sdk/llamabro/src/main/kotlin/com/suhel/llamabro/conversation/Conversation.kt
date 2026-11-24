@@ -28,8 +28,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * A chat history that behaves like llama.cpp's own web client (`tools/ui`, D8): it builds each
- * request from the history, appends replies, and only ever appends, so the server reuses its cached prefix.
+ * A chat history that behaves like llama.cpp's own web client (`tools/ui`,
+ * [D8](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d8)): it builds each request from the
+ * history, appends replies, and only ever appends, so the server reuses its cached prefix.
  *
  * Every request carries the conversation's [Builder.defaults]; one [send], [resume] or [regenerate] can change
  * them for its own requests only. One operation at a time: collecting [send], [resume], [regenerate], [approve],
@@ -37,9 +38,11 @@ import kotlinx.serialization.json.put
  * throws.
  *
  * This class is the facade: it holds the history and the state flows, runs one operation at a time, and compacts.
- * The rest belongs to internal collaborators: [AgentLoop] runs the turns and the tools (D14, D62), [ReplyStreamer]
- * folds one model request into the history, [PreEncoder] warms the server's cache in the background, and [MediaPrep]
- * checks and reads a message's media (D84).
+ * The rest belongs to internal collaborators: [AgentLoop] runs the turns and the tools
+ * ([D14](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d14),
+ * [D62](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d62)), [ReplyStreamer] folds one model
+ * request into the history, [PreEncoder] warms the server's cache in the background, and [MediaPrep] checks and reads a
+ * message's media ([D84](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d84)).
  */
 public class Conversation internal constructor(
     private val model: Model,
@@ -94,8 +97,9 @@ public class Conversation internal constructor(
     private val _pendingApproval = MutableStateFlow(loop.awaitingApproval)
 
     /**
-     * The tool call waiting for [approve] or [deny] (D62), null when none waits or while an operation runs. It is
-     * derived from the history and the registered tools, so it is right after a restore.
+     * The tool call waiting for [approve] or [deny]
+     * ([D62](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d62)), null when none waits or
+     * while an operation runs. It is derived from the history and the registered tools, so it is right after a restore.
      *
      * It is null while [isBusy]. An app reacting to it should start [approve] or [deny] once [isBusy] is false, for
      * example by observing both together: the operation that ended publishes the waiting call just before it clears
@@ -111,7 +115,7 @@ public class Conversation internal constructor(
      * MIME type, and by its first bytes for a file, a descriptor or bytes), the flow fails with
      * [LlamaBroException.InvalidRequest] and nothing is appended. A descriptor is read into bytes, and those checked,
      * before the message is appended, off the caller's thread; the app may close it once the message is in [messages]
-     * (D84).
+     * ([D84](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d84)).
      *
      * Media that passes those checks can still fail the first request: a picture llama.cpp can't decode (HEIC, WebP),
      * or a file that went away. Then, before any token or tool call arrives, the flow fails with
@@ -159,8 +163,9 @@ public class Conversation internal constructor(
     /**
      * Sends the current history again: after `ContextExceeded` (and a compaction), a turn limit, or pending tool
      * results. First it finishes the last reply's tool calls that have no result yet, in order, as the loop would
-     * have (D62): after `Done(ToolAborted)` it runs the aborted call again. It stops with `Done(ToolCallsPending)`,
-     * without asking the model, at a call that needs approval or when a call without a handler still has no result.
+     * have ([D62](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d62)): after
+     * `Done(ToolAborted)` it runs the aborted call again. It stops with `Done(ToolCallsPending)`, without asking the
+     * model, at a call that needs approval or when a call without a handler still has no result.
      */
     @CheckResult
     public fun resume(options: RequestOptions.Builder.() -> Unit = {}): Flow<ChatEvent> {
@@ -170,7 +175,7 @@ public class Conversation internal constructor(
 
     /**
      * Runs the call waiting for approval ([pendingApproval]), then continues the turn as [resume] does: the reply's
-     * later calls, then the model (D62).
+     * later calls, then the model ([D62](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d62)).
      * @param options changes the [Builder.defaults] for this flow's requests only, as [resume]'s does.
      * @throws IllegalArgumentException (when collected) if [callId] isn't [pendingApproval]'s id.
      */
@@ -183,7 +188,8 @@ public class Conversation internal constructor(
 
     /**
      * Answers the call waiting for approval ([pendingApproval]) without running it: the model gets
-     * `Error: denied by the user`, or `Error: <reason>`. Then continues the turn as [resume] does (D62).
+     * `Error: denied by the user`, or `Error: <reason>`. Then continues the turn as [resume] does
+     * ([D62](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d62)).
      * @param options changes the [Builder.defaults] for this flow's requests only, as [resume]'s does.
      * @throws IllegalArgumentException (when collected) if [callId] isn't [pendingApproval]'s id.
      */
@@ -242,11 +248,12 @@ public class Conversation internal constructor(
      * every message, [Builder.defaults], `maxTurns`, `preEncodeAfterReply`. Not saved: tools, whose handlers are
      * code; register them again when restoring.
      *
-     * Media (D84): bytes are saved as base64, and a file as its path, so the file must still be there when the chat is
-     * restored; if it is gone, every request fails with [LlamaBroException.InvalidRequest] naming the path, and the
-     * app recovers by starting a conversation from [messages] with that part removed or replaced
-     * (`model.conversation(system, history = …)`). A descriptor in a `history` the conversation started from that no
-     * request has read yet is read here, on the calling thread, and kept as bytes, so it is read only once.
+     * Media ([D84](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d84)): bytes are saved as
+     * base64, and a file as its path, so the file must still be there when the chat is restored; if it is gone, every
+     * request fails with [LlamaBroException.InvalidRequest] naming the path, and the app recovers by starting a
+     * conversation from [messages] with that part removed or replaced (`model.conversation(system, history = …)`). A
+     * descriptor in a `history` the conversation started from that no request has read yet is read here, on the calling
+     * thread, and kept as bytes, so it is read only once.
      *
      * @throws LlamaBroException.InvalidRequest if such a descriptor is closed or can't be read.
      */
@@ -295,17 +302,19 @@ public class Conversation internal constructor(
 
         /**
          * Registers a tool. With a [handler], the agent loop runs it and sends its result back. What a
-         * handler throws decides what the model sees (D62): an [LbToolError] sends `Error: <message>` (as do
-         * [JsonArgs]' accessors, with `invalid arguments: …`), and its `cause`, if any, reaches the app as
-         * `ChatEvent.ToolResult.error`; an [LbToolAbort] ends the turn with
-         * `Done(ToolAborted)`; any other exception sends `Error: the tool failed` and reaches the app as
-         * `ChatEvent.ToolResult.error`, so its text never enters the prompt. Without a handler, a call to it stops
-         * the loop with `Done(ToolCallsPending)`: add results with [addToolResult], then [resume]. A call to a name
-         * never registered gets `Error: Unknown tool: <name>` and the loop goes on.
+         * handler throws decides what the model sees
+         * ([D62](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d62)): an [LbToolError] sends
+         * `Error: <message>` (as do [JsonArgs]' accessors, with `invalid arguments: …`), and its `cause`, if any,
+         * reaches the app as `ChatEvent.ToolResult.error`; an [LbToolAbort] ends the turn with `Done(ToolAborted)`; any
+         * other exception sends `Error: the tool failed` and reaches the app as `ChatEvent.ToolResult.error`, so its
+         * text never enters the prompt. Without a handler, a call to it stops the loop with `Done(ToolCallsPending)`:
+         * add results with [addToolResult], then [resume]. A call to a name never registered gets `Error: Unknown tool:
+         * <name>` and the loop goes on.
          *
          * @param schema the parameters' JSON Schema object, as a string.
          * @param requiresApproval a call to it stops the loop with `Done(ToolCallsPending)` before the handler runs
-         *   and shows as [pendingApproval]; [approve] runs it, [deny] answers the model instead (D62).
+         *   and shows as [pendingApproval]; [approve] runs it, [deny] answers the model instead
+         *   ([D62](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d62)).
          * @throws IllegalArgumentException if [requiresApproval] is set without a [handler].
          */
         public fun tool(
@@ -322,7 +331,9 @@ public class Conversation internal constructor(
 
         /**
          * Registers a tool whose handler takes the whole call: llamabro-typed's typed tools decode
-         * [ToolCall.argumentsJson] themselves (D61). The loop treats it as [tool] does a handler.
+         * [ToolCall.argumentsJson] themselves
+         * ([D61](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d61)). The loop treats it as
+         * [tool] does a handler.
          */
         @InternalLlamaBroApi
         public fun toolForCall(tool: Tool, requiresApproval: Boolean, handler: suspend (ToolCall) -> String) {

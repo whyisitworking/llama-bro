@@ -2,8 +2,10 @@ package com.suhel.llamabro
 
 /**
  * Where a model's files are: local files ([ModelSource.file]), or a [RemoteModelSource] that fetches them before the
- * load (D64, D75). Not sealed, so that a module or an app can fetch files from anywhere; any other implementation of
- * this interface is refused with [LlamaBroException.InvalidRequest].
+ * load ([D64](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d64),
+ * [D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)). Not sealed, so that a module or
+ * an app can fetch files from anywhere; any other implementation of this interface is refused with
+ * [LlamaBroException.InvalidRequest].
  */
 public sealed interface ModelSource {
     public companion object {
@@ -17,9 +19,10 @@ public sealed interface ModelSource {
 
 /**
  * A model whose files must be fetched before they load: the hub's `hub.model("…")`, an app's own server, or a test fake
- * (D64, D75). Core knows nothing of where they come from: `loadModel` calls [fetch] and loads the local files it
- * returns, reporting the download as [LoadProgress.Fetching]; `estimateFit` reads headers through [withHeaders] and
- * downloads no weights.
+ * ([D64](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d64),
+ * [D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)). Core knows nothing of where they
+ * come from: `loadModel` calls [fetch] and loads the local files it returns, reporting the download as
+ * [LoadProgress.Fetching]; `estimateFit` reads headers through [withHeaders] and downloads no weights.
  *
  * Both functions run on the caller's dispatcher, which may be the main thread: an implementation switches to its own
  * dispatcher for IO and must be main-safe. Each hands back local files made with [ModelSource.file]; anything else
@@ -50,7 +53,11 @@ public class FileSourceBuilder internal constructor() {
     /** A multimodal projector GGUF. */
     public var mmproj: String? = null
 
-    /** A draft model for Speculative.DFlash (D41); unused with any other Speculative (LoadReport says so). */
+    /**
+     * A draft model for Speculative.DFlash
+     * ([D41](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d41)); unused with any other
+     * Speculative (LoadReport says so).
+     */
     public var draft: String? = null
 }
 

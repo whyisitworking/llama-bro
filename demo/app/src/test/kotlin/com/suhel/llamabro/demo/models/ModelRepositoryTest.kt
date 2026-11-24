@@ -153,7 +153,8 @@ class ModelRepositoryTest {
         runBlocking {
             testHub.install(swift, swiftQ8, other)
             val rows = repository().library.first().associateBy { it.key }
-            // one name per model on every surface (D50): the catalog's for any file of its repo, else the shown repo name
+            // one name per model on every surface (D50): the catalog's for any file of its repo, else the shown repo
+            // name
             assertEquals("Qwen3.5 0.8B", rows.getValue(swift).name)
             assertEquals("Qwen3.5 0.8B", rows.getValue(swiftQ8).name)
             assertEquals("Some Model", rows.getValue(other).name)

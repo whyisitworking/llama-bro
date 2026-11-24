@@ -14,7 +14,8 @@ import kotlinx.serialization.json.intOrNull
  * parseToolArguments does (stores/agentic/index.svelte.ts): blank means `{}`, anything else must be a JSON object.
  * Parsing and the accessors throw [LbToolError] with `invalid arguments: <reason>` for arguments that don't parse,
  * aren't an object, or lack or mistype a field, so a handler that lets it propagate sends the model
- * `Error: invalid arguments: <reason>` and the model can retry (D62).
+ * `Error: invalid arguments: <reason>` and the model can retry
+ * ([D62](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d62)).
  */
 public class JsonArgs internal constructor(public val raw: String) {
     private val obj: JsonObject =

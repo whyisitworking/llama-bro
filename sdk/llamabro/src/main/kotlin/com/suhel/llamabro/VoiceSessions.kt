@@ -10,12 +10,16 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Opens a spoken conversation with this model (D95): upstream's `/v1/realtime` conversation, in memory (D97). Returns
+ * Opens a spoken conversation with this model
+ * ([D95](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d95)): upstream's `/v1/realtime`
+ * conversation, in memory ([D97](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d97)). Returns
  * once the server has taken [configure] (`session.updated`), so a voice or setting it refuses fails here.
  *
- * Nothing in [configure] is set for the app (D98): LFM3-Omni needs a voice, a language and an instruction to answer
- * (F166), as in `voiceSession { voice = "female"; language = "en"; instructions = "…" }`. Close the session when
- * done; closing the model ends it too.
+ * Nothing in [configure] is set for the app
+ * ([D98](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d98)): LFM3-Omni needs a voice, a
+ * language and an instruction to answer
+ * ([F166](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f166)), as in `voiceSession {
+ * voice = "female"; language = "en"; instructions = "…" }`. Close the session when done; closing the model ends it too.
  *
  * @throws LlamaBroException.NotSupported if the model doesn't hear.
  * @throws LlamaBroException.InvalidRequest if the server refused the setup (a model that can't hold a conversation),

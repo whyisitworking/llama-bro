@@ -196,6 +196,7 @@ its amendments to know what holds now.
 
 ---
 
+<a id="d1"></a>
 ### D1. Where the SDK lives
 
 Status: Decided (2026-11-03)
@@ -204,6 +205,7 @@ Context: The SDK and the demo app were developed together in one repository.
 Decision: The SDK is its own included Gradle build under `sdk/`, and is split into a separate repository when published.
 Consequences: The demo app consumes the SDK through a composite build, so it exercises the same artifacts an external app would.
 
+<a id="d2"></a>
 ### D2. Coordinates
 
 Status: Decided (2026-11-03)
@@ -212,6 +214,7 @@ Context: Published artifacts need a Maven group, and two Android modules with th
 Decision: The Maven group is `io.github.whyisitworking`. The Kotlin package and Android namespace stay `com.suhel.llamabro`, and backend modules use sub-packages such as `com.suhel.llamabro.hexagon`. The demo app's application ID is `com.suhel.llamabro.demo`.
 Consequences: Package names are stable across the SDK; the demo app cannot share a namespace with the core module.
 
+<a id="d3"></a>
 ### D3. Minimum SDK level
 
 Status: Decided (2026-11-03)
@@ -220,6 +223,7 @@ Context: Some useful platform APIs (thermal headroom, ADPF hints) only exist fro
 Decision: `minSdk` is 29. APIs from 30 and 31 are used only behind runtime checks.
 Consequences: Older devices than API 29 are unsupported; newer APIs degrade gracefully.
 
+<a id="d4"></a>
 ### D4. Distribution
 
 Status: Decided (2026-11-03)
@@ -228,6 +232,7 @@ Context: Building llama.cpp with the NDK and vendor toolchains is slow and error
 Decision: The SDK is distributed as prebuilt AARs on Maven Central, with no build-from-source option for consumers.
 Consequences: Native builds run only in CI and on the maintainer's machine; the AARs are the only supported way to consume the SDK.
 
+<a id="d5"></a>
 ### D5. Process model
 
 Status: Decided (2026-11-03)
@@ -236,6 +241,7 @@ Context: Running the engine in a separate process would add IPC, a service lifec
 Decision: The engine runs in-process only.
 Consequences: A native crash takes the app down; in exchange there is no IPC cost and no local network surface (see D12).
 
+<a id="d6"></a>
 ### D6. Engine lifetime
 
 Status: Decided (2026-11-03)
@@ -244,6 +250,7 @@ Context: ggml's backend registry, several environment variables and llama.cpp's 
 Decision: There is one runtime per process, and models are independent handles created from it.
 Consequences: `LlamaBro.getInstance(context)` is a singleton, a second runtime configuration is rejected with an error, and several models can be loaded at once, each with its own worker thread.
 
+<a id="d7"></a>
 ### D7. Context size
 
 Status: Decided (2026-11-03)
@@ -252,6 +259,7 @@ Context: Context size determines the memory a model needs, and a phone has littl
 Decision: Context size is chosen when a model loads. `Auto` fits it to available memory, capped at the model's training context; sampling settings can be set per request.
 Consequences: Changing the context size needs a reload. The fitting rule was later refined by D22, D33 and D34.
 
+<a id="d8"></a>
 ### D8. Conversation helper
 
 Status: Decided (2026-11-03)
@@ -260,6 +268,7 @@ Context: A stateless request API is flexible but leaves beginners to manage hist
 Decision: The SDK includes a `Conversation` helper that follows `tools/ui`'s message handling, without hiding any request feature.
 Consequences: The beginner path and the full request path coexist; the helper's behaviour is checked against `tools/ui` with golden tests.
 
+<a id="d9"></a>
 ### D9. Downloads
 
 Status: Decided (2026-11-03)
@@ -268,6 +277,7 @@ Context: An earlier revision made the SDK own a WorkManager path and call the ap
 Decision: The hub downloads and caches; it does not schedule work, run in the background or touch notifications. The app runs the download wherever it likes and builds its own notification from the progress flow.
 Consequences: There is no background-download artifact; a reference recipe lives in the download acceptance app instead.
 
+<a id="d10"></a>
 ### D10. llama.cpp version and patches
 
 Status: Decided (2026-11-04)
@@ -276,6 +286,7 @@ Context: The SDK builds against an upstream library that is not a public API, an
 Decision: llama.cpp is pinned at `b12052`, and the patch mechanism and that one patch ship. Upstream pull requests wait until the implementation is complete so that they carry all the evidence; llama.cpp's contribution rules apply, including searching existing issues first.
 Consequences: Every upgrade needs a compile check and the contract tests, and patches are applied to a build copy, never committed into the submodule. Amended by D52, which moves the pin to `b12352`, by D55, which adds a second patch carried from an upstream pull request, by D67, which adds a third, and by D80, which replaces the head/tail patch with a one-line Hexagon gate. Amended also by D86 (patches 0005, 0006), D90 (which moves them and 0007 to the voice-mode phase), D91 (patch 0004) and D93 (the pin moves to `b12479`).
 
+<a id="d11"></a>
 ### D11. Tool gating
 
 Status: Decided (2026-11-03)
@@ -284,6 +295,7 @@ Context: Deciding which tools a model may call, or whether a call needs approval
 Decision: Tool gating is out of the SDK.
 Consequences: A tool handler is a suspend function, so an app can wait for its own approval step inside it; the SDK has no permission system.
 
+<a id="d12"></a>
 ### D12. Inference engine
 
 Status: Decided (2026-11-03)
@@ -292,6 +304,7 @@ Context: Writing a pipeline on top of `libllama` would mean maintaining prompt c
 Decision: The SDK embeds llama-server's core library in-process and calls its handlers directly. The spike passed: speed was within about 2% of the llama-server binary (F1-F4).
 Consequences: Behaviour matches llama-server and its documentation applies. The coupling to a non-public API is small but needs contract tests on every upgrade.
 
+<a id="d13"></a>
 ### D13. Long conversations
 
 Status: Decided (2026-11-03)
@@ -300,6 +313,7 @@ Context: llama-server never compacts or edits a conversation: context shift is o
 Decision: The engine behaves like llama-server. Compaction lives only in `Conversation`, which follows `tools/ui`'s algorithm exactly, and the compaction node is appended at the end with a kept-step count as `tools/ui` stores it (F26).
 Consequences: Apps using `Model.chat` directly implement their own compaction. Compaction is user-initiated, with no automatic threshold.
 
+<a id="d14"></a>
 ### D14. Tool execution
 
 Status: Decided (2026-11-03)
@@ -308,6 +322,7 @@ Context: `tools/ui`'s tool loop runs calls in order, feeds errors back to the mo
 Decision: `Conversation` runs registered Kotlin tool handlers automatically, with the same loop and a default limit of 100 turns.
 Consequences: A tool without a handler stops the loop with `ToolCallsPending`, which gives a manual mode through `addToolResult` and `resume`.
 
+<a id="d15"></a>
 ### D15. HTTP client
 
 Status: Decided (2026-11-07)
@@ -316,6 +331,7 @@ Context: The hub needs a few JSON requests and large ranged downloads, and a dep
 Decision: The hub uses `HttpURLConnection`, with redirects handled by the SDK (confirmed by D39).
 Consequences: No dependency is added, and the SDK controls which host receives the access token.
 
+<a id="d16"></a>
 ### D16. Model storage
 
 Status: Decided (2026-11-03)
@@ -324,6 +340,7 @@ Context: Backed-up directories silently disable cloud backup above 25 MB and cop
 Decision: The default cache is `noBackupFilesDir/llamabro/hub`; the app may choose another directory.
 Consequences: Models are excluded from backups and are not purged under storage pressure.
 
+<a id="d17"></a>
 ### D17. Phone defaults
 
 Status: Decided (2026-11-03)
@@ -332,6 +349,7 @@ Context: llama-server's defaults suit a server: four slots, an 8 GiB RAM cache a
 Decision: `n_parallel` is 1, `n_ctx_checkpoints` 8, `cache_ram_mib` 1024, and `n_batch` and `n_ubatch` both 512. Each value was measured on a device.
 Consequences: Cancelling during a long prompt frees the slot in 0.4 s instead of 2.0-2.6 s. All values can be overridden in `ModelConfig`.
 
+<a id="d18"></a>
 ### D18. Sampler chain
 
 Status: Decided (2026-11-03)
@@ -340,6 +358,7 @@ Context: A candidate sampler order and penalties counted over generated tokens o
 Decision: Upstream's sampler order and its prompt-in-penalty behaviour are kept, together with the GGUF's `general.sampling.*` defaults. `samplers` is exposed per request.
 Consequences: The candidate patch is not shipped. Greedy output and sampling behaviour match llama-server.
 
+<a id="d19"></a>
 ### D19. Demo app
 
 Status: Decided (2026-11-03)
@@ -348,6 +367,7 @@ Context: The first-generation app and engine predated the new SDK and would have
 Decision: The demo app is rebuilt from scratch in its own phase after the Hub, and the first-generation modules were deleted.
 Consequences: The SDK was shaped without a legacy app to accommodate; the rebuilt app consumes only public API (see D46).
 
+<a id="d20"></a>
 ### D20. Native packaging
 
 Status: Decided (2026-11-04)
@@ -356,6 +376,7 @@ Context: Backends must load from inside an APK, and a library's exported symbols
 Decision: Backends load by file name, straight from the APK, using a port of `ggml_backend_load_best`; no extraction and no legacy packaging is needed. Libraries carry a `llamabro-` prefix and `libllamabro.so` exports only the C API and `JNI_OnLoad`. The AAR ships R8 keep rules for every class the JNI layer looks up. The Hexagon skeleton is the exception: the DSP loader needs a file, so it ships as an asset and is copied to `noBackupFilesDir` (F19).
 Consequences: Adding a backend AAR is enough to enable it, and app shrinking does not break the JNI layer.
 
+<a id="d21"></a>
 ### D21. Verification
 
 Status: Decided (2026-11-04)
@@ -364,6 +385,7 @@ Context: A change to the bridge or packaging can break behaviour that only shows
 Decision: Every SDK change passes `sdk/scripts/check.sh`, which compares each layer with upstream where upstream exists. Native, JNI or packaging changes also pass `--device`.
 Consequences: Contract, golden and device tests are part of the normal workflow rather than a release step.
 
+<a id="d22"></a>
 ### D22. ContextSize.Auto, first version
 
 Status: Decided (2026-11-04)
@@ -372,6 +394,7 @@ Context: ggml-cpu counts all RAM as free, so upstream's fit cannot see a phone's
 Decision: `Auto` used upstream's fit (`n_ctx` 0) fed with the phone's available memory through margins computed from `ActivityManager.MemoryInfo`, replacing an earlier fixed `min(8192, n_ctx_train)`.
 Consequences: Superseded in practice by D33 and D34, which found that upstream's fit misjudges a phone (F66).
 
+<a id="d23"></a>
 ### D23. Device coverage in the backend phase
 
 Status: Decided (2026-11-04)
@@ -380,6 +403,7 @@ Context: No non-Qualcomm phone was available for testing.
 Decision: Vulkan was to be built and verified on one Adreno GPU only and kept out of `DevicePolicy.Auto` until a GPU is on its allow-list.
 Consequences: Amended by D31, which removed Vulkan from 1.0 after the verification failed.
 
+<a id="d24"></a>
 ### D24. Backend discovery and device choice
 
 Status: Decided (2026-11-07)
@@ -388,6 +412,7 @@ Context: Backend AARs must be usable by adding a dependency, and device selectio
 Decision: Each backend AAR announces its installer through manifest `<meta-data>`; the core reads the merged manifest and loads the libraries by name. The SDK always sets an explicit device list directly in `common_params.devices`, not through `--device`, whose handler re-runs ggml's backend scan. `Auto` tries NPU, then GPU, then CPU, falls back on a load failure, and records every attempt in `loadReport`.
 Consequences: The order became NPU, OpenCL, CPU once Vulkan left 1.0 (D31). A benchmarking policy is deferred to a later phase. D92 keeps `Auto` open on chips nobody has verified and says so in the docs.
 
+<a id="d25"></a>
 ### D25. API revision before the backend phase
 
 Status: Decided (2026-11-04)
@@ -396,6 +421,7 @@ Context: A review of the first public Kotlin API found binary-compatibility trap
 Decision: A dedicated phase fixes these before the backend work builds on the API.
 Consequences: The API was settled before external use, at the cost of a short delay.
 
+<a id="d26"></a>
 ### D26. API evolution rules
 
 Status: Decided (2026-11-04); its value-type rule is replaced by D102
@@ -404,6 +430,7 @@ Context: A public type that gains a field breaks binary compatibility if it is a
 Decision: Public types that will grow are immutable classes built through a builder or DSL, with no `copy`, no `componentN` and no public constructor defaults; small value types that will not grow may be data classes. Sealed and enum sets (`ChatEvent`, `FinishReason`, `LlamaBroException`) are settled at 1.0 and grow only in a major version. The public API dump is checked by `check.sh`, and the API is Kotlin only.
 Consequences: Minor versions can add fields and options without breaking callers. The rules apply to every module.
 
+<a id="d27"></a>
 ### D27. Testing seam
 
 Status: Decided (2026-11-04)
@@ -412,6 +439,7 @@ Context: Apps need to test their view models and flows without a device or a nat
 Decision: A `llamabro-testing` artifact runs the real `Model` and `Conversation` over a scripted fake engine that speaks llama-server's event stream. The engine interfaces are public only under the `@InternalLlamaBroApi` opt-in, and the public classes stay final.
 Consequences: Adding members to public classes never breaks an app, and fake-driven tests exercise the real conversation logic.
 
+<a id="d28"></a>
 ### D28. Finishing the API revision lean
 
 Status: Decided (2026-11-05)
@@ -420,6 +448,7 @@ Context: Midway through the API revision, the work was drifting into polish with
 Decision: The remaining tasks were cut to what callers need: load failure reasons are limited to `FileNotFound` and `Other` (F51), the shared fake source was dropped (F54), and the documentation tasks were merged into one closing task.
 Consequences: The phase ended earlier, and the load-failure reasons were extended later only where a caller needed a distinction (see D33).
 
+<a id="d29"></a>
 ### D29. Backend phase plan
 
 Status: Decided (2026-11-05)
@@ -428,6 +457,7 @@ Context: The backend plan was checked against the revised API and needed eight c
 Decision: The branch is cut from the API branch; `backends()` is a suspend function like `devices()`; `ContextSize.Auto`'s documentation is rewritten; `Engine.backends()` gets a default so the fake keeps compiling (F54); `DeviceInfo.type` becomes `kind: DeviceKind`; the weight-duplication issue (F50) is settled before memory is measured; speculative decoding is measured on CPU, NPU and OpenCL only; and the full acceptance suite runs on the `full` flavor only, with the `cpu` and `gpu` flavors checking device choice, one chat and stop.
 Consequences: Phone time was reduced without lowering code quality (see D28).
 
+<a id="d30"></a>
 ### D30. Load weights without mmap
 
 Status: Decided (2026-11-05)
@@ -436,6 +466,7 @@ Context: With mmap, the CPU repack copies the weights and the mapped pages stay 
 Decision: The SDK loads with upstream's `--load-mode none`. The alternative of mmap plus an unmap patch keeps mmap's speed but peaks at 5.4 GB while loading, and the direct-I/O mode lost (F59).
 Consequences: Loading is about 1.2 s slower, memory never exceeds its final value, and no patch is needed. The patch is kept as material for an upstream proposal.
 
+<a id="d31"></a>
 ### D31. Vulkan out of 1.0
 
 Status: Decided (2026-11-05)
@@ -444,6 +475,7 @@ Context: ggml-vulkan at `b12052` aborts the process on every Q4_K model load on 
 Decision: Vulkan is removed from 1.0 and the GPU is served by OpenCL (F63). The build recipe is kept for a retry after a llama.cpp or driver upgrade.
 Consequences: Amends D23, D24 and D29. `llamabro-vulkan` is not built or checked. Because devices are chosen by kind (D32), a returning Vulkan route would change nothing public.
 
+<a id="d32"></a>
 ### D32. DeviceKind is Npu, Gpu, Cpu
 
 Status: Decided (2026-11-05)
@@ -452,6 +484,7 @@ Context: Apps care about which chip runs a model, not which backend library driv
 Decision: Apps choose a chip by kind: `DevicePolicy.Auto`, `Prefer(kind)` and `Only(kind)` over `DeviceKind` with `Npu`, `Gpu` and `Cpu`. The SDK maps a kind to the backend and device the phone has and names both in `loadReport`. `DeviceInfo.kind` replaces ggml's type string (F65).
 Consequences: Enums are settled at 1.0 (D26); new GPU routes need no API change. This replaces the plan's backend-named enum.
 
+<a id="d33"></a>
 ### D33. ContextSize.Auto fits all memory
 
 Status: Decided (2026-11-05)
@@ -460,6 +493,7 @@ Context: Upstream's fit checks device memory only and treats the host as unlimit
 Decision: The bridge uses upstream's own dry-run measurement (`common_fit_measure`) at 4096 tokens and at the ceiling, sums every row (devices and host share one RAM on a phone) and interpolates to the budget as upstream's second step does. Upstream's `--fit` is off, so context and placement are always explicit. Below 4096 tokens the load fails with `InsufficientMemory` instead of loading anyway.
 Consequences: Amends D22. A load that does not fit ends the device fallback, because every device shares the phone's RAM; projections differ by device by up to about 260 MiB, so on the edge the CPU might have fitted where the NPU did not (F80).
 
+<a id="d34"></a>
 ### D34. Auto's budget and ceiling
 
 Status: Decided (2026-11-06)
@@ -468,6 +502,7 @@ Context: A researched choice was needed that works on many kinds of phones. Some
 Decision: The budget is the kernel's `MemAvailable` from `/proc/meminfo`, less Android's low-memory threshold, the prompt cache, an image encoder's file and a 512 MiB reserve (measured, F66); `availMem` is used only if `/proc/meminfo` cannot be read. `Auto` stops at 16 384 tokens, because common local defaults are 4096, current models spend 1-3K tokens per turn on reasoning and tool results, and a dense 3B model's cache at 16K is about 1.8 GB. `ContextSize.UpTo(maxTokens)` applies the same fit with the app's own ceiling.
 Consequences: Amended by D45, which makes the reserve configurable. The rule is documented in the KDoc and the SDK README.
 
+<a id="d35"></a>
 ### D35. n-gram speculation is an opt-in
 
 Status: Decided (2026-11-06)
@@ -476,6 +511,7 @@ Context: n-gram speculation decodes code edits 7 times faster on the NPU and 2.3
 Decision: `Speculative.Ngram` loads with upstream's `--spec-default` (ngram-mod, n_match 24, n_min 48, n_max 64) and combines with `Speculative.Mtp(n)`, with n-grams tried first. `Speculative.Auto` stays off.
 Consequences: Apps whose output is dominated by edits or structured text can opt in; the default never regresses prose.
 
+<a id="d36"></a>
 ### D36. DFlash is an opt-in
 
 Status: Decided (2026-11-06)
@@ -484,6 +520,7 @@ Context: On the NPU, DFlash decodes structured output 1.5 times faster than MTP 
 Decision: DFlash is an opt-in once the hub can fetch a draft file next to the model, and it is never chosen by `Auto`. EAGLE-3 and DSpark are left out, since they lost everywhere with the checkpoints that exist.
 Consequences: Carried out by D41. The draft's memory counts in the `Auto` budget.
 
+<a id="d37"></a>
 ### D37. Text to speech is out of 1.0
 
 Status: Decided (2026-11-06)
@@ -493,6 +530,7 @@ Decision: Text to speech does not ship in 1.0; it is revisited after a llama.cpp
 Consequences: A byte-returning request and a way to keep the multimodal projector on the CPU would be needed first (F74). To be revisited by the voice-mode phase after PH (D85), now that LFM3-Omni-2B speaks faster than real time on the phone (F154). Amended by D95, which brings speech output in through a realtime voice conversation.
 Superseded by D139: `Model.speak` ships text to speech through upstream's `/v1/audio/speech`.
 
+<a id="d38"></a>
 ### D38. The CPU path runs without OpenMP
 
 Status: Decided (2026-11-07)
@@ -501,6 +539,7 @@ Context: Upstream's Snapdragon preset builds without OpenMP, and every llama-ser
 Decision: `GGML_OPENMP` is off; ggml uses its own thread pool, and the AAR no longer ships `libomp.so` (0.97 MB).
 Consequences: `check-aar.sh` fails if `libomp.so` returns.
 
+<a id="d39"></a>
 ### D39. The hub is a Kotlin port of -hf
 
 Status: Decided (2026-11-07)
@@ -509,6 +548,7 @@ Context: Upstream's download code cannot run in the SDK, which builds llama.cpp 
 Decision: `llamabro-hub` is pure Kotlin, a port of upstream's resolve, file choice, cache layout, locking, resume and removal (F82) over `HttpURLConnection`, with no native code and no dependency. Parity is checked with golden files produced by upstream's own code from the same fake server (F83).
 Consequences: Deliberate differences from upstream are listed in F82 and D44.
 
+<a id="d40"></a>
 ### D40. Every download is hashed
 
 Status: Decided (2026-11-07)
@@ -517,6 +557,7 @@ Context: Upstream never verifies a downloaded file (F83).
 Decision: Each LFS file is hashed with SHA-256 while it is written, and a resumed file re-hashes its existing part first. A file enters the cache only if the digest equals the repository's `oid`; otherwise the partial is deleted and the download fails with `HubException.IntegrityMismatch`.
 Consequences: Downloads that resume are verified, at the cost of re-reading the partial (about 0.75 s per GB on the test phone, F89).
 
+<a id="d41"></a>
 ### D41. DFlash ships with the hub
 
 Status: Decided (2026-11-07)
@@ -525,6 +566,7 @@ Context: D36 deferred DFlash until the hub could fetch a draft file.
 Decision: The hub fetches the multimodal projector by default and a draft head only on request, from the model's repository or a second one, like `llama-server`'s `-hfd` (F82). The core gains a draft file on `ModelSource` and `Speculative.DFlash` (`-md`, `--spec-type draft-dflash`, `--spec-draft-n-max 15`, `-fa on`), which is never used on the GPU (F80). `ContextSize.Auto` counts the draft's memory.
 Consequences: MTP heads sit inside the GGUFs measured so far (F67), so the sidecar kinds are the projector and DFlash. It was tested on the phone with a converted Qwen3.5 4B draft (F73).
 
+<a id="d42"></a>
 ### D42. A fit check before download; search stays in the app
 
 Status: Decided (2026-11-07)
@@ -534,6 +576,7 @@ Decision: The hub provides a pre-download estimate from llama.cpp's own projecti
 Consequences: If the projection had failed in a spike, the estimate would have been file size plus the context cache computed from header metadata, labelled as such.
 Superseded by D68 and D110 for search: the hub searches the Hub after all.
 
+<a id="d43"></a>
 ### D43. How downloads are tested
 
 Status: Decided (2026-11-07)
@@ -542,6 +585,7 @@ Context: Download tests must be repeatable and offline, yet resume behaviour on 
 Decision: Host tests and the phone's kill-and-resume test run against a fake Hugging Face server (refs, tree, a 302 to a second host, `Range`, ETag change, authentication) reached over `adb reverse`. One real download of a small public GGUF closes the phase.
 Consequences: Most hub behaviour is tested without network access; real-service behaviour is confirmed once (F93).
 
+<a id="d44"></a>
 ### D44. Hub deviations after review; one download at a time
 
 Status: Decided (2026-11-09)
@@ -550,6 +594,7 @@ Context: Review of the hub (F91) found three places where matching `-hf` exactly
 Decision: A complete partial whose digest matches is renamed with no request (upstream re-downloads after a 416). `delete(tag)` removes the tag's files from every snapshot of the repository, while blobs go only when no snapshot links them. A tree entry without a digest is skipped (D40). Files download one at a time by default, as measured in F89 and F91.
 Consequences: Cache layout stays compatible with llama.cpp. A device test accepts an `Auto` refusal that agrees with `estimateFit`, since the test phone's budget was 9-14 MiB short of DFlash's minimum (F90). Amended by D89, which fetches a selection's files in the plan's order.
 
+<a id="d45"></a>
 ### D45. The memory reserve is the app's to change
 
 Status: Decided (2026-11-09)
@@ -558,6 +603,7 @@ Context: A device test was 9-14 MiB short of the DFlash minimum because of the f
 Decision: `ModelConfig.memoryReserveMib` (default 512, minimum 0) is the memory that `ContextSize.Auto`, `UpTo` and `estimateFit` leave free for what grows during a chat, like llama-server's `--fit-target` margin. Its documentation warns that Android's low-memory killer ends the whole app without an exception. Tests about something else trade the prompt cache (`ramCacheMib`) instead.
 Consequences: Amends D34. Lowering the reserve is the app's call and risk.
 
+<a id="d46"></a>
 ### D46. The demo app's design
 
 Status: Decided (2026-11-09)
@@ -566,6 +612,7 @@ Context: The demo app is the first real consumer of the API and should reflect e
 Decision: The demo app is an on-device chat application for newcomers and experts. It offers three curated models on first run and lets a person type before the download ends, has two layouts (a sidebar and a chat list), searches Hugging Face grouped by model with sizes tinted by how each runs on the phone, and supports images, thinking effort, edit and regenerate, sharing and custom instructions. It lives in a top-level `demo/` project built against the SDK through a composite build.
 Consequences: Anything the app needs from the SDK is a finding first and then an SDK change; the one known case was starting a `Conversation` from stored messages (F96).
 
+<a id="d47"></a>
 ### D47. A resumed partial is verified by re-reading it
 
 Status: Decided (2026-11-10)
@@ -574,6 +621,7 @@ Context: A resumed multi-gigabyte partial takes time to re-hash, and cheaper sch
 Decision: The hub keeps D40's whole-file check: a resumed partial's existing bytes are hashed again before the download continues (phase `Verifying`), and a complete partial whose digest matches is renamed with no request (D44). No per-chunk checkpoints and no Xet chunk hashes are added.
 Consequences: The slow resume of a large partial is accepted, to add no new format, code or deviation from upstream. It is revisited only if an app reports a problem.
 
+<a id="d48"></a>
 ### D48. The demo app follows one design system
 
 Status: Decided (2026-11-12)
@@ -582,6 +630,7 @@ Context: An audit of the demo app's type, spacing and colour found inconsistenci
 Decision: Type, spacing, colour and states follow Material 3 (its type roles and 4 dp grid), enforced by the build: screens are assembled from layout primitives that own gutters and gaps, and no `.sp` or spacing `.dp` literal may appear outside the design system. Navy is the single primary colour and black is ink only. The serif face is for hero moments only (first-run greeting, empty-chat line, model-sheet title). Settings, About and Storage are grouped cards, and body text is 16 sp.
 Consequences: Applied as a design-system revision before the final review, so that the review covered the final design.
 
+<a id="d49"></a>
 ### D49. Where Material is silent, follow the leading chat apps
 
 Status: Decided (2026-11-12)
@@ -590,6 +639,7 @@ Context: Material 3 gives numbers for fields, buttons, chips and lists but nothi
 Decision: For those, the app follows common practice among leading chat apps, read from public teardowns and release notes; no leader publishes pixel values, so every number is the app's own. Four changes were made: the bubble for outgoing messages is a soft neutral in both themes (light `#E9E7E1`, dark `#2A2C31`), the thinking control sits inside the message bar, send is quiet while there is nothing to send, and a "back to the latest message" button appears when the chat is scrolled away from its end. The memory refusal offers "Try again" first and "Smaller size" second.
 Consequences: Replaces D48's use of near-black for the outgoing-message bubble. Copy, share and regenerate show under the latest reply only, and the list follows a streaming reply only while at the end.
 
+<a id="d50"></a>
 ### D50. Model names, message bar and download indicator in the demo app
 
 Status: Decided (2026-11-12)
@@ -598,6 +648,7 @@ Context: Friendly nicknames for curated models added a second name for each mode
 Decision: Every surface shows a model's own name ("Qwen3.5 0.8B", "Gemma 3 4B", "Qwen3.5 4B"), with a plain line beneath saying what it is for. The message bar is text above a row of buttons: a plus at the start and, for a model that can think, a lightbulb icon just left of send, tinted when on, with its level in the description and the menu it opens. The download's ring and percentage sit beside the model's name in the chat's top bar, and the time left appears in the ring's description and in the notification.
 Consequences: Replaces D46's friendly names and D48's rule of one friendly name with the real one beneath it: a model has one name, its own, everywhere. The thinking control is an icon rather than a chip.
 
+<a id="d51"></a>
 ### D51. With the model on the NPU, the image encoder runs on the CPU
 
 Status: Decided (2026-11-13)
@@ -606,6 +657,7 @@ Context: ggml-hexagon computes some vision encoders wrongly. Qwen3.5 0.8B's enco
 Decision: When the model's device is the NPU, the multimodal projector (image encoder) runs on the CPU. On the GPU it stays on the model's device, where OpenCL encodes correctly. This deviates from upstream on measured correctness (F120), not speed.
 Consequences: A picture takes about 4.6 s longer to encode (0.4 s to 5.0 s of prompt time for one 640x480 picture with the 0.8B). Encoders that are right on the NPU, such as Qwen3.5 4B's, also pay this cost, because the SDK cannot tell which encoders are affected. Revisit when ggml-hexagon fixes the encoder; the acceptance app's `VisionTest` shows whether it is fixed. Superseded by D53 (2026-11-13): b12352 encodes correctly on the NPU (F121).
 
+<a id="d52"></a>
 ### D52. llama.cpp is pinned at b12352
 
 Status: Decided (2026-11-13)
@@ -614,6 +666,7 @@ Context: b12352 fixes the NPU's image encoder (F120, F121) and brings fixes the 
 Decision: The submodule moves to `b12352`. The delta-net head/tail patch is re-ported to upstream's fused-only code and keeps shipping, since it still makes NPU prefill with MTP about 66% faster (F121, F8). The patched copy gets current file times, so an upgrade rebuilds every object (F122).
 Consequences: Amends D10's pin. Statements in the documents measured "at b12052" (MTP, drafting on the GPU, Vulkan) stay as measured until retested. `Endpoint.Speech` is the new route. Amended by D93, which moves the pin to `b12479`.
 
+<a id="d53"></a>
 ### D53. The image encoder follows the model unless the app moves it
 
 Status: Decided (2026-11-13)
@@ -622,6 +675,7 @@ Context: D51 kept the encoder on the CPU with the model on the NPU, because ggml
 Decision: `ModelConfig.encoderDevice: DevicePolicy?`, mapped to llama-server's `--mmproj-device`. Unset (the default), the encoder follows the model's device, as upstream. `Only(kind)` fails the load with `DeviceUnavailable` when that kind isn't available, `Prefer(kind)` falls back to the model's device, `Auto` takes the fastest available. `LoadReport.encoderDevice` and `encoderDeviceName` say where it was placed; `Prefer` and `Auto` also fall back when the encoder's device fails to load. One setting covers images and audio, since llama.cpp runs both from one projector on one device.
 Consequences: Supersedes D51. `VisionTest` asserts that the model names a picture's colours with the encoder on the NPU and on the CPU, on the phone.
 
+<a id="d54"></a>
 ### D54. The NPU's skeleton is found through GGML_HEXAGON_LIBHTP_DIR
 
 Status: Decided (2026-11-13)
@@ -630,6 +684,7 @@ Context: Since b12352 ggml-hexagon opens its skeleton by absolute path, from `GG
 Decision: `HexagonInstaller` sets only `GGML_HEXAGON_LIBHTP_DIR` to the installed skeletons' directory.
 Consequences: Verified on the phone by the backend, acceptance and lifecycle tests with the NPU (`check.sh --device`).
 
+<a id="d55"></a>
 ### D55. Upstream PR #30432 is carried as a patch until it merges
 
 Status: Decided (2026-11-13)
@@ -638,6 +693,7 @@ Context: ggml-cpu has no ARM path for BF16 dot products, so a BF16 image project
 Decision: Ship the PR's diff (head `cde3115c`) as `sdk/native/patches/0002-bf16-neon-vec-dot.patch`, and drop it once the change is in the pinned build. Each patch's origin and drop condition are kept in `sdk/native/patches/README.md`, and the llama.cpp upgrade checklist in `CONTRIBUTING.md` checks them first.
 Consequences: Amends D10's "that one patch": two patches ship. A carried upstream PR is the one kind of patch expected to go away by itself; if the PR changes before merging, the merged version replaces it.
 
+<a id="d56"></a>
 ### D56. Leaving a chat stops its reply
 
 Status: Decided (2026-11-13)
@@ -646,6 +702,7 @@ Context: Each open chat runs through an engine handle owned by its screen's view
 Decision: Leaving a chat (its screen's view model is cleared) closes its handle and stops its reply; what had arrived is kept as a stopped reply, as a Stop would keep it. A rotation or process death does not leave the chat: the view model survives the one, and the other kills the reply anyway (it is marked stopped at the next launch, before the first turn).
 Consequences: Only the chat on screen ever uses the model, so a chat left mid-reply never holds memory or the turn while the user is elsewhere. A new chat keeps its view model when its id resolves (the id goes into the screen's saved state, not a new route), so its first reply is not stopped by that.
 
+<a id="d57"></a>
 ### D57. The memory check warns by default
 
 Status: Decided (2026-11-13)
@@ -654,6 +711,7 @@ Context: `ContextSize.Auto` and `UpTo` fit the context to `MemAvailable` less An
 Decision: `ModelConfig.memoryCheck` chooses. `MemoryCheck.Warn`, the default, loads at the smallest context (4096, or a smaller `UpTo` ceiling) without the budget when the check says no, and `LoadReport.memoryWarning` carries the check's numbers. `MemoryCheck.Refuse` keeps the old failure. `Fixed` has no check, as before. The budget formula itself is unchanged.
 Consequences: A model that loads is no longer refused for a figure the SDK can't measure. An app tells the person in its own words, as the demo does with a note and "Smaller size". A model that really doesn't fit now fails in the load itself, or later through Android's low-memory killer, which is the risk D45 named; an app that can't take it sets `Refuse`. `estimateFit` still reports `fits = false` before a download.
 
+<a id="d58"></a>
 ### D58. The chat moves with Material 3's motion
 
 Status: Decided (2026-11-14)
@@ -662,6 +720,7 @@ Context: The chat had motion only in the wake hairline, the download ring and th
 Decision: `DemoMotion` carries Material's values: arrivals 300 ms emphasized decelerate, departures 150 ms emphasized accelerate, changes in place 250 ms standard, a small swap 200 ms. The chat uses them through design-system pieces only (`messageMotion`, `Reveal`, `TypingDots`, the fold's shimmer and chevron, `JumpToLatest(visible)`, the send button), as demo design §8.11 lists; `ds` fails on an animation spec in `:app`. Tokens are not animated. With the animator duration scale at 0 everything is instant and every loop is still.
 Consequences: The chat says what is happening in the gap before a reply, and what comes and goes does so without a jump. A new motion is a design-system change, reviewed against the table in §8.11.
 
+<a id="d59"></a>
 ### D59. The person controls the model's memory; a notification only while a reply runs in the background
 
 Status: Decided (2026-11-14)
@@ -670,6 +729,7 @@ Context: The demo freed the model a minute after the app left the screen (unless
 Decision: The app keeps owning the one model (`ModelHost`, a flow). It frees it after the time chosen in Settings › Memory (a minute by default, 5 minutes, or until Android needs it), and at once on `onTrimMemory` at `TRIM_MEMORY_BACKGROUND` or above, never while a reply runs (F134). The person sees the model in memory, with Unload, in Settings › Memory and the chat's model sheet. A reply still under way when the app leaves the screen runs under a `shortService` foreground service with a "Writing a reply…" notification and Stop; at Android's limit the reply stops, keeping what arrived. A conversation is tied to the loaded model, not only its key, so a chat rebuilds it after a release. The SDK stays free of app lifecycle: this is the app's policy.
 Consequences: The memory is freed when it matters and kept when the person asks, and they can free it themselves. No notification sits in the shade for an idle model. A reply that runs longer than the short service allows in the background is stopped, not lost. Saving the chat's slot to disk on release (llama-server's slot save, reachable through `rawRequest`) cuts the reload's prompt from 3.5 s to 0.3 s for a 3k-token chat, at 97 KB a token on disk (F135); whether to build it is open.
 
+<a id="d60"></a>
 ### D60. Each model starts from its card's sampling, a chat can change it again, and a reply has a length limit with Continue
 
 Status: Decided (2026-11-14)
@@ -678,6 +738,7 @@ Context: The demo sent no sampling values, so every model ran on llama-server's 
 Decision: The catalog carries each suggested model's card values, per mode where the card differs (Qwen3.5 thinking and not). Five values can be changed, temperature, top P, top K, min P and presence penalty, in two layers: a model's own (Settings › Sampling, per model key) and a chat's own (the model sheet's "This chat"), the chat's over the model's over the card's over llama-server's. A value nobody set is not sent, so a model file's own value still applies. Reset returns a model to its card and a chat to its model. Every reply has a length limit: about 2,000 tokens for the answer plus the Think level's budget (2,048 Off, 2,560 Quick, 4,096 Balanced, 8,192 Deep). A reply that reaches it is kept as cut, "Stopped at the length limit.", and the chat's last reply offers Continue: the chat is sent with that reply as its last message and llama-server goes on writing it, its thinking or its answer (`prefill_assistant`, F137).
 Consequences: Qwen3.5 runs with its presence penalty, and a loop ends at the limit instead of at Stop; a long answer that was merely long goes on with one tap. The page shows each value's source, so a person sees what they changed. Search finds models without card values; bringing a searched model's recommended values from the Hub is proposed for PH. Qwen3.5's values for pictures, the repeat penalty, DRY, XTC and named presets are left out. The reply length can be chosen in Settings › Sampling, No limit included (D78).
 
+<a id="d61"></a>
 ### D61. Typed tools: annotated toolboxes generated by KSP, over a functional form, in `llamabro-typedtools`
 
 Status: Decided (2026-11-15)
@@ -686,6 +747,7 @@ Context: A tool is declared today as a name, a description and its parameters' J
 Decision: Typed tools are a separate dependency in three layers, each built on the one below. (1) A tool is a name, a description, an arguments serializer, a result serializer and a `suspend (A) -> R`; its schema comes from the arguments' serial descriptor through the converter that typed structured output also uses, which lives in core with `@LbDescription`, the field description both read. (2) A functional form, `tool<Args, Result>("name", "description") { args -> … }`, whose lambda captures whatever the app injected. (3) A KSP processor (`llamabro-typedtools-ksp`) that writes layer-2 code from annotations; no reflection. `@LbToolbox` marks an interface, class or object; tools declared in an `@LbToolbox` supertype are included, an override may not be annotated again, and a tool reached twice counts once. `@LbTool("description")` marks a method; the description is required, KDoc is never used, the name is the method's in snake_case unless given, checked at build time against `^[a-zA-Z0-9_-]{1,64}$` with the toolbox's optional prefix, and colliding overloads are a build error. A method takes one `@Serializable` class without `@LbToolParam` (the whole arguments object, where kotlinx.serialization applies real defaults) or separate parameters, each with `@LbToolParam` (the processor generates the arguments class and copies the text into `@LbDescription`); in the separate form a parameter is optional only as nullable `= null`, and another default is a build error that points to the data-class form. A parameter's description is optional. A parameter of type `LbToolCallContext` (call id, tool name, raw arguments) is passed in and left out of the schema. A tool returns a `String` (sent as is), a `@Serializable` value (sent as JSON), `Unit`, a primitive or a list; result classes carry no annotations, since no schema for a result reaches the model (F139): what a result means goes in the tool's description. `@LbTool(requiresApproval = true)` pauses the turn for the app (D62). The generated `asToolbox()` extension gives the app a `Toolbox` from its own instance, so a missing processor is a build error and a DI container can provide toolboxes. The SDK constructs nothing and depends on no DI library. Tools are registered per conversation, as today: changing them mid-chat would reprocess the whole prompt, which they open (F139). The raw string form stays in core for tools defined at runtime, with `Tool`, `ToolCall`, `ToolChoice` and the agent loop.
 Consequences: Declaring a tool is a typed, suspending method on an injected class, checked when the app builds. Apps without tools add nothing. The KSP artifact is an extra build dependency for apps that annotate; the functional form needs none. Where typed tools are shown (demo, sample) is decided after they are built and tested; the demo's design leaves tools out today. Amended by D63, which moves typed tools, the schema converter and `@LbDescription` into one `llamabro-typed` module (with `llamabro-typed-ksp`), so core keeps no typed API.
 
+<a id="d62"></a>
 ### D62. The agent loop: unknown tools and invalid arguments answer the model, only `LbToolError` messages reach it, blocking tools leave the caller's thread, and approval pauses the turn
 
 Status: Decided (2026-11-15)
@@ -694,6 +756,7 @@ Context: The loop, ported from tools/ui, treats a call to an unregistered name a
 Decision: A call to an unknown name gets `Error: Unknown tool: <name>` as its result and the loop goes on, as in tools/ui (F140). Arguments that don't decode get `Error: invalid arguments: <reason>`, as tools/ui does with arguments that don't parse, so the model can retry. A deliberate deviation from tools/ui, for privacy: an `LbToolError` sends its message to the model as written; any other exception sends a generic error and reaches the app through the event stream; an `LbToolAbort` ends the turn with a typed reason. Cancellation and a closed model propagate as before. A tool that does not suspend runs on `Dispatchers.IO`; a suspending tool runs where it is called, being main-safe like Retrofit's and Room's. Calls in one reply run in order up to the first that needs approval, and the turn stops there with `ToolCallsPending`; the app approves it, which runs it through the generated code and continues the rest in order, or denies it, which sends `Error: denied by the user` or the app's reason as its result.
 Consequences: A small model that invents a tool name recovers instead of stalling the chat. A failing tool cannot leak its exception text into the prompt unless it chooses to. A tool that needs approval survives the app being closed while it waits. These apply to raw tools too, since the loop is core's. Amended by D83, which makes typed tool arguments follow this strictly and lets an `LbToolError`'s cause reach the app.
 
+<a id="d63"></a>
 ### D63. Typed output and typed tools share one module, `llamabro-typed`; a typed reply is a `Typed<T>`
 
 Status: Decided (2026-11-15)
@@ -702,6 +765,7 @@ Context: An app wants a model's reply as a Kotlin object, not a JSON string to p
 Decision: Everything typed is one dependency, `llamabro-typed`, with `llamabro-typed-ksp` for apps that annotate toolboxes; this amends D61's module layout. Core keeps strings, `ResponseFormat`, raw tools and the agent loop (D62), and its public API has no kotlinx.serialization. `llamabro-typed` holds the schema converter, the annotations (`@LbDescription`, the limits `@LbRange` for integers, `@LbLength` and `@LbPattern` for strings, `@LbItems` for lists; no decimal bounds, which upstream ignores, F143), typed tools (D61) and typed output: `conversation.ask<T>(text)` and a one-shot `model.generate<T>(prompt, vararg attachments, system, options)` with no history, each also taking a `KSerializer<T>` and an optional `json: Json` that the converter and the decoder both read. A typed reply is a `Typed<T>`: `Value(value, json, reasoning)`, `Incomplete(reason, json)` when it was cut, or `Invalid(json, cause)` when the grammar's JSON does not decode (a number past `Int`, a failing `init` check). Failures of the engine (context exceeded, a closed model, cancellation) stay exceptions. The plain `ask(text)` also returns a result instead of throwing, so the conversation API has one style. The schema follows declaration order (required fields first, F143) and covers primitives, strings, enums, nullable and optional fields, lists, nested classes, sealed classes and `Map<String, V>`; recursive types are refused. A sealed subclass without `@SerialName` is an error at the first call for typed output and a build error for typed tools, since its default name is the full class name; `assertTypedSchema<T>()` lets an app's tests catch schema errors before release. A typed turn in a conversation keeps the tools in the prompt but cannot call them, as upstream does (F143), and stores the model's JSON as the assistant message, so regenerate and later turns see what it wrote. Streaming a partial `T` is left out.
 Consequences: Apps get typed objects with Think on, from text or a picture, by adding one dependency. A field's order is the order the model writes it in, which the documentation teaches (a reasoning field before the answer). The change to the plain `ask` is breaking, which v2 allows. Clean JSON with thinking on and off is to be confirmed in one short, attended run on the phone with Qwen3.5 once built. Amended by D71, which moves `Typed<T>` into core. Amended by D88, which bounds integers by their type by default and makes any exception while decoding `Invalid`.
 
+<a id="d64"></a>
 ### D64. One call from a Hugging Face name to a loaded model, through an open `ModelSource`; what is on the phone loads without the network
 
 Status: Decided (2026-11-15)
@@ -710,6 +774,7 @@ Context: Getting a model from Hugging Face took two modules and three steps: `hu
 Decision: `ModelSource` is no longer sealed: core gains a public form for files that must be fetched before loading, and knows nothing of Hugging Face. The hub provides one, `hub.model("Qwen/Qwen3.5-4B-GGUF:Q4_K_M")`, so `llama.loadModel(hub.model(…))` resolves, downloads what is missing and loads, and `llama.estimateFit(hub.model(…))` projects from the GGUF headers before any download. `loadModel` stays a `suspend` call returning the `Model`; `onProgress` reports a sealed `LoadProgress`, `Fetching(DownloadProgress)` then `Loading(fraction)`, in place of the fraction (breaking, which v2 allows). It is not a `Flow` ending in a model, which would leave a loaded model without an owner when the collector stops. Cancelling during the download keeps the partial file for the next call (F114-F116); concurrent calls for one model share the transfer; cancelling a load is left for later (D67). A deliberate deviation from upstream, for phones: when a complete copy is on the phone it loads with no network request, and a newer commit is fetched only when the app asks (an explicit update call); a model with nothing on the phone is resolved and downloaded as `-hf` does. With no tag the choice is upstream's (`Q4_K_M`, then `Q8_0`, then the first GGUF), with its image encoder. The SDK makes no policy for the app: no fit check and no metered-network rule before a download; the app calls `estimateFit` and decides. A ready WorkManager worker for downloads that outlive the screen ships as its own module, `llamabro-hub-work`, so the hub does not depend on `androidx.work`.
 Consequences: The five-minute example is `llama.loadModel(hub.model("…"))`, with one progress for both phases. A load never starts a large download unasked once the model is on the phone, and works offline. The fit before a download and after it is one call. Apps that want background downloads add one dependency instead of writing a worker. `ModelSource`'s new extension point is public API to keep stable. Amended by D75, which fixes the extension point's shape and how the worker gets its hub. Amended by D71, which moves `DownloadProgress` into core. Amended by D89, which lists only complete selections in `cached()`.
 
+<a id="d65"></a>
 ### D65. Typed embeddings, rerank and speech input in core; speech output stays out
 
 Status: Decided (2026-11-15)
@@ -718,6 +783,7 @@ Context: A model loaded with `ModelTask.Embedding` or `ModelTask.Rerank` answers
 Decision: In core, since these are llama-server's features and return plain values: `Model.embed(text)`, `embed(texts)` and `embed(vararg content)` return `FloatArray`s, with a `Normalization` that mirrors upstream's (`None`, `MaxAbsInt16`, `Taxicab`, `Euclidean` by default, `PNorm(p)`), read as base64 internally; `Model.rerank(query, documents, topN)` returns `Ranked(index, score)`, best first, text documents only for now. A call on a model loaded for another task throws `InvalidRequest` naming the task to load with; an input past the batch size throws a typed `InputTooLong(tokens, limit)`, and the SDK neither raises the batch size nor splits text, which stays the app's choice (`microBatchSize`). Speech input: `Content.Audio` in chat messages and `Model.transcribe(file)` through the path route of F55. Left out: live transcription (later, F56), speech output (D37) and with it a byte-returning request, per-token vectors (raw only, `Endpoint.EmbeddingsNative`), similarity or search helpers (the documentation shows a cosine similarity), and pictures as rerank documents (an overload once a test model ranks pictures). The embedding and rerank calls are tested on the models the test set already fetches, upstream's own (`bert-bge-small`, `jina-reranker-v1-tiny-en`). Speech input is tested on the host with upstream's audio test model, `ggml-org-dev/tinyLFM3-Omni-for-testing-gguf` Q2_K (about 39 MB with its encoder; a damaged copy that writes gibberish but runs the real paths), and checked once on the phone, briefly and attended, with the real `ggml-org/LFM3-Omni-2B-GGUF` Q4_K_M and its Q8_0 encoder (about 1.6 GB), chosen with the user 2026-11-15; both are under Liquid AI's LFM Open License v1.0 and are downloaded for tests only, never shipped.
 Consequences: Private, offline semantic search is a few typed calls next to a chat model. Errors name what to change. Speech input is verified only once an audio model is in the test set. Amended by D84, which gives media three sources (a file, a descriptor, bytes), has the bridge write chat media's base64, and makes `transcribe` return `Typed<String>`.
 
+<a id="d66"></a>
 ### D66. Logs from the first native call, and logcat when the app gives no logger
 
 Status: Decided (2026-11-15)
@@ -726,6 +792,7 @@ Context: The app's logger is attached after native init succeeds, so init's line
 Decision: The runtime attaches the app's logger before native init, so every line from the first native call on reaches it, a failing init's included. With no logger, the core logs to logcat under the tag `llamabro` and the hub under `llamabro-hub`, at the configured level (`Warn` by default: warnings and errors); an app that wants silence passes a logger that drops lines. A backend that fails before native code (a missing manifest entry, a skeleton install that throws) is also logged as a warning with its reason. Tested on the host by a native init made to fail (its error lines reach the app's logger) and by the default destination through a seam; checked once in logcat on the phone, with no inference.
 Consequences: An init that fails or hangs says why in logcat with no setup. Apps that route logs elsewhere see init too.
 
+<a id="d67"></a>
 ### D67. Cancelling a load aborts its weight reading, through a carried patch
 
 Status: Decided (2026-11-15)
@@ -734,6 +801,7 @@ Context: A cancelled `loadModel` runs to its end and is then freed, so the calle
 Decision: A small patch, carried in `sdk/native/patches/` as D55 carries its patch, makes llama-server's load-progress callback ask a stop hook before its 200 ms throttle, so an abort lands within one chunk of reading; the change is written up in the repository as reference material for upstream, and nothing is posted (the user's rule). The C API's load progress callback returns a `bool`, `false` to stop, as `llama_progress_callback` does, and Kotlin returns whether the caller's coroutine is still active. A cancelled load frees what it allocated and throws a plain `CancellationException`. The runtime also checks between device attempts, as now, and before `MemoryCheck.Warn`'s second load. The stages without a callback (creating the context, the warm-up, compiling GPU kernels, setting up the NPU session) finish first and the model is then freed, as now; the KDoc lists them. With an image encoder or a draft, the text model's context and warm-up come before those stages, so a cancel during them is caught at the next stage's first tick. Tested natively by a callback that returns `false` at once (the load comes back cancelled with nothing allocated), in Kotlin on the fake engine, and once on the phone, briefly and attended, timing a cancelled 4B load on the CPU and the NPU with no inference.
 Consequences: Leaving a screen during a load stops it in well under a second while weights are read. The patch is dropped when upstream has an equivalent. A first GPU load still can't stop during its kernel compile. Measured on the phone in F148: 0.4-1.8 s on the CPU and about 1 s on the NPU, not always under a second.
 
+<a id="d68"></a>
 ### D68. Search on the Hub in `llamabro-hub`, grouping re-uploads, with recommended sampling where the Hub has it
 
 Status: Decided (2026-11-15)
@@ -742,6 +810,7 @@ Context: Search lives in the demo (`HfSearch.kt`), so every app would write the 
 Decision: `llamabro-hub` searches the Hub for GGUF models with a query, a sort order (downloads by default, likes, trending, recently updated), the next page through the Hub's cursor, a filter for models that take pictures and a filter by author. A result groups the uploads tagged `base_model:quantized:X` under X; fine-tunes, merges and adapters stay entries of their own. A repo's files list each quantisation with its bytes (split files once, all parts summed) and whether an image encoder is there. Search gives sizes, not a fit verdict: the app compares them with `memoryBudgetBytes()` or calls `estimateFit(hub.model(…))` (D64). A model's recommended sampling is returned where the Hub has it, as a `Sampling` with its source: the base model's `generation_config.json` (found through the `base_model:quantized:` tag; the app's token reads gated ones) mapped field by field (`temperature`, `top_p`, `top_k`, `min_p`, `repetition_penalty`, `presence_penalty`; `do_sample: false` is greedy), or the GGUF header's `general.sampling.*`; null when neither has values. Model card text is not parsed. Nothing is applied for the app; a GGUF's own values still apply at load, as upstream does. The demo's search moves onto this API.
 Consequences: Apps get search without writing it. Recommended values are honest about where they came from, and absent for models like Qwen3.5, whose values only the card states; an app that wants them for such models keeps its own list, as the leading apps do (F136). One set of values per model: thinking and non-thinking values can't be told apart from these sources. Amended by D79, which returns both sources, labelled.
 
+<a id="d69"></a>
 ### D69. The demo goes neutral, near-black on AMOLED, with the new icon's warmth only in the orb
 
 Status: Decided (2026-11-15)
@@ -750,6 +819,7 @@ Context: The demo's palette (demo design §8.6) is warm paper in light and graph
 Decision: Light is a near-white neutral and dark a near-black, both untinted: canvas `#FAFAFA` / `#0A0A0A`, surface `#FFFFFF` / `#141414`, ink `#0D0D0D` / `#ECECEC`, muted `#5D5D5D` / `#A8A8A8`, hairline `#E5E5E5` / `#222222`, user bubble `#EFEFEF` / `#1E1E1E`. The primary is the ink (white on it in light, `#0A0A0A` on it in dark), with a soft primary of `#EBEBEB` / `#262626`; navy goes. States that navy told apart get a second signal: links are underlined and Think on is a filled ink circle; the selected border and progress are ink. The fit words and Remove keep their colours, the only hues that carry meaning. The icon's rose-to-amber (`#C35F5A` to `#FDB969`) appears in one place, the orb, as the app's single spark; the icon's violet stays in the icon. Every text pair passes 4.5:1 in both themes, as the contrast test requires. The app follows the system theme, as before. The icon becomes the launcher icon: an adaptive icon with the llama scaled into the 66 dp safe zone on its night background, and a one-colour themed icon traced from its outline, shown to the user before use. The splash shows the icon on the app's canvas, so no colour flashes before the first screen. Demo design §8.1 (which said never pure white or black) and §8.6 are rewritten when this is built.
 Consequences: The app reads as one quiet, dark-first family with its icon, saves power on AMOLED and keeps colour for meaning and one living moment. The warm-paper character of PD is replaced; the fonts, shapes and layout are unchanged. Send and Think on take an indigo fill instead of the ink (D73).
 
+<a id="d70"></a>
 ### D70. `LlamaBro.create` and `LlamaBroHub.create` for DI containers, and a fake hub for tests
 
 Status: Decided (2026-11-15)
@@ -758,6 +828,7 @@ Context: `LlamaBro.getInstance(context)` and `LlamaBroHub.getInstance(context)` 
 Decision: `LlamaBro.create(context, config)` replaces `getInstance` and `ConfigProvider`: the first call creates the process's runtime, a later call with an equal config returns the same object, and a different config throws `InvalidRequest` at once instead of at the first native call. `LlamaBroHub.create(context, config)` replaces the hub's `getInstance` and `ConfigProvider`: one hub per cache folder, the same folder returning the same hub and a different config for it throwing; hubs on different folders may coexist, so an app can move its models without a restart. Both are breaking, which v2 allows. The documentation shows creating each once in a DI singleton scope (a Hilt module as the example, with no DI dependency in the SDK), since a logger is compared by reference. `llamabro-testing` gains `FakeLlamaBroHub`: a real `LlamaBroHub` over a scripted network and disk (search results, download progress, failures), as `FakeLlamaBro` is over a scripted engine, so an app injects the real types and needs no wrapper.
 Consequences: The SDK's entry points are plain objects a container provides; the demo drops its `HubGateway` for the real hub and the fake. Code without DI calls `create` where it called `getInstance`. Amended by D75, which moves `FakeLlamaBroHub` to its own `llamabro-hub-testing`.
 
+<a id="d71"></a>
 ### D71. `Typed<T>` and `DownloadProgress` live in core
 
 Status: Decided (2026-11-15)
@@ -766,6 +837,7 @@ Context: Planning PH's build found two types that D63 and D64 put on the wrong s
 Decision: `Typed<T>` moves to core with `Value(value, json, reasoning)`, `Incomplete(reason, json)` and `Invalid(json, cause: Throwable)`, so core's API stays free of kotlinx.serialization; the plain `ask` returns `Typed<String>`, where `Invalid` never occurs, and `llamabro-typed` reuses the type. `DownloadProgress` and `DownloadPhase` move to core as the progress of any fetched source, and the hub uses them. Both amend D63 and D64; both are breaking, which v2 allows.
 Consequences: One result type for every ask and one progress type for every download, whichever module produces them.
 
+<a id="d72"></a>
 ### D72. The demo offers a choice of chip in Settings › Memory
 
 Status: Decided (2026-11-15)
@@ -774,6 +846,7 @@ Context: The demo always loads with `DevicePolicy.Auto` and only reports the chi
 Decision: Settings › Memory gains "Runs on": Automatic (the default, `Auto`), NPU, GPU and CPU (`Prefer(kind)`, never `Only`, so a chip that can't load the model, or that this phone lacks, falls back instead of failing); a kind the phone doesn't have stays listed, marked "Not on this phone". The choice is saved with the other settings. A change frees a model loaded for another choice as Unload does, once no reply holds it, and the next message loads it on the new chip. While another reply is being written, a new turn shares the model in use whatever choice it was loaded for, so a reply is never cut off; once nothing else is running, a model loaded for another choice is not reused, so a wait that is cut short still can't leave the old one in use. When a load doesn't land on the chosen chip the chat shows a closable note on that load, "<Name> is running on the CPU: the GPU couldn't load it.", with **Settings**, and Settings › Memory says "Running on the CPU: …" under the choice, only while the model in memory was loaded for that choice; a model still loaded for an earlier choice says "Moves to the CPU after this reply." (or "… with the next message."), and no line when the model in memory already runs on the chip chosen. The SDK's reason is told only by its gist: "this phone has no NPU" when no backend for it is in the app, "the NPU isn't available here" when its backend loaded no device, and "the NPU couldn't load it" when a load on it failed. A load that fails for memory doesn't fall back, since the SDK treats it as final, so there is no memory wording. Of the chosen chip's attempts, the model's own counts, not a line about the image encoder moving. Automatic never notes a fallback: it asks for the fastest chip that loads and gets it. When the memory note (F128) also applies, it wins the one line, since it warns that other apps may close and offers a fix; where the model runs stays in Settings › Memory and the model sheet. Fit and speed estimates use the chosen chip when this phone has it, else the one Automatic would pick; when the phone's chips can't be read, no choice is marked missing. D69 is not affected.
 Consequences: Amends demo design §2, §4.6 and §9. The app still reports where the model actually runs. The SDK is unchanged.
 
+<a id="d73"></a>
 ### D73. Indigo, smaller send and Think circles
 
 Status: Decided (2026-11-15)
@@ -782,6 +855,7 @@ Context: Since D69 made the primary the ink, the message bar's send (and stop) a
 Decision: Send (when it can act, and as stop while a reply comes) and Think on are filled with a new send accent, indigo `#4F5BD5` in light and `#8E9BFF` in dark, with the glyph in the on-send-accent colour, white `#FFFFFF` in light and `#0A0A0A` in dark: 5.5:1 and 7.8:1, above text's 4.5:1 though an icon needs 3:1, and the circle is at least 3:1 on the bar. All three circles of the bar (+, Think, send) shrink from 40 dp to 36 dp and their glyphs from 24 dp to 20 dp, still in 48 dp touch targets (F130) that stay where they were, 4 dp from the bar's edge: each circle's centre stays 28 dp in, so the circles remain concentric with the bar's 28 dp corner (18 + 10 = 28), the bar keeps its height, and the circles sit 10 dp from the edge, 12 dp apart and 14 dp under the text. The idle states keep their colours (+ and Think off: the hairline's tonal circle with an ink glyph; send with nothing to send: the tonal circle with a muted glyph), and the fill and glyph still ease between states (250 ms) with send cross-fading into stop. The tokens are `sendAccent` and `onSendAccent` in `DemoColors`, `barCircle` and `barGlyph` in `DemoSize`; the contrast test checks the new pair in both themes.
 Consequences: Amends D69's "the primary is the ink" for send and Think on only; every other primary (Get, Save, New chat, the floating button, progress, selected borders, the selected navigation item) stays ink, and D69's neutral palette is otherwise unchanged. The orb stays the app's warm spark. The indigo doesn't collide with the fit words' green, sand and grey or with danger's red, so it carries no meaning beyond "this button acts". Demo design §8.6, §8.8 and §8.11 follow.
 
+<a id="d74"></a>
 ### D74. The demo parses markdown with commonmark-java and its GFM extensions
 
 Status: Decided (2026-11-15)
@@ -790,6 +864,7 @@ Context: The demo's markdown came from a hand-written parser of about 150 lines,
 Decision: The demo parses with commonmark-java 0.32.0 and its GFM tables, strikethrough and autolink extensions, and maps the tree into the design system's own blocks, so replies keep the design system's look and screens still render only `:demo:designsystem` components. The block model grows a table (header, rows of inline cells, a GFM alignment per column), a rule, list items that hold blocks (a nested list, more paragraphs, code) and quotes that hold blocks; spans gain strikethrough. Headings 1 and 2 take the `screenTitle` role and 3 to 6 `title`. An image shows its alt text, HTML (blocks and inline) shows as typed, and maths is not rendered: it stays text. A link stays a link only for http, https and mailto; any other target (`intent:`, `tel:`, `file:`, `content:`, an app's deep link, a relative path) shows as its plain text, since a model can be steered into writing one. Streaming keeps the old parser's property: the reply's prefix is stable, so each append parses again only from the block the line being written can still join (a setext underline, a paragraph's next line) and keeps the instances of the blocks before it; blocks parsed again that come out equal keep theirs too. In a top-level list that block is the last item, parsed as a list of its own and numbered on from it (falling back to the whole list if it doesn't read as the same kind of list), and in a table the last row, read again under the table's header and delimiter lines, so a reply that is one long list or table costs the same per append as a short one. A quote is still parsed again whole. While a reply streams, a last line of only `-` or `=` waits for its end, so "Steps:" doesn't flash as a heading before "- step" is written. A link reference definition, wherever it sits (in a quote or a list too), reaches back to links before it, so a reply with one is parsed whole, keeping the instances of blocks that come out equal. A test streams a reply of every construct one character at a time and checks each incremental parse against a whole one. R8 needs no keep rules: commonmark uses no reflection, and its entity table is a resource in its jar that the release APK keeps.
 Consequences: Replies render as CommonMark and GFM do, including tables, nested lists and rules. Measured on the host only (`MarkdownStreamingTest`, four characters per append), the median parse per append is about 0.01 ms for a mixed reply, for a 10 KB reply that is one list and for a 10 KB reply that is one table (0.30 ms for the table before rows were resumed), against the hand-written parser's 0.02 ms for the mixed reply; a phone is about 5 to 10 times slower, so the 0.5 ms budget should hold there, but the phone is not re-measured. A long quote is parsed again whole on each append. The release APK grows by about 75 KB (76,559 bytes, of a 35.2 MB APK mostly native libraries): about 62 KB of dex after R8 and the 11 KB compressed entity table. Demo design §4.4, §8.10 and §10 follow.
 
+<a id="d75"></a>
 ### D75. The fetched-source interface, the worker's hub from a WorkerFactory, and a separate hub test module
 
 Status: Decided (2026-11-15)
@@ -798,6 +873,7 @@ Context: Planning W5 (D64, D68, D70) left three public shapes open: the core ext
 Decision: Core gains an open interface, `RemoteModelSource : ModelSource`, with a `suspend fun fetch(onProgress: (DownloadProgress) -> Unit): ModelSource` that downloads what is missing and returns local files, and a header-only form for `estimateFit`; anyone can implement it (the hub, an app's own server, a test fake). `llamabro-hub-work` ships `LlamaBroWorkerFactory(hub)`, which the app registers in WorkManager's configuration (or a DI container's worker factory supplies the hub), so the worker uses the app's own hub and config with no global. `FakeLlamaBroHub` lives in a separate `llamabro-hub-testing`, so apps without the hub never get it; this amends D70's placement. The demo-feedback branch is merged into `ph-main` before W5's demo task, which then moves the demo onto the SDK's search, `hub.model()`, the fake hub and the worker.
 Consequences: Loading by name, fitting before a download and background downloads all go through public, DI-friendly types. A hub-using app's tests add one test dependency.
 
+<a id="d76"></a>
 ### D76. The demo takes voice messages for models that hear, sent as audio with no transcription
 
 Status: Decided (2026-11-15)
@@ -806,6 +882,7 @@ Context: Demo design §12 planned voice dictation as the first feature after the
 Decision: The demo sends voice messages, not dictation: the recording is the message, so a model that hears gets the words and the voice's tone in one pass, with no second model and no transcription. The mic takes Send's slot while the text field is empty (Send once there is text, Stop while a reply runs), only for a model that hears; other models keep the muted Send. With photos attached and no text, the mic sits just before Send instead, so photos alone can still be sent (amended 2026-11-16 with the user, after the build showed the conflict). A model is known to hear once it has loaded (`ModelInfo.supportsAudio`); the app remembers that for the model's next load, so the mic shows from then on. A tap starts recording: the text area becomes a live waveform and timer, ✕ in the + slot discards and ↑ in Send's slot sends. Photos already in the bar go with the voice message. A voice message is a sent-side bubble with play and pause, the recorded levels as a waveform and its length; it has no Edit, and Regenerate on its reply works. Recording stops at 2 minutes, about 1,500 tokens at 12.6 a second (F152), with the timer in ink for the last 10 s; leaving the screen, a call or a loss of audio focus stops it and keeps it in the bar for ✕ or ↑, never sent by itself. `RECORD_AUDIO` is asked on the first tap; refused, a limit line ("Llama Bro needs the microphone for voice messages.") offers Open settings. Audio is 16 kHz mono WAV in app-private storage, deleted with its chat and never before it, and reaches the SDK as `Content.Audio(MediaSource.file(path))` (D65, D84), read natively and saved in a chat as its path. A chat that switches to a model that can't hear sends each voice message as a short placeholder saying one was there, and a limit line offers to switch to a model that hears. The catalog gains no hearing model; one is found through search. The mic is labelled "Record a voice message", starting and stopping are announced, the waveform holds still with animations off, and a bubble's description gives its length. Left out: dictation and transcripts, a spoken reply (D37), live transcription (F56) and hold to record.
 Consequences: The demo needs only `Content.Audio` from W7, so it is built after W7 lands; no transcription is involved. Each earlier voice message slows a chat's later turns while the prompt cache stops before the last clip (F152, under investigation in W9). Pictures move to `MediaSource.file(path)` in the same change, since they are already files in app storage. Voice messages appear only once someone uses a model that hears. Demo design §2, §4.4, §8.8 and §12 follow this.
 
+<a id="d77"></a>
 ### D77. Section labels line up with the text under them; the sidebar's actions move to one row of icons, its chats to 48 dp rows
 
 Status: Decided (2026-11-15)
@@ -816,6 +893,7 @@ Decision: `SectionLabel` is inset 16 dp, the padding of the cards and rows under
 
 Consequences: Every section reads as one column of text under its label. The drawer shows about a seventh more chats, keeps New chat under the thumb and loses the visible model count, which the Models icon still speaks. The real-model e2e script finds the drawer's actions by description.
 
+<a id="d78"></a>
 ### D78. The demo lets the person choose the context length and the reply length
 
 Status: Decided (2026-11-15)
@@ -826,6 +904,7 @@ Decision: Settings › Memory gains Context length: Automatic (`Auto`), 4k, 8k, 
 
 Consequences: A person can trade memory for a longer chat and length for a guard against loops; No limit gives up F113's guard on purpose. Short with Balanced or Deep often stops inside the thinking, and Continue goes on from there (F137). A change of either length reloads the model as a chip change does.
 
+<a id="d79"></a>
 ### D79. Recommended sampling returns the file's values and the base model's, labelled
 
 Status: Decided (2026-11-15)
@@ -834,6 +913,7 @@ Context: D68 names two sources for a model's recommended sampling, the base mode
 Decision: The hub returns both, each null when absent: `fromFile`, the GGUF header's values (what loads by default), and `fromBaseModel`, the base model's `generation_config.json` values. Neither is applied; the app chooses, as the SDK makes no policy for it. The header is read from disk when the model is on the phone (free, and it works offline), otherwise by a ranged read. This amends D68.
 Consequences: An app sees exactly what the file will do and what the base model's authors recommend, and can show or apply either. The KDoc says the file's values are what loads by default.
 
+<a id="d80"></a>
 ### D80. Patch 0001 becomes a one-line Hexagon gate instead of the delta-net head/tail split
 
 Status: Decided (2026-11-15)
@@ -842,6 +922,7 @@ Context: Patch 0001 split each prompt batch in `delta-net-base.cpp` so Hexagon's
 Decision: `sdk/native/patches/0001-hexagon-gdn-long-batch.patch` lets the gate accept `K == 1 || n_tokens > K`; the split is dropped from the SDK and kept under `research/ph/delta-net/` for the record. The gate is to be proposed upstream, issue first. This amends D10.
 Consequences: The SDK's only speed patch is one backend line and the change upstream would review. Its drop condition is upstream's gate accepting `n_tokens > K`. If upstream finds MTP rollback needs every snapshot of a long batch, the gate, like CUDA, gives slot 0 only, and the patch is revisited. Without MTP the gate is upstream's own path, where the NPU breaks a near-tie between two tokens either way from run to run (F149); the split's extra kernel switch had hidden this from the device contract's image case. So the device contract asks streamed chat requests without tools for their top 2 logprobs and passes a reply that matches token for token up to one near-tie (top-2 gap at most 0.25) as "near-tie"; the host contract stays exact.
 
+<a id="d81"></a>
 ### D81. Typed tools that return nothing send "Done"; one-shot generation is typed only; the processor's build errors are tested with kctfork
 
 Status: Decided (2026-11-16)
@@ -850,6 +931,7 @@ Context: Planning W6 found three choices that D61, D63 and D71 leave open. A typ
 Decision: A typed tool returning `Unit` sends `Done` as its result. Core gains no plain `model.generate`. One-shot generation is `generate<T>` in `llamabro-typed` only, and a plain one-shot answer goes through `conversation().ask()`. `llamabro-typed-ksp` tests its build errors with kctfork as a test-only dependency, pinned in the version catalog. It never ships to apps.
 Consequences: Each build error D61 lists has a test. A `Unit` tool costs one token of prompt. Core's API grows only by the typed `ask` result (D71).
 
+<a id="d82"></a>
 ### D82. The SDK compiles with the catalog's Kotlin; apps need Kotlin 2.2 or later
 
 Status: Decided (2026-11-16)
@@ -858,6 +940,7 @@ Context: `llamabro-typed-ksp` (D61) builds on the KSP 2.3 API, which AGP 9.5's b
 Decision: Keep compiling with the catalog's Kotlin; the floor is what it measures to be, Kotlin 2.2 for every module, and the SDK sets no lower `languageVersion` or `apiVersion` to pull it down. `llamabro-typed-ksp` needs KSP 2.3 or later, the API it is built on. The SDK README states both.
 Consequences: Core's floor rises from Kotlin 2.1 (its own 2.2 metadata) to 2.2; `llamabro-typed`'s doesn't move, since kotlinx-serialization 1.10.0 already set it. Each Kotlin upgrade in the catalog moves the floor with it, so the README's requirement is re-measured when the catalog's Kotlin changes.
 
+<a id="d83"></a>
 ### D83. Typed tool arguments follow D62 strictly; an LbToolError's cause reaches the app
 
 Status: Decided (2026-11-16)
@@ -866,6 +949,7 @@ Context: W6 first sent the message of any `IllegalArgumentException` thrown whil
 Decision: Only kotlinx-serialization's own decode errors (a `SerializationException`: a missing field, bad JSON, a custom serializer's own `SerializationException`) send their reason. Any other exception thrown while decoding (a `require` in `init`, a custom serializer's other exception) sends `Error: invalid arguments` and is kept as the cause. An app that wants to explain throws `LbToolError` from its validation, such as from `init`, and its message is sent. An `LbToolError`'s `cause`, when it has one, reaches the app as `ChatEvent.ToolResult.error`, so the swallowed exception is not lost; with no cause, `error` stays null.
 Consequences: A message in an app's `require` never enters the prompt or the saved chat unless the app chooses it by throwing `LbToolError`. The app logs the real exception from the event stream. Typed output is unchanged: nothing there reaches the model. Amended by D88, which words a missing field as `missing field 'x'` and sends tool results with every field.
 
+<a id="d84"></a>
 ### D84. Audio and images reach the model from a file, a descriptor or bytes; the bridge writes chat media's base64; `transcribe` returns `Typed<String>`
 
 Status: Decided (2026-11-16)
@@ -874,6 +958,7 @@ Context: D65 gives speech input as `Content.Audio` in chat and `Model.transcribe
 Decision: One source type for media, a file path, a file descriptor or bytes, used by `Content.Audio`, `Content.Image` and `transcribe`. Path and descriptor are read natively. Bytes cross JNI once, with no base64 in Kotlin. For chat, Kotlin sends a placeholder in the JSON and the attachment beside the request, and the bridge writes the base64 data URL natively, so llama-server's code is unchanged. A descriptor in chat content is read once into bytes when the message is added, so later turns and `toJson` use the bytes and the app may close it at once; `toJson` saves a file's path and bytes as base64. `transcribe` takes any of the three and returns `Typed<String>`: `Value(text)`, or `Incomplete(Length, textSoFar)` when cut, like `ask` (D63, D71); engine failures stay exceptions. Only WAV, MP3 and FLAC are accepted, as llama.cpp decodes; the SDK converts no other format. W7's phone run measures the bridge's base64 against a patched build where chat takes raw buffers, and the patch is carried only if it clearly wins (upstream is the baseline).
 Consequences: Apps hand over audio however they hold it, and the Java heap never holds a base64 string. A chat holding a descriptor's audio keeps it as bytes for the chat's life. Apps recording AAC or Opus must record WAV or convert. This amends D65.
 
+<a id="d85"></a>
 ### D85. Interactive voice mode is its own phase after PH
 
 Status: Decided (2026-11-16)
@@ -882,6 +967,7 @@ Context: LFM3-Omni-2B speaks on the phone at 1.7 times real time with the model 
 Decision: An interactive voice mode joins the roadmap as its own phase after PH, not inside W9. That phase revisits D37, builds the byte-returning request and `/v1/realtime` in memory, and tests first what holds the voice steady across sentences: one realtime session, the first sentence's audio as the voice reference (`speaker_ref`) for the rest, or a lower audio temperature. The maintainer heard the drift on the NPU too (patch 0005) and chose to leave it to that phase (2026-11-17).
 Consequences: PH closes as planned (W9 steps 3 and 4). Speech output stays reachable only through upstream llama-server until that phase. Its first step is upgrading llama.cpp to the latest (user, 2026-11-17): upstream adds speech models and rewrote the speech helper, and three of our patches need porting (`research/ph/upstream/review-2026-11-17.md`).
 
+<a id="d86"></a>
 ### D86. The NPU polls for its results by default (`LlamaBroConfig.npuPolling`), and two patches make speech on the NPU fast
 
 Status: Decided (2026-11-17)
@@ -890,6 +976,7 @@ Context: With all of LFM3-Omni's speech on the NPU, the host thread sleeps while
 Decision: `LlamaBroConfig` gains `npuPolling`, on by default; the core passes it to the backend installers (`BackendOptions`), and `llamabro-hexagon` sets `GGML_HEXAGON_OPPOLL=1` when it is on. An app that prefers a cooler chip over speed turns it off. Patch 0005 makes LFM3's depthformer read its tables directly and take its positions as an input; patch 0006 skips the text head and the text sample in speech-only frames. Keep-flat (the former 0005, F155) is dropped and kept in `research/`. Flash attention for the speech graph stays upstream's (off on auto for LFM3's speech generator, ~3% on the NPU) unless decided otherwise.
 Consequences: Speech on the NPU alone runs at about 2.3-2.4 times real time on the phone, faster than the CPU split and with about 24% less energy per second of speech. A config with `npuPolling = false` is a different config: a second `create` with it throws, as for any config change (D70). The polling cost is heat while busy. In-app scheduling (top-app, background) was not measured; the voice-mode phase measures it (D85). Patch 0007 (F162) makes polling read the queue without the vendor library logging an error per empty poll, which otherwise drowns the app's log. Amended by D90, which turns polling off by default again and moves patches 0005-0007 to the voice-mode phase.
 
+<a id="d87"></a>
 ### D87. A chat's path attachments reach llama-server as file:// links in the SDK's media folder; bytes and descriptors keep base64
 
 Status: Decided (2026-11-17)
@@ -898,6 +985,7 @@ Context: D84 has the bridge write every chat attachment into the body as a base6
 Decision: The model config gains `media_dir` (llama-server's `--media-path`); the SDK sets it to `noBackupFilesDir/llamabro/media/`, emptied when the runtime starts. On the chat-like and embeddings routes, the bridge checks a path attachment's first bytes (the audio format check), links it into `media_dir` under a random name and writes `file://<name>`; the link is removed when the request ends (or never starts). A link that can't be made falls back to base64. Bytes and descriptors keep base64. No raw-buffer patch: it gained nothing measurable over `file://`. Amends D84.
 Consequences: Turns with voice notes or pictures from files are about 100 ms faster with three clips. A path attachment is read when the request runs, so the file must stay until the reply ends (it already had to stay for later turns). A caller-written `file://` reaches only the media folder, whose links have random 128-bit names. The C API without `media_dir` is unchanged. Since W9 step 5 (A7) each process of the app has its own folder, `media/<pid>-<random>/`, and a runtime start removes only the folders of processes that ended, since every process of an app shares `noBackupFilesDir`.
 
+<a id="d88"></a>
 ### D88. Typed output and tools after W6's review: integer bounds by default, `askAgain`, `valueOrNull`, results with every field
 
 Status: Decided (2026-11-17)
@@ -906,6 +994,7 @@ Context: A review of the typed module left optional additions; all of them are m
 Decision: `typedSchema` writes each integer's Kotlin range by default (`Byte`, `Short`, `Int`, unsigned), intersected with `@LbRange`; a `Long` gets only its annotation's bounds, since int64's limits are upstream's "unbounded". Core gains `Conversation.askAgain()` (`regenerate` collected, as `ask` is `send` collected) and `Typed<T>.valueOrNull()`; `llamabro-typed` gains `askAgain<T>()`, which regenerates under the same schema, while `regenerate()` stays schema-free, with no hidden state. Typed tool results are encoded with `encodeDefaults = true`. Any exception while decoding a typed reply is `Typed.Invalid`. A class open eight times on one schema path is refused as recursion through its type arguments. A missing argument field reads `missing field 'x'`. The KSP processor checks each separate parameter's type and keeps a type-use `@Serializable(with = …)`; `@SerialName` can't go on a parameter, as Kotlin rejects it there. Renames: `descriptionAnnotations`, `fileOwners`. Amends D63 and D83.
 Consequences: Schemas and grammars change for every integer field, so apps comparing schema text see the bounds. A typed reply can't hold an out-of-range number, so `Invalid` for one is rarer. Tool results grow by the defaulted fields. `askAgain` joins the public API in both modules, as an extension in core to keep `Conversation`'s function count.
 
+<a id="d89"></a>
 ### D89. Hub downloads after W5's reviews: files in the plan's order, one writer per blob by canonical path, deletes one at a time, reclaim never fails a download
 
 Status: Decided (2026-11-17)
@@ -914,6 +1003,7 @@ Context: W5's reviews left these to W9. `hub.cached()` listed a selection whose 
 Decision: `cached()` lists installed copies only when every file is on disk, and a refs-view tag only when all its split parts are there and, when the hub holds a plan or installed record of the tag, only when one of those records is complete or the tag's default selection loads as `source()` would (checked read-only), so the list agrees with what a load does. `delete` runs under a per-repository lock (in-process mutex plus kernel lock), the second of two returns false, and it re-checks and removes each blob under that blob's download lock. Reclaim decides each file under its blob's download lock from the records as they are then; a downloader checks for an existing entry of a file with a hash only under that lock (files without one are never reclaimed under a lock); reclaim locks only blobs that exist; a reclaim that fails, in any way, is logged at Warn and the download completes. The in-process lock is keyed by the lock file's identity (`fileKey`, as the JVM's lock table), else its canonical path. Files download in the plan's order (model parts, image encoder, draft). `defaultDownloadConstraints()` stays public and documented as the base to extend (M3). `FakeLlamaBroHub.stopDownload(model, path, repo)` reproduces a stopped download. `HubException.Network.unreachable` is public: whether the Hub was reached is a fact an app may need, not app policy. Amends D44 and D64.
 Consequences: Apps no longer see half-downloaded models in `cached()`. Progress counts files up in plan order. A reclaim that fails leaves the old files until a later update or a delete. The fake gains one public function.
 
+<a id="d90"></a>
 ### D90. NPU polling goes back to upstream's default (off), and the speech-output patches move to the voice-mode phase
 
 Status: Decided (2026-11-17)
@@ -922,6 +1012,7 @@ Context: D86 turned NPU polling on by default and carried patches 0005 and 0006 
 Decision: `LlamaBroConfig.npuPolling` stays, off by default, as upstream has it. Patches 0005, 0006 and 0007 and the `device-speech` check leave `ph-main` for branch `voice/speech-npu` (all seven patches and their research), which the voice-mode phase starts from; it re-decides polling with chat energy and ADPF measured. `ph-main` carries patches 0001-0004. Amends D86.
 Consequences: The upgrade ports four patches instead of seven. Speech output on the NPU alone gives empty audio again on `ph-main` (F155) until the voice phase, which `rawRequest` can't return to an app anyway. An app that turns polling on gets about 5% faster NPU chat and, without patch 0007, a log flooded with the DSP library's errors (F162).
 
+<a id="d91"></a>
 ### D91. Patch 0004: the prompt cache's SWA rule applies only to memory that can be partly removed
 
 Status: Decided (2026-11-16; recorded 2026-11-17)
@@ -930,6 +1021,7 @@ Context: On the LFM3 family (hybrid with SWA layers), llama-server reuses neithe
 Decision: Carry patch 0004: the SWA threshold applies only to partly removable memory (`seq_rm_type == PART`); otherwise a state must end before the first token to evaluate, upstream's rule without SWA. Models without SWA layers and with partly removable memory are unchanged. Drop it when upstream applies the threshold the same way (`server_prompt::get_reuse` on master). Amends D10.
 Consequences: A text turn after three voice notes on LFM3-Omni-2B reaches its first token in 522 ms instead of 824 on the phone; up to `--ctx-checkpoints` checkpoints survive per slot (about +11 MiB on LFM3-Omni-2B). Fact sheets for upstream are in `research/ph/cache-stop/`, for the user to post.
 
+<a id="d92"></a>
 ### D92. `Auto` keeps trying the NPU and the GPU on every Qualcomm chip; only one phone is verified
 
 Status: Decided (2026-11-17)
@@ -938,6 +1030,7 @@ Context: `DevicePolicy.Auto` tries the NPU, then the GPU, then the CPU (D24, D32
 Decision: `Auto` stays open: NPU, then GPU, then CPU on every chip, as before. The documentation says plainly that one phone is verified and which chips that covers, so an app can choose `Prefer` or `Only(Cpu)` for chips it hasn't tested.
 Consequences: Apps get the NPU's speed on every supported Snapdragon by default, at the risk of wrong output or a crash on an untested chip until more phones are verified. Widening verification (a device-farm session running `device-contract` and the vision test) stays on the release list.
 
+<a id="d93"></a>
 ### D93. llama.cpp is pinned at b12479 (upstream master on 2026-11-17)
 
 Status: Decided (2026-11-17)
@@ -946,6 +1039,7 @@ Context: The voice-mode phase starts by upgrading llama.cpp to the latest (D85):
 Decision: The submodule moves to `d92ea9bb1`, named b12479. The same four patches ship: 0001 and 0002 unchanged, 0003 and 0004 ported to `server_prompt::get_reuse` and the refactored server. The `tools-ui` golden follows the web client to `ui/apps/chat`. `dflash_fit_matches_load_rss` allows a ratio up to 1.20. Amends D10 and D52.
 Consequences: Statements measured at b12352 stay as measured until retested; F75 (OpenCL's DP4A setting), OpenCL drafting (F80, F125) and the effect of #31438 on Android are open. The speech patches on `voice/speech-npu` (0005-0007, D90) are rebased onto this pin as the voice phase's next step. The SDK names the pin by its build number, as upstream's `build_info` does; upstream has since tagged that commit `b12479` (`git describe` said `b12474-5-gd92ea9bb1` on the day of the upgrade).
 
+<a id="d94"></a>
 ### D94. Patch 0006 rides on upstream's two output flags: an output that asks for embeddings only skips the LM head
 
 Status: Decided (2026-11-18)
@@ -954,6 +1048,7 @@ Context: Patch 0006 saves the text head on every speech-only frame (F156). At b1
 Decision: 0006 (now `0006-embd-only-output-skips-lm-head.patch`) gives each batch entry both flags; a decode whose outputs all asked for embeddings only builds its graph without the head (`cparams.logits`, beside upstream's skip for pooled embeddings), and `llama_get_logits_ith` then fails. Graph reserves, backend samplers, `llama_batch` callers and the rows `output_all` adds keep the head. LFM3's speech helper asks for embeddings only on a frame while speaking alone; `/tts` keeps skipping the text sample while the next step is audio. `llama_set_logits`, its staging header entry and the server's toggles are gone. Amends D86's patch 0006.
 Consequences: The patch is shaped as upstream's own next step, so most of it goes when upstream makes the flags differ. Upstream's YuE2 NAR decode, which asks for embeddings only, skips the head too. On the phone it saves 4.5 ms per frame like the old version, and `device-speech` passes at 2.31 times real time (F165).
 
+<a id="d95"></a>
 ### D95. Voice mode is a realtime conversation with one omni model, through upstream's `/v1/realtime` on an in-memory connection
 
 Status: Decided (2026-11-18)
@@ -962,6 +1057,7 @@ Context: At b12479 upstream llama-server holds a spoken conversation on `/v1/rea
 Decision: The voice mode covers the SDK and the demo. It runs LFM3-Omni-2B through upstream's `/v1/realtime` conversation, unchanged, on an in-memory connection: a C API session (open with params, push an event, an event callback, close) and a Kotlin session over it, with no port and no HTTP layer. The SDK takes explicit turn commits and cancels and makes no turn-taking policy; the demo starts with push-to-talk and adds hands-free (voice-activity detection, talking over the reply to stop it) as a setting once detection and echo are measured on the phone. The demo shows the reply's text as it is spoken and the user's words as transcribed, and saves the conversation as an ordinary chat. The Kotlin API is shaped so that a pipeline of separate listening, chat and speaking models can sit behind it later; those models are measured in a later step. Speech output thereby enters the SDK. Amends D37.
 Consequences: Builds F56's session and a contract test that feeds the same scripted audio to llama-server over a real WebSocket and to the in-memory session and requires identical events. Audio reaches Kotlin as PCM through the session's events, so no byte-returning `rawRequest` is needed for the voice mode (F74 stays open for `/tts`). D85's open question, what keeps the voice steady across sentences, is tested first inside one realtime session, where a reply is one generation. Hands-free mode needs on-device voice detection and echo handling, both still to measure.
 
+<a id="d96"></a>
 ### D96. Patch 0008 ends LFM3 speech that runs past its text
 
 Status: Decided (2026-11-18)
@@ -970,6 +1066,7 @@ Context: About 1.6% of LFM3-Omni's captioned replies never sample the end of aud
 Decision: Patch 0008 puts the guard in LFM3's speech helper (`tools/mtmd/mtmd-helper-gen.cpp`), so every client of llama-server's speech routes gets it: once an interleaved response's text has ended, the guard turns the next frame into the end-of-audio frame and ends the response, whose text is complete. Clean replies are unchanged byte for byte.
 Consequences: A deviation from upstream, cited to F167 in the patch. The thresholds hold for LFM3-Omni-2B in English as measured; another LFM3 model or language is measured before relying on them. The phone check (NPU) follows. The SDK's voice session still sends the trained prompt and a maximum reply length (D95).
 
+<a id="d97"></a>
 ### D97. The realtime session is a C API request: endpoint `realtime`, client events through `lb_request_send`
 
 Status: Decided (2026-11-18)
@@ -978,6 +1075,7 @@ Context: D95 runs upstream's `/v1/realtime` conversation on an in-memory connect
 Decision: `lb_model_request(model, "realtime", params, NULL, 0, cb, user, &req)` opens a session (no body or attachments; params are the socket's query, such as `intent`). Each server event is one `CHUNK` with status 200. `lb_request_send(req, msg, len)` queues one client event, the one new function; it answers `LB_ERR_INVALID_ARG` for another endpoint's request and `LB_ERR_CANCELLED` once the session has closed. `lb_request_cancel` is the client closing the socket (`CANCELLED`); `DONE` when the server ends it. The model config gains `seed` (upstream's `--seed`), which a realtime response's sampling takes.
 Consequences: JNI and Kotlin reuse the request plumbing for the voice session (D95 step 3). The callback of a realtime request may run on either of upstream's two conversation threads, never two at once. The audio contract compares four realtime cases with upstream over a real WebSocket, both sides at seed 42.
 
+<a id="d98"></a>
 ### D98. The Kotlin voice session: a suspending open, a handle with sends, typed events with a raw escape hatch
 
 Status: Decided (2026-11-18)
@@ -986,6 +1084,7 @@ Context: D95's step 3 puts a Kotlin session over the C API's realtime request (D
 Decision: `suspend fun Model.voiceSession(configure)` opens the session and returns once the server has answered the setup with `session.updated`, so a setting it refuses fails the open (`InvalidRequest`, upstream's message). The `VoiceSession` handle has a hot `events: Flow<VoiceEvent>` (one collector), `append(ShortArray)` (16-bit mono at `inputSampleRate`), `commit(respond = true)` (the commit and, after audio, `response.create`: one call per push-to-talk turn), `respond()`, `sendText`, `cancelReply`, `sendRaw` and `close` (hang up); sends never block and answer false once the session has ended. `VoiceEvent` types the events a voice app needs (`TurnCommitted`, `ReplyStarted`, `ReplyText`, `ReplyAudio` with `ShortArray` PCM at `outputSampleRate`, `ReplyDone`, `Error`) and passes every other event as `Other(type, json)`. `VoiceConfig` passes upstream's session fields through (`voice`, `language`, `instructions`, `outputModalities` defaulting to text and audio, `maxOutputTokens`, `inputSampleRate`, `extra`) and sets nothing else: the SDK makes no app policy, and the app (the demo) sets what F166 found LFM3-Omni needs. There is no event for the user's words yet: their cost is measured in step 4 (F169). `ModelConfig.seed` exposes D97's `seed`. `FakeLlamaBro.voiceReply` scripts replies for app tests.
 Consequences: Amends D96's consequence that the SDK's voice session sends the trained prompt and a reply cap: it sends neither unless the app sets them. The session reuses `Model`'s request plumbing (registration, the close gate, `ModelClosed`); client events sent before the native handle exists are queued and sent in order. A pipeline of separate listening, chat and speaking models (D95) can sit behind the same handle and events later. JNI gains `requestSend`.
 
+<a id="d99"></a>
 ### D99. The voice session captions the user's words when asked, on a second slot, while the reply is made
 
 Status: Decided (2026-11-18)
@@ -994,6 +1093,7 @@ Context: Upstream's realtime conversation sends no transcript of the user's spee
 Decision: `VoiceConfig.Builder.transcribeUser { language; prompt }` turns captions on; they are off by default. The session keeps the audio of the open turn, and at each commit with audio it transcribes it with `Model.transcribe` on the WAV of the turn, in parallel with the reply, and sends `VoiceEvent.UserTranscript(itemId, text)` after that turn's `TurnCommitted`. The caption's language is its own option (the user's language, unset: the model tells), apart from the session's `language`, which is the reply's speech, as upstream separates input transcription from output speech. With fewer than two slots `voiceSession` fails with `InvalidRequest` naming `parallelSlots = 2`. A failed caption is a `VoiceEvent.Error` of type `user_transcription_failed`, and the session goes on.
 Consequences: Amends D98 (no event for the user's words). A deviation from upstream's conversation, cited to F169 and F170: the SDK adds an event upstream doesn't send, through upstream's own transcription route. An app that captions loads with two slots and pays their memory; one that doesn't pays nothing. A turn's audio is held in memory until its commit.
 
+<a id="d100"></a>
 ### D100. The demo's voice mode: a full-screen view entered from the message bar, hold to talk, saved as an ordinary chat
 
 Status: Decided (2026-11-18)
@@ -1002,6 +1102,7 @@ Context: D95 puts a voice mode in the demo, push-to-talk first, with captions, s
 Decision: For a model that speaks, the message bar shows a voice-mode button; it opens a full-screen voice view over the chat: the orb in the middle shows listening, thinking and speaking, the reply's captions under it, the user's last words under those, a large talk button and stop at the bottom, and a close. Talking is hold to talk: release sends the turn (`commit`), and pressing while the model speaks stops the reply (`cancelReply`) and listens. Each turn is saved to the chat: the user's as a voice message (D76's bubble) with its caption, the reply as its text with its speech, which the reply's actions replay; the chat goes on by typing as any other. The SDK gains `ModelInfo.voices` (upstream's `/props` `voices`, empty for a model that doesn't speak), from which the app learns that a model speaks and remembers it, as for hearing. Captions of the user's words are on by default, with a switch in Settings; with them the model loads with two slots. Settings › Voice picks the voice from the model's list (the first by default); the spoken language follows the phone's when the model has it, else English; the built-in answering instruction comes first, the user's custom instructions after it. LFM3-Omni-2B joins the suggested models as the one that talks. Leaving the screen (Home, a call, the lock) stops recording and playback, as Stop does, and closes the session; the next press opens a new one; there is no background voice service. Playback goes to the speaker or the connected headset; the mic uses Android's voice-communication source, with the phone's echo cancellation and noise suppression.
 Consequences: Amends the demo design's "not in the app: text to speech" (section 2) for voice mode only; dictation stays out (D76). The voice view was drawn with the maintainer (demo design section 4.8): the orb shows each state, the reply's caption takes a new type role, `voiceCaption` (22/28 Regular sans), and Stop sits at the start of the talk button while the model speaks. Voice mode starts without the chat's earlier messages: upstream's conversation takes the person's items but not the model's replies, and putting the chat into its instructions or a made-up user turn would bend its API, so a chat that already has messages says so in the voice view ("Voice starts fresh: it doesn't see the messages above."), and leaving the screen starts the next session fresh too. Talking is tap or hold: a tap starts a turn that the next tap sends, a longer press sends on release; hands-free waits for turn detection upstream, which b12479 lacks (`turn_detection` is always null), as the maintainer wants neither a patch nor a detector in the app. Journeys run on `FakeLlamaBro`'s voice replies; the real model runs once on the phone, attended. Reply audio is stored app-private (about 1 MB per 20 s) and deleted with its chat.
 
+<a id="d101"></a>
 ### D101. The demo's fit is a formula on file sizes against half the phone's total RAM; no network read, no free-memory reading
 
 Status: Decided (2026-11-19)
@@ -1010,6 +1111,7 @@ Context: The demo labelled a model's fit two ways (demo design §7.1, D64): list
 Decision: Every fit in the demo is the formula: a model needs its file plus its image or audio encoder, against half the phone's total RAM (the CPU device's `memoryTotal`); the room left gives the context word as the quick estimate did (at least 1.5 GiB large, 0.5 GiB normal, anything above zero small), and the speed comes from the file's size per chip as before. The same estimate shows in lists, the model sheet and first run, so nothing changes after it shows, and no file is read. The encoder's size comes from the catalog for its models and, for any other repo, from the Hub's listing: `Quantization.encoderBytes`, the encoder the Hub would fetch with that quantisation by the same rule it downloads with.
 Consequences: The SDK's `estimateFit` stays, for apps that want the projection; the demo no longer calls it, and the bridge measures one at a time anyway (F172). The KV cache is not modelled: a model with a large cache per token can label "Runs well" and then fit a shorter context than the word suggests, which the load's own automatic context still handles (D34). The 50% share is a judgement, not a measurement on several phones.
 
+<a id="d102"></a>
 ### D102. Public value types are data classes; builder-built requests and configurations keep their builders
 
 Status: Decided (2026-11-19)
@@ -1018,6 +1120,7 @@ Context: D26 kept public types that may grow out of data classes, because a new 
 Decision: Public value types are data classes: results (`ModelInfo`, `LoadReport`, `Timings`, `Usage`, `DeviceInfo`, `Backend`, `DownloadProgress`, `ChatEvent.Done`, `Ranked`, `Typed`'s outcomes, `VoiceEvent`'s events), progress (`LoadProgress`), and small settings and inputs (`Speculative.Mtp`, `Ngram`, `DFlash`, `LoraAdapter`, `Normalization.PNorm`, `Content.Image`, `Content.Audio`, `MediaSource.File`, `HfModel`). A type the SDK creates keeps its internal or private constructor, which also keeps its `copy` non-public. Two stay plain classes because a data class compares arrays by reference: `MediaSource.Bytes` and `VoiceEvent.ReplyAudio`. Requests and configurations built with `X { }` and changed with `copy { }` (`ChatRequest`, `Sampling`, `Reasoning`, `LlamaBroConfig`, `HubConfig`, `VoiceConfig`, `UserTranscription`) keep their builders, which name upstream's many optional fields better than a long constructor. D26's other rules stand: sealed and enum sets are settled at 1.0, the API dump is checked, and the API is Kotlin only.
 Consequences: Adding a field to a data class is source-compatible for callers that recompile and a binary break for libraries compiled against the older SDK; a release that adds one says so in its notes. `ModelInfo` keeps a short `toString`, since its template and metadata run to kilobytes.
 
+<a id="d103"></a>
 ### D103. One error rule: a call or flow fails with a `LlamaBroException`; only misuse throws Kotlin's own exceptions
 
 Status: Decided (2026-11-19)
@@ -1026,6 +1129,7 @@ Context: The README said everything the SDK throws is a `LlamaBroException`, but
 Decision: A call or a flow fails only with a `LlamaBroException`. A successful reply the SDK can't read is `ServerError` with status 200 and the parser's error as its cause; `ErrorMapping.readReply` wraps every reply the SDK parses (chat chunks, embeddings, rerank, transcription). Misuse of the API stays `IllegalArgumentException` or `IllegalStateException`, listed under each function's `@throws`. The README and architecture section 7 list the full set.
 Consequences: Apps catch one sealed type for every runtime failure and see Kotlin's own exceptions only for bugs in their own calls. `ServerError` gains an internal cause.
 
+<a id="d104"></a>
 ### D104. The engine and backend seams are a `spi` package; `internal` is Kotlin-internal
 
 Status: Decided (2026-11-19)
@@ -1034,6 +1138,7 @@ Context: The package `com.suhel.llamabro.internal` held both the runtime's imple
 Decision: `Engine`, `EngineModel`, `EngineRequest`, `EngineAttachment`, `RequestSink`, `NativeError`, the `SEND_*` constants, `BackendInstaller`, `BackendOptions`, `BackendLibraries` and `LogcatLogger` (the hub's default logger) move to `com.suhel.llamabro.spi`, all under `@InternalLlamaBroApi`. Everything left in `internal` is Kotlin `internal`. `Engine.readFd` has no default: the JNI engine reads natively and `FakeLlamaBro`'s engine reads through `/dev/fd`. JNI and the consumer R8 rules name the new package.
 Consequences: The API dump shows the seams under one package name that says what they are. Backend artifacts and fakes import from `spi`.
 
+<a id="d105"></a>
 ### D105. API shape: a sealed `ModelSource`, internal speech endpoints, `Long` seeds, `Typed.text`, no `@Jvm` annotations
 
 Status: Decided (2026-11-19)
@@ -1042,6 +1147,7 @@ Context: A review of the public API found small mismatches. `ModelSource` was an
 Decision: `ModelSource` is sealed; `RemoteModelSource` stays open for the hub and apps. `Endpoint.Tts` and `Endpoint.Speech` are internal until a request returns bytes. Both seeds are `Long?`. `Typed.Value`, `Incomplete` and `Invalid` name the reply's text `text`. `ChatRequest.options` is internal; the getters stay. The `@Jvm*` annotations go, except one `@JvmName` that resolves a JVM signature clash. `LbToolCallContext` keeps its public constructor, since apps build one to unit-test a typed tool.
 Consequences: Breaking for callers of the renamed and hidden members, which v2 allows. Java callers reach companion members through `Companion`.
 
+<a id="d106"></a>
 ### D106. `create` compares settings, not the logger or token provider; hub locks key by canonical path; saves read version 3 only
 
 Status: Decided (2026-11-19)
@@ -1050,6 +1156,7 @@ Context: `LlamaBro.create` and `LlamaBroHub.create` returned the existing object
 Decision: A repeated `create` compares the settings only (the log level and NPU polling; the hub's endpoint and progress interval). The first call's logger and token provider stay in use. The hub keys its locks by the lock file's canonical path, as `create` keys hubs. `fromJson` reads version 3 only and refuses the others as unsupported.
 Consequences: Amends D70 and D89. A DI module that builds the config on each call works; a logger passed to a later `create` is ignored, as the KDoc says. Saves from development builds before version 3 no longer load.
 
+<a id="d107"></a>
 ### D107. The hub loads and lists installed copies only; a copy without an installed record is not on the phone
 
 Status: Decided (2026-11-19)
@@ -1058,6 +1165,7 @@ Context: Since D64 the hub writes an installed record when a download completes 
 Decision: `source`, `cached()`, `hasUpdate` and the sampling lookup read installed records only. A copy without one is not on the phone and downloads again, reusing the blobs whose hashes match. The cache layout stays upstream's.
 Consequences: Amends D64 and D89. Development phones download their pre-record models once more. The upstream-listing golden for `cached()` goes, since `cached()` no longer follows `refs/main`.
 
+<a id="d108"></a>
 ### D108. Streaming markdown re-parses from the last top-level block; lists and tables are not resumed row by row
 
 Status: Decided (2026-11-19)
@@ -1066,6 +1174,7 @@ Context: D74's streaming parse re-read only the block the line being written cou
 Decision: The parse restarts from the last top-level block that starts before the text's last line; a list's items share their list's start, so a list or table being written is parsed whole on each append. Earlier blocks keep their instances, and blocks parsed again that come out equal keep theirs.
 Consequences: Amends D74's streaming paragraph. A long list or table costs more per append as it grows, still under the budget on the host; the phone is not re-measured.
 
+<a id="d109"></a>
 ### D109. Captions of the user's words move to the app: it transcribes its own recording of each turn
 
 Status: Decided (2026-11-19)
@@ -1074,6 +1183,7 @@ Context: D99 put captions of the user's words in the SDK's voice session: it kep
 Decision: The voice session stays upstream's: `transcribeUser`, `UserTranscription`, `VoiceEvent.UserTranscript` and the two-slot check go. The demo transcribes each turn's saved recording with `Model.transcribe`, one turn at a time and in order, on the second slot while the reply is made, and writes the text to that turn's message. The SDK README shows the recipe.
 Consequences: Amends D99 and D100. Captions pair with their turns exactly. F170's costs stand: about 0.3 s later to the first audio and a second slot's memory, paid by apps that caption. A failed caption leaves the turn as a voice message without text, as before.
 
+<a id="d110"></a>
 ### D110. Hub search and recommended sampling stay in the hub, as a deliberate exception to "expose llama-server"
 
 Status: Decided (2026-11-19)
@@ -1082,6 +1192,7 @@ Context: The SDK exposes llama-server's features and little beyond them. The hub
 Decision: They stay in `llamabro-hub`, recorded as a deliberate scope exception: choosing a model to download is what a hub is for, and every app that lets people pick a model needs it.
 Consequences: The hub's public surface keeps search and sampling; its internals stay internal.
 
+<a id="d111"></a>
 ### D111. Patch 0006 is dropped: speech computes the text head on every frame again
 
 Status: Decided (2026-11-19)
@@ -1090,6 +1201,7 @@ Context: Patch 0006 (D86, D94) made `llama_batch_ext`'s two output flags differ 
 Decision: Patch 0006 goes from `sdk/native/patches/`; it is kept in `research/ph/speech-output/` for upstream. Patch 0008, which edits the same speech helper, is re-cut on the remaining patches with its changed lines unchanged.
 Consequences: Amends D86 and D94. Speech output on the NPU costs about 4.5 ms more per frame; `device-speech` still requires at least 1.5 times real time; the phone gave 2.41 without the patch (19.8 s of audio in 8.2 s). One patch fewer to port at each llama.cpp upgrade.
 
+<a id="d112"></a>
 ### D112. The Vulkan recipe leaves the live build for research/vulkan-adreno
 
 Status: Decided (2026-11-19)
@@ -1098,6 +1210,7 @@ Context: D31 took Vulkan out of 1.0 but kept its recipe in the live build for a 
 Decision: The live build loses its Vulkan branches. `fetch-deps.sh` moves to `research/vulkan-adreno/`, beside the build script and the patches that use it. `DeviceKind` keeps mapping a `vulkan` backend to the GPU, so a returning route needs no API change (D32).
 Consequences: Amends D31's "the build recipe is kept". A Vulkan retry starts from `research/vulkan-adreno/README.md`.
 
+<a id="d113"></a>
 ### D113. The design-system rule is "tokens anywhere", enforced by a lint rule on the syntax tree
 
 Status: Decided (2026-11-19)
@@ -1106,6 +1219,7 @@ Context: D48 says a demo screen carries no number of its own and is built from `
 Decision: The rule is restated as tokens anywhere: no size literal (`12.dp`, `14.sp`, `Dp(…)`), no colour (`Color(…)`, `Color.Red`) and no type-role override (`TextStyle.copy(fontSize = …)`) outside the theme package, in the app or the design system; and in the app's screens no Material composable but `Text` and `Icon`, and no Compose motion or `Modifier.shadow`. `demo/lint` checks it as an Android Lint rule with calls resolved (`DesignTokensDetector`, four issues), run by `lintDebug` and the demo check's `ds` step; previews, samples, the debug gallery and the share card's off-screen render are exempt. The components stay where they are; the brand's colours and the quantisation table's widths move to theme tokens, and three colours that are masks carry a suppression saying so.
 Consequences: Amends D48. The regex gate in `demo/scripts/check.sh` goes. CLAUDE.md states the rule.
 
+<a id="d114"></a>
 ### D114. A model file the SDK can't read is `HubException.Corrupt`, not `NotFound`
 
 Status: Decided (2026-11-19)
@@ -1114,6 +1228,7 @@ Context: When a file's GGUF header couldn't be read from the Hub (empty, damaged
 Decision: The hub throws `HubException.Corrupt`, with the file's path; it is not retryable, since trying again fetches the same bytes. The demo says the file is damaged and suggests another quantisation.
 Consequences: A new public type in `llamabro-hub`'s sealed `HubException`; apps with an exhaustive `when` add a case.
 
+<a id="d115"></a>
 ### D115. The bridge's own errors carry a code; upstream's matched words are pinned against its source
 
 Status: Decided (2026-11-19)
@@ -1122,6 +1237,7 @@ Context: A few failures were typed by matching words in an error message: the br
 Decision: The bridge's attachment refusal carries `"lb_code": "attachment"` beside upstream's error fields, with its advice in the message itself, and the SDK reads the code (`InvalidRequest.code`). Upstream gives no code for its three, so their words stay matched, as named constants in `ErrorMapping`; `UpstreamMessagesTest` checks each against the pinned llama.cpp source, so an upgrade that rewords one fails the check.
 Consequences: Upgrading llama.cpp can fail `UpstreamMessagesTest`; the fix is the new words in `ErrorMapping`. Kotlin no longer rewrites the bridge's messages.
 
+<a id="d116"></a>
 ### D116. One Models screen replaces Get models and the library; a row's fit is guessed from the search list and drawn as a pace figure
 
 Status: Decided (2026-11-20)
@@ -1136,6 +1252,7 @@ Consequences: Amends D101's presentation (the formula is unchanged; labels are s
 - The thresholds in `Fit.kt` are unchanged: F175 shows that the guess gives the same labels as the real sizes for the catalog models on the budgets checked, so the "mostly wrong" reading is not explained by the size guess.
 The sidebar drawer with no chats also shows "No chats yet. Start one.", as the Chat list layout already did.
 
+<a id="d117"></a>
 ### D117. The demo's shared components take the Models page's visual system: colour roles, notices, large text, one button height
 
 Status: Decided (2026-11-20)
@@ -1177,6 +1294,7 @@ buttons 8 dp taller; `EdgeChip` ("Default" in the model switcher, "On this phone
 turns tonal. The design system's unit tests now include Compose tests under Robolectric (native graphics), so text
 layout at a given font scale is checked on the host.
 
+<a id="d118"></a>
 ### D118. The model card is one view drawn from local data, shown once every local read has answered, its foot one button tall
 
 Status: Decided (2026-11-20)
@@ -1214,6 +1332,7 @@ when the catalog doesn't know it. The page's leading heading is matched as `Name
 repo's name, after any HTML logos, so "# Qwen3.5-4B-GGUF" under "Qwen3.5 4B" is dropped. The app's unit tests gain
 Compose tests under Robolectric (the card's top holds while its page lands; its foot is 64 dp in every state).
 
+<a id="d119"></a>
 ### D119. Text fades through; the Models page is one list; the expandable sheet has one owner of its height
 
 Status: Decided (2026-11-20)
@@ -1251,6 +1370,7 @@ under its local groups; they come from Hugging Face's part like any other upload
 "Stopped" is the one failure word.
 
 
+<a id="d120"></a>
 ### D120. Lists move in one order, exit then place then enter; one function per fact on the Models page
 
 Status: Decided (2026-11-20)
@@ -1287,6 +1407,7 @@ Consequences: amends D119's list motion and the models-page design §2-§5 and �
 after the change; arrivals appear 340 ms after it. A failed download keeps the bytes that had arrived
 (`DownloadStatus.Failed` carries them), so "Stopped" shows a frozen ring and "0.9 of 3.4 GB kept".
 
+<a id="d121"></a>
 ### D121. One file has one fit; a download records its model bytes; a sheet's growth is one motion
 
 Status: Decided (2026-11-20)
@@ -1319,6 +1440,7 @@ chats and its downloads' records; a record kept before version 6 shows its downl
 file or the total until it lands. A Hub model named with an active count but no total keeps the Hub's count for its
 row and card, and its file on the phone (which has only its name) reads all its weights for speed.
 
+<a id="d122"></a>
 ### D122. The cards' original look is back: no edges, the original surfaces and selection
 
 Status: Decided (2026-11-21)
@@ -1344,6 +1466,7 @@ Consequences: amends D117, D119, D120 and D121; the rest of D117 (the too-big in
 stands. The demo design's colour table follows.
 
 
+<a id="d123"></a>
 ### D123. The Models page's rows and card are ultra subtle
 
 Status: Decided (2026-11-21)
@@ -1378,6 +1501,7 @@ Consequences: amends the models-page design §3, §4 and §5 (supersedes their t
 round-5 placement of the switcher's info action (the fit column keeps the page's right edge). Other screens
 keep their labels, titles and buttons; the soft field hint and the light outline icons apply wherever those parts show.
 
+<a id="d124"></a>
 ### D124. The model's page follows the size choice with no push off the fold
 
 Status: Decided (2026-11-21)
@@ -1393,6 +1517,7 @@ content runs under it, keeps the two apart.
 
 Consequences: supersedes the earlier review note on this placement.
 
+<a id="d125"></a>
 ### D125. Geist type, one monochrome accent and one selection outline
 
 Status: Decided (2026-11-21)
@@ -1420,6 +1545,7 @@ softer than the ink (10:1 or more on the canvas and the surface in both themes),
 text actions. The radio mark's ring and a focused field's border keep the same 2 dp stroke. The model switcher's
 current row has no outline (it is marked "Current"), so it is unchanged.
 
+<a id="d126"></a>
 ### D126. The sidebar is a quiet list: a name, a search, timed rows and labelled places
 
 Status: Decided (2026-11-21)
@@ -1453,6 +1579,7 @@ with its soft shadow, D122), not a 44 dp pill on a fill, so the sidebar's search
 4 dp over its rows under a 20 sp line rather than 6 dp under a tighter one, the same space to the eye on the 4 dp grid;
 the foot keeps 16 dp under its last row, not 18. The icons are the app's 24 dp glyphs, not 22.
 
+<a id="d127"></a>
 ### D127. Hugging Face search is paged with Paging 3 over Room, in the Hub's order, shaped by the Hub's own criteria
 
 Status: Decided (2026-11-21)
@@ -1488,6 +1615,7 @@ page's one list draws the Hub's rows lazily from `LazyPagingItems` below the loc
 for the next page; a next page that fails leaves the rows and says "Couldn't load more." under them with Try again,
 which retries that page, while one loading shows nothing, so the list doesn't move. The filter sheet follows.
 
+<a id="d128"></a>
 ### D128. The search's filters are a plain sheet whose choices apply at once; a dot and one named line say when they aren't the defaults
 
 Status: Decided (2026-11-21)
@@ -1525,6 +1653,7 @@ Consequences: completes D127 and the models-search design §5. The design system
 `NumberField`, `SectionNote`'s action, `SearchField`'s trailing slot, `IconAction`'s mark and the Filter icon, each
 in the gallery's samples.
 
+<a id="d129"></a>
 ### D129. The demo's state is derived; a mutable holder is only a source
 
 Status: Decided (2026-11-21)
@@ -1556,6 +1685,7 @@ invalidation counters for stores nothing can observe) and the state machines of 
 ModelRepository's download queue, which their tests cover. A chat's model is one `ModelChoice` (unknown, none,
 chosen), not a key and a flag; a chat's rows take the layout setting as a flow, not a copy written in by an effect.
 
+<a id="d130"></a>
 ### D130. The Models page is one page, offline first: first run is its empty state, labels name the quant, a download is the pinned ring panel
 
 Status: Decided (2026-11-20); built (2026-11-21)
@@ -1601,6 +1731,7 @@ and the monochrome accent (D125), the sidebar (D126), paging and filters (D127, 
 audit finding is marked fixed or ruled out in the audit. The final build's frame-by-frame recapture on the phone is
 the maintainer's.
 
+<a id="d131"></a>
 ### D131. A softer neutral palette: cool-grey light, dimmed dark replies
 
 Status: Decided (2026-11-21)
@@ -1628,6 +1759,7 @@ which follows `Tokens.kt`. The fit tints and inks and `danger` are unchanged. Th
 new ink (`#1D1D1F` and `#E3E3E6`); D125 later changed `accent` and `onAccent` to the monochrome tone it records, so
 read those two from D125.
 
+<a id="d132"></a>
 ### D132. The README shows two demo screens; the no-screenshots rule keeps one exception
 
 Status: Decided (2026-11-21)
@@ -1659,6 +1791,7 @@ Consequences: amends the no-screenshots line of `CLAUDE.md`. `CONTRIBUTING.md`'s
 machine-specific data, not screenshots, and is unchanged. The images are retaken by hand when the chat or voice
 screens change enough that they no longer match the app.
 
+<a id="d133"></a>
 ### D133. The SDK is published to Maven Central through the Central Portal, with the vanniktech plugin
 
 Status: Decided (2026-11-21). Nothing is published yet: the build side is in place and proven against the local Maven
@@ -1740,6 +1873,7 @@ convention, and the composite build that the demo and the README's quick start u
 Splitting the SDK into its own repository (D1) would change the POM's URLs and nothing else here. Implements D4 with
 D2's group.
 
+<a id="d134"></a>
 ### D134. arm64-v8a is the only ABI
 
 Status: Decided (2026-11-22)
@@ -1768,6 +1902,7 @@ native code for them and must not load a model there. Emulators run the arm64 im
 engine (`llamabro-testing`) elsewhere. Revisit only if a common 64-bit ABI other than Arm (x86_64 phones, RISC-V)
 appears among phones that run models.
 
+<a id="d135"></a>
 ### D135. A BOM, `llamabro-bom`, keeps every module on one version
 
 Status: Decided (2026-11-22). Amends D133.
@@ -1790,6 +1925,7 @@ Consequences: the README, the SDK guide and the architecture guide install throu
 needs one line in the BOM's list as well as in `sdk/modules.gradle.kts`. Checked against the local repository: the
 BOM's POM lists all nine at `2.0.0-alpha`, and a project that names only the BOM's version resolves a module to it.
 
+<a id="d136"></a>
 ### D136. An API pass for the first release: flows that warn, auto-compaction, misuse as Kotlin exceptions, typed audio and transcripts
 
 Status: Decided (2026-11-22). Amends D84 and D103.
@@ -1834,6 +1970,7 @@ Consequences: callers that caught `InvalidRequest` for these misuses, matched `S
 to `Content.Audio` or matched `transcribe`'s `Typed` change once; the demo, the fakes and the tests did. The `.api`
 dumps record the new shape.
 
+<a id="d137"></a>
 ### D137. llama.cpp is pinned at b12653 (upstream master on 2026-11-23)
 
 Status: Decided (2026-11-23)
@@ -1849,6 +1986,7 @@ Consequences: Statements measured at b12479 (the README's benchmark, F178) stay 
 0001's gain and upstream's OpenCL and CPU speed changes are not re-measured (F180). Upstream's realtime transcription
 session and its speech options (voice, speaker reference, speed) are now reachable for the SDK to type.
 
+<a id="d138"></a>
 ### D138. Live transcription is upstream's realtime transcription session, set up as its web client does; the SDK detects no pauses
 
 Status: Decided (2026-11-23)
@@ -1871,6 +2009,7 @@ fake only. An app dictating on a model that is refused transcribes pieces with `
 `prompt` is no vocabulary hint: upstream puts it in place of the model's own instruction except on VibeVoice-ASR
 (`common_chat_get_asr_prompt`, `asr_user_text`), so the demo sends none.
 
+<a id="d139"></a>
 ### D139. Speech is upstream's `/v1/audio/speech`, streamed as WAV and handed out as PCM pieces
 
 Status: Decided (2026-11-23)
@@ -1890,6 +2029,7 @@ scripts speech (`speech(pcm, sampleRate)`, `speechRequests`).
 Consequences: `/tts` stays internal. On the host, upstream's tiny LFM3 speaks at 24 kHz, a seed repeats the speech
 exactly, and a speaker reference is taken; `speed` is refused there, as upstream refuses it.
 
+<a id="d140"></a>
 ### D140. The demo dictates: a tap on the mic writes speech into the message bar, a hold records a voice message
 
 Status: Decided (2026-11-23)
@@ -1909,6 +2049,7 @@ it isn't released under it. No `prompt` is sent (D138). The language comes from 
 Consequences: Amends D76. A model that hears but streams no audio (Qwen3-ASR, Qwen3.5) dictates in pieces of about
 3 s. Upstream's speech gain for quiet microphones (`gain.ts`) is not ported.
 
+<a id="d141"></a>
 ### D141. The demo reads a typed reply aloud on a model that speaks
 
 Status: Decided (2026-11-23)
@@ -1923,6 +2064,7 @@ Leaving the screen stops it. Settings › Voice also gets dictation's language (
 Consequences: Only models that speak (LFM3-Omni here) offer it; a model without a voice of its own, or one whose
 speech settings differ, is spoken with upstream's defaults.
 
+<a id="d142"></a>
 ### D142. One error model: a missing capability is `NotSupported` on every path, an unreadable reply is `ServerError`, and every C API call reports a status and its reason
 
 Status: Decided (2026-11-24)
@@ -1948,6 +2090,7 @@ helper (`JsonMergePatch.applyExtra`).
 Consequences: Exception types change on these paths (see the release notes); no Kotlin signature changes. The C
 header changes shape before any other binding uses it.
 
+<a id="d143"></a>
 ### D143. The audio family has one shape: package `audio`, a builder for `transcribe`, `extra` on every config, one rate check and one voice check, and a `FakeLlamaBro` that can refuse speech
 
 Status: Decided (2026-11-24)
@@ -1981,6 +2124,7 @@ Consequences: Breaking in 2.0.0-alpha's line, with the same request for the same
 `extra`), and `voiceEvents` becomes `realtimeEvents`. D84's text, that
 `transcribe` takes a file, a descriptor or bytes, still holds. Next free IDs: D144, F183.
 
+<a id="d144"></a>
 ### D144. The demo's packages are layered, the container builds the screens' view models, and a draft's pictures are staged apart from sent ones
 
 Status: Decided (2026-11-24)

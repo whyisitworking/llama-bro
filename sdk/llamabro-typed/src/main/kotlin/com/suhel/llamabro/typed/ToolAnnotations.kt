@@ -1,11 +1,11 @@
 package com.suhel.llamabro.typed
 
 /**
- * Marks a class, interface or object whose [LbTool] methods are typed tools (D61). With the `llamabro-typed-ksp`
+ * Marks a class, interface or object whose [LbTool] methods are typed tools
+ * ([D61](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d61)). With the `llamabro-typed-ksp`
  * processor applied, the build writes `fun X.asToolbox(json: Json = Json): Toolbox` beside it, with the class's own
- * visibility, so the app registers the tools of an instance it built (or a DI container injected):
- * `conversation { toolbox(assistant.asToolbox()) }`. The `@LbTool` methods of `@LbToolbox` supertypes are included,
- * each once.
+ * visibility, so the app registers the tools of an instance it built (or a DI container injected): `conversation {
+ * toolbox(assistant.asToolbox()) }`. The `@LbTool` methods of `@LbToolbox` supertypes are included, each once.
  *
  * @param prefix put before every tool name exactly as written (`"mail_"`); the whole name must still match
  *   `^[a-zA-Z0-9_-]{1,64}$`.
@@ -23,7 +23,8 @@ public annotation class LbToolbox(val prefix: String = "")
  *
  * @param description what the tool does and what its result means; required, since the model chooses by it.
  * @param name the tool's name; the method's name in snake_case when empty.
- * @param requiresApproval a call pauses the turn until the app approves or denies it (D62).
+ * @param requiresApproval a call pauses the turn until the app approves or denies it
+ *   ([D62](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d62)).
  */
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.FUNCTION)

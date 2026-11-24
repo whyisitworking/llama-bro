@@ -8,7 +8,9 @@ import java.io.InputStream
 
 /**
  * A single HTTP request. Redirects are resolved by the implementation. [HttpTransport] in production; public only for
- * `llamabro-hub-testing`'s scripted Hub (D75, as the core's engine seam is for `llamabro-testing`, D27). Apps never
+ * `llamabro-hub-testing`'s scripted Hub
+ * ([D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75), as the core's engine seam is for
+ * `llamabro-testing`, [D27](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d27)). Apps never
  * implement it.
  */
 @InternalLlamaBroApi

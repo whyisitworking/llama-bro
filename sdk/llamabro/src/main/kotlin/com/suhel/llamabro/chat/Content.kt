@@ -10,7 +10,7 @@ public sealed interface Content {
     /**
      * A picture, for a model that sees ([com.suhel.llamabro.ModelInfo.supportsVision]). The SDK never reads a file's
      * or a descriptor's contents into the Java heap: the native side reads them and writes the base64 llama-server
-     * takes (D84).
+     * takes ([D84](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d84)).
      */
     public data class Image(public val source: MediaSource, public val mimeType: String = "image/jpeg") : Content {
         /** A picture already in memory. */

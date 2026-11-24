@@ -9,7 +9,8 @@ import kotlinx.serialization.json.put
 /**
  * Settings fixed when a model loads, as a value: `ModelConfig { contextSize = ContextSize.Fixed(4096) }`, derived with
  * [copy] (a phone profile an app keeps and adjusts), and given to `loadModel(source, config)`, or built in the scope
- * of `loadModel(source) { … }` (D102). Defaults are the phone defaults (D17).
+ * of `loadModel(source) { … }` ([D102](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d102)).
+ * Defaults are the phone defaults ([D17](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d17)).
  */
 public class ModelConfig internal constructor(
     /** Tokens of context (`n_ctx`). */
@@ -34,12 +35,17 @@ public class ModelConfig internal constructor(
     public val threads: Int?,
     /**
      * The sampling seed of requests that set none (`--seed`); null keeps llama-server's default, a random seed. A
-     * voice session's replies take this seed and none of their own (F168), so a fixed one makes them reproducible.
+     * voice session's replies take this seed and none of their own
+     * ([F168](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f168)), so a fixed one
+     * makes them reproducible.
      */
     public val seed: Long?,
     /** Logical batch for prompt processing (`-b`). */
     public val batchSize: Int,
-    /** Physical batch (`-ub`); bigger didn't help on the phone (F10). */
+    /**
+     * Physical batch (`-ub`); bigger didn't help on the phone
+     * ([F10](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f10)).
+     */
     public val microBatchSize: Int,
     /**
      * Requests the model serves at once (`-np`); each slot has its own cache. One fits a chat app. With more, the
@@ -52,16 +58,21 @@ public class ModelConfig internal constructor(
     /**
      * Memory [ContextSize.Auto] and [ContextSize.UpTo] leave free for what grows during a chat and isn't projected
      * (context checkpoints, slack), in MiB, like llama-server's `--fit-target` margin. The default, 512, was measured
-     * on the OnePlus 13 (D34, F66). Lower it only when the app knows its phone: below the default, a long chat can grow
-     * into memory Android needs, and its low-memory killer then ends the whole app, which no exception reports (D45).
-     * [LlamaBro.estimateFit] uses the same value. At least 0.
+     * on the OnePlus 13 ([D34](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d34),
+     * [F66](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f66)). Lower it only when
+     * the app knows its phone: below the default, a long chat can grow into memory Android needs, and its low-memory
+     * killer then ends the whole app, which no exception reports
+     * ([D45](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d45)). [LlamaBro.estimateFit] uses
+     * the same value. At least 0.
      */
     public val memoryReserveMib: Int,
     /**
      * What happens when [ContextSize.Auto] or [ContextSize.UpTo] finds that even the smallest context doesn't fit:
      * [MemoryCheck.Warn] (the default) loads at the smallest context and says so in [LoadReport.memoryWarning];
      * [MemoryCheck.Refuse] fails the load. The check can't see what Android frees by closing background apps, so it
-     * refuses models that run (F128). [ContextSize.Fixed] has no check.
+     * refuses models that run
+     * ([F128](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f128)).
+     * [ContextSize.Fixed] has no check.
      */
     public val memoryCheck: MemoryCheck,
     /** Context checkpoints kept per slot (`--ctx-checkpoints`), which let hybrid models reuse a prefix (§7). */
@@ -83,44 +94,9 @@ public class ModelConfig internal constructor(
     /** This config with [configure]'s changes. */
     public fun copy(configure: Builder.() -> Unit): ModelConfig = Builder(this).apply(configure).build()
 
-    override fun equals(other: Any?): Boolean =
-        other is ModelConfig &&
-            other.contextSize == contextSize &&
-            other.speculative == speculative &&
-            other.devicePolicy == devicePolicy &&
-            other.encoderDevice == encoderDevice &&
-            other.threads == threads &&
-            other.seed == seed &&
-            other.batchSize == batchSize &&
-            other.microBatchSize == microBatchSize &&
-            other.parallelSlots == parallelSlots &&
-            other.ramCacheMib == ramCacheMib &&
-            other.memoryReserveMib == memoryReserveMib &&
-            other.memoryCheck == memoryCheck &&
-            other.checkpointsPerSlot == checkpointsPerSlot &&
-            other.task == task &&
-            other.kvCacheType == kvCacheType &&
-            other.loraAdapters == loraAdapters
+    override fun equals(other: Any?): Boolean = other is ModelConfig && other.parts() == parts()
 
-    override fun hashCode(): Int {
-        var h = contextSize.hashCode()
-        h = 31 * h + speculative.hashCode()
-        h = 31 * h + devicePolicy.hashCode()
-        h = 31 * h + (encoderDevice?.hashCode() ?: 0)
-        h = 31 * h + (threads?.hashCode() ?: 0)
-        h = 31 * h + (seed?.hashCode() ?: 0)
-        h = 31 * h + batchSize.hashCode()
-        h = 31 * h + microBatchSize.hashCode()
-        h = 31 * h + parallelSlots.hashCode()
-        h = 31 * h + ramCacheMib.hashCode()
-        h = 31 * h + memoryReserveMib.hashCode()
-        h = 31 * h + memoryCheck.hashCode()
-        h = 31 * h + checkpointsPerSlot.hashCode()
-        h = 31 * h + task.hashCode()
-        h = 31 * h + kvCacheType.hashCode()
-        h = 31 * h + loraAdapters.hashCode()
-        return h
-    }
+    override fun hashCode(): Int = parts().hashCode()
 
     override fun toString(): String =
         "ModelConfig(" +
@@ -133,9 +109,30 @@ public class ModelConfig internal constructor(
             "loraAdapters=$loraAdapters)" +
             ")"
 
+    private fun parts(): List<Any?> =
+        listOf(
+            contextSize,
+            speculative,
+            devicePolicy,
+            encoderDevice,
+            threads,
+            seed,
+            batchSize,
+            microBatchSize,
+            parallelSlots,
+            ramCacheMib,
+            memoryReserveMib,
+            memoryCheck,
+            checkpointsPerSlot,
+            task,
+            kvCacheType,
+            loraAdapters,
+        )
+
     /**
-     * Mutable scope of `ModelConfig { }` and [copy], starting from the config it was made from ([D17](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d17-phone-defaults)); each setting is described on
-     * [ModelConfig]'s property of the same name.
+     * Mutable scope of `ModelConfig { }` and [copy], starting from the config it was made from
+     * ([D17](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d17)); each setting is described
+     * on [ModelConfig]'s property of the same name.
      */
     public class Builder internal constructor(from: ModelConfig) {
         public var contextSize: ContextSize = from.contextSize
@@ -158,10 +155,10 @@ public class ModelConfig internal constructor(
 
         /**
          * Called on the context `loadModel` was called from: with [LoadProgress.Fetching] while a [RemoteModelSource]
-         * downloads, then [LoadProgress.Loading] with llama.cpp's load progress, 0 to 1 ([D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75-the-fetched-source-interface-the-workers-hub-from-a-workerfactory-and-a-separate-hub-test-module)). Values may be skipped if
-         * the listener is slow; the last one always arrives. Not part of the value:
-         * `equals` ignores it, [copy] doesn't carry it over, and `loadModel(source, config, onProgress)` takes it as a
-         * parameter.
+         * downloads, then [LoadProgress.Loading] with llama.cpp's load progress, 0 to 1
+         * ([D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)). Values may be skipped
+         * if the listener is slow; the last one always arrives. Not part of the value: `equals` ignores it, [copy]
+         * doesn't carry it over, and `loadModel(source, config, onProgress)` takes it as a parameter.
          */
         public fun onProgress(listener: (LoadProgress) -> Unit) {
             progressListener = listener
@@ -192,7 +189,7 @@ public class ModelConfig internal constructor(
     }
 
     public companion object {
-        /** The phone defaults ([D17](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d17-phone-defaults)). */
+        /** The phone defaults ([D17](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d17)). */
         public val Default: ModelConfig =
             ModelConfig(
                 contextSize = ContextSize.Auto,
@@ -379,7 +376,8 @@ private const val ALL_LAYERS = 999
 public sealed interface ContextSize {
     /**
      * The default: the largest context up to 16 384 tokens that fits in the memory available when the model loads,
-     * and at least 4096 (D33, D34).
+     * and at least 4096 ([D33](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d33),
+     * [D34](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d34)).
      *
      * "Fits" uses llama.cpp's own projection of what the model, its context cache and its compute buffers take, summed
      * over the chosen device and the host (a phone has one RAM), compared with the kernel's available memory
@@ -431,19 +429,25 @@ public sealed interface ContextSize {
 public sealed interface Speculative {
     /**
      * None, the default, as upstream: measured, drafting wins nowhere for prose (MTP is slower on the CPU and the NPU,
-     * F67), and it aborts the GPU backend. [Model.loadReport] gives the reason for the chip. For structured output
-     * (JSON, tool calls) on the NPU, [Mtp] with `draftMax = 4` decodes about 1.5× faster (F68); for replies that copy
-     * their input, [Ngram].
+     * [F67](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f67)), and it aborts the
+     * GPU backend. [Model.loadReport] gives the reason for the chip. For structured output (JSON, tool calls) on the
+     * NPU, [Mtp] with `draftMax = 4` decodes about 1.5× faster
+     * ([F68](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f68)); for replies that
+     * copy their input, [Ngram].
      */
     public data object Off : Speculative
 
     /**
      * The GGUF's multi-token-prediction head (`--spec-type draft-mtp`), for the whole load (llama-server can't switch
-     * it per request). Worth it on [DeviceKind.Npu] when replies are mostly structured output (F68). On the NPU a
-     * greedy reply can differ slightly from one without it (F72). Never on [DeviceKind.Gpu]: ggml-opencl aborts the
-     * process on the first drafted batch (F67, F80), so [DevicePolicy.Auto] and [DevicePolicy.Prefer] skip the GPU,
-     * with that reason in [Model.loadReport], and `DevicePolicy.Only(DeviceKind.Gpu)` throws
-     * [LlamaBroException.DeviceUnavailable].
+     * it per request). Worth it on [DeviceKind.Npu] when replies are mostly structured output
+     * ([F68](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f68)). On the NPU a greedy
+     * reply can differ slightly from one without it
+     * ([F72](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f72)). Never on
+     * [DeviceKind.Gpu]: ggml-opencl aborts the process on the first drafted batch
+     * ([F67](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f67),
+     * [F80](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f80)), so
+     * [DevicePolicy.Auto] and [DevicePolicy.Prefer] skip the GPU, with that reason in [Model.loadReport], and
+     * `DevicePolicy.Only(DeviceKind.Gpu)` throws [LlamaBroException.DeviceUnavailable].
      *
      * @property draftMax tokens drafted per step (`--spec-draft-n-max`), at least 1.
      */
@@ -458,19 +462,25 @@ public sealed interface Speculative {
      * are looked up in the prompt and earlier replies, and what followed them is drafted, with no extra model. For
      * replies that copy their input: code edits, rewrites, quoting, repeated structured output. On the OnePlus 13 a
      * code edit decoded 7x faster on [DeviceKind.Npu] and 2.3x on [DeviceKind.Cpu] with an identical reply; prose
-     * drafts nothing, so it is unaffected; output that only partly repeats was 10-15% slower on the CPU (F72, D35). For
-     * the whole load, like [Mtp]. The pool is shared across requests, so a reply can draft from an earlier one. Never
-     * on the GPU, as for [Mtp]: drafted batches abort ggml-opencl (F80).
+     * drafts nothing, so it is unaffected; output that only partly repeats was 10-15% slower on the CPU
+     * ([F72](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f72),
+     * [D35](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d35)). For the whole load, like
+     * [Mtp]. The pool is shared across requests, so a reply can draft from an earlier one. Never on the GPU, as for
+     * [Mtp]: drafted batches abort ggml-opencl
+     * ([F80](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f80)).
      *
      * @property then the MTP head to draft with when n-grams have nothing to offer (`--spec-type ngram-mod,draft-mtp`);
-     * the model needs an MTP head ([ModelInfo]). On the NPU this was the fastest for code, quoting and JSON (F72).
+     * the model needs an MTP head ([ModelInfo]). On the NPU this was the fastest for code, quoting and JSON
+     * ([F72](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f72)).
      */
     public data class Ngram(public val then: Mtp? = null) : Speculative
 
     /**
      * Drafts with a separate local GGUF supplied by `ModelSource.file(path) { draft = … }`.
-     * Structured replies on the NPU benefit from DFlash (D41); drafted batches cannot run on the GPU (F80).
-     * The draft retains upstream's F16 KV cache even when [ModelConfig.kvCacheType] differs.
+     * Structured replies on the NPU benefit from DFlash
+     * ([D41](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d41)); drafted batches cannot run
+     * on the GPU ([F80](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f80)). The
+     * draft retains upstream's F16 KV cache even when [ModelConfig.kvCacheType] differs.
      *
      * @property draftMax tokens drafted per step (`--spec-draft-n-max`), at least 1.
      */
@@ -510,7 +520,8 @@ public enum class Pooling(internal val nativeName: String?) {
 
 /**
  * The context cache's number formats (`-ctk`/`-ctv`, `common/arg.cpp`). b12352's `f8_e4m3` is left out: only the CPU
- * backend has it, and Q8_0 already halves the cache (F121).
+ * backend has it, and Q8_0 already halves the cache
+ * ([F121](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f121)).
  */
 public enum class KvCacheType(internal val nativeName: String) {
     F32("f32"),

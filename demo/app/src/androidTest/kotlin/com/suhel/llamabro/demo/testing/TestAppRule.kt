@@ -12,7 +12,10 @@ import org.junit.rules.RuleChain
 /** Gives a test a fresh [AppContainer] (empty database, DataStore, token and images) and removes it afterwards. */
 class TestAppRule(
     private val clock: () -> Long = System::currentTimeMillis,
-    /** Builds the container's config at the start of each test (fakes for the engine and the hub); default is fresh files. */
+    /**
+     * Builds the container's config at the start of each test (fakes for the engine and the hub); default is fresh
+     * files.
+     */
     private val config: (() -> TestConfig)? = null,
     /** Most tests aren't about first run: it is marked seen, so the app starts on its chats. */
     private val seenFirstRun: Boolean = true,

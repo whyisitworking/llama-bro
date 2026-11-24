@@ -5,9 +5,10 @@ import com.suhel.llamabro.InternalLlamaBroApi
 
 /**
  * Implemented by each backend artifact (`llamabro-hexagon`, …), which names its class in its manifest:
- * `<meta-data android:name="com.suhel.llamabro.backend.<name>" android:value="<class>" />` (D24). The core finds it in
- * the merged manifest and calls [install] once, on `Dispatchers.IO`, when the runtime starts. Public only for those
- * artifacts; apps never implement it.
+ * `<meta-data android:name="com.suhel.llamabro.backend.<name>" android:value="<class>" />`
+ * ([D24](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d24)). The core finds it in the merged
+ * manifest and calls [install] once, on `Dispatchers.IO`, when the runtime starts. Public only for those artifacts;
+ * apps never implement it.
  */
 @InternalLlamaBroApi
 public interface BackendInstaller {

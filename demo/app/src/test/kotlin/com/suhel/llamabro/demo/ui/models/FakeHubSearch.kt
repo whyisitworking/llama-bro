@@ -16,7 +16,8 @@ import kotlinx.coroutines.flow.map
 
 /**
  * The Hub's cache as [HubSearch] gives it, in memory: a query's pages are [stored] rows per query text, read when its
- * list opens and handed over as one page; [fetchingNow] is the field's line per query key. Every query asked for is in [asked].
+ * list opens and handed over as one page; [fetchingNow] is the field's line per query key. Every query asked for is in
+ * [asked].
  */
 internal class FakeHubSearch : HubSearch {
     val stored = MutableStateFlow<Map<String, List<SearchModel>>>(emptyMap())

@@ -24,10 +24,11 @@ public sealed class LlamaBroException(message: String, cause: Throwable?) : Exce
     ) : LlamaBroException(message, null)
 
     /**
-     * An embedding or rerank input is longer than the batch (D65): llama-server reads each such input in one batch
-     * and can't split it. [tokens] is the input's length and [limit] the batch size, `ModelConfig.microBatchSize`
-     * (512 by default). Shorten or split the text, or load with a larger `microBatchSize` and `batchSize`; the SDK
-     * does neither by itself.
+     * An embedding or rerank input is longer than the batch
+     * ([D65](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d65)): llama-server reads each
+     * such input in one batch and can't split it. [tokens] is the input's length and [limit] the batch size,
+     * `ModelConfig.microBatchSize` (512 by default). Shorten or split the text, or load with a larger `microBatchSize`
+     * and `batchSize`; the SDK does neither by itself.
      */
     public class InputTooLong internal constructor(public val tokens: Int, public val limit: Int, message: String) :
         LlamaBroException(message, null)
@@ -45,7 +46,10 @@ public sealed class LlamaBroException(message: String, cause: Throwable?) : Exce
         cause: Throwable? = null,
     ) : LlamaBroException(message, cause)
 
-    /** The model didn't load; the message is upstream's reason (llama.cpp only logs it, F51). */
+    /**
+     * The model didn't load; the message is upstream's reason (llama.cpp only logs it,
+     * [F51](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f51)).
+     */
     public class ModelLoadFailed internal constructor(public val reason: Reason, message: String, cause: Throwable?) :
         LlamaBroException(message, cause) {
             /** Why a load failed; the message has llama.cpp's own reason. */

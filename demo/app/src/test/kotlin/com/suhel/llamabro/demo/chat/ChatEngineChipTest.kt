@@ -44,7 +44,9 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
-/** The chip chosen in Settings › Memory (D72): the load's policy, the note on a fallback, and the reload on a change. */
+/**
+ * The chip chosen in Settings › Memory (D72): the load's policy, the note on a fallback, and the reload on a change.
+ */
 class ChatEngineChipTest {
     @get:Rule val folder = TemporaryFolder()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

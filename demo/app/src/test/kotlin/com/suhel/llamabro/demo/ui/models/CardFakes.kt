@@ -31,7 +31,9 @@ private fun <T> Flow<T>.late(lag: Long): Flow<T> =
         }
     }
 
-/** A card's Hub cache in memory: what is stored per repo, and the refreshes asked; a refresh does what [onRefresh] says. */
+/**
+ * A card's Hub cache in memory: what is stored per repo, and the refreshes asked; a refresh does what [onRefresh] says.
+ */
 internal class FakeHubCard : HubCard {
     val files = MutableStateFlow<Cached<List<RepoFile>>>(Cached(null, false, null))
     val page = MutableStateFlow<Cached<PageFacts>>(Cached(null, false, null))

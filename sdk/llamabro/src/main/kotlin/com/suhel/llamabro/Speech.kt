@@ -12,10 +12,11 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * Speaks [text] (D139): upstream's `POST /v1/audio/speech`, streamed, on a model that speaks (LFM3-Omni, Kokoro,
- * Qwen3-TTS, …). The flow emits the speech as it is made, as [SpeechAudio] pieces of 16-bit PCM; collecting it runs the
- * request, and cancelling the collector stops it. Nothing in [configure] is set for the app: an unset field keeps the
- * model's default, and a setting the model doesn't take is refused by upstream.
+ * Speaks [text] ([D139](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d139)): upstream's
+ * `POST /v1/audio/speech`, streamed, on a model that speaks (LFM3-Omni, Kokoro, Qwen3-TTS, …). The flow emits the
+ * speech as it is made, as [SpeechAudio] pieces of 16-bit PCM; collecting it runs the request, and cancelling the
+ * collector stops it. Nothing in [configure] is set for the app: an unset field keeps the model's default, and a
+ * setting the model doesn't take is refused by upstream.
  *
  * @throws IllegalArgumentException at once if [SpeechConfig.Builder.voice] isn't one of [ModelInfo.voices], or both a
  *   voice and a speaker reference are set (upstream takes one).

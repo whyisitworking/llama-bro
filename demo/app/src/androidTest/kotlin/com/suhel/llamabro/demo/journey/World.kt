@@ -31,7 +31,9 @@ class World(private val realDownloads: Boolean = false) : Closeable {
     val downloads = ScriptedDownloads(hub)
     val discovery = FakeDiscovery(hub)
 
-    /** While true, a reply waits before it starts (the model "reads the prompt"): the turn is under way, no text yet. */
+    /**
+     * While true, a reply waits before it starts (the model "reads the prompt"): the turn is under way, no text yet.
+     */
     val holdReplies = MutableStateFlow(false)
 
     init {

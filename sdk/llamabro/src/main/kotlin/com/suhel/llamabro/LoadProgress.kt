@@ -2,7 +2,9 @@ package com.suhel.llamabro
 
 /**
  * What a load is doing, given to [ModelConfig.onProgress]: a [RemoteModelSource] reports [Fetching] while its files
- * download, then every load reports [Loading] while llama.cpp reads the weights (D64, D75). A local file reports only
+ * download, then every load reports [Loading] while llama.cpp reads the weights
+ * ([D64](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d64),
+ * [D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)). A local file reports only
  * [Loading].
  */
 public sealed interface LoadProgress {

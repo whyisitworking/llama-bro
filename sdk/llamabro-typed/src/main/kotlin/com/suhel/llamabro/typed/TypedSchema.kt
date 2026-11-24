@@ -23,17 +23,20 @@ import kotlinx.serialization.serializer
 import kotlin.reflect.KClass
 
 /**
- * The JSON Schema of [serializer]'s type, as llama.cpp's grammar reads it (F143), for `ResponseFormat.JsonSchema` and
- * a tool's parameters. [json] is the `Json` that decodes the reply: its naming strategy, class discriminator and
- * `explicitNulls` shape the schema.
+ * The JSON Schema of [serializer]'s type, as llama.cpp's grammar reads it
+ * ([F143](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f143)), for
+ * `ResponseFormat.JsonSchema` and a tool's parameters. [json] is the `Json` that decodes the reply: its naming
+ * strategy, class discriminator and `explicitNulls` shape the schema.
  *
- * Properties keep their declaration order, which is the order the model writes them in, required ones first (F143):
- * declare a reasoning field before the answer. A property with a default is optional; objects are closed; a nullable
- * type is `anyOf` with `null`; enums use their serial names; a sealed class is an `anyOf` of its subclasses' objects,
- * each opening with the discriminator as a `const`; `Map<String, V>` is an object of `V`s. An integer is bounded to
- * its Kotlin type's range (`Byte`, `Short`, `Int` and the unsigned types; a `Long`'s range is the grammar's own), so
- * the model can't write a number that doesn't decode (D88, F158). [LbDescription], [LbRange], [LbLength], [LbPattern]
- * and [LbItems] add their keywords.
+ * Properties keep their declaration order, which is the order the model writes them in, required ones first
+ * ([F143](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f143)): declare a reasoning
+ * field before the answer. A property with a default is optional; objects are closed; a nullable type is `anyOf` with
+ * `null`; enums use their serial names; a sealed class is an `anyOf` of its subclasses' objects, each opening with the
+ * discriminator as a `const`; `Map<String, V>` is an object of `V`s. An integer is bounded to its Kotlin type's range
+ * (`Byte`, `Short`, `Int` and the unsigned types; a `Long`'s range is the grammar's own), so the model can't write a
+ * number that doesn't decode ([D88](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d88),
+ * [F158](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f158)). [LbDescription],
+ * [LbRange], [LbLength], [LbPattern] and [LbItems] add their keywords.
  *
  * @throws IllegalArgumentException naming the field's path for what a schema can't hold: a recursive type (also one
  *   that nests itself through its type arguments, as `Node<T>` holding a `Node<List<T>>` does), open polymorphism, a

@@ -77,10 +77,11 @@ public suspend fun Model.embed(
 
 /**
  * One vector for [content] read as one input: text, and pictures or clips on a model whose embeddings take them
- * (loaded with its encoder). As in chat (D84), a picture's or clip's file or descriptor is read natively during the
- * call and the native side writes its base64. A picture on a model that can't read it throws
- * [LlamaBroException.InvalidRequest] with llama-server's reason; a clip on a model that doesn't hear, or audio that
- * isn't WAV, MP3 or FLAC, throws it before any request. Otherwise as [embed] for one text.
+ * (loaded with its encoder). As in chat
+ * ([D84](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d84)), a picture's or clip's file or
+ * descriptor is read natively during the call and the native side writes its base64. A picture on a model that can't
+ * read it throws [LlamaBroException.InvalidRequest] with llama-server's reason; a clip on a model that doesn't hear, or
+ * audio that isn't WAV, MP3 or FLAC, throws it before any request. Otherwise as [embed] for one text.
  */
 public suspend fun Model.embed(
     vararg content: Content,
@@ -156,12 +157,10 @@ private const val BYTE_BITS = 8
 private fun decode(base64: String): FloatArray {
     val bytes = Base64.decode(base64)
     return FloatArray(bytes.size / FLOAT_BYTES) { i ->
-        val at = i * FLOAT_BYTES
-        Float.fromBits(
-            (bytes[at].toInt() and BYTE_MASK) or
-                ((bytes[at + 1].toInt() and BYTE_MASK) shl BYTE_BITS) or
-                ((bytes[at + 2].toInt() and BYTE_MASK) shl 2 * BYTE_BITS) or
-                (bytes[at + 3].toInt() shl 3 * BYTE_BITS),
-        )
+        var bits = 0
+        for (k in 0 until FLOAT_BYTES) {
+            bits = bits or ((bytes[i * FLOAT_BYTES + k].toInt() and BYTE_MASK) shl k * BYTE_BITS)
+        }
+        Float.fromBits(bits)
     }
 }

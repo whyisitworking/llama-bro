@@ -12,16 +12,19 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer
 
 /**
- * Asks for the reply as a [T] (D63): the core `ask`, held by llama-server's grammar to [serializer]'s schema
- * ([typedSchema]), then decoded with [json]. The model may think first; the schema applies to the reply after it
- * (F143). Fields are written in declaration order, required ones first, so declare a reasoning field before the
- * answer.
+ * Asks for the reply as a [T] ([D63](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d63)): the
+ * core `ask`, held by llama-server's grammar to [serializer]'s schema ([typedSchema]), then decoded with [json]. The
+ * model may think first; the schema applies to the reply after it
+ * ([F143](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f143)). Fields are written in
+ * declaration order, required ones first, so declare a reasoning field before the answer.
  *
  * The result is [Typed.Value] (the decoded value, the model's JSON and its reasoning), [Typed.Incomplete] when the
  * reply isn't a complete answer (its partial JSON), or [Typed.Invalid] when the grammar's JSON doesn't decode: a
  * failing `init` check (`require` or `check`), or any other exception the decoding throws, which is the cause.
  * `valueOrNull()` gives the value or null. The JSON is stored as the assistant message, so later turns see it.
- * The conversation's tools stay in the prompt but this turn cannot call them (F143). Engine failures still throw.
+ * The conversation's tools stay in the prompt but this turn cannot call them
+ * ([F143](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f143)). Engine failures still
+ * throw.
  *
  * This call owns the `responseFormat`: one in the conversation's defaults is replaced by the typed call's, while one
  * set in [options] is refused.
@@ -50,9 +53,10 @@ public suspend inline fun <reified T> Conversation.ask(
     ask(text, *attachments, serializer = json.serializersModule.serializer<T>(), json = json, options = options)
 
 /**
- * The last typed reply again (D88): core's `askAgain`, which drops the replies after the last user message as
- * `regenerate` does, held to [serializer]'s schema and decoded as [ask] does. A plain `regenerate()` after a typed
- * [ask] has no schema, since a turn's options are its own: ask again this way to keep it.
+ * The last typed reply again ([D88](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d88)):
+ * core's `askAgain`, which drops the replies after the last user message as `regenerate` does, held to [serializer]'s
+ * schema and decoded as [ask] does. A plain `regenerate()` after a typed [ask] has no schema, since a turn's options
+ * are its own: ask again this way to keep it.
  *
  * @throws IllegalArgumentException before any request if [T] has no schema or [options] set a `responseFormat`.
  * @throws IllegalStateException if there is no user message, or a compaction follows it (as `regenerate`).
@@ -73,8 +77,9 @@ public suspend inline fun <reified T> Conversation.askAgain(
 ): Typed<T> = askAgain(serializer = json.serializersModule.serializer<T>(), json = json, options = options)
 
 /**
- * One typed reply to [prompt], with no history (D63): a typed [ask] on a fresh `conversation(system)`, which is
- * dropped afterwards. As with [ask], a `responseFormat` set in [options] is refused.
+ * One typed reply to [prompt], with no history
+ * ([D63](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d63)): a typed [ask] on a fresh
+ * `conversation(system)`, which is dropped afterwards. As with [ask], a `responseFormat` set in [options] is refused.
  *
  * @throws IllegalArgumentException before any request if [T] has no schema or [options] set a `responseFormat`.
  */

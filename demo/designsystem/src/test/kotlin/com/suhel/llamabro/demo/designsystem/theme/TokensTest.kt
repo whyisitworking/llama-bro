@@ -56,8 +56,8 @@ class TokensTest {
 
     @Test
     fun everyTextPairTheAppDrawsMeetsItsContrast() {
-        // normal text 4.5:1; the fit words are 14 sp medium and the primary button's text 16 sp medium, so they are held
-        // to 4.5:1 too; a surface is the canvas or the surface token
+        // normal text 4.5:1; the fit words are 14 sp medium and the primary button's text 16 sp medium, so they are
+        // held to 4.5:1 too; a surface is the canvas or the surface token
         for ((name, c) in listOf("light" to LightDemoColors, "dark" to DarkDemoColors)) {
             for (ground in listOf(c.canvas, c.surface)) {
                 assertTrue("$name ink on $ground", contrast(c.ink, ground) >= 4.5)
@@ -98,7 +98,8 @@ class TokensTest {
 
     @Test
     fun tooBigInkIsNoDimmerThanMuted() {
-        // R9: the too-big figure was the faintest mark on a card; it is a fit, so it reads at least as well as muted text
+        // R9: the too-big figure was the faintest mark on a card; it is a fit, so it reads at least as well as muted
+        // text
         for ((name, c) in listOf("light" to LightDemoColors, "dark" to DarkDemoColors)) {
             for (ground in listOf(c.canvas, c.surface)) {
                 assertTrue("$name too big on $ground", contrast(c.tooBigInk, ground) >= 4.5)

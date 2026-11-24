@@ -40,7 +40,10 @@ DEMO_DEVICE=<serial> demo/scripts/check.sh --device     # instrumented tests, jo
 - Demo sizes, colours and type roles come from `:demo:designsystem`'s theme tokens, anywhere outside the theme; screens are
   built from its components (Text and Icon with a `DemoType` role). The lint rule in `demo/lint` enforces it (D113).
 - Findings and decisions are numbered (`F<n>`, `D<n>`) and cited from code and docs: add new entries at the end of
-  [docs/research/findings.md](docs/research/findings.md) and [docs/decisions.md](docs/decisions.md); never renumber.
+  [docs/research/findings.md](docs/research/findings.md) and [docs/decisions.md](docs/decisions.md), each heading with
+  its `<a id="d<n>"></a>` anchor on the line above; never renumber. Public SDK KDoc cites them as links to the entry on
+  GitHub (`.../blob/main/docs/decisions.md#d<n>`, the short anchor); `sdk/scripts/tests/anchor-links-test.py` checks
+  them. Internal code keeps bare IDs.
 - Behaviour follows upstream llama-server unless a measured finding says otherwise; cite the finding next to the deviation.
 
 ## Style
