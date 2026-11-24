@@ -3,6 +3,7 @@ package com.suhel.llamabro.demo.chat
 import com.suhel.llamabro.demo.data.AudioStore
 import com.suhel.llamabro.demo.data.NewVoice
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -10,13 +11,12 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
-import java.io.RandomAccessFile
 
 /**
  * Where a recording's samples come from: 16-bit mono at [rate]. [read] fills the buffer and returns how many samples it
@@ -51,6 +51,7 @@ class VoiceRecorder(
     private val open: () -> SampleSource,
     private val scope: CoroutineScope,
     private val limitMillis: Long = LIMIT_MILLIS,
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     // external event: the microphone's recording, as the audio arrives
     private val _take = MutableStateFlow<Take?>(null)
@@ -70,7 +71,7 @@ class VoiceRecorder(
         val name = store.newName()
         _take.value = Take(name, 0, emptyList(), live = true)
         job =
-            scope.launch(Dispatchers.IO) {
+            scope.launch(io) {
                 val source =
                     try {
                         open()
@@ -93,57 +94,36 @@ class VoiceRecorder(
     }
 
     private suspend fun record(source: SampleSource, file: File) {
-        file.parentFile?.mkdirs()
-        source.use {
-            RandomAccessFile(file, "rw").use { out ->
-                val pcm = Pcm(out, source.rate)
-                try {
-                    var going = true
-                    while (going && scope.isActive && _take.value?.live == true) {
-                        val n = source.read(pcm.buffer)
-                        // a source that fails ends the recording, which is kept; a read of nothing just goes on
-                        going = n >= 0 && (n == 0 || take(pcm, n))
-                    }
-                } finally {
-                    withContext(NonCancellable) {
-                        pcm.finish()
-                        _take.update { it?.copy(live = false) }
-                    }
-                }
+        val wav =
+            try {
+                WavWriter(file, source.rate)
+            } catch (e: IOException) {
+                source.close()
+                throw e
+            }
+        try {
+            // a source that fails ends the recording, which is kept; so do a stop and the limit, after the block read
+            source
+                .blocks(io) { _take.value?.live == true }
+                .transformWhile { chunk ->
+                    emit(chunk)
+                    wav.millis < limitMillis
+                }.collect { chunk -> take(wav, chunk) }
+        } finally {
+            withContext(NonCancellable) {
+                wav.close()
+                _take.update { it?.copy(live = false) }
             }
         }
     }
 
-    /** Writes [n] samples just read and shows them; false once the recording reached its limit. */
-    private fun take(pcm: Pcm, n: Int): Boolean {
-        pcm.write(n)
-        val millis = pcm.millis
-        val level = level(pcm.buffer, n)
+    /** Writes [chunk] just read and shows it. */
+    private fun take(wav: WavWriter, chunk: ShortArray) {
+        wav.write(chunk)
+        val millis = wav.millis
+        val level = level(chunk, chunk.size)
         // atomic, so a stop from another thread (live = false) is never written over
         _take.update { it?.copy(millis = millis, levels = it.levels + level) }
-        return millis < limitMillis
-    }
-
-    /** 16-bit mono PCM written to [out] after a WAV header, which [finish] fills in once the length is known. */
-    private class Pcm(private val out: RandomAccessFile, private val rate: Int) {
-        /** One level's worth of samples, read into by the source. */
-        val buffer = ShortArray(rate / LEVELS_PER_SECOND)
-        private val bytes = ByteArray(buffer.size * 2)
-        private var samples = 0L
-
-        val millis: Long get() = samples * MILLIS_PER_SECOND / rate
-
-        init {
-            out.setLength(0)
-            out.write(ByteArray(Wav.HEADER))
-        }
-
-        fun write(n: Int) {
-            out.write(Wav.bytes(buffer, n, bytes), 0, 2 * n)
-            samples += n
-        }
-
-        fun finish() = writeHeader(out, rate, samples)
     }
 
     /** Stops recording and keeps what was recorded, to be sent or discarded. */
@@ -189,7 +169,6 @@ class VoiceRecorder(
         /** How many levels a sent voice message keeps for its bubble. */
         const val BUBBLE_LEVELS = 64
 
-        private const val MILLIS_PER_SECOND = 1_000L
         private const val QUIET_DB = 50.0
 
         /** A block's loudness, 0 (50 dB below full scale or quieter) to 1 (full scale). */
@@ -203,11 +182,5 @@ class VoiceRecorder(
             } else {
                 List(count) { i -> levels.subList(i * levels.size / count, (i + 1) * levels.size / count).max() }
             }
-
-        /** The 44-byte header of a PCM WAV file: 16-bit mono at [rate], [samples] long. */
-        internal fun writeHeader(out: RandomAccessFile, rate: Int, samples: Long) {
-            out.seek(0)
-            out.write(Wav.header(rate, samples))
-        }
     }
 }

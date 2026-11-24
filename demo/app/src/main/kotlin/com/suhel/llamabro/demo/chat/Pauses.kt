@@ -51,8 +51,6 @@ internal class SpeechDetector(
         /** Up to this far above the floor a level is quiet: the room, or a breath between words. */
         const val QUIET_ABOVE_FLOOR_DB = 5.0
 
-        private const val MILLIS_PER_SECOND = 1000.0
-
         /** Whether a level is speech, given the room's noise floor (both in dBFS). */
         fun isSpeechLevel(db: Double, floorDb: Double, speechDb: Double = ABOVE_FLOOR_DB): Boolean =
             db > MIN_DB && db > floorDb + speechDb

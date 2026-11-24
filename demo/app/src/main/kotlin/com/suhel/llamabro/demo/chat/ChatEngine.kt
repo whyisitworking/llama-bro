@@ -249,8 +249,11 @@ data class StreamingReply(
 /** The chat voice mode talks in (D100): its id, its model and the model's name. */
 data class VoiceChat(val chatId: Long, val key: HfModel, val name: String)
 
-/** Voice mode's hold on the loaded [model] (D100): [release] it once, when the conversation ends. */
-class VoiceHold(val model: Model, private val onRelease: () -> Unit) {
+/**
+ * An audio feature's hold on the loaded [model] (voice mode D100, dictation D140, reading aloud D141): [release] it
+ * once, when the feature is done with it. Features acquire it through [holdUncancelled].
+ */
+class ModelHold(val model: Model, private val onRelease: () -> Unit) {
     private val released =
         java.util.concurrent.atomic
             .AtomicBoolean(false)
@@ -264,7 +267,7 @@ class VoiceHold(val model: Model, private val onRelease: () -> Unit) {
  * [hold] run to its end even when the caller is cancelled meanwhile (a model load can't be stopped halfway by it): a
  * hold that arrives for a cancelled caller is released rather than dropped, and the caller then sees the cancellation.
  */
-suspend fun holdUncancelled(hold: suspend () -> VoiceHold?): VoiceHold? {
+suspend fun holdUncancelled(hold: suspend () -> ModelHold?): ModelHold? {
     val held = withContext(NonCancellable) { hold() }
     if (!currentCoroutineContext().isActive) held?.release()
     currentCoroutineContext().ensureActive()
@@ -403,11 +406,12 @@ class ChatEngine(
     }
 
     /**
-     * A lease on [key]'s model (shown as [name]) for voice mode (D100), loaded with [slots] (two while it captions what
-     * the person says, D99), or null when it didn't load: [limit] then says why. The conversation counts as a turn
-     * until [VoiceHold.release]: the model isn't freed under it, and the app stays alive while it runs (D59).
+     * A hold on [key]'s model (shown as [name]) for an audio feature, loaded with [slots] (two while voice mode
+     * captions what the person says, D99; one otherwise, through [ChatHandle.holdModel]), or null when it didn't load:
+     * [limit] then says why. The hold counts as a turn until [ModelHold.release]: the model isn't freed under it, and
+     * the app stays alive while it runs (D59).
      */
-    suspend fun holdForVoice(key: HfModel, name: String, slots: Int, limit: MutableStateFlow<Limit?>): VoiceHold? {
+    suspend fun holdModel(key: HfModel, name: String, slots: Int, limit: MutableStateFlow<Limit?>): ModelHold? {
         activeTurns.update { it + 1 }
         var lease: ModelHost.Lease? = null
         var handedOver = false
@@ -423,7 +427,7 @@ class ChatEngine(
             }
         }
         val held = checkNotNull(lease)
-        return VoiceHold(held.model) {
+        return ModelHold(held.model) {
             held.release()
             activeTurns.update { it - 1 }
         }
@@ -1044,9 +1048,9 @@ class ChatEngine(
          * slot), so a send after it finds the model as it was; null with no model chosen or when it didn't load, [limit]
          * then saying why.
          */
-        suspend fun holdModel(): VoiceHold? {
+        suspend fun holdModel(): ModelHold? {
             val key = choice.value.key ?: return null
-            return holdForVoice(key, Names.of(key), 1, _limit)
+            return holdModel(key, Names.of(key), 1, _limit)
         }
 
         /**

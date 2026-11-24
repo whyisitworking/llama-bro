@@ -273,7 +273,8 @@ class ChatViewModel(
     /** Reads replies aloud on a model that speaks (D141); null without a speaker. */
     val readAloud: ReadAloud? =
         speech?.let { out ->
-            ReadAloud(viewModelScope, handle::holdModel, chosenVoice, out, problem = { _problem.value = it })
+            // in the app's scope, as dictation is: stop() in onCleared must still run and let the speaker and model go
+            ReadAloud(background, handle::holdModel, chosenVoice, out, problem = { _problem.value = it })
         }
 
     /** The reply being read aloud, or null (always null without a speaker). */

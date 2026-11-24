@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.demo.chat.ChatEngine
 import com.suhel.llamabro.demo.chat.Dictation
+import com.suhel.llamabro.demo.chat.DictationRoute
 import com.suhel.llamabro.demo.chat.FakeChatDao
 import com.suhel.llamabro.demo.chat.LimitAction
 import com.suhel.llamabro.demo.chat.ModelHost
@@ -259,6 +260,14 @@ class ChatViewModelTest {
                     .shown.value
                     ?.dictation
                     ?.millis == 500L + QUIET_BLOCKS * 50
+            }
+            // the words are scripted for the live session: finished while it still opens, the dictation drops it and
+            // transcribes the whole clip instead (D140), which this fake has no transcript for
+            eventually("the live session") {
+                vm.dictation!!
+                    .shown.value
+                    ?.dictation
+                    ?.route == DictationRoute.Live
             }
             vm.dictation!!.finish()
             eventually("the words in the draft") { vm.composer.value.text == "Remind me to call the bank tomorrow." }

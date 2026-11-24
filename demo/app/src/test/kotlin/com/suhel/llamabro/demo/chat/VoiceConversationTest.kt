@@ -91,7 +91,7 @@ class VoiceConversationTest {
                 chatId,
                 omni,
                 "LFM3 Omni 2B",
-                { slots, limit -> engine.holdForVoice(omni, "LFM3 Omni 2B", slots, limit) },
+                { slots, limit -> engine.holdModel(omni, "LFM3 Omni 2B", slots, limit) },
                 settings,
                 chats,
                 audio,
@@ -280,6 +280,34 @@ class VoiceConversationTest {
             voice.close()
         }
 
+    @Test fun theBlockBeingReadAtTheReleaseIsPartOfTheTurn() =
+        runBlocking {
+            settings.setCaptionYou(false)
+            fake.voiceReply { text("Hi.") }
+            val (chatId, voice) = conversation()
+            val gate = CountDownLatch(1)
+            mic.reads.set(0)
+            mic.allow(10)
+            mic.gate = gate
+            val released = CountDownLatch(1)
+            voice.stoppingListening = { released.countDown() }
+            voice.talkStart()
+            // ten blocks heard, and the eleventh being read when the button comes up
+            assertTrue(mic.atGate.await(5, TimeUnit.SECONDS))
+            voice.talkEnd()
+            // the read returns only once the release has told the reader to stop: a reader cancelled there would drop
+            // the block it was reading
+            assertTrue(released.await(5, TimeUnit.SECONDS))
+            gate.countDown()
+            eventually("the turn is saved") { rows(chatId).isNotEmpty() }
+            val clip = rows(chatId)[0].voice!!
+            assertEquals(11, mic.reads.get())
+            assertEquals(550L, clip.millis) // 11 blocks of 50 ms
+            assertEquals(44L + 11 * 800 * 2, clip.file.length())
+            assertEquals(11, sentTypes().count { it == "input_audio_buffer.append" })
+            voice.close()
+        }
+
     @Test fun theSpokenLanguageIsThePhonesWhenUpstreamNamesIt() {
         assertEquals("fr", VoiceConversation.spokenLanguage(Locale.FRANCE))
         assertEquals("ja", VoiceConversation.spokenLanguage(Locale.JAPAN))
@@ -305,10 +333,22 @@ class VoiceConversationTest {
             closed = false
         }
 
+        /** With a gate, the first read past the allowed ones waits at it, then gives a block: one read under way. */
+        @Volatile var gate: CountDownLatch? = null
+        val atGate = CountDownLatch(1)
+
         override fun read(buffer: ShortArray): Int {
             if (closed) return -1
             if (allowed.getAndUpdate { maxOf(it - 1, 0) } == 0) {
-                // an empty read, as AudioRecord gives, so the reader still notices it was cancelled
+                gate?.let {
+                    gate = null
+                    atGate.countDown()
+                    it.await(5, TimeUnit.SECONDS)
+                    reads.incrementAndGet()
+                    buffer.fill(500)
+                    return buffer.size
+                }
+                // an empty read, as AudioRecord gives, so the reader still notices it was told to stop
                 Thread.sleep(5)
                 return 0
             }

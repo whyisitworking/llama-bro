@@ -2,9 +2,10 @@ package com.suhel.llamabro.demo.ui.chat
 
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.demo.chat.Dictation
+import com.suhel.llamabro.demo.chat.DictationResult
 import com.suhel.llamabro.demo.chat.DictationState
+import com.suhel.llamabro.demo.chat.ModelHold
 import com.suhel.llamabro.demo.chat.RecordingFailure
-import com.suhel.llamabro.demo.chat.VoiceHold
 import com.suhel.llamabro.demo.chat.holdUncancelled
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -19,14 +20,16 @@ data class DictationShown(val preparing: Boolean, val dictation: DictationState)
 
 /**
  * The message bar's dictation (D140): a tap on the mic holds the chat's model, listens, and writes what is heard into
- * the draft when the person is done. A view model owns one, on the main thread, and calls [discard] when it is
- * cleared. The model stays held while dictating, so it isn't released under the transcription and a send after it
- * finds it loaded.
+ * the draft when the person is done. A view model owns one and calls [discard] when it is cleared. The model stays
+ * held while dictating, so it isn't released under the transcription and a send after it finds it loaded.
+ *
+ * Confined to the main thread: it is called there, [scope] runs there, and its state is written only there. The
+ * dictation's own callbacks, on its thread, only show a line and launch onto [scope].
  */
 class DictationComposer(
     private val scope: CoroutineScope,
     /** A hold on the chat's model (`ChatHandle.holdModel`); null when it can't be had. */
-    private val hold: suspend () -> VoiceHold?,
+    private val hold: suspend () -> ModelHold?,
     /** A dictation over the held model, in the language the person chose (null: the model tells). */
     private val newDictation: (Model, String?) -> Dictation,
     private val language: suspend () -> String?,
@@ -49,7 +52,7 @@ class DictationComposer(
     private var finishing: Job? = null
     private var watcher: Job? = null
     private var dictation: Dictation? = null
-    private var held: VoiceHold? = null
+    private var held: ModelHold? = null
 
     /** Starts dictating, once the microphone is allowed; nothing happens while one is under way. */
     fun start() {
@@ -83,17 +86,24 @@ class DictationComposer(
         finishing =
             scope.launch {
                 start.join()
-                val text =
+                val result =
                     try {
                         dictation?.finish()
                     } catch (e: CancellationException) {
                         throw e
                     } catch (ignored: Exception) {
-                        problem("That couldn't be written down. Try again.")
-                        null
+                        DictationResult.TranscriptionFailed
                     }
                 end()
-                if (!text.isNullOrBlank()) onText(text)
+                when (result) {
+                    is DictationResult.Heard -> if (result.text.isNotBlank()) onText(result.text)
+
+                    DictationResult.TranscriptionFailed -> problem("That couldn't be written down. Try again.")
+
+                    // the microphone or the recording failed: its own line said so already
+                    // or it was thrown away, which says nothing
+                    DictationResult.RecordingFailed, DictationResult.Discarded, null -> Unit
+                }
             }
     }
 

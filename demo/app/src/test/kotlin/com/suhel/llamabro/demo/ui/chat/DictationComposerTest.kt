@@ -3,8 +3,8 @@ package com.suhel.llamabro.demo.ui.chat
 import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.demo.chat.Dictation
+import com.suhel.llamabro.demo.chat.ModelHold
 import com.suhel.llamabro.demo.chat.SampleSource
-import com.suhel.llamabro.demo.chat.VoiceHold
 import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CompletableDeferred
@@ -94,13 +94,13 @@ class DictationComposerTest {
 
     /** A hold on [model] that counts its release and, with a [mic], whether the microphone had stopped by then. */
     private fun holdOf(model: Model, mic: Mic? = null, micClosedAtRelease: CompletableDeferred<Boolean>? = null) =
-        VoiceHold(model) {
+        ModelHold(model) {
             mic?.let { micClosedAtRelease?.complete(it.closed) }
             releases.incrementAndGet()
         }
 
     private fun composer(
-        hold: suspend () -> VoiceHold?,
+        hold: suspend () -> ModelHold?,
         open: () -> SampleSource = Mic()::source,
         clip: File = File(folder.root, "dictation.wav"),
     ) = DictationComposer(
@@ -229,8 +229,8 @@ class DictationComposerTest {
             settled()
             assertEquals(1, releases.get())
             assertTrue(texts.isEmpty())
-            // Dictation.finish reports a failed transcription as silence, so the composer says nothing either
-            assertTrue(problems.isEmpty())
+            // a failed transcription is not silence: the line says so
+            assertEquals(listOf("That couldn't be written down. Try again."), problems)
         }
 
     @Test

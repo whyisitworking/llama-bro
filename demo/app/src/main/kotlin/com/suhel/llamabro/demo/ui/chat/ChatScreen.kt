@@ -300,7 +300,7 @@ private fun chatViewModel(
                 chat.chatId,
                 chat.key,
                 chat.name,
-                { slots, limit -> container.engine.holdForVoice(chat.key, chat.name, slots, limit) },
+                { slots, limit -> container.engine.holdModel(chat.key, chat.name, slots, limit) },
                 container.settings,
                 container.chats,
                 container.audio,

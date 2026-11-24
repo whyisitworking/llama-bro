@@ -136,7 +136,7 @@ class ChatEngineVoiceTest {
             testHub.install(swift)
             models.changed()
             writesFail = true // the model's senses can't be recorded
-            val failure = runCatching { engine.holdForVoice(swift, "Qwen", 1, MutableStateFlow(null)) }
+            val failure = runCatching { engine.holdModel(swift, "Qwen", 1, MutableStateFlow(null)) }
             assertTrue(failure.exceptionOrNull() is IOException)
             // a turn still counted says false; a lease still held never lets the model close
             assertEquals(true, withTimeoutOrNull(5_000) { engine.releaseModelIfIdle() })
@@ -145,7 +145,7 @@ class ChatEngineVoiceTest {
     @Test fun aVoiceHoldWithNoModelLeavesNothingCounted() =
         runBlocking {
             val limit = MutableStateFlow<Limit?>(null)
-            assertNull(engine.holdForVoice(swift, "Qwen", 1, limit)) // not installed: the load fails with a line
+            assertNull(engine.holdModel(swift, "Qwen", 1, limit)) // not installed: the load fails with a line
             assertTrue(limit.value != null)
             assertTrue("a turn is still counted", engine.releaseModelIfIdle())
         }
