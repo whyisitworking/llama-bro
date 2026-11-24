@@ -8,7 +8,6 @@ import com.suhel.llamabro.chat.Reasoning
 import com.suhel.llamabro.chat.ResponseFormat
 import com.suhel.llamabro.chat.Sampling
 import com.suhel.llamabro.chat.Tool
-import com.suhel.llamabro.conversation.compact
 import com.suhel.llamabro.internal.ChatStreamDecoder
 import com.suhel.llamabro.internal.JniEngine
 import com.suhel.llamabro.internal.LlamaBroRuntime

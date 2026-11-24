@@ -57,17 +57,6 @@ internal class ChatStreamDecoder {
             timeMs = (p["time_ms"] as? JsonPrimitive)?.longOrNull ?: 0,
         )
 
-    private fun timingsOf(t: JsonObject) =
-        Timings(
-            promptTokens = t.int("prompt_n") ?: 0,
-            cachedTokens = t.int("cache_n") ?: 0,
-            promptPerSecond = (t["prompt_per_second"] as? JsonPrimitive)?.doubleOrNull ?: 0.0,
-            predictedTokens = t.int("predicted_n") ?: 0,
-            predictedPerSecond = (t["predicted_per_second"] as? JsonPrimitive)?.doubleOrNull ?: 0.0,
-            draftTokens = t.int("draft_n"),
-            draftAccepted = t.int("draft_n_accepted"),
-        )
-
     /** One choice of a chunk: text and reasoning become events, tool call pieces are gathered, the reason is kept. */
     private fun acceptChoice(choice: JsonObject, out: MutableList<ChatEvent>) {
         val delta = choice["delta"] as? JsonObject
@@ -106,7 +95,24 @@ internal class ChatStreamDecoder {
         return out
     }
 
-    private fun JsonObject.str(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
+    companion object {
+        /**
+         * llama-server's `timings` object; a chat stream's last chunk carries it, and so does a pre-encode's reply,
+         * which reads it here too.
+         */
+        fun timingsOf(t: JsonObject) =
+            Timings(
+                promptTokens = t.int("prompt_n") ?: 0,
+                cachedTokens = t.int("cache_n") ?: 0,
+                promptPerSecond = (t["prompt_per_second"] as? JsonPrimitive)?.doubleOrNull ?: 0.0,
+                predictedTokens = t.int("predicted_n") ?: 0,
+                predictedPerSecond = (t["predicted_per_second"] as? JsonPrimitive)?.doubleOrNull ?: 0.0,
+                draftTokens = t.int("draft_n"),
+                draftAccepted = t.int("draft_n_accepted"),
+            )
 
-    private fun JsonObject.int(key: String): Int? = (get(key) as? JsonPrimitive)?.intOrNull
+        private fun JsonObject.str(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+        private fun JsonObject.int(key: String): Int? = (get(key) as? JsonPrimitive)?.intOrNull
+    }
 }

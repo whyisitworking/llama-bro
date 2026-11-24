@@ -7,7 +7,6 @@ import com.suhel.llamabro.chat.FinishReason
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.chat.ResponseFormat
 import com.suhel.llamabro.conversation
-import com.suhel.llamabro.conversation.askAgain
 import com.suhel.llamabro.testing.FakeLlamaBro
 import com.suhel.llamabro.valueOrNull
 import kotlinx.coroutines.test.runTest

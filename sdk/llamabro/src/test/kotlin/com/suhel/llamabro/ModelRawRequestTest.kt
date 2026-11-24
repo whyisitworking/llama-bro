@@ -98,13 +98,17 @@ class ModelRawRequestTest {
     @Test
     fun streamedErrorFoundWhateverItsSpacingOrKeyOrder() =
         runTest {
-            val error = """{"code":400,"type":"exceed_context_size_error","message":"x","n_prompt_tokens":400,"n_ctx":256}"""
-            for (payload in listOf(
-                """{"error":$error}""",
-                """{ "error" : $error }""",
-                """{"id":"chatcmpl-1","error":$error}""",
-                "{\t\"error\":\t$error}",
-            )) {
+            val error =
+                """{"code":400,"type":"exceed_context_size_error","message":"x",""" +
+                    """"n_prompt_tokens":400,"n_ctx":256}"""
+            val payloads =
+                listOf(
+                    """{"error":$error}""",
+                    """{ "error" : $error }""",
+                    """{"id":"chatcmpl-1","error":$error}""",
+                    "{\t\"error\":\t$error}",
+                )
+            for (payload in payloads) {
                 val engine = FakeEngine()
                 engine.model.onRequest = { r ->
                     r.chunk("data: {\"a\":1}\n\n")

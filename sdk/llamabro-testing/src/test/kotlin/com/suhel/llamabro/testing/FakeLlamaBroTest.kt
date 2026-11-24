@@ -20,7 +20,6 @@ import com.suhel.llamabro.conversation
 import com.suhel.llamabro.conversation.Conversation
 import com.suhel.llamabro.conversation.JsonArgs
 import com.suhel.llamabro.conversation.canCompact
-import com.suhel.llamabro.conversation.compact
 import com.suhel.llamabro.embed
 import com.suhel.llamabro.rerank
 import com.suhel.llamabro.transcribe

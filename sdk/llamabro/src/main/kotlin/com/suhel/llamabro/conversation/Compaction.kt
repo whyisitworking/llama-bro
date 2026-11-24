@@ -1,10 +1,7 @@
 package com.suhel.llamabro.conversation
 
-import androidx.annotation.CheckResult
-import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.chat.ToolCall
-import kotlinx.coroutines.flow.Flow
 
 /** Compaction constants, verbatim from llama.cpp b12052 tools/ui/src/lib/constants/compaction.constants.ts. */
 public object Compaction {
@@ -24,26 +21,9 @@ public object Compaction {
 }
 
 /**
- * Summarises the history before the last [preservedSteps] steps, the way tools/ui does. The
- * summary request is the chat's own request cut before the preserved steps plus [instruction], so the server
- * reuses its cached prefix. On success a [Message.Compaction] is appended and the shortened history is
- * pre-encoded in the background (cancelled by the next send).
- *
- * @throws com.suhel.llamabro.LlamaBroException.CompactionTruncated if the summary hit the output limit; the
- *   history is unchanged.
- * @throws IllegalStateException if no step lies before the preserved ones (nothing to compact), or a tool call of
- *   the last reply still has no result (waiting for approval, or a manual tool): approve, deny or answer it first.
- */
-@CheckResult
-public fun Conversation.compact(
-    preservedSteps: Int = Compaction.DEFAULT_PRESERVED_STEPS,
-    instruction: String = Compaction.DEFAULT_PROMPT,
-): Flow<ChatEvent> = compactInternal(preservedSteps, instruction)
-
-/**
- * Whether [compact] with [preservedSteps] has anything to summarise (tools/ui `canCompactMessages`), e.g. to
- * enable a Compact button. A step is a user message, or an assistant message with its tool results. False while a
- * tool call of the last reply has no result, since a compaction would drop it (D62).
+ * Whether [Conversation.compact] with [preservedSteps] has anything to summarise (tools/ui `canCompactMessages`),
+ * e.g. to enable a Compact button. A step is a user message, or an assistant message with its tool results. False
+ * while a tool call of the last reply has no result, since a compaction would drop it (D62).
  */
 public fun Conversation.canCompact(preservedSteps: Int = Compaction.DEFAULT_PRESERVED_STEPS): Boolean =
     CompactionPlanner.canCompact(messages.value, preservedSteps) && unansweredToolCalls(messages.value).isEmpty()

@@ -5,7 +5,6 @@ import com.suhel.llamabro.chat.Content
 import com.suhel.llamabro.chat.FinishReason
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.conversation.ContextUsage
-import com.suhel.llamabro.conversation.askAgain
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.toList

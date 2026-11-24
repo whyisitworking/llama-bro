@@ -7,7 +7,6 @@ import com.suhel.llamabro.chat.RequestOptions
 import com.suhel.llamabro.chat.ResponseFormat
 import com.suhel.llamabro.conversation
 import com.suhel.llamabro.conversation.Conversation
-import com.suhel.llamabro.conversation.askAgain
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer

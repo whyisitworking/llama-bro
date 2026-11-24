@@ -4,7 +4,7 @@ import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.chat.Message
 import com.suhel.llamabro.conversation.Compaction
 import com.suhel.llamabro.conversation.ContextUsage
-import com.suhel.llamabro.conversation.compact
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.toList
@@ -16,6 +16,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -268,12 +269,16 @@ class ConversationCompactTest {
             assertEquals(1, pre.cancelCount)
         }
 
-    /** A pre-encode whose slots answer [slotBusy]; its own reply carries timings of 27 tokens. */
-    private suspend fun answeredPreEncode(slotBusy: Boolean): Pair<FakeEngine, Model> {
+    /**
+     * A pre-encode whose slots answer [slotBusy]; its own reply carries timings of 27 tokens. [onPreEncode] runs when
+     * a pre-encode request reaches the engine.
+     */
+    private suspend fun answeredPreEncode(slotBusy: Boolean, onPreEncode: () -> Unit = {}): Pair<FakeEngine, Model> {
         val engine = FakeEngine()
         engine.model.onRequest = { r ->
             when {
                 r.endpoint == "chat" && isPreEncode(r.body) -> {
+                    onPreEncode()
                     r.chunk("""{"choices":[],"timings":{"predicted_n":0,"cache_n":20,"prompt_n":7}}""")
                     r.done()
                 }
@@ -314,15 +319,18 @@ class ConversationCompactTest {
     @Test
     fun noPreEncodeWhileASlotIsBusy() =
         runTest {
-            val (engine, model) = answeredPreEncode(slotBusy = true)
+            val preEncoded = CompletableDeferred<Unit>()
+            val (engine, model) = answeredPreEncode(slotBusy = true) { preEncoded.complete(Unit) }
             val chat = model.conversation { preEncodeAfterReply = true }
             chat.send("u1").toList()
             withContext(Dispatchers.Default) {
                 withTimeout(5_000) {
                     while (engine.model.requests.none { it.endpoint == "slots" && it.terminal }) delay(5)
                 }
-                delay(200) // what a pre-encode would send comes right after the slots answer
+                // the background pre-encode job has ended once the model is closed: nothing it would send is pending
+                model.closeAndJoin()
             }
+            assertFalse(preEncoded.isCompleted)
             assertTrue(engine.model.chatBodies.none { isPreEncode(it) })
             assertEquals(ContextUsage(13, 8192), chat.contextUsage.value)
         }

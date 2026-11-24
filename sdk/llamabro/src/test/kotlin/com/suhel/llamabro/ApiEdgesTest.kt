@@ -2,7 +2,6 @@ package com.suhel.llamabro
 
 import com.suhel.llamabro.chat.FinishReason
 import com.suhel.llamabro.chat.Message
-import com.suhel.llamabro.conversation.addToolResult
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals

@@ -37,6 +37,12 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
   - `FakeLlamaBro.voiceEvents` is now **`realtimeEvents`** (it records transcription sessions too). New:
     `speaks = false` makes every `speak` fail `NotSupported`, and `speechError(status, type, message)` queues an error
     for the next one.
+- **`compact`, `addToolResult` and `askAgain` are `Conversation` members again**: the same calls compile unchanged
+  once their imports (`com.suhel.llamabro.conversation.compact`, `.addToolResult`, `.askAgain`) are removed; for Java
+  callers and binaries, `CompactionKt.compact` and the whole `ConversationKt` class are gone. `canCompact` stays an
+  extension.
+- **A streamed server error is recognised by its `error` key**, not by the payload starting with `{"error"`, so one
+  spaced or ordered differently fails the flow with its `LlamaBroException` as the usual shape does.
 - **Demo:** a tap on the mic dictates into the message bar, a hold records a voice message (D140); a typed reply on a
   model that speaks can be read aloud (D141).
 

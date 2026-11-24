@@ -238,7 +238,7 @@ A single generic request function means any llama-server feature that has no Kot
 
 ### 4.2 Streaming and cancellation
 
-A request produces `LB_EVENT_CHUNK` callbacks with server-sent-event payloads, then one terminal event, `LB_EVENT_DONE` or `LB_EVENT_CANCELLED`. On the Kotlin side `SseParser` splits the stream, and `ChatStreamDecoder` turns the OpenAI-shaped deltas into `ChatEvent` values.
+A request produces `LB_EVENT_CHUNK` callbacks with server-sent-event payloads, then one terminal event, `LB_EVENT_DONE` or `LB_EVENT_CANCELLED`. On the Kotlin side each request is an `ActiveCall` (`internal/ActiveCall.kt`), which owns the native handle's lifetime and the sink for its callbacks: `SseParser` splits the stream, a payload that is a JSON object with a top-level `error` key (however it is spaced or ordered) fails the flow through `ErrorMapping`, and `ChatStreamDecoder` turns the OpenAI-shaped deltas into `ChatEvent` values.
 
 A realtime request (D97) is a conversation rather than a response: each chunk is one server event, passed to Kotlin as it comes, and the client's events go the other way through `lb_request_send` (JNI `requestSend`). Events sent before the native handle exists wait in Kotlin and go first, in order. Closing the `VoiceSession` cancels its request, which is the client hanging up.
 
@@ -386,6 +386,17 @@ Typed output and typed tools live in their own module, `llamabro-typed` (package
 Operations: `send(text) { options }`, `ask(text, vararg attachments)` (returns `Typed<String>`: `Value(value, text, reasoning)`, or `Incomplete(reason, text)` for `Length`, `TurnLimit`, `ToolCallsPending` and `ToolAborted`, F41, D63; `valueOrNull()` gives the value or null, D88; engine failures still throw), `resume()`, `approve(callId)`, `deny(callId, reason)`, `regenerate()`, `askAgain()` (`regenerate` collected into a `Typed<String>`, as `ask` is `send` collected; `llamabro-typed`'s `askAgain<T>()` regenerates under the same schema, D88), `endReasoning()`, `toJson()` and `Model.restoreConversation(json)`. A conversation can also start from the application's own stored messages (F96). A descriptor in a message is read once into bytes when the message is added (D84), off the caller's thread, so later turns and `toJson` use the bytes; one in a starting `history` is read once by the first request or by `toJson`, and a closed descriptor, a missing file or a clip file in another format is `InvalidRequest` before the message is added. When a send's first request fails with `InvalidRequest` caused by its media (the bridge's attachment errors, or the decoder's) before any token or tool call, the message is removed again, atomically and only while it is still the last one, so the chat isn't wedged by media that fails every request; any other failure keeps it for `resume()`. `toJson` saves a file source as its path and bytes as base64, in save format version 3 (audio parts and paths); version 2 saves, with inline image data, and version 1 saves still load. Per-conversation `defaults { ... }` apply to every request, and per-send options apply to one (F38).
 
 Only one operation runs at a time. A second operation fails with `Busy` when its flow is collected, not when it is created.
+
+Who owns what. `Conversation` is the facade: its operations (the ones above, `compact()` and `addToolResult()`), the history and the state flows, the one-operation-at-a-time rule and compaction (section 6.4). The rest belongs to internal collaborators in `conversation/`, each with one job:
+
+| Class | Owns |
+|---|---|
+| `AgentLoop` | The turns and the tools: the loop of section 6.2, the last batch, approval, and the error policy of D62 (what text of a handler's failure reaches the model, a handler's own timeout against a cancelled turn, the app getting the handler's own exception). It sees the history, the registry, a chat function, an append sink and the model's close signal, nothing else. |
+| `ReplyStreamer` | One model request: folds its events into the streaming `reply`, appends the finished message, and decides what a stop or an error keeps of it (the text, never a partial tool call). |
+| `PreEncoder` | The background pre-encode (section 6.4): the `n_predict: 0` request when every slot is idle, and its timings into `contextUsage`. |
+| `MediaPrep` | A message's media before it enters the history: the checks, and reading each descriptor once into bytes (D84). |
+
+The model holds the one `PreEncodeSlot` its conversations share, so a chat request in any conversation cancels a pre-encode another started, and closing the model ends it. `contextUsage` is `ContextUsage.of(timings, contextSize)` for a reply and for a pre-encode alike, and both read the timings with `ChatStreamDecoder`'s reader.
 
 ### 6.2 Tools run automatically
 

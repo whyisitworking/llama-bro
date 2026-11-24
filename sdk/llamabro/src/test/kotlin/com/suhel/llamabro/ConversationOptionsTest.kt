@@ -6,7 +6,6 @@ import com.suhel.llamabro.chat.ReasoningFormat
 import com.suhel.llamabro.chat.ResponseFormat
 import com.suhel.llamabro.chat.ToolChoice
 import com.suhel.llamabro.conversation.canCompact
-import com.suhel.llamabro.conversation.compact
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.toList

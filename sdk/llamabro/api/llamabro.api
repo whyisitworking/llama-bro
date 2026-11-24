@@ -1723,8 +1723,6 @@ public final class com/suhel/llamabro/conversation/Compaction {
 public final class com/suhel/llamabro/conversation/CompactionKt {
 	public static final fun canCompact (Lcom/suhel/llamabro/conversation/Conversation;I)Z
 	public static synthetic fun canCompact$default (Lcom/suhel/llamabro/conversation/Conversation;IILjava/lang/Object;)Z
-	public static final fun compact (Lcom/suhel/llamabro/conversation/Conversation;ILjava/lang/String;)Lkotlinx/coroutines/flow/Flow;
-	public static synthetic fun compact$default (Lcom/suhel/llamabro/conversation/Conversation;ILjava/lang/String;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
 }
 
 public final class com/suhel/llamabro/conversation/ContextUsage {
@@ -1741,10 +1739,15 @@ public final class com/suhel/llamabro/conversation/ContextUsage {
 }
 
 public final class com/suhel/llamabro/conversation/Conversation {
+	public final fun addToolResult (Ljava/lang/String;Ljava/lang/String;)V
 	public final fun approve (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/flow/Flow;
 	public static synthetic fun approve$default (Lcom/suhel/llamabro/conversation/Conversation;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
 	public final fun ask (Ljava/lang/String;[Lcom/suhel/llamabro/chat/Content;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun ask$default (Lcom/suhel/llamabro/conversation/Conversation;Ljava/lang/String;[Lcom/suhel/llamabro/chat/Content;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun askAgain (Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun askAgain$default (Lcom/suhel/llamabro/conversation/Conversation;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun compact (ILjava/lang/String;)Lkotlinx/coroutines/flow/Flow;
+	public static synthetic fun compact$default (Lcom/suhel/llamabro/conversation/Conversation;ILjava/lang/String;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
 	public final fun deny (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/flow/Flow;
 	public static synthetic fun deny$default (Lcom/suhel/llamabro/conversation/Conversation;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
 	public final fun endReasoning (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -1775,12 +1778,6 @@ public final class com/suhel/llamabro/conversation/Conversation$Builder {
 	public final fun tool (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLkotlin/jvm/functions/Function2;)V
 	public static synthetic fun tool$default (Lcom/suhel/llamabro/conversation/Conversation$Builder;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
 	public final fun toolForCall (Lcom/suhel/llamabro/chat/Tool;ZLkotlin/jvm/functions/Function2;)V
-}
-
-public final class com/suhel/llamabro/conversation/ConversationKt {
-	public static final fun addToolResult (Lcom/suhel/llamabro/conversation/Conversation;Ljava/lang/String;Ljava/lang/String;)V
-	public static final fun askAgain (Lcom/suhel/llamabro/conversation/Conversation;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static synthetic fun askAgain$default (Lcom/suhel/llamabro/conversation/Conversation;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
 public final class com/suhel/llamabro/conversation/JsonArgs {

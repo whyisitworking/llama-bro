@@ -86,7 +86,8 @@ exceptions:
       - 'IndexOutOfBoundsException'
     # Throwable is caught where a failure must be reported, not crash a collector, an installer or a tool call
     excludes:
-      - '**/conversation/Conversation.kt'
+      - '**/conversation/AgentLoop.kt'
+      - '**/conversation/ReplyStreamer.kt'
       - '**/internal/BackendDiscovery.kt'
       - '**/hub/internal/Transfers.kt'
       # the acceptance apps and the benchmark harness show or log any failure
