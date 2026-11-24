@@ -12,8 +12,8 @@ import androidx.annotation.RequiresPermission
 
 /**
  * The phone's microphone as a [SampleSource]: 16 kHz mono, 16-bit, the rate the speech models take (D76). It holds
- * transient exclusive audio focus while open; losing it (a call, another app recording) ends the source, so the
- * recording stops and is kept.
+ * transient exclusive audio focus while open, or works under voice mode's [session] focus (D147); losing it (a call,
+ * another app recording) ends the source, so the recording stops and is kept.
  */
 class Microphone
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
@@ -24,6 +24,8 @@ class Microphone
          * whose echo cancellation and noise suppression keep the reply out of the microphone (D100).
          */
         private val source: Int = MediaRecorder.AudioSource.VOICE_RECOGNITION,
+        /** Voice mode's focus, held for its whole session; null asks for the microphone's own. */
+        private val session: SessionFocus? = null,
     ) : SampleSource {
         override val rate: Int = RATE
 
@@ -31,23 +33,33 @@ class Microphone
 
         @Volatile private var lost = false
 
-        private val focus =
-            AudioFocusRequest
-                .Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
-                .setAudioAttributes(
-                    AudioAttributes
-                        .Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build(),
-                ).setOnAudioFocusChangeListener { change ->
-                    if (change < 0) lost = true
-                }.build()
+        private val focus: AudioFocusRequest? =
+            if (session != null) {
+                null
+            } else {
+                AudioFocusRequest
+                    .Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                    .setAudioAttributes(
+                        AudioAttributes
+                            .Builder()
+                            .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build(),
+                    ).setOnAudioFocusChangeListener { change ->
+                        if (change < 0) lost = true
+                    }.build()
+            }
 
         private val record: AudioRecord
 
         init {
-            check(audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) { "no audio focus" }
+            val granted =
+                if (focus != null) {
+                    audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                } else {
+                    session?.lost != true
+                }
+            check(granted) { "no audio focus" }
             val min =
                 AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             record =
@@ -60,18 +72,19 @@ class Microphone
                 )
             if (record.state != AudioRecord.STATE_INITIALIZED) {
                 record.release()
-                audio.abandonAudioFocusRequest(focus)
+                focus?.let { audio.abandonAudioFocusRequest(it) }
                 error("the microphone could not be opened")
             }
             record.startRecording()
         }
 
-        override fun read(buffer: ShortArray): Int = if (lost) -1 else record.read(buffer, 0, buffer.size)
+        override fun read(buffer: ShortArray): Int =
+            if (lost || session?.lost == true) -1 else record.read(buffer, 0, buffer.size)
 
         override fun close() {
             runCatching { record.stop() }
             record.release()
-            audio.abandonAudioFocusRequest(focus)
+            focus?.let { audio.abandonAudioFocusRequest(it) }
         }
 
         private companion object {

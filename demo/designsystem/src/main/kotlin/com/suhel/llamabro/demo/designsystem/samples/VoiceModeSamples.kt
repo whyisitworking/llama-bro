@@ -19,7 +19,7 @@ import com.suhel.llamabro.demo.designsystem.theme.LocalAnimatorDurationScale
 
 /** Voice mode's view (D100) in each phase, as on a phone; the orb holds still so the frames are stable. */
 @Composable
-internal fun VoiceModeSample(phase: VoicePhase) {
+internal fun VoiceModeSample(phase: VoicePhase, handsFree: Boolean = false) {
     val actions = VoiceViewActions({}, {}, {}, {})
     val asked = "Can you tell me a short story about a lighthouse keeper who finds a message in a bottle?"
     val state =
@@ -34,7 +34,7 @@ internal fun VoiceModeSample(phase: VoicePhase) {
             }
 
             VoicePhase.Listening -> {
-                VoiceViewState("LFM3 Omni 2B", "female", phase, level = 0.6f)
+                VoiceViewState("LFM3 Omni 2B", "female", phase, level = 0.6f, sendsOnPause = handsFree)
             }
 
             VoicePhase.Thinking -> {
@@ -86,6 +86,10 @@ private fun VoiceReadyPreview() = DemoTheme { VoiceModeSample(VoicePhase.Ready) 
 @VoiceModePreviews
 @Composable
 private fun VoiceListeningPreview() = DemoTheme { VoiceModeSample(VoicePhase.Listening) }
+
+@VoiceModePreviews
+@Composable
+private fun VoiceListeningHandsFreePreview() = DemoTheme { VoiceModeSample(VoicePhase.Listening, handsFree = true) }
 
 @VoiceModePreviews
 @Composable

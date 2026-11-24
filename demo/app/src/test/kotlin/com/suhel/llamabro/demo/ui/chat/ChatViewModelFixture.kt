@@ -136,8 +136,8 @@ abstract class ChatViewModelFixture {
                                 )
                             }
                         },
-                    micHint = settings.settings.map { !it.seenMicHint },
-                    onMicHintSeen = { settings.setSeenMicHint() },
+                    micHint = settings.settings.map { !it.voice.seenMicHint },
+                    onMicHintSeen = { settings.voice.setSeenMicHint() },
                 ),
         ).also(viewModels::add)
     }

@@ -139,4 +139,76 @@ class PausesTest {
         val full = ShortArray(800) { Short.MAX_VALUE }
         assertEquals(0.0, Levels.detectorDb(full, 800), 1e-9)
     }
+
+    /** Pushes [ms] of one dBFS level in 50 ms steps; what each level made of the turn, in order, without Nothing. */
+    private fun TurnDetector.hold(db: Double, ms: Int): List<TurnDetector.Heard> =
+        (0 until ms step interval).map { push(db) }.filter { it != TurnDetector.Heard.Nothing }
+
+    @Test
+    fun aTurnStartsWithSpeechAndEndsAtAPauseAfterIt() {
+        val d = TurnDetector(interval)
+        assertEquals(emptyList<TurnDetector.Heard>(), d.hold(-50.0, 500))
+        assertEquals(listOf(TurnDetector.Heard.Start), d.hold(-15.0, TurnDetector.START_SPEECH_MS))
+        assertTrue(d.inTurn)
+        assertEquals(emptyList<TurnDetector.Heard>(), d.hold(-15.0, 2000))
+        // a breath between sentences doesn't end it
+        assertEquals(emptyList<TurnDetector.Heard>(), d.hold(-50.0, 500))
+        assertEquals(emptyList<TurnDetector.Heard>(), d.hold(-15.0, 500))
+        assertEquals(emptyList<TurnDetector.Heard>(), d.hold(-50.0, TurnDetector.END_PAUSE_MS - interval))
+        assertEquals(listOf(TurnDetector.Heard.End), d.hold(-50.0, interval))
+        assertFalse(d.inTurn)
+    }
+
+    @Test
+    fun aNoisyRoomAndAClickStartNoTurn() {
+        val d = TurnDetector(interval)
+        // a fan or traffic: steady, or wavering a few dB, it is the floor
+        repeat(100) { assertEquals(emptyList<TurnDetector.Heard>(), d.hold(if (it % 2 == 0) -25.0 else -22.0, 100)) }
+        // a click, louder than the room but shorter than a word
+        assertEquals(emptyList<TurnDetector.Heard>(), d.hold(-5.0, TurnDetector.START_SPEECH_MS - interval))
+        assertEquals(emptyList<TurnDetector.Heard>(), d.hold(-25.0, 2000))
+        // speech above the room still starts one
+        assertEquals(listOf(TurnDetector.Heard.Start), d.hold(-5.0, TurnDetector.START_SPEECH_MS))
+    }
+
+    @Test
+    fun aTurnWithNoPauseEndsAtItsLongest() {
+        val d = TurnDetector(interval, maxTurnMs = 2000)
+        d.hold(-50.0, 500)
+        assertEquals(listOf(TurnDetector.Heard.Start), d.hold(-15.0, TurnDetector.START_SPEECH_MS))
+        // talk in the room that never quietens: cut half as long again past the longest
+        assertEquals(listOf(TurnDetector.Heard.End), d.hold(-15.0, 3000))
+    }
+
+    /** Pushes [ms] of a reply playing at [playbackDb] and the microphone at [db]; what each level made of the turn. */
+    private fun TurnDetector.under(playbackDb: Double, db: Double, ms: Int): List<TurnDetector.Heard> =
+        (0 until ms step interval).map { push(db, playbackDb) }.filter { it != TurnDetector.Heard.Nothing }
+
+    @Test
+    fun underAReplyItsEchoNeverInterruptsAndSpeechWellAboveItDoes() {
+        val d = TurnDetector(interval, floorDb = -50.0)
+        d.watching = true
+        // the warm-up: the reply comes back 15 dB under what the speaker plays, loud or soft
+        assertEquals(emptyList<TurnDetector.Heard>(), d.under(-20.0, -35.0, EchoGuard.ECHO_WARM_UP_MS / 2))
+        assertEquals(emptyList<TurnDetector.Heard>(), d.under(-30.0, -45.0, EchoGuard.ECHO_WARM_UP_MS / 2))
+        // a long reply's echo, as loud against it as in the warm-up, far above the room's floor: never a turn
+        repeat(20) {
+            assertEquals(emptyList<TurnDetector.Heard>(), d.under(-12.0, -27.0, 200))
+            assertEquals(emptyList<TurnDetector.Heard>(), d.under(-30.0, -45.0, 200))
+        }
+        // a word's worth of speech over it is not enough; speech well over it for long enough is
+        assertEquals(emptyList<TurnDetector.Heard>(), d.under(-20.0, -5.0, TurnDetector.INTERRUPT_SPEECH_MS - interval))
+        assertEquals(emptyList<TurnDetector.Heard>(), d.under(-20.0, -35.0, 500))
+        assertEquals(listOf(TurnDetector.Heard.Start), d.under(-20.0, -5.0, TurnDetector.INTERRUPT_SPEECH_MS))
+        assertFalse(d.watching)
+    }
+
+    @Test
+    fun nothingInterruptsBeforeTheReplyHasBeenHeardForTheWarmUp() {
+        val d = TurnDetector(interval, floorDb = -50.0)
+        d.watching = true
+        // silence from the speaker teaches nothing, however long, and loud speech before the warm-up doesn't count
+        assertEquals(emptyList<TurnDetector.Heard>(), d.under(Levels.SILENCE_DB, -5.0, 2000))
+        assertEquals(emptyList<TurnDetector.Heard>(), d.under(-20.0, -5.0, EchoGuard.ECHO_WARM_UP_MS))
+    }
 }

@@ -73,8 +73,10 @@ internal class PauseDetector(
      * it is, as with music or talk in the room no moment is ever quiet.
      */
     private val maxSegmentMs: Int = MAX_SEGMENT_MS,
+    /** The room's noise level in dBFS when it is known already (as [SpeechDetector] takes it). */
+    floorDb: Double = 0.0,
 ) {
-    private val detector = SpeechDetector()
+    private val detector = SpeechDetector(floorDb)
     private var quietMs = 0
     private var segmentMs = 0
     private var speechMs = 0
@@ -125,6 +127,148 @@ internal class PauseDetector(
         /** The detector dictation cuts its pieces with. */
         fun forPieces(intervalMs: Int): PauseDetector =
             PauseDetector(intervalMs, PIECE_PAUSE_MS, PIECE_MIN_SPEECH_MS, PIECE_MAX_MS)
+    }
+}
+
+/**
+ * Where a hands-free turn in voice mode starts and ends (D147), from the live input levels, with the two detectors
+ * above. A turn starts once speech has gone on for [startMs] without a break: the room's steady sound never does, as
+ * [SpeechDetector] takes it for the floor, and a click or a cough is too short. It ends at a pause of [endPauseMs]
+ * after that (a [PauseDetector] that starts from the floor heard so far), or, as a pause never comes in a loud room, at
+ * the first quiet moment after [maxTurnMs] (and half as long again at the latest). The room's floor starts at [floorDb]
+ * when it is known already (the last ear's), so speech from the first level counts. While a reply plays ([watching],
+ * to interrupt it by talking), the phone's own voice comes back through the microphone, so a turn starts only on
+ * speech the [EchoGuard] hears as clearly louder than the reply's echo, for [interruptStartMs]. Not upstream's: at
+ * b12653 its realtime conversation leaves turn detection to the client.
+ */
+internal class TurnDetector(
+    /** Time between two levels, as the microphone gives them. */
+    private val intervalMs: Int,
+    floorDb: Double = 0.0,
+    private val startMs: Int = START_SPEECH_MS,
+    private val endPauseMs: Int = END_PAUSE_MS,
+    private val maxTurnMs: Int = MAX_TURN_MS,
+    private val interruptStartMs: Int = INTERRUPT_SPEECH_MS,
+) {
+    /** What a level made of the turn. */
+    enum class Heard { Nothing, Start, End }
+
+    private val room = SpeechDetector(floorDb)
+    private val echo = EchoGuard(intervalMs)
+    private var speechMs = 0
+    private var turn: PauseDetector? = null
+
+    /** Whether a reply is playing: a turn then interrupts it, and must be clearly louder than its echo. */
+    var watching: Boolean = false
+        set(value) {
+            field = value
+            speechMs = 0
+            echo.reset()
+        }
+
+    /** Whether the turn has started and not ended. */
+    val inTurn: Boolean get() = turn != null
+
+    /** The room's noise level in dBFS, as heard so far: where the next listener starts. */
+    val floorDb: Double get() = room.floorDb
+
+    /** The unbroken speech that started the last turn, in milliseconds. */
+    var startRunMs: Int = 0
+        private set
+
+    /**
+     * Takes the newest level in dBFS, and while [watching] the level the speaker plays ([playbackDb]): [Heard.Start]
+     * when the turn starts with it, [Heard.End] when it ends.
+     */
+    fun push(db: Double, playbackDb: Double = Levels.SILENCE_DB): Heard {
+        val speech = room.push(db, intervalMs)
+        turn?.let { pauses ->
+            if (!pauses.push(db)) return Heard.Nothing
+            turn = null
+            speechMs = 0
+            return Heard.End
+        }
+        // the guard learns from every level under a reply, speech or not
+        val heard = if (watching) echo.isOver(db, playbackDb) && speech else speech
+        speechMs = if (heard) speechMs + intervalMs else 0
+        if (speechMs < if (watching) interruptStartMs else startMs) return Heard.Nothing
+        startRunMs = speechMs
+        watching = false
+        // the speech that started it was heard already, so the pause may come at once
+        turn = PauseDetector(intervalMs, endPauseMs, minSpeechMs = 0, maxSegmentMs = maxTurnMs, floorDb = room.floorDb)
+        return Heard.Start
+    }
+
+    companion object {
+        /** Speech without a break that starts a turn: a short word, not a click (upstream's piece minimum). */
+        const val START_SPEECH_MS = PauseDetector.PIECE_MIN_SPEECH_MS
+
+        /** Quiet after speech that ends a turn: longer than a breath between sentences, shorter than waiting. */
+        const val END_PAUSE_MS = 900
+
+        /** A turn this long ends at its next quiet moment, pause or not; half as long again, it ends where it is. */
+        const val MAX_TURN_MS = 60_000
+
+        /** Speech without a break that interrupts a reply: longer than a start, so a word of echo doesn't. */
+        const val INTERRUPT_SPEECH_MS = 400
+    }
+}
+
+/**
+ * Tells the person's voice from the reply's own echo while a reply plays (D147), against what the speaker plays rather
+ * than against the room: the echo rises and falls with the reply, so a floor that follows the room's quietest moments
+ * sits far below it. For the first [warmUpMs] of audible playback it only learns how loud the reply comes back through
+ * the microphone (the coupling: microphone level less playback level, at its loudest); after that, a level is the
+ * person's when it is [marginDb] above the playback, plus that coupling. The playback taken is the loudest of the last
+ * [ECHO_TAIL_MS], as the echo comes back a little after the speaker plays it and rings on in the room.
+ */
+internal class EchoGuard(
+    private val intervalMs: Int,
+    private val warmUpMs: Int = ECHO_WARM_UP_MS,
+    private val marginDb: Double = ECHO_MARGIN_DB,
+) {
+    private val recent = ArrayDeque<Double>()
+    private var learntMs = 0
+    private var couplingDb: Double? = null
+
+    /** Starts over, for a new reply. */
+    fun reset() {
+        recent.clear()
+        learntMs = 0
+        couplingDb = null
+    }
+
+    /** Takes the newest microphone level [db] and the speaker's, [playbackDb]: true when it is the person's voice. */
+    fun isOver(db: Double, playbackDb: Double): Boolean {
+        recent.addLast(playbackDb)
+        if (recent.size > ECHO_TAIL_MS / intervalMs) recent.removeFirst()
+        val reference = recent.max()
+        if (learntMs < warmUpMs) {
+            // silence before the reply's first words teaches nothing, so the warm-up counts only what was heard
+            if (reference > AUDIBLE_DB) {
+                learntMs += intervalMs
+                couplingDb = max(couplingDb ?: Double.NEGATIVE_INFINITY, min(db - reference, MAX_COUPLING_DB))
+            }
+            return false
+        }
+        return db > reference + (couplingDb ?: MAX_COUPLING_DB) + marginDb
+    }
+
+    companion object {
+        /** Audible playback it learns from before anything interrupts: also echo cancellation's own warm-up. */
+        const val ECHO_WARM_UP_MS = 600
+
+        /** How far above the reply's echo the person's voice must be. */
+        const val ECHO_MARGIN_DB = 10.0
+
+        /** How long after the speaker plays a level its echo is still expected. */
+        const val ECHO_TAIL_MS = 300
+
+        /** The loudest the echo is taken to be, against the playback: speech during the warm-up teaches no more. */
+        const val MAX_COUPLING_DB = 0.0
+
+        /** Playback quieter than this is silence, which teaches nothing. */
+        const val AUDIBLE_DB = -45.0
     }
 }
 

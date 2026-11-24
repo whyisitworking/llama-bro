@@ -15,6 +15,7 @@ import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.StoredMessage
+import com.suhel.llamabro.demo.data.VoiceTurns
 import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
@@ -41,6 +42,7 @@ import org.junit.rules.TemporaryFolder
 import org.junit.rules.Timeout
 import java.io.File
 import java.util.Locale
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -166,7 +168,7 @@ class VoiceConversationTest {
 
     @Test fun withoutCaptionsTheModelLoadsWithOneSlotAndTheTurnHasNoText() =
         runBlocking {
-            settings.setCaptionYou(false)
+            settings.voice.setCaptionYou(false)
             fake.voiceReply { text("Hi.") }
             val (chatId, voice) = conversation()
             say(voice)
@@ -257,7 +259,7 @@ class VoiceConversationTest {
 
     @Test fun theChosenVoiceIsUsedWhenTheModelHasIt() =
         runBlocking {
-            settings.setVoice("male")
+            settings.voice.setVoice("male")
             language = Locale.FRENCH
             val (_, voice) = conversation()
             voice.open()
@@ -268,7 +270,7 @@ class VoiceConversationTest {
 
     @Test fun aVoiceTheModelLacksFallsBackToItsFirst() =
         runBlocking {
-            settings.setVoice("robot")
+            settings.voice.setVoice("robot")
             val (_, voice) = conversation()
             voice.open()
             eventually("open") { voice.ui.value.voice == "female" }
@@ -288,7 +290,7 @@ class VoiceConversationTest {
 
     @Test fun theBlockBeingReadAtTheReleaseIsPartOfTheTurn() =
         runBlocking {
-            settings.setCaptionYou(false)
+            settings.voice.setCaptionYou(false)
             fake.voiceReply { text("Hi.") }
             val (chatId, voice) = conversation()
             val gate = CountDownLatch(1)
@@ -314,6 +316,125 @@ class VoiceConversationTest {
             voice.close()
         }
 
+    /** Hands-free voice mode (D147), captions off so that each turn is one commit and one row. */
+    private suspend fun handsFree() {
+        settings.voice.setCaptionYou(false)
+        settings.voice.setVoiceTurns(VoiceTurns.HandsFree)
+    }
+
+    private fun commits() = sentTypes().count { it == "input_audio_buffer.commit" }
+
+    @Test fun handsFreeATurnEndsAtThePauseAfterSpeechAndItListensAgain() =
+        runBlocking {
+            handsFree()
+            fake.voiceReply { text("Hi.") }
+            val (chatId, voice) = conversation()
+            mic.script(QUIET, 6)
+            mic.script(SPEECH, 10)
+            mic.script(QUIET, 20)
+            voice.open()
+            eventually("the turn is sent and answered") { rows(chatId).size == 2 }
+            assertEquals(1, commits())
+            // the quiet before the speech, the speech and the pause that ended it; the reader may take the last blocks
+            val clip = rows(chatId)[0].voice!!
+            assertTrue("${clip.millis}", clip.millis in 34 * BLOCK..36 * BLOCK)
+            eventually("listening again") { mic.opens.get() == 2 && voice.ui.value.phase == VoiceStage.Listening }
+            assertTrue(voice.ui.value.sendsOnPause)
+            voice.close()
+        }
+
+    @Test fun handsFreeNoiseAloneStartsNoTurn() =
+        runBlocking {
+            handsFree()
+            fake.voiceReply { text("Hi.") }
+            val (chatId, voice) = conversation()
+            // three seconds of a room wavering by 2 dB, then speech over it and the room again
+            repeat(30) {
+                mic.script(NOISE, 1)
+                mic.script(LOUDER_NOISE, 1)
+            }
+            mic.script(OVER_NOISE, 10)
+            mic.script(NOISE, 20)
+            voice.open()
+            eventually("the turn is sent") { rows(chatId).size == 2 }
+            assertEquals(1, commits())
+            // the turn began with the speech: what was kept before it, the speech, the room after; none of the wait
+            val clip = rows(chatId)[0].voice!!
+            assertTrue("${clip.millis}", clip.millis <= (BEFORE_BLOCKS + 5 + 20) * BLOCK)
+            voice.close()
+        }
+
+    @Test fun handsFreeATapSendsTheTurnAtOnce() =
+        runBlocking {
+            handsFree()
+            fake.voiceReply { text("Hi.") }
+            val (chatId, voice) = conversation()
+            mic.script(QUIET, 6)
+            mic.script(SPEECH, 10)
+            voice.open()
+            // the session hears the turn only once speech has started it: every block read, and no pause after
+            eventually("the turn started") { sentTypes().count { it == "input_audio_buffer.append" } == 16 }
+            voice.talkEnd()
+            eventually("sent and answered") { rows(chatId).size == 2 }
+            assertEquals(1, commits())
+            voice.close()
+        }
+
+    @Test fun handsFreeATapBeforeAnySpeechStopsListeningUntilTheNextTap() =
+        runBlocking {
+            handsFree()
+            val (chatId, voice) = conversation()
+            voice.open()
+            eventually("listening by itself") { mic.opens.get() == 1 && voice.ui.value.phase == VoiceStage.Listening }
+            voice.talkEnd()
+            eventually("stopped") { mic.closedOnce && voice.ui.value.phase == VoiceStage.Ready }
+            assertTrue(rows(chatId).isEmpty())
+            assertEquals(0, commits())
+            voice.talkStart()
+            eventually("listening again") { mic.opens.get() == 2 && voice.ui.value.phase == VoiceStage.Listening }
+            voice.close()
+        }
+
+    @Test fun withInterruptOffTalkingOverAReplyNeverStopsIt() =
+        runBlocking {
+            settings.voice.setCaptionYou(false)
+            fake.voiceReply { audio(ShortArray(4_800)) }
+            speaker.holdDrain = CompletableDeferred()
+            val (chatId, voice) = conversation()
+            say(voice)
+            eventually("speaking") { voice.ui.value.phase == VoiceStage.Speaking }
+            mic.script(QUIET, 12)
+            mic.script(OVER_NOISE, 20)
+            speaker.holdDrain?.complete(Unit)
+            eventually("the reply is over") { voice.ui.value.phase == VoiceStage.Ready && rows(chatId).size == 2 }
+            assertEquals(1, mic.opens.get())
+            assertTrue("response.cancel" !in sentTypes())
+            assertEquals(0, speaker.stops.get())
+            voice.close()
+        }
+
+    @Test fun withInterruptOnTalkingOverAReplyStopsItAndIsTheNextTurn() =
+        runBlocking {
+            settings.voice.setCaptionYou(false)
+            settings.voice.setInterruptByTalking(true)
+            fake.voiceReply { audio(ShortArray(4_800)) }
+            fake.voiceReply { text("Sure.") }
+            speaker.holdDrain = CompletableDeferred()
+            val (chatId, voice) = conversation()
+            say(voice)
+            eventually("speaking") { voice.ui.value.phase == VoiceStage.Speaking }
+            // the echo cancellation's warm-up, then speech well over the room, then a pause
+            mic.script(QUIET, 12)
+            mic.script(OVER_NOISE, 10)
+            mic.script(QUIET, 20)
+            eventually("the second turn is answered") { rows(chatId).size == 4 }
+            assertTrue("response.cancel" in sentTypes())
+            assertTrue(speaker.stops.get() > 0)
+            assertEquals(2, commits())
+            assertEquals(listOf("", "", "", "Sure."), rows(chatId).map { it.text })
+            voice.close()
+        }
+
     @Test fun theSpokenLanguageIsThePhonesWhenUpstreamNamesIt() {
         assertEquals("fr", VoiceConversation.spokenLanguage(Locale.FRANCE))
         assertEquals("ja", VoiceConversation.spokenLanguage(Locale.JAPAN))
@@ -329,14 +450,25 @@ class VoiceConversationTest {
         val reads = AtomicInteger()
         private val allowed = AtomicInteger()
 
+        /** Blocks of a level each, read once the allowed ones are: a room, a voice, a pause, in order. */
+        private val script = ConcurrentLinkedQueue<Short>()
+
         fun allow(blocks: Int) {
             allowed.set(blocks)
         }
 
+        fun script(level: Short, blocks: Int) {
+            repeat(blocks) { script.add(level) }
+        }
+
         @Volatile private var closed = false
+
+        /** How many times voice mode has opened it. */
+        val opens = AtomicInteger()
 
         fun reopen() {
             closed = false
+            opens.incrementAndGet()
         }
 
         /** With a gate, the first read past the allowed ones waits at it, then gives a block: one read under way. */
@@ -346,6 +478,11 @@ class VoiceConversationTest {
         override fun read(buffer: ShortArray): Int {
             if (closed) return -1
             if (allowed.getAndUpdate { maxOf(it - 1, 0) } == 0) {
+                script.poll()?.let { level ->
+                    reads.incrementAndGet()
+                    buffer.fill(level)
+                    return buffer.size
+                }
                 gate?.let {
                     gate = null
                     atGate.countDown()
@@ -405,5 +542,26 @@ class VoiceConversationTest {
         }
 
         override fun close() = Unit
+    }
+
+    private companion object {
+        /** A block's length in milliseconds. */
+        const val BLOCK = 50L
+
+        /** As voice mode keeps before a turn starts: 700 ms. */
+        const val BEFORE_BLOCKS = 14
+
+        /** About -50 dBFS: a quiet room. */
+        const val QUIET: Short = 100
+
+        /** About -12 dBFS: speech close to the phone. */
+        const val SPEECH: Short = 8_000
+
+        /** About -24 and -22 dBFS: a fan, a street. */
+        const val NOISE: Short = 2_000
+        const val LOUDER_NOISE: Short = 2_600
+
+        /** About -4 dBFS: speech over the noise. */
+        const val OVER_NOISE: Short = 20_000
     }
 }

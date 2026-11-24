@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D146 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D147 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -155,7 +155,7 @@ its amendments to know what holds now.
 | [D76](#d76-the-demo-takes-voice-messages-for-models-that-hear-sent-as-audio-with-no-transcription) The demo takes voice messages for models that hear, sent as audio with no transcription | 2026-11-15 | [D140](#d140-the-demo-dictates-a-tap-on-the-mic-writes-speech-into-the-message-bar-a-hold-records-a-voice-message) |
 | [D77](#d77-section-labels-line-up-with-the-text-under-them-the-sidebars-actions-move-to-one-row-of-icons-its-chats-to-48-dp-rows) Section labels line up with the text under them; the sidebar's actions move to one row of icons,… | 2026-11-15 | [D126](#d126-the-sidebar-is-a-quiet-list-a-name-a-search-timed-rows-and-labelled-places) |
 | [D78](#d78-the-demo-lets-the-person-choose-the-context-length-and-the-reply-length) The demo lets the person choose the context length and the reply length | 2026-11-15 | |
-| [D100](#d100-the-demos-voice-mode-a-full-screen-view-entered-from-the-message-bar-hold-to-talk-saved-as-an-ordinary-chat) The demo's voice mode: a full-screen view entered from the message bar, hold to talk, saved as… | 2026-11-18 | [D109](#d109-captions-of-the-users-words-move-to-the-app-it-transcribes-its-own-recording-of-each-turn) |
+| [D100](#d100-the-demos-voice-mode-a-full-screen-view-entered-from-the-message-bar-hold-to-talk-saved-as-an-ordinary-chat) The demo's voice mode: a full-screen view entered from the message bar, hold to talk, saved as… | 2026-11-18 | [D109](#d109-captions-of-the-users-words-move-to-the-app-it-transcribes-its-own-recording-of-each-turn), [D147](#d147-hands-free-voice-mode-ends-a-turn-at-a-pause-and-talking-can-interrupt-a-reply) |
 | [D140](#d140-the-demo-dictates-a-tap-on-the-mic-writes-speech-into-the-message-bar-a-hold-records-a-voice-message) The demo dictates: a tap on the mic writes speech into the message bar, a hold records a voice message | 2026-11-23 | |
 | [D141](#d141-the-demo-reads-a-typed-reply-aloud-on-a-model-that-speaks) The demo reads a typed reply aloud on a model that speaks | 2026-11-23 | |
 | [D101](#d101-the-demos-fit-is-a-formula-on-file-sizes-against-half-the-phones-total-ram-no-network-read-no-free-memory-reading) The demo's fit is a formula on file sizes against half the phone's total RAM; no network read,… | 2026-11-19 | [D116](#d116-one-models-screen-replaces-get-models-and-the-library-a-rows-fit-is-guessed-from-the-search-list-and-drawn-as-a-pace-figure) |
@@ -180,6 +180,7 @@ its amendments to know what holds now.
 | [D144](#d144-the-demos-packages-are-layered-the-container-builds-the-screens-view-models-and-a-drafts-pictures-are-staged-apart-from-sent-ones) The demo's packages are layered, the container builds the screens' view models, and a draft's pictures are staged apart from sent ones | 2026-11-24 | |
 | [D145](#d145-the-sidebar-pushes-the-chat-aside-and-dims-it-and-its-head-is-as-tall-as-the-top-bar) The sidebar pushes the chat aside and dims it, and its head is as tall as the top bar | 2026-11-24 | |
 | [D146](#d146-a-reply-is-one-row-while-it-is-written-and-once-it-is-saved-and-its-actions-ease-in) A reply is one row while it is written and once it is saved, and its actions ease in | 2026-11-24 | |
+| [D147](#d147-hands-free-voice-mode-ends-a-turn-at-a-pause-and-talking-can-interrupt-a-reply) Hands-free voice mode ends a turn at a pause, and talking can interrupt a reply | 2026-11-24 | |
 
 **Repository and process**
 
@@ -2211,20 +2212,32 @@ and the maintainer then wanted no detector in the app. At b12653 it still has no
 owner now asks for hands-free talking and for talking over a reply to stop it. Dictation already tells speech from the
 room with Llama Chat's ported detectors (`SpeechDetector`, `PauseDetector`, D140).
 Decision: Settings › Voice gets a Talking section: Tap to talk (the default, as before) or Hands-free, and a separate
-Interrupt by talking switch (off by default). `TurnDetector` (`audio/Pauses.kt`) builds on the two detectors: a turn
-starts after 250 ms of unbroken speech above the room's floor (`SpeechDetector`'s 9 dB, upstream's piece minimum), and
-ends at 900 ms of quiet after it (a `PauseDetector` seeded with the floor heard so far), or at the first quiet moment
-after a minute. Hands-free, voice mode listens by itself when it opens and again after each reply; the 700 ms before a
-turn starts is kept and sent with it, so its first word isn't lost; the session hears nothing until a turn starts, so
-noise alone sends nothing. The talk button still overrides: a tap sends the turn at once, and a tap before any speech
-stops listening until the next tap. With Interrupt by talking on, the microphone also listens while a reply plays
-(either mode): nothing counts for the first 600 ms, while the phone's echo cancellation learns the speaker, then
-400 ms of speech 15 dB above the floor stops the reply (`cancelReply`, kept as Stop keeps it) and starts a turn that
-ends at a pause. The settings' captions say the limits: a long pause ends the turn, a noisy room can start one, and
-on the speaker a loud reply can stop itself. The voice view's hint reads "Pause to send, or tap" while a turn ends on
-its own, and a press on a turn that began without one sends it.
+Interrupt by talking switch (off by default); changes apply the next time voice mode opens. `TurnDetector`
+(`audio/Pauses.kt`) builds on the two detectors: a turn starts after 250 ms of unbroken speech above the room's floor
+(`SpeechDetector`'s 9 dB, upstream's piece minimum), and ends at 900 ms of quiet after it (a `PauseDetector` seeded
+with the floor heard so far), or at the first quiet moment after a minute, and at 90 s wherever it is. Hands-free
+(`HandsFreeEar`, behind `TurnListener`), voice mode listens by itself when it opens, again after each reply, after an
+error and on coming back to the screen; each ear starts from the floor the last one heard (the first from its own
+first level). The 700 ms before a turn starts is kept and sent with it, so its first word isn't lost. A started turn
+reaches the session only once its speech, judged against the turn's own floor (its quietest level since it started),
+comes to 300 ms: shorter, it was noise, and is dropped with nothing sent; after three of those in a row, or two
+minutes with no turn, the microphone closes and voice mode waits for a tap. The talk button still overrides: a tap
+sends a turn that ends at a pause at once, a tap before any speech stops listening until the next tap, and a press
+starts the turn at once (with what was kept before it) and holds it, pause or not, to the release, as Tap to talk
+does. With Interrupt by talking on, the microphone also listens while a reply plays (either mode), from the player's
+first write: an echo guard against the playback, not the room, learns over the first 600 ms of audible playback how
+loud the reply comes back (the coupling, microphone level less playback level, at its loudest and at most 0 dB), and
+then speech 10 dB above the loudest playback of the last 300 ms plus that coupling, for 400 ms, stops the reply
+(`cancelReply`, kept as Stop keeps it, unless the server had finished it) and starts a turn that ends at a pause; only
+that speech and two blocks of its onset are kept from before it. Voice mode holds one audio focus for its whole
+session (`VoiceFocus`); its microphone and speaker ask for none of their own, so a reply starting doesn't end the
+microphone under it, and with the interrupt on, replies play as a call's voice (the echo canceller's reference), on the
+loudspeaker from Android 12. The settings' captions say the limits: a long pause ends the turn, a noisy room can start
+one, talking over a reply stops it, and on the speaker a loud reply can stop itself. The voice view's hint reads "Pause
+to send, or tap" while a turn ends on its own, and a press on such a turn sends it.
 Consequences: Amends D100 ("no hands-free mode"). The thresholds are first guesses from upstream's dictation numbers,
 not measured: tuning them needs a short attended phone run, handed over in
 [the tuning note](./design/hands-free-tuning.md). The detector runs in the app, not the SDK, so the SDK still has no
-turn detection (D95). The interrupt's echo guard is only a warm-up and a margin: an echo that survives the phone's
-cancellation louder than the margin stops the reply, so headphones are the sure way. Next free IDs: D148, F183.
+turn detection (D95). The echo guard trusts the playback level and the coupling it learnt: an echo that grows louder
+than it was during the warm-up (the volume turned up mid-reply) can still stop the reply, so headphones are the sure
+way. Next free IDs: D148, F183.

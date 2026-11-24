@@ -18,6 +18,7 @@ import com.suhel.llamabro.demo.data.KeepLoaded
 import com.suhel.llamabro.demo.data.ReplyLength
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.TokenStore
+import com.suhel.llamabro.demo.data.VoiceTurns
 import com.suhel.llamabro.demo.data.loadConfig
 import com.suhel.llamabro.demo.data.settings.Knob
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
@@ -151,9 +152,14 @@ class SettingsViewModel(
             .map { models -> models.values.flatten().distinct() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), emptyList())
 
-    fun setVoice(voice: String) = viewModelScope.launch { settings.setVoice(voice) }.let { }
+    fun setVoice(voice: String) = viewModelScope.launch { settings.voice.setVoice(voice) }.let { }
 
-    fun setCaptionYou(caption: Boolean) = viewModelScope.launch { settings.setCaptionYou(caption) }.let { }
+    fun setCaptionYou(caption: Boolean) = viewModelScope.launch { settings.voice.setCaptionYou(caption) }.let { }
+
+    fun setVoiceTurns(turns: VoiceTurns) = viewModelScope.launch { settings.voice.setVoiceTurns(turns) }.let { }
+
+    fun setInterruptByTalking(interrupt: Boolean) =
+        viewModelScope.launch { settings.voice.setInterruptByTalking(interrupt) }.let { }
 
     /** The phone's language, offered for dictation (D140); read once, as the app's locale stands when it opens. */
     val phoneLanguage: PhoneLanguage =
@@ -164,7 +170,7 @@ class SettingsViewModel(
         )
 
     fun setDictationLanguage(language: String?) =
-        viewModelScope.launch { settings.setDictationLanguage(language) }.let { }
+        viewModelScope.launch { settings.voice.setDictationLanguage(language) }.let { }
 
     // a counter, not a value: every write asks the store again, so what is shown is what is stored
     private val tokenWrites = MutableStateFlow(0)

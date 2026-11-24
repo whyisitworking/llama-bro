@@ -47,6 +47,7 @@
     <string name="ds_voice_release">Release to send</string>
     <string name="ds_voice_interrupt">Talk to interrupt</string>
     <string name="ds_voice_tap_send">Tap to send</string>
+    <string name="ds_voice_pause_send">Pause to send, or tap</string>
     <string name="ds_voice_how">Tap to start, or hold while you talk</string>
     <string name="ds_voice_talk">Talk</string>
     <string name="ds_voice_talk_start">Start talking</string>

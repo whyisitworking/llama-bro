@@ -12,6 +12,7 @@ import com.suhel.llamabro.demo.data.ChipChoice
 import com.suhel.llamabro.demo.data.ContextChoice
 import com.suhel.llamabro.demo.data.KeepLoaded
 import com.suhel.llamabro.demo.data.ReplyLength
+import com.suhel.llamabro.demo.data.VoiceTurns
 import com.suhel.llamabro.demo.data.settings.Knob
 import com.suhel.llamabro.demo.data.settings.Knobs
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
@@ -247,6 +248,8 @@ internal class VoiceSettingsStates : PreviewParameterProvider<VoiceSettingsState
                 captionYou = false,
                 dictationLanguage = "en",
                 phoneLanguage = PreviewLanguage,
+                turns = VoiceTurns.HandsFree,
+                interruptByTalking = true,
             ),
             VoiceSettingsState(emptyList(), voice = null, captionYou = true, phoneLanguage = PreviewLanguage),
         )

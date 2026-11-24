@@ -20,8 +20,8 @@ import com.suhel.llamabro.demo.voice.VoiceStage
 /**
  * Voice mode over the chat (demo design §4.8, D100): [conversation]'s state in the design system's voice view, named
  * [model]. Leaving the screen (Home, a call, the lock) pauses it: recording and playback stop as Stop does and the
- * model is let go, and the next press opens it again. A limit line's Retry opens it again; its other actions go to
- * [onLimitAction] (the app's settings for a refused microphone).
+ * model is let go, and the next press opens it again, or, hands-free, coming back does (D147). A limit line's Retry
+ * opens it again; its other actions go to [onLimitAction] (the app's settings for a refused microphone).
  */
 @Composable
 fun VoiceHost(
@@ -34,6 +34,8 @@ fun VoiceHost(
     val ui by conversation.ui.collectAsStateWithLifecycle()
     val limit by conversation.limit.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { conversation.pause() }
+    // hands-free listens again by itself on coming back; Tap to talk waits for the press (D147)
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { conversation.resume() }
     val actions =
         remember(conversation, onClose) {
             VoiceViewActions(onClose, conversation::talkStart, conversation::talkEnd, conversation::stop)
@@ -47,6 +49,7 @@ fun VoiceHost(
             ui.userWords,
             ui.caption,
             FRESH_NOTE.takeIf { startsFresh },
+            ui.sendsOnPause,
         ),
         actions,
         Modifier.testTag("voice_mode"),

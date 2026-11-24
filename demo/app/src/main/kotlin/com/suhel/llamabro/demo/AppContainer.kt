@@ -20,8 +20,10 @@ import com.suhel.llamabro.Model
 import com.suhel.llamabro.demo.audio.MediaVoicePlayer
 import com.suhel.llamabro.demo.audio.Microphone
 import com.suhel.llamabro.demo.audio.SampleSource
+import com.suhel.llamabro.demo.audio.SessionFocus
 import com.suhel.llamabro.demo.audio.SpeechOutput
 import com.suhel.llamabro.demo.audio.TrackSpeech
+import com.suhel.llamabro.demo.audio.VoiceFocus
 import com.suhel.llamabro.demo.audio.VoiceRecorder
 import com.suhel.llamabro.demo.chat.ChatEngine
 import com.suhel.llamabro.demo.chat.ModelHost
@@ -118,15 +120,23 @@ class AppContainer(
      */
     @SuppressLint("MissingPermission") val microphone: () -> SampleSource = { Microphone(app) },
     /**
-     * Voice mode's microphone (D100): the voice call's source, whose echo cancellation keeps the reply out of it;
-     * opened only after the chat screen has the permission. The phone tests give scripted samples.
+     * Voice mode's microphone (D100): the voice call's source, whose echo cancellation keeps the reply out of it, under
+     * the session's focus (D147); opened only after the chat screen has the permission. The phone tests give scripted
+     * samples.
      */
     @SuppressLint("MissingPermission")
-    val voiceMicrophone: () -> SampleSource = {
-        Microphone(app, android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+    val voiceMicrophone: (SessionFocus) -> SampleSource = {
+        Microphone(app, android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION, it)
     },
-    /** Where voice mode speaks a reply, at its sample rate (D100); the phone tests play nothing. */
+    /** Where read-aloud speaks, at its sample rate (D141); the phone tests play nothing. */
     val speech: (rate: Int) -> SpeechOutput = { TrackSpeech(app, it) },
+    /** Where voice mode speaks a reply, at its sample rate, under the session's focus (D100, D147). */
+    val voiceSpeech: (
+        rate: Int,
+        focus: SessionFocus,
+    ) -> SpeechOutput = { rate, focus -> TrackSpeech(app, rate, focus) },
+    /** Voice mode's one claim on the phone's audio for a session (D147); the phone tests take none. */
+    val voiceFocus: () -> SessionFocus = { VoiceFocus(app) },
 ) : Screens {
     /** The app's own scope: work that outlives a screen or a view model runs here, never in an ad-hoc scope. */
     val appScope: CoroutineScope get() = scope
@@ -328,15 +338,24 @@ class AppContainer(
             player = MediaVoicePlayer(scope),
             voiceModeStart = ::voiceConversation,
             dictationStart = ::dictation,
-            dictationLanguage = { settings.settings.first().dictationLanguage },
-            micHint = settings.settings.map { !it.seenMicHint },
-            onMicHintSeen = { settings.setSeenMicHint() },
+            dictationLanguage = {
+                settings.settings
+                    .first()
+                    .voice.dictationLanguage
+            },
+            micHint = settings.settings.map { !it.voice.seenMicHint },
+            onMicHintSeen = { settings.voice.setSeenMicHint() },
             speech = speech,
-            chosenVoice = { settings.settings.first().voice },
+            chosenVoice = {
+                settings.settings
+                    .first()
+                    .voice.name
+            },
         )
 
-    private fun voiceConversation(chat: VoiceChat) =
-        VoiceConversation(
+    private fun voiceConversation(chat: VoiceChat): VoiceConversation {
+        val focus = voiceFocus()
+        return VoiceConversation(
             chat.chatId,
             chat.key,
             chat.name,
@@ -344,12 +363,14 @@ class AppContainer(
             settings,
             chats,
             audio,
-            voiceMicrophone,
-            speech,
+            { voiceMicrophone(focus) },
+            { voiceSpeech(it, focus) },
             scope,
             Dispatchers.Main.immediate,
             clock = clock,
+            focus = focus,
         )
+    }
 
     /** A dictation over [model] (D140): the microphone into a new recording in app storage, in [language]. */
     private fun dictation(model: Model, language: String?) =

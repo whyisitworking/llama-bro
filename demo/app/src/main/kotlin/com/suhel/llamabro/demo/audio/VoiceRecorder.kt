@@ -175,6 +175,9 @@ class VoiceRecorder(
         internal fun level(buffer: ShortArray, n: Int): Float =
             ((Levels.rmsToDb(Levels.rms(buffer, n)) + QUIET_DB) / QUIET_DB).coerceIn(0.0, 1.0).toFloat()
 
+        /** A [level] back to dBFS; 0 reads as 50 dB below full scale. */
+        internal fun levelDb(level: Float): Double = level * QUIET_DB - QUIET_DB
+
         /** [levels] as at most [count] peaks, each the loudest of its share. */
         internal fun peaks(levels: List<Float>, count: Int): List<Float> =
             if (levels.size <= count) {

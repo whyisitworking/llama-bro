@@ -14,6 +14,7 @@
 | [design/models-search.md](design/models-search.md) | Searching Hugging Face from the Models page: paging (D127) and filters (D128) |
 | [design/models-audit.md](design/models-audit.md) | The critic's audit of the Models screen; its findings (S, M, R IDs) are cited from code and marked fixed or ruled out |
 | [design/models-screen.md](design/models-screen.md) | The earlier merged Models screen (D116), superseded by models-page.md; kept for the fit symbol and card rationale |
+| [design/hands-free-tuning.md](design/hands-free-tuning.md) | Hands-free voice mode (D147): what to try on the phone, what to listen for, which constants to change |
 | [../research/README.md](../research/README.md) | The experiments behind the findings: scripts, method and raw results |
 
 ## Conventions

@@ -1,7 +1,6 @@
 package com.suhel.llamabro.demo.audio
 
 import android.content.Context
-import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -31,22 +30,21 @@ interface SpeechOutput : AutoCloseable {
 /**
  * [SpeechOutput] on an [AudioTrack] in streaming mode at [rate], speech for the assistant (`USAGE_ASSISTANT`), so it
  * plays on the loudspeaker or the connected headset, wherever the phone routes media. It asks for transient audio focus
- * while it plays.
+ * while it plays, unless it plays under voice mode's [session] focus (D147), and then as a call's voice when the
+ * session asked for that ([SessionFocus.communication]).
  */
-class TrackSpeech(context: Context, private val rate: Int) : SpeechOutput {
+class TrackSpeech(context: Context, private val rate: Int, session: SessionFocus? = null) : SpeechOutput {
     private val audio = context.getSystemService(AudioManager::class.java)
-    private val attributes =
-        AudioAttributes
-            .Builder()
-            .setUsage(AudioAttributes.USAGE_ASSISTANT)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-            .build()
-    private val focus =
-        AudioFocusRequest
-            .Builder(
-                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT,
-            ).setAudioAttributes(attributes)
-            .build()
+    private val attributes = VoiceFocus.attributes(communication = session?.communication == true)
+    private val focus: AudioFocusRequest? =
+        if (session != null) {
+            null
+        } else {
+            AudioFocusRequest
+                .Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                .setAudioAttributes(attributes)
+                .build()
+        }
     private val track =
         AudioTrack
             .Builder()
@@ -74,7 +72,7 @@ class TrackSpeech(context: Context, private val rate: Int) : SpeechOutput {
 
     override fun write(pcm: ShortArray) {
         if (!playing) {
-            audio.requestAudioFocus(focus)
+            focus?.let { audio.requestAudioFocus(it) }
             track.play()
             playing = true
         }
@@ -107,7 +105,7 @@ class TrackSpeech(context: Context, private val rate: Int) : SpeechOutput {
         track.stop()
         written = 0
         synchronized(chunks) { chunks.clear() }
-        audio.abandonAudioFocusRequest(focus)
+        focus?.let { audio.abandonAudioFocusRequest(it) }
     }
 
     override fun close() {

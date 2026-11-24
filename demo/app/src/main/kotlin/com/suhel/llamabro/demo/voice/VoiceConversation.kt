@@ -3,17 +3,17 @@ package com.suhel.llamabro.demo.voice
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.audio.VoiceEvent
 import com.suhel.llamabro.audio.VoiceSession
+import com.suhel.llamabro.demo.audio.Levels
 import com.suhel.llamabro.demo.audio.MILLIS_PER_SECOND
 import com.suhel.llamabro.demo.audio.SampleSource
+import com.suhel.llamabro.demo.audio.SessionFocus
 import com.suhel.llamabro.demo.audio.SpeechOutput
 import com.suhel.llamabro.demo.audio.VoiceRecorder
 import com.suhel.llamabro.demo.audio.Wav
-import com.suhel.llamabro.demo.audio.blocks
 import com.suhel.llamabro.demo.audio.levelsOf
 import com.suhel.llamabro.demo.chat.Instructions
 import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.LimitAction
-import com.suhel.llamabro.demo.chat.Limits
 import com.suhel.llamabro.demo.chat.ModelHold
 import com.suhel.llamabro.demo.chat.Thinking
 import com.suhel.llamabro.demo.chat.holdUncancelled
@@ -26,16 +26,14 @@ import com.suhel.llamabro.demo.data.MessageState
 import com.suhel.llamabro.demo.data.NewMessage
 import com.suhel.llamabro.demo.data.NewVoice
 import com.suhel.llamabro.demo.data.SettingsRepository
+import com.suhel.llamabro.demo.data.VoiceTurns
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.voiceSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -61,21 +59,24 @@ data class VoiceUi(
     val caption: String = "",
     /** The voice the model speaks with, once the session has opened. */
     val voice: String? = null,
+    /** What is being heard ends on its own at a pause (hands-free, D147), so the hint says so. */
+    val sendsOnPause: Boolean = false,
 )
 
 /**
  * One chat's voice mode (D100): a spoken conversation with [key]'s model through the SDK's voice session (D98), hold
- * to talk. Each turn is saved to chat [chatId] as an ordinary message: the person's as a voice message whose text is
- * its caption (D99), the reply as its text with its speech. The session opens on [open] and again on the first talk
- * after [pause] (leaving the screen); [close] ends it for good.
+ * or tap to talk, or hands-free (D147). Each turn is saved to chat [chatId] as an ordinary message: the person's as a
+ * voice message whose text is its caption (D99), the reply as its text with its speech. The session opens on [open]
+ * and again on the first talk after [pause] (leaving the screen); [close] ends it for good.
  *
  * An actor ([Steps]): every change of state is a step on one thread of [dispatcher], run to its end one at a time and
  * in the order asked, so a release that comes while the model is still loading waits for the press before it. The
- * session's events, the captions and the player's end come in as steps too. The microphone and the speaker block, so
- * they run on [io] and hand their results back. [microphone] and [speech] open the phone's audio; tests pass their
- * own.
+ * session's events, the captions and the player's end come in as steps too. The microphone side is a [TurnListener]
+ * in the same actor. The microphone and the speaker block, so they run on [io] and hand their results back.
+ * [microphone] and [speech] open the phone's audio, under [focus], which the session holds from its opening to its end
+ * (D147); tests pass their own.
  */
-@Suppress("LongParameterList") // its collaborators, each a seam the tests replace, are passed in rather than looked up
+@Suppress("LongParameterList") // seams the tests replace, passed in
 class VoiceConversation(
     private val chatId: Long,
     private val key: HfModel,
@@ -91,6 +92,7 @@ class VoiceConversation(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val clock: () -> Long = System::currentTimeMillis,
     private val locale: () -> Locale = Locale::getDefault,
+    private val focus: SessionFocus = SessionFocus.None,
 ) {
     private val steps = Steps(scope, dispatcher)
     private val confined = steps.dispatcher
@@ -109,17 +111,41 @@ class VoiceConversation(
     private var session: VoiceSession? = null
     private var events: Job? = null
     private var output: SpeechOutput? = null
-    private var listening: Job? = null
-    private var turnAudio: Channel<ShortArray>? = null
 
-    // the one word the actor sends the reader: stop after the block being read, which is kept
-    private val talking = MutableStateFlow(false)
+    // turns end at a pause, and talking over a reply stops it, as Settings › Voice said when the session opened (D147)
+    private var handsFree = false
+    private var interrupting = false
+
+    private val isOpen: Boolean get() = session != null && !closed
+
+    private val listener =
+        TurnListener(
+            scope,
+            steps,
+            io,
+            microphone,
+            limit,
+            _ui,
+            object : TurnListener.Callbacks {
+                override fun onAppend(chunk: ShortArray) {
+                    session?.append(chunk)
+                }
+
+                override suspend fun onInterrupt() = stopReply()
+
+                override suspend fun onTurn(turn: PcmBuffer) = sendTurn(turn)
+
+                override fun playbackDb(): Double = output?.let { VoiceRecorder.levelDb(it.level) } ?: Levels.SILENCE_DB
+            },
+        )
 
     /** Called when listening has been told to stop, before it is waited for: a test's sign that a release arrived. */
-    internal var stoppingListening: () -> Unit = {}
+    internal var stoppingListening: () -> Unit
+        get() = listener.stoppingListening
+        set(value) {
+            listener.stoppingListening = value
+        }
 
-    /** The rate of the microphone the turn is recorded from: its clip's, and the measure of a tap. */
-    private var turnRate = 0
     private var reply: Reply? = null
     private var meter: Job? = null
     private var closed = false
@@ -134,10 +160,13 @@ class VoiceConversation(
         var playback: Channel<ShortArray>? = null
         var player: Job? = null
         var saved = false
+
+        /** Its [VoiceEvent.ReplyDone] came: the server has finished it, so there is nothing to cancel. */
+        var done = false
     }
 
     fun open() {
-        steps.run { ensureSession() }
+        steps.run { if (ensureSession()) listenAgain() }
     }
 
     /** The line's button: the line goes, and the session opens again if it had closed. */
@@ -146,110 +175,72 @@ class VoiceConversation(
         open()
     }
 
-    /** The talk button went down: stop a reply being made, then listen (D100). */
+    /**
+     * The talk button went down: stop a reply being made, then listen until the release or the next tap (D100).
+     * Hands-free, the turn starts at once on the ear's microphone, with what it kept from before the press (D147).
+     */
     fun talkStart() {
         steps.run {
-            if (listening != null) return@run
+            // an ear that hasn't heard a turn start gives way to the press, or, hands-free, takes it; one that has is
+            // that turn
+            if (listener.isWaiting) {
+                if (!handsFree) {
+                    listener.stop()
+                } else {
+                    if (reply != null) stopReply()
+                    listener.press()
+                    return@run
+                }
+            }
+            if (listener.isListening) return@run
             if (reply != null) stopReply()
             if (!ensureSession()) return@run
-            val mic = openMicrophone() ?: return@run
-            if (mic.rate != INPUT_RATE) {
-                // the session was told the rate before the microphone opened: audio at another would play wrong
-                mic.close()
-                limit.value =
-                    Limit(
-                        "This phone's microphone records at a rate voice mode can't take.",
-                        LimitAction.Retry,
-                        "Got it",
-                        dismissible = true,
-                    )
-                return@run
-            }
-            val samples = Channel<ShortArray>(Channel.UNLIMITED)
-            turnAudio = samples
-            turnRate = mic.rate
-            _ui.update { it.copy(phase = VoiceStage.Listening, level = 0f) }
-            talking.value = true
-            listening = listen(mic, session, samples)
+            if (handsFree) listener.startEar(held = true) else listener.startHeld(session)
         }
     }
 
-    /** The microphone, opened on [io], or null with [limit] saying why it couldn't be (refused, or taken by a call). */
-    private suspend fun openMicrophone(): SampleSource? {
-        var opened: SampleSource? = null
-        var refused = false
-        try {
-            // no timeout: opening the microphone returns or throws, and a bound would only leak it
-            withContext(io + NonCancellable) {
-                try {
-                    opened = microphone()
-                } catch (ignored: Exception) {
-                    refused = true
-                }
-            }
-        } catch (e: CancellationException) {
-            opened?.close()
-            throw e
-        }
-        if (refused) limit.value = Limits.microphone()
-        return opened
+    /** Hands-free, voice mode listens again once a reply is over (D147); one that a tap stopped waits for a tap. */
+    private suspend fun listenAgain() {
+        if (!handsFree || !isOpen) return
+        if (reply == null && !listener.isListening && _ui.value.phase == VoiceStage.Ready) listener.startEar()
     }
 
     /**
-     * Reads [mic] on [io] until the turn ends (the block being read then is kept) or the microphone does: each block
-     * goes to [live] and to [samples]. Started ATOMIC: cancelled before it runs (the session ending), it still takes
-     * the microphone over and closes it.
+     * The talk button came up, or was tapped again: the turn goes to the model, which answers (D100). Hands-free, the
+     * turn ends at once, without waiting for the pause; with no speech heard yet, listening stops until a tap (D147).
      */
-    @OptIn(DelicateCoroutinesApi::class)
-    private fun listen(mic: SampleSource, live: VoiceSession?, samples: Channel<ShortArray>): Job =
-        scope.launch(io, start = CoroutineStart.ATOMIC) {
-            try {
-                mic.blocks(io) { talking.value }.collect { chunk ->
-                    live?.append(chunk)
-                    samples.trySend(chunk)
-                    val level = VoiceRecorder.level(chunk, chunk.size)
-                    _ui.update { if (it.phase == VoiceStage.Listening) it.copy(level = level) else it }
-                }
-            } finally {
-                samples.close()
-            }
-        }
-
-    /** Ends listening: the reading stops after the block it is reading, and the microphone has closed once it has. */
-    private suspend fun stopListening() {
-        talking.value = false
-        stoppingListening()
-        listening?.join()
-        listening = null
-        turnAudio?.close()
+    fun talkEnd() {
+        steps.run { listener.endHeld()?.let { sendTurn(it) } }
     }
 
-    /** The talk button came up: the turn goes to the model, which answers (D100). */
-    fun talkEnd() {
-        steps.run {
-            if (listening == null) return@run
-            stopListening()
-            val samples = PcmBuffer()
-            turnAudio?.let { channel -> for (chunk in channel) samples.add(chunk) }
-            turnAudio = null
-            if (samples.size * MILLIS_PER_SECOND < MIN_TURN_MILLIS * turnRate) {
-                // a tap, not a turn: nothing to send
-                _ui.update { it.copy(phase = VoiceStage.Ready, level = 0f) }
-                return@run
-            }
-            // a turn whose recording can't be kept (the disk is full) still goes to the model; the chat says so
-            saveClip(samples, turnRate)?.let { voice ->
-                val row = chats.append(chatId, NewMessage(MessageKind.User, "", sentAt = clock(), voice = voice))
-                captions?.add(row, audio.file(voice.name))
-            }
-            _ui.update { it.copy(phase = VoiceStage.Thinking, level = 0f, userWords = null, caption = "") }
-            session?.commit()
+    /** A turn heard: saved to the chat and committed, so the model answers; a tap's worth is nothing to send. */
+    private suspend fun sendTurn(samples: PcmBuffer) {
+        if (samples.size * MILLIS_PER_SECOND < MIN_TURN_MILLIS * listener.rate) {
+            _ui.update { it.copy(phase = VoiceStage.Ready, level = 0f) }
+            return
         }
+        // a turn whose recording can't be kept (the disk is full) still goes to the model; the chat says so
+        saveClip(samples, listener.rate)?.let { voice ->
+            val row = chats.append(chatId, NewMessage(MessageKind.User, "", sentAt = clock(), voice = voice))
+            captions?.add(row, audio.file(voice.name))
+        }
+        _ui.update {
+            it.copy(phase = VoiceStage.Thinking, level = 0f, userWords = null, caption = "", sendsOnPause = false)
+        }
+        session?.commit()
+    }
+
+    /** Back on the screen (D147): hands-free listens again by itself; Tap to talk waits for the press, as before. */
+    fun resume() {
+        steps.run { if (handsFree && ensureSession()) listenAgain() }
     }
 
     /** Stop: the reply ends where it is, kept as Stop keeps a written one. */
     fun stop() {
-        steps.run { stopReply() }
+        steps.run {
+            stopReply()
+            listenAgain()
+        }
     }
 
     /**
@@ -274,9 +265,11 @@ class VoiceConversation(
         if (session != null) return true
         limit.value = null
         val now = settings.settings.first()
-        val lease = holdUncancelled { hold(if (now.captionYou) 2 else 1, limit) } ?: return false
+        handsFree = now.voice.turns == VoiceTurns.HandsFree
+        interrupting = now.voice.interruptByTalking
+        val lease = holdUncancelled { hold(if (now.voice.captionYou) 2 else 1, limit) } ?: return false
         val info = lease.model.info
-        val voice = now.voice?.takeIf { it in info.voices } ?: info.voices.firstOrNull()
+        val voice = now.voice.name?.takeIf { it in info.voices } ?: info.voices.firstOrNull()
         val opened =
             try {
                 lease.model.voiceSession {
@@ -287,7 +280,7 @@ class VoiceConversation(
                             .joinToString("\n\n")
                     maxOutputTokens = MAX_REPLY_TOKENS
                     // the microphone opens only at the first talk, so its rate is checked against this one then
-                    inputSampleRate = INPUT_RATE
+                    inputSampleRate = TurnListener.INPUT_RATE
                 }
             } catch (e: CancellationException) {
                 lease.release()
@@ -299,7 +292,9 @@ class VoiceConversation(
             }
         held = lease
         session = opened
-        if (now.captionYou) {
+        // before the speaker is made: it plays as a call's voice when talking interrupts a reply (D147)
+        focus.take(communication = interrupting)
+        if (now.voice.captionYou) {
             captions =
                 TurnCaptions(lease.model, scope, confined) { row, text ->
                     steps.run { onCaption(opened, row, text) }.join()
@@ -365,17 +360,25 @@ class VoiceConversation(
 
     private suspend fun onReplyDone(event: VoiceEvent.ReplyDone) {
         val r = reply ?: return
+        r.done = true
         if (r.text.isEmpty()) r.text.append(event.text)
         r.playback?.close()
         saveReply(r, stopped = event.cancelled)
-        if (r.player == null) finishReply(r)
+        if (r.player == null) {
+            finishReply(r)
+            listenAgain()
+        }
     }
 
-    /** A short tap's empty commit and a caption that failed leave the conversation as it was; others say so. */
-    private fun onError(event: VoiceEvent.Error) {
+    /**
+     * A short tap's empty commit and a caption that failed leave the conversation as it was; others say so, and
+     * hands-free listens again for the next try.
+     */
+    private suspend fun onError(event: VoiceEvent.Error) {
         if (event.type in QUIET_ERRORS) return
         limit.value = Limit("$name couldn't answer that. Try again.", LimitAction.Retry, "Retry")
         _ui.update { if (it.phase == VoiceStage.Thinking) it.copy(phase = VoiceStage.Ready) else it }
+        listenAgain()
     }
 
     /** The reply's speech plays as it arrives, on [io]; the orb follows what plays. */
@@ -393,12 +396,25 @@ class VoiceConversation(
             }
         r.player =
             scope.launch(io) {
+                var first = interrupting
                 for (pcm in queue) {
                     ensureActive() // a stopped reply plays nothing more of what was queued
                     out.write(pcm)
+                    if (first) {
+                        // the ear opens once the speaker plays, so the guard learns from the reply's first words
+                        first = false
+                        steps.run {
+                            if (reply === r && !listener.isListening && isOpen) {
+                                listener.startEar(watching = true, staysOpen = handsFree)
+                            }
+                        }
+                    }
                 }
                 out.drain()
-                steps.run { finishReply(r) }
+                steps.run {
+                    finishReply(r)
+                    listenAgain()
+                }
             }
     }
 
@@ -417,12 +433,15 @@ class VoiceConversation(
                 it
             }
         }
+        // the ear that listened for an interruption: hands-free it waits for the next turn, else it closes
+        listener.replyEnded(staysOpen = handsFree)
     }
 
     /** Stops the reply being made or spoken: what it said so far is kept, marked as stopped. */
     private suspend fun stopReply() {
         val r = reply ?: return
-        session?.cancelReply()
+        // a reply the server has finished is only playing out: a cancel would reach nothing
+        if (!r.done) session?.cancelReply()
         // drop the speech still queued (close would play it out), stop the player, then the track: stopping it
         // releases a write blocked on a full buffer. A write that slipped in before the player saw its cancel would
         // take audio focus again, so the track is stopped once more after the player has ended.
@@ -455,8 +474,7 @@ class VoiceConversation(
 
     /** Ends the session: the turn being recorded is dropped, the reply stops, and the model is let go. */
     private suspend fun endSession() {
-        stopListening()
-        turnAudio = null
+        listener.stop()
         stopReply()
         events?.cancel()
         events = null
@@ -464,6 +482,7 @@ class VoiceConversation(
         session = null
         output?.close()
         output = null
+        focus.release()
         captions?.close()
         captions = null
         held?.release()
@@ -533,11 +552,9 @@ class VoiceConversation(
 
         private const val OUT_RATE = 24_000
 
-        /** The rate the session is told the person's audio comes at: the phone's microphone's (D76). */
-        private const val INPUT_RATE = 16_000
-
         /** Under a fifth of a second is a tap, not something said. */
         private const val MIN_TURN_MILLIS = 200L
+
         private const val METER_MILLIS = 50L
         private val QUIET_ERRORS = setOf("input_audio_buffer_commit_empty")
     }
@@ -548,6 +565,9 @@ internal class PcmBuffer {
     private val chunks = mutableListOf<ShortArray>()
     var size = 0
         private set
+
+    /** The chunks, in the order they came. */
+    val blocks: List<ShortArray> get() = chunks
 
     fun add(chunk: ShortArray) {
         chunks += chunk

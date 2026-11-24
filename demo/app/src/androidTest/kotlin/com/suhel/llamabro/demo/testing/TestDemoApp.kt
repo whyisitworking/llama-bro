@@ -6,6 +6,7 @@ import androidx.work.WorkManager
 import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.demo.AppContainer
 import com.suhel.llamabro.demo.DemoApp
+import com.suhel.llamabro.demo.audio.SessionFocus
 import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.TokenStore
 import com.suhel.llamabro.demo.models.WorkDownloadScheduler
@@ -84,6 +85,8 @@ class TestDemoApp : DemoApp() {
             microphone = c.microphone,
             voiceMicrophone = c.voiceMicrophone,
             speech = c.speech,
+            voiceSpeech = { rate, _ -> c.speech(rate) },
+            voiceFocus = { SessionFocus.None },
         )
 
     private fun deleteFiles(c: TestConfig) {

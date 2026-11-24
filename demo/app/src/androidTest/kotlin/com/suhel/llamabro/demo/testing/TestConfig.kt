@@ -2,6 +2,7 @@ package com.suhel.llamabro.demo.testing
 
 import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.demo.audio.SampleSource
+import com.suhel.llamabro.demo.audio.SessionFocus
 import com.suhel.llamabro.demo.audio.SpeechOutput
 import com.suhel.llamabro.demo.chat.Streamer
 import com.suhel.llamabro.demo.models.DownloadScheduler
@@ -32,7 +33,7 @@ data class TestConfig(
     /** Tests never record the room: a voice message's samples come from a script (D76). */
     val microphone: () -> SampleSource = { ScriptedVoice() },
     /** Voice mode's microphone (D100): the same scripted voice. */
-    val voiceMicrophone: () -> SampleSource = { ScriptedVoice() },
+    val voiceMicrophone: (SessionFocus) -> SampleSource = { ScriptedVoice() },
     /** Voice mode plays nothing in tests: the reply's speech is counted, not heard. */
     val speech: (rate: Int) -> SpeechOutput = { SilentSpeech() },
 ) {

@@ -153,16 +153,29 @@ class SettingsRepositoryTest {
     @Test fun voiceModeTakesTheModelsFirstVoiceAndCaptionsUntilChosen() =
         runBlocking {
             val first = repository()
-            assertNull(first.settings.first().voice)
-            assertTrue(first.settings.first().captionYou)
-            first.setVoice("male")
-            first.setCaptionYou(false)
+            assertNull(first.settings.first().voice.name)
+            assertTrue(first.settings.first().voice.captionYou)
+            first.voice.setVoice("male")
+            first.voice.setCaptionYou(false)
             restart()
             val again = repository()
-            assertEquals("male", again.settings.first().voice)
-            assertFalse(again.settings.first().captionYou)
-            again.setVoice(null)
-            assertNull(again.settings.first().voice)
+            assertEquals("male", again.settings.first().voice.name)
+            assertFalse(again.settings.first().voice.captionYou)
+            again.voice.setVoice(null)
+            assertNull(again.settings.first().voice.name)
+        }
+
+    @Test fun voiceModeIsTapToTalkWithoutInterruptingUntilChosen() =
+        runBlocking {
+            val first = repository()
+            assertEquals(VoiceTurns.TapToTalk, first.settings.first().voice.turns)
+            assertFalse(first.settings.first().voice.interruptByTalking)
+            first.voice.setVoiceTurns(VoiceTurns.HandsFree)
+            first.voice.setInterruptByTalking(true)
+            restart()
+            val again = repository()
+            assertEquals(VoiceTurns.HandsFree, again.settings.first().voice.turns)
+            assertTrue(again.settings.first().voice.interruptByTalking)
         }
 
     @Test fun aModelThatTalksIsRememberedWithItsVoicesUntilItStops() =

@@ -93,14 +93,8 @@ data class AppSettings(
     val chip: ChipChoice = ChipChoice.Automatic,
     val context: ContextChoice = ContextChoice.Automatic,
     val replyLength: ReplyLength = ReplyLength.Automatic,
-    /** Voice mode's voice (Settings › Voice, D100): its name, or null for the model's first. */
-    val voice: String? = null,
-    /** Voice mode captions what the person says (D99, D100); it then loads the model with two slots. */
-    val captionYou: Boolean = true,
-    /** The language dictation listens for (D140), an ISO 639-1 code; null lets the model tell. */
-    val dictationLanguage: String? = null,
-    /** The person has dictated or recorded once, so the mic's "hold for a voice message" line is gone (D140). */
-    val seenMicHint: Boolean = false,
+    /** Settings › Voice: voice mode's voice, captions and turns, and dictation (D100, D140, D147). */
+    val voice: VoicePrefs = VoicePrefs(),
     /** What Hugging Face search asks for (models-search design §5), remembered across launches. */
     val searchFilters: SearchFilters = SearchFilters(),
 )
@@ -108,8 +102,10 @@ data class AppSettings(
 /** The model a new chat starts with: the pinned one, else the one used last (demo design §4.2). */
 fun AppSettings.modelForNewChat(): String? = defaultModel ?: lastModel
 
-/** DataStore Preferences `settings.preferences_pb`. */
+/** DataStore Preferences `settings.preferences_pb`; Settings › Voice's setters are [voice]'s. */
 class SettingsRepository(private val store: DataStore<Preferences>) {
+    val voice: VoiceSettings = VoiceSettings(store)
+
     val settings: Flow<AppSettings> =
         store.data.map { p ->
             AppSettings(
@@ -132,10 +128,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 chip = ChipChoice.entries.firstOrNull { it.name == p[CHIP] } ?: ChipChoice.Automatic,
                 context = ContextChoice.entries.firstOrNull { it.name == p[CONTEXT] } ?: ContextChoice.Automatic,
                 replyLength = ReplyLength.entries.firstOrNull { it.name == p[REPLY_LENGTH] } ?: ReplyLength.Automatic,
-                voice = p[VOICE],
-                captionYou = p[CAPTION_YOU] ?: true,
-                dictationLanguage = p[DICTATION_LANGUAGE],
-                seenMicHint = p[SEEN_MIC_HINT] ?: false,
+                voice = VoiceSettings.prefsOf(p),
                 searchFilters = searchFiltersOf(p),
             )
         }
@@ -220,22 +213,6 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             val now = it[HEARING_MODELS].orEmpty()
             if ((modelKey in now) != hears) it[HEARING_MODELS] = if (hears) now + modelKey else now - modelKey
         }
-    }
-
-    suspend fun setVoice(voice: String?) {
-        store.edit { if (voice == null) it.remove(VOICE) else it[VOICE] = voice }
-    }
-
-    suspend fun setCaptionYou(caption: Boolean) {
-        store.edit { it[CAPTION_YOU] = caption }
-    }
-
-    suspend fun setDictationLanguage(language: String?) {
-        store.edit { if (language == null) it.remove(DICTATION_LANGUAGE) else it[DICTATION_LANGUAGE] = language }
-    }
-
-    suspend fun setSeenMicHint() {
-        store.edit { it[SEEN_MIC_HINT] = true }
     }
 
     /**
@@ -328,10 +305,6 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val DOWNLOADS_NEEDING_TOKEN = stringSetPreferencesKey("downloads_needing_token")
         val HEARING_MODELS = stringSetPreferencesKey("hearing_models")
         val TALKING_MODELS = stringSetPreferencesKey("talking_models")
-        val VOICE = stringPreferencesKey("voice")
-        val CAPTION_YOU = booleanPreferencesKey("caption_you")
-        val DICTATION_LANGUAGE = stringPreferencesKey("dictation_language")
-        val SEEN_MIC_HINT = booleanPreferencesKey("seen_mic_hint")
 
         /** A talking model's entry: its key, a tab, then its voices separated by commas. */
         const val VOICES_AFTER = "\t"

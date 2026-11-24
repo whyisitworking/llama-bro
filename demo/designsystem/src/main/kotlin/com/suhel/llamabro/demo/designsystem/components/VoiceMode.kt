@@ -72,7 +72,8 @@ enum class VoicePhase { Ready, Listening, Thinking, Speaking }
  * What the voice view shows (D100): the [model]'s name and its [voice] (null when the model has none to name), the
  * [phase], the voice's [level] (0 to 1: the microphone's while listening, the reply's while speaking), the person's
  * last words when captioned ([userWords]), and the reply's [caption] so far. A [note] (that voice mode starts fresh,
- * without the chat's earlier messages) shows quietly above the words.
+ * without the chat's earlier messages) shows quietly above the words. While [sendsOnPause], what is being heard ends on
+ * its own at a pause (hands-free, D147), and the hint says so.
  */
 @Immutable
 data class VoiceViewState(
@@ -83,6 +84,7 @@ data class VoiceViewState(
     val userWords: String? = null,
     val caption: String = "",
     val note: String? = null,
+    val sendsOnPause: Boolean = false,
 )
 
 /** What the voice view's controls do: close it, start and end a turn (hold to talk), and stop the reply. */
@@ -148,9 +150,9 @@ fun VoiceView(
         }
         // a tap starts a turn that the next tap sends; a hold sends on release (D100): the button keeps which one
         var tapped by rememberTurnTapped(state.phase)
-        VoiceControls(state.phase, tapped, { tapped = it }, actions)
+        VoiceControls(state.phase, tapped, state.sendsOnPause, { tapped = it }, actions)
         Text(
-            stringResource(hint(state.phase, tapped)),
+            stringResource(hint(state.phase, tapped, state.sendsOnPause)),
             Modifier.padding(top = DemoSpacing.block, bottom = DemoSpacing.section),
             color = colors.muted,
             style = DemoType.bodySmall,
@@ -255,15 +257,33 @@ internal fun rememberTurnTapped(phase: VoicePhase): MutableState<Boolean> {
 }
 
 /** The line under the controls: how to talk now. */
-private fun hint(phase: VoicePhase, tapped: Boolean): Int =
+private fun hint(phase: VoicePhase, tapped: Boolean, sendsOnPause: Boolean): Int =
     when (phase) {
-        VoicePhase.Listening -> if (tapped) R.string.ds_voice_tap_send else R.string.ds_voice_release
-        VoicePhase.Speaking -> R.string.ds_voice_interrupt
-        VoicePhase.Ready, VoicePhase.Thinking -> R.string.ds_voice_how
+        VoicePhase.Listening -> {
+            when {
+                sendsOnPause -> R.string.ds_voice_pause_send
+                tapped -> R.string.ds_voice_tap_send
+                else -> R.string.ds_voice_release
+            }
+        }
+
+        VoicePhase.Speaking -> {
+            R.string.ds_voice_interrupt
+        }
+
+        VoicePhase.Ready, VoicePhase.Thinking -> {
+            R.string.ds_voice_how
+        }
     }
 
 @Composable
-private fun VoiceControls(phase: VoicePhase, tapped: Boolean, onTapped: (Boolean) -> Unit, actions: VoiceViewActions) {
+private fun VoiceControls(
+    phase: VoicePhase,
+    tapped: Boolean,
+    sendsOnPause: Boolean,
+    onTapped: (Boolean) -> Unit,
+    actions: VoiceViewActions,
+) {
     val replying = phase == VoicePhase.Thinking || phase == VoicePhase.Speaking
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -275,6 +295,7 @@ private fun VoiceControls(phase: VoicePhase, tapped: Boolean, onTapped: (Boolean
             onTapped = onTapped,
             onStart = actions.onTalkStart,
             onEnd = actions.onTalkEnd,
+            sendsOnPause = sendsOnPause,
         )
         Spacer(Modifier.weight(1f))
     }
@@ -284,7 +305,8 @@ private fun VoiceControls(phase: VoicePhase, tapped: Boolean, onTapped: (Boolean
  * The talk button (D100): an 80 dp tonal circle with the mic, filled with the accent while [held] (listening),
  * with a soft halo of it. Two ways to talk: hold it and release to send, or tap it to start and tap again to send. A
  * press shorter than [TAP_MILLIS] is a tap: the turn goes on ([tapped], kept by the caller through [onTapped]) until
- * the next press ends it. A screen reader taps it once to start and once to send.
+ * the next press ends it, as it does a turn that ends on its own at a pause ([sendsOnPause], hands-free or an
+ * interruption, D147), however it began. A screen reader taps it once to start and once to send.
  */
 @Composable
 fun TalkButton(
@@ -294,12 +316,14 @@ fun TalkButton(
     onStart: () -> Unit,
     onEnd: () -> Unit,
     modifier: Modifier = Modifier,
+    sendsOnPause: Boolean = false,
 ) {
     val colors = LocalDemoColors.current
     val start by rememberUpdatedState(onStart)
     val end by rememberUpdatedState(onEnd)
     val isHeld by rememberUpdatedState(held)
     val isTapped by rememberUpdatedState(tapped)
+    val endsOnPause by rememberUpdatedState(sendsOnPause)
     val setTapped by rememberUpdatedState(onTapped)
     val label = stringResource(if (held) R.string.ds_voice_talk_send else R.string.ds_voice_talk_start)
     val halo = colors.accent.copy(alpha = HALO_ALPHA)
@@ -322,8 +346,8 @@ fun TalkButton(
                 awaitEachGesture {
                     val down = awaitFirstDown()
                     down.consume()
-                    if (isTapped) {
-                        // the tap that sends a tapped turn
+                    if (isTapped || (isHeld && endsOnPause)) {
+                        // the tap that sends a tapped turn, or one that would end on its own at a pause
                         waitForUpOrCancellation()?.consume()
                         setTapped(false)
                         end()
