@@ -1,12 +1,19 @@
 package com.suhel.llamabro.demo.designsystem.components
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.AnchoredDraggableDefaults
+import androidx.compose.foundation.gestures.AnchoredDraggableState
+import androidx.compose.foundation.gestures.DraggableAnchors
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.anchoredDraggable
+import androidx.compose.foundation.gestures.animateTo
+import androidx.compose.foundation.gestures.snapTo
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -17,22 +24,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.DismissibleDrawerSheet
-import androidx.compose.material3.DismissibleNavigationDrawer
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -41,18 +52,23 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import com.suhel.llamabro.demo.designsystem.theme.DemoColors
 import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 import com.suhel.llamabro.demo.designsystem.theme.scrim
+import kotlin.math.roundToInt
 
 /**
  * A screen's top bar, 64 dp (Material's small app bar): an optional [start] (menu, back, 48 dp at 4 dp from the
@@ -106,12 +122,16 @@ fun TopBarTitle(
     light: Boolean = false,
 ) {
     val colors = LocalDemoColors.current
+    // on a floating bar a title that opens something is a raised pill of its own (D148); a page's name is just text
+    val chip = LocalOnFloatingBar.current && onClick != null
     Column(
         modifier
-            .clip(DemoShapes.card)
+            .floatingChip(chip, colors)
+            .clip(if (chip) CircleShape else DemoShapes.card)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .heightIn(min = DemoSize.target)
-            .padding(vertical = DemoSpacing.inline),
+            .padding(vertical = DemoSpacing.inline)
+            .then(if (chip) Modifier.padding(horizontal = DemoSpacing.item) else Modifier),
         verticalArrangement = Arrangement.Center,
     ) {
         val chevronOnTitle = chevron && subtitle == null
@@ -160,57 +180,63 @@ fun TopBarTitle(
 @Immutable
 data class BottomTab(val label: String, val icon: ImageVector)
 
-/** The chat list layout's bottom tabs (Chats, Models, Settings): the selected one's icon sits in a soft accent pill. */
+/**
+ * The chat list layout's bottom tabs (Chats, Models, Settings), floating over the page's bottom (D148): a raised pill
+ * on the gutter, above the navigation bar; the selected one's icon sits in a soft accent pill.
+ */
 @Composable
 fun BottomTabs(tabs: List<BottomTab>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val colors = LocalDemoColors.current
-    Row(
-        modifier
-            .fillMaxWidth()
-            .background(colors.surface)
-            .drawBehind {
-                drawLine(
-                    colors.hairline,
-                    Offset(0f, 0f),
-                    Offset(size.width, 0f),
-                    strokeWidth = DemoSize.hairline.toPx(),
-                )
-            }.navigationBarsPadding()
-            .height(DemoSize.navBar)
-            .selectableGroup(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        tabs.forEachIndexed { index, tab ->
-            val on = index == selected
-            Column(
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
+        FloatingLayer(Edge.Bottom, colors.surface, page = null, overKeyboard = false) {
+            Row(
                 Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .selectable(selected = on, role = Role.Tab, onClick = { onSelect(index) }),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
+                    .widthIn(max = DemoSize.contentMaxWidth)
+                    .fillMaxWidth()
+                    .padding(horizontal = DemoSpacing.gutter, vertical = DemoSpacing.block)
+                    .softShadow(CircleShape, colors, elevation = DemoSize.elevationRaised)
+                    .clip(CircleShape)
+                    .background(colors.surface)
+                    .height(DemoSize.navBar)
+                    .selectableGroup(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    Modifier
-                        .size(width = DemoSize.navIndicatorWidth, height = DemoSize.navIndicatorHeight)
-                        .then(if (on) Modifier.background(colors.accentSoft, CircleShape) else Modifier),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        tab.icon,
-                        contentDescription = null,
-                        tint = if (on) colors.accent else colors.muted,
-                        modifier = Modifier.size(DemoSize.icon),
-                    )
-                }
-                Text(
-                    tab.label,
-                    Modifier.padding(top = DemoSpacing.inline),
-                    color = if (on) colors.ink else colors.muted,
-                    style = if (on) DemoType.labelSmall else DemoType.bodySmall,
-                )
+                tabs.forEachIndexed { index, tab -> Tab(tab, index == selected) { onSelect(index) } }
             }
         }
+    }
+}
+
+@Composable
+private fun RowScope.Tab(tab: BottomTab, on: Boolean, onSelect: () -> Unit) {
+    val colors = LocalDemoColors.current
+    Column(
+        Modifier
+            .weight(1f)
+            .fillMaxHeight()
+            .selectable(selected = on, role = Role.Tab, onClick = onSelect),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            Modifier
+                .size(width = DemoSize.navIndicatorWidth, height = DemoSize.navIndicatorHeight)
+                .then(if (on) Modifier.background(colors.accentSoft, CircleShape) else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                tab.icon,
+                contentDescription = null,
+                tint = if (on) colors.accent else colors.muted,
+                modifier = Modifier.size(DemoSize.icon),
+            )
+        }
+        Text(
+            tab.label,
+            Modifier.padding(top = DemoSpacing.inline),
+            color = if (on) colors.ink else colors.muted,
+            style = if (on) DemoType.labelSmall else DemoType.bodySmall,
+        )
     }
 }
 
@@ -300,9 +326,11 @@ fun LayoutPreviewCard(
 }
 
 /**
- * The Sidebar layout's drawer (D145): [drawerContent] pushes [content] to the right from the left edge, on the canvas
- * colour, and the pushed content is dimmed with the theme's scrim; a tap on it closes the drawer. [open] says whether
- * it is shown; the user's swipe or that tap reports through [onOpenChange].
+ * The Sidebar layout's drawer (D145, D148): the page slides right to show [drawerContent] beneath it, which holds still
+ * on the [DemoColors.panel] ground, a step lighter than the page; the page casts a soft shadow on it and is dimmed with
+ * the theme's scrim, and a tap on it closes the drawer. A drag on the page opens and closes it. [open] says whether it
+ * is shown; the user's drag or that tap reports through [onOpenChange]. Closed, the drawer is not composed, so neither
+ * a screen reader nor a test finds it under the page.
  */
 @Composable
 fun DemoDrawer(
@@ -313,52 +341,54 @@ fun DemoDrawer(
     content: @Composable () -> Unit,
 ) {
     val colors = LocalDemoColors.current
-    val state =
-        androidx.compose.material3.rememberDrawerState(
-            if (open) DrawerValue.Open else DrawerValue.Closed,
-        )
-    LaunchedEffect(open) { if (open) state.open() else state.close() }
-    LaunchedEffect(state) {
-        androidx.compose.runtime
-            .snapshotFlow { state.isOpen }
-            .collect { onOpenChange(it) }
-    }
-    val dim by animateFloatAsState(
-        if (state.targetValue == DrawerValue.Open) 1f else 0f,
-        animationSpec = tween(DemoMotion.STANDARD_MILLIS),
-        label = "drawer dim",
-    )
-    DismissibleNavigationDrawer(
-        drawerContent = {
-            // the sheet is as wide as its content (the sidebar's 320 dp), not Material's 360 dp with a blank band
-            DismissibleDrawerSheet(
-                modifier = Modifier.drawerWidth(),
-                drawerContainerColor = colors.canvas,
-                drawerContentColor = colors.ink,
-                drawerShape = RectangleShape,
-                windowInsets =
-                    androidx.compose.foundation.layout
-                        .WindowInsets(0, 0, 0, 0),
-            ) { Column(Modifier.fillMaxHeight(), content = drawerContent) }
-        },
-        modifier = modifier,
-        drawerState = state,
-    ) {
-        Box(Modifier.fillMaxSize()) {
+    val still = animationsDisabled()
+    BoxWithConstraints(modifier.fillMaxSize().background(colors.panel)) {
+        val width = with(LocalDensity.current) { minOf(maxWidth, DemoSize.drawerWidth).toPx() }
+        val state = remember { AnchoredDraggableState(if (open) DrawerValue.Open else DrawerValue.Closed) }
+        SideEffect {
+            state.updateAnchors(
+                DraggableAnchors {
+                    DrawerValue.Closed at 0f
+                    DrawerValue.Open at width
+                },
+            )
+        }
+        val reportOpen by rememberUpdatedState(onOpenChange)
+        LaunchedEffect(open) {
+            val target = if (open) DrawerValue.Open else DrawerValue.Closed
+            if (still) state.snapTo(target) else state.animateTo(target, tween(DemoMotion.STANDARD_MILLIS))
+        }
+        LaunchedEffect(state) { snapshotFlow { state.settledValue }.collect { reportOpen(it == DrawerValue.Open) } }
+        val shown by remember { derivedStateOf { state.offset.let { !it.isNaN() && it > 0f } } }
+        if (shown || state.targetValue == DrawerValue.Open) {
+            Column(Modifier.fillMaxHeight().width(with(LocalDensity.current) { width.toDp() }), content = drawerContent)
+        }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .offset { IntOffset(state.offset.takeUnless { it.isNaN() }?.roundToInt() ?: 0, 0) }
+                .then(if (shown) Modifier.softShadow(RectangleShape, colors, DemoSize.elevationRaised) else Modifier)
+                .background(colors.canvas)
+                .anchoredDraggable(state, Orientation.Horizontal, flingBehavior = drawerFling(state)),
+        ) {
             content()
-            if (dim > 0f) {
+            if (shown) {
                 // the theme's scrim, as the sheets use: the ink would lay a light haze over the page in dark (F131)
                 Box(
                     Modifier
                         .matchParentSize()
-                        .drawBehind { drawRect(colors.scrim, alpha = dim) }
-                        .clickable(interactionSource = null, indication = null) { onOpenChange(false) }
+                        .drawBehind { drawRect(colors.scrim, alpha = (state.offset / width).coerceIn(0f, 1f)) }
+                        .clickable(interactionSource = null, indication = null) { reportOpen(false) }
                         .semantics { contentDescription = "Close the menu" },
                 )
             }
         }
     }
 }
+
+@Composable
+private fun drawerFling(state: AnchoredDraggableState<DrawerValue>) =
+    AnchoredDraggableDefaults.flingBehavior(state, animationSpec = tween(DemoMotion.STANDARD_MILLIS))
 
 /**
  * The head of the Sidebar drawer (D126): as tall as the chat's [TopBar] ([DemoSize.topBar], D145), so the two titles

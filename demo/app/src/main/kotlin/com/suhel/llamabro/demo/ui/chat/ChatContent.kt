@@ -2,9 +2,9 @@ package com.suhel.llamabro.demo.ui.chat
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -38,6 +38,7 @@ import com.suhel.llamabro.demo.designsystem.components.BottomBar
 import com.suhel.llamabro.demo.designsystem.components.Composer
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DownloadRing
+import com.suhel.llamabro.demo.designsystem.components.FloatingFrame
 import com.suhel.llamabro.demo.designsystem.components.Gap
 import com.suhel.llamabro.demo.designsystem.components.IconAction
 import com.suhel.llamabro.demo.designsystem.components.InitialAvatar
@@ -67,8 +68,8 @@ import kotlinx.coroutines.launch
 
 /**
  * The conversation, stateless: the top bar with the model's name, the messages, the limit line and the message bar
- * (demo design §4.3 and §4.4). What it draws is [state]; what changes faster is read from [live] where it
- * is drawn; what the user does goes to [actions].
+ * (demo design §4.3 and §4.4), the messages running edge to edge under the two floating bars (D148). What it draws
+ * is [state]; what changes faster is read from [live] where it is drawn; what the user does goes to [actions].
  */
 @Composable
 fun ChatContent(
@@ -79,17 +80,21 @@ fun ChatContent(
     style: MessageStyle,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxSize().statusBarsPadding().testTag("chat_screen")) {
-        ChatTopBar(state.bar, layout, actions)
-        WakeHairline(state.bar.waking, progress = state.bar.wakeProgress)
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (state.rows.isEmpty()) {
-                EmptyChat(actions.onStarter)
-            } else {
-                MessageList(state.rows, state.busy, live.streaming, style, actions.message)
+    FloatingFrame(
+        top = {
+            Column {
+                ChatTopBar(state.bar, layout, actions)
+                WakeHairline(state.bar.waking, progress = state.bar.wakeProgress)
             }
+        },
+        bottom = { BottomArea(state, live, actions) },
+        modifier = modifier.fillMaxSize().testTag("chat_screen"),
+    ) { bars ->
+        if (state.rows.isEmpty()) {
+            Box(Modifier.fillMaxSize().padding(bars)) { EmptyChat(actions.onStarter) }
+        } else {
+            MessageList(state.rows, state.busy, live.streaming, style, actions.message, bars)
         }
-        BottomArea(state, live, actions)
     }
 }
 
@@ -195,6 +200,7 @@ private fun MessageList(
     streaming: () -> StreamingItem?,
     style: MessageStyle,
     actions: MessageActions,
+    bars: PaddingValues,
 ) {
     val listState = rememberLazyListState()
     val follow = rememberFollowState()
@@ -230,6 +236,7 @@ private fun MessageList(
     MessageColumn(
         listState,
         Modifier.nestedScroll(readerScrolls).testTag("message_list"),
+        bars = bars,
         overlay = {
             JumpToLatest(
                 visible = away,
@@ -355,7 +362,9 @@ private suspend fun keepAtEnd(listState: LazyListState, follow: FollowState) {
                 .lastOrNull()
                 ?.takeIf { it.contentType == STREAMING }
                 ?.size
-        Triple(streamingHeight, follow.following, listState.isScrollInProgress)
+        // the message bar floats over the list's end: its growing (the keyboard, a longer message) moves the end too
+        val end = streamingHeight to listState.layoutInfo.afterContentPadding
+        Triple(end, follow.following, listState.isScrollInProgress)
     }.collect { (_, following, scrolling) ->
         // only when short of the end: the snap's own scroll ending emits again, and must not snap again
         if (following && !scrolling && listState.canScrollForward) {

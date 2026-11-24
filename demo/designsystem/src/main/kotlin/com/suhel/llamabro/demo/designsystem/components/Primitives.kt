@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -103,9 +101,10 @@ fun GapAbove(gap: Gap) {
 }
 
 /**
- * A screen: the [topBar], then the body on the gutter with an [Gap.Item] above its first part and below its last,
- * its parts [Gap.Section] apart. The body scrolls unless [scrolls] is false (a screen that scrolls a list of its own
- * inside, or has nothing to scroll). The screen owns the gutter: a part never pads itself to reach it.
+ * A screen: the [topBar] floating over the body (D148), the body on the gutter with an [Gap.Item] above its first part
+ * and below its last, its parts [Gap.Section] apart. The body scrolls under the bar unless [scrolls] is false (a screen
+ * with nothing to scroll; one that scrolls a list of its own builds on [FloatingFrame] instead). The screen owns the
+ * gutter: a part never pads itself to reach it.
  */
 @Composable
 fun Screen(
@@ -115,27 +114,27 @@ fun Screen(
     gap: Gap = Gap.Section,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-        topBar()
-        Column(
-            Modifier
-                .weight(1f)
-                .widthIn(max = ContentMaxWidth)
-                .fillMaxWidth()
-                .gutterContainer()
-                .then(if (scrolls) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-                .padding(horizontal = DemoSpacing.gutter)
-                .padding(top = DemoSpacing.item, bottom = DemoSpacing.item)
-                .navigationBarsPadding(),
-        ) {
+    FloatingFrame(topBar, modifier.fillMaxSize()) { bars ->
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             Column(
                 Modifier
+                    .widthIn(max = ContentMaxWidth)
                     .fillMaxWidth()
-                    .then(if (scrolls) Modifier else Modifier.fillMaxHeight())
-                    .gutterEdge(),
-                Arrangement.spacedBy(gap.size),
-                content = content,
-            )
+                    .fillMaxHeight()
+                    .gutterContainer()
+                    .then(if (scrolls) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                    .padding(horizontal = DemoSpacing.gutter)
+                    .padding(bars.vertical(DemoSpacing.item)),
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(if (scrolls) Modifier else Modifier.fillMaxHeight())
+                        .gutterEdge(),
+                    Arrangement.spacedBy(gap.size),
+                    content = content,
+                )
+            }
         }
     }
 }
@@ -144,19 +143,22 @@ fun Screen(
 fun Modifier.sheetListMaxHeight(): Modifier = heightIn(max = DemoSize.sheetListMaxHeight)
 
 /**
- * A lazy list inside a screen that already has the gutter ([Screen]): its items [gap] apart, no edge padding of its
- * own. For a list too long to compose at once that sits under a field or a header.
+ * A lazy list inside a screen that already has the gutter: its items [gap] apart, no side padding of its own; [padding]
+ * keeps its ends clear of what floats over them. For a list too long to compose at once that sits under a field or a
+ * header.
  */
 @Composable
 fun LazyStack(
     gap: Gap,
     modifier: Modifier = Modifier,
     state: LazyListState = rememberLazyListState(),
+    padding: PaddingValues = PaddingValues(),
     content: LazyListScope.() -> Unit,
 ) {
     LazyColumn(
         modifier.fillMaxWidth(),
         state = state,
+        contentPadding = padding,
         verticalArrangement = Arrangement.spacedBy(gap.size),
         content = content,
     )
@@ -185,9 +187,10 @@ fun Section(
 }
 
 /**
- * The bottom of a chat screen: the parts stacked a [Gap.Block] apart on the gutter, [Gap.Block] above and below, clear
- * of the navigation bar and the keyboard. The message bar and what sits above it (a limit, an edit line) are in it, so
- * they share the gutter with the messages and never stick out past them.
+ * The bottom of a chat screen, as a [FloatingFrame]'s bottom (which keeps it clear of the navigation bar and the
+ * keyboard): the parts stacked a [Gap.Block] apart on the gutter, [Gap.Block] above and below. The message bar and
+ * what sits above it (a limit, an edit line) are in it, so they share the gutter with the messages and never stick out
+ * past them.
  */
 @Composable
 fun BottomBar(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
@@ -197,8 +200,6 @@ fun BottomBar(modifier: Modifier = Modifier, content: @Composable ColumnScope.()
                 .widthIn(max = ContentMaxWidth)
                 .fillMaxWidth()
                 .gutterContainer()
-                .navigationBarsPadding()
-                .imePadding()
                 .padding(horizontal = DemoSpacing.gutter, vertical = DemoSpacing.block),
         ) {
             Column(Modifier.fillMaxWidth().gutterEdge(), Arrangement.spacedBy(Gap.Block.size), content = content)
@@ -208,13 +209,15 @@ fun BottomBar(modifier: Modifier = Modifier, content: @Composable ColumnScope.()
 
 /**
  * The messages of a chat: a lazy column on the gutter, the turns a [Gap.Section] apart, [Gap.Item] above the first and
- * below the last. Meta lines (time, speed) are inside a message, [Gap.Inline] from its text. Rows move with
- * [messageMotion].
+ * below the last, edge to edge under the floating bars whose heights are [bars] (D148). Meta lines (time, speed) are
+ * inside a message, [Gap.Inline] from its text. Rows move with [messageMotion]. The [overlay] is laid out clear of the
+ * bars.
  */
 @Composable
 fun MessageColumn(
     state: LazyListState,
     modifier: Modifier = Modifier,
+    bars: PaddingValues = PaddingValues(),
     overlay: @Composable BoxScope.() -> Unit = {},
     content: LazyListScope.() -> Unit,
 ) {
@@ -235,13 +238,13 @@ fun MessageColumn(
                 PaddingValues(
                     start = DemoSpacing.gutter,
                     end = DemoSpacing.gutter,
-                    top = DemoSpacing.item,
-                    bottom = DemoSpacing.item,
+                    top = bars.calculateTopPadding() + DemoSpacing.item,
+                    bottom = bars.calculateBottomPadding() + DemoSpacing.item,
                 ),
             verticalArrangement = Arrangement.spacedBy(Gap.Section.size),
             content = content,
         )
-        overlay()
+        Box(Modifier.matchParentSize().padding(bars.vertical()), content = overlay)
     }
 }
 
@@ -266,9 +269,11 @@ fun ScrollStack(gap: Gap, modifier: Modifier = Modifier, content: @Composable Co
 }
 
 /**
- * A home that is a header over a list of full-width rows (the Chat list layout): the [topBar]; the [header] on the
- * gutter, its parts a [Gap.Block] apart with [Gap.Item] under it; then the [body], which is not padded because its
- * rows (a [ChatRow], a [ListRow]) carry their own 16 dp. A [fab] floats at the bottom end, on the gutter.
+ * A home that is a header over a list of full-width rows (the Chat list layout): the [topBar] and the [header] (on the
+ * gutter, its parts a [Gap.Block] apart, [Gap.Item] under it) float together (D148); the [body], a list, scrolls under
+ * them with the floating layers' heights as its padding. Its rows (a [ChatRow], a [ListRow]) carry their own 16 dp, or
+ * with [gutter] the body is on the gutter (the Models page's cards). A [fab] floats at the bottom end, on the gutter,
+ * clear of the navigation bar and of what floats over the bottom.
  */
 @Composable
 fun ListHomeScreen(
@@ -276,21 +281,44 @@ fun ListHomeScreen(
     header: @Composable ColumnScope.() -> Unit,
     modifier: Modifier = Modifier,
     fab: (@Composable () -> Unit)? = null,
-    body: @Composable ColumnScope.() -> Unit,
+    gutter: Boolean = false,
+    body: @Composable (PaddingValues) -> Unit,
 ) {
-    Box(modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-            topBar()
-            Column(Modifier.widthIn(max = ContentMaxWidth).fillMaxWidth().weight(1f)) {
-                Column(Modifier.fillMaxWidth().gutterContainer().padding(horizontal = DemoSpacing.gutter)) {
+    FloatingFrame(
+        top = {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                topBar()
+                Column(
+                    Modifier
+                        .widthIn(max = ContentMaxWidth)
+                        .fillMaxWidth()
+                        .gutterContainer()
+                        .padding(horizontal = DemoSpacing.gutter)
+                        .padding(bottom = DemoSpacing.item),
+                ) {
                     Column(Modifier.fillMaxWidth().gutterEdge(), Arrangement.spacedBy(Gap.Block.size), content = header)
                 }
-                GapAbove(Gap.Item)
-                body()
             }
-        }
-        if (fab != null) {
-            Box(Modifier.align(Alignment.BottomEnd).padding(DemoSpacing.gutter)) { fab() }
+        },
+        modifier = modifier.fillMaxSize(),
+    ) { bars ->
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            Box(
+                Modifier
+                    .widthIn(max = ContentMaxWidth)
+                    .fillMaxWidth()
+                    .then(
+                        if (gutter) Modifier.gutterContainer().padding(horizontal = DemoSpacing.gutter) else Modifier,
+                    ),
+            ) { body(bars) }
+            if (fab != null) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = bars.calculateBottomPadding())
+                        .padding(DemoSpacing.gutter),
+                ) { fab() }
+            }
         }
     }
 }

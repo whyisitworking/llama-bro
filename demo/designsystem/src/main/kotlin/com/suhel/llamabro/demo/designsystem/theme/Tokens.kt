@@ -14,6 +14,11 @@ import androidx.compose.ui.graphics.Color
 class DemoColors(
     val canvas: Color,
     val surface: Color,
+    /**
+     * The Sidebar drawer's ground (D148): a step lighter than [canvas] in both themes, so the panel the page slides
+     * off reads as its own layer and not as more of the page; [surface] fills on it still stand out.
+     */
+    val panel: Color,
     val ink: Color,
     /**
      * The assistant's reply body in the chat: a step softer than [ink], so a long reply reads calmer; its headings and
@@ -51,6 +56,7 @@ val LightDemoColors =
     DemoColors(
         canvas = Color(0xFFF2F2F5),
         surface = Color(0xFFFBFBFC),
+        panel = Color(0xFFF7F7F9),
         ink = Color(0xFF1D1D1F),
         reply = Color(0xFF2C2C2E),
         muted = Color(0xFF65656A),
@@ -71,6 +77,7 @@ val DarkDemoColors =
     DemoColors(
         canvas = Color(0xFF0B0B0C),
         surface = Color(0xFF161618),
+        panel = Color(0xFF131315),
         ink = Color(0xFFE3E3E6),
         reply = Color(0xFFCFCFD4),
         muted = Color(0xFF98989D),

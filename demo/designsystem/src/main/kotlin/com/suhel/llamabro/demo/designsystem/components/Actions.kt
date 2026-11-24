@@ -164,6 +164,7 @@ fun IconAction(
     Box(
         modifier
             .size(DemoSize.target)
+            .floatingChip(LocalOnFloatingBar.current, colors)
             .clip(CircleShape)
             .clickable(role = Role.Button, onClick = onClick)
             .then(if (mark != null) Modifier.semantics { stateDescription = mark } else Modifier),

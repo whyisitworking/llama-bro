@@ -2,11 +2,10 @@ package com.suhel.llamabro.demo.ui.models
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -39,8 +38,8 @@ import com.suhel.llamabro.demo.designsystem.components.Gap
 import com.suhel.llamabro.demo.designsystem.components.GapAbove
 import com.suhel.llamabro.demo.designsystem.components.IconAction
 import com.suhel.llamabro.demo.designsystem.components.LazyStack
+import com.suhel.llamabro.demo.designsystem.components.ListHomeScreen
 import com.suhel.llamabro.demo.designsystem.components.Notice
-import com.suhel.llamabro.demo.designsystem.components.Screen
 import com.suhel.llamabro.demo.designsystem.components.SearchField
 import com.suhel.llamabro.demo.designsystem.components.SectionLabel
 import com.suhel.llamabro.demo.designsystem.components.SectionNote
@@ -59,6 +58,8 @@ import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.flow.drop
 
 /** The fresh install's one line over the field (docs/design/models-page.md §2), verbatim. */
+private const val INTRO = "intro"
+
 internal const val MODELS_INTRO = "Pick a model to talk to. It runs on this phone, private and offline."
 internal const val MODELS_SEARCH = "models_search"
 internal const val NO_MATCHES = "No models match. Try a shorter name."
@@ -269,7 +270,7 @@ fun ModelsScreen(
     val back = if (page.searching) leaveSearch else onBack
     var explaining by rememberSaveable { mutableStateOf(false) }
     var filtering by rememberSaveable { mutableStateOf(false) }
-    Screen(
+    ListHomeScreen(
         topBar = {
             TopBar(
                 title = { TopBarTitle("Models", light = true) },
@@ -278,18 +279,8 @@ fun ModelsScreen(
                 start = { BackSlot(back) },
             )
         },
-        modifier = modifier.testTag("models").statusBarsPadding().imePadding(),
-        scrolls = false,
-        gap = Gap.Block,
-    ) {
-        Column {
-            // the intro is browse's (§2): it folds away as search mode starts and comes back with Back (page 13)
-            Unfold(Unit.takeIf { page.intro && !page.searching }) {
-                Column {
-                    Notice(MODELS_INTRO, action = "What's a model?", onAction = { explaining = true })
-                    GapAbove(Gap.Block)
-                }
-            }
+        // the field floats with the bar and the list scrolls on under both (D148)
+        header = {
             SearchField(
                 page.search.query,
                 actions.onQuery,
@@ -324,8 +315,14 @@ fun ModelsScreen(
                     failure = true,
                 )
             }
-        }
-        ModelsList(modelsItems(page), hubRows, page.searching, actions, row, Modifier.weight(1f))
+        },
+        modifier = modifier.testTag("models"),
+        gutter = true,
+    ) { bars ->
+        // the intro is browse's (§2): the list's first item, so it scrolls away with the rows; it goes as search mode
+        // starts and comes back with Back (page 13)
+        val intro = page.intro && !page.searching
+        ModelsList(modelsItems(page), hubRows, page.searching, actions, row, bars, intro) { explaining = true }
     }
     if (filtering) FilterSheet(page.filters, actions.onFilters, onDismiss = { filtering = false })
     page.pendingRemove?.let { RemoveDialog(it, actions.onConfirmRemove, actions.onDismissRemove) }
@@ -495,7 +492,9 @@ private fun ModelsList(
     searching: Boolean,
     actions: ModelsActions,
     row: RowSlot,
-    modifier: Modifier,
+    bars: PaddingValues,
+    intro: Boolean,
+    onWhatsAModel: () -> Unit,
 ) {
     val state = rememberLazyListState()
     // a mode change starts the list at its top: the lazy list keeps its first visible item by key, so leaving search
@@ -504,7 +503,17 @@ private fun ModelsList(
     // pass, so the frame that lays the new items out lays them from the top
     val mode by rememberUpdatedState(searching)
     LaunchedEffect(state) { snapshotFlow { mode }.drop(1).collect { state.requestScrollToItem(0) } }
-    LazyStack(Gap.Compact, modifier.fillMaxSize().testTag("model_list"), state = state) {
+    LazyStack(Gap.Compact, Modifier.fillMaxSize().testTag("model_list"), state = state, padding = bars) {
+        if (intro) {
+            item(key = INTRO, contentType = INTRO) {
+                Notice(
+                    MODELS_INTRO,
+                    Modifier.listItemMotion(this),
+                    action = "What's a model?",
+                    onAction = onWhatsAModel,
+                )
+            }
+        }
         for (entry in items) {
             when (entry) {
                 ModelsItem.HubRows -> {

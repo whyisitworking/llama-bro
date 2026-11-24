@@ -84,9 +84,13 @@ unused so that the other sections keep their numbers.
 
 Chosen in Settings, Appearance, each shown as a small preview. Sidebar is the default. Switching applies at once with a short crossfade, keeps the open chat, and leaves chats, models and settings the same. The bubbles belong to Chat list and the open page to Sidebar; there is no separate message-style switch. Search covers chat titles and message text. There are no unread counts, ticks or presence indicators, because a local model is always there.
 
+In both, every page runs edge to edge and scrolls on under floating bars (D148): the top bar, the message bar, the
+search fields of Models and Chats, the drawer's head and foot, and Chat list's tabs, a raised pill. Each icon action
+on a top bar is its own raised circle, the model switcher a raised pill, over the page blurred and veiled, fading out past the bar.
+
 **Sidebar.**
 
-- Home is a new chat. The drawer (D126, "Quiet list") pushes the chat aside as it opens and dims it, a tap on the dimmed chat or Back closes it, and its head is as tall as the top bar (`DemoSize.topBar`, 64 dp) so the two titles share a line (D145). It reads top to bottom:
+- Home is a new chat. The drawer (D126, "Quiet list") lies still on its own slightly lighter ground while the chat slides right off it and dims (D148), a tap on the dimmed chat or Back closes it, and its head is as tall as the top bar (`DemoSize.topBar`, 64 dp) so the two titles share a line (D145). It reads top to bottom:
   - **Head**: the app's name, "Llama Bro", in the serif (`sidebarTitle`, 22 sp Regular) on a 24 dp inset, with New chat (Material's `add_comment`, in the ink) as a 48 dp icon at its end.
   - **Search**: "Search chats", 16 dp from the sides and 12 dp under the name. It filters the history by title and message text and says "No chats match." when nothing does.
   - **Chats grouped by date** (Today, This week, Earlier). A group's label is quiet (13 sp, soft, sentence case), 24 dp under the group above (8 dp under the search for the first) and close on its rows.

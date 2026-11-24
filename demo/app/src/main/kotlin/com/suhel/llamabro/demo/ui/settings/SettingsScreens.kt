@@ -3,7 +3,6 @@ package com.suhel.llamabro.demo.ui.settings
 import android.content.Context
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -41,7 +40,7 @@ import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.ui.mode
 
-/** A settings screen: a top bar with Back and the parts of its body a section apart, on the gutter. */
+/** A settings screen: a floating top bar with Back over its body, whose parts are a section apart on the gutter. */
 @Composable
 fun SettingsPage(
     title: String,
@@ -56,7 +55,7 @@ fun SettingsPage(
                 start = { IconAction(DemoIcons.Back, "Back", onClick = onBack) },
             )
         },
-        modifier = modifier.statusBarsPadding(),
+        modifier = modifier,
         content = content,
     )
 }

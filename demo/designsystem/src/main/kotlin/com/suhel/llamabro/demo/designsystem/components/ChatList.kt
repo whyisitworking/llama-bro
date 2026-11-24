@@ -151,8 +151,19 @@ fun ChatHistoryList(
     onClick: (Long) -> Unit,
     onLongClick: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    /** Room for what floats over the list's ends (the drawer's head and foot, D148). */
+    bars: PaddingValues = PaddingValues(),
 ) {
-    LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = DemoSpacing.compact)) {
+    LazyColumn(
+        modifier.fillMaxWidth(),
+        contentPadding =
+            PaddingValues(
+                start = DemoSpacing.compact,
+                end = DemoSpacing.compact,
+                top = bars.calculateTopPadding(),
+                bottom = bars.calculateBottomPadding(),
+            ),
+    ) {
         for ((index, group) in groups.withIndex()) {
             item(key = "label-${group.label}", contentType = "label") {
                 SectionLabel(

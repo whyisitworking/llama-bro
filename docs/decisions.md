@@ -2245,4 +2245,28 @@ not measured: tuning them needs a short attended phone run, handed over in
 turn detection (D95). The echo guard trusts the playback level and the coupling it learnt: an echo that grows louder
 than it was during the warm-up (the volume turned up mid-reply) can still stop the reply, so headphones are the sure
 way; and speaking during a reply's first 600 ms teaches the guard a loud echo (up to the playback itself), which can make
-that reply impossible to interrupt. Next free IDs: D148, F183.
+that reply impossible to interrupt.
+
+<a id="d148"></a>
+### D148. Pages scroll edge to edge under floating bars; the drawer holds still under the page
+
+Status: Decided (2026-11-24)
+
+Context: The owner, trying the release build: the drawer's ground was the page's own near-black, and the drawer slid in
+over a page that slid too, so the two read as one sheet moving; and every screen stopped its content at the top bar and
+the message bar, so the bars read as bands cutting the page rather than as controls over it.
+Decision: Every page's content runs edge to edge, under the status bar and the navigation bar, and scrolls on under
+floating bars (`FloatingFrame`): the top bar (with, on the Models page and the Chats home, the search field), a chat's
+message bar, the drawer's head and foot, and the Chat list layout's tabs (a raised pill, `LocalBottomOverlay` keeping
+each page's end clear of it). Under a bar the page is blurred (20 dp, from Android 12, where a view can blur what it
+draws: the page is recorded once into a layer the bars draw again) and veiled with the surface colour at 55%, never
+solid, even behind the status bar; blur and veil both fade out over a 24 dp band past the bar, so what passes under
+softens rather than cuts, as iOS's bars do. Before Android 12, and under the Chat list tabs (which float outside the
+page), there is no blur and the veil is 80%. On a
+floating bar each icon action is its own raised circle and a title that opens something (the model switcher) its own
+raised pill, translucent (70% of the surface) so the blur shows through them; a page's plain name is text. The Models intro is the list's first item and scrolls away with it. The
+drawer (`DemoDrawer`) no longer moves: it lies on a new `panel` colour, a step lighter than the canvas in both themes,
+and the page slides right off it (a drag on the page or the menu button), casting a soft shadow on it and dimmed by the
+scrim; closed, it is not composed. A followed chat keeps its end in view when the message bar grows.
+Consequences: Amends D145's push drawer and the solid top bars of the earlier screens. Material's drawer is gone, so
+the drag and fling are the app's own (`AnchoredDraggableState`). Next free IDs: D149, F183.

@@ -1,12 +1,9 @@
 package com.suhel.llamabro.demo.ui.shell
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,6 +22,7 @@ import com.suhel.llamabro.demo.designsystem.components.ChatHistoryList
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DrawerFoot
 import com.suhel.llamabro.demo.designsystem.components.DrawerHead
+import com.suhel.llamabro.demo.designsystem.components.FloatingFrame
 import com.suhel.llamabro.demo.designsystem.components.NavRow
 import com.suhel.llamabro.demo.designsystem.components.Notice
 import com.suhel.llamabro.demo.designsystem.components.SearchField
@@ -90,41 +88,50 @@ fun DrawerContent(
     onLongPress: (ChatSummary) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .drawerWidth()
-            .testTag("drawer")
-            // a screen reader reaches the head and the foot first, not after every chat
-            .semantics { isTraversalGroup = true },
-    ) {
-        DrawerHead(
-            "Llama Bro",
-            DemoIcons.NewChat,
-            "New chat",
-            onNewChat,
-            Modifier.semantics { traversalIndex = -1f },
-        )
-        SearchField(
-            searchText,
-            onSearch,
-            "Search chats",
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = DemoSpacing.gutter)
-                .padding(top = DemoSpacing.compact, bottom = DemoSpacing.inline),
-        )
-        if (groups.isEmpty()) {
-            // a plain line at the top of where the chats would be, never centred in empty space (D117), on the rows'
-            // 24 dp text line; the box keeps the places at the foot
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                Notice(
-                    if (searchText.isBlank()) "No chats yet. Start one." else "No chats match.",
-                    Modifier.padding(start = DemoSpacing.block),
+    FloatingFrame(
+        top = {
+            Column {
+                DrawerHead(
+                    "Llama Bro",
+                    DemoIcons.NewChat,
+                    "New chat",
+                    onNewChat,
+                    Modifier.semantics { traversalIndex = -1f },
+                )
+                SearchField(
+                    searchText,
+                    onSearch,
+                    "Search chats",
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = DemoSpacing.gutter)
+                        .padding(top = DemoSpacing.compact, bottom = DemoSpacing.inline),
                 )
             }
+        },
+        bottom = {
+            DrawerFoot(Modifier.semantics { traversalIndex = -1f }) {
+                // before the library is read the count is unknown: "Models" alone, not a "0" that a frame later
+                // corrects
+                NavRow(DemoIcons.Models, "Models", onModels, note = modelCount?.let { "$it on this phone" })
+                NavRow(DemoIcons.Settings, "Settings", onSettings)
+            }
+        },
+        modifier =
+            modifier
+                .fillMaxSize()
+                .drawerWidth()
+                .testTag("drawer")
+                // a screen reader reaches the head and the foot first, not after every chat
+                .semantics { isTraversalGroup = true },
+    ) { bars ->
+        if (groups.isEmpty()) {
+            // a plain line at the top of where the chats would be, never centred in empty space (D117), on the rows'
+            // 24 dp text line
+            Notice(
+                if (searchText.isBlank()) "No chats yet. Start one." else "No chats match.",
+                Modifier.padding(top = bars.calculateTopPadding()).padding(start = DemoSpacing.block),
+            )
         } else {
             ChatHistoryList(
                 groups.map { group ->
@@ -144,13 +151,9 @@ fun DrawerContent(
                 onLongClick = { id ->
                     groups.firstNotNullOfOrNull { g -> g.chats.firstOrNull { it.id == id } }?.let(onLongPress)
                 },
-                modifier = Modifier.weight(1f).testTag("chat_list"),
+                modifier = Modifier.fillMaxSize().testTag("chat_list"),
+                bars = bars,
             )
-        }
-        DrawerFoot(Modifier.semantics { traversalIndex = -1f }) {
-            // before the library is read the count is unknown: "Models" alone, not a "0" that a frame later corrects
-            NavRow(DemoIcons.Models, "Models", onModels, note = modelCount?.let { "$it on this phone" })
-            NavRow(DemoIcons.Settings, "Settings", onSettings)
         }
     }
 }

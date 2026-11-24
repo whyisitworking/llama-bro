@@ -5,10 +5,10 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -19,9 +19,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -40,7 +43,9 @@ import com.suhel.llamabro.demo.designsystem.components.BottomTabs
 import com.suhel.llamabro.demo.designsystem.components.DemoDrawer
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.EmptyLine
+import com.suhel.llamabro.demo.designsystem.components.FloatingFrame
 import com.suhel.llamabro.demo.designsystem.components.IconAction
+import com.suhel.llamabro.demo.designsystem.components.LocalBottomOverlay
 import com.suhel.llamabro.demo.designsystem.components.TopBar
 import com.suhel.llamabro.demo.designsystem.components.screenEnter
 import com.suhel.llamabro.demo.designsystem.components.screenExit
@@ -228,10 +233,18 @@ private fun Shell(
             }
 
             AppLayout.ChatList -> {
-                Column(Modifier.fillMaxSize()) {
-                    Box(
-                        Modifier.weight(1f),
-                    ) {
+                val tab =
+                    when (route) {
+                        Routes.CHATS -> 0
+                        Routes.MODELS -> 1
+                        Routes.SETTINGS -> 2
+                        else -> null
+                    }
+                // the tabs float over the page's bottom (D148): the page scrolls on under them, its end kept clear
+                var tabsHeight by remember { mutableStateOf(0.dp) }
+                val density = LocalDensity.current
+                Box(Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalBottomOverlay provides if (tab != null) tabsHeight else 0.dp) {
                         Graph(
                             screens,
                             nav,
@@ -245,17 +258,15 @@ private fun Shell(
                             { _, _ -> },
                         ) {}
                     }
-                    val tab =
-                        when (route) {
-                            Routes.CHATS -> 0
-                            Routes.MODELS -> 1
-                            Routes.SETTINGS -> 2
-                            else -> null
-                        }
                     if (tab != null) {
-                        BottomTabs(ChatListTabs, tab, {
-                            go(listOf(Routes.CHATS, Routes.models(), Routes.SETTINGS)[it])
-                        }, Modifier.navigationBarsPadding())
+                        BottomTabs(
+                            ChatListTabs,
+                            tab,
+                            { go(listOf(Routes.CHATS, Routes.models(), Routes.SETTINGS)[it]) },
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .onSizeChanged { tabsHeight = with(density) { it.height.toDp() } },
+                        )
                     }
                 }
             }
@@ -395,18 +406,22 @@ private fun Graph(
 /** A chat with no messages yet: the greeting the design gives. */
 @Composable
 private fun EmptyChatScreen(chrome: ChatChrome) {
-    Column(Modifier.fillMaxSize()) {
-        TopBar(
-            title = {},
-            start = {
-                if (chrome.layout == AppLayout.Sidebar) {
-                    IconAction(DemoIcons.Menu, "Chats", onClick = chrome.onMenu)
-                } else {
-                    IconAction(DemoIcons.Back, "Back", onClick = chrome.onBack)
-                }
-            },
-        )
-        Box(Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
+    FloatingFrame(
+        top = {
+            TopBar(
+                title = {},
+                start = {
+                    if (chrome.layout == AppLayout.Sidebar) {
+                        IconAction(DemoIcons.Menu, "Chats", onClick = chrome.onMenu)
+                    } else {
+                        IconAction(DemoIcons.Back, "Back", onClick = chrome.onBack)
+                    }
+                },
+            )
+        },
+        modifier = Modifier.fillMaxSize(),
+    ) { bars ->
+        Box(Modifier.fillMaxSize().padding(bars), contentAlignment = Alignment.Center) {
             EmptyLine("What's on your mind?")
         }
     }

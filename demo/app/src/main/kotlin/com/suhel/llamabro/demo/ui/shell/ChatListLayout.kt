@@ -1,8 +1,8 @@
 package com.suhel.llamabro.demo.ui.shell
 
 import androidx.activity.compose.ReportDrawnWhen
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -89,10 +89,10 @@ fun ChatListContent(
                 Notice(if (search.isBlank()) "No chats yet. Start one." else "No chats match.")
             }
         },
-        modifier = modifier.statusBarsPadding(),
+        modifier = modifier,
         fab = { DemoFab("New chat", DemoIcons.NewChat, onNewChat) },
-    ) {
-        LazyColumn(Modifier.weight(1f).testTag("chat_list")) {
+    ) { bars ->
+        LazyColumn(Modifier.fillMaxSize().testTag("chat_list"), contentPadding = bars) {
             items(chats, key = { it.id }, contentType = { "chat" }) { chat ->
                 ChatRow(
                     avatar = ChatListFormat.avatarLetter(chat.modelKey),
