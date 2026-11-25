@@ -64,6 +64,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.theme.DemoColors
 import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
@@ -77,9 +78,11 @@ import com.suhel.llamabro.demo.designsystem.theme.scrim
 import kotlin.math.roundToInt
 
 /**
- * A screen's top bar, 64 dp (Material's small app bar): an optional [start] (menu, back, 48 dp at 4 dp from the
- * edge), the [title] taking the rest, an optional [end] (new chat, the download ring). The title starts 16 dp from the
- * edge, or 64 dp when there is a [start], as Material's does. [divider] draws the hairline under it.
+ * A screen's top bar, 64 dp (Material's small app bar): an optional [start] (menu, back), the [title] taking the rest,
+ * an optional [end] (new chat, the download ring). Its actions are glass chips you can see (D148), so the bar keeps
+ * the page's 16 dp gutter, not Material's 4 dp for a bare icon: a chip's edge, or a plain title's first letter, lines
+ * up with the cards and the fields under it; the title keeps 12 dp from a chip beside it. [divider] draws the hairline
+ * under it.
  */
 @Composable
 fun TopBar(
@@ -104,13 +107,18 @@ fun TopBar(
                 } else {
                     Modifier
                 },
-            ).padding(horizontal = DemoSpacing.inline),
+            ).padding(horizontal = DemoSpacing.gutter),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // on a floating bar its actions and a title that opens something are chips of glass (D148)
         CompositionLocalProvider(LocalGlassChips provides true) {
             if (start != null) start()
-            Box(Modifier.weight(1f).padding(horizontal = DemoSpacing.compact)) { title() }
+            Box(
+                Modifier.weight(1f).padding(
+                    start = if (start != null) DemoSpacing.compact else 0.dp,
+                    end = if (end != null) DemoSpacing.compact else 0.dp,
+                ),
+            ) { title() }
             if (end != null) end()
         }
     }
