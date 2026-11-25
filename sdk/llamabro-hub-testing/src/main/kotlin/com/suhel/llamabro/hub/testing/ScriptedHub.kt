@@ -496,7 +496,12 @@ internal object Gguf {
                 is String -> put(Int.SIZE_BYTES) { putInt(TYPE_STRING) }.also { string(value) }
                 is Boolean -> put(Int.SIZE_BYTES + 1) { putInt(TYPE_BOOL).put(if (value) 1 else 0) }
                 is Float -> put(Int.SIZE_BYTES + Float.SIZE_BYTES) { putInt(TYPE_F32).putFloat(value) }
-                else -> put(Int.SIZE_BYTES * 2) { putInt(TYPE_I32).putInt((value as Number).toInt()) }
+                is Int -> put(Int.SIZE_BYTES * 2) { putInt(TYPE_I32).putInt(value) }
+                // a Long or Double would be cut to fit silently: the test that wrote it would read another value
+                else -> throw IllegalArgumentException(
+                    "unsupported GGUF metadata value for $key: ${value::class.simpleName}; use Boolean, String, Int " +
+                        "or Float",
+                )
             }
         }
         val header = (out.size() + ALIGNMENT - 1) / ALIGNMENT * ALIGNMENT

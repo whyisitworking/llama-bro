@@ -117,6 +117,9 @@ open class ModelDiscovery(private val hub: LlamaBroHub) {
             if (found != null) LinkTarget.Card(found) else LinkTarget.Browser(url)
         } catch (_: HubException) {
             LinkTarget.Browser(url)
+        } catch (_: IllegalArgumentException) {
+            // the SDK refuses a repo id HubLinks' copy of its rule let through (should that rule ever grow stricter)
+            LinkTarget.Browser(url)
         }
     }
 

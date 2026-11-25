@@ -446,4 +446,17 @@ class FakeLlamaBroHubTest {
         fail("expected ${T::class.simpleName}")
         error("unreachable")
     }
+
+    @Test
+    fun aMetadataValueTheHeaderCantHoldIsRefused() {
+        listOf<Any>(1L, 0.5, 'x').forEach { value ->
+            try {
+                FakeLlamaBroHub { repo(qwen) { gguf("Qwen3-4B-Q4_K_M.gguf", metadata = mapOf("x.value" to value)) } }
+                    .close()
+                fail("a ${value::class.simpleName} is not written")
+            } catch (expected: IllegalArgumentException) {
+                assertTrue(expected.message, expected.message!!.startsWith("unsupported GGUF metadata value"))
+            }
+        }
+    }
 }

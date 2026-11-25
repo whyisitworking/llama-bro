@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
@@ -380,12 +381,13 @@ class ChatEngine(
                     .collect { card(it) }
             }
             // the header's word on what a model can do, once it is on the phone: the chip, photos and the mic show
-            // before the first load (D155); read once, on the phone, never over the network
+            // before the first load (D155); read once, on the phone, never over the network. The latest model's read
+            // starts at once: a slow one for the model left behind is cancelled, and read again when it is chosen
             hs.launch {
                 combine(choice, library) { chosen, lib -> chosen.key?.takeIf { k -> lib?.any { it.key == k } == true } }
                     .filterNotNull()
                     .distinctUntilChanged()
-                    .collect { sensesReader.ensure(it) }
+                    .collectLatest { sensesReader.ensure(it) }
             }
         }
 
