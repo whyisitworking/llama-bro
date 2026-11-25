@@ -43,16 +43,25 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
     private val endpoint = endpoint.trimEnd('/') + "/"
     private val origin = URL(this.endpoint)
 
-    fun firstPage(query: String, options: SearchOptions): String {
+    private fun checkRanges(options: SearchOptions) {
         require(options.limit in 1..MAX_LIMIT) { "limit must be 1 to $MAX_LIMIT, was ${options.limit}" }
         val min = options.minParameters
         val max = options.maxParameters
         require(min == null || min >= 0) { "minParameters must not be negative, was $min" }
         require(max == null || max > 0) { "maxParameters must be positive, was $max" }
         require(min == null || max == null || min <= max) { "minParameters $min is above maxParameters $max" }
+    }
+
+    fun firstPage(query: String, options: SearchOptions): String {
+        checkRanges(options)
+        val original = options.quantizedFrom
+        require(original == null || isValidRepoId(original)) { "invalid HF repo id: $original" }
+        val min = options.minParameters
+        val max = options.maxParameters
         val params = mutableListOf<String>()
         query.trim().takeIf { it.isNotEmpty() }?.let { params += "search=${encode(it)}" }
         params += "filter=gguf"
+        original?.let { params += "filter=" + encode("$QUANTIZED$it") }
         params += "sort=${sortKey(options.sort)}"
         params += "direction=-1"
         params += "limit=${options.limit}"

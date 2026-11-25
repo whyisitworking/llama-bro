@@ -257,6 +257,7 @@ public final class com/suhel/llamabro/hub/SearchOptions {
 	public final fun getLimit ()I
 	public final fun getMaxParameters ()Ljava/lang/Long;
 	public final fun getMinParameters ()Ljava/lang/Long;
+	public final fun getQuantizedFrom ()Ljava/lang/String;
 	public final fun getSort ()Lcom/suhel/llamabro/hub/SearchSort;
 	public final fun getTakesImages ()Z
 	public final fun setAuthor (Ljava/lang/String;)V
@@ -264,6 +265,7 @@ public final class com/suhel/llamabro/hub/SearchOptions {
 	public final fun setLimit (I)V
 	public final fun setMaxParameters (Ljava/lang/Long;)V
 	public final fun setMinParameters (Ljava/lang/Long;)V
+	public final fun setQuantizedFrom (Ljava/lang/String;)V
 	public final fun setSort (Lcom/suhel/llamabro/hub/SearchSort;)V
 	public final fun setTakesImages (Z)V
 }
