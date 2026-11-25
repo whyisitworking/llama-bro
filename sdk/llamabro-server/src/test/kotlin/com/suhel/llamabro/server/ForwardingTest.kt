@@ -122,7 +122,8 @@ class ForwardingTest {
             val reply = call(port, chat, "POST", body = streamBody)
             assertEquals(503, reply.status)
             assertEquals("unavailable_error", errorOf(reply).getValue("type").jsonPrimitive.content)
-            assertEquals(1, models.released.get())
+            // the server releases in its finally, after the client has the response: wait, don't race it
+            eventually { models.released.get() == 1 }
         }
     }
 
@@ -148,9 +149,9 @@ class ForwardingTest {
             }
         withServer(models = models) { _, port ->
             assertEquals(200, call(port, chat, "POST", body = """{"messages":[]}""").status)
-            assertEquals(1, models.released.get())
+            eventually { models.released.get() == 1 }
             assertEquals(500, call(port, chat, "POST", body = """{"messages":[]}""").status)
-            assertEquals(2, models.released.get())
+            eventually { models.released.get() == 2 }
             val stream = Streaming(port, chat, streamBody)
             assertEquals("data: {}", stream.line())
             stream.hangUp()
