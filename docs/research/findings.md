@@ -2372,24 +2372,25 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 
 - **Finding:** The same requests to upstream's `llama-server` and to `LlamaBroServer` over the real core give identical
   bodies and statuses: chat completions (plain, tools, JSON schema, thinking, a `model` field, usage in the stream,
-  two turns on the prompt cache), Anthropic messages and Responses (every event compared without its random ids), the
+  two turns on the prompt cache), Anthropic messages (a streamed tool call included: Claude Code's whole path) and
+  Responses (every event compared without its random ids), the
   native and OpenAI completions, streamed and whole, token counts, tokenize, `/health`, `/props`, `/metrics` names and
   the error for a body without messages; embeddings (one input, a list, base64, the native route) on an embedding
   model, and the errors upstream gives for embeddings on a chat model and chat on an embedding model. The official
   `openai` and `anthropic` Python SDKs each made a whole and a streamed call against the server with a key, and a
-  wrong key raised each SDK's own `AuthenticationError` (401). Two cases stay out of the set: an unparseable body gets
+  wrong key raised each SDK's own `AuthenticationError` (401). One case stays out of the set: an unparseable body gets
   the server's own 400 (`the request body is not valid JSON`, the design's body check, beside its media check)
-  where upstream gives its parser's message, with the same status and error type; and an Anthropic tool call matched
-  but carries a random tool id without a prefix, which `compare.py` cannot tell from content.
+  where upstream gives its parser's message, with the same status and error type. An Anthropic `tool_use` block's id
+  is a bare random string, so `compare.py` masks it as it masks the other generated ids.
 - **Evidence:** `sdk/scripts/check.sh --only server-contract` (`sdk/native/tests/contract/server-run.sh`): upstream
   `llama-server` from the host build with run.sh's flags (`-c 8192 -np 1 --cache-ram 1024 --ctx-checkpoints 8
   --load-mode none --fit off --seed 42 -b 512 -ub 512`, plus `--embeddings` for the embedding model), then
   `HostServerContractTest` serving the same file with `ContextSize.Fixed(8192)`, one slot, 1024 MiB prompt cache, 8
   checkpoints, seed 42, batch and micro-batch 512, CPU, on a free port with no key, both through `http-run.py` and
-  `compare.py`: Qwen3.5 4B Q4_K_M 26/26 statuses equal, 26/26 identical; bge-small-f16 5/5, 5/5;
+  `compare.py`: Qwen3.5 4B Q4_K_M 27/27 statuses equal, 27/27 identical; bge-small-f16 5/5, 5/5;
   `server-clients.py` with openai 3.59.0 and anthropic 2.14.0 (`server-clients-requirements.txt`), every call OK
-  (Mac, 2026-11-26). The two cases left out, run once: the tool call's events equal but for the id; the bad body 400
-  with the server's message.
+  (Mac, 2026-11-26). The case left out, run once: the bad body 400 with the server's message. `contract` on the
+  C API still 76/76, 75/75 (Llama 3.2 3B) and 12/12 (audio) identical with the `tool_use` mask.
 - **Means:** the server adds nothing to what the core answers, so the C API contract (F180) carries over to HTTP: a
   llama.cpp upgrade that keeps `contract` identical keeps the server's answers too, and `server-contract` checks it.
   What the server sends that upstream would not is its own checks (key, media, body size and JSON) and
