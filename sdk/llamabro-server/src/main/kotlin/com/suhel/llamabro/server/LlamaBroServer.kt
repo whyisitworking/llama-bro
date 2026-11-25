@@ -30,6 +30,7 @@ import kotlinx.serialization.json.putJsonArray
 
 private const val STOP_TIMEOUT_MILLIS = 2_000L
 private const val EVENT_BUFFER = 64
+private val SERVICE_TYPES = listOf("_http._tcp", "_llamabro._tcp")
 
 /**
  * llama-server's HTTP API in front of the models [models] serves, in this process: `GET /health`, `GET /v1/models`
@@ -44,6 +45,7 @@ public class LlamaBroServer(private val config: ServerConfig, private val models
             onBufferOverflow = BufferOverflow.DROP_OLDEST,
         )
     private val lifecycle = Mutex()
+    private var registrations: List<Registration> = emptyList()
     private var engine: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
     private val forwarding = Forwarding(models) { mutableEvents.tryEmit(it) }
     private val audioRoutes = AudioRoutes(models, { mutableEvents.tryEmit(it) }, forwarding::nextId)
@@ -75,6 +77,7 @@ public class LlamaBroServer(private val config: ServerConfig, private val models
                         .port
                 engine = server
                 mutableState.value = ServerState.Serving(port)
+                announce(port)
             } catch (e: CancellationException) {
                 runCatching { server.stopSuspend(0, 0) }
                 mutableState.value = ServerState.Stopped
@@ -83,6 +86,7 @@ public class LlamaBroServer(private val config: ServerConfig, private val models
                 @Suppress("TooGenericExceptionCaught") e: Exception,
             ) {
                 runCatching { server.stopSuspend(0, 0) }
+                withdraw()
                 mutableState.value = ServerState.Failed(e)
             }
         }
@@ -91,10 +95,28 @@ public class LlamaBroServer(private val config: ServerConfig, private val models
     /** Cancels the requests in flight and unbinds. A server that isn't running stays stopped. */
     public suspend fun stop() {
         lifecycle.withLock {
+            withdraw()
             engine?.stopSuspend(0, STOP_TIMEOUT_MILLIS)
             engine = null
             mutableState.value = ServerState.Stopped
         }
+    }
+
+    // a network that refuses the registration leaves the server serving, unannounced: the module logs nothing
+    private fun announce(port: Int) {
+        val advertise = config.advertise ?: return
+        val txt = mapOf("path" to "/v1", "auth" to if (config.apiKey == null) "none" else "key")
+        val registry = runCatching { advertise.registry() }.getOrNull() ?: return
+        // each one on its own, so one the network refuses does not leave the other registered and forgotten
+        registrations =
+            SERVICE_TYPES.mapNotNull { type ->
+                runCatching { registry.register(advertise.name, type, port, txt) }.getOrNull()
+            }
+    }
+
+    private fun withdraw() {
+        registrations.forEach { runCatching { it.unregister() } }
+        registrations = emptyList()
     }
 
     private fun Application.serve(config: ServerConfig, models: ServedModels) {

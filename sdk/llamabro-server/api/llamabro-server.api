@@ -1,3 +1,9 @@
+public final class com/suhel/llamabro/server/Advertise {
+	public fun <init> (Ljava/lang/String;Landroid/content/Context;)V
+	public final fun getName ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/suhel/llamabro/server/Cors : java/lang/Enum {
 	public static final field Any Lcom/suhel/llamabro/server/Cors;
 	public static final field None Lcom/suhel/llamabro/server/Cors;
@@ -55,6 +61,7 @@ public abstract interface class com/suhel/llamabro/server/ServedModels {
 public final class com/suhel/llamabro/server/ServerConfig {
 	public static final field Companion Lcom/suhel/llamabro/server/ServerConfig$Companion;
 	public final fun copy (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/server/ServerConfig;
+	public final fun getAdvertise ()Lcom/suhel/llamabro/server/Advertise;
 	public final fun getApiKey ()Ljava/lang/String;
 	public final fun getCors ()Lcom/suhel/llamabro/server/Cors;
 	public final fun getHost ()Ljava/lang/String;
@@ -66,6 +73,7 @@ public final class com/suhel/llamabro/server/ServerConfig {
 }
 
 public final class com/suhel/llamabro/server/ServerConfig$Builder {
+	public final fun getAdvertise ()Lcom/suhel/llamabro/server/Advertise;
 	public final fun getApiKey ()Ljava/lang/String;
 	public final fun getCors ()Lcom/suhel/llamabro/server/Cors;
 	public final fun getHost ()Ljava/lang/String;
@@ -73,6 +81,7 @@ public final class com/suhel/llamabro/server/ServerConfig$Builder {
 	public final fun getPort ()I
 	public final fun getRoutes ()Lcom/suhel/llamabro/server/Routes;
 	public final fun getWorkDir ()Lkotlinx/io/files/Path;
+	public final fun setAdvertise (Lcom/suhel/llamabro/server/Advertise;)V
 	public final fun setApiKey (Ljava/lang/String;)V
 	public final fun setCors (Lcom/suhel/llamabro/server/Cors;)V
 	public final fun setHost (Ljava/lang/String;)V
