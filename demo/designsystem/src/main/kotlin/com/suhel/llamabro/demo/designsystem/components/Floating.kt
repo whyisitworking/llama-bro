@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -38,21 +39,27 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RenderEffect
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import com.suhel.llamabro.demo.designsystem.theme.BarGlass
 import com.suhel.llamabro.demo.designsystem.theme.FadeMask
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
+import kotlin.math.ceil
 
 /**
  * How tall a floating layer outside the screen is over its bottom (the Chat list layout's tabs, fade band and all), so
@@ -191,29 +198,44 @@ internal fun FloatingLayer(
     // where the layer sits over the page, so it draws the part of the page that lies under it
     var at by remember { mutableStateOf(Offset.Zero) }
     Box(Modifier.fillMaxWidth().onGloballyPositioned { at = it.positionInWindow() }) {
-        if (page != null) {
+        if (page != null && shaders != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // a heavy blur runs on a copy of the page at half its resolution, a quarter of the pixels (F185): drawn
+            // back up, the blur hides the copy's softness, and where the blur eases out the copy fades into the page
+            val small = rememberGraphicsLayer()
+            val scale = if (style.heavy) HALF_RESOLUTION else 1f
+            Box(
+                Modifier.matchParentSize().drawWithCache {
+                    val reduced = IntSize(ceil(size.width / scale).toInt(), ceil(size.height / scale).toInt())
+                    small.renderEffect =
+                        shaders.effect(edge, reduced.toSize(), style, ground, scale, fadeOut = scale > 1f, this)
+                    onDrawBehind {
+                        // its place in the window less the page's, read here so either moving redraws it
+                        val over = at - backdrop.origin
+                        small.record(reduced) {
+                            scale(1f / scale, pivot = Offset.Zero) {
+                                // the page's content on its own ground, so no clear part of the copy lets the sharp
+                                // page show through
+                                drawRect(pageColor, size = this@drawWithCache.size)
+                                translate(-over.x, -over.y) { drawLayer(page) }
+                            }
+                        }
+                        clipRect { scale(scale, pivot = Offset.Zero) { drawLayer(small) } }
+                    }
+                },
+            )
+        } else if (page != null) {
             Box(
                 Modifier
                     .matchParentSize()
                     .graphicsLayer {
-                        renderEffect =
-                            if (shaders != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                shaders.effect(edge, size, style, ground, this)
-                            } else {
-                                BlurEffect(blur, blur, TileMode.Clamp)
-                            }
+                        renderEffect = BlurEffect(blur, blur, TileMode.Clamp)
                         clip = true
                     }.drawWithContent {
-                        // the layer holds the page's content only: on its own ground, so the sharp page under it
-                        // doesn't show through the blurred copy's clear parts
                         drawRect(pageColor)
-                        // its place in the window less the page's, read here so either moving redraws it
                         val over = at - backdrop.origin
                         translate(-over.x, -over.y) { drawLayer(page) }
-                        // a progressive blur ends at none, the page itself; an even one is faded out into the page
-                        if (shaders == null) {
-                            drawRect(eased(edge, size.height, style.hold, FadeMask), blendMode = BlendMode.DstIn)
-                        }
+                        // an even blur is faded out into the page
+                        drawRect(eased(edge, size.height, style.hold, FadeMask), blendMode = BlendMode.DstIn)
                     },
             )
         }
@@ -271,6 +293,12 @@ private fun eased(edge: Edge, height: Float, hold: Float, color: Color): Brush {
 private const val EASE_STEPS = 12
 
 /**
+ * How much smaller than the screen a heavy bar blur ([BarGlass.heavy]) is drawn: half across and down, a quarter of the
+ * pixels (F185).
+ */
+private const val HALF_RESOLUTION = 2f
+
+/**
  * The progressive blur (Android 13 and up): a separable Gaussian whose radius follows [strength] from the screen's
  * edge, a horizontal pass then a vertical one, each its own runtime shader. Effects are made afresh when the layer's
  * size changes; the shaders are kept.
@@ -280,21 +308,30 @@ private class ProgressiveBlur {
     private val across = RuntimeShader(PROGRESSIVE_BLUR)
     private val down = RuntimeShader(PROGRESSIVE_BLUR)
 
-    /** The blur of a layer at [edge], [size] large, in [style], the veil's [tint] blended in, at [density]. */
+    /**
+     * The blur of a layer at [edge], [size] large, in [style], the veil's [tint] blended in, at [density] over [scale]
+     * (the layer drawn that many times smaller than the screen); with [fadeOut], the blur fades to clear where it eases
+     * out, for the sharp page under it to take over.
+     */
+    @Suppress("LongParameterList") // the shader's inputs, all of them
     fun effect(
         edge: Edge,
         size: Size,
         style: BarGlass,
         tint: Color,
+        scale: Float,
+        fadeOut: Boolean,
         density: Density,
     ): RenderEffect {
         // the colours split and the veil blends along the vertical pass only, the last: a fringe on every edge across
         // the bar, at a third of the taps, and the tint over the finished blur
         across.setFloatUniform("spread", 0f)
-        down.setFloatUniform("spread", with(density) { style.dispersion.toPx() })
+        down.setFloatUniform("spread", with(density) { style.dispersion.toPx() } / scale)
         across.setFloatUniform("veil", 0f)
         down.setFloatUniform("veil", style.veil)
-        val radius = with(density) { style.blur.toPx() }
+        across.setFloatUniform("fadeOut", 0f)
+        down.setFloatUniform("fadeOut", if (fadeOut) 1f else 0f)
+        val radius = with(density) { style.blur.toPx() } / scale
         for ((shader, dir) in listOf(across to (1f to 0f), down to (0f to 1f))) {
             shader.setFloatUniform("tint", tint.red, tint.green, tint.blue)
             shader.setFloatUniform("dir", dir.first, dir.second)
@@ -331,6 +368,7 @@ uniform float hold;
 uniform float spread;
 uniform float3 tint;
 uniform float veil;
+uniform float fadeOut;
 
 half3 overlay(half3 base, half3 over) {
     return mix(2.0 * base * over, 1.0 - 2.0 * (1.0 - base) * (1.0 - over), step(0.5, base));
@@ -341,8 +379,10 @@ half4 main(float2 p) {
     float t = clamp((fraction - hold) / (1.0 - hold), 0.0, 1.0);
     float strength = 1.0 - t * t * (3.0 - 2.0 * t);
     float r = radius * strength;
+    // a reduced copy fades out over the last tenth of the blur, where it is all but the page: the page shows sharp
+    half keep = fadeOut > 0.5 ? half(smoothstep(0.0, 0.1, strength)) : 1.0;
     if (r < 0.5) {
-        return content.eval(p);
+        return content.eval(p) * keep;
     }
     float d = spread * strength;
     float sigma = r / 2.0;
@@ -369,7 +409,7 @@ half4 main(float2 p) {
     if (veil > 0.0) {
         c.rgb = mix(c.rgb, overlay(c.rgb, half3(tint)), half(veil * strength));
     }
-    return c;
+    return c * keep;
 }
 """
 

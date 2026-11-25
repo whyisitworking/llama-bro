@@ -54,7 +54,14 @@ data class BarGlass(
     val fade: Dp,
     /** How far from the screen's edge, as a share of the bar's layer, the blur and the veil stay full. */
     val hold: Float,
-)
+) {
+    /** Whether [blur] is strong enough to run on a half-resolution copy of the page, its softness hidden (F185). */
+    val heavy: Boolean get() = blur >= HeavyBlur
+
+    private companion object {
+        val HeavyBlur = 12.dp
+    }
+}
 
 /** The glass of every kind the app draws: [chip] (icon buttons, the title), [panel] (fields, tabs, a FAB), [bar]. */
 @Immutable

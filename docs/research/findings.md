@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the [decision records](../decisions.md) (`D<n>`), the [research history](history.md), which summarises each phase, and the experiments under [`research/`](../../research/).
-> **Status:** living document, updated 2026-11-25 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183–F184)
+> **Status:** living document, updated 2026-11-25 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183–F185)
 
 Labels such as P1, PA, PF, PD and PH name the project's phases, and W1 to W9 the workstreams of a phase; the
 [research history](history.md#summary-of-the-phases) summarises each. "Task <n>", "T<n>" and "Feeds:" name the steps
@@ -2280,7 +2280,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   GPU 7/7/9/10 ms, 116 frames at 10 ms against 51 (2026-11-25).
 - **Means:** the glass fits a flagship with about 3 ms to spare, not a mid-range GPU; the split stays in the blur's
   vertical pass. The next lever is to blur a downscaled copy of the page (fewer pixels to sample and to move), not to
-  add passes; measure it the same way before keeping it.
+  add passes; measure it the same way before keeping it (done: F185).
 - **Feeds:** D148, D151.
 
 <a id="f184"></a>
@@ -2300,10 +2300,29 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   modifier, a list's content padding): no effect starts mid-layout, and nothing is a frame late.
 - **Feeds:** D148, `FloatingFrame`.
 
+<a id="f185"></a>
+### F185. A heavy bar blur run at half resolution gives a chat's fling its frame budget back
+
+- **Finding:** Running the bars' progressive blur (24 dp, D148) on a copy of the page at half its width and height, a
+  quarter of the pixels, with the radius and the colour split halved to match and the copy fading into the sharp page
+  over the last tenth of the blur, takes flinging a chat of 300 messages from frameOverrun P50/P90/P99 −2.6, 2.5 and
+  7.2 ms to −3.6, −1.8 and −0.1 ms, and its CPU frame time P90 from 8.2 to 6.8 ms (P99 16.7 to 8.4 ms); flinging the
+  Chat list goes from overrun P90 −0.02 to −1.4 ms. The overrun budgets are met again; the chat's CPU P90 budget
+  (6 ms) is still missed by 0.8 ms, against −7.3 ms overrun and every budget met before the glass (F108).
+- **Evidence:** phone CPH2649 (Android 17, 90 Hz), `PERF_CLASSES=ScrollBenchmark demo/scripts/check.sh --device
+  --perf --only perf` on the benchmark build (`com.suhel.llamabro.demo.benchmark`, beside the person's own app), 10
+  iterations each, the full-resolution blur then the half-resolution one, the same seeded chats (2026-11-25).
+- **Means:** a blur this strong (12 dp and up) runs at half resolution; a lighter one, where the copy's softness would
+  show, stays whole, as do the chips' and panels' lenses, whose bend needs the page's detail. What the CPU P90 still
+  misses is the glass's render passes (a lens per chip and panel, two blur passes per bar), not the blur's pixels; a
+  quarter-resolution blur or fewer lens layers are the levers left, each measured this way before kept.
+- **Feeds:** D148, F183, `FloatingFrame`.
+
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F185 | A heavy bar blur run at half resolution gives a chat's fling its frame budget back | D148, F183 |
 | F184 | Content composed during a `SubcomposeLayout`'s measure starts its effects mid-layout; a list scrolled from one throws | D148 |
 | F183 | The demo's glass costs a flagship 8 ms of GPU per frame scrolling a chat; a third shader pass lowers the median but doubles the jank | D148, D151 |
 | F182 | A `derivedStateOf` read on one thread while another writes its inputs can stay stale for good; a plain getter cannot | ChatViewModel |
