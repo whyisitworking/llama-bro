@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D151 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D152 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -184,7 +184,8 @@ its amendments to know what holds now.
 | [D148](#d148-pages-scroll-edge-to-edge-under-floating-bars-the-drawer-holds-still-under-the-page) Pages scroll edge to edge under floating bars; the drawer holds still under the page | 2026-11-24 | |
 | [D149](#d149-the-demos-debug-build-installs-beside-the-release-with-its-own-name-and-icon) The demo's debug build installs beside the release, with its own name and icon | 2026-11-24 | |
 | [D150](#d150-replies-in-the-serif-the-rest-in-figtree) Replies in the serif, the rest in Figtree | 2026-11-25 | |
-| [D151](#d151-a-debug-build-tunes-the-glass-on-the-phone) A debug build tunes the glass on the phone | 2026-11-25 | |
+| [D151](#d151-a-debug-build-tunes-the-glass-on-the-phone) A debug build tunes the glass on the phone | 2026-11-25 | D152 |
+| [D152](#d152-the-glass-is-a-setting-under-appearance-saved-with-a-sample-at-the-bottom) The glass is a setting under Appearance, saved, with a sample at the bottom | 2026-11-25 | |
 
 **Repository and process**
 
@@ -2348,5 +2349,22 @@ split, tint, reach past the bar and how much of it is full), each applied across
 `GlassTheme.Default`; Reset brings the defaults back. The values last until the app closes. A release build has no
 row, no route and no tuner (`BuildConfig.DEBUG`), and draws `GlassTheme.Default`.
 Consequences: The chosen values still go into `GlassTheme.Default` by hand, so the release and every test draw the
-committed glass. Next free IDs: D152, F186.
+committed glass. Superseded by D152: the tuner is every build's, under Appearance, and its values are kept.
+
+<a id="d152"></a>
+### D152. The glass is a setting under Appearance, saved, with a sample at the bottom
+
+Status: Decided (2026-11-25)
+
+Context: D151's tuner was a debug build's, its values gone when the app closed. The owner asked for it under
+Appearance in every build, and for a piece of glass at the bottom of the screen to see each change in.
+Decision: Settings › Appearance has a Glass row opening the tuner (`settings/appearance/glass`); the Settings home
+lists Appearance as "Layout, theme and glass". Each value let go is saved in the settings (DataStore key `glass`, the
+whole `GlassTheme` as JSON with lengths in dp; the screens read and write it, `SavedGlass`, the data layer keeping it as text, D144), and the shell provides the saved glass as `LocalGlass`;
+a value missing from the saved text, or text that can't be read, is the default's. Reset forgets the saved glass, so
+the app's default applies again, whatever it becomes. The tuner's screen floats a sample at its bottom
+(`GlassPreview`: a chip beside a panel shaped like the message bar) in a bar of its own, over the sliders as they
+scroll, so the chips', the panels' and the bar's glass answer each change in one place. Copy values stays.
+Consequences: A person's tuned glass outlives a change to `GlassTheme.Default` until they reset it. `Screen` and
+`SettingsPage` take a `bottomBar`. Next free IDs: D153, F186.
 

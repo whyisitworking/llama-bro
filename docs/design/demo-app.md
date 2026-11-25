@@ -215,7 +215,7 @@ a fresh answer from Hugging Face changes words in place, never the layout (F177)
 
 ### 4.5 Settings
 
-Appearance (Layout with previews; Theme: System, Light, Dark), Custom instructions, Default model, a Hugging Face token (optional, for gated models; a masked field that is never suggested or corrected), Sampling (section 4.7), Voice (section 4.8), Memory (section 4.6), Storage (the library) and About (versions and licences). Settings, About and Storage are grouped cards (section 8).
+Appearance (Layout with previews; Theme: System, Light, Dark; Glass, a slider for each of its values with a sample chip and panel floating at the bottom, kept: D152), Custom instructions, Default model, a Hugging Face token (optional, for gated models; a masked field that is never suggested or corrected), Sampling (section 4.7), Voice (section 4.8), Memory (section 4.6), Storage (the library) and About (versions and licences). Settings, About and Storage are grouped cards (section 8).
 
 ### 4.6 The model's memory
 

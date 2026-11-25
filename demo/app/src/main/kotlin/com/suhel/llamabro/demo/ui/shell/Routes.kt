@@ -26,8 +26,8 @@ object Routes {
 
     const val ABOUT = "settings/about"
 
-    /** The glass tuner (debug builds only, D151). */
-    const val GLASS = "settings/glass"
+    /** Settings › Appearance › Glass (D152). */
+    const val GLASS = "settings/appearance/glass"
 
     /** The id of a chat that doesn't exist yet: it is created with the first message. */
     const val NEW_CHAT_ID = 0L

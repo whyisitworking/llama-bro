@@ -7,9 +7,11 @@ import com.suhel.llamabro.demo.data.AppLayout
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ChatSummary
 import com.suhel.llamabro.demo.data.SettingsRepository
+import com.suhel.llamabro.demo.designsystem.theme.GlassTheme
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.models.ModelLibrary
 import com.suhel.llamabro.demo.ui.mode
+import com.suhel.llamabro.demo.ui.settings.SavedGlass
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -45,6 +47,12 @@ class ShellViewModel(
         settings.settings
             .map { it.theme.mode() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), ThemeMode.System)
+
+    /** The app's glass (D152): the saved one, the default until the settings are read. */
+    val glass: StateFlow<GlassTheme> =
+        settings.settings
+            .map { SavedGlass.decode(it.glass) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), GlassTheme.Default)
 
     /** Whether first run has been seen; null until the settings are read. The Models page's intro starts from it. */
     val seenFirstRun: StateFlow<Boolean?> =

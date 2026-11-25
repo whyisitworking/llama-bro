@@ -21,6 +21,7 @@ import com.suhel.llamabro.demo.data.TokenStore
 import com.suhel.llamabro.demo.data.VoiceTurns
 import com.suhel.llamabro.demo.data.loadConfig
 import com.suhel.llamabro.demo.data.settings.Knob
+import com.suhel.llamabro.demo.designsystem.theme.GlassTheme
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.LibraryModel
@@ -186,6 +187,10 @@ class SettingsViewModel(
     fun setLayout(layout: AppLayout) = viewModelScope.launch { settings.setLayout(layout) }.let { }
 
     fun setTheme(theme: ThemeMode) = viewModelScope.launch { settings.setTheme(theme.theme()) }.let { }
+
+    /** Saves [glass] as the app's (D152); null goes back to the default. */
+    fun setGlass(glass: GlassTheme?) =
+        viewModelScope.launch { settings.setGlass(glass?.let(SavedGlass::encode)) }.let { }
 
     fun pinDefault(modelKey: String?) = viewModelScope.launch { settings.pinDefault(modelKey) }.let { }
 

@@ -38,7 +38,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.suhel.llamabro.demo.BuildConfig
 import com.suhel.llamabro.demo.data.AppLayout
 import com.suhel.llamabro.demo.designsystem.components.BottomTabs
 import com.suhel.llamabro.demo.designsystem.components.DemoDrawer
@@ -65,9 +64,7 @@ import com.suhel.llamabro.demo.ui.settings.AboutScreen
 import com.suhel.llamabro.demo.ui.settings.AppearanceScreen
 import com.suhel.llamabro.demo.ui.settings.DefaultModelScreen
 import com.suhel.llamabro.demo.ui.settings.GlassScreen
-import com.suhel.llamabro.demo.ui.settings.GlassTuner
 import com.suhel.llamabro.demo.ui.settings.InstructionsScreen
-import com.suhel.llamabro.demo.ui.settings.LocalGlassTuner
 import com.suhel.llamabro.demo.ui.settings.MemoryScreen
 import com.suhel.llamabro.demo.ui.settings.SamplingModelScreen
 import com.suhel.llamabro.demo.ui.settings.SamplingModelsScreen
@@ -108,8 +105,6 @@ private val settingsRoutes =
         sampling = Routes.SAMPLING,
         about = Routes.ABOUT,
         voice = Routes.VOICE,
-        // the glass tuner is a debug build's only (D151): a release has no row and no route
-        glass = Routes.GLASS.takeIf { BuildConfig.DEBUG },
     )
 
 /**
@@ -130,13 +125,10 @@ fun AppShell(
     val firstRun by shell.startsWithFirstRun.collectAsStateWithLifecycle()
     val seen by shell.seenFirstRun.collectAsStateWithLifecycle()
     SystemBars(theme)
-    // a debug build's glass is the tuner's, changed on Settings › Glass (D151); a release draws the default
-    val tuner = remember { GlassTuner().takeIf { BuildConfig.DEBUG } }
+    // the glass as the person tuned it on Settings › Appearance › Glass (D152)
+    val glass by shell.glass.collectAsStateWithLifecycle()
     DemoTheme(theme) {
-        CompositionLocalProvider(
-            LocalGlassTuner provides tuner,
-            LocalGlass provides (tuner?.theme ?: LocalGlass.current),
-        ) {
+        CompositionLocalProvider(LocalGlass provides glass) {
             Box(
                 Modifier
                     .fillMaxSize()
@@ -398,7 +390,7 @@ private fun Graph(
                 nav.navigate(route) { launchSingleTop = true }
             }, routes = settingsRoutes)
         }
-        composable(Routes.APPEARANCE) { AppearanceScreen(settings, back) }
+        composable(Routes.APPEARANCE) { AppearanceScreen(settings, back) { nav.navigate(Routes.GLASS) } }
         composable(Routes.INSTRUCTIONS) { InstructionsScreen(settings, back) }
         composable(Routes.DEFAULT_MODEL) { DefaultModelScreen(settings, back) }
         composable(Routes.TOKEN) { TokenScreen(settings, back) }
@@ -421,7 +413,7 @@ private fun Graph(
             if (key != null) SamplingModelScreen(settings, key, back)
         }
         composable(Routes.ABOUT) { AboutScreen(back) }
-        if (BuildConfig.DEBUG) composable(Routes.GLASS) { GlassScreen(back) }
+        composable(Routes.GLASS) { GlassScreen(settings::setGlass, back) }
     }
 }
 

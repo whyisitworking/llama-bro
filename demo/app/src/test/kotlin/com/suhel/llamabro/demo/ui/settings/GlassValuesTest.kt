@@ -5,7 +5,7 @@ import com.suhel.llamabro.demo.designsystem.theme.GlassTheme
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** What Settings › Glass copies (D151): every value of the glass, as the Kotlin that sets it. */
+/** What Settings › Appearance › Glass copies (D151, D152): every value of the glass, as the Kotlin that sets it. */
 class GlassValuesTest {
     @Test fun theCopiedValuesAreTheGlassesAsKotlin() {
         val glass = GlassTheme.Default.let { it.copy(chip = it.chip.copy(refraction = 20.dp, dispersion = 1.25f)) }

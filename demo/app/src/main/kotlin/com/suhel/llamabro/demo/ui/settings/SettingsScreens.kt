@@ -40,12 +40,16 @@ import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.ui.mode
 
-/** A settings screen: a floating top bar with Back over its body, whose parts are a section apart on the gutter. */
+/**
+ * A settings screen: a floating top bar with Back over its body, whose parts are a section apart on the gutter, and an
+ * optional [bottomBar] floating over its bottom.
+ */
 @Composable
 fun SettingsPage(
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    bottomBar: @Composable () -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Screen(
@@ -56,6 +60,7 @@ fun SettingsPage(
             )
         },
         modifier = modifier,
+        bottomBar = bottomBar,
         content = content,
     )
 }
@@ -69,7 +74,7 @@ fun SettingsHome(onBack: () -> Unit, onOpen: (String) -> Unit, routes: SettingsR
                 row {
                     ListRow(
                         "Appearance",
-                        subtitle = "Layout and theme",
+                        subtitle = "Layout, theme and glass",
                         chevron = true,
                         onClick = { onOpen(routes.appearance) },
                     )
@@ -146,16 +151,6 @@ fun SettingsHome(onBack: () -> Unit, onOpen: (String) -> Unit, routes: SettingsR
                         onClick = { onOpen(routes.about) },
                     )
                 }
-                routes.glass?.let { glass ->
-                    row {
-                        ListRow(
-                            "Glass",
-                            subtitle = "Tune the glass (debug build)",
-                            chevron = true,
-                            onClick = { onOpen(glass) },
-                        )
-                    }
-                }
             }
         }
     }
@@ -172,17 +167,15 @@ data class SettingsRoutes(
     val sampling: String,
     val about: String,
     val voice: String,
-    /** The glass tuner, in a debug build only (D151); null hides its row. */
-    val glass: String? = null,
 )
 
 @Composable
-fun AppearanceScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
+fun AppearanceScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onGlass: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    AppearanceContent(state.layout, state.theme.mode(), viewModel::setLayout, viewModel::setTheme, onBack)
+    AppearanceContent(state.layout, state.theme.mode(), viewModel::setLayout, viewModel::setTheme, onBack, onGlass)
 }
 
-/** The layout choice (two small pictures of the two layouts) and the theme switch. */
+/** The layout choice (two small pictures of the two layouts), the theme switch, and the way to the glass (D152). */
 @Composable
 fun AppearanceContent(
     layout: AppLayout,
@@ -190,6 +183,7 @@ fun AppearanceContent(
     onLayout: (AppLayout) -> Unit,
     onTheme: (ThemeMode) -> Unit,
     onBack: () -> Unit,
+    onGlass: () -> Unit,
 ) {
     SettingsPage("Appearance", onBack) {
         Section("Layout") {
@@ -220,6 +214,19 @@ fun AppearanceContent(
                 { onTheme(modes[it]) },
                 Modifier.fillMaxWidth().testTag("theme_switch"),
             )
+        }
+        Section("Glass") {
+            GroupedList {
+                row {
+                    ListRow(
+                        "Glass",
+                        subtitle = "Blur, refraction and colour split",
+                        chevron = true,
+                        onClick = onGlass,
+                        modifier = Modifier.testTag("appearance_glass"),
+                    )
+                }
+            }
         }
     }
 }

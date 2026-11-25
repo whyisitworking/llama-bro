@@ -55,7 +55,7 @@ class SettingsLargeTextTest {
     private companion object {
         val SUBTITLES =
             listOf(
-                "Layout and theme",
+                "Layout, theme and glass",
                 "Tell every chat about you",
                 "Which model new chats start with",
                 "For models that need one",

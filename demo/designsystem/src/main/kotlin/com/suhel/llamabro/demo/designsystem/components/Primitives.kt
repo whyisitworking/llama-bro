@@ -103,8 +103,9 @@ fun GapAbove(gap: Gap) {
 /**
  * A screen: the [topBar] floating over the body (D148), the body on the gutter with an [Gap.Item] above its first part
  * and below its last, its parts [Gap.Section] apart. The body scrolls under the bar unless [scrolls] is false (a screen
- * with nothing to scroll; one that scrolls a list of its own builds on [FloatingFrame] instead). The screen owns the
- * gutter: a part never pads itself to reach it.
+ * with nothing to scroll; one that scrolls a list of its own builds on [FloatingFrame] instead). A [bottomBar] floats
+ * over the body's bottom, as a chat's message bar does, the body's end kept clear of it. The screen owns the gutter: a
+ * part never pads itself to reach it.
  */
 @Composable
 fun Screen(
@@ -112,9 +113,10 @@ fun Screen(
     modifier: Modifier = Modifier,
     scrolls: Boolean = true,
     gap: Gap = Gap.Section,
+    bottomBar: @Composable () -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    FloatingFrame(topBar, modifier.fillMaxSize()) { bars ->
+    FloatingFrame(topBar, modifier.fillMaxSize(), bottom = bottomBar) { bars ->
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             Column(
                 Modifier

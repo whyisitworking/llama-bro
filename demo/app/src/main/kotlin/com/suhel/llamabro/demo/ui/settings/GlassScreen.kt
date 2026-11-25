@@ -3,16 +3,13 @@ package com.suhel.llamabro.demo.ui.settings
 import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Stable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.suhel.llamabro.demo.designsystem.components.BottomBar
+import com.suhel.llamabro.demo.designsystem.components.GlassPreview
 import com.suhel.llamabro.demo.designsystem.components.GroupScope
 import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListRow
@@ -22,52 +19,45 @@ import com.suhel.llamabro.demo.designsystem.components.SliderRow
 import com.suhel.llamabro.demo.designsystem.theme.BarGlass
 import com.suhel.llamabro.demo.designsystem.theme.GlassStyle
 import com.suhel.llamabro.demo.designsystem.theme.GlassTheme
+import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
 import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * The glass the app draws, tunable while it runs (debug builds only, D151): the shell provides [theme] as the app's
- * glass, and the Glass screen changes it. It lasts until the app closes; the values worth keeping are copied from the
- * screen into [GlassTheme.Default].
- */
-@Stable
-class GlassTuner {
-    var theme by mutableStateOf(GlassTheme.Default)
-}
-
-/** The app's [GlassTuner], where the build has one (debug); null in a release build, which draws the default glass. */
-val LocalGlassTuner = staticCompositionLocalOf<GlassTuner?> { null }
-
-/**
- * Settings › Glass (debug builds only, D151): a slider for every value of the app's glass (the chips', the panels' and
- * the bars'), applied across the app as each is let go, so the look is tuned by eye on the phone; Copy values puts them
- * on the clipboard to be made the defaults, and Reset brings the defaults back.
+ * Settings › Appearance › Glass (D152): a slider for every value of the app's glass (the chips', the panels' and the
+ * bars'), each saved and applied across the app as it is let go ([onChange]), so the look is tuned by eye; a sample
+ * chip and panel float at the bottom ([GlassPreview]) over the sliders as they scroll. Copy values puts them on the
+ * clipboard as the Kotlin of [GlassTheme.Default], and Reset forgets them ([onChange] with null).
  */
 @Composable
-fun GlassScreen(onBack: () -> Unit) {
-    val tuner = LocalGlassTuner.current ?: return
-    val glass = tuner.theme
+fun GlassScreen(onChange: (GlassTheme?) -> Unit, onBack: () -> Unit) {
+    val glass = LocalGlass.current
     val context = LocalContext.current
-    SettingsPage("Glass", onBack, Modifier.testTag("glass_settings")) {
-        Notice("Debug build only. Each change applies across the app when you let go, and lasts until the app closes.")
+    SettingsPage(
+        "Glass",
+        onBack,
+        Modifier.testTag("glass_settings"),
+        bottomBar = { BottomBar { GlassPreview() } },
+    ) {
+        Notice("Each change applies across the app when you let go, and is kept. Scroll to see it in the glass below.")
         Section("Chips: icon buttons, the title") {
-            GroupedList { styleSliders("chip", glass.chip) { tuner.theme = glass.copy(chip = it) } }
+            GroupedList { styleSliders("chip", glass.chip) { onChange(glass.copy(chip = it)) } }
         }
         Section("Panels: the message bar, fields, tabs, FAB") {
-            GroupedList { styleSliders("panel", glass.panel) { tuner.theme = glass.copy(panel = it) } }
+            GroupedList { styleSliders("panel", glass.panel) { onChange(glass.copy(panel = it)) } }
         }
         Section("Bars: the blur under the top and bottom") {
-            GroupedList { barSliders(glass.bar) { tuner.theme = glass.copy(bar = it) } }
+            GroupedList { barSliders(glass.bar) { onChange(glass.copy(bar = it)) } }
         }
         Section("Values") {
             GroupedList {
                 row {
-                    ListRow("Copy values", subtitle = "To make them the defaults", onClick = {
+                    ListRow("Copy values", subtitle = "As code, to make them the app's defaults", onClick = {
                         val clipboard = context.getSystemService(ClipboardManager::class.java)
                         clipboard?.setPrimaryClip(ClipData.newPlainText("Glass", describe(glass)))
                     })
                 }
-                row { ListRow("Reset to defaults", onClick = { tuner.theme = GlassTheme.Default }) }
+                row { ListRow("Reset to defaults", onClick = { onChange(null) }) }
             }
         }
     }

@@ -97,6 +97,11 @@ data class AppSettings(
     val voice: VoicePrefs = VoicePrefs(),
     /** What Hugging Face search asks for (models-search design §5), remembered across launches. */
     val searchFilters: SearchFilters = SearchFilters(),
+    /**
+     * The app's glass as tuned in Settings › Appearance › Glass (D152), as the screens saved it (they read and write
+     * it: this layer knows no design system, D144); null until it is tuned, or once it is reset.
+     */
+    val glass: String? = null,
 )
 
 /** The model a new chat starts with: the pinned one, else the one used last (demo design §4.2). */
@@ -130,6 +135,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
                 replyLength = ReplyLength.entries.firstOrNull { it.name == p[REPLY_LENGTH] } ?: ReplyLength.Automatic,
                 voice = VoiceSettings.prefsOf(p),
                 searchFilters = searchFiltersOf(p),
+                glass = p[GLASS],
             )
         }
 
@@ -139,6 +145,11 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     suspend fun setTheme(theme: Theme) {
         store.edit { it[THEME] = theme.name.lowercase() }
+    }
+
+    /** Saves [glass] as the app's (D152); null forgets it, so the app's default applies, whatever it becomes. */
+    suspend fun setGlass(glass: String?) {
+        store.edit { if (glass == null) it.remove(GLASS) else it[GLASS] = glass }
     }
 
     /** Pins [modelKey] for new chats; null unpins. */
@@ -315,6 +326,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val REPLY_LENGTH = stringPreferencesKey("reply_length")
         val LAYOUT = stringPreferencesKey("layout")
         val THEME = stringPreferencesKey("theme")
+        val GLASS = stringPreferencesKey("glass")
         val DEFAULT_MODEL = stringPreferencesKey("default_model")
         val LAST_MODEL = stringPreferencesKey("last_model")
         val INSTRUCTIONS_ABOUT = stringPreferencesKey("instructions_about")

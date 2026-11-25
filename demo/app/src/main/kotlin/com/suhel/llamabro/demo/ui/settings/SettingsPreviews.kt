@@ -49,7 +49,7 @@ internal class AppearanceStates : PreviewParameterProvider<AppearancePreview> {
 internal fun AppearanceContentPreview(
     @PreviewParameter(AppearanceStates::class) p: AppearancePreview,
 ) {
-    PreviewFrame { AppearanceContent(p.layout, p.theme, onLayout = {}, onTheme = {}, onBack = {}) }
+    PreviewFrame { AppearanceContent(p.layout, p.theme, onLayout = {}, onTheme = {}, onBack = {}, onGlass = {}) }
 }
 
 internal class InstructionsStates : PreviewParameterProvider<Pair<String, String>> {
