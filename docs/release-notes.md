@@ -88,6 +88,8 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
     `NativeError.CANCELLED`.
 - **Demo:** a tap on the mic dictates into the message bar, a hold records a voice message (D140); a typed reply on a
   model that speaks can be read aloud (D141).
+- **Demo:** pages scroll edge to edge under frosted glass bars (D148), a setting under Appearance (D152) that scales to
+  what the phone can draw smoothly (D153, D154) and swells under the finger when pressed (D158).
 
 ## 2.0.0-alpha
 

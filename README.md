@@ -19,6 +19,7 @@
 <p align="center">
   <a href="#highlights">Highlights</a> ·
   <a href="#what-it-can-do">What it can do</a> ·
+  <a href="#the-demo-app">Demo app</a> ·
   <a href="#installation">Installation</a> ·
   <a href="#supported-hardware">Hardware</a> ·
   <a href="#performance">Performance</a> ·
@@ -56,8 +57,8 @@
 
 <!-- the last two releases; older ones live in the release notes -->
 
-- **Next release** (on `main`): live dictation with `transcriptionSession`, text to speech with `speak`, and
-  llama.cpp b12653.
+- **Next release** (on `main`): live dictation with `transcriptionSession`, text to speech with `speak`, llama.cpp
+  b12653, and a demo app with glass bars, dictation and read-aloud.
 - **2.0.0-alpha** (November 23, 2026): a rewrite on llama-server's own engine, with NPU and GPU backends, on Maven
   Central.
 
@@ -213,6 +214,25 @@ val completion = model.rawRequest(Endpoint.Infill, """{"input_prefix": "fun add(
 Anthropic Messages formats.
 
 [Testing your app](sdk/README.md#testing-your-app) · [Without a conversation](sdk/README.md#without-a-conversation)
+
+## The demo app
+
+The [demo app](demo/README.md) is a full chat app built on the SDK, and the quickest way to see what it can do on your
+phone. [Download the APK](https://github.com/whyisitworking/llama-bro/releases/latest/download/llama-bro-demo.apk), or
+build `:demo:app` from source.
+
+- **Models.** Six suggested models that fit your phone, Hugging Face search that shows how each file will run before
+  you download it, and downloads that carry on in the background and resume where they stopped.
+- **Chat.** Streaming replies with markdown and code, a fold for the model's thinking, four think levels, pictures, and
+  edit and regenerate.
+- **Voice.** Hold to talk and hear a spoken reply with captions. Tap the mic to dictate, or hold it to send a voice
+  message, and have a reply read aloud.
+- **Glass.** Frosted bars that blur the chat scrolling beneath them and light up under your finger, scaled to what your
+  phone can draw smoothly.
+- **Your setup.** Choose the chip under Settings › Processor, a sidebar of chats or a messaging-style list, and a light
+  or dark theme.
+
+The APK is the latest release. Glass, dictation and read-aloud arrive with the next one.
 
 ## Installation
 
