@@ -1,6 +1,8 @@
 package com.suhel.llamabro.demo.server
 
+import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.Preferences
 import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.demo.chat.ChatEngine
@@ -16,6 +18,7 @@ import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.letAWrongActionLand
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.server.ServerEvent
@@ -26,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -66,7 +70,22 @@ class ServerModeTest {
         PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "settings.preferences_pb") }
     }
     private val settings by lazy { SettingsRepository(store) }
-    private val keys by lazy { ServerKey(ServerSettings(store)) }
+
+    /** Set, the key's first write waits for it: the start is then just past the model's hold. */
+    private var keyGate: CompletableDeferred<Unit>? = null
+    private val keyWriting = CompletableDeferred<Unit>()
+    private val keys by lazy { ServerKey(ServerSettings(GatedStore(store))) }
+
+    private inner class GatedStore(private val inner: DataStore<Preferences>) : DataStore<Preferences> {
+        override val data: Flow<Preferences> = inner.data
+
+        override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences {
+            keyWriting.complete(Unit)
+            keyGate?.await()
+            return inner.updateData(transform)
+        }
+    }
+
     private var port = 0
     private val server by lazy { ServerMode(host, settings, keys, scope, port = port) }
 
@@ -169,6 +188,63 @@ class ServerModeTest {
             assertTrue(withTimeout(10_000) { host.release() })
         }
 
+    @Test fun stopDuringStartAfterHoldReleasesTheLease() =
+        runBlocking {
+            keyGate = CompletableDeferred()
+            val starting = scope.launch { server.start(a, 1) }
+            // the hold has returned its lease: the start now reads the key, which waits
+            withTimeout(10_000) { keyWriting.await() }
+            assertTrue(host.state.value is HostState.Ready)
+            withTimeout(10_000) { server.stop() }
+            starting.join()
+            assertEquals(ServingState.Off, server.state.value)
+            // the lease was released, not dropped: the host frees the model at once
+            assertTrue(withTimeout(10_000) { host.release() })
+            assertEquals(0, fake.openModels)
+        }
+
+    @Test fun turnOnAnotherModelWhileServingFailsFast() =
+        runBlocking {
+            val hub = TestHub()
+            try {
+                val engine = engine(hub)
+                server.start(a, 1)
+                serving()
+                val served = (host.state.value as HostState.Ready).model
+                val limit = MutableStateFlow<Limit?>(null)
+                assertNull(withTimeout(10_000) { engine.holdModel(b, "Big", slots = 1, limit) })
+                val line = checkNotNull(limit.value).line
+                assertTrue(line, line.contains(Names.of(a)) && line.contains("Big"))
+                // no load started: the served model is still the host's
+                assertSame(served, (host.state.value as HostState.Ready).model)
+                assertEquals(1, fake.openModels)
+            } finally {
+                hub.close()
+            }
+        }
+
+    @Test fun serverRequestsUnaffectedByARefusedTurn() =
+        runBlocking {
+            val hub = TestHub()
+            try {
+                val engine = engine(hub)
+                server.start(a, 1)
+                val port = serving().port
+                assertNull(withTimeout(10_000) { engine.holdModel(b, "Big", slots = 1, MutableStateFlow(null)) })
+                fake.raw(200, "{}")
+                val reply = withTimeout(10_000) { call(port, chat, key = keys.current(), body = "{}") }
+                assertEquals(200, reply.status)
+            } finally {
+                hub.close()
+            }
+        }
+
+    private fun engine(hub: TestHub): ChatEngine {
+        val chats = ChatRepository(FakeChatDao(), ImageStore(File(folder.root, "images")), { 0L })
+        val models = ModelRepository(hub.hub, settings, FakeScheduler(), scope, host)
+        return ChatEngine(chats, host, models, settings, { 0L }, scope, served = { server.served.value })
+    }
+
     @Test fun portInUseFallsBackToAFreeOne() =
         runBlocking {
             ServerSocket(0).use { taken ->
@@ -213,10 +289,7 @@ class ServerModeTest {
         runBlocking {
             val hub = TestHub()
             try {
-                val chats = ChatRepository(FakeChatDao(), ImageStore(File(folder.root, "images")), { 0L })
-                val models = ModelRepository(hub.hub, settings, FakeScheduler(), scope, host)
-                val engine =
-                    ChatEngine(chats, host, models, settings, { 0L }, scope, served = { server.served.value })
+                val engine = engine(hub)
                 server.start(a, 1)
                 serving()
                 val served = (host.state.value as HostState.Ready).model

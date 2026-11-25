@@ -4,6 +4,7 @@ import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelInfo
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.loadConfig
+import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -82,6 +83,12 @@ internal class ModelLeases(
      * lease when it ends: until then the model stays open, and another chat's load of another model waits for it.
      */
     suspend fun load(key: HfModel, name: String, limit: MutableStateFlow<Limit?>, slots: Int = 1): ModelHost.Lease? {
+        // another model while one is served: its load would wait for serving to stop, and every server request would
+        // queue behind it, so it fails at once and says why
+        served()?.takeIf { it != key }?.let { other ->
+            limit.value = Limits.serving(Names.of(other), name)
+            return null
+        }
         val chosen =
             settings.settings
                 .first()

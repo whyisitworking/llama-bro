@@ -18,7 +18,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -146,9 +145,12 @@ class ServerMode(
                 .first()
                 .loadConfig
                 .copy(slots = slots)
+        // the progress runs beside the hold, not around it: nothing suspends between the hold returning its lease and
+        // the try below that keeps or releases it, so a stop landing then can't drop the lease and pin the model
+        val progress = scope.launch(start = CoroutineStart.UNDISPATCHED) { showLoadProgress(model) }
         val lease =
             try {
-                withLoadProgress(model) { host.hold(model, config) }
+                host.hold(model, config)
             } catch (e: CancellationException) {
                 throw e
             } catch (
@@ -156,6 +158,8 @@ class ServerMode(
             ) {
                 fail(e.message ?: e.javaClass.simpleName)
                 return
+            } finally {
+                progress.cancel()
             }
         try {
             val created = clock() / MILLIS_PER_SECOND
@@ -178,31 +182,14 @@ class ServerMode(
         }
     }
 
-    /** [block] while ModelHost's load progress shows as [ServingState.Starting]'s. */
-    private suspend fun <T> withLoadProgress(model: HfModel, block: suspend () -> T): T =
-        coroutineScope {
-            val progress =
-                launch {
-                    host.state.collect { hosted ->
-                        if (hosted is HostState.Waking && hosted.key == model) {
-                            _state.update {
-                                if (it is ServingState.Starting) {
-                                    ServingState.Starting(
-                                        hosted.progress,
-                                    )
-                                } else {
-                                    it
-                                }
-                            }
-                        }
-                    }
-                }
-            try {
-                block()
-            } finally {
-                progress.cancel()
+    /** ModelHost's load progress for [model], as [ServingState.Starting]'s, until cancelled. */
+    private suspend fun showLoadProgress(model: HfModel) {
+        host.state.collect { hosted ->
+            if (hosted is HostState.Waking && hosted.key == model) {
+                _state.update { if (it is ServingState.Starting) ServingState.Starting(hosted.progress) else it }
             }
         }
+    }
 
     /**
      * A server for [models] on [port], or on any free one when that fails, with its events going to the log; null,

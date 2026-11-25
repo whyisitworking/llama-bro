@@ -128,6 +128,18 @@ object Limits {
             dismissible = true,
         )
 
+    /**
+     * Server mode holds [served] (docs/design/server.md §3): a turn on another model would wait for serving to stop and
+     * stall every request meanwhile, so it doesn't start. Switch model offers the served one; Task 11 adds the way to
+     * stop serving from here ("Stop serving <served> to use <name>?").
+     */
+    fun serving(served: String, name: String) =
+        Limit(
+            "$served is being served to the Wi-Fi. Stop serving to chat with $name.",
+            LimitAction.SwitchModel,
+            "Switch model",
+        )
+
     fun modelGone(name: String) = Limit("$name isn't on this phone any more.", LimitAction.SwitchModel, "Switch model")
 
     /** The line for a model that failed to load or a reply that failed, or null when it needs none. */
