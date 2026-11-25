@@ -132,6 +132,12 @@ internal class FakeModel(
         val text = String(body, Charsets.UTF_8)
 
         fun send(status: Int, data: String) = sink.onChunk(status, data.toByteArray(Charsets.UTF_8))
+        synchronized(fake.lock) { fake.rawQueue.removeFirstOrNull() }?.let { raw ->
+            raw.chunks.forEach { send(raw.status, it) }
+            if (raw.holdOpen) return Held(fake, sink)
+            sink.onDone()
+            return Finished
+        }
         when (endpoint) {
             "chat" -> {
                 chat(text, attachments, ::send)
@@ -296,6 +302,21 @@ internal class FakeModel(
 @OptIn(InternalLlamaBroApi::class)
 internal object Finished : EngineRequest {
     override fun cancel() {}
+
+    override fun free() {}
+}
+
+/** A request [FakeLlamaBro.raw] holds open: it ends when cancelled, as a streaming one does. */
+@OptIn(InternalLlamaBroApi::class)
+internal class Held(private val fake: FakeLlamaBro, private val sink: RequestSink) : EngineRequest {
+    private val ended = AtomicBoolean(false)
+
+    override fun cancel() {
+        if (ended.compareAndSet(false, true)) {
+            fake.cancelled.incrementAndGet()
+            sink.onCancelled()
+        }
+    }
 
     override fun free() {}
 }

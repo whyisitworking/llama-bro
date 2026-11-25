@@ -127,6 +127,16 @@ public class Model internal constructor(
     }
 
     /**
+     * [exchange]'s source: each chunk with the status it came with, so an error status is data, not a failure.
+     */
+    internal fun requestStatused(
+        endpoint: Endpoint,
+        body: ByteArray,
+        params: Map<String, String>,
+    ): Flow<Chunks.Statused> =
+        requestFlow(endpoint, body.decodeToString(), emptyList(), params, BodyMode.Raw, Chunks.Statuses) {}
+
+    /**
      * A realtime conversation (`/v1/realtime`, D97): emits each server event as it comes and ends when the server
      * closes it; cancelling the collector hangs up. [onOpen] gets the link for the client's events before the native
      * session starts, so events sent at once are queued and go first.
@@ -258,7 +268,7 @@ public class Model internal constructor(
         synchronized(active) { active.remove(call) }
     }
 
-    private companion object {
+    internal companion object {
         fun isStreamBody(body: String): Boolean =
             runCatching {
                 ((Json.parseToJsonElement(body) as JsonObject)["stream"] as? JsonPrimitive)?.booleanOrNull == true

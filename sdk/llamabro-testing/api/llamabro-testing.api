@@ -8,6 +8,7 @@ public final class com/suhel/llamabro/testing/FakeLlamaBro : java/lang/AutoClose
 	public final fun error (ILjava/lang/String;Ljava/lang/String;)V
 	public final fun failLoad (Lcom/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason;Ljava/lang/String;I)V
 	public static synthetic fun failLoad$default (Lcom/suhel/llamabro/testing/FakeLlamaBro;Lcom/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason;Ljava/lang/String;IILjava/lang/Object;)V
+	public final fun getCancelledRequests ()I
 	public final fun getChatAttachments ()Ljava/util/List;
 	public final fun getChatRequests ()Ljava/util/List;
 	public final fun getContextSize ()I
@@ -28,6 +29,8 @@ public final class com/suhel/llamabro/testing/FakeLlamaBro : java/lang/AutoClose
 	public final fun inputTooLong (II)V
 	public static synthetic fun inputTooLong$default (Lcom/suhel/llamabro/testing/FakeLlamaBro;IIILjava/lang/Object;)V
 	public final fun ranking ([F)V
+	public final fun raw (I[Ljava/lang/String;Z)V
+	public static synthetic fun raw$default (Lcom/suhel/llamabro/testing/FakeLlamaBro;I[Ljava/lang/String;ZILjava/lang/Object;)V
 	public final fun reply (Lkotlin/jvm/functions/Function1;)V
 	public final fun setContextSize (I)V
 	public final fun setLoadMillis (J)V
