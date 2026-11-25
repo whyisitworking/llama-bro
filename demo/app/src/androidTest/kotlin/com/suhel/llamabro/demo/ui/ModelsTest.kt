@@ -58,8 +58,8 @@ import com.suhel.llamabro.demo.testing.settleWindow
 import com.suhel.llamabro.demo.testing.withAccessibilityChecks
 import com.suhel.llamabro.demo.ui.models.EntryRow
 import com.suhel.llamabro.demo.ui.models.HubAnswer
+import com.suhel.llamabro.demo.ui.models.ModelCardStack
 import com.suhel.llamabro.demo.ui.models.ModelEntry
-import com.suhel.llamabro.demo.ui.models.ModelSheetRoute
 import com.suhel.llamabro.demo.ui.models.ModelsActions
 import com.suhel.llamabro.demo.ui.models.ModelsHost
 import com.suhel.llamabro.demo.ui.models.ModelsPage
@@ -463,7 +463,7 @@ class ModelsTest {
                 catalog = null,
                 canChat = false,
             )
-        show(null, ThemeMode.Light) { ModelSheetRoute(app.container, embedder, {}, {}, onChatWith = {}) }
+        show(null, ThemeMode.Light) { ModelCardStack(app.container, embedder, {}, {}, onChatWith = {}) }
         // one statement on the state line, no second sentence and no "Embeddings, not chat" word
         waitFor("Not for chat: this model can't hold a conversation")
         compose.onAllNodesWithText("This app chats only; this model can't chat.").assertCountEquals(0)
@@ -736,7 +736,7 @@ class ModelsTest {
         onPhone(key.toString())
         // the row "On this phone" opens: the model's key and name, no original and no maker
         val row = ModelEntry.ofKey(key, "Foo 1B")
-        show(null, ThemeMode.Light) { ModelSheetRoute(app.container, row, {}, {}, onChatWith = {}) }
+        show(null, ThemeMode.Light) { ModelCardStack(app.container, row, {}, {}, onChatWith = {}) }
         waitFor("The original's own page.")
         // the repo is the page's source, at its end; the maker opens the quiet line under the name (D123)
         waitFor("Source: someone/Foo-1B-GGUF")

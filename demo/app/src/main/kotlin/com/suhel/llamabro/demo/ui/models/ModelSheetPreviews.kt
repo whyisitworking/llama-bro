@@ -172,13 +172,33 @@ internal class CardStates : PreviewParameterProvider<Pair<String, CardView>> {
 }
 
 @Composable
-private fun CardInFrame(view: CardView) {
+private fun CardInFrame(view: CardView, actions: CardActions = CardActions(), opening: String? = null) {
     PreviewFrame {
         Column(Modifier.gutterPadding()) {
-            SheetFrame(pinned = { CardFootView(view.foot, CardActions()) }) { CardBody(view, CardActions()) }
+            SheetFrame(pinned = { CardFootView(view.foot, actions) }) { CardBody(view, actions, opening = opening) }
         }
     }
 }
+
+/** A card in its stack (D156): the root (no Back), a card a link opened (Back), and one whose link is being opened. */
+internal class StackedCards : PreviewParameterProvider<StackedCard> {
+    override val values =
+        sequenceOf(
+            StackedCard("Root card", CardActions()),
+            StackedCard("Stacked card", CardActions(onBack = {})),
+            StackedCard("Opening a link", CardActions(onBack = {}), opening = "Qwen/Qwen3.5-4B"),
+        )
+
+    override fun getDisplayName(index: Int): String = values.elementAt(index).name
+}
+
+internal class StackedCard(val name: String, val actions: CardActions, val opening: String? = null)
+
+@DemoPreviews
+@Composable
+internal fun StackedCardPreview(
+    @PreviewParameter(StackedCards::class) card: StackedCard,
+) = CardInFrame(CardPreviews.notHere, card.actions, card.opening)
 
 @DemoPreviews
 @Composable

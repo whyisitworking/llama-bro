@@ -196,7 +196,9 @@ than a card (an 18 dp inset, 16 dp corners, 12 dp apart).
 Every model opens the same sheet (first run's pick sheet is removed). Fixed anatomy, top to bottom; each part sits in
 the same place in every state, and its height is reserved from the first frame:
 
-1. **Header** (D123): the name (`cardTitle`, the serif at 24 sp Regular), and one quiet line under it: the maker
+1. **Header** (D123): a top row (D156): Back (a small icon) on a card a page's link opened, nothing there on the
+   root, and at the row's end "Open on Hugging Face" (a small open-in-new icon) on every card, opening the card's repo
+   in the browser; then the name (`cardTitle`, the serif at 24 sp Regular), and one quiet line under it: the maker
    (bodyMedium, muted), the capabilities as soft light icons with no words (a screen reader hears them), and the fit
    symbol in its colour (its words in a long-press and to a screen reader). The line's height is held from the first
    frame. The repo is not in the header: it is the page's source, at its end (4).
@@ -219,7 +221,10 @@ the same place in every state, and its height is reserved from the first frame:
    rather than a reader is left out: note boxes ("> [!Note]" and its kin), paragraphs that are only links or badge
    images, and HTML blocks that are only links and images (logos, badge rows). Its source closes it: "Source:
    unsloth/Qwen3.5-4B-GGUF" (bodySmall, soft). Tables span the width and scroll sideways, fading at their end while
-   they can. While the page is unknown, nothing (no bar). Chat replies keep their own scale.
+   they can. While the page is unknown, nothing (no bar). Chat replies keep their own scale. A page's relative links
+   point into the repo the page is from. A tapped link to a model with GGUF uploads opens that model's card in the
+   same sheet, "Opening <repo>…" saying so under the state line while the Hub is asked; any other link opens the
+   browser (D156).
 5. **Pinned foot**, outside the scroll, 64 dp in every state, so the page scrolls under it and nothing above it moves
    when a download starts or ends:
    - **Not here:** Get, naming the file: "Get Q4_K_M · 3.4 GB · about 8 min" (the same formula in Basic and Advanced).
@@ -275,6 +280,10 @@ the same place in every state, and its height is reserved from the first frame:
   one frame; that is the only other height it takes. The scroll's foot fades while there is more below. The scrim's
   shade follows the sheet's position, so it leaves with the sheet, and a closing sheet keeps its foot.
 - Every action that closes the sheet slides it down first.
+- The cards a page's links open are a stack (D156): each slides the shown card down and rises in its place; Back, the
+  top row's or the system's, does the same back to the card under it, and only the root's Back closes the sheet. A
+  link to a model already in the stack returns to its card. A rotation keeps the stack and each card's state; closing
+  the sheet clears them all.
 - The drag handle shows no tooltip and takes focus only from a keyboard.
 
 ### 5. Visual system (shared, app-wide)

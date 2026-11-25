@@ -12,12 +12,16 @@ import com.suhel.llamabro.demo.models.DownloadRecord
 import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.models.FitView
 import com.suhel.llamabro.demo.models.HubCard
+import com.suhel.llamabro.demo.models.HubLinks
+import com.suhel.llamabro.demo.models.LinkTarget
 import com.suhel.llamabro.demo.models.ModelLibrary
 import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.models.Sizes
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,6 +36,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.runningReduce
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -188,6 +193,8 @@ class ModelSheetViewModel(
     private val work: CoroutineContext = Dispatchers.Default,
     /** Whether Get asks for the notification permission first (the phone tests turn it off). */
     val asksForNotifications: Boolean = true,
+    /** What a link on the page opens: a model's card or the browser (`ModelDiscovery.related`, D156). */
+    private val related: suspend (String) -> LinkTarget = { LinkTarget.Browser(it) },
 ) : ViewModel() {
     private val repo = row.repo.lowercase()
     private val cards = CardViews(row, startTier)
@@ -207,6 +214,14 @@ class ModelSheetViewModel(
 
     // user input: the Cancel question asked about one download, answered by Keep or Cancel download
     private val askingInput = MutableStateFlow<CancelQuestion?>(null)
+
+    // an action's progress: the repo a tapped link names, while the Hub is asked what it opens
+    private val openingInput = MutableStateFlow<String?>(null)
+
+    // a link's answer, acted on once by the route: a card pushed or the browser opened, after a rotation too
+    private val openedTargets = Channel<LinkTarget>(Channel.BUFFERED)
+    private var lookup: Job? = null
+    private var taps = 0
 
     /**
      * This repo here. The download followed is the row's own file when it is queued (two quants of one repo may be),
@@ -269,6 +284,12 @@ class ModelSheetViewModel(
 
     /** A cancel that couldn't stop the download's work: nothing was deleted, and this line says so. */
     val problem: StateFlow<String?> = problemInput.asStateFlow()
+
+    /** The repo a tapped link names while its card is looked up, for the notice "Opening <repo>…"; else null. */
+    val opening: StateFlow<String?> = openingInput.asStateFlow()
+
+    /** Where each tapped link goes, once: the latest tap's alone, an earlier lookup still running being cancelled. */
+    val opened: Flow<LinkTarget> = openedTargets.receiveAsFlow()
 
     /** The question a Cancel past [CANCEL_ASKS_BYTES] asks ("0.9 GB has arrived. Cancelling deletes it."). */
     val asking: StateFlow<String?> =
@@ -384,6 +405,25 @@ class ModelSheetViewModel(
 
     fun dismissProblem() {
         problemInput.value = null
+    }
+
+    /**
+     * A link on the page was tapped: asks what [url] opens ([opened]). A newer tap cancels the older lookup, so a slow
+     * answer never lands over the card the person asked for since.
+     */
+    fun openLink(url: String) {
+        lookup?.cancel()
+        val tap = ++taps
+        openingInput.value = HubLinks.repoOf(url)
+        lookup =
+            viewModelScope.launch {
+                try {
+                    openedTargets.send(related(url))
+                } finally {
+                    // a cancelled lookup leaves the notice to the tap that replaced it
+                    if (tap == taps) openingInput.value = null
+                }
+            }
     }
 
     private fun cancelNow(key: HfModel) {

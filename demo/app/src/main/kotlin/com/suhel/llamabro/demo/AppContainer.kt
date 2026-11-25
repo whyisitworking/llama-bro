@@ -281,6 +281,7 @@ class AppContainer(
             onExactFit = onExactFit,
             startTier = startTier,
             asksForNotifications = asksForNotifications,
+            related = discovery::related,
         )
 
     override fun switcherViewModel(handle: ChatEngine.ChatHandle) =

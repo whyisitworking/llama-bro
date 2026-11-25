@@ -38,14 +38,18 @@ class SheetStores : ViewModel() {
 fun rememberSheetViewModelOwner(key: String): ViewModelStoreOwner {
     val stores = viewModel { SheetStores() }
     val activity = LocalActivity.current
-    val owner =
-        remember(stores, key) {
-            object : ViewModelStoreOwner {
-                override val viewModelStore = stores.store(key)
-            }
-        }
+    val owner = remember(stores, key) { stores.owner(key) }
     DisposableEffect(stores, key) {
         onDispose { if (activity?.isChangingConfigurations != true) stores.clear(key) }
     }
     return owner
 }
+
+/**
+ * An owner over the store [key], with no lifetime of its own: whoever holds the key clears it ([CardStack] does, on a
+ * card's pop and on the sheet's close), not the composition that shows it.
+ */
+fun SheetStores.owner(key: String): ViewModelStoreOwner =
+    object : ViewModelStoreOwner {
+        override val viewModelStore = store(key)
+    }

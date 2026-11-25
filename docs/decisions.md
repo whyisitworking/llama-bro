@@ -2435,3 +2435,28 @@ it loaded, not from the chip, so a model whose load says it can't think gets no 
 Next free IDs: D156, F189.
 
 
+
+<a id="d156"></a>
+### D156. A link on a model's page to another GGUF model opens its card in the same sheet; every card opens on Hugging Face from its top row
+
+Status: Decided (2026-11-25)
+
+Context: A model's page links its original, its siblings and other uploads. Every link opened the browser, out of the
+app, though the app can show and get those models itself; and a card had no way to the model's own page on Hugging
+Face, where its files, discussions and licence are.
+Decision: A tap on a link in a card's page asks the Hub what it opens (`ModelDiscovery.related`): a repo with GGUF
+uploads, its own or those quantized from it, opens that model's card over the one shown; anything else opens the
+browser. While it is asked, "Opening <repo>…" sits where the card's problem line does; a newer tap cancels the older
+lookup, so only the latest acts. The cards are a stack (`CardStack`, a view model of the screen's back-stack entry):
+Back, in the card's new top row or the system's, slides the card down and the one under it rises; only the root's Back
+closes the sheet. A link to a model already in the stack pops back to its card. Each card's view model lives in a store
+keyed by its depth and repo, cleared when the card is popped or the sheet closes, not when its composition goes, so a
+rotation keeps the stack and each card's state. The top row's end carries "Open on Hugging Face" (the card's repo) on
+every card. A page's relative links now resolve into the repo the page is from (`HubLinks.absolute`); a chat reply's
+still stay text. A related card opened from a chat's card has no "Start a chat" either, and only a size of the chat's
+own model moves the chat.
+Consequences: Moving between cards is the sheet sliding down and the next card rising, the motion every closing action
+already has, rather than one sheet morphing in place; each card opens final from local data as the first does (D118).
+A related card's lookup is one or two Hub searches, so it waits on the network; offline, or when the Hub can't say, the
+link opens the browser. Cards deep in a stack hold their view models (and their refreshes' results) until popped.
+Next free IDs: D157, F189.

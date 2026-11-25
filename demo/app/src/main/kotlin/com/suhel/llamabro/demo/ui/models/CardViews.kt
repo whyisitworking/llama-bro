@@ -125,7 +125,9 @@ internal class CardViews(private val row: ModelEntry, private val startTier: Siz
             }
 
             markdown != null -> {
-                val blocks = Markdown.parsePage(markdown, dropHeading = row.name)
+                // the page shown is the original's when the upload names one: its relative links point there
+                val from = cached.value.baseModel ?: row.repo
+                val blocks = Markdown.parsePage(markdown, dropHeading = row.name, pageRepo = from)
                 if (blocks.blocks.isEmpty()) PageView.None else PageView.Markdown(blocks)
             }
 
