@@ -55,6 +55,17 @@ object DemoMotion {
     /** A button arriving grows from this share of its size while it fades in (Material's FAB). */
     const val POP_SCALE = 0.8f
 
+    /**
+     * Pressed glass (D155) swells on a spring that lands just past full ([PRESS_DAMPING], [PRESS_STIFFNESS]) and
+     * settles back on a softer one ([RELEASE_DAMPING], [RELEASE_STIFFNESS]); a tap holds the press [PRESS_HOLD_MILLIS]
+     * at least, or a quick one, released the frame it lands, would show nothing.
+     */
+    const val PRESS_DAMPING = 0.6f
+    const val PRESS_STIFFNESS = 700f
+    const val RELEASE_DAMPING = 0.5f
+    const val RELEASE_STIFFNESS = 350f
+    const val PRESS_HOLD_MILLIS = 90L
+
     /** The sweep's gradient covers this share of the width. */
     const val SWEEP_WIDTH_FRACTION = 0.30f
     val standard: Easing = FastOutSlowInEasing
@@ -96,5 +107,6 @@ fun animationsDisabled(): Boolean {
     return (override ?: scale) == 0f
 }
 
-private fun ContentResolver.animatorDurationScale(): Float =
+/** The system's animator duration scale; 0 when the person turned animations off. */
+internal fun ContentResolver.animatorDurationScale(): Float =
     Settings.Global.getFloat(this, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)

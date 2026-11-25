@@ -3,6 +3,7 @@ package com.suhel.llamabro.demo.ui.settings
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.theme.BarGlass
+import com.suhel.llamabro.demo.designsystem.theme.GlassPress
 import com.suhel.llamabro.demo.designsystem.theme.GlassStyle
 import com.suhel.llamabro.demo.designsystem.theme.GlassTheme
 import kotlinx.serialization.Serializable
@@ -23,6 +24,7 @@ object SavedGlass {
                 Saved.Style.of(glass.panel),
                 Saved.Bar.of(glass.bar),
                 glass.mergedLens,
+                Saved.Press.of(glass.press),
             ),
         )
 
@@ -34,6 +36,7 @@ object SavedGlass {
             panel = saved.panel?.over(default.panel) ?: default.panel,
             bar = saved.bar?.over(default.bar) ?: default.bar,
             mergedLens = saved.mergedLens,
+            press = saved.press?.over(default.press) ?: default.press,
         )
     }
 
@@ -55,6 +58,7 @@ object SavedGlass {
         val panel: Style? = null,
         val bar: Bar? = null,
         val mergedLens: Boolean? = null,
+        val press: Press? = null,
     ) {
         @Serializable
         data class Style(
@@ -115,6 +119,26 @@ object SavedGlass {
 
             companion object {
                 fun of(b: BarGlass) = Bar(b.blur.value, b.dispersion.value, b.veil, b.bareVeil, b.fade.value, b.hold)
+            }
+        }
+
+        @Serializable
+        data class Press(
+            val swell: Float? = null,
+            val light: Float? = null,
+            val reach: Float? = null,
+            val bend: Float? = null,
+        ) {
+            fun over(base: GlassPress) =
+                GlassPress(
+                    swell = swell ?: base.swell,
+                    light = light ?: base.light,
+                    reach = reach.dpOr(base.reach),
+                    bend = bend ?: base.bend,
+                )
+
+            companion object {
+                fun of(p: GlassPress) = Press(p.swell, p.light, p.reach.value, p.bend)
             }
         }
     }

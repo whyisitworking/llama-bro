@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D154 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D155 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -181,13 +181,14 @@ its amendments to know what holds now.
 | [D145](#d145-the-sidebar-pushes-the-chat-aside-and-dims-it-and-its-head-is-as-tall-as-the-top-bar) The sidebar pushes the chat aside and dims it, and its head is as tall as the top bar | 2026-11-24 |[D148](#d148-pages-scroll-edge-to-edge-under-floating-bars-the-drawer-holds-still-under-the-page) |
 | [D146](#d146-a-reply-is-one-row-while-it-is-written-and-once-it-is-saved-and-its-actions-ease-in) A reply is one row while it is written and once it is saved, and its actions ease in | 2026-11-24 | |
 | [D147](#d147-hands-free-voice-mode-ends-a-turn-at-a-pause-and-talking-can-interrupt-a-reply) Hands-free voice mode ends a turn at a pause, and talking can interrupt a reply | 2026-11-24 | |
-| [D148](#d148-pages-scroll-edge-to-edge-under-floating-bars-the-drawer-holds-still-under-the-page) Pages scroll edge to edge under floating bars; the drawer holds still under the page | 2026-11-24 | |
+| [D148](#d148-pages-scroll-edge-to-edge-under-floating-bars-the-drawer-holds-still-under-the-page) Pages scroll edge to edge under floating bars; the drawer holds still under the page | 2026-11-24 | [D155](#d155-pressed-glass-swells-and-lights-up-under-the-finger) |
 | [D149](#d149-the-demos-debug-build-installs-beside-the-release-with-its-own-name-and-icon) The demo's debug build installs beside the release, with its own name and icon | 2026-11-24 | |
 | [D150](#d150-replies-in-the-serif-the-rest-in-figtree) Replies in the serif, the rest in Figtree | 2026-11-25 | |
 | [D151](#d151-a-debug-build-tunes-the-glass-on-the-phone) A debug build tunes the glass on the phone | 2026-11-25 | D152 |
 | [D152](#d152-the-glass-is-a-setting-under-appearance-saved-with-a-sample-at-the-bottom) The glass is a setting under Appearance, saved, with a sample at the bottom | 2026-11-25 | |
 | [D153](#d153-the-glass-scales-to-the-phone-lighter-where-the-phone-doesnt-vouch-for-itself) The glass scales to the phone: lighter where the phone doesn't vouch for itself | 2026-11-25 | D154 |
-| [D154](#d154-a-bar-can-draw-the-glass-on-it-in-its-own-passes-a-lighter-phone-does-by-default) A bar can draw the glass on it in its own passes; a lighter phone does by default | 2026-11-25 | |
+| [D154](#d154-a-bar-can-draw-the-glass-on-it-in-its-own-passes-a-lighter-phone-does-by-default) A bar can draw the glass on it in its own passes; a lighter phone does by default | 2026-11-25 | [D155](#d155-pressed-glass-swells-and-lights-up-under-the-finger) |
+| [D155](#d155-pressed-glass-swells-and-lights-up-under-the-finger) Pressed glass swells and lights up under the finger | 2026-11-25 | |
 
 **Repository and process**
 
@@ -2410,4 +2411,35 @@ Consequences: On the owner's phone merged glass takes a chat's fling from CPU P9
 chips are a touch softer, drawn at the bar's half resolution and with the bar's heavier blur bleeding a few pixels
 into their edge, so a Full phone keeps the sharper glass by default. A Light phone keeps the chips' and panels' blur.
 Next free IDs: D155, F189.
+
+<a id="d155"></a>
+### D155. Pressed glass swells and lights up under the finger
+
+Status: Decided (2026-11-25). Amends D148 and D154.
+
+Context: The glass chips and panels (D148) answered a press with Material's ripple, a grey wash laid over a lens that
+otherwise behaves like a piece of glass. Apple's Liquid Glass answers a touch by swelling and gathering light where the
+finger is; the demo wants an answer of its own in that spirit, cheap enough for the chat's 7 ms budget (F186).
+Decision: A piece of glass given the `InteractionSource` of its click (`Modifier.glass(..., interactions)`,
+`GlassSurface(onClick)`, the bar's icon chips, a tappable title, the FAB, the jump button) follows its presses in its
+own node: a spring (`DemoMotion.PRESS_*`) takes it in, landing just past full, and a softer one settles it back, a tap
+held at least 90 ms so a quick one still shows. Pressed, the glass is drawn swollen about its middle (`swell`, 1.05),
+its bounds and layout unchanged: the lens reads the page under the swollen shape, the content is scaled with it, and
+its edge bends the page `bend` (0.35) of its refraction more. A light gathers on the rim around the finger, out to
+`reach` (36 dp) at `light` (0.6), with a faint glow through the glass under it. Everything moves by draw alone: a
+press redraws the node frame by frame and recomposes nothing, and no pass is added. On a bar that draws its glass
+(D154) the pressed shape and bend go into its `MergedShape`, so the bar's shader agrees with the rim the node draws.
+The glass is the press's indication, so these clicks draw no ripple (buttons off glass keep it), and a keyboard's
+focus lights it in the middle without a swell. The glass never draws smaller than at rest as the release swings back,
+and a glass whose interaction source changes starts at rest. With animations off the glass doesn't swell, but the
+light still comes and goes. A phone with no lens (before Android 13) or a Light tier
+one (D153) swells and lights its fill or its plainer lens the same way. The four values are `GlassTheme.press`
+(`GlassPress`), saved with the rest and tuned under Settings › Appearance › Glass (the swell up to 1.12), whose
+sample chip and panel answer a press.
+Consequences: A pressed piece of glass costs a redraw per frame while it moves, its lens re-recorded and, on a merged
+bar (a Light phone's default), the bar's effect rebuilt and its page re-recorded; a still screen costs nothing more.
+That cost is unmeasured: the chat's budget is for a fling, not a press, and a benchmark is the owner's call. The swell draws past the glass's bounds, so glass
+inside something that clips it loses its swollen edge. Its look is tuned by eye on the owner's phone; a host test
+checks the press still clicks with animations on and off, not what it draws.
+Next free IDs: D156, F189.
 

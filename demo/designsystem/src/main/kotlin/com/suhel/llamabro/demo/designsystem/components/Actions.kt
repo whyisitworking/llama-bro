@@ -3,6 +3,7 @@ package com.suhel.llamabro.demo.designsystem.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -22,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -162,12 +164,15 @@ fun IconAction(
 ) {
     val colors = LocalDemoColors.current
     val glyph = if (small) DemoSize.iconSmall else DemoSize.icon
+    val backdrop = LocalBackdrop.current.takeIf { LocalGlassChips.current }
+    // a chip of glass answers its press itself (D155)
+    val presses = if (backdrop != null) remember { MutableInteractionSource() } else null
     Box(
         modifier
             .size(DemoSize.target)
-            .chipGlass(LocalBackdrop.current.takeIf { LocalGlassChips.current }, LocalGlass.current.chip)
+            .chipGlass(backdrop, LocalGlass.current.chip, presses)
             .clip(CircleShape)
-            .clickable(role = Role.Button, onClick = onClick)
+            .glassClickable(presses, glass = backdrop != null, onClick = onClick)
             .then(if (mark != null) Modifier.semantics { stateDescription = mark } else Modifier),
         contentAlignment = Alignment.Center,
     ) {
@@ -234,18 +239,19 @@ fun DemoFab(text: String, icon: ImageVector, onClick: () -> Unit, modifier: Modi
     // floating over a page ([FloatingFrame]'s overlay), a pill of glass in the ink (D148); elsewhere the accent's fill
     val backdrop = LocalBackdrop.current
     val ink = if (backdrop != null) colors.ink else colors.onAccent
+    val presses = if (backdrop != null) remember { MutableInteractionSource() } else null
     Row(
         modifier
             .then(
                 if (backdrop != null) {
-                    Modifier.glass(backdrop, LocalGlass.current.panel, DemoShapes.fabRadius).clip(shape)
+                    Modifier.glass(backdrop, LocalGlass.current.panel, DemoShapes.fabRadius, presses).clip(shape)
                 } else {
                     Modifier
                         .softShadow(shape, colors, elevation = DemoSize.elevationRaised, lightAlpha = 0.18f)
                         .clip(shape)
                         .background(colors.accent)
                 },
-            ).clickable(role = Role.Button, onClick = onClick)
+            ).glassClickable(presses, glass = backdrop != null, onClick = onClick)
             .heightIn(min = DemoSize.field)
             .padding(horizontal = DemoSpacing.item, vertical = DemoSpacing.block),
         verticalAlignment = Alignment.CenterVertically,

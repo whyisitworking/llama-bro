@@ -2,7 +2,15 @@ package com.suhel.llamabro.demo.designsystem.components
 
 import android.graphics.RuntimeShader
 import android.os.Build
+import android.os.SystemClock
 import androidx.annotation.RequiresApi
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.FocusInteraction
+import androidx.compose.foundation.interaction.InteractionSource
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.shape.CircleShape
@@ -22,12 +30,17 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.center
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RenderEffect
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -43,18 +56,28 @@ import androidx.compose.ui.node.currentValueOf
 import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.node.requireDensity
 import androidx.compose.ui.node.requireGraphicsContext
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.toSize
 import com.suhel.llamabro.demo.designsystem.theme.BarGlass
 import com.suhel.llamabro.demo.designsystem.theme.DemoColors
+import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
+import com.suhel.llamabro.demo.designsystem.theme.GlassPress
 import com.suhel.llamabro.demo.designsystem.theme.GlassStyle
 import com.suhel.llamabro.demo.designsystem.theme.GlassTier
+import com.suhel.llamabro.demo.designsystem.theme.LocalAnimatorDurationScale
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
 import com.suhel.llamabro.demo.designsystem.theme.LocalGlassTier
+import com.suhel.llamabro.demo.designsystem.theme.animatorDurationScale
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.ceil
 
 /**
  * A page that glass can be drawn over (D148): the layer the page is recorded into ([page], null before Android 12,
@@ -103,10 +126,11 @@ val LocalBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
 /**
  * A piece of glass a floating bar draws in its own passes (D154): where it is in the window ([rect]), its corners'
- * radius in pixels ([corner]), and its [style].
+ * radius in pixels ([corner]), its [style], and how much more than the style says its edge bends while pressed
+ * ([bend], D155); [rect] and [corner] are the pressed glass's, swollen.
  */
 @Immutable
-internal data class MergedShape(val rect: Rect, val corner: Float, val style: GlassStyle)
+internal data class MergedShape(val rect: Rect, val corner: Float, val style: GlassStyle, val bend: Float = 1f)
 
 /**
  * The glass a floating bar draws itself (D154): each piece of glass on the bar over the same [backdrop] puts its
@@ -134,13 +158,21 @@ internal val LocalGlassChips = staticCompositionLocalOf { false }
  * there (red bent more, blue less, as through Apple's Liquid Glass), under a veil of the surface, a light catching its
  * upper rim and a hairline round it. Before that, or with no [backdrop], a translucent fill and the hairline. Clip the
  * content to the same shape after it.
+ *
+ * With the [interactions] of what makes it pressable (a clickable on the same bounds), it answers a press (D155,
+ * [GlassPress]): it swells, a light gathers on its rim around the finger and its edge bends more, then it settles back;
+ * the glass is then the press's indication, so the clickable needs no ripple of its own.
  */
-fun Modifier.glass(backdrop: Backdrop?, style: GlassStyle, corner: Dp? = null): Modifier =
-    this then GlassElement(backdrop, corner, style)
+fun Modifier.glass(
+    backdrop: Backdrop?,
+    style: GlassStyle,
+    corner: Dp? = null,
+    interactions: InteractionSource? = null,
+): Modifier = this then GlassElement(backdrop, corner, style, interactions)
 
 /**
  * [content] on a piece of glass ([glass]) over the page under it ([LocalBackdrop]), clipped to its shape: corners
- * [corner], a pill when null.
+ * [corner], a pill when null. With [onClick] it is a button whose glass answers the press (D155).
  */
 @Composable
 fun GlassSurface(
@@ -148,27 +180,71 @@ fun GlassSurface(
     corner: Dp? = null,
     style: GlassStyle = LocalGlass.current.panel,
     backdrop: Backdrop? = LocalBackdrop.current,
+    onClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val shape = if (corner == null) CircleShape else RoundedCornerShape(corner)
-    Box(modifier.glass(backdrop, style, corner).clip(shape), content = content)
+    val interactions = if (onClick != null) remember { MutableInteractionSource() } else null
+    Box(
+        modifier
+            .glass(backdrop, style, corner, interactions)
+            .clip(shape)
+            .then(
+                if (onClick != null) {
+                    Modifier.glassClickable(interactions, glass = true, onClick = onClick)
+                } else {
+                    Modifier
+                },
+            ),
+        content = content,
+    )
 }
 
-/** A part of a floating bar as a chip of glass in [style], when on one ([backdrop]); nothing otherwise. */
-internal fun Modifier.chipGlass(backdrop: Backdrop?, style: GlassStyle): Modifier =
-    if (backdrop == null) this else glass(backdrop, style)
+/**
+ * A part of a floating bar as a chip of glass in [style], when on one ([backdrop]), answering presses from
+ * [interactions] (D155); nothing otherwise.
+ */
+internal fun Modifier.chipGlass(
+    backdrop: Backdrop?,
+    style: GlassStyle,
+    interactions: InteractionSource? = null,
+): Modifier = if (backdrop == null) this else glass(backdrop, style, interactions = interactions)
 
-private data class GlassElement(val backdrop: Backdrop?, val corner: Dp?, val style: GlassStyle) :
-    ModifierNodeElement<GlassNode>() {
-    override fun create() = GlassNode(backdrop, corner, style)
+/**
+ * A button's click on glass that answers its press (D155): the glass is the indication, so no ripple is drawn over
+ * it; off glass ([glass] false), the usual ripple.
+ */
+@Composable
+internal fun Modifier.glassClickable(
+    interactions: MutableInteractionSource?,
+    glass: Boolean,
+    onClick: () -> Unit,
+): Modifier =
+    if (glass) {
+        clickable(interactions, indication = null, role = Role.Button, onClick = onClick)
+    } else {
+        clickable(role = Role.Button, onClick = onClick)
+    }
+
+private data class GlassElement(
+    val backdrop: Backdrop?,
+    val corner: Dp?,
+    val style: GlassStyle,
+    val interactions: InteractionSource?,
+) : ModifierNodeElement<GlassNode>() {
+    override fun create() = GlassNode(backdrop, corner, style, interactions)
 
     override fun update(node: GlassNode) {
-        node.update(backdrop, corner, style)
+        node.update(backdrop, corner, style, interactions)
     }
 }
 
-private class GlassNode(var backdrop: Backdrop?, var corner: Dp?, var style: GlassStyle) :
-    Modifier.Node(),
+private class GlassNode(
+    var backdrop: Backdrop?,
+    var corner: Dp?,
+    var style: GlassStyle,
+    var interactions: InteractionSource?,
+) : Modifier.Node(),
     DrawModifierNode,
     GlobalPositionAwareModifierNode,
     CompositionLocalConsumerModifierNode {
@@ -180,25 +256,114 @@ private class GlassNode(var backdrop: Backdrop?, var corner: Dp?, var style: Gla
     /** The bar this glass is on, which draws its lens while it is [GlassContainer.active] (D154). */
     private var container: GlassContainer? = null
 
-    fun update(backdrop: Backdrop?, corner: Dp?, style: GlassStyle) {
+    /**
+     * How far in the press is (D155): 0 at rest, 1 pressed, a little past as its spring lands; snapshot state read
+     * where the glass draws, so a press redraws it frame by frame and recomposes nothing.
+     */
+    private var press = Animatable(0f)
+
+    /** Where the finger is, in the glass's own pixels: the light gathers there and stays as the press fades. */
+    private var finger = Offset.Unspecified
+
+    /** Whether animations are off as the press began: the glass then doesn't swell (D155). */
+    private var still = false
+    private var pressedAt = 0L
+    private var watching: Job? = null
+    private var releasing: Job? = null
+
+    fun update(backdrop: Backdrop?, corner: Dp?, style: GlassStyle, interactions: InteractionSource?) {
         val lensChanged = (backdrop?.page != null) != (this.backdrop?.page != null)
+        val sourceChanged = interactions !== this.interactions
         this.backdrop = backdrop
         this.corner = corner
         this.style = style
+        this.interactions = interactions
         if (lensChanged && isAttached) {
             release()
             prepare()
         }
+        if (sourceChanged && isAttached) watch()
         register()
         invalidateDraw()
     }
 
-    override fun onAttach() = prepare()
+    override fun onAttach() {
+        prepare()
+        watch()
+    }
 
     override fun onDetach() {
         container?.shapes?.remove(this)
         container = null
         release()
+        // the scope's jobs end with it; a node reused later starts at rest
+        watching = null
+        releasing = null
+        press = Animatable(0f)
+    }
+
+    /**
+     * Follows the presses of [interactions], if any (D155), and a keyboard's focus, which lights the glass as a press
+     * would but doesn't swell it: with no ripple, the glass is the only sign of either. A new source starts at rest,
+     * or a press whose release went to the old one would hold the glass swollen.
+     */
+    private fun watch() {
+        watching?.cancel()
+        releasing?.cancel()
+        if (press.value != 0f) coroutineScope.launch { press.snapTo(0f) }
+        val source = interactions ?: return
+        watching =
+            coroutineScope.launch {
+                source.interactions.collect {
+                    when (it) {
+                        is PressInteraction.Press -> {
+                            pressed(it.pressPosition, animationsOff())
+                        }
+
+                        is FocusInteraction.Focus -> {
+                            pressed(Offset.Unspecified, still = true)
+                        }
+
+                        is PressInteraction.Release, is PressInteraction.Cancel, is FocusInteraction.Unfocus -> {
+                            released()
+                        }
+                    }
+                }
+            }
+    }
+
+    /** A press at [at] (unspecified: the middle) begins; [still], it lights the glass without swelling it. */
+    private fun pressed(at: Offset, still: Boolean) {
+        releasing?.cancel()
+        finger = at
+        this.still = still
+        pressedAt = SystemClock.uptimeMillis()
+        coroutineScope.launch {
+            press.animateTo(1f, spring(DemoMotion.PRESS_DAMPING, DemoMotion.PRESS_STIFFNESS)) { register() }
+        }
+    }
+
+    private fun released() {
+        releasing?.cancel()
+        releasing =
+            coroutineScope.launch {
+                // a tap released the frame it lands still shows its press
+                delay(DemoMotion.PRESS_HOLD_MILLIS - (SystemClock.uptimeMillis() - pressedAt))
+                press.animateTo(0f, spring(DemoMotion.RELEASE_DAMPING, DemoMotion.RELEASE_STIFFNESS)) { register() }
+            }
+    }
+
+    /** Whether the person turned animations off, read as a press begins rather than observed (D155). */
+    private fun animationsOff(): Boolean =
+        (
+            currentValueOf(LocalAnimatorDurationScale)
+                ?: currentValueOf(LocalContext).contentResolver.animatorDurationScale()
+        ) == 0f
+
+    /** How the glass is drawn this frame: [scale] times its size, its edge bending [bend] times as far. */
+    private fun pressNow(feel: GlassPress): Pair<Float, Float> {
+        val p = press.value
+        return feel.scaleAt(p, still) to feel.bendAt(p)
     }
 
     /**
@@ -217,9 +382,12 @@ private class GlassNode(var backdrop: Backdrop?, var corner: Dp?, var style: Gla
             container = bar
         }
         if (bar == null || extent == IntSize.Zero) return
-        val pill = minOf(extent.width, extent.height) / 2f
-        val radius = corner?.let { with(requireDensity()) { it.toPx() } }?.coerceAtMost(pill) ?: pill
-        val shape = MergedShape(Rect(at, extent.toSize()), radius, style)
+        val (scale, bend) = pressNow(currentValueOf(LocalGlass).press)
+        val grown = extent.toSize() * scale
+        val pill = grown.minDimension / 2f
+        val radius = corner?.let { with(requireDensity()) { it.toPx() } * scale }?.coerceAtMost(pill) ?: pill
+        val shift = grown.shiftFrom(extent.toSize())
+        val shape = MergedShape(Rect(at - shift, grown), radius, style, bend)
         if (bar.shapes[this] != shape) bar.shapes[this] = shape
     }
 
@@ -249,50 +417,119 @@ private class GlassNode(var backdrop: Backdrop?, var corner: Dp?, var style: Gla
 
     override fun ContentDrawScope.draw() {
         val colors = currentValueOf(LocalDemoColors)
-        val pill = size.minDimension / 2
-        val corner = CornerRadius(this@GlassNode.corner?.toPx()?.coerceAtMost(pill) ?: pill)
+        val feel = currentValueOf(LocalGlass).press
+        // pressed, the glass is drawn swollen about its middle (D155): its bounds, and what it lays out, stay put
+        val (scale, bend) = pressNow(feel)
+        val grown = size * scale
+        val shift = grown.shiftFrom(size)
+        val pill = grown.minDimension / 2
+        val corner =
+            CornerRadius(
+                this@GlassNode
+                    .corner
+                    ?.toPx()
+                    ?.times(scale)
+                    ?.coerceAtMost(pill) ?: pill,
+            )
         // a bar drawing this glass in its own passes leaves it only the rim, the hairline and the content (D154)
         val merged = container?.active == true
-        val lensed = merged || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && drawLens(corner, colors))
-        if (merged) drawRimLight(corner)
-        if (!lensed) drawRoundRect(colors.surface.copy(alpha = style.bareVeil), cornerRadius = corner)
-        drawRoundRect(colors.hairline, cornerRadius = corner, style = Stroke(DemoSize.hairline.toPx()))
-        drawContent()
+        translate(-shift.x, -shift.y) {
+            val lensed =
+                merged ||
+                    (
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            drawLens(grown, shift, corner, bend, colors)
+                    )
+            if (merged) drawRimLight(grown, corner)
+            if (!lensed) drawRoundRect(colors.surface.copy(alpha = style.bareVeil), size = grown, cornerRadius = corner)
+            drawPressLight(grown, shift, corner, feel)
+            drawRoundRect(
+                colors.hairline,
+                size = grown,
+                cornerRadius = corner,
+                style = Stroke(DemoSize.hairline.toPx()),
+            )
+        }
+        if (scale == 1f) drawContent() else scale(scale) { this@draw.drawContent() }
     }
 
-    /** The lens: the page under the glass, bent and split, the veil and the light on its rim; false if it can't. */
+    /**
+     * The lens over [grown] (the glass's size, swollen when pressed, drawn [shift] up and left of its bounds): the page
+     * under it, bent ([bend] times its refraction) and split, the veil and the light on its rim; false if it can't.
+     */
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    private fun ContentDrawScope.drawLens(corner: CornerRadius, colors: DemoColors): Boolean {
+    @Suppress("LongParameterList") // what the swollen glass is drawn with
+    private fun DrawScope.drawLens(
+        grown: Size,
+        shift: Offset,
+        corner: CornerRadius,
+        bend: Float,
+        colors: DemoColors,
+    ): Boolean {
         val backdrop = backdrop ?: return false
         val page = backdrop.page ?: return false
         val layer = glass ?: return false
         val lens = lens as? Lens ?: return false
         // the part of the page under the glass: its place in the window less the page's
-        val offset = at - backdrop.origin
-        layer.record {
+        val offset = at - shift - backdrop.origin
+        layer.record(IntSize(ceil(grown.width).toInt(), ceil(grown.height).toInt())) {
             drawRect(backdrop.pageColor)
             translate(-offset.x, -offset.y) { drawLayer(page) }
         }
         val weaker = currentValueOf(LocalGlassTier) == GlassTier.Light
-        layer.renderEffect = lens.effect(size.width, size.height, corner.x, style, colors.surface, weaker, this)
-        layer.setRoundRectOutline(Offset.Zero, size, corner.x)
+        layer.renderEffect =
+            lens.effect(grown.width, grown.height, corner.x, style, bend, colors.surface, weaker, this)
+        layer.setRoundRectOutline(Offset.Zero, grown, corner.x)
         layer.clip = true
         // the veil is blended into the glass by its shader, not laid over it
         drawLayer(layer)
-        drawRimLight(corner)
+        drawRimLight(grown, corner)
         return true
     }
 
     /** The light on the glass: bright along the upper rim, fading down it. */
-    private fun ContentDrawScope.drawRimLight(corner: CornerRadius) {
+    private fun DrawScope.drawRimLight(grown: Size, corner: CornerRadius) {
         val light = GlassLight.copy(alpha = style.rimLight)
         drawRoundRect(
-            Brush.verticalGradient(listOf(light, light.copy(alpha = 0f)), endY = size.height * 0.6f),
+            Brush.verticalGradient(listOf(light, light.copy(alpha = 0f)), endY = grown.height * 0.6f),
+            size = grown,
             cornerRadius = corner,
             style = Stroke(style.rim.toPx()),
         )
     }
+
+    /**
+     * The light a press gathers around the finger (D155): brightest on the rim near it, fading out to
+     * [GlassPress.reach], with a faint glow through the glass under it. The finger is [shift] further in on the
+     * swollen glass.
+     */
+    private fun DrawScope.drawPressLight(grown: Size, shift: Offset, corner: CornerRadius, feel: GlassPress) {
+        val strength = feel.lightAt(press.value)
+        if (strength <= 0f) return
+        val reach = feel.reach.toPx().coerceAtLeast(1f)
+        // a keyboard's focus has no finger: the light gathers in the middle
+        val at = if (finger.isSpecified) finger + shift else grown.center
+        val light = GlassLight.copy(alpha = strength)
+        val rim = Brush.radialGradient(listOf(light, light.copy(alpha = 0f)), center = at, radius = reach)
+        drawRoundRect(rim, size = grown, cornerRadius = corner, style = Stroke(style.rim.toPx() * PRESS_RIM))
+        val glow = light.copy(alpha = strength * PRESS_GLOW)
+        drawRoundRect(
+            Brush.radialGradient(listOf(glow, glow.copy(alpha = 0f)), center = at, radius = reach),
+            size = grown,
+            cornerRadius = corner,
+        )
+    }
 }
+
+/** How far up and left a glass [grown] from [this] size is drawn, so it swells about its middle (D155). */
+private fun Size.shiftFrom(base: Size): Offset =
+    Offset((this.width - base.width) / 2f, (this.height - base.height) / 2f)
+
+/** How much thicker the rim's light is where a finger presses it than the rim light at rest (D155). */
+private const val PRESS_RIM = 1.5f
+
+/** How bright the glow through pressed glass is, as a share of the light on its rim (D155). */
+private const val PRESS_GLOW = 0.25f
 
 /** The light caught on a lens's rim: light in either theme, as a highlight on glass is; the style sets its strength. */
 @Suppress("DemoRawColour")
@@ -306,13 +543,17 @@ private val GlassLight = Color.White
 private class Lens {
     private val shader = RuntimeShader(LENS)
 
-    /** The lens over a glass [width] by [height]; with [light] (a weaker phone, D153), without its own blur pass. */
+    /**
+     * The lens over a glass [width] by [height], its edge bending [bend] times the style's refraction (more while
+     * pressed, D155); with [light] (a weaker phone, D153), without its own blur pass.
+     */
     @Suppress("LongParameterList") // the shader's inputs, all of them
     fun effect(
         width: Float,
         height: Float,
         radius: Float,
         style: GlassStyle,
+        bend: Float,
         tint: Color,
         light: Boolean,
         density: Density,
@@ -323,11 +564,11 @@ private class Lens {
             shader.setFloatUniform("size", width, height)
             shader.setFloatUniform("radius", radius)
             shader.setFloatUniform("bezel", minOf(style.bezel.toPx(), radius))
-            shader.setFloatUniform("refraction", style.refraction.toPx())
+            shader.setFloatUniform("refraction", style.refraction.toPx() * bend)
             shader.setFloatUniform("dispersion", style.dispersion)
-            val bend = android.graphics.RenderEffect.createRuntimeShaderEffect(shader, "content")
+            val bent = android.graphics.RenderEffect.createRuntimeShaderEffect(shader, "content")
             val soft = style.blur.toPx()
-            if (light || soft < 1f) return bend.asComposeRenderEffect()
+            if (light || soft < 1f) return bent.asComposeRenderEffect()
             val blur =
                 android.graphics.RenderEffect.createBlurEffect(
                     soft,
@@ -335,7 +576,7 @@ private class Lens {
                     android.graphics.Shader.TileMode.CLAMP,
                 )
             return android.graphics.RenderEffect
-                .createChainEffect(bend, blur)
+                .createChainEffect(bent, blur)
                 .asComposeRenderEffect()
         }
     }

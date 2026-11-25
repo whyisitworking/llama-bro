@@ -640,7 +640,7 @@ private fun MergedShape.onBar(bar: Offset, scale: Float, density: Density): BarL
             rect = Rect(at.left / scale, at.top / scale, at.right / scale, at.bottom / scale),
             corner = corner / scale,
             bezel = minOf(style.bezel.toPx(), corner) / scale,
-            refraction = style.refraction.toPx() / scale,
+            refraction = style.refraction.toPx() * bend / scale,
             dispersion = style.dispersion,
             reach = 2f * style.blur.toPx() / scale,
             veil = style.veil,

@@ -64,10 +64,44 @@ data class BarGlass(
 }
 
 /**
- * The glass of every kind the app draws: [chip] (icon buttons, the title), [panel] (fields, tabs, a FAB), [bar].
- * With [mergedLens], a floating bar draws the chips and panels on it in its own blur passes, instead of each drawing
- * its lens in two passes of its own: a quarter less CPU, a touch softer (D154, F187). Null leaves it to the phone's
- * [GlassTier] ([merges]).
+ * How a piece of glass answers a finger (D155): while pressed it swells to [swell] times its size on a spring, a light
+ * gathers on its rim around the finger, out to [reach] at [light]'s strength, and its edge bends the page [bend] more
+ * (a share of its refraction); on release it settles back. With animations off it doesn't swell; the light still
+ * comes and goes.
+ */
+@Immutable
+data class GlassPress(
+    /** How much bigger pressed glass is drawn: 1 for not at all. */
+    val swell: Float,
+    /** How bright the light around the finger is, 0 to 1. */
+    val light: Float,
+    /** How far from the finger that light reaches. */
+    val reach: Dp,
+    /** How much more the pressed glass's edge bends the page, as a share of its refraction. */
+    val bend: Float,
+) {
+    /**
+     * The scale pressed glass is drawn at, [press] of the way in: a little past [swell] as its spring lands, never
+     * below its own size as the release swings back past rest, or its content would shrink in a smaller lens.
+     */
+    fun scaleAt(press: Float, still: Boolean): Float = if (still) 1f else 1f + (swell - 1f) * press.coerceAtLeast(0f)
+
+    /** How strongly the edge bends at [press], as a factor of the glass's refraction. */
+    fun bendAt(press: Float): Float = 1f + bend * press.coerceAtLeast(0f)
+
+    /** How bright the light around the finger is at [press]: never past [light], even as a spring overshoots. */
+    fun lightAt(press: Float): Float = (light * press).coerceIn(0f, light)
+
+    companion object {
+        val Default = GlassPress(swell = 1.05f, light = 0.6f, reach = 36.dp, bend = 0.35f)
+    }
+}
+
+/**
+ * The glass of every kind the app draws: [chip] (icon buttons, the title), [panel] (fields, tabs, a FAB), [bar],
+ * and how a pressed one answers ([press]). With [mergedLens], a floating bar draws the chips and panels on it in its
+ * own blur passes, instead of each drawing its lens in two passes of its own: a quarter less CPU, a touch softer (D154,
+ * F187). Null leaves it to the phone's [GlassTier] ([merges]).
  */
 @Immutable
 data class GlassTheme(
@@ -75,6 +109,7 @@ data class GlassTheme(
     val panel: GlassStyle,
     val bar: BarGlass,
     val mergedLens: Boolean? = null,
+    val press: GlassPress = GlassPress.Default,
 ) {
     /**
      * Whether the bars draw the glass on them (D154): as [mergedLens] says, else on a [GlassTier.Light] phone only,

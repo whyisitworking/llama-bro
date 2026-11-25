@@ -1,11 +1,12 @@
 package com.suhel.llamabro.demo.ui.settings
 
 import androidx.compose.ui.unit.dp
+import com.suhel.llamabro.demo.designsystem.theme.GlassPress
 import com.suhel.llamabro.demo.designsystem.theme.GlassTheme
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** The glass tuned in Settings › Appearance › Glass, as it is saved and read back (D152). */
+/** The glass tuned in Settings › Appearance › Glass, as it is saved and read back (D152, D155). */
 class SavedGlassTest {
     @Test fun aTunedGlassReadsBackAsItWasSaved() {
         val tuned =
@@ -23,6 +24,13 @@ class SavedGlassTest {
             val glass = GlassTheme.Default.copy(mergedLens = choice)
             assertEquals(choice, SavedGlass.decode(SavedGlass.encode(glass)).mergedLens)
         }
+    }
+
+    @Test fun aTunedPressReadsBackAndAnOlderSaveHasTheDefaultPress() {
+        val tuned = GlassTheme.Default.copy(press = GlassPress(swell = 1.08f, light = 0.4f, reach = 50.dp, bend = 0.6f))
+        assertEquals(tuned, SavedGlass.decode(SavedGlass.encode(tuned)))
+        // saved before D155, with no press in it
+        assertEquals(GlassPress.Default, SavedGlass.decode("""{"chip":{"bezel":9.0}}""").press)
     }
 
     @Test fun nothingSavedIsTheDefault() {

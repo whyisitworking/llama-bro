@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.anchoredDraggable
 import androidx.compose.foundation.gestures.animateTo
 import androidx.compose.foundation.gestures.snapTo
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -144,11 +145,12 @@ fun TopBarTitle(
     // on a floating bar a title that opens something is a raised pill of its own (D148); a page's name is just text
     val backdrop = LocalBackdrop.current.takeIf { onClick != null && LocalGlassChips.current }
     val chip = backdrop != null
+    val presses = if (chip) remember { MutableInteractionSource() } else null
     Column(
         modifier
-            .chipGlass(backdrop, LocalGlass.current.chip)
+            .chipGlass(backdrop, LocalGlass.current.chip, presses)
             .clip(if (chip) CircleShape else DemoShapes.card)
-            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
+            .then(if (onClick != null) Modifier.glassClickable(presses, glass = chip, onClick = onClick) else Modifier)
             .heightIn(min = DemoSize.target)
             .padding(vertical = DemoSpacing.inline)
             .then(if (chip) Modifier.padding(horizontal = DemoSpacing.item) else Modifier),

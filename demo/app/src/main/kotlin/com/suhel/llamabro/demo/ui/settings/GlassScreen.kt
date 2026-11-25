@@ -21,6 +21,7 @@ import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.SegmentedSwitch
 import com.suhel.llamabro.demo.designsystem.components.SliderRow
 import com.suhel.llamabro.demo.designsystem.theme.BarGlass
+import com.suhel.llamabro.demo.designsystem.theme.GlassPress
 import com.suhel.llamabro.demo.designsystem.theme.GlassStyle
 import com.suhel.llamabro.demo.designsystem.theme.GlassTheme
 import com.suhel.llamabro.demo.designsystem.theme.GlassTier
@@ -70,6 +71,9 @@ fun GlassScreen(onChange: (GlassTheme?) -> Unit, onBack: () -> Unit) {
         Section("Bars: the blur under the top and bottom") {
             GroupedList { barSliders(glass.bar) { onChange(glass.copy(bar = it)) } }
         }
+        Section("Press: how glass answers a finger") {
+            GroupedList { pressSliders(glass.press) { onChange(glass.copy(press = it)) } }
+        }
         Section("Values") {
             GroupedList {
                 row {
@@ -109,6 +113,17 @@ private fun GroupScope.barSliders(bar: BarGlass, onChange: (BarGlass) -> Unit) {
     if (BarsVeilInstead) share("bar-bare", "Tint without blur", bar.bareVeil) { onChange(bar.copy(bareVeil = it)) }
     dp("bar-fade", "Reach past the bar", bar.fade, MAX_FADE) { onChange(bar.copy(fade = it)) }
     share("bar-hold", "Full blur over", bar.hold) { onChange(bar.copy(hold = it)) }
+}
+
+/**
+ * Sliders for how pressed glass answers ([press], D155): the swell as the share it grows by, so 0 is none and the
+ * slider's travel is all in the range worth trying.
+ */
+private fun GroupScope.pressSliders(press: GlassPress, onChange: (GlassPress) -> Unit) {
+    share("press-swell", "Swell", press.swell - 1f, MAX_SWELL) { onChange(press.copy(swell = 1f + it)) }
+    share("press-light", "Light at the finger", press.light) { onChange(press.copy(light = it)) }
+    dp("press-reach", "Light's reach", press.reach, MAX_REACH) { onChange(press.copy(reach = it)) }
+    share("press-bend", "Extra refraction", press.bend, MAX_PRESS_BEND) { onChange(press.copy(bend = it)) }
 }
 
 /** A length from 0 to [max] in steps of [step] dp. */
@@ -165,11 +180,14 @@ internal fun describe(glass: GlassTheme): String {
             "dispersion = ${s.dispersion}f, blur = ${trim(s.blur.value)}.dp, veil = ${s.veil}f, " +
             "rimLight = ${s.rimLight}f, rim = ${trim(s.rim.value)}.dp, bareVeil = ${s.bareVeil}f)"
     val b = glass.bar
+    val p = glass.press
     return "mergedLens = ${glass.mergedLens}\n" +
         "chip = ${style(glass.chip)}\n" +
         "panel = ${style(glass.panel)}\n" +
         "bar = BarGlass(blur = ${trim(b.blur.value)}.dp, dispersion = ${trim(b.dispersion.value)}.dp, " +
-        "veil = ${b.veil}f, bareVeil = ${b.bareVeil}f, fade = ${trim(b.fade.value)}.dp, hold = ${b.hold}f)"
+        "veil = ${b.veil}f, bareVeil = ${b.bareVeil}f, fade = ${trim(b.fade.value)}.dp, hold = ${b.hold}f)\n" +
+        "press = GlassPress(swell = ${p.swell}f, light = ${p.light}f, reach = ${trim(p.reach.value)}.dp, " +
+        "bend = ${p.bend}f)"
 }
 
 private const val MAX_EDGE = 24f
@@ -180,5 +198,10 @@ private const val MAX_RIM = 4f
 private const val MAX_BAR_BLUR = 48f
 private const val MAX_BAR_SPLIT = 20f
 private const val MAX_FADE = 64f
+
+// past an eighth, swollen glass crowds what sits beside it: it draws past its bounds (D155)
+private const val MAX_SWELL = 0.12f
+private const val MAX_REACH = 96f
+private const val MAX_PRESS_BEND = 2f
 private const val HALF = 0.5f
 private const val HUNDREDTH = 0.01f

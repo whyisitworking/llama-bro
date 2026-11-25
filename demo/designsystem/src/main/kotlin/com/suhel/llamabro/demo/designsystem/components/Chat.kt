@@ -17,6 +17,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -601,12 +602,13 @@ private fun JumpButton(onClick: () -> Unit) {
         // over a page ([FloatingFrame]'s overlay), glass with a panel's denser veil, so its chevron reads over the bent
         // text under it (D148); elsewhere a raised surface
         val backdrop = LocalBackdrop.current
+        val presses = if (backdrop != null) remember { MutableInteractionSource() } else null
         Box(
             Modifier
                 .size(DemoSize.control)
                 .then(
                     if (backdrop != null) {
-                        Modifier.glass(backdrop, LocalGlass.current.panel).clip(CircleShape)
+                        Modifier.glass(backdrop, LocalGlass.current.panel, interactions = presses).clip(CircleShape)
                     } else {
                         Modifier
                             .softShadow(CircleShape, colors)
@@ -614,7 +616,7 @@ private fun JumpButton(onClick: () -> Unit) {
                             .background(colors.surface)
                             .border(DemoSize.hairline, colors.hairline, CircleShape)
                     },
-                ).clickable(role = Role.Button, onClick = onClick),
+                ).glassClickable(presses, glass = backdrop != null, onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
