@@ -222,6 +222,7 @@ internal class ScriptedHub(endpoint: String) : Transport {
         val images = params["pipeline_tag"] == IMAGE_TASK
         val range = parameterRange(params["num_parameters"])
         val hideGated = params["gated"] == "false"
+        val fromOriginal = quantizedFrom(params)
         val found =
             repos.entries
                 .map { (id, history) -> id to history.last() }
@@ -232,7 +233,8 @@ internal class ScriptedHub(endpoint: String) : Transport {
                         (!images || commit.repo.takesImages) &&
                         (range == null || commit.repo.parameters?.let { it in range } == true) &&
                         (!hideGated || !commit.repo.gated)
-                }.sortedWith(order(params["sort"]))
+                }.filter { (_, commit) -> fromOriginal(commit) }
+                .sortedWith(order(params["sort"]))
         val offset = params["cursor"]?.toIntOrNull() ?: 0
         val limit = params["limit"]?.toIntOrNull() ?: found.size
         val page = found.drop(offset).take(limit)
@@ -325,6 +327,12 @@ internal class ScriptedHub(endpoint: String) : Transport {
         return Response(status, all, url, bytes.inputStream()) {}
     }
 
+    /** Whether a commit's repo is quantized from the original a search asks for; a repeated `filter` keeps its last. */
+    private fun quantizedFrom(params: Map<String, String>): (Commit) -> Boolean {
+        val original = params["filter"]?.takeIf { it.startsWith(QUANTIZED) }?.removePrefix(QUANTIZED)
+        return { commit -> original == null || commit.repo.baseModel.equals(original, ignoreCase = true) }
+    }
+
     private fun query(uri: URI): Map<String, String> =
         uri.rawQuery
             .orEmpty()
@@ -340,6 +348,7 @@ internal class ScriptedHub(endpoint: String) : Transport {
         const val RESOLVE_PARTS = 5
         const val REVISION = 3 // owner, name, "resolve", revision
         const val IMAGE_TASK = "image-text-to-text"
+        const val QUANTIZED = "base_model:quantized:"
 
         fun decode(value: String): String = URLDecoder.decode(value, Charsets.UTF_8.name())
     }

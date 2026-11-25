@@ -282,6 +282,30 @@ class ModelDiscoveryTest {
         val row = SearchRows.merge(listOf(busier, known)).single()
         assertEquals(known.copy(downloads = 110), row)
     }
+
+    @Test fun anOriginalOpensItsUploads() {
+        val target = runBlocking { discovery.related("https://huggingface.co/Qwen/Qwen3.5-4B") }
+        val model = (target as LinkTarget.Card).model
+        assertEquals(setOf("unsloth/Qwen3.5-4B-GGUF", "bartowski/Qwen_Qwen3.5-4B-GGUF"), model.repos.toSet())
+    }
+
+    @Test fun aGgufRepoOpensItself() {
+        val target = runBlocking { discovery.related("https://hf.co/someone/Mid-7B-GGUF/tree/main") }
+        assertEquals("someone/Mid-7B-GGUF", (target as LinkTarget.Card).model.repo)
+    }
+
+    @Test fun aRepoWithNoGgufOpensTheBrowser() {
+        val url = "https://huggingface.co/nobody/Nothing-7B"
+        assertEquals(LinkTarget.Browser(url), runBlocking { discovery.related(url) })
+        val other = "https://example.com/page"
+        assertEquals(LinkTarget.Browser(other), runBlocking { discovery.related(other) })
+    }
+
+    @Test fun offlineOpensTheBrowser() {
+        fake.offline = true
+        val url = "https://huggingface.co/Qwen/Qwen3.5-4B"
+        assertEquals(LinkTarget.Browser(url), runBlocking { discovery.related(url) })
+    }
 }
 
 private const val ENCODER_BYTES = 2048

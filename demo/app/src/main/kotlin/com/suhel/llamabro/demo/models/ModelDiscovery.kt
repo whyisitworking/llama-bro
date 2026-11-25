@@ -95,6 +95,31 @@ open class ModelDiscovery(private val hub: LlamaBroHub) {
     /** The original [repo] was quantized from, as the Hub tags it; null when it names none. */
     open suspend fun baseModel(repo: String): String? = hub.baseModel(repo)
 
+    /**
+     * What [url] opens: a model's card when it names a repo with GGUF uploads (its own, or those quantized from it),
+     * else the browser; also when the Hub can't be asked.
+     */
+    open suspend fun related(url: String): LinkTarget {
+        val repo = HubLinks.repoOf(url) ?: return LinkTarget.Browser(url)
+        return try {
+            val uploads =
+                hub.search("") {
+                    quantizedFrom = repo
+                    hideGated = true
+                    limit = SEARCH_LIMIT
+                }
+            val quantized = SearchRows.merge(uploads.results.map(SearchRows::of)).firstOrNull()
+            val found =
+                quantized
+                    ?: SearchRows
+                        .merge(hub.search(repo.substringAfter('/')).results.map(SearchRows::of))
+                        .firstOrNull { row -> (row.repos + row.repo).any { it.equals(repo, ignoreCase = true) } }
+            if (found != null) LinkTarget.Card(found) else LinkTarget.Browser(url)
+        } catch (_: HubException) {
+            LinkTarget.Browser(url)
+        }
+    }
+
     private companion object {
         /** The Hub's page: enough to scroll, one request. */
         const val SEARCH_LIMIT = 40
