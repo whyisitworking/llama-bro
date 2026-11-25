@@ -170,12 +170,13 @@ private val ReplyLength.title: String
             ReplyLength.NoLimit -> "No limit"
         }
 
+// in words like the context length (Fit.WORDS_PER_TOKEN): 1,024 and 8,192 tokens
 private val ReplyLength.subtitle: String
     get() =
         when (this) {
             ReplyLength.Automatic -> "Set by the Think level: longer when it thinks more"
-            ReplyLength.Short -> "About 1,000 tokens, thinking included"
-            ReplyLength.Long -> "About 8,000 tokens, thinking included"
+            ReplyLength.Short -> "About 750 words, thinking included"
+            ReplyLength.Long -> "About 6,000 words, thinking included"
             ReplyLength.NoLimit -> "Until the model stops or the context is full"
         }
 

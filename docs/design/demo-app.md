@@ -263,8 +263,8 @@ How a model picks its words starts from what its makers recommend and can be cha
   | Choice | Limit |
   |---|---|
   | **Automatic** (the default) | About 2,000 tokens for the answer plus the Think level's budget (table in section 7.2) |
-  | **Short** | 1,024 tokens |
-  | **Long** | 8,192 tokens |
+  | **Short** | 1,024 tokens, shown as "About 750 words, thinking included" |
+  | **Long** | 8,192 tokens, shown as "About 6,000 words, thinking included" |
   | **No limit** | "Until the model stops or the context is full": no `max_tokens` is sent |
 
   - Short and Long replace the level's total and leave its thinking budget as it is, so a Short reply at Balanced or Deep can stop while it still thinks.
