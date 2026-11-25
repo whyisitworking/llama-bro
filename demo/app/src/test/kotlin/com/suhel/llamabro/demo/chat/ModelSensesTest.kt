@@ -10,12 +10,16 @@ import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.testing.FakeLlamaBroHub
 import com.suhel.llamabro.testing.FakeLlamaBro
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -25,6 +29,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -120,6 +125,41 @@ class ModelSensesTest {
             val reader = SensesReader(settings) { throw IllegalArgumentException("a corrupt header") }
             reader.ensure(search)
             assertEquals(emptyMap<String, ModelSenses>(), settings.modelSenses.first())
+        }
+
+    @Test
+    fun aHeaderThatCantBeReadStoresNothingAndDoesntThrow() =
+        runBlocking {
+            val reader = SensesReader(settings) { throw IOException("the file was deleted mid-read") }
+            reader.ensure(search)
+            assertEquals(emptyMap<String, ModelSenses>(), settings.modelSenses.first())
+        }
+
+    @Test
+    fun aReadCancelledMidwayIsReadAgain() =
+        runBlocking {
+            val reads = AtomicInteger()
+            val started = CompletableDeferred<Unit>()
+            val reader =
+                SensesReader(settings) {
+                    if (reads.incrementAndGet() == 1) {
+                        started.complete(Unit)
+                        awaitCancellation()
+                    }
+                    ModelSenses(thinks = true, sees = false, hears = false)
+                }
+            val first = launch { reader.ensure(search) }
+            started.await()
+            first.cancelAndJoin()
+            assertEquals(emptyMap<String, ModelSenses>(), settings.modelSenses.first())
+            reader.ensure(search)
+            assertEquals(2, reads.get())
+            assertTrue(
+                settings.modelSenses
+                    .first()
+                    .getValue(search.toString())
+                    .thinks,
+            )
         }
 
     @Test

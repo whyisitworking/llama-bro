@@ -10,12 +10,14 @@ import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.atomic.AtomicInteger
 
 /** The chat screen's view model: the bar, sending, editing, the rows, sharing and what outlives the process. */
 class ChatViewModelTest : ChatViewModelFixture() {
@@ -326,6 +328,24 @@ class ChatViewModelTest : ChatViewModelFixture() {
             eventually("the chip goes") { vm.composerState.value.think == null }
             val request = fake.chatRequests.single()
             assertFalse(request, "enable_thinking" in request || "reasoning_budget_tokens" in request)
+        }
+
+    @Test fun aHeaderReadThatThrowsLeavesTheChatAsTheCatalogSaysIt() =
+        runBlocking {
+            val reads = AtomicInteger()
+            readSenses = {
+                reads.incrementAndGet()
+                throw IllegalArgumentException("not a GGUF header")
+            }
+            reply("hello")
+            val vm = viewModel(swift)
+            eventually("the header was read") { reads.get() > 0 }
+            // the catalog's word stands, and nothing was stored for the corrupt header
+            eventually("the chip") { vm.composerState.value.think == ThinkLevel.Off }
+            assertEquals(emptyMap<String, ModelSenses>(), settings.modelSenses.first())
+            vm.onText("Hi there")
+            vm.send()
+            eventually("the reply") { vm.rows.value.any { it is ReplyItem && it.text == "hello" } }
         }
 
     private companion object {

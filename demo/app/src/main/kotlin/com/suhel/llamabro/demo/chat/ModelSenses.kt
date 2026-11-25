@@ -58,25 +58,29 @@ internal fun ModelInfo.senses(catalog: CatalogEntry?): ModelSenses =
 
 /**
  * Reads a model's senses from its header ([read], D155) once it is on the phone, and stores them, so its chat shows
- * the Think chip, photos and the mic before the first load. Once per model per process; a model whose senses are
- * already stored (a load's, or an earlier read's) is not read again.
+ * the Think chip, photos and the mic before the first load. A model whose senses are already stored (a load's, or an
+ * earlier read's) is not read again; nor, in this process, is one whose header is corrupt.
  */
 class SensesReader(private val settings: SettingsRepository, private val read: suspend (HfModel) -> ModelSenses?) {
-    private val tried = ConcurrentHashMap.newKeySet<HfModel>()
+    /** Models whose header isn't GGUF: it stays so until the file changes, so reading it again only repeats that. */
+    private val corrupt = ConcurrentHashMap.newKeySet<HfModel>()
 
     /**
      * Reads and stores [key]'s senses unless they are known. A header that can't be read stores nothing: the chat
-     * shows the catalog's word, or none, until the model loads.
+     * shows the catalog's word, or none, until the model loads. A read that was cancelled, found no copy or met an IO
+     * error is tried again by the next call; two reads at once are harmless, since only the first store lands.
      */
     suspend fun ensure(key: HfModel) {
-        if (!tried.add(key) || key.toString() in settings.modelSenses.first()) return
+        if (key in corrupt || key.toString() in settings.modelSenses.first()) return
         val senses =
             try {
                 read(key)
             } catch (ignored: IllegalArgumentException) {
                 // a corrupt header: the load says what the model can do, or fails and says why
+                corrupt += key
                 null
             } catch (ignored: IOException) {
+                // the file went or changed mid-read (a delete, a new download): the next call reads it again
                 null
             } ?: return
         // a load may have recorded its own, final word while the header was read
