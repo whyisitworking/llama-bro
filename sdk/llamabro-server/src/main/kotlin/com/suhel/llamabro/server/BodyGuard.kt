@@ -61,7 +61,7 @@ private suspend fun ApplicationCall.receiveAtMost(maxBytes: Long): ByteArray? {
     return bytes.takeIf { it.size <= maxBytes }
 }
 
-private fun tooLarge(maxBytes: Long) =
+internal fun tooLarge(maxBytes: Long) =
     GuardedBody.Refused(
         HttpStatusCode.PayloadTooLarge,
         "the request body is larger than $maxBytes bytes",

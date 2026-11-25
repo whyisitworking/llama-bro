@@ -46,6 +46,7 @@ public class LlamaBroServer(private val config: ServerConfig, private val models
     private val lifecycle = Mutex()
     private var engine: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
     private val forwarding = Forwarding(models) { mutableEvents.tryEmit(it) }
+    private val audioRoutes = AudioRoutes(models, { mutableEvents.tryEmit(it) }, forwarding::nextId)
 
     /** Where the server is; [ServerState.Serving] carries the bound port. */
     public val state: StateFlow<ServerState> = mutableState.asStateFlow()
@@ -140,6 +141,7 @@ public class LlamaBroServer(private val config: ServerConfig, private val models
                     }
                 call.respondText(body.toString(), ContentType.Application.Json)
             }
+            with(audioRoutes) { audio(config) }
             with(forwarding) { modelRoutes(config) }
         }
     }

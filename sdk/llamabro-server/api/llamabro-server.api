@@ -61,6 +61,7 @@ public final class com/suhel/llamabro/server/ServerConfig {
 	public final fun getMaxBodyBytes ()J
 	public final fun getPort ()I
 	public final fun getRoutes ()Lcom/suhel/llamabro/server/Routes;
+	public final fun getWorkDir ()Lkotlinx/io/files/Path;
 	public fun toString ()Ljava/lang/String;
 }
 
@@ -71,12 +72,14 @@ public final class com/suhel/llamabro/server/ServerConfig$Builder {
 	public final fun getMaxBodyBytes ()J
 	public final fun getPort ()I
 	public final fun getRoutes ()Lcom/suhel/llamabro/server/Routes;
+	public final fun getWorkDir ()Lkotlinx/io/files/Path;
 	public final fun setApiKey (Ljava/lang/String;)V
 	public final fun setCors (Lcom/suhel/llamabro/server/Cors;)V
 	public final fun setHost (Ljava/lang/String;)V
 	public final fun setMaxBodyBytes (J)V
 	public final fun setPort (I)V
 	public final fun setRoutes (Lcom/suhel/llamabro/server/Routes;)V
+	public final fun setWorkDir (Lkotlinx/io/files/Path;)V
 }
 
 public final class com/suhel/llamabro/server/ServerConfig$Companion {

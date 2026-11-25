@@ -40,6 +40,9 @@ import kotlin.time.TimeSource
 internal class Forwarding(private val models: ServedModels, private val emit: (ServerEvent) -> Unit) {
     private val ids = AtomicLong(0)
 
+    /** The next request id, shared with the audio routes so the log's ids never repeat. */
+    fun nextId(): Long = ids.incrementAndFetch()
+
     /** The routes [config] serves, and a 404 in OpenAI's shape for every other path, as upstream answers one. */
     fun Route.modelRoutes(config: ServerConfig) {
         routeTable.filter { !it.answeredHere && it.isServed(config) }.forEach { served ->
@@ -71,7 +74,7 @@ internal class Forwarding(private val models: ServedModels, private val emit: (S
                     return
                 }
             }
-        val id = ids.incrementAndFetch()
+        val id = nextId()
         emit(ServerEvent.RequestStarted(id, client, request.httpMethod.value, request.path(), request.userAgent()))
         val began = TimeSource.Monotonic.markNow()
         val outcome = Outcome()
@@ -92,15 +95,7 @@ internal class Forwarding(private val models: ServedModels, private val emit: (S
 
     /** The lease for [id], or null once the client has its error: 404 for an id not served, 503 with none loaded. */
     private suspend fun ApplicationCall.acquire(id: String?, outcome: Outcome): ServedLease? =
-        try {
-            models.acquire(id)
-        } catch (e: ModelUnavailable) {
-            val status = if (e.id == null) HttpStatusCode.ServiceUnavailable else HttpStatusCode.NotFound
-            outcome.status = status.value
-            val type = if (e.id == null) ErrorType.UNAVAILABLE else ErrorType.NOT_FOUND
-            respondError(status, if (e.id == null) "no model loaded" else "model '${e.id}' not found", type)
-            null
-        }
+        acquireLease(models, id) { outcome.status = it }
 
     // the flow runs beside the response: its first part decides the status, the rest are written as they come
     private suspend fun ApplicationCall.respondParts(parts: Flow<RawPart>, served: ServedRoute, outcome: Outcome) =
@@ -183,3 +178,22 @@ internal fun requestedModel(body: JsonElement?): String? =
 /** Path and query parameters, `id_slot` and `action` for `POST /slots/:id_slot`, as `Model.exchange` takes them. */
 private fun ApplicationCall.forwardedParams(): Map<String, String> =
     parameters.entries().associate { (name, values) -> name to values.first() }
+
+/**
+ * The lease for [id], or null once the client has its error: 404 for an id not served, 503 with none loaded.
+ * [answered] is told the status sent.
+ */
+internal suspend fun ApplicationCall.acquireLease(
+    models: ServedModels,
+    id: String?,
+    answered: (Int) -> Unit,
+): ServedLease? =
+    try {
+        models.acquire(id)
+    } catch (e: ModelUnavailable) {
+        val status = if (e.id == null) HttpStatusCode.ServiceUnavailable else HttpStatusCode.NotFound
+        answered(status.value)
+        val type = if (e.id == null) ErrorType.UNAVAILABLE else ErrorType.NOT_FOUND
+        respondError(status, if (e.id == null) "no model loaded" else "model '${e.id}' not found", type)
+        null
+    }

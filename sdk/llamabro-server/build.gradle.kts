@@ -24,6 +24,8 @@ kotlin {
 
 dependencies {
     api(project(":llamabro"))
+    // ServerConfig.workDir is a kotlinx-io Path
+    api(libs.kotlinx.io.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.cio)
