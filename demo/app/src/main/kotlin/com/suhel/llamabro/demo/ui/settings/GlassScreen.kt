@@ -76,7 +76,7 @@ fun GlassScreen(onChange: (GlassTheme?) -> Unit, onBack: () -> Unit) {
                     "Animations are off on this phone, so pressed glass only lights up: it doesn't swell or move."
                 } else {
                     "Press and drag the chip or the panel at the bottom: it swells, lights up under your finger and " +
-                        "pulls after it, then springs back when you let go."
+                        "stretches after it, then eases back when you let go. Every panel of glass does the same."
                 },
             )
             GroupedList { pressSliders(glass.press) { onChange(glass.copy(press = it)) } }
@@ -219,7 +219,7 @@ private const val MAX_FADE = 64f
 
 // past a quarter, swollen glass crowds what sits beside it: it draws past its bounds (D155)
 private const val MAX_SWELL = 0.25f
-private const val MAX_PULL = 32f
+private const val MAX_PULL = 16f
 private const val MAX_STRETCH = 0.3f
 private const val MAX_REACH = 96f
 private const val MAX_PRESS_BEND = 2f

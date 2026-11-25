@@ -56,22 +56,13 @@ object DemoMotion {
     const val POP_SCALE = 0.8f
 
     /**
-     * Pressed glass (D155) swells on a spring that lands a hair past full ([PRESS_DAMPING], [PRESS_STIFFNESS]) and
-     * settles back on one that barely overshoots ([RELEASE_DAMPING], [RELEASE_STIFFNESS]); a tap holds the press [PRESS_HOLD_MILLIS]
-     * at least, or a quick one, released the frame it lands, would show nothing.
+     * Pressed glass (D155) eases in over [PRESS_IN_MILLIS] and back out over [PRESS_OUT_MILLIS], both on [enter]'s
+     * curve (fast, then settling), with no spring: a spring's overshoot read as a cartoon on the owner's phone. A tap
+     * holds the press [PRESS_HOLD_MILLIS] at least, or a quick one, released the frame it lands, would show nothing.
      */
-    const val PRESS_DAMPING = 0.75f
-    const val PRESS_STIFFNESS = 700f
-    const val RELEASE_DAMPING = 0.85f
-    const val RELEASE_STIFFNESS = 400f
+    const val PRESS_IN_MILLIS = 160
+    const val PRESS_OUT_MILLIS = 320
     const val PRESS_HOLD_MILLIS = 90L
-
-    /**
-     * Dragged glass let go springs back to its place all but critically damped (D155): a bouncier spring, overshooting
-     * and wobbling, read as a cartoon on the owner's phone.
-     */
-    const val PULL_DAMPING = 0.85f
-    const val PULL_STIFFNESS = 500f
 
     /** The sweep's gradient covers this share of the width. */
     const val SWEEP_WIDTH_FRACTION = 0.30f

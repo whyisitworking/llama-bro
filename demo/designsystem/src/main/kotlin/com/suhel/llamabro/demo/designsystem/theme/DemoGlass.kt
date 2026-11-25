@@ -66,15 +66,16 @@ data class BarGlass(
 }
 
 /**
- * How a piece of glass answers a finger (D155): while pressed it swells to [swell] times its size on a spring, a light
- * gathers on its rim around the finger, out to [reach] at [light]'s strength, and its edge bends the page [bend] more
- * (a share of its refraction). Dragged, it follows the finger elastically, out to [pull] at most, stretched along the
- * drag by up to [stretch] and narrowed across it; let go, it springs back and settles. With animations off it neither
- * swells nor moves; the light still comes and goes, and follows the finger.
+ * How a piece of glass answers a finger (D155): pressed, it swells, a light gathers on its rim around the finger, out
+ * to [reach] at [light]'s strength, and its edge bends the page [bend] more (a share of its refraction). Dragged, it
+ * stretches along the drag and narrows across it, and moves after the finger only a little, on an elastic limited to
+ * [pull]. Let go, swell, stretch and movement all ease back together. The swell and the stretch are lengths measured
+ * on the glass's shorter side, so a wide panel grows by as much as a chip, not by a share of its width. With
+ * animations off it neither swells nor moves; the light still comes and goes, and follows the finger.
  */
 @Immutable
 data class GlassPress(
-    /** How much bigger pressed glass is drawn: 1 for not at all. */
+    /** How much bigger pressed glass is drawn, as its shorter side sees it: 1 for not at all. */
     val swell: Float,
     /** How bright the light around the finger is, 0 to 1. */
     val light: Float,
@@ -84,26 +85,20 @@ data class GlassPress(
     val bend: Float,
     /** How far dragged glass can be pulled from its place, however far the finger goes: the elastic's limit. */
     val pull: Dp = Default.pull,
-    /** How much longer dragged glass grows along the drag at [pull], as a share of its size; narrower across. */
+    /** How much longer dragged glass grows along the drag, at most, as a share of its shorter side; narrower across. */
     val stretch: Float = Default.stretch,
 ) {
-    /**
-     * The scale pressed glass is drawn at, [press] of the way in: a little past [swell] as its spring lands, never
-     * below its own size as the release swings back past rest, or its content would shrink in a smaller lens.
-     */
-    fun scaleAt(press: Float, still: Boolean): Float = if (still) 1f else 1f + (swell - 1f) * press.coerceAtLeast(0f)
-
     /** How strongly the edge bends at [press], as a factor of the glass's refraction. */
     fun bendAt(press: Float): Float = 1f + bend * press.coerceAtLeast(0f)
 
-    /** How bright the light around the finger is at [press]: never past [light], even as a spring overshoots. */
+    /** How bright the light around the finger is at [press]: never past [light]. */
     fun lightAt(press: Float): Float = (light * press).coerceIn(0f, light)
 
     /**
      * Where glass of [base] size is drawn, in its own bounds' pixels, [press] of the way in and dragged [drag] pixels
-     * by the finger, its pull limit [pullPx] pixels: swollen, moved toward the drag on an elastic that gives less the
-     * further it goes (a drag of [pullPx] moves it half that), and stretched along the drag, as much narrower across.
-     * [still] (animations off), it stays as it is.
+     * by the finger, its pull limit [pullPx] pixels: grown by the swell on every side alike, stretched along the drag
+     * as the elastic gives (a drag of [pullPx] gives half), and moved that little toward it. [still] (animations off),
+     * it stays as it is.
      */
     fun pose(
         base: Size,
@@ -112,35 +107,30 @@ data class GlassPress(
         still: Boolean,
         pullPx: Float,
     ): GlassPose {
-        val scale = scaleAt(press, still)
+        val side = base.minDimension
+        val grow = (swell - 1f) * side * press.coerceIn(0f, 1f)
+        // at rest exactly so, not a negative zero's offset: the glass then draws its content as is
+        if (still || (grow == 0f && drag == Offset.Zero)) return GlassPose(Offset.Zero, base, 1f, 1f)
+        val swollen = Size(base.width + grow, base.height + grow)
+        // the content grows as the glass's longer side does: a chip's with it, a wide panel's text barely
+        val content = 1f + grow / base.maxDimension.coerceAtLeast(1f)
         val far = drag.getDistance()
-        if (still || far == 0f || pullPx <= 0f) {
-            val size = base * scale
-            return GlassPose(
-                Offset((base.width - size.width) / 2f, (base.height - size.height) / 2f),
-                size,
-                scale,
-                scale,
-            )
+        if (far == 0f || pullPx <= 0f) {
+            return GlassPose(Offset(-grow / 2f, -grow / 2f), swollen, content, content)
         }
-        val moved = pullPx * far / (pullPx + far)
+        val give = far / (pullPx + far)
         val toward = drag / far
-        val give = stretch * moved / pullPx
-        // along the drag longer, across it narrower: horizontal and vertical shares of the drag's direction
+        // along the drag longer, across it narrower: how much of the drag is across, less how much is down
         val lean = toward.x * toward.x - toward.y * toward.y
-        val scaleX = scale * (1f + give * lean)
-        val scaleY = scale * (1f - give * lean)
-        val size = Size(base.width * scaleX, base.height * scaleY)
-        val topLeft =
-            Offset(
-                (base.width - size.width) / 2f + toward.x * moved,
-                (base.height - size.height) / 2f + toward.y * moved,
-            )
-        return GlassPose(topLeft, size, scaleX, scaleY)
+        val reach = stretch * side * give
+        val size = Size(swollen.width + reach * lean, swollen.height - reach * lean)
+        val moved = toward * (pullPx * give)
+        val topLeft = Offset((base.width - size.width) / 2f + moved.x, (base.height - size.height) / 2f + moved.y)
+        return GlassPose(topLeft, size, content * size.width / swollen.width, content * size.height / swollen.height)
     }
 
     companion object {
-        val Default = GlassPress(swell = 1.1f, light = 0.6f, reach = 36.dp, bend = 0.35f, pull = 8.dp, stretch = 0.03f)
+        val Default = GlassPress(swell = 1.1f, light = 0.6f, reach = 36.dp, bend = 0.35f, pull = 3.dp, stretch = 0.08f)
     }
 }
 
