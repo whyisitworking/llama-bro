@@ -263,7 +263,7 @@ private fun limitAction(
         LimitAction.GetVisionModel -> chrome.onGetModels()
         LimitAction.AddToken -> chrome.onToken()
         LimitAction.StartNewChat -> chrome.onNewChat()
-        LimitAction.OpenMemorySettings -> chrome.onMemory()
+        LimitAction.OpenProcessorSettings -> chrome.onProcessor()
         LimitAction.CloseOtherAppsAndRetry, LimitAction.Retry -> vm.retry()
         LimitAction.OpenAppSettings -> openAppSettings(context)
     }

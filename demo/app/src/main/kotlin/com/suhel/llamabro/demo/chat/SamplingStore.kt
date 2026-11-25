@@ -27,7 +27,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * The sampling layers of a model and of a chat (D60), read and changed in one place: Settings › Sampling changes a
+ * The sampling layers of a model and of a chat (D60), read and changed in one place: Settings › Inference changes a
  * model's values, a chat's sheet changes the chat's own, and the engine reads both when a turn starts. A suggested
  * model's card values ship in the catalog; any other model's come from [recommended] (the hub's, D68 and D79). That
  * lookup can go online (the base model's values), so it runs in the background on [scope] and never holds a turn:

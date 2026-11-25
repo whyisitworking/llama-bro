@@ -155,9 +155,10 @@ class ShellTest {
             "Custom instructions" to "About me",
             "Default model" to "Last used",
             "Hugging Face token" to "Paste your token",
-            "Sampling" to "Models on this phone",
-            "Voice" to "Caption what you say",
+            "Inference" to "Models on this phone",
+            "Processor" to "Runs on",
             "Memory" to "After you leave the app",
+            "Voice" to "Caption what you say",
             "About" to "Licences",
         )) {
             compose.waitUntilAtLeastOneExists(hasText(row), 10_000)

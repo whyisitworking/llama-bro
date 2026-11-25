@@ -4,10 +4,10 @@ import com.suhel.llamabro.ContextSize
 import com.suhel.llamabro.DevicePolicy
 
 /**
- * What Settings › Memory says a model loads under: the chip choice's [policy] (D72) and the context length's [context]
- * (a ceiling the SDK fits to memory), and the requests it serves at once, [slots]: two while voice mode captions what
- * the person says (D99, D100), one otherwise. A model loaded under another config is not reused, except that one loaded
- * with more slots serves a turn that needs fewer ([serves]).
+ * What Settings › Processor and Inference say a model loads under: the chip choice's [policy] (D72) and the context
+ * length's [context] (a ceiling the SDK fits to memory), and the requests it serves at once, [slots]: two while voice
+ * mode captions what the person says (D99, D100), one otherwise. A model loaded under another config is not reused,
+ * except that one loaded with more slots serves a turn that needs fewer ([serves]).
  */
 data class LoadConfig(
     val policy: DevicePolicy = DevicePolicy.Auto,

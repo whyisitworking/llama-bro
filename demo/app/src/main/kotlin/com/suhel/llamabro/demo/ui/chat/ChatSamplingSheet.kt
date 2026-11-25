@@ -36,7 +36,7 @@ fun ColumnScope.ChatSamplingContent(
     onChange: (Knob, Float) -> Unit,
     onReset: () -> Unit,
 ) {
-    Section("Sampling for this chat", Modifier.testTag("chat_sampling")) {
+    Section("Inference for this chat", Modifier.testTag("chat_sampling")) {
         GroupedList { samplingSliders(layers.resolve(thinks), ::chatNote, onChange) }
     }
     if (!layers.chat.isEmpty) QuietButton("Use the model's values", onReset)

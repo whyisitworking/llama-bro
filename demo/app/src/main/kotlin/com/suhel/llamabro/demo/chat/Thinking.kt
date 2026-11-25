@@ -19,7 +19,7 @@ object Thinking {
     /** Deep has no thinking budget, so its limit is a fixed, generous one. */
     private const val DEEP_REPLY_TOKENS = 8_192
 
-    /** Settings › Sampling's Short and Long reply lengths: about 750 and 6,000 words, thinking included. */
+    /** Settings › Inference's Short and Long reply lengths: about 750 and 6,000 words, thinking included. */
     private const val SHORT_REPLY_TOKENS = 1_024
     private const val LONG_REPLY_TOKENS = 8_192
 
@@ -40,10 +40,10 @@ object Thinking {
         }
 
     /**
-     * The reply's length limit under the [length] chosen in Settings › Sampling: [ReplyLength.Automatic] is the level's
-     * own ([replyTokens]); Short and Long replace that total and leave the level's thinking budget as it is, so a short
-     * reply can stop while it still thinks, and Continue goes on; null, for No limit, sends none: the reply runs until
-     * the model stops or the context is full.
+     * The reply's length limit under the [length] chosen in Settings › Inference: [ReplyLength.Automatic] is the
+     * level's own ([replyTokens]); Short and Long replace that total and leave the level's thinking budget as it is,
+     * so a short reply can stop while it still thinks, and Continue goes on; null, for No limit, sends none: the reply
+     * runs until the model stops or the context is full.
      */
     fun replyTokens(level: Think?, length: ReplyLength): Int? =
         when (length) {

@@ -11,6 +11,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.suhel.llamabro.demo.chat.KnobSource
 import com.suhel.llamabro.demo.chat.KnobValue
 import com.suhel.llamabro.demo.chat.SamplingLayers
+import com.suhel.llamabro.demo.chat.kTokens
+import com.suhel.llamabro.demo.data.ContextChoice
 import com.suhel.llamabro.demo.data.ReplyLength
 import com.suhel.llamabro.demo.data.settings.Knob
 import com.suhel.llamabro.demo.designsystem.components.GroupScope
@@ -25,7 +27,7 @@ import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.hub.HfModel
 import kotlin.math.roundToInt
 
-/** A model in Settings › Sampling: its name and how many of its values differ from its card's. */
+/** A model in Settings › Inference: its name and how many of its values differ from its card's. */
 data class SamplingModelRow(val key: HfModel, val name: String, val changed: Int)
 
 /** Rows for the library's models, in the library's order. */
@@ -33,30 +35,50 @@ fun samplingRows(library: List<LibraryModel>, changed: Map<String, Int>): List<S
     library.map { SamplingModelRow(it.key, it.name, changed[it.key.toString()] ?: 0) }
 
 @Composable
-fun SamplingModelsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onOpen: (HfModel) -> Unit) {
+fun InferenceScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onOpen: (HfModel) -> Unit) {
     val rows by viewModel.samplingRows.collectAsStateWithLifecycle()
     val settings by viewModel.state.collectAsStateWithLifecycle()
-    SamplingModelsContent(settings.replyLength, rows, viewModel::setReplyLength, onOpen, onBack)
+    val contextLine by viewModel.contextLine.collectAsStateWithLifecycle()
+    InferenceContent(
+        InferenceState(settings.context, contextLine, settings.replyLength, rows),
+        viewModel::setContext,
+        viewModel::setReplyLength,
+        onOpen,
+        onBack,
+    )
 }
 
 /**
- * Settings › Sampling (D60): the reply length, for every model and chat, then each model on the phone, opening its
- * values. A model's values start from its model card's recommendations; a chat can change them again for itself.
+ * What Settings › Inference shows: the context length chosen and the line under it ([contextLine]: when a model
+ * loaded at another length reloads, null when nothing changes), the reply length, and each model on the phone.
+ */
+data class InferenceState(
+    val context: ContextChoice,
+    val contextLine: String?,
+    val length: ReplyLength,
+    val rows: List<SamplingModelRow>,
+)
+
+/**
+ * Settings › Inference (D157, amending D60 and D59): what the model reads and writes. The context length (D78), the
+ * reply length, both for every model and chat, then each model on the phone, opening its values (D60). A model's
+ * values start from its model card's recommendations; a chat can change them again for itself.
  */
 @Composable
-fun SamplingModelsContent(
-    length: ReplyLength,
-    rows: List<SamplingModelRow>,
+fun InferenceContent(
+    state: InferenceState,
+    onContext: (ContextChoice) -> Unit,
     onLength: (ReplyLength) -> Unit,
     onOpen: (HfModel) -> Unit,
     onBack: () -> Unit,
 ) {
-    SettingsPage("Sampling", onBack, Modifier.testTag("sampling_settings")) {
-        Section("Reply length") { ReplyLengthList(length, onLength) }
+    SettingsPage("Inference", onBack, Modifier.testTag("inference_settings")) {
+        Section("Context length") { ContextLength(state, onContext) }
+        Section("Reply length") { ReplyLengthList(state.length, onLength) }
         Section("Models on this phone") {
             GroupedList {
-                if (rows.isEmpty()) row { ListRow("No models yet", subtitle = "Get a model to set its values") }
-                for (r in rows) {
+                if (state.rows.isEmpty()) row { ListRow("No models yet", subtitle = "Get a model to set its values") }
+                for (r in state.rows) {
                     row(key = r.key) {
                         ListRow(
                             r.name,
@@ -69,6 +91,30 @@ fun SamplingModelsContent(
             }
         }
     }
+}
+
+/**
+ * How much of the chat the model sees at once: Automatic, or a ceiling the SDK still fits to memory (down to 4k, so a
+ * load never fails for it), then when a model loaded at another length reloads. A change reloads the model, as a chip
+ * change does (D72).
+ */
+@Composable
+private fun ContextLength(state: InferenceState, onContext: (ContextChoice) -> Unit) {
+    GroupedList(Modifier.testTag("context_length")) {
+        for (choice in ContextChoice.entries) {
+            row {
+                ListRow(
+                    choice.title,
+                    subtitle = choice.subtitle,
+                    selected = state.context == choice,
+                    onClick = { onContext(choice) },
+                )
+            }
+        }
+    }
+    state.contextLine?.let { SectionNote(it, Modifier.testTag("context_line")) }
+    SectionNote(CONTEXT_NOTE)
+    SectionNote(RELOAD_NOTE)
 }
 
 /**
@@ -91,6 +137,25 @@ private fun ReplyLengthList(chosen: ReplyLength, onLength: (ReplyLength) -> Unit
     }
     SectionNote(LENGTH_NOTE)
 }
+
+private val ContextChoice.title: String get() = tokens?.let(::kTokens) ?: "Automatic"
+
+private const val CONTEXT_NOTE =
+    "How much of the chat the model sees at once. Each size is the most it gets: with less memory free, it gets " +
+        "less, down to 4k."
+
+private val ContextChoice.subtitle: String
+    get() =
+        when (this) {
+            ContextChoice.Automatic -> "The most that fits in memory, up to 16k"
+            ContextChoice.UpTo4k -> "About 3,000 words; the least memory"
+            ContextChoice.UpTo8k -> "About 6,000 words"
+            ContextChoice.UpTo16k -> "About 12,000 words"
+            ContextChoice.UpTo32k -> "About 24,000 words, for long documents; the most memory"
+        }
+
+/** Said under a choice whose change reloads the model: the context length, the chip. */
+internal const val RELOAD_NOTE = "Changing it reloads the model."
 
 private const val LENGTH_NOTE =
     "For every model and chat. A reply that reaches its length stops, and Continue goes on, unless the chat has " +
@@ -115,7 +180,7 @@ private val ReplyLength.subtitle: String
         }
 
 @Composable
-fun SamplingModelScreen(viewModel: SettingsViewModel, key: HfModel, onBack: () -> Unit) {
+fun InferenceModelScreen(viewModel: SettingsViewModel, key: HfModel, onBack: () -> Unit) {
     val layers by viewModel.samplingOf(key).collectAsStateWithLifecycle(null)
     val name =
         viewModel.library
@@ -125,7 +190,7 @@ fun SamplingModelScreen(viewModel: SettingsViewModel, key: HfModel, onBack: () -
             ?.name
             .orEmpty()
     layers?.let { l ->
-        SamplingModelContent(
+        InferenceModelContent(
             name,
             l,
             onChange = { knob, value -> viewModel.setSampling(key, knob, value) },
@@ -140,7 +205,7 @@ fun SamplingModelScreen(viewModel: SettingsViewModel, key: HfModel, onBack: () -
  * recommends other values with thinking on, a switch shows either set; a change applies to both.
  */
 @Composable
-fun SamplingModelContent(
+fun InferenceModelContent(
     name: String,
     layers: SamplingLayers,
     onChange: (Knob, Float) -> Unit,
@@ -150,7 +215,7 @@ fun SamplingModelContent(
     val card = layers.card
     var thinks by rememberSaveable { mutableStateOf(true) }
     val twoModes = card != null && card.thinking != card.answering
-    SettingsPage(name, onBack, Modifier.testTag("sampling_model")) {
+    SettingsPage(name, onBack, Modifier.testTag("inference_model")) {
         if (twoModes) {
             Section("Recommended values for") {
                 SegmentedSwitch(listOf("Thinking", "Not thinking"), if (thinks) 0 else 1, { thinks = it == 0 })

@@ -224,7 +224,7 @@ class AppContainer(
 
     /**
      * The memory budget (half the phone's RAM, D101) and chips, read from the SDK the first time a screen asks; the
-     * chip fits use is the one chosen in Settings › Memory when this phone has it (D72).
+     * chip fits use is the one chosen in Settings › Processor when this phone has it (D72).
      */
     suspend fun deviceFacts(): DeviceFacts =
         (facts ?: DeviceFacts.read(llamaBro).also { facts = it }).preferring(
@@ -287,7 +287,7 @@ class AppContainer(
     override fun switcherViewModel(handle: ChatEngine.ChatHandle) =
         SwitcherViewModel(
             library = models.library,
-            // the estimates follow the chip chosen in Settings › Memory (D72), which the other pane can change
+            // the estimates follow the chip chosen in Settings › Processor (D72), which the other pane can change
             // meanwhile
             facts =
                 settings.settings

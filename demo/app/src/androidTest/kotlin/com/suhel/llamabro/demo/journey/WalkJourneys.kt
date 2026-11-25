@@ -156,7 +156,8 @@ class WalkJourneys : Journey() {
                 "Custom instructions" to "instructions",
                 "Default model" to "default-model",
                 "Hugging Face token" to "token",
-                "Sampling" to "sampling",
+                "Inference" to "inference",
+                "Processor" to "processor",
                 "Memory" to "memory",
                 "About" to "about",
             )

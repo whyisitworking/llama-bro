@@ -32,7 +32,7 @@ enum class KeepLoaded(val millis: Long?) {
 }
 
 /**
- * The chip the person chose in Settings › Memory (D72). [Automatic] is the SDK's `Auto`; a chip is `Prefer`, so a
+ * The chip the person chose in Settings › Processor (D72). [Automatic] is the SDK's `Auto`; a chip is `Prefer`, so a
  * chip that can't load the model, or that this phone doesn't have, falls back in `Auto`'s order instead of failing.
  */
 enum class ChipChoice(val kind: DeviceKind?) {
@@ -46,8 +46,8 @@ enum class ChipChoice(val kind: DeviceKind?) {
 }
 
 /**
- * The context length chosen in Settings › Memory: [Automatic] is the SDK's `Auto` (the most that fits in memory, up to
- * 16k); the others are `UpTo`, a ceiling the SDK still shrinks to fit memory, so a load never fails for it.
+ * The context length chosen in Settings › Inference: [Automatic] is the SDK's `Auto` (the most that fits in memory, up
+ * to 16k); the others are `UpTo`, a ceiling the SDK still shrinks to fit memory, so a load never fails for it.
  */
 enum class ContextChoice(val tokens: Int?) {
     Automatic(null),
@@ -61,7 +61,7 @@ enum class ContextChoice(val tokens: Int?) {
 }
 
 /**
- * The reply length chosen in Settings › Sampling, for every model and chat: [Automatic] is the Think level's limit
+ * The reply length chosen in Settings › Inference, for every model and chat: [Automatic] is the Think level's limit
  * (D60); [Short] and [Long] are a fixed limit, thinking and answer together; [NoLimit] sends none, so a reply runs
  * until the model stops or the context is full.
  */
@@ -72,7 +72,7 @@ enum class ReplyLength {
     NoLimit,
 }
 
-/** What the next load asks for: the chip choice and the context length (Settings › Memory). */
+/** What the next load asks for: the chip choice and the context length (Settings › Processor and Inference). */
 val AppSettings.loadConfig: LoadConfig get() = LoadConfig(chip.policy, context.size)
 
 data class AppSettings(

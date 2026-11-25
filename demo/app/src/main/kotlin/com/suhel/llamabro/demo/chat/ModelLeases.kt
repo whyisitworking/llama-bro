@@ -67,7 +67,7 @@ internal class ModelLeases(private val host: ModelHost, private val settings: Se
     @Volatile private var noted: java.lang.ref.WeakReference<Model>? = null
 
     /**
-     * A lease on the model for [key] (shown as [name]) on the chip and context chosen in Settings › Memory (D72), or
+     * A lease on the model for [key] (shown as [name]) on the chip and context chosen in Settings (D72), or
      * null when it didn't load: [limit] then says why. When the SDK loaded it although its memory check doubted it
      * (F128), or on another chip than the one chosen, [limit] says so on every load of it: the note travels with the
      * loaded model into every turn, so a turn on a model already loaded doesn't say it again. The turn releases the
@@ -97,7 +97,7 @@ internal class ModelLeases(private val host: ModelHost, private val settings: Se
         try {
             val loaded = lease.model
             // one line holds one note: the memory note wins, since it warns that other apps may close and offers a
-            // smaller size; where the model runs stays in Settings › Memory and the model sheet
+            // smaller size; where the model runs stays in Settings › Processor and the model sheet
             val report = loaded.loadReport
             val note =
                 if (report.memoryWarning != null) {

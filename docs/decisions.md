@@ -2457,4 +2457,13 @@ Consequences: Moving between cards is the sheet sliding down and the next card r
 already has, rather than one sheet morphing in place; each card opens final from local data as the first does (D118).
 A related card's lookup is one or two Hub searches, so it waits on the network; offline, or when the Hub can't say, the
 link opens the browser. Cards deep in a stack hold their view models (and their refreshes' results) until popped.
-Next free IDs: D157, F189.
+
+<a id="d157"></a>
+### D157. Settings groups options by what they change: Inference (what the model reads and writes), Processor (where it runs), Memory (how long it stays)
+
+Status: Decided (2026-11-25)
+
+Context: Settings › Memory had grown to hold the model in memory, the chip it runs on (D72), the context length (D78) and how long the model stays (D59), and Sampling held the reply length beside each model's values (D60). A person looking for the context length or the chip had to guess it lived under "Memory"; the reply length and the context length, which both bound what the model reads and writes, sat on different pages. Storage only opened the Models page, which the app already reaches from its own navigation.
+Decision: Settings › Models lists, in order, Default model, Hugging Face token, **Inference** ("Context, reply length and each model's values"), **Processor** ("Where models run: NPU, GPU or CPU"), **Memory** ("The model in memory, and when it's freed") and Voice. Inference holds the context length, the reply length and the models on the phone with their values, as Sampling held them, and its context length says "Changing it reloads the model." Processor holds "Runs on" (D72) and says the same. Memory keeps "In memory now" with Unload and "After you leave the app", and no longer says anything about a reload. The chat's "chip fell back" note opens Processor, and the model sheet's per-chat values read "Inference for this chat". The Storage row goes. Each option behaves as before; only its page, route (`settings/inference`, `settings/processor`), test tags (`inference_settings`, `inference_model`, `processor_settings`) and titles change.
+Consequences: Amends D59 (the keep time and Unload stay in Memory; the chip and context length, which D59's page held, do not), D60 (Settings › Sampling is Settings › Inference, and the reply length shares its page with the context length) and D72 (the chip is chosen in Settings › Processor, and the note's Settings action opens it). Amends demo design §4.5 and §4.7. Old routes and tags are gone; nothing outside the app links to them.
+Next free IDs: D158, F189.

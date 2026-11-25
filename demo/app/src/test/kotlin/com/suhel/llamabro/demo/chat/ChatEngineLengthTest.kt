@@ -47,7 +47,7 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * The reply length (Settings › Sampling) reaching the request, and the context length (Settings › Memory) reaching the
+ * The reply length (Settings › Inference) reaching the request, and the context length (Settings › Inference) reaching the
  * load and reloading the model as a chip change does (D72).
  */
 class ChatEngineLengthTest {

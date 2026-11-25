@@ -16,13 +16,14 @@ object Routes {
     const val TOKEN = "settings/token"
     const val MEMORY = "settings/memory"
     const val VOICE = "settings/voice"
-    const val SAMPLING = "settings/sampling"
+    const val INFERENCE = "settings/inference"
+    const val PROCESSOR = "settings/processor"
 
     /** One model's values; the key is URL-encoded, as it holds a slash and a colon. */
-    const val SAMPLING_KEY_ARG = "key"
-    const val SAMPLING_MODEL = "settings/sampling/{$SAMPLING_KEY_ARG}"
+    const val INFERENCE_KEY_ARG = "key"
+    const val INFERENCE_MODEL = "settings/inference/{$INFERENCE_KEY_ARG}"
 
-    fun samplingModel(key: String) = "settings/sampling/" + android.net.Uri.encode(key)
+    fun inferenceModel(key: String) = "settings/inference/" + android.net.Uri.encode(key)
 
     const val ABOUT = "settings/about"
 

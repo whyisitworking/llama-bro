@@ -53,7 +53,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Settings › Memory's chip choice as the screen reads it (D72): the kinds marked, and the line under the choice. */
+/** Settings › Processor chip choice as the screen reads it (D72): the kinds marked, and the line under the choice. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModelChipTest {
     @get:Rule val folder = TemporaryFolder()
