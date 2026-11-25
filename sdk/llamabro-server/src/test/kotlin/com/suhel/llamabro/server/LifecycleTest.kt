@@ -79,4 +79,44 @@ class LifecycleTest {
                 server.stop()
             }
         }
+
+    @Test
+    fun startAfterStopServesAgain() =
+        runBlocking {
+            val server = LlamaBroServer(ServerConfig { port = 0 }, ListedModels())
+            server.start()
+            server.stop()
+            server.start()
+            val port = (server.state.value as ServerState.Serving).port
+            assertEquals(200, call(port, "/health").status)
+            server.stop()
+        }
+
+    @Test
+    fun secondStartWhileServingIsANoOp() =
+        runBlocking {
+            val server = LlamaBroServer(ServerConfig { port = 0 }, ListedModels())
+            server.start()
+            val serving = server.state.value
+            server.start()
+            assertEquals(serving, server.state.value)
+            assertEquals(200, call((serving as ServerState.Serving).port, "/health").status)
+            server.stop()
+        }
+
+    @Test
+    fun rebindSamePortAfterTraffic() =
+        runBlocking {
+            // a free port, found by binding and releasing it
+            val port = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
+            val server = LlamaBroServer(ServerConfig { this.port = port }, ListedModels())
+            server.start()
+            assertEquals(ServerState.Serving(port), server.state.value)
+            assertEquals(200, call(port, "/health").status)
+            server.stop()
+            server.start()
+            assertEquals(ServerState.Serving(port), server.state.value)
+            assertEquals(200, call(port, "/health").status)
+            server.stop()
+        }
 }

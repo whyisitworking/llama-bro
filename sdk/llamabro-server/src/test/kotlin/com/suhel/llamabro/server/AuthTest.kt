@@ -22,7 +22,7 @@ class AuthTest {
 
     // a route the server doesn't know answers 404 when allowed in, 401 when the key stops it first
     private suspend fun guarded(port: Int, headers: Map<String, String> = emptyMap()) =
-        call(port, "/props", headers = headers).status
+        call(port, "/no-such-route", headers = headers).status
 
     @Test
     fun noKeyConfiguredLetsEverythingIn() = withServer { _, port -> assertEquals(404, guarded(port)) }
@@ -51,7 +51,7 @@ class AuthTest {
     fun wrongKeyIs401WithErrorBody() =
         withServer(keyed) { _, port ->
             listOf(emptyMap(), mapOf("Authorization" to "Bearer nope"), mapOf("Authorization" to "sesame")).forEach {
-                val reply = call(port, "/props", headers = it)
+                val reply = call(port, "/no-such-route", headers = it)
                 assertEquals(401, reply.status)
                 val error =
                     Json
@@ -86,10 +86,10 @@ class AuthTest {
                     .onEach { if (it is ServerEvent.Rejected) seen.complete(it) }
                     .launchIn(CoroutineScope(Dispatchers.Unconfined))
             // the collector is subscribed before the request is sent: Unconfined runs it to its first suspension
-            call(port, "/props")
+            call(port, "/no-such-route")
             val rejected = seen.await()
             collecting.cancel()
-            assertEquals("/props", rejected.path)
+            assertEquals("/no-such-route", rejected.path)
             assertEquals(401, rejected.status)
             assertTrue(rejected.client.isNotEmpty())
             assertTrue(rejected.reason.isNotEmpty())

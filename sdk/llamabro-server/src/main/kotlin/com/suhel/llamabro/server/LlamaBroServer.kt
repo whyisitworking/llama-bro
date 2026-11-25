@@ -51,7 +51,13 @@ public class LlamaBroServer(private val config: ServerConfig, private val models
     /** What the server did, for a request log. A slow collector misses the oldest events, never blocks a request. */
     public val events: SharedFlow<ServerEvent> = mutableEvents.asSharedFlow()
 
-    /** Binds and starts answering: [state] becomes [ServerState.Serving], or [ServerState.Failed] if the bind fails. */
+    /**
+     * Binds and starts answering. A server already serving stays as it is: a second call does nothing. After [stop], or
+     * a [ServerState.Failed], it can start again.
+     *
+     * [state] becomes [ServerState.Serving], or
+     * [ServerState.Failed] if the bind fails.
+     */
     public suspend fun start() {
         lifecycle.withLock {
             if (engine != null) return
