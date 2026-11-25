@@ -132,7 +132,7 @@ internal class FakeModel(
         val text = String(body, Charsets.UTF_8)
 
         fun send(status: Int, data: String) = sink.onChunk(status, data.toByteArray(Charsets.UTF_8))
-        answerRaw(sink)?.let { return it }
+        answerRaw(endpoint, paramsJson, text, sink)?.let { return it }
         when (endpoint) {
             "chat" -> {
                 chat(text, attachments, ::send)
@@ -172,8 +172,13 @@ internal class FakeModel(
     }
 
     /** The next [FakeLlamaBro.raw] answer, if one is queued, sent whatever the endpoint; null when none is. */
-    private fun answerRaw(sink: RequestSink): EngineRequest? {
-        val raw = synchronized(fake.lock) { fake.rawQueue.removeFirstOrNull() } ?: return null
+    private fun answerRaw(endpoint: String, paramsJson: String?, body: String, sink: RequestSink): EngineRequest? {
+        val raw =
+            synchronized(fake.lock) {
+                fake.rawQueue.removeFirstOrNull()?.also {
+                    fake.rawLog += FakeLlamaBro.RawRequest(endpoint, params(paramsJson), body)
+                }
+            } ?: return null
         raw.chunks.forEach { sink.onChunk(raw.status, it.toByteArray(Charsets.UTF_8)) }
         if (raw.holdOpen) return Held(fake, sink)
         sink.onDone()
@@ -301,6 +306,11 @@ internal class FakeModel(
             "FakeLlamaBro: a cut transcript ends at the request's max_tokens; set maxTokens to script a cut transcript"
     }
 }
+
+private fun params(json: String?): Map<String, String> =
+    (json?.let { Json.parseToJsonElement(it) } as? JsonObject)
+        ?.mapValues { (_, value) -> (value as JsonPrimitive).content }
+        .orEmpty()
 
 /** A request that was answered whole: nothing is left to cancel or free. */
 @OptIn(InternalLlamaBroApi::class)

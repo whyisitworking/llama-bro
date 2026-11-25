@@ -9,6 +9,7 @@ import io.ktor.server.cio.CIO
 import io.ktor.server.cio.CIOApplicationEngine
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.http.HttpRequestLifecycle
 import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
@@ -44,6 +45,7 @@ public class LlamaBroServer(private val config: ServerConfig, private val models
         )
     private val lifecycle = Mutex()
     private var engine: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
+    private val forwarding = Forwarding(models) { mutableEvents.tryEmit(it) }
 
     /** Where the server is; [ServerState.Serving] carries the bound port. */
     public val state: StateFlow<ServerState> = mutableState.asStateFlow()
@@ -107,6 +109,8 @@ public class LlamaBroServer(private val config: ServerConfig, private val models
                 allowHeader(HttpHeaders.ContentType)
             }
         }
+        // a client that hangs up cancels its call, so the model stops even while it has nothing to write (prefill)
+        install(HttpRequestLifecycle) { cancelCallOnClose = true }
         install(ApiKeyAuth) {
             apiKey = config.apiKey
             onRejected = { client, path, status, reason ->
@@ -136,6 +140,7 @@ public class LlamaBroServer(private val config: ServerConfig, private val models
                     }
                 call.respondText(body.toString(), ContentType.Application.Json)
             }
+            with(forwarding) { modelRoutes(config) }
         }
     }
 }

@@ -28,4 +28,5 @@ internal object ErrorType {
     const val AUTHENTICATION = "authentication_error"
     const val NOT_FOUND = "not_found_error"
     const val SERVER = "server_error"
+    const val UNAVAILABLE = "unavailable_error"
 }

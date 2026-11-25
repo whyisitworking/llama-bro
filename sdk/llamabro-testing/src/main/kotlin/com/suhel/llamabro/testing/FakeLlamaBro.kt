@@ -87,6 +87,7 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) : AutoCloseable 
     internal val speechErrors = ArrayDeque<Pair<Int, String>>()
     internal val speech = mutableListOf<String>()
     internal val rawQueue = ArrayDeque<RawAnswer>()
+    internal val rawLog = mutableListOf<RawRequest>()
     internal val cancelled = AtomicInteger()
 
     /**
@@ -129,6 +130,9 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) : AutoCloseable 
 
     /** How many requests answered by [raw] were cancelled before they ended, as a client hanging up cancels one. */
     public val cancelledRequests: Int get() = cancelled.get()
+
+    /** Every request a [raw] answer went to, in order, as the engine received it. */
+    public val rawRequests: List<RawRequest> get() = synchronized(lock) { rawLog.toList() }
 
     /** The body of every speech request (`Model.speak`), as JSON, in order. */
     public val speechRequests: List<String> get() = synchronized(lock) { speech.toList() }
@@ -357,6 +361,12 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) : AutoCloseable 
             outputTokens = tokens
         }
     }
+
+    /**
+     * A request [raw] answered: [route] is its name in `llamabro.h` (`chat`, `slots_action`), [params] its path and
+     * query parameters (`id_slot`, `action`), [body] what was sent.
+     */
+    public data class RawRequest(val route: String, val params: Map<String, String>, val body: String)
 
     internal class RawAnswer(val status: Int, val chunks: List<String>, val holdOpen: Boolean)
 

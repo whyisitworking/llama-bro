@@ -59,4 +59,17 @@ class FakeRawTest {
             model.exchange(Endpoint.Props, ByteArray(0)).take(2).toList()
             assertEquals(2, fake.cancelledRequests)
         }
+
+    @Test
+    fun rawRequestsRecordsRouteParamsAndBody() =
+        runBlocking {
+            val fake = FakeLlamaBro { raw(200, "{}") }
+            val model = fake.llamaBro.loadModel(ModelSource.file("/m.gguf"))
+            val params = mapOf("id_slot" to "0", "action" to "save")
+            model.exchange(Endpoint.SlotsAction, "{\"filename\":\"a\"}".toByteArray(), params).toList()
+            assertEquals(
+                listOf(FakeLlamaBro.RawRequest("slots_action", params, "{\"filename\":\"a\"}")),
+                fake.rawRequests,
+            )
+        }
 }
