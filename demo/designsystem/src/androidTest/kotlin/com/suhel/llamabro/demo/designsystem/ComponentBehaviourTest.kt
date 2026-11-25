@@ -4,9 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
@@ -19,6 +21,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -501,7 +504,10 @@ class ComponentBehaviourTest {
 
     @Test
     fun aScreenPutsItsPartsOnTheGutterWithTheSectionGapBetween() {
+        // the page runs under the status bar and its bar floats below it (D148): the content starts that far lower
+        var status = 0.dp
         rule.setContent {
+            status = with(LocalDensity.current) { WindowInsets.statusBars.getTop(this).toDp() }
             DemoTheme(ThemeMode.Light) {
                 Screen(
                     topBar = { Box(Modifier.height(64.dp)) },
@@ -517,7 +523,7 @@ class ComponentBehaviourTest {
         val second = rule.onNodeWithTag("second").getBoundsInRoot()
         assertEquals("the left gutter", 16.dp, first.left)
         assertEquals("the right gutter", 344.dp, first.right)
-        assertEquals("below the 64 dp bar and the item gap", 80.dp, first.top)
+        assertNear("below the status bar, the 64 dp bar and the item gap", 80.dp, first.top - status)
         assertEquals("the section gap between parts", Gap.Section.size, second.top - first.bottom)
     }
 

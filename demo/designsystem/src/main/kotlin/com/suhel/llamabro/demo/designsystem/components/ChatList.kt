@@ -157,12 +157,7 @@ fun ChatHistoryList(
     LazyColumn(
         modifier.fillMaxWidth(),
         contentPadding =
-            PaddingValues(
-                start = DemoSpacing.compact,
-                end = DemoSpacing.compact,
-                top = bars.calculateTopPadding(),
-                bottom = bars.calculateBottomPadding(),
-            ),
+            bars.vertical(horizontal = DemoSpacing.compact),
     ) {
         for ((index, group) in groups.withIndex()) {
             item(key = "label-${group.label}", contentType = "label") {

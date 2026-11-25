@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,12 +41,13 @@ import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.theme.BarGlass
 import com.suhel.llamabro.demo.designsystem.theme.FadeMask
@@ -89,52 +91,80 @@ fun FloatingFrame(
     val fade = LocalGlass.current.bar.fade
     // the page, drawn once into a layer that the bars and the overlay draw again, blurred or bent, under themselves
     val backdrop = rememberBackdrop(pageColor)
-    SubcomposeLayout(modifier) { constraints ->
+    // the bars' heights reach the content and the overlay as padding filled in while the frame lays out, read where
+    // they are measured: everything is composed as usual, not during layout (F184), and lays out with the bars
+    // measured this frame
+    val padding = remember { FramePadding() }
+    val clear = remember { FramePadding() }
+    Layout(
+        contents =
+            listOf(
+                { FloatingLayer(Edge.Top, ground, backdrop, content = top) },
+                { FloatingLayer(Edge.Bottom, ground, backdrop, content = bottom) },
+                { Box(Modifier.fillMaxSize().backdropSource(backdrop)) { content(padding) } },
+                {
+                    // over the content and outside it, so its glass never draws itself; clear of the bars whole, fade
+                    // band and all, and drawn after them, so nothing floating is hidden under a bar's blur
+                    CompositionLocalProvider(LocalBackdrop provides backdrop) {
+                        Box(Modifier.fillMaxSize()) { overlay(clear) }
+                    }
+                },
+            ),
+        modifier = modifier,
+    ) { slots, constraints ->
         val bars = constraints.copy(minWidth = constraints.maxWidth, minHeight = 0)
-        val topBar =
-            subcompose(FrameSlot.Top) { FloatingLayer(Edge.Top, ground, backdrop, content = top) }
-                .map { it.measure(bars) }
-        val bottomBar =
-            subcompose(FrameSlot.Bottom) { FloatingLayer(Edge.Bottom, ground, backdrop, content = bottom) }
-                .map { it.measure(bars) }
+        val topBar = slots[FrameSlot.TOP].map { it.measure(bars) }
+        val bottomBar = slots[FrameSlot.BOTTOM].map { it.measure(bars) }
         // each layer's fade band lies over the content: the content clears the bar, not the band
         val band = fade.roundToPx()
         val topHeight = topBar.maxOfOrNull { it.height } ?: 0
-        val bottomHeight = bottomBar.maxOfOrNull { it.height } ?: 0
-        val padding =
-            PaddingValues(
-                top = (topHeight - band).coerceAtLeast(0).toDp(),
-                bottom = (maxOf(bottomHeight, below.roundToPx()) - band).coerceAtLeast(0).toDp(),
-            )
-        val body =
-            subcompose(FrameSlot.Content) {
-                Box(Modifier.fillMaxSize().backdropSource(backdrop)) { content(padding) }
-            }.map { it.measure(constraints) }
-        // over the content and outside it, so its glass never draws itself; clear of the bars whole, fade band and
-        // all, and drawn after them, so nothing floating is hidden under a bar's blur
-        val clear =
-            PaddingValues(
-                top = topHeight.toDp(),
-                bottom = maxOf(bottomHeight, below.roundToPx()).toDp(),
-            )
-        val over =
-            subcompose(FrameSlot.Overlay) {
-                CompositionLocalProvider(LocalBackdrop provides backdrop) {
-                    Box(Modifier.fillMaxSize()) { overlay(clear) }
-                }
-            }.map { it.measure(constraints) }
+        val bottomHeight = maxOf(bottomBar.maxOfOrNull { it.height } ?: 0, below.roundToPx())
+        padding.set((topHeight - band).coerceAtLeast(0).toDp(), (bottomHeight - band).coerceAtLeast(0).toDp())
+        clear.set(topHeight.toDp(), bottomHeight.toDp())
+        val body = slots[FrameSlot.BODY].map { it.measure(constraints) }
+        val over = slots[FrameSlot.OVER].map { it.measure(constraints) }
         val width = constraints.maxWidth
         val height = constraints.maxHeight
         layout(width, height) {
             body.forEach { it.place(0, 0) }
             topBar.forEach { it.place(0, 0) }
-            bottomBar.forEach { it.place(0, height - bottomHeight) }
+            bottomBar.forEach { it.place(0, height - (bottomBar.maxOfOrNull { b -> b.height } ?: 0)) }
             over.forEach { it.place(0, 0) }
         }
     }
 }
 
-private enum class FrameSlot { Top, Bottom, Content, Overlay }
+/** The slots of a [FloatingFrame]'s layout, in the order its contents are listed. */
+private object FrameSlot {
+    const val TOP = 0
+    const val BOTTOM = 1
+    const val BODY = 2
+    const val OVER = 3
+}
+
+/**
+ * A [FloatingFrame]'s padding: its top and bottom are set as the frame lays out and are snapshot state, so what reads
+ * them while it measures (a list's content padding, a padding modifier) is measured again when they change, with no
+ * recomposition and no frame late.
+ */
+@Stable
+private class FramePadding : PaddingValues {
+    private var top by mutableStateOf(0.dp)
+    private var bottom by mutableStateOf(0.dp)
+
+    fun set(top: Dp, bottom: Dp) {
+        if (this.top != top) this.top = top
+        if (this.bottom != bottom) this.bottom = bottom
+    }
+
+    override fun calculateTopPadding(): Dp = top
+
+    override fun calculateBottomPadding(): Dp = bottom
+
+    override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp = 0.dp
+
+    override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp = 0.dp
+}
 
 internal enum class Edge { Top, Bottom }
 
@@ -343,6 +373,32 @@ half4 main(float2 p) {
 }
 """
 
-/** The padding [FloatingFrame] gave, its top and bottom only, with [extra] more at each end. */
-fun PaddingValues.vertical(extra: Dp = 0.dp): PaddingValues =
-    PaddingValues(top = calculateTopPadding() + extra, bottom = calculateBottomPadding() + extra)
+/**
+ * The padding [FloatingFrame] gave, its top and bottom only, with [extra] more at each end; read where it is used (a
+ * padding modifier, a list's content padding), so it follows the frame's as it lays out.
+ */
+fun PaddingValues.vertical(extra: Dp = 0.dp, horizontal: Dp = 0.dp): PaddingValues =
+    FramedPadding(this, extra, horizontal, top = true, bottom = true)
+
+/** The padding [FloatingFrame] gave, its bottom only: what floats at the bottom of its overlay. */
+fun PaddingValues.bottomOnly(): PaddingValues = FramedPadding(this, 0.dp, 0.dp, top = false, bottom = true)
+
+/** The padding [FloatingFrame] gave, its top only. */
+fun PaddingValues.topOnly(): PaddingValues = FramedPadding(this, 0.dp, 0.dp, top = true, bottom = false)
+
+/** [base]'s top and bottom (where kept) with [extra] more and [horizontal] at each side, read from [base] each time. */
+private class FramedPadding(
+    private val base: PaddingValues,
+    private val extra: Dp,
+    private val horizontal: Dp,
+    private val top: Boolean,
+    private val bottom: Boolean,
+) : PaddingValues {
+    override fun calculateTopPadding(): Dp = if (top) base.calculateTopPadding() + extra else 0.dp
+
+    override fun calculateBottomPadding(): Dp = if (bottom) base.calculateBottomPadding() + extra else 0.dp
+
+    override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp = horizontal
+
+    override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp = horizontal
+}

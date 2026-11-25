@@ -55,6 +55,7 @@ import com.suhel.llamabro.demo.designsystem.components.TopBar
 import com.suhel.llamabro.demo.designsystem.components.TopBarTitle
 import com.suhel.llamabro.demo.designsystem.components.TypingDots
 import com.suhel.llamabro.demo.designsystem.components.WakeHairline
+import com.suhel.llamabro.demo.designsystem.components.bottomOnly
 import com.suhel.llamabro.demo.designsystem.components.messageMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
@@ -100,7 +101,7 @@ fun ChatContent(
                 modifier =
                     Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = bars.calculateBottomPadding())
+                        .padding(bars.bottomOnly())
                         .testTag("jump_to_latest"),
             )
         },

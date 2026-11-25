@@ -235,12 +235,7 @@ fun MessageColumn(
                 .graphicsLayer { alpha = shown.value },
             state,
             contentPadding =
-                PaddingValues(
-                    start = DemoSpacing.gutter,
-                    end = DemoSpacing.gutter,
-                    top = bars.calculateTopPadding() + DemoSpacing.item,
-                    bottom = bars.calculateBottomPadding() + DemoSpacing.item,
-                ),
+                bars.vertical(DemoSpacing.item, horizontal = DemoSpacing.gutter),
             verticalArrangement = Arrangement.spacedBy(Gap.Section.size),
             content = content,
         )
@@ -307,7 +302,7 @@ fun ListHomeScreen(
                 Box(
                     Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(bottom = bars.calculateBottomPadding())
+                        .padding(bars.bottomOnly())
                         .padding(DemoSpacing.gutter),
                 ) { fab() }
             }

@@ -27,6 +27,7 @@ import com.suhel.llamabro.demo.designsystem.components.NavRow
 import com.suhel.llamabro.demo.designsystem.components.Notice
 import com.suhel.llamabro.demo.designsystem.components.SearchField
 import com.suhel.llamabro.demo.designsystem.components.drawerWidth
+import com.suhel.llamabro.demo.designsystem.components.topOnly
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import java.time.ZoneId
@@ -133,7 +134,7 @@ fun DrawerContent(
             // 24 dp text line
             Notice(
                 if (searchText.isBlank()) "No chats yet. Start one." else "No chats match.",
-                Modifier.padding(top = bars.calculateTopPadding()).padding(start = DemoSpacing.block),
+                Modifier.padding(bars.topOnly()).padding(start = DemoSpacing.block),
             )
         } else {
             ChatHistoryList(

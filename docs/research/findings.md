@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the [decision records](../decisions.md) (`D<n>`), the [research history](history.md), which summarises each phase, and the experiments under [`research/`](../../research/).
-> **Status:** living document, updated 2026-11-25 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183)
+> **Status:** living document, updated 2026-11-25 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183–F184)
 
 Labels such as P1, PA, PF, PD and PH name the project's phases, and W1 to W9 the workstreams of a phase; the
 [research history](history.md#summary-of-the-phases) summarises each. "Task <n>", "T<n>" and "Feeds:" name the steps
@@ -2283,10 +2283,28 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   add passes; measure it the same way before keeping it.
 - **Feeds:** D148, D151.
 
+<a id="f184"></a>
+### F184. Content composed during a `SubcomposeLayout`'s measure starts its effects mid-layout, and a list scrolled from one throws
+
+- **Finding:** A `SubcomposeLayout` composes its slots inside its measure pass, so the effects of everything in them
+  (a `LaunchedEffect`, a `snapshotFlow` collector) start during layout. One that scrolls a lazy list right away
+  (`scrollToItem` → `snapToItemIndexInternal` → `forceRemeasure`) asks for a layout while one is under way, and
+  Compose throws `IllegalArgumentException: performMeasureAndLayout called during measure layout`. D148's first
+  `FloatingFrame` subcomposed the chat (to hand it the bars' measured heights), and the chat's follow-the-end effects
+  scrolled from inside it.
+- **Evidence:** the demo's journeys on the phone (CPH2649, 2026-11-25): `firstRunToFirstAnswer`,
+  `removeAModelInUse` and `memoryRefusalJourney` failed with that exception from `LazyListState.snapToItemIndexInternal`;
+  the 172 instrumented tests and the other journeys had passed with the chat laid out in a plain `Column` (2026-11-24).
+- **Means:** a frame that hands its children sizes it measures composes them normally, in a multi-content `Layout`,
+  and passes the sizes as snapshot state set while it lays out and read where the children measure (a padding
+  modifier, a list's content padding): no effect starts mid-layout, and nothing is a frame late.
+- **Feeds:** D148, `FloatingFrame`.
+
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F184 | Content composed during a `SubcomposeLayout`'s measure starts its effects mid-layout; a list scrolled from one throws | D148 |
 | F183 | The demo's glass costs a flagship 8 ms of GPU per frame scrolling a chat; a third shader pass lowers the median but doubles the jank | D148, D151 |
 | F182 | A `derivedStateOf` read on one thread while another writes its inputs can stay stale for good; a plain getter cannot | ChatViewModel |
 | F181 | Live transcription needs a streaming audio encoder (refused otherwise); a transcription prompt replaces the instruction; streamed speech is one WAV header then PCM (24 kHz on the tiny LFM3) | D138, D139, D140 |
