@@ -125,15 +125,19 @@ fun ModelCardStack(
                     onRelated = stack::push,
                 )
             }
+        val dismiss =
+            remember(stack, onDismiss) {
+                {
+                    stack.close()
+                    onDismiss()
+                }
+            }
         ModelSheetRoute(
             screens,
             top,
             place,
             onStarted = onStarted,
-            onDismiss = {
-                stack.close()
-                onDismiss()
-            },
+            onDismiss = dismiss,
             onChatWith = onChatWith,
             onExactFit = { onExactFit(top, it) },
             startTier = startTier.takeIf { depth == 0 },

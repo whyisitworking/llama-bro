@@ -104,7 +104,15 @@ internal fun ModelSheetRoute(
     val sheet = rememberDemoSheetState()
     val scope = rememberCoroutineScope()
     val closer = remember(sheet, scope) { CardCloser(sheet, scope) }
-    val close = { then: () -> Unit -> closer.close(view, then) }
+    val close = { then: () -> Unit -> closer.close(view, then = then) }
+    // a close that moves to another card: the card stops taking links until it is shown again (only the latest tap
+    // acts, and nothing stays queued for when Back returns here)
+    val leave = { then: () -> Unit ->
+        viewModel.leave()
+        closer.close(view, onCaught = viewModel::stay, then = then)
+    }
+    // shown (again, after Back from a card over it): its links work
+    LaunchedEffect(viewModel) { viewModel.stay() }
     val get =
         rememberAskNotificationsThen(viewModel.asksForNotifications) {
             viewModel.get()?.let(onStarted)
@@ -118,7 +126,7 @@ internal fun ModelSheetRoute(
                 is LinkTarget.Card -> {
                     val entry = ModelEntry.of(target.model)
                     // a page linking its own model has nothing to open
-                    if (!entry.repo.equals(row.repo, ignoreCase = true)) close { related(entry) }
+                    if (!entry.repo.equals(row.repo, ignoreCase = true)) leave { related(entry) }
                 }
 
                 is LinkTarget.Browser -> {
@@ -149,7 +157,7 @@ internal fun ModelSheetRoute(
                         }
                     }
                 },
-                onBack = place.onBack?.let { back -> { close(back) } },
+                onBack = place.onBack?.let { back -> { leave(back) } },
                 onOpenInBrowser = { openOutside(uri, "$HUB_ORIGIN/${row.repo}") },
                 onLink = viewModel::openLink,
             )
@@ -190,14 +198,24 @@ internal class CardCloser(private val sheet: DemoSheetState, private val scope: 
     /** The card to draw: the one it had while it closes, else [live]. */
     fun shown(live: CardView?): CardView? = frozen ?: live
 
-    fun close(now: CardView?, then: () -> Unit) {
+    // a close under way: a second (a tap during the slide) is ignored, so its action never runs after the first's
+    private var closing = false
+
+    /** Slides the sheet down, then [then]; [onCaught] if a drag catches it and it stays up. */
+    fun close(now: CardView?, onCaught: () -> Unit = {}, then: () -> Unit) {
+        if (closing) return
+        closing = true
         frozen = now
         scope.launch {
             try {
                 sheet.hideThenDismiss(then)
             } finally {
+                closing = false
                 // the hide was caught (or cancelled) and the sheet is still up: it is live again
-                if (sheet.isVisible) frozen = null
+                if (sheet.isVisible) {
+                    frozen = null
+                    onCaught()
+                }
             }
         }
     }

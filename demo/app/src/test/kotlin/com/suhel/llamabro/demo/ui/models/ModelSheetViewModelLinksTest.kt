@@ -113,4 +113,22 @@ class ModelSheetViewModelLinksTest {
                 }
             assertEquals(listOf(LinkTarget.Card(gemma)), seen)
         }
+
+    @Test fun aCardLeftForAnotherOpensNothingLater() =
+        runTest {
+            val slow = CompletableDeferred<LinkTarget>()
+            val vm = viewModel { url -> if (url == first) slow.await() else LinkTarget.Card(qwen) }
+            // an answer already in, not yet acted on, and a lookup still running when the card slides away
+            vm.openLink(second)
+            vm.openLink(first)
+            vm.leave()
+            assertNull(vm.opening.value)
+            slow.complete(LinkTarget.Card(gemma))
+            // a tap while it slides is ignored
+            vm.openLink(second)
+            // Back returns to this card: nothing it was asked before opens now
+            assertEquals(emptyList<LinkTarget>(), opened(vm) {})
+            vm.stay()
+            assertEquals(listOf(LinkTarget.Card(qwen)), opened(vm) { vm.openLink(second) })
+        }
 }

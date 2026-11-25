@@ -223,6 +223,9 @@ class ModelSheetViewModel(
     private var lookup: Job? = null
     private var taps = 0
 
+    // the card is sliding away (a link's card or Back): it takes no more taps and opens nothing more
+    private var leaving = false
+
     /**
      * This repo here. The download followed is the row's own file when it is queued (two quants of one repo may be),
      * else the repo's first.
@@ -412,18 +415,38 @@ class ModelSheetViewModel(
      * answer never lands over the card the person asked for since.
      */
     fun openLink(url: String) {
+        if (leaving) return
         lookup?.cancel()
         val tap = ++taps
         openingInput.value = HubLinks.repoOf(url)
         lookup =
             viewModelScope.launch {
                 try {
-                    openedTargets.send(related(url))
+                    val target = related(url)
+                    if (!leaving) openedTargets.send(target)
                 } finally {
                     // a cancelled lookup leaves the notice to the tap that replaced it
                     if (tap == taps) openingInput.value = null
                 }
             }
+    }
+
+    /**
+     * The card started to slide away for a link's card or Back: the lookup still running is cancelled and an answer not
+     * yet acted on is dropped, so nothing opens later, when the person comes back to this card; taps are ignored until
+     * [stay].
+     */
+    fun leave() {
+        leaving = true
+        lookup?.cancel()
+        lookup = null
+        openingInput.value = null
+        while (openedTargets.tryReceive().isSuccess) Unit
+    }
+
+    /** The slide away was caught and the card is shown again, or it is shown again by Back: its links work again. */
+    fun stay() {
+        leaving = false
     }
 
     private fun cancelNow(key: HfModel) {

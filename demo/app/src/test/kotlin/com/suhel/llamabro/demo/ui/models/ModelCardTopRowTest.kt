@@ -1,6 +1,9 @@
 package com.suhel.llamabro.demo.ui.models
 
 import androidx.activity.ComponentDialog
+import androidx.compose.material3.Text
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -10,6 +13,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.suhel.llamabro.demo.designsystem.components.DemoSheet
+import com.suhel.llamabro.demo.designsystem.components.rememberDemoSheetState
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.ui.chat.Markdown
@@ -96,5 +101,26 @@ class ModelCardTopRowTest {
         assertEquals("https://huggingface.co/Qwen/Qwen3.5-4B", link.url)
         checkNotNull(link.linkInteractionListener).onClick(link)
         assertEquals(listOf("https://huggingface.co/Qwen/Qwen3.5-4B"), links)
+    }
+
+    @Test fun aSecondCloseDuringTheSlideDoesNothing() {
+        lateinit var closer: CardCloser
+        val ran = mutableListOf<String>()
+        rule.setContent {
+            DemoTheme(ThemeMode.Light) {
+                val sheet = rememberDemoSheetState()
+                val scope = rememberCoroutineScope()
+                closer = remember { CardCloser(sheet, scope) }
+                DemoSheet(onDismissRequest = {}, state = sheet) { Text(base.header.name) }
+            }
+        }
+        rule.waitForIdle()
+        // a link's card opening, then a second link tapped while the card slides away
+        rule.runOnIdle {
+            closer.close(base) { ran += "first" }
+            closer.close(base) { ran += "second" }
+        }
+        rule.waitForIdle()
+        assertEquals(listOf("first"), ran)
     }
 }

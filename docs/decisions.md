@@ -2434,8 +2434,6 @@ model is on the phone and only when nothing is known yet, a load's always. A tur
 it loaded, not from the chip, so a model whose load says it can't think gets no reasoning settings.
 Next free IDs: D156, F189.
 
-
-
 <a id="d156"></a>
 ### D156. A link on a model's page to another GGUF model opens its card in the same sheet; every card opens on Hugging Face from its top row
 
