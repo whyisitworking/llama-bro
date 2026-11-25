@@ -2,8 +2,6 @@ package com.suhel.llamabro.demo.benchmark
 
 import androidx.benchmark.macro.junit4.BaselineProfileRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.uiautomator.By
-import androidx.test.uiautomator.Until
 import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
@@ -26,15 +24,12 @@ class BaselineProfileGenerator {
             openBigChat()
             flingBothWays("message_list", rounds = 1)
             askAndWaitForTheReply()
-            device.pressBack()
-            device.wait(Until.hasObject(By.res("chat_list")), WAIT)
+            backToTheChatList()
             openAModelSheet()
         }
 
     companion object {
         @JvmStatic @BeforeClass
         fun seed() = seedTheApp()
-
-        private const val WAIT = 10_000L
     }
 }

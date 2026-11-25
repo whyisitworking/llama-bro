@@ -87,12 +87,23 @@ fun MacrobenchmarkScope.flingBothWays(resource: String, rounds: Int = 3) {
     }
 }
 
-/** Models tab → Get more models → the first model's sheet. */
+/**
+ * Back from an open chat to the Chat list: a sent message can leave the keyboard up, and the first Back closes only
+ * that, so Back is pressed until the list shows.
+ */
+fun MacrobenchmarkScope.backToTheChatList() {
+    var presses = 0
+    while (!device.wait(Until.hasObject(By.res("chat_list")), BACK_WAIT_MILLIS) && presses++ < MAX_BACKS) {
+        device.pressBack()
+    }
+    check(device.hasObject(By.res("chat_list"))) { "Back never reached the Chat list" }
+}
+
+/** Models tab → the first model's sheet: the Models page lists the phone's and the Hub's models on one page. */
 fun MacrobenchmarkScope.openAModelSheet() {
+    check(device.wait(Until.hasObject(By.text("Models")), WAIT_MILLIS)) { "the Models tab never showed" }
     device.findObject(By.text("Models")).click()
-    device.wait(Until.hasObject(By.text("Get more models")), WAIT_MILLIS)
-    device.findObject(By.text("Get more models")).click()
-    device.wait(Until.hasObject(By.res("model_row")), WAIT_MILLIS)
+    check(device.wait(Until.hasObject(By.res("model_row")), WAIT_MILLIS)) { "the Models page showed no model" }
     device.findObject(By.res("model_row")).click()
     device.wait(Until.hasObject(By.text("Advanced")), WAIT_MILLIS)
     device.waitForIdle()
@@ -100,4 +111,6 @@ fun MacrobenchmarkScope.openAModelSheet() {
 
 private const val STREAM_MILLIS = 20_000L
 private const val MAX_FLINGS_TO_TOP = 8
+private const val MAX_BACKS = 3
+private const val BACK_WAIT_MILLIS = 2_000L
 private const val MARGIN_DIVISOR = 5
