@@ -19,7 +19,7 @@ internal sealed interface GuardedBody {
     class Refused(val status: HttpStatusCode, val message: String, val reason: String) : GuardedBody
 }
 
-internal const val MEDIA_REFUSED = "only data: URLs are accepted for media"
+internal const val MEDIA_REFUSED = "media must be a data: URL or base64; URLs are not fetched or read"
 
 private const val NOT_JSON = "the request body is not valid JSON"
 
@@ -36,7 +36,7 @@ internal suspend fun ApplicationCall.guardedBody(hasBody: Boolean, maxBytes: Lon
     if (bytes.isEmpty()) return GuardedBody.Passed(bytes, null)
     val json = parsed(bytes) ?: return GuardedBody.Refused(HttpStatusCode.BadRequest, NOT_JSON, "invalid JSON")
     val media = firstNonDataMedia(json) ?: return GuardedBody.Passed(bytes, json)
-    return GuardedBody.Refused(HttpStatusCode.BadRequest, MEDIA_REFUSED, "media URL '${media.take(LOGGED_URL_CHARS)}'")
+    return GuardedBody.Refused(HttpStatusCode.BadRequest, MEDIA_REFUSED, "media '${media.take(LOGGED_URL_CHARS)}'")
 }
 
 /**

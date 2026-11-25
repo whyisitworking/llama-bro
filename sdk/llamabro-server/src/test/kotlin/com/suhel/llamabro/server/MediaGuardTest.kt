@@ -46,21 +46,37 @@ class MediaGuardTest {
     fun httpsUrlRefused() = assertEquals("https://example.com/a.png", offending(chatImage("https://example.com/a.png")))
 
     @Test
-    fun anythingElseRefused() {
+    fun anyOtherSchemeRefused() {
         listOf(
             "ftp://host/a.png",
-            "a.png",
-            "../a.png",
-            "iVBORw0KGgo=",
+            "FILE:a.png",
             "lb-attachment:0",
-            "",
+            "  http://192.168.1.1/a.png",
             " data:image/png;base64,",
+            "c:/a.png",
+            "iVBOR:w0KGgo=",
+            // upstream downloads whatever starts with "http", so base64 that does could never be read as an image
+            "http//192.168.1.1/a.png",
         ).forEach { assertEquals(it, offending(chatImage(it))) }
     }
 
     @Test
+    fun rawBase64Passes() {
+        // upstream decodes a string with no scheme as base64; with no colon it can't name a scheme
+        val wav = "UklGRiQAAABXQVZFZm10IBAAAAABAAEA"
+        assertNull(offending(chatImage("iVBORw0KGgo=")))
+        assertNull(offending(chatImage("/9j/4AAQSkZJRg+/=")))
+        assertNull(offending(userPart("""{"type":"input_audio","input_audio":{"data":"$wav","format":"wav"}}""")))
+        assertNull(offending("""{"input":[{"role":"user","content":[{"type":"input_image","image_url":"$wav"}]}]}"""))
+        assertNull(offending(chatImage("")))
+    }
+
+    @Test
     fun everyApiShapeIsChecked() {
-        val bad = "file:///chat/1/a.png"
+        listOf("file:///chat/1/a.png", "http://192.168.1.1/a.png").forEach { everyShapeRefuses(it) }
+    }
+
+    private fun everyShapeRefuses(bad: String) {
         val shapes =
             mapOf(
                 "chat image_url object" to chatImage(bad),
@@ -176,7 +192,10 @@ class MediaGuardTest {
                     .jsonObject
             assertEquals(400, error.getValue("code").jsonPrimitive.int)
             assertEquals("invalid_request_error", error.getValue("type").jsonPrimitive.content)
-            assertEquals("only data: URLs are accepted for media", error.getValue("message").jsonPrimitive.content)
+            assertEquals(
+                "media must be a data: URL or base64; URLs are not fetched or read",
+                error.getValue("message").jsonPrimitive.content,
+            )
             val event = withTimeout(1_000) { rejected.await() }
             collecting.cancel()
             assertEquals("/v1/chat/completions", event.path)
