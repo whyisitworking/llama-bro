@@ -156,3 +156,46 @@ class AdvertiseTest {
             assertTrue(registry.live.isEmpty())
         }
 }
+
+class RegistrationLifecycleTest {
+    @Test
+    fun stopBeforeRegisteredUnregistersOnceRegistered() {
+        var withdrawn = 0
+        val lifecycle = RegistrationLifecycle { withdrawn++ }
+        lifecycle.stop()
+        assertEquals(0, withdrawn)
+        lifecycle.registered()
+        assertEquals(1, withdrawn)
+    }
+
+    @Test
+    fun stopAfterRegisteredUnregisters() {
+        var withdrawn = 0
+        val lifecycle = RegistrationLifecycle { withdrawn++ }
+        lifecycle.registered()
+        assertEquals(0, withdrawn)
+        lifecycle.stop()
+        assertEquals(1, withdrawn)
+    }
+
+    @Test
+    fun failedRegistrationNeedsNoUnregister() {
+        var withdrawn = 0
+        val lifecycle = RegistrationLifecycle { withdrawn++ }
+        lifecycle.stop()
+        lifecycle.failed()
+        lifecycle.registered()
+        lifecycle.stop()
+        assertEquals(0, withdrawn)
+    }
+
+    @Test
+    fun doubleUnregisterIsSafe() {
+        var withdrawn = 0
+        val lifecycle = RegistrationLifecycle { withdrawn++ }
+        lifecycle.registered()
+        lifecycle.stop()
+        lifecycle.stop()
+        assertEquals(1, withdrawn)
+    }
+}

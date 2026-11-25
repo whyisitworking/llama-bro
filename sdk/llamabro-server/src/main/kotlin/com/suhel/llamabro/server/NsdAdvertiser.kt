@@ -12,10 +12,13 @@ import android.net.nsd.NsdServiceInfo
  * This is Android API, so it stays at the edge (docs/design/server.md).
  */
 public class Advertise internal constructor(public val name: String, internal val registry: () -> ServiceRegistry) {
-    public constructor(name: String, context: Context) : this(name, { NsdAdvertiser(context) })
+    // the application context, never an Activity: the config outlives screens
+    public constructor(name: String, context: Context) : this(name, advertiserOf(context.applicationContext))
 
     override fun toString(): String = "Advertise($name)"
 }
+
+private fun advertiserOf(applicationContext: Context): () -> ServiceRegistry = { NsdAdvertiser(applicationContext) }
 
 /** What the server announces itself through; [NsdAdvertiser] on a device, a fake in the tests. */
 internal interface ServiceRegistry {
@@ -38,21 +41,64 @@ internal class NsdAdvertiser(context: Context) : ServiceRegistry {
                 this.port = port
                 txt.forEach { (key, value) -> setAttribute(key, value) }
             }
-        // the callbacks report the name the network gave, or a failure; neither changes what the server does
-        val listener =
+        lateinit var listener: NsdManager.RegistrationListener
+        val lifecycle = RegistrationLifecycle { runCatching { manager.unregisterService(listener) } }
+        listener =
             object : NsdManager.RegistrationListener {
-                override fun onServiceRegistered(info: NsdServiceInfo) = Unit
+                override fun onServiceRegistered(info: NsdServiceInfo) = lifecycle.registered()
 
-                override fun onRegistrationFailed(info: NsdServiceInfo, errorCode: Int) = Unit
+                override fun onRegistrationFailed(info: NsdServiceInfo, errorCode: Int) = lifecycle.failed()
 
                 override fun onServiceUnregistered(info: NsdServiceInfo) = Unit
 
                 override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int) = Unit
             }
         manager.registerService(info, NsdManager.PROTOCOL_DNS_SD, listener)
-        return Registration {
-            // unregistering a listener whose registration has not completed throws; there is nothing to undo then
-            runCatching { manager.unregisterService(listener) }
+        return Registration(lifecycle::stop)
+    }
+}
+
+/**
+ * One registration's life, driven by NsdManager's callbacks: NSD refuses to unregister a service it hasn't confirmed,
+ * so a stop that comes first is remembered and carried out when the confirmation arrives.
+ */
+internal class RegistrationLifecycle(private val withdraw: () -> Unit) {
+    private enum class State { Pending, Registered, Done }
+
+    private var state = State.Pending
+    private var stopRequested = false
+
+    @Synchronized
+    fun registered() {
+        if (state != State.Pending) return
+        if (stopRequested) {
+            state = State.Done
+            withdraw()
+        } else {
+            state = State.Registered
+        }
+    }
+
+    @Synchronized
+    fun failed() {
+        state = State.Done
+    }
+
+    @Synchronized
+    fun stop() {
+        when (state) {
+            State.Pending -> {
+                stopRequested = true
+            }
+
+            State.Registered -> {
+                state = State.Done
+                withdraw()
+            }
+
+            State.Done -> {
+                Unit
+            }
         }
     }
 }
