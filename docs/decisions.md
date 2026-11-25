@@ -2364,7 +2364,10 @@ whole `GlassTheme` as JSON with lengths in dp; the screens read and write it, `S
 a value missing from the saved text, or text that can't be read, is the default's. Reset forgets the saved glass, so
 the app's default applies again, whatever it becomes. The tuner's screen floats a sample at its bottom
 (`GlassPreview`: a chip beside a panel shaped like the message bar) in a bar of its own, over the sliders as they
-scroll, so the chips', the panels' and the bar's glass answer each change in one place. Copy values stays.
+scroll, so the chips', the panels' and the bar's glass answer each change in one place. Copy values stays. A
+fallback's slider (the fill drawn where a chip or panel can't be a lens, before Android 13; the bar's veil without
+blur, before Android 12) shows only on a phone that draws it, where it changes something. The first screen waits for
+the saved glass as it waits for the layout, so a tuned glass never flickers in after a frame of the default.
 Consequences: A person's tuned glass outlives a change to `GlassTheme.Default` until they reset it. `Screen` and
 `SettingsPage` take a `bottomBar`. Next free IDs: D153, F186.
 

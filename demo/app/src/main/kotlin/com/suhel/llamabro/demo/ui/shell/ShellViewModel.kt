@@ -48,11 +48,14 @@ class ShellViewModel(
             .map { it.theme.mode() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), ThemeMode.System)
 
-    /** The app's glass (D152): the saved one, the default until the settings are read. */
-    val glass: StateFlow<GlassTheme> =
+    /**
+     * The app's glass (D152): the saved one, or the default when none is; null until the settings are read, so the
+     * first screen waits for it rather than drawing the default glass for a frame.
+     */
+    val glass: StateFlow<GlassTheme?> =
         settings.settings
-            .map { SavedGlass.decode(it.glass) }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), GlassTheme.Default)
+            .map<_, GlassTheme?> { SavedGlass.decode(it.glass) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
 
     /** Whether first run has been seen; null until the settings are read. The Models page's intro starts from it. */
     val seenFirstRun: StateFlow<Boolean?> =

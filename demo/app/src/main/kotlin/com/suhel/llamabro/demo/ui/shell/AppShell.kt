@@ -125,10 +125,10 @@ fun AppShell(
     val firstRun by shell.startsWithFirstRun.collectAsStateWithLifecycle()
     val seen by shell.seenFirstRun.collectAsStateWithLifecycle()
     SystemBars(theme)
-    // the glass as the person tuned it on Settings › Appearance › Glass (D152)
+    // the glass as the person tuned it on Settings › Appearance › Glass (D152); null until it is read
     val glass by shell.glass.collectAsStateWithLifecycle()
     DemoTheme(theme) {
-        CompositionLocalProvider(LocalGlass provides glass) {
+        CompositionLocalProvider(LocalGlass provides (glass ?: LocalGlass.current)) {
             Box(
                 Modifier
                     .fillMaxSize()
@@ -140,8 +140,10 @@ fun AppShell(
                 // the start destination is decided once, when both the layout and first run are known
                 val start = firstRun
                 val shown = layout
-                // first run's seen flag too: the Models page's intro is drawn from it on the first frame
-                if (shown != null && start != null && seen != null) {
+                // first run's seen flag too: the Models page's intro is drawn from it on the first frame; and the
+                // glass, so a tuned glass never flickers in after a frame of the default
+                val read = seen != null && glass != null
+                if (shown != null && start != null && read) {
                     Shell(screens, shown, start, shell, settings, chatScreen)
                     SideEffect(onReady)
                 }

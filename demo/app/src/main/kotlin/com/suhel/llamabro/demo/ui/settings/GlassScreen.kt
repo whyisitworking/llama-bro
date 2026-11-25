@@ -8,7 +8,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.suhel.llamabro.demo.designsystem.components.BarsVeilInstead
 import com.suhel.llamabro.demo.designsystem.components.BottomBar
+import com.suhel.llamabro.demo.designsystem.components.GlassFillsInstead
 import com.suhel.llamabro.demo.designsystem.components.GlassPreview
 import com.suhel.llamabro.demo.designsystem.components.GroupScope
 import com.suhel.llamabro.demo.designsystem.components.GroupedList
@@ -72,7 +74,12 @@ private fun GroupScope.styleSliders(kind: String, style: GlassStyle, onChange: (
     share("$kind-veil", "Tint", style.veil) { onChange(style.copy(veil = it)) }
     share("$kind-rim-light", "Rim light", style.rimLight) { onChange(style.copy(rimLight = it)) }
     dp("$kind-rim", "Rim width", style.rim, MAX_RIM, step = HALF) { onChange(style.copy(rim = it)) }
-    share("$kind-bare", "Tint without blur", style.bareVeil) { onChange(style.copy(bareVeil = it)) }
+    // the fill drawn where a lens can't be: only a phone that draws it gets its slider
+    if (GlassFillsInstead) {
+        share("$kind-bare", "Fill without a lens", style.bareVeil) {
+            onChange(style.copy(bareVeil = it))
+        }
+    }
 }
 
 /** Sliders for the bars' [bar] glass. */
@@ -80,7 +87,7 @@ private fun GroupScope.barSliders(bar: BarGlass, onChange: (BarGlass) -> Unit) {
     dp("bar-blur", "Blur", bar.blur, MAX_BAR_BLUR) { onChange(bar.copy(blur = it)) }
     dp("bar-dispersion", "Colour split", bar.dispersion, MAX_BAR_SPLIT) { onChange(bar.copy(dispersion = it)) }
     share("bar-veil", "Tint", bar.veil) { onChange(bar.copy(veil = it)) }
-    share("bar-bare", "Tint without blur", bar.bareVeil) { onChange(bar.copy(bareVeil = it)) }
+    if (BarsVeilInstead) share("bar-bare", "Tint without blur", bar.bareVeil) { onChange(bar.copy(bareVeil = it)) }
     dp("bar-fade", "Reach past the bar", bar.fade, MAX_FADE) { onChange(bar.copy(fade = it)) }
     share("bar-hold", "Full blur over", bar.hold) { onChange(bar.copy(hold = it)) }
 }

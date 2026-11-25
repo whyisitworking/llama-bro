@@ -41,6 +41,7 @@ import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.node.requireGraphicsContext
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import com.suhel.llamabro.demo.designsystem.theme.BarGlass
 import com.suhel.llamabro.demo.designsystem.theme.DemoColors
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.GlassStyle
@@ -56,6 +57,15 @@ import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
 class Backdrop internal constructor(internal val page: GraphicsLayer?, val pageColor: Color) {
     internal var origin by mutableStateOf(Offset.Zero)
 }
+
+/**
+ * Whether this phone draws a chip's or a panel's glass as a fill ([GlassStyle.bareVeil]) instead of a lens: before
+ * Android 13, which has no runtime shaders.
+ */
+val GlassFillsInstead: Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+
+/** Whether this phone veils a bar's page without blurring it ([BarGlass.bareVeil]): before Android 12. */
+val BarsVeilInstead: Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
 
 /** A [Backdrop] for a page drawn on [pageColor]. */
 @Composable
