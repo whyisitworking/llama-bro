@@ -24,7 +24,8 @@
 #                  (tests/installed-guard-test.sh),
 #                  bench.sh end to end (tests/bench-sh-test.sh) and bench.py's merge, charts and README check
 #                  (tests/bench-test.py), and that every decision or finding link in the sources has its anchor
-#                  (tests/anchor-links-test.py)
+#                  (tests/anchor-links-test.py), and every benchmark number in README.md and BENCHMARKS.md against
+#                  research/bench/results.json (bench.py check-readme)
 #   device         (--device) phone tests: native, UI, acceptance per model and per acceptance-app flavor (cpu, gpu, full,
 #                  noskel), and each flavor's minified (R8) build
 #   device-contract (--device) the C API vs upstream llama-server on the phone's NPU (tests/device-contract/run.sh)
@@ -142,7 +143,9 @@ step_quality() { (cd "$root" && ./gradlew qualityCheck); }
 step_scripts() {
     bash "$sdk/scripts/tests/device-preflight-test.sh" && bash "$sdk/scripts/tests/installed-guard-test.sh" &&
         bash "$sdk/scripts/tests/bench-sh-test.sh" &&
-        python3 "$sdk/scripts/tests/bench-test.py" && python3 "$sdk/scripts/tests/anchor-links-test.py"
+        python3 "$sdk/scripts/tests/bench-test.py" && python3 "$sdk/scripts/tests/anchor-links-test.py" &&
+        python3 "$sdk/scripts/bench.py" check-readme "$root/README.md" "$root/research/bench/results.json" &&
+        python3 "$sdk/scripts/bench.py" check-readme "$root/BENCHMARKS.md" "$root/research/bench/results.json"
 }
 
 step_build() {
