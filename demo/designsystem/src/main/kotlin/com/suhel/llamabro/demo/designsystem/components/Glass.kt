@@ -39,6 +39,7 @@ import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RenderEffect
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -532,15 +533,16 @@ private class GlassNode(
                         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                             drawLens(grown, shift, corner, bend, colors)
                     )
-            if (merged) drawRimLight(grown, corner)
             if (!lensed) drawRoundRect(colors.surface.copy(alpha = style.bareVeil), size = grown, cornerRadius = corner)
-            drawPressLight(grown, shift, corner, feel)
+            // the hairline under the light, not over it: over a pressed rim's wider light it split it in two lines
             drawRoundRect(
                 colors.hairline,
                 size = grown,
                 cornerRadius = corner,
                 style = Stroke(DemoSize.hairline.toPx()),
             )
+            if (lensed) drawRimLight(grown, corner)
+            drawPressLight(grown, shift, corner, feel)
         }
         if (pose.scaleX == 1f && pose.scaleY == 1f && shift == Offset.Zero) {
             drawContent()
@@ -580,18 +582,32 @@ private class GlassNode(
         layer.clip = true
         // the veil is blended into the glass by its shader, not laid over it
         drawLayer(layer)
-        drawRimLight(grown, corner)
         return true
     }
 
     /** The light on the glass: bright along the upper rim, fading down it. */
     private fun DrawScope.drawRimLight(grown: Size, corner: CornerRadius) {
         val light = GlassLight.copy(alpha = style.rimLight)
-        drawRoundRect(
+        drawEdge(
             Brush.verticalGradient(listOf(light, light.copy(alpha = 0f)), endY = grown.height * 0.6f),
-            size = grown,
-            cornerRadius = corner,
-            style = Stroke(style.rim.toPx()),
+            grown,
+            corner,
+            style.rim.toPx(),
+        )
+    }
+
+    /**
+     * A light along the glass's edge, [width] wide: its outer side on the hairline's, so the two read as one edge and
+     * a wider light grows into the glass, not out past it.
+     */
+    private fun DrawScope.drawEdge(brush: Brush, grown: Size, corner: CornerRadius, width: Float) {
+        val inset = ((width - DemoSize.hairline.toPx()) / 2f).coerceAtLeast(0f)
+        drawRoundRect(
+            brush,
+            topLeft = Offset(inset, inset),
+            size = Size(grown.width - 2f * inset, grown.height - 2f * inset),
+            cornerRadius = CornerRadius((corner.x - inset).coerceAtLeast(0f)),
+            style = Stroke(width),
         )
     }
 
@@ -620,18 +636,13 @@ private class GlassNode(
             cornerRadius = corner,
         )
         val rim = style.rim.toPx()
-        drawRoundRect(
-            GlassLight.copy(alpha = strength * PRESS_RIM_LIFT),
-            size = grown,
-            cornerRadius = corner,
-            style = Stroke(rim),
-        )
+        drawEdge(SolidColor(GlassLight.copy(alpha = strength * PRESS_RIM_LIFT)), grown, corner, rim)
         val reach = maxOf(feel.reach.toPx(), grown.minDimension)
-        drawRoundRect(
+        drawEdge(
             Brush.radialGradient(listOf(light, light.copy(alpha = 0f)), center = at, radius = reach),
-            size = grown,
-            cornerRadius = corner,
-            style = Stroke(rim * PRESS_RIM),
+            grown,
+            corner,
+            rim * PRESS_RIM,
         )
     }
 }

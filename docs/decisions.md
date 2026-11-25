@@ -2500,7 +2500,9 @@ lights the glass as light through a pane does, at `light` (0.6): a sheen across 
 finger and fading over it but never to nothing; the whole rim catching the light; and the rim brightest near the finger,
 out to `reach` (64 dp) or the pane's shorter side, whichever is more. The light follows the finger and stays within the
 glass: a finger that slides off leaves it at the nearest point of the outline. A first tuning lit only a small spot on
-the rim and a faint glow around the finger, which read as a point, not lit glass, and followed the finger off the pane.
+the rim and a faint glow around the finger, which read as a point, not lit glass, and followed the finger off the pane. The
+rim's light lies over the hairline, its outer side on the hairline's, so a pressed rim's wider light grows into the
+glass as one lit edge: drawn under the hairline, it was split into two thin lines.
 Dragged, the glass stretches along the drag by up to `stretch` (0.05) of its shorter side, as much narrower across, and
 moves toward the finger only a little, on an elastic limited to `pull` (2 dp); the elastic gives as the drag's square,
 half at a drag of `resistance` (64 dp), so the first of a drag barely moves it and the stretch comes on gradually; the
