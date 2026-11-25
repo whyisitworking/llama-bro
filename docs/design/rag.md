@@ -1,6 +1,6 @@
 # Asking your own documents: `llamabro-rag` and the demo's library
 
-Status: **proposed** (2026-11-25), waiting for the owner's approval. Decisions are recorded in
+Status: **approved** (2026-11-26); plan in [docs/superpowers/plans/2026-11-26-llamabro-rag.md](../superpowers/plans/2026-11-26-llamabro-rag.md). Decisions are recorded in
 [decisions.md](../decisions.md) as they are taken.
 
 ## Intent

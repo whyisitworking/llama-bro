@@ -1,6 +1,6 @@
 # Serving on Wi-Fi: `llamabro-server` and the demo's server mode
 
-Status: **proposed** (2026-11-25), waiting for the owner's approval. Decisions are recorded in
+Status: **approved** (2026-11-26); plan in [docs/superpowers/plans/2026-11-26-llamabro-server.md](../superpowers/plans/2026-11-26-llamabro-server.md). Decisions are recorded in
 [decisions.md](../decisions.md) as they are taken; the next free IDs when this was written were D155 and F189.
 
 ## Intent
@@ -97,8 +97,9 @@ public sealed interface RawPart {
 - An error status arrives as a `Head` plus the error JSON body, not as an exception. A closed model or a cancel
   behaves as in `rawRequest`. Cancelling the collector cancels the request, so a client that hangs up stops
   generation.
-- **To verify first:** that the C API's terminal event carries the handler's status and content type. If it doesn't,
-  the bridge gains them (our code in `sdk/native/bridge`, not a patch).
+- **No native change:** the C API already passes the status with every chunk (`lb_request_cb`, `llamabro.h`). The
+  content type follows from the route and the body: `text/event-stream` for a streaming body that answered 200,
+  `text/plain; version=0.0.4` for `/metrics`, `application/json` otherwise, errors included.
 - `apiDump` and the `.api` diff go in with it.
 
 ### 2. `sdk/llamabro-server` (Android library, published)
@@ -150,8 +151,8 @@ no policy for the app. The demo sets both.
   citing the reason, as the project's rule asks.
 - The body size limit (`maxBodyBytes`), and a JSON parse error as a 400.
 
-**Concurrency:** a request waits for a free slot up to a timeout (503 with `Retry-After`). Slots come from the
-model's load (`-np`). A request whose client disconnects is cancelled.
+**Concurrency:** as upstream: a request beyond the model's slots (`-np`) waits in llama-server's own task queue,
+with no extra queue or 503 of ours. A request whose client disconnects is cancelled.
 
 **CORS:** `Cors.None` by default; `Cors.Any` lets a browser on the laptop (`npx llama-chat`) call the phone.
 
@@ -201,8 +202,7 @@ Failed    no Wi-Fi · port in use · the model didn't load   [Try again]
 ### 4. Tests
 
 - **Module, on the host:** Ktor's test engine over `FakeLlamaBro`. Covers routing, the key on each header, the media
-  refusal for `file://`, `http://` and `data:`, body limits, a client disconnect cancelling the request, CORS, slot
-  waiting and the 503, and SSE bytes passing through unchanged with `event:` lines intact.
+  refusal for `file://`, `http://` and `data:`, body limits, a client disconnect cancelling the request, CORS, and SSE bytes passing through unchanged with `event:` lines intact.
 - **Contract, on the host with a real model** (the existing contract machinery): the same requests to upstream's
   `llama-server` binary and to `llamabro-server` give identical bodies at temperature 0 for chat, messages, responses
   and embeddings, streamed and whole.
@@ -228,11 +228,10 @@ Failed    no Wi-Fi · port in use · the model didn't load   [Try again]
 Each step ends with its checks passing and a commit (`sdk/scripts/check.sh` for SDK steps, `demo/scripts/check.sh`
 for demo steps).
 
-1. **Core raw exchange.** Verify what the C API's terminal event carries; add status and content type to the bridge if
-   needed; add `Model.exchange` and `RawPart` under `@InternalLlamaBroApi`; `FakeLlamaBro` support; tests; `apiDump`.
+1. **Core raw exchange.** Add `Model.exchange` and `RawPart` under `@InternalLlamaBroApi`; `FakeLlamaBro` support; tests; `apiDump`.
 2. **Module skeleton.** `sdk/llamabro-server` with the library convention, Ktor in the catalog, `ServerConfig`,
    `ServedModels`, `start` and `stop`, `/health` and `/v1/models`; host tests.
-3. **Forwarding.** The `exchange` routes, streaming passthrough, cancel on disconnect, slot waiting, the error shape.
+3. **Forwarding.** The `exchange` routes, streaming passthrough, cancel on disconnect, the error shape.
 4. **Guards.** The key, the media refusal, body limits, the off-by-default routes, CORS; tests for each.
 5. **Audio routes.** Transcriptions (multipart) and speech.
 6. **Discovery.** NSD advertising.
