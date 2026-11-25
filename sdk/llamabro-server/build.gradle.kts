@@ -41,4 +41,11 @@ dependencies {
 // the tests send CORS requests with HttpURLConnection, which drops Origin and Access-Control-Request-* unless told not to
 tasks.withType<Test>().configureEach {
     systemProperty("sun.net.http.allowRestrictedHeaders", "true")
+    // HostServerContractTest, run by sdk/native/tests/contract/server-run.sh: the real core on this machine behind the
+    // server. -Pllamabro.host.lib=<host bin dir> -Pllamabro.host.model=<gguf> -Pllamabro.server.dir=<dir>, and
+    // optionally llamabro.server.key and llamabro.server.task (embed); without the first three the test is skipped.
+    listOf("host.lib", "host.model", "server.dir", "server.key", "server.task").forEach { key ->
+        providers.gradleProperty("llamabro.$key").orNull?.let { systemProperty("llamabro.$key", it) }
+    }
+    providers.gradleProperty("llamabro.host.lib").orNull?.let { jvmArgs("-Djava.library.path=$it") }
 }

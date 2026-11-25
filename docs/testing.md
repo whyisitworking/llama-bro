@@ -38,6 +38,7 @@ Durations below are approximate and depend on the machine, the cached builds and
 | `native` | The C API's host tests (`ctest`, upstream's own server tests for embeddings, rerank and LoRA on its small models included; the DFlash fit projection against a real load's peak memory footprint, which on macOS counts compressed pages, F90, F160) | the test models | under a minute |
 | `hub-golden` | The Hub's resolver and cache match upstream's: its model-resolution self-test and recorded real repo listings, the GGUF header offsets of three real models, and the cache tree upstream writes from the same fake server, replayed through the Kotlin Hub (`CacheGoldenTest`, which must not be skipped) | Python 3, the three models in `~/Downloads` | a few minutes |
 | `contract` | The C API answers exactly like upstream `llama-server` built from the same tree with the same flags: about 75 requests (chat, multi-turn, thinking on and off, tool calls, JSON schema, one image, sampling fields, completions, `/props`, `/metrics` names, cache counters across turns, a cancel and the request after it, error bodies), compared on reply text and counters. Runs once per model (Qwen3.5 4B, then each extra model), then the audio cases (`audio.jsonl`) on upstream's audio test model: the clip through upstream's multipart `/v1/audio/transcriptions` and a data URL in chat, against the bridge's attachments by path, descriptor and bytes (F55, D84), and four `/v1/realtime` sessions (a spoken turn answered in text and speech, two text turns, a transcription session, bad events) over a real WebSocket against the in-memory `realtime` endpoint, every event compared without its random ids, both sides at seed 42 (D97, F168) | the model, the mmproj, a free port | minutes per model |
+| `server-contract` | `llamabro-server` answers exactly like upstream `llama-server` from the same build with the same flags (`sdk/native/tests/contract/server-run.sh`): chat, Anthropic messages, Responses and completions, streamed and whole, token counts, `/props`, `/metrics` names and errors, every body and status compared, on the model; embeddings on `bge-small`. Then the official `openai` and `anthropic` Python SDKs (pinned in `sdk/scripts/tests/server-clients-requirements.txt`, in a venv under `sdk/native/build/host/server-contract/venv` made on the first run, which needs the network) make a whole and a streamed call each against the server with a key, and a wrong key raises each SDK's `AuthenticationError` (F189) | the model, `bge-small` | about a minute |
 | `tools-ui` | llama.cpp's own `tools/ui` compaction code (Llama Chat, `ui/apps/chat` since b12479), regenerated in node, equals the committed golden of 400 seeded message lists; the Kotlin replay of the golden is part of `jvm` | node | seconds |
 | `api` | The public APIs of the core, `llamabro-typed` and `llamabro-testing` equal their reviewed dumps (`sdk/<module>/api/<module>.api`). An intended change is reviewed with `./gradlew -p sdk :<module>:apiDump` and committed with the code | Gradle | seconds |
 | `hub-api` | The same for `llamabro-hub`, `llamabro-hub-work` and `llamabro-hub-testing` | Gradle | seconds |
@@ -99,7 +100,7 @@ demo/scripts/check.sh --only ds,quality                 # a slice, by step name
 
 | Needs | Steps |
 |---|---|
-| Nothing but the host | SDK: `build`, `native`, `hub-golden`, `contract`, `tools-ui`, `api`, `hub-api`, `quality`, `lint`, `jvm`, `e2e`, `aar`, `scripts`. Demo: `unit`, `lint`, `assemble`, `ds`, `quality` |
+| Nothing but the host | SDK: `build`, `native`, `hub-golden`, `contract`, `server-contract`, `tools-ui`, `api`, `hub-api`, `quality`, `lint`, `jvm`, `e2e`, `aar`, `scripts`. Demo: `unit`, `lint`, `assemble`, `ds`, `quality` |
 | A device or an emulator (fake engine, no model) | Demo: `device`, `journey`, `monkey`, `coverage`, `map` |
 | The physical phone | SDK: `device`, `hub-device`, `hub-resume`, `device-contract`, `device-speech` (a Qualcomm phone for the NPU steps). Demo: `perf`, `real`, and the journeys that need a photo picker (`sendAnImage`) |
 
@@ -178,6 +179,7 @@ SDK-side speed, memory and device measurements (prefill and decode rates per chi
 |---|---|
 | C API host tests | `sdk/native/bridge/tests/` (built as `lb-tests`) |
 | Contract against upstream | `sdk/native/tests/contract/` (`run.sh`, the request set from `make-requests.py`, `compare.py`) |
+| Server contract and client smoke | `sdk/native/tests/contract/server-run.sh`, `server-requests.jsonl`; `sdk/scripts/tests/server-clients.py`; `HostServerContractTest` in `sdk/llamabro-server` |
 | Device contract on the NPU | `sdk/native/tests/device-contract/` |
 | Speech on the NPU | `sdk/native/tests/device-speech/` |
 | Hub goldens from upstream's code | `sdk/native/tests/hub-golden/`, `sdk/scripts/hub-fake/` |

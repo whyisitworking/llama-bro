@@ -1,0 +1,4 @@
+# The official clients server-run.sh smoke-tests llamabro-server with (server-clients.py), in a venv under
+# sdk/native/build/host/server-contract/venv. Bump both together and rerun sdk/scripts/check.sh --only server-contract.
+openai==3.59.0
+anthropic==2.14.0

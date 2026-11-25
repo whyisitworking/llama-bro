@@ -2409,5 +2409,5 @@ and Drawn by the bar. Glass off the bars (the jump button, the FAB) keeps its ow
 Consequences: On the owner's phone merged glass takes a chat's fling from CPU P90 6.77 to 5.13 ms (F187), but its
 chips are a touch softer, drawn at the bar's half resolution and with the bar's heavier blur bleeding a few pixels
 into their edge, so a Full phone keeps the sharper glass by default. A Light phone keeps the chips' and panels' blur.
-Next free IDs: D155, F189.
+Next free IDs: D155, F190.
 

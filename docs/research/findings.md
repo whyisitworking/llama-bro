@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the [decision records](../decisions.md) (`D<n>`), the [research history](history.md), which summarises each phase, and the experiments under [`research/`](../../research/).
-> **Status:** living document, updated 2026-11-25 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183–F188)
+> **Status:** living document, updated 2026-11-26 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183–F188; server: F189)
 
 Labels such as P1, PA, PF, PD and PH name the project's phases, and W1 to W9 the workstreams of a phase; the
 [research history](history.md#summary-of-the-phases) summarises each. "Task <n>", "T<n>" and "Feeds:" name the steps
@@ -2365,10 +2365,43 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   waited for a rewrite waits for that turn too before it stores its message; a send at any other time is as before.
 - **Feeds:** `ChatEngine` (`take`, `rewriting`).
 
+## The server against upstream (F189)
+
+<a id="f189"></a>
+### F189. `llamabro-server` answers as upstream `llama-server` does, byte for byte, and the official OpenAI and Anthropic clients work against it
+
+- **Finding:** The same requests to upstream's `llama-server` and to `LlamaBroServer` over the real core give identical
+  bodies and statuses: chat completions (plain, tools, JSON schema, thinking, a `model` field, usage in the stream,
+  two turns on the prompt cache), Anthropic messages and Responses (every event compared without its random ids), the
+  native and OpenAI completions, streamed and whole, token counts, tokenize, `/health`, `/props`, `/metrics` names and
+  the error for a body without messages; embeddings (one input, a list, base64, the native route) on an embedding
+  model, and the errors upstream gives for embeddings on a chat model and chat on an embedding model. The official
+  `openai` and `anthropic` Python SDKs each made a whole and a streamed call against the server with a key, and a
+  wrong key raised each SDK's own `AuthenticationError` (401). Two cases stay out of the set: an unparseable body gets
+  the server's own 400 (`the request body is not valid JSON`, the design's body check, beside its media check)
+  where upstream gives its parser's message, with the same status and error type; and an Anthropic tool call matched
+  but carries a random tool id without a prefix, which `compare.py` cannot tell from content.
+- **Evidence:** `sdk/scripts/check.sh --only server-contract` (`sdk/native/tests/contract/server-run.sh`): upstream
+  `llama-server` from the host build with run.sh's flags (`-c 8192 -np 1 --cache-ram 1024 --ctx-checkpoints 8
+  --load-mode none --fit off --seed 42 -b 512 -ub 512`, plus `--embeddings` for the embedding model), then
+  `HostServerContractTest` serving the same file with `ContextSize.Fixed(8192)`, one slot, 1024 MiB prompt cache, 8
+  checkpoints, seed 42, batch and micro-batch 512, CPU, on a free port with no key, both through `http-run.py` and
+  `compare.py`: Qwen3.5 4B Q4_K_M 26/26 statuses equal, 26/26 identical; bge-small-f16 5/5, 5/5;
+  `server-clients.py` with openai 3.59.0 and anthropic 2.14.0 (`server-clients-requirements.txt`), every call OK
+  (Mac, 2026-11-26). The two cases left out, run once: the tool call's events equal but for the id; the bad body 400
+  with the server's message.
+- **Means:** the server adds nothing to what the core answers, so the C API contract (F180) carries over to HTTP: a
+  llama.cpp upgrade that keeps `contract` identical keeps the server's answers too, and `server-contract` checks it.
+  What the server sends that upstream would not is its own checks (key, media, body size and JSON) and
+  `/v1/models`; anthropic 2.x has no `temperature` argument, so a client sets it through `extra_body`. Content
+  types are not compared (`http-run.py` records no headers); the module tests cover them.
+- **Feeds:** `server-run.sh`, `HostServerContractTest`, design `server.md` §4.
+
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F189 | `llamabro-server` answers as upstream `llama-server` does; the official OpenAI and Anthropic clients work against it | server.md §4 |
 | F188 | A message sent as an edit ends could land between the edited message and its reply | ChatEngine |
 | F187 | A bar drawing the glass on it saves a quarter of a chat's CPU time per frame, a touch softer | D154 |
 | F186 | The glass's CPU cost is its render passes; one pass blurs cleanly only below about 4 dp | D153, F185 |

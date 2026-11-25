@@ -5,6 +5,9 @@
 #   hub-golden     upstream model-resolution self-test and recorded golden cases
 #   contract       the C API vs upstream llama-server, same build, same flags, per model (run.sh); audio on
 #                  upstream's audio test model with the committed clip (fixtures/clip.wav)
+#   server-contract llamabro-server vs upstream llama-server, same build, same flags (server-run.sh): chat, messages,
+#                  responses, completions, streamed and whole, on the model; embeddings on bge-small; then the official
+#                  OpenAI and Anthropic Python clients against the server with a key (a venv in the host build)
 #   tools-ui       llama.cpp's own Llama Chat compaction code (ui/apps/chat; tools/ui before b12479) regenerated in
 #                  node; must equal the committed golden
 #   api            core, llamabro-typed, llamabro-testing and llamabro-server release public APIs equal their reviewed dumps (D26)
@@ -78,7 +81,7 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
-steps="build native hub-golden contract tools-ui api hub-api quality lint jvm e2e aar scripts device hub-device hub-resume device-contract device-speech"
+steps="build native hub-golden contract server-contract tools-ui api hub-api quality lint jvm e2e aar scripts device hub-device hub-resume device-contract device-speech"
 if [ -n "$only" ]; then
     for step in $(echo "$only" | tr ',' ' '); do
         case " $steps " in
@@ -198,6 +201,13 @@ step_contract() {
     echo "=== contract: audio on $(basename "$omni")"
     LB_TEST_MODEL="$omni" LB_TEST_MMPROJ="$omni_mmproj" LB_CONTRACT_REQUESTS="$native/tests/contract/audio.jsonl" \
         LB_CONTRACT_PORT="$(contract_port 4)" bash "$native/tests/contract/run.sh"
+}
+
+step_server_contract() {
+    bash "$native/tests/contract/server-run.sh" || return 1
+    echo "=== server-contract: embeddings on bge-small-f16.gguf"
+    LB_TEST_MODEL="$LB_TEST_MODELS_DIR/bge-small-f16.gguf" LB_SERVER_TASK=embed LB_CONTRACT_PORT="$(contract_port 5)" \
+        bash "$native/tests/contract/server-run.sh"
 }
 
 contract_port() {  # contract_port OFFSET: LB_CONTRACT_PORT + OFFSET when it is set, else 0 (a free one)
@@ -411,6 +421,7 @@ run build    step_build
 run native   ctest --test-dir "$native/build/host" --output-on-failure
 run hub-golden step_hub_golden
 run contract step_contract
+run server-contract step_server_contract
 run tools-ui step_tools_ui
 run api      gradle :llamabro:apiCheck :llamabro-typed:apiCheck :llamabro-testing:apiCheck :llamabro-server:apiCheck
 run hub-api  gradle :llamabro-hub:apiCheck :llamabro-hub-work:apiCheck :llamabro-hub-testing:apiCheck
