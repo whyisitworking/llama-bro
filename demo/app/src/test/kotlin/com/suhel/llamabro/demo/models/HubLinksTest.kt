@@ -57,6 +57,18 @@ class HubLinksTest {
         ).forEach { assertNull(it, HubLinks.repoOf(it)) }
     }
 
+    @Test fun anIdTheHubWouldRefuseIsNotARepo() {
+        listOf(
+            "https://huggingface.co/Qwen/Qwen3-8B.",
+            "https://huggingface.co/Qwen/foo%20bar",
+            "https://huggingface.co/Qwen/a@b",
+            "https://huggingface.co/Qwen/a..b",
+            "https://huggingface.co/Qwen/-x",
+            "https://huggingface.co/Qwen/caf\u00e9",
+            "https://huggingface.co/Qwen/${"a".repeat(260)}",
+        ).forEach { assertNull(it, HubLinks.repoOf(it)) }
+    }
+
     @Test fun aRelativeLinkResolvesAgainstThePageRepo() {
         assertEquals(
             "https://huggingface.co/Qwen/Qwen3-8B/blob/main/config.json",

@@ -7,6 +7,7 @@ package com.suhel.llamabro.demo.models
 object HubLinks {
     private const val ORIGIN = "https://huggingface.co"
     private val HOSTS = setOf("huggingface.co", "www.huggingface.co", "hf.co", "www.hf.co")
+    private const val MAX_ID = 256
     private val WEB = setOf("http", "https")
     private val SCHEME = Regex("^([a-zA-Z][a-zA-Z0-9+.-]*):")
     private val UNSAFE = Regex("[\\s\\u0000-\\u001f\\\\]")
@@ -36,7 +37,33 @@ object HubLinks {
         val path = afterScheme.removePrefix(authority).substringBefore('#').substringBefore('?')
         val segments = path.split('/').filter { it.isNotEmpty() }
         val named = authority.lowercase() in HOSTS && segments.size >= 2 && segments[0].lowercase() !in NOT_OWNERS
-        return if (named && !UNSAFE.containsMatchIn(path)) "${segments[0]}/${segments[1]}" else null
+        val repo = if (named) "${segments[0]}/${segments[1]}" else null
+        // an id the SDK refuses is no repo (it would throw), so its link goes to the browser
+        return repo?.takeIf { !UNSAFE.containsMatchIn(path) && validId(it) }
+    }
+
+    /** The SDK's repo id rules: ASCII letters, digits, `_`, single `.` or `-` between them, one `/`, max 256. */
+    private fun validId(repo: String): Boolean {
+        var special = true
+        var slashes = 0
+        for (char in repo) {
+            when {
+                char in 'A'..'Z' || char in 'a'..'z' || char in '0'..'9' || char == '_' -> {
+                    special = false
+                }
+
+                char == '/' || char == '.' || char == '-' -> {
+                    if (special) return false
+                    if (char == '/') slashes++
+                    special = true
+                }
+
+                else -> {
+                    return false
+                }
+            }
+        }
+        return repo.length <= MAX_ID && !special && slashes == 1
     }
 
     /**

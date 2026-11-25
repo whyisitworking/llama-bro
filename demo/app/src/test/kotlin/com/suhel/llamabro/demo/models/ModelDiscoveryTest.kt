@@ -306,6 +306,11 @@ class ModelDiscoveryTest {
         val url = "https://huggingface.co/Qwen/Qwen3.5-4B"
         assertEquals(LinkTarget.Browser(url), runBlocking { discovery.related(url) })
     }
+
+    @Test fun aLinkWithAnInvalidRepoIdOpensTheBrowser() {
+        val url = "https://huggingface.co/Qwen/Qwen3-8B."
+        assertEquals(LinkTarget.Browser(url), runBlocking { discovery.related(url) })
+    }
 }
 
 private const val ENCODER_BYTES = 2048
