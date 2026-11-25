@@ -49,6 +49,7 @@ import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.models.WorkDownloadScheduler
 import com.suhel.llamabro.demo.models.installedModel
+import com.suhel.llamabro.demo.server.NetworkState
 import com.suhel.llamabro.demo.server.ServerKey
 import com.suhel.llamabro.demo.server.ServerMode
 import com.suhel.llamabro.demo.server.ServerSettings
@@ -191,6 +192,9 @@ class AppContainer(
             advertise = Advertise("Llama Bro", app),
             clock = clock,
         )
+
+    /** The phone's Wi-Fi addresses and charger, for the Server page and the serving notification. */
+    val network: NetworkState by lazy { NetworkState().also { it.watch(app) } }
 
     /** Runs every chat (one handle per open chat); the chat screens read it. */
     val engine: ChatEngine =

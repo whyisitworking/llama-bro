@@ -9,6 +9,11 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- server mode (docs/design/server.md §3): a service that serves with the app in the background, awake, on Wi-Fi -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:name=".DemoApp"
@@ -42,6 +47,15 @@
             android:name=".ReplyService"
             android:exported="false"
             android:foregroundServiceType="shortService" />
+        <!-- server mode keeps serving with the app in the background; it ends with serving, with Stop in its notification -->
+        <service
+            android:name=".ServerService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="local model server" />
+        </service>
         <!-- DemoApp provides WorkManager's configuration, so the default startup initializer is removed. -->
         <provider
             android:name="androidx.startup.InitializationProvider"
