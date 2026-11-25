@@ -16,6 +16,7 @@ val published =
         "llamabro-hub-work",
         "llamabro-typed",
         "llamabro-typed-ksp",
+        "llamabro-server",
         "llamabro-testing",
         "llamabro-hub-testing",
     )

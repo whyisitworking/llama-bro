@@ -1,0 +1,186 @@
+public final class com/suhel/llamabro/server/Cors : java/lang/Enum {
+	public static final field Any Lcom/suhel/llamabro/server/Cors;
+	public static final field None Lcom/suhel/llamabro/server/Cors;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/suhel/llamabro/server/Cors;
+	public static fun values ()[Lcom/suhel/llamabro/server/Cors;
+}
+
+public final class com/suhel/llamabro/server/LlamaBroServer {
+	public fun <init> (Lcom/suhel/llamabro/server/ServerConfig;Lcom/suhel/llamabro/server/ServedModels;)V
+	public final fun getEvents ()Lkotlinx/coroutines/flow/SharedFlow;
+	public final fun getState ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun start (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun stop (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/suhel/llamabro/server/ModelUnavailable : java/lang/Exception {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun getId ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/server/Routes {
+	public static final field Companion Lcom/suhel/llamabro/server/Routes$Companion;
+	public final fun enable (Lcom/suhel/llamabro/Endpoint;)Lcom/suhel/llamabro/server/Routes;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/server/Routes$Companion {
+	public final fun getDefault ()Lcom/suhel/llamabro/server/Routes;
+}
+
+public abstract interface class com/suhel/llamabro/server/ServedLease {
+	public abstract fun getModel ()Lcom/suhel/llamabro/Model;
+	public abstract fun release ()V
+}
+
+public final class com/suhel/llamabro/server/ServedModel {
+	public fun <init> (Ljava/lang/String;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun copy (Ljava/lang/String;J)Lcom/suhel/llamabro/server/ServedModel;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/server/ServedModel;Ljava/lang/String;JILjava/lang/Object;)Lcom/suhel/llamabro/server/ServedModel;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCreated ()J
+	public final fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/suhel/llamabro/server/ServedModels {
+	public abstract fun acquire (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun list (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/suhel/llamabro/server/ServerConfig {
+	public static final field Companion Lcom/suhel/llamabro/server/ServerConfig$Companion;
+	public final fun copy (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/server/ServerConfig;
+	public final fun getApiKey ()Ljava/lang/String;
+	public final fun getCors ()Lcom/suhel/llamabro/server/Cors;
+	public final fun getHost ()Ljava/lang/String;
+	public final fun getMaxBodyBytes ()J
+	public final fun getPort ()I
+	public final fun getRoutes ()Lcom/suhel/llamabro/server/Routes;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/server/ServerConfig$Builder {
+	public final fun getApiKey ()Ljava/lang/String;
+	public final fun getCors ()Lcom/suhel/llamabro/server/Cors;
+	public final fun getHost ()Ljava/lang/String;
+	public final fun getMaxBodyBytes ()J
+	public final fun getPort ()I
+	public final fun getRoutes ()Lcom/suhel/llamabro/server/Routes;
+	public final fun setApiKey (Ljava/lang/String;)V
+	public final fun setCors (Lcom/suhel/llamabro/server/Cors;)V
+	public final fun setHost (Ljava/lang/String;)V
+	public final fun setMaxBodyBytes (J)V
+	public final fun setPort (I)V
+	public final fun setRoutes (Lcom/suhel/llamabro/server/Routes;)V
+}
+
+public final class com/suhel/llamabro/server/ServerConfig$Companion {
+	public final fun getDefault ()Lcom/suhel/llamabro/server/ServerConfig;
+}
+
+public final class com/suhel/llamabro/server/ServerConfigKt {
+	public static final fun ServerConfig (Lkotlin/jvm/functions/Function1;)Lcom/suhel/llamabro/server/ServerConfig;
+}
+
+public abstract interface class com/suhel/llamabro/server/ServerEvent {
+}
+
+public final class com/suhel/llamabro/server/ServerEvent$Rejected : com/suhel/llamabro/server/ServerEvent {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)Lcom/suhel/llamabro/server/ServerEvent$Rejected;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/server/ServerEvent$Rejected;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/server/ServerEvent$Rejected;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getClient ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getReason ()Ljava/lang/String;
+	public final fun getStatus ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/server/ServerEvent$RequestEnded : com/suhel/llamabro/server/ServerEvent {
+	public fun <init> (JIJLjava/lang/Integer;Ljava/lang/Integer;)V
+	public final fun component1 ()J
+	public final fun component2 ()I
+	public final fun component3 ()J
+	public final fun component4 ()Ljava/lang/Integer;
+	public final fun component5 ()Ljava/lang/Integer;
+	public final fun copy (JIJLjava/lang/Integer;Ljava/lang/Integer;)Lcom/suhel/llamabro/server/ServerEvent$RequestEnded;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/server/ServerEvent$RequestEnded;JIJLjava/lang/Integer;Ljava/lang/Integer;ILjava/lang/Object;)Lcom/suhel/llamabro/server/ServerEvent$RequestEnded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()J
+	public final fun getMillis ()J
+	public final fun getPredictedTokens ()Ljava/lang/Integer;
+	public final fun getPromptTokens ()Ljava/lang/Integer;
+	public final fun getStatus ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/server/ServerEvent$RequestStarted : com/suhel/llamabro/server/ServerEvent {
+	public fun <init> (JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()J
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/suhel/llamabro/server/ServerEvent$RequestStarted;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/server/ServerEvent$RequestStarted;JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/server/ServerEvent$RequestStarted;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getClient ()Ljava/lang/String;
+	public final fun getId ()J
+	public final fun getMethod ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getUserAgent ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class com/suhel/llamabro/server/ServerState {
+}
+
+public final class com/suhel/llamabro/server/ServerState$Failed : com/suhel/llamabro/server/ServerState {
+	public fun <init> (Ljava/lang/Throwable;)V
+	public final fun component1 ()Ljava/lang/Throwable;
+	public final fun copy (Ljava/lang/Throwable;)Lcom/suhel/llamabro/server/ServerState$Failed;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/server/ServerState$Failed;Ljava/lang/Throwable;ILjava/lang/Object;)Lcom/suhel/llamabro/server/ServerState$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/Throwable;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/server/ServerState$Serving : com/suhel/llamabro/server/ServerState {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lcom/suhel/llamabro/server/ServerState$Serving;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/server/ServerState$Serving;IILjava/lang/Object;)Lcom/suhel/llamabro/server/ServerState$Serving;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPort ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/server/ServerState$Starting : com/suhel/llamabro/server/ServerState {
+	public static final field INSTANCE Lcom/suhel/llamabro/server/ServerState$Starting;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/server/ServerState$Stopped : com/suhel/llamabro/server/ServerState {
+	public static final field INSTANCE Lcom/suhel/llamabro/server/ServerState$Stopped;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
