@@ -170,7 +170,7 @@ its amendments to know what holds now.
 | [D122](#d122-the-cards-original-look-is-back-no-edges-the-original-surfaces-and-selection) The cards' original look is back: no edges, the original surfaces and selection | 2026-11-21 | |
 | [D123](#d123-the-models-pages-rows-and-card-are-ultra-subtle) The Models page's rows and card are ultra subtle | 2026-11-21 | [D131](#d131-a-softer-neutral-palette-cool-grey-light-dimmed-dark-replies) |
 | [D124](#d124-the-models-page-follows-the-size-choice-with-no-push-off-the-fold) The model's page follows the size choice with no push off the fold | 2026-11-21 | |
-| [D125](#d125-geist-type-one-monochrome-accent-and-one-selection-outline) Geist type, one monochrome accent and one selection outline | 2026-11-21 |[D150](#d150-replies-in-the-serif-the-rest-in-nunito-sans) |
+| [D125](#d125-geist-type-one-monochrome-accent-and-one-selection-outline) Geist type, one monochrome accent and one selection outline | 2026-11-21 |[D150](#d150-replies-in-the-serif-the-rest-in-figtree) |
 | [D126](#d126-the-sidebar-is-a-quiet-list-a-name-a-search-timed-rows-and-labelled-places) The sidebar is a quiet list: a name, a search, timed rows and labelled places | 2026-11-21 | |
 | [D127](#d127-hugging-face-search-is-paged-with-paging-3-over-room-in-the-hubs-order-shaped-by-the-hubs-own-criteria) Hugging Face search is paged with Paging 3 over Room, in the Hub's order, shaped by the Hub's own criteria | 2026-11-21 | [D128](#d128-the-searchs-filters-are-a-plain-sheet-whose-choices-apply-at-once-a-dot-and-one-named-line-say-when-they-arent-the-defaults) |
 | [D128](#d128-the-searchs-filters-are-a-plain-sheet-whose-choices-apply-at-once-a-dot-and-one-named-line-say-when-they-arent-the-defaults) The search's filters are a plain sheet whose choices apply at once; a dot and one named line say when they aren't the defaults | 2026-11-21 | |
@@ -183,7 +183,7 @@ its amendments to know what holds now.
 | [D147](#d147-hands-free-voice-mode-ends-a-turn-at-a-pause-and-talking-can-interrupt-a-reply) Hands-free voice mode ends a turn at a pause, and talking can interrupt a reply | 2026-11-24 | |
 | [D148](#d148-pages-scroll-edge-to-edge-under-floating-bars-the-drawer-holds-still-under-the-page) Pages scroll edge to edge under floating bars; the drawer holds still under the page | 2026-11-24 | |
 | [D149](#d149-the-demos-debug-build-installs-beside-the-release-with-its-own-name-and-icon) The demo's debug build installs beside the release, with its own name and icon | 2026-11-24 | |
-| [D150](#d150-replies-in-the-serif-the-rest-in-nunito-sans) Replies in the serif, the rest in Nunito Sans | 2026-11-25 | |
+| [D150](#d150-replies-in-the-serif-the-rest-in-figtree) Replies in the serif, the rest in Figtree | 2026-11-25 | |
 | [D151](#d151-a-debug-build-tunes-the-glass-on-the-phone) A debug build tunes the glass on the phone | 2026-11-25 | |
 
 **Repository and process**
@@ -2312,22 +2312,23 @@ The benchmark builds still use the release's package (they are built from the re
 replace the release.
 
 <a id="d150"></a>
-### D150. Replies in the serif, the rest in Nunito Sans
+### D150. Replies in the serif, the rest in Figtree
 
 Status: Decided (2026-11-25)
 
 Context: With the glass and the lowered white point in (D148), the owner asked for a more soothing type. Geist (D125)
 is crisp and narrow, closer to a code editor than a conversation, and a reply, read for minutes at a time, is where
 the type matters most. The owner chose from a side-by-side of the same reply in Geist, the serif, Figtree and Nunito
-Sans.
+Sans, and settled on Figtree after trying Nunito Sans on the phone.
 Decision: A reply's running text (`replyBody`) is Source Serif 4, 17 / 28 sp, no tracking, at the font's text optical
 size (17): a reply reads like a set page. Its headings are the serif too, at the display optical size (24), on a
 calibrated ladder, size first and weight second: H1 24 / 32, H2 21 / 28, H3 18 / 28 at SemiBold (600), H4 to H6 the
 text's 17 / 28 at Medium (500); bold in the text is a true SemiBold, not a synthesised one; light on a dark ground
 reads heavy, so nothing in a reply goes past 600. A top bar's title (`screenTitle`) is 18 / 24 sp, not Material's 22 / 28: in a
 floating glass pill the larger name read as too big. The chat's title (the model's name) wraps to two lines rather than be cut: which
-exact model answers must be readable, and at 18 sp two lines fit the 64 dp bar. Every sans role is Nunito Sans (SIL OFL, `res/font/nunito_sans.ttf` from Google Fonts' repository, the variable
-font at 300, 400 and 500), a humanist face, rounder and more open than Geist; the user's own messages, the controls
+exact model answers must be readable, and at 18 sp two lines fit the 64 dp bar. Every sans role is Figtree (SIL OFL, `res/font/figtree.ttf` from Google Fonts' repository, the variable font at
+300, 400 and 500), a warm, open face, friendlier than Geist (Nunito Sans was tried first, 2026-11-25, and set aside
+for Figtree on the owner's eye); the user's own messages, the controls
 and the labels stay in it, so who speaks is told by the face before a word is read. Geist is removed.
 Consequences: Amends D125's type (its accent and selection outline stand). `replyBody`'s line is now on the 4 dp grid,
 so the grid test has no exception.
@@ -2346,5 +2347,5 @@ split, tint, reach past the bar and how much of it is full), each applied across
 `GlassTheme.Default`; Reset brings the defaults back. The values last until the app closes. A release build has no
 row, no route and no tuner (`BuildConfig.DEBUG`), and draws `GlassTheme.Default`.
 Consequences: The chosen values still go into `GlassTheme.Default` by hand, so the release and every test draw the
-committed glass. Next free IDs: D152, F184.
+committed glass. Next free IDs: D152, F185.
 

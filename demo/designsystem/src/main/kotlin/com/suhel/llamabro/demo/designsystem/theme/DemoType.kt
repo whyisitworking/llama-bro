@@ -13,7 +13,7 @@ import com.suhel.llamabro.demo.designsystem.R
 
 /**
  * Source Serif 4 (SIL OFL, res/raw/source_serif_4_ofl.txt) for the two hero roles, a card's name, the sidebar's
- * title and a reply's running text (D150); [NunitoSans] for the rest. Google ships it as one variable font, so Regular
+ * title and a reply's running text (D150); [Figtree] for the rest. Google ships it as one variable font, so Regular
  * and Medium are two weights of the same file.
  */
 @OptIn(ExperimentalTextApi::class)
@@ -40,16 +40,16 @@ private val SourceSerifText = sourceSerif(17.sp)
 private val SourceSerifDisplay = sourceSerif(24.sp)
 
 /**
- * Nunito Sans (SIL OFL, res/raw/nunito_sans_ofl.txt), the app's sans (D150, in place of D125's Geist): a humanist face,
- * rounder and more open, for a calmer read. One variable font, with an entry for every weight a sans role uses (Light,
+ * Figtree (SIL OFL, res/raw/figtree_ofl.txt), the app's sans (D150, in place of D125's Geist): a friendly geometric
+ * face, open and warm, for a calmer read. One variable font, with an entry for every weight a sans role uses (Light,
  * Regular, Medium), so each renders at its own weight, not a synthesis.
  */
 @OptIn(ExperimentalTextApi::class)
-private val NunitoSans =
+private val Figtree =
     FontFamily(
         listOf(FontWeight.Light, FontWeight.Normal, FontWeight.Medium).map { weight ->
             Font(
-                R.font.nunito_sans,
+                R.font.figtree,
                 weight,
                 variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight)),
             )
@@ -58,7 +58,7 @@ private val NunitoSans =
 
 /**
  * The type roles of the design system v2 spec (docs/design/demo-app.md, section 8.2): Material 3's scale (size,
- * line height, tracking from `TypeScaleTokens`) in Nunito Sans (D150), the serif where D48 and D150 say. A screen
+ * line height, tracking from `TypeScaleTokens`) in Figtree (D150), the serif where D48 and D150 say. A screen
  * names a role and never a size, a weight or a tracking: a role carries all of them, so the same kind of text is the
  * same everywhere.
  *
@@ -221,7 +221,7 @@ object DemoType {
 
     private fun sans(weight: FontWeight, size: Int, line: Int, tracking: Double) =
         TextStyle(
-            fontFamily = NunitoSans,
+            fontFamily = Figtree,
             fontWeight = weight,
             fontSize = size.sp,
             lineHeight = line.sp,

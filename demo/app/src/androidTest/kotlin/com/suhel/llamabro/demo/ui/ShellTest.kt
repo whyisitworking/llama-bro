@@ -1,5 +1,6 @@
 package com.suhel.llamabro.demo.ui
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
@@ -8,6 +9,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -21,6 +23,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
@@ -159,7 +162,9 @@ class ShellTest {
         )) {
             compose.waitUntilAtLeastOneExists(hasText(row), 10_000)
             // the home is taller than a small screen: scroll to the row first
-            compose.onNodeWithText(row).performScrollTo().performClick()
+            compose.onNodeWithText(row).performScrollTo()
+            if (row == "About") scrollToTheEnd()
+            compose.onNodeWithText(row).performClick()
             compose.waitUntilAtLeastOneExists(hasText(title, ignoreCase = true), 10_000)
             compose.onNodeWithContentDescription("Back").performClick()
         }
@@ -356,17 +361,29 @@ class ShellTest {
         compose.onNode(isSelected() and hasText("Last used")).assertIsDisplayed()
     }
 
+    /**
+     * Scrolls the page to its end, as a person would to reach its last row: `performScrollTo` stops a row at the
+     * viewport's edge, under the floating tabs (D148), while the page's end is kept clear of them, so a tap there lands.
+     */
+    private fun scrollToTheEnd() {
+        compose.onNode(hasScrollAction()).performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, END) }
+    }
+
     @Test fun aboutShowsVersionsAndLicences() {
         setLayout(AppLayout.ChatList)
         waitForShell()
         compose.waitUntilAtLeastOneExists(hasText("Settings"), 10_000)
         compose.onNodeWithText("Settings").performClick()
-        compose.onNodeWithText("About").performScrollTo().performClick()
+        scrollToTheEnd()
+        compose.onNodeWithText("About").performClick()
         compose.waitUntilAtLeastOneExists(hasTestTag("about"), 10_000)
-        for (text in listOf("Version", "MIT licence", "Nunito Sans", "Source Serif 4")) {
+        for (text in listOf("Version", "MIT licence", "Figtree", "Source Serif 4")) {
             compose.onNodeWithText(text).assertIsDisplayed()
         }
         compose.onAllNodesWithText("SIL Open Font Licence 1.1").assertCountEquals(2) // the two bundled fonts
         compose.onAllNodesWithText("llama.cpp").assertCountEquals(2) // the build, and its licence
     }
 }
+
+/** Further than any page is tall: a scroll by it ends at the page's end. */
+private const val END = 100_000f

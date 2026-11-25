@@ -307,5 +307,5 @@ each check proves.
 ## License
 
 Apache License 2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE). Built on
-[llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT). The demo bundles Nunito Sans and Source Serif 4 under the SIL Open
+[llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT). The demo bundles Figtree and Source Serif 4 under the SIL Open
 Font License.

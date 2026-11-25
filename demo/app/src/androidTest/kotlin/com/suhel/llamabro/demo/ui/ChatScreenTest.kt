@@ -964,8 +964,9 @@ class ChatScreenTest {
         assertEquals(DemoType.displayHero.fontFamily, familyOf("What's on your mind?"))
         ask("hello")
         waitFor("A plain reply.")
-        assertEquals(DemoType.body.fontFamily, familyOf("A plain reply."))
-        assertFalse(DemoType.body.fontFamily == DemoType.displayHero.fontFamily)
+        assertEquals(DemoType.replyBody.fontFamily, familyOf("A plain reply."))
+        assertEquals(DemoType.body.fontFamily, familyOf("hello"))
+        assertFalse(DemoType.body.fontFamily == DemoType.replyBody.fontFamily)
     }
 
     private fun settingsLastModel(m: HfModel) = runBlocking { app.container.settings.setLastModel(m.toString()) }

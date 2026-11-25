@@ -396,7 +396,7 @@ fun AboutContent(version: String, onBack: () -> Unit) {
         Section("Licences") {
             GroupedList {
                 row { ListRow("llama.cpp", subtitle = "MIT licence") }
-                row { ListRow("Nunito Sans", subtitle = "SIL Open Font Licence 1.1") }
+                row { ListRow("Figtree", subtitle = "SIL Open Font Licence 1.1") }
                 row { ListRow("Source Serif 4", subtitle = "SIL Open Font Licence 1.1") }
                 row { ListRow("Jetpack Compose, Room, WorkManager", subtitle = "Apache licence 2.0") }
             }
