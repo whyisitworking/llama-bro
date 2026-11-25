@@ -129,6 +129,41 @@ class SettingsLargeTextTest {
         rule.onNodeWithText("After you leave the app", ignoreCase = true).assertExists()
     }
 
+    @Test fun voiceHasVoiceModeThenTheMessageBar() {
+        rule.setContent {
+            DemoTheme(ThemeMode.Light) {
+                VoiceContent(
+                    VoiceSettingsState(listOf("alloy"), "alloy", true, null, PhoneLanguage("en", "English")),
+                    onVoice = {},
+                    onCaption = {},
+                    onBack = {},
+                )
+            }
+        }
+
+        // labels are drawn in capitals; the page's own title is "Voice" and is not a section
+        fun top(text: String) =
+            rule
+                .onNodeWithText(text, useUnmergedTree = true)
+                .fetchSemanticsNode()
+                .boundsInRoot.top
+        val order =
+            listOf(
+                "VOICE MODE",
+                "ITS VOICE",
+                "TALKING",
+                "CAPTIONS",
+                "IN THE MESSAGE BAR",
+                "DICTATION",
+            ).map(::top)
+        assertEquals(order.sorted(), order)
+        assertEquals(order.size, order.toSet().size)
+        rule.onNodeWithText("VOICE", useUnmergedTree = true).assertDoesNotExist()
+        rule
+            .onNodeWithText("Uses less memory; your turns stay as voice messages; changing it reloads the model")
+            .assertExists()
+    }
+
     private companion object {
         val SUBTITLES =
             listOf(
