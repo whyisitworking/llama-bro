@@ -30,6 +30,7 @@ class LayeringTest {
             "audio" to setOf("data", "data.settings"),
             "chat" to setOf("data", "data.settings", "models", "audio"),
             "voice" to setOf("data", "data.settings", "models", "audio", "chat"),
+            "server" to setOf("data", "data.settings", "models", "audio", "chat"),
         )
 
     @Test fun everyDomainPackageImportsOnlyThoseBelowIt() {
@@ -114,7 +115,7 @@ class LayeringTest {
 
         // layers that may import any other
         val ANY = setOf(UI, ROOT, BENCHMARK)
-        val LAYERS = setOf("data", "models", "audio", "chat", "voice", UI, "designsystem", BENCHMARK)
+        val LAYERS = setOf("data", "models", "audio", "chat", "voice", "server", UI, "designsystem", BENCHMARK)
         val TEST_SETS = setOf("test", "androidTest", "sharedTest", "testFixtures")
 
         // the package (or class) path after the demo's base package, for a name written out in full in code

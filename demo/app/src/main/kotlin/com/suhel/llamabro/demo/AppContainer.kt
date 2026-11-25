@@ -49,6 +49,9 @@ import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.models.WorkDownloadScheduler
 import com.suhel.llamabro.demo.models.installedModel
+import com.suhel.llamabro.demo.server.ServerKey
+import com.suhel.llamabro.demo.server.ServerMode
+import com.suhel.llamabro.demo.server.ServerSettings
 import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.demo.ui.chat.ChatAudio
 import com.suhel.llamabro.demo.ui.chat.ChatSamplingViewModel
@@ -66,6 +69,7 @@ import com.suhel.llamabro.demo.voice.VoiceConversation
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.LlamaBroHub
 import com.suhel.llamabro.hub.work.LlamaBroWorkerFactory
+import com.suhel.llamabro.server.Advertise
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -174,6 +178,20 @@ class AppContainer(
         recovery.start()
     }
 
+    /**
+     * Server mode (docs/design/server.md §3): the held model served to the Wi-Fi behind a key kept with the settings,
+     * announced as "Llama Bro".
+     */
+    val server: ServerMode =
+        ServerMode(
+            host,
+            settings,
+            ServerKey(ServerSettings(settingsStore)),
+            scope,
+            advertise = Advertise("Llama Bro", app),
+            clock = clock,
+        )
+
     /** Runs every chat (one handle per open chat); the chat screens read it. */
     val engine: ChatEngine =
         ChatEngine(
@@ -186,6 +204,7 @@ class AppContainer(
             streamer = streamer ?: ::sdkStream,
             beforeTurn = recovery::await,
             card = { sampling.card(it) },
+            served = { server.served.value },
         )
 
     /** The loaded model as Settings › Memory and the model sheet show it, with Unload (D59). */
@@ -382,6 +401,8 @@ class AppContainer(
         // a write already under way (a stopped reply is saved even when cancelled) must finish before the database
         // closes; the turns end first, so the model's leases are released and closing it doesn't wait for a reply
         runBlocking { scope.coroutineContext[Job]?.join() }
+        // the server's lease too, or the release below would wait for it
+        runBlocking { server.stop() }
         runBlocking { host.release() }
         database.close()
     }

@@ -171,6 +171,8 @@ dependencies {
     implementation(project(":llamabro-hub-work"))
     implementation(project(":llamabro-hexagon"))
     implementation(project(":llamabro-opencl"))
+    // server mode: the held model served to the Wi-Fi (docs/design/server.md §3)
+    implementation(project(":llamabro-server"))
     testImplementation(project(":llamabro-testing"))
     testImplementation(project(":llamabro-hub-testing"))
 

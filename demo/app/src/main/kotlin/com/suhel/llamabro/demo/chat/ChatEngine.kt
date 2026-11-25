@@ -133,8 +133,13 @@ class ChatEngine(
      * ([SamplingStore.card], which never holds a turn).
      */
     private val card: (HfModel) -> CardSampling? = { Catalog.byRepo(it.repo)?.sampling },
+    /**
+     * The model server mode serves, if any (docs/design/server.md §3): a turn on it shares the load whatever its
+     * config, and the model is not freed while it is served.
+     */
+    private val served: () -> HfModel? = { null },
 ) {
-    private val leases = ModelLeases(host, settings)
+    private val leases = ModelLeases(host, settings, served)
     private val activeTurns get() = leases.activeTurns
 
     /**
@@ -154,10 +159,10 @@ class ChatEngine(
         leases.hold(key, name, slots, limit)
 
     /**
-     * Releases the loaded model unless a turn is loading it or streaming from it (the app went to the background); the
-     * next send loads it again. True when it was released.
+     * Releases the loaded model unless a turn is loading it or streaming from it, or it is served (the app went to the
+     * background); the next send loads it again. True when it was released.
      */
-    suspend fun releaseModelIfIdle(): Boolean = host.release { activeTurns.value > 0 }
+    suspend fun releaseModelIfIdle(): Boolean = host.release { activeTurns.value > 0 || served() != null }
 
     /** The system prompt from Settings › Instructions as it is now, or null when there are none. */
     private suspend fun systemPrompt(): String? =

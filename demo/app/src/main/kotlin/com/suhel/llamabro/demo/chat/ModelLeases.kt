@@ -59,7 +59,12 @@ suspend fun holdUncancelled(hold: suspend () -> ModelHold?): ModelHold? {
  * The engine's leases on the model, for turns and for audio features' holds, and the count of [activeTurns] they make:
  * the model isn't freed while one is under way, and a reply keeps the app alive while it runs (D59).
  */
-internal class ModelLeases(private val host: ModelHost, private val settings: SettingsRepository) {
+internal class ModelLeases(
+    private val host: ModelHost,
+    private val settings: SettingsRepository,
+    /** The model server mode serves: a turn on it shares its load, whatever its config. */
+    private val served: () -> HfModel? = { null },
+) {
     /** Turns under way in every chat, from the load to the end of the reply: the engine's own count, in and out. */
     val activeTurns = MutableStateFlow(0)
 
@@ -86,7 +91,8 @@ internal class ModelLeases(private val host: ModelHost, private val settings: Se
             try {
                 // this turn is counted: another one may be streaming from the model, so a chip or context changed
                 // meanwhile waits for it (ModelMemory.loadConfigChanged) instead of closing the model under that reply
-                host.hold(key, chosen) { activeTurns.value > 1 }
+                // a served model is shared too: replacing it would wait for the server's lease until serving stops
+                host.hold(key, chosen) { activeTurns.value > 1 || served() == key }
             } catch (e: CancellationException) {
                 throw e
             } catch (
