@@ -13,7 +13,11 @@ An Android SDK that runs llama.cpp's llama-server core in-process with a Kotlin 
   `sdk/llamabro-hub-testing`: `FakeLlamaBroHub`; `sdk/build-logic`: the modules' shared build conventions;
   `sdk/native`: the C++ bridge, patches and the llama.cpp submodule; `sdk/acceptance`: device test apps.
 - `demo/app`, `demo/designsystem`: the demo chat app and its component library; `demo/scripts`: its checks.
-- `docs/`: architecture, decisions (`D<n>`), findings (`F<n>`), testing, the demo's design. `research/`: the experiments.
+- `docs/`: architecture, decisions (`D<n>`), findings (`F<n>`), testing, publishing, release notes, the demo's design.
+  `research/`: the experiments.
+- Root: `README.md` (the showcase, see below), `BENCHMARKS.md` (every benchmark number and its method), `ROADMAP.md`,
+  `CONTRIBUTING.md` (contributors first, maintainer steps at the end); `.github/`: CI, the release workflow, and the
+  issue and pull-request templates.
 
 ## Commands
 
@@ -45,6 +49,27 @@ DEMO_DEVICE=<serial> demo/scripts/check.sh --device     # instrumented tests, jo
   GitHub (`.../blob/main/docs/decisions.md#d<n>`, the short anchor); `sdk/scripts/tests/anchor-links-test.py` checks
   them. Internal code keeps bare IDs.
 - Behaviour follows upstream llama-server unless a measured finding says otherwise; cite the finding next to the deviation.
+
+## The README
+
+The README is the project's showcase, read top to bottom by a shrinking audience: hook and screenshots, highlights,
+what's new, examples by task, installation, hardware, performance, what the SDK built on llama.cpp, roadmap, known
+issues, then the maintainer's story as a timeline. Keep that order, and keep it from growing:
+
+- Each section has a fixed size; the ones that can grow carry an HTML comment saying so (What's new keeps the last two
+  releases, Known issues at most four, the timeline one row per milestone). Detail goes to the linked file:
+  `BENCHMARKS.md`, `ROADMAP.md`, the release notes, the SDK guide (`sdk/README.md`). Adding something means adding a line or a row, never restructuring.
+- Every benchmark number is a `<!-- bench:ARM.FIELD -->N<!-- /bench -->` marker, never typed by hand; `check.sh`'s
+  scripts step checks both files against `research/bench/results.json`.
+- Snippets are one to five lines of real public API, checked against the `.api` dumps and sources. An API not in the
+  latest published version is labelled as in the next release. Gradle setup lives only under Installation, with the
+  version catalog first (aliases chosen so no accessor needs `asProvider()`).
+- Credit llama.cpp for its speed; claim what Llama Bro built (running the backends in an app, its fixes and patches),
+  each with its `F<n>` or `D<n>`.
+- Write like a person: plain sentences, plain noun headings, no emoji bullets, no hype. The story is the maintainer's,
+  in the first person.
+- After a release: Unreleased notes move under the version, What's new and the snippets' version update, and a milestone
+  worth telling gets a timeline row (CONTRIBUTING.md, "After a release").
 
 ## Style
 

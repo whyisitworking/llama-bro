@@ -1,0 +1,44 @@
+name: Bug report
+description: Something in the SDK or the demo app doesn't work as it should.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce it
+      description: The smallest code or steps that show it.
+      render: kotlin
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Llama Bro version
+      placeholder: 2.0.0-alpha
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone, chip and Android version
+      placeholder: OnePlus 13, Snapdragon 8 Elite, Android 16
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model, quantization, and the chip it ran on
+      description: "`Model.loadReport.device` says which chip."
+      placeholder: unsloth/Qwen3.5-4B-GGUF Q4_K_M, NPU
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: "`adb logcat -s llamabro llamabro-hub llamabro-hub-work` around the failure, and the exception's stack trace."
+      render: text
