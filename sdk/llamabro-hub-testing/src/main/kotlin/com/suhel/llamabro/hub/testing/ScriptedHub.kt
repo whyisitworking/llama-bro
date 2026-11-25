@@ -445,8 +445,9 @@ internal object Gguf {
     private const val TYPE_STRING = 8
 
     /**
-     * A GGUF of [size] bytes: a header with [name] as `general.name`, [sampling] as `general.sampling.*`, [chatTemplate]
-     * as `tokenizer.chat_template` and [extra] as given (Boolean, String, Int or Float), then zeros. The name makes each file's bytes, and so its digest, its own: the cache stores equal bytes once.
+     * A GGUF of [size] bytes: a header with [name] as `general.name`, [sampling] as `general.sampling.*`,
+     * [chatTemplate] as `tokenizer.chat_template` and [extra] as given (Boolean, String, Int or Float), then zeros.
+     * The name makes each file's bytes, and so its digest, its own: the cache stores equal bytes once.
      */
     fun bytes(
         name: String,

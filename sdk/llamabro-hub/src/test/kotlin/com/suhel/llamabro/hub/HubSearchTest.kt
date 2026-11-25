@@ -1,9 +1,15 @@
 package com.suhel.llamabro.hub
 
 import com.suhel.llamabro.chat.Sampling
+import com.suhel.llamabro.hub.SearchFixtures.COMMIT
+import com.suhel.llamabro.hub.SearchFixtures.ENDPOINT
+import com.suhel.llamabro.hub.SearchFixtures.ScriptedTransport
+import com.suhel.llamabro.hub.SearchFixtures.gguf
+import com.suhel.llamabro.hub.SearchFixtures.hub
+import com.suhel.llamabro.hub.SearchFixtures.info
+import com.suhel.llamabro.hub.SearchFixtures.refs
+import com.suhel.llamabro.hub.SearchFixtures.tree
 import com.suhel.llamabro.hub.internal.JvmStorage
-import com.suhel.llamabro.hub.spi.Response
-import com.suhel.llamabro.hub.spi.Transport
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.flow.toList
@@ -14,16 +20,11 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
 import java.net.InetSocketAddress
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.nio.file.Files
-import java.security.MessageDigest
 import java.util.Collections
 
 /** Search, repo files and recommended sampling over scripted Hub answers (D68, F146). */
@@ -462,82 +463,6 @@ internal class HubSearchTest {
             )
         }
 
-    private suspend fun installedWithProjector(
-        transport: ScriptedTransport,
-        cache: File,
-        options: PlanOptions.() -> Unit = {},
-    ): LlamaBroHub {
-        transport.json("${ENDPOINT}api/models/ggml-org/Cached-GGUF", info(base = null))
-        transport.listing(
-            "ggml-org/Cached-GGUF",
-            listOf("Cached-Q4_K_M.gguf" to 0L, "mmproj-Cached-F16.gguf" to 0L),
-        )
-        transport.gguf(
-            "ggml-org/Cached-GGUF",
-            "Cached-Q4_K_M.gguf",
-            gguf(mapOf("tokenizer.chat_template" to "{% if enable_thinking %}think{% endif %}")),
-        )
-        transport.gguf(
-            "ggml-org/Cached-GGUF",
-            "mmproj-Cached-F16.gguf",
-            gguf(mapOf("clip.has_vision_encoder" to true, "clip.has_audio_encoder" to false)),
-        )
-        return hub(transport, cache).also { it.download(HfModel("ggml-org/Cached-GGUF"), options).toList() }
-    }
-
-    @Test fun capabilitiesReadTheTemplateAndTheProjectorFromDisk() =
-        runBlocking {
-            val transport = ScriptedTransport()
-            val client = installedWithProjector(transport, Files.createTempDirectory("hub-caps-").toFile())
-            transport.requests.clear()
-            transport.attempts = 0
-            transport.failWith = HubException.Network("offline", IOException("no route"), true)
-
-            val capabilities = client.capabilities(HfModel("ggml-org/Cached-GGUF"))
-
-            assertTrue(capabilities!!.chatTemplate!!.contains("enable_thinking"))
-            assertTrue(capabilities.takesImages)
-            assertFalse(capabilities.takesAudio)
-            assertEquals("no request got through (D155)", emptyList<String>(), transport.requests)
-        }
-
-    @Test fun capabilitiesOfAModelNotOnThePhoneIsNull() =
-        runBlocking {
-            val transport = ScriptedTransport()
-            transport.model("ggml-org/Absent-GGUF", "Absent-Q4_K_M.gguf", base = null)
-
-            assertNull(hub(transport).capabilities(HfModel("ggml-org/Absent-GGUF")))
-            assertEquals(emptyList<String>(), transport.requests)
-        }
-
-    @Test fun aCopyWithoutItsProjectorTakesNoImages() =
-        runBlocking {
-            val transport = ScriptedTransport()
-            val client =
-                installedWithProjector(transport, Files.createTempDirectory("hub-caps-").toFile()) { mmproj = false }
-
-            val capabilities = client.capabilities(HfModel("ggml-org/Cached-GGUF"))!!
-
-            assertFalse(capabilities.takesImages)
-            assertFalse(capabilities.takesAudio)
-        }
-
-    @Test fun aCorruptHeaderThrowsIllegalArgument() =
-        runBlocking {
-            val transport = ScriptedTransport()
-            val cache = Files.createTempDirectory("hub-caps-").toFile()
-            val client = installedWithProjector(transport, cache)
-            val file = cache.walkTopDown().first { it.isFile && it.name == "Cached-Q4_K_M.gguf" }
-            RandomAccessFile(file, "rw").use { it.write("NOPE".toByteArray()) }
-
-            try {
-                client.capabilities(HfModel("ggml-org/Cached-GGUF"))
-                fail("a header that is not GGUF is reported, not guessed")
-            } catch (expected: IllegalArgumentException) {
-                assertTrue(expected.message!!.isNotEmpty())
-            }
-        }
-
     @Test fun offlineACachedModelStillGivesTheFilesValues() =
         runBlocking {
             for (options in listOf<PlanOptions.() -> Unit>({}, { mmproj = false })) {
@@ -742,90 +667,6 @@ internal class HubSearchTest {
         assertEquals("no header stub stays behind", emptyList<File>(), left)
     }
 
-    private fun hub(
-        transport: Transport,
-        cache: File = Files.createTempDirectory("hub-search-").toFile(),
-    ): LlamaBroHub {
-        val config =
-            HubConfig {
-                endpoint = ENDPOINT
-                cacheDir = cache
-            }
-        return LlamaBroHub(config, cache, transport, JvmStorage())
-    }
-
-    /** Answers by exact URL and records every request; anything unscripted is a 404. */
-    private class ScriptedTransport : Transport {
-        val requests: MutableList<String> = Collections.synchronizedList(mutableListOf())
-        val headerRanges: MutableList<Long?> = Collections.synchronizedList(mutableListOf())
-        val unmatched: MutableList<String> = Collections.synchronizedList(mutableListOf())
-        var failWith: Exception? = null
-        var attempts: Int = 0
-        private val routes = mutableMapOf<String, Route>()
-
-        private class Route(val status: Int, val body: ByteArray, val headers: Map<String, List<String>>)
-
-        fun json(url: String, body: String, status: Int = 200, headers: Map<String, List<String>> = emptyMap()) {
-            routes[url] = Route(status, body.toByteArray(), headers)
-        }
-
-        fun text(repo: String, readme: String) {
-            routes["$ENDPOINT$repo/resolve/main/README.md"] = Route(200, readme.toByteArray(), emptyMap())
-        }
-
-        /** The refs and tree a [com.suhel.llamabro.hub.internal.Resolver] reads; a size of 0 is filled by [gguf]. */
-        fun listing(repo: String, files: List<Pair<String, Long>>) {
-            json("${ENDPOINT}api/models/$repo/refs", refs())
-            treeFiles[repo] = files.toMutableList()
-            writeTree(repo)
-        }
-
-        fun gguf(repo: String, path: String, bytes: ByteArray) {
-            routes["$ENDPOINT$repo/resolve/$COMMIT/$path"] = Route(200, bytes, emptyMap())
-            contents["$repo/$path"] = bytes
-            treeFiles.getValue(repo).replaceAll { if (it.first == path) path to bytes.size.toLong() else it }
-            writeTree(repo)
-        }
-
-        /** A GGUF repo of one file, tagged as a quantized upload of [base] (if any), its header holding [header]. */
-        fun model(repo: String, file: String, base: String?, header: Map<String, Any> = emptyMap()) {
-            json("${ENDPOINT}api/models/$repo", info(base))
-            listing(repo, listOf(file to 0L))
-            gguf(repo, file, gguf(header))
-        }
-
-        private val treeFiles = mutableMapOf<String, MutableList<Pair<String, Long>>>()
-        private val contents = mutableMapOf<String, ByteArray>()
-
-        private fun writeTree(repo: String) {
-            val files =
-                treeFiles.getValue(repo).map { (path, size) ->
-                    path to (contents["$repo/$path"] ?: ByteArray(0))
-                }
-            json(
-                "${ENDPOINT}api/models/$repo/tree/$COMMIT?recursive=true",
-                tree(files, sizes = treeFiles.getValue(repo).toMap()),
-            )
-        }
-
-        override suspend fun open(
-            method: String,
-            url: String,
-            headers: Map<String, String>,
-            range: Long?,
-            rangeEnd: Long?,
-        ): Response {
-            attempts++
-            failWith?.let { throw it }
-            requests += url
-            if ("/resolve/$COMMIT/" in url) headerRanges += rangeEnd
-            val route = routes[url]
-            if (route == null) unmatched += url
-            val answer = route ?: Route(404, """{"error":"not found"}""".toByteArray(), emptyMap())
-            return Response(answer.status, answer.headers, url, ByteArrayInputStream(answer.body)) {}
-        }
-    }
-
     /** A local HTTP server recording whether each request carried `Authorization`. */
     private class Server(handle: (HttpExchange) -> Unit) {
         val auth: MutableList<Boolean> = Collections.synchronizedList(mutableListOf())
@@ -844,11 +685,8 @@ internal class HubSearchTest {
     }
 
     private companion object {
-        const val ENDPOINT = "https://hub.test/"
-
         /** After the magic, the version and the tensor count. */
         const val GGUF_METADATA_COUNT_OFFSET = 16L
-        val COMMIT = "c".repeat(40)
         val NEWER = "d".repeat(40)
         val TOKEN = "hf_" + "a".repeat(34)
 
@@ -860,17 +698,6 @@ internal class HubSearchTest {
                 " ",
                 "+",
             )}&filter=gguf&sort=downloads&direction=-1&limit=40$EXPAND"
-
-        fun refs(): String = """{"branches":[{"name":"main","targetCommit":"$COMMIT"}]}"""
-
-        /** A tree listing whose LFS digests are the real SHA-256 of [files]' bytes, so a download verifies. */
-        fun tree(files: List<Pair<String, ByteArray>>, sizes: Map<String, Long> = emptyMap()): String =
-            files.joinToString(",", "[", "]") { (path, bytes) ->
-                val size = sizes[path]?.takeIf { it > 0 } ?: bytes.size.toLong()
-                val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-                """{"type":"file","path":"$path","size":$size,"oid":"${"1".repeat(40)}",""" +
-                    """"lfs":{"oid":"$digest","size":$size}}"""
-            }
 
         val LFM_HEADER: Map<String, Any> =
             mapOf(
@@ -894,48 +721,6 @@ internal class HubSearchTest {
             sendResponseHeaders(status, if (bytes.isEmpty()) -1 else bytes.size.toLong())
             if (bytes.isNotEmpty()) responseBody.use { it.write(bytes) }
             close()
-        }
-
-        fun info(base: String?): String {
-            val tags = listOfNotNull("gguf", base?.let { "base_model:$it" }, base?.let { "base_model:quantized:$it" })
-            return """{"id":"x/y","tags":[${tags.joinToString(",") { "\"$it\"" }}]}"""
-        }
-
-        /** A GGUF of metadata only, with the given keys (Float as f32, Int as i32, Boolean as bool, String as string). */
-        fun gguf(metadata: Map<String, Any>): ByteArray {
-            val out = ByteArrayOutputStream()
-
-            fun bytes(size: Int, fill: ByteBuffer.() -> Unit) =
-                out.write(
-                    ByteBuffer
-                        .allocate(size)
-                        .order(ByteOrder.LITTLE_ENDIAN)
-                        .apply(fill)
-                        .array(),
-                )
-
-            fun string(value: String) {
-                val raw = value.toByteArray()
-                bytes(8) { putLong(raw.size.toLong()) }
-                out.write(raw)
-            }
-            out.write("GGUF".toByteArray())
-            bytes(4) { putInt(3) }
-            bytes(8) { putLong(0) }
-            bytes(8) { putLong(metadata.size.toLong()) }
-            for ((key, value) in metadata) {
-                string(key)
-                when (value) {
-                    is Float -> bytes(8) { putInt(6).putFloat(value) }
-                    is Int -> bytes(8) { putInt(5).putInt(value) }
-                    is Boolean -> bytes(5) { putInt(7).put(if (value) 1 else 0) }
-                    is String -> bytes(4) { putInt(8) }.also { string(value) }
-                    else -> error("unsupported $value")
-                }
-            }
-            val aligned = (out.size() + 31) and -32
-            out.write(ByteArray(aligned - out.size() + 64))
-            return out.toByteArray()
         }
 
         val SEARCH_QWEN35 =
