@@ -2425,27 +2425,30 @@ in without consuming them, so a click or a text field on it still gets them all:
 finger came down and is cancelled as it slides off, while the glass must follow it until it lifts (the click still
 cancels as usual). Glass given the `InteractionSource` of its click (`Modifier.glass(..., interactions)`,
 `GlassSurface(onClick)`, the bar's icon chips, a tappable title, the FAB, the jump button) also answers a key's press
-and a keyboard's focus, the focus lighting it in the middle without a swell. The press eases in over 160 ms and out over
-320 ms on the emphasized-decelerate curve (`DemoMotion.PRESS_*`), with no spring, a tap held at least 90 ms so a quick
-one still shows. Pressed, the glass grows by `swell` (1.10) of its shorter side on every side alike, so the message bar
-grows by as much as a chip rather than by a share of its width; its content grows as its longer side does (a chip's with
-it, a wide panel's text barely); its bounds and layout are unchanged, the lens reads the page under the grown shape, and
-its edge bends the page `bend` (0.35) of its refraction more. A light gathers on the rim around the finger, out to
-`reach` (36 dp) at `light` (0.6), with a faint glow through the glass under it, following the finger as it moves.
-Dragged, the glass stretches along the drag by up to `stretch` (0.08) of its shorter side, as much narrower across, and
-moves toward the finger only a little, on an elastic limited to `pull` (3 dp; a drag of the limit gives half the stretch
-and half the pull): a stretch on the axes, not a shear, so the lens's rounded-rectangle maths holds unchanged. Let go,
-the swell, the stretch and the movement ease back together on the press's one curve. Tunings tried on the owner's phone
-and dropped: a swell of 1.05 (too subtle); a pull of 8 to 10 dp, a stretch of 0.08 of each side's length, and springs
-that overshot and wobbled (cartoonish, iOS's glass hardly moves and eases rather than bounces); the swell returning
-before the pull (the glass shrank, then moved). Everything moves by draw alone: a press redraws the node frame by frame
+and a keyboard's focus, the focus lighting it in the middle without a swell. The glass is a heavy pane: the press eases
+in over 220 ms and out over 450 ms on the standard curve, slow to start as a mass is (`DemoMotion.PRESS_*`), with no
+spring, a tap held at least 90 ms so a quick one still shows. Pressed, the glass grows by `swell` (1.10) of its shorter
+side on every side alike, so the message bar grows by as much as a chip rather than by a share of its width; its content
+grows as its longer side does (a chip's with it, a wide panel's text barely); its bounds and layout are unchanged, the
+lens reads the page under the grown shape, and its edge bends the page `bend` (0.35) of its refraction more. A light
+gathers on the rim around the finger, out to `reach` (36 dp) at `light` (0.6), with a faint glow through the glass under
+it, following the finger as it moves. Dragged, the glass stretches along the drag by up to `stretch` (0.05) of its
+shorter side, as much narrower across, and moves toward the finger only a little, on an elastic limited to `pull` (2
+dp); the elastic gives as the drag's square, half at a drag of `resistance` (64 dp), so the first of a drag barely moves
+it and the stretch comes on gradually; the pane trails the finger, catching up over 140 ms (`PANE_LAG_MILLIS`), while
+the light follows the finger at once: a stretch on the axes, not a shear, so the lens's rounded-rectangle maths holds
+unchanged. Let go, the swell, the stretch and the movement ease back together on the press's one curve. Tunings tried on
+the owner's phone and dropped: a swell of 1.05 (too subtle); a pull of 8 to 10 dp, a stretch of 0.08 of each side's
+length, and springs that overshot and wobbled (cartoonish, iOS's glass hardly moves and eases rather than bounces); the
+swell returning before the pull (the glass shrank, then moved); an elastic that gave half within the pull's 3 dp (the
+stretch came on at once, with no resistance). Everything moves by draw alone: a press redraws the node frame by frame
 and recomposes nothing, and no pass is added. On a bar that draws its glass (D154) the posed shape and bend go into its
 `MergedShape`, so the bar's shader agrees with the rim the node draws. The glass is the press's indication, so these
 clicks draw no ripple; buttons off glass keep it. With animations off the glass neither swells nor moves, but the light
 still comes and goes and follows the finger. A phone with no lens (before Android 13) or a Light tier one (D153) swells,
-stretches and lights its fill or its plainer lens the same way. The six values are `GlassTheme.press` (`GlassPress`),
-saved with the rest and tuned first under Settings › Appearance › Glass (the swell up to 1.25, the pull up to 16 dp),
-with its own Reset and a note to press and drag the sample chip and panel at the bottom.
+stretches and lights its fill or its plainer lens the same way. The seven values are `GlassTheme.press` (`GlassPress`),
+saved with the rest and tuned first under Settings › Appearance › Glass (the swell up to 1.25, the pull up to 16 dp, the
+resistance up to 160 dp), with its own Reset and a note to press and drag the sample chip and panel at the bottom.
 Consequences: A pressed piece of glass costs a redraw per frame while it moves, its lens re-recorded and, on a merged
 bar (a Light phone's default), the bar's effect rebuilt and its page re-recorded; a still screen costs nothing more.
 That cost is unmeasured: the chat's budget is for a fling, not a press, and a benchmark is the owner's call. The swell

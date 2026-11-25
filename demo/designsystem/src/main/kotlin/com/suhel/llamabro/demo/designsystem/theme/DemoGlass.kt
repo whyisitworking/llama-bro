@@ -69,9 +69,10 @@ data class BarGlass(
  * How a piece of glass answers a finger (D155): pressed, it swells, a light gathers on its rim around the finger, out
  * to [reach] at [light]'s strength, and its edge bends the page [bend] more (a share of its refraction). Dragged, it
  * stretches along the drag and narrows across it, and moves after the finger only a little, on an elastic limited to
- * [pull]. Let go, swell, stretch and movement all ease back together. The swell and the stretch are lengths measured
- * on the glass's shorter side, so a wide panel grows by as much as a chip, not by a share of its width. With
- * animations off it neither swells nor moves; the light still comes and goes, and follows the finger.
+ * [pull]; both give slowly at first and more as the drag goes on, half of each at a drag of [resistance], as a heavy
+ * pane would, not a jelly. Let go, swell, stretch and movement all ease back together. The swell and the stretch
+ * are lengths measured on the glass's shorter side, so a wide panel grows by as much as a chip, not by a share of its
+ * width. With animations off it neither swells nor moves; the light still comes and goes, and follows the finger.
  */
 @Immutable
 data class GlassPress(
@@ -87,6 +88,8 @@ data class GlassPress(
     val pull: Dp = Default.pull,
     /** How much longer dragged glass grows along the drag, at most, as a share of its shorter side; narrower across. */
     val stretch: Float = Default.stretch,
+    /** How far a finger drags glass for half its stretch and half its pull: longer is stiffer. */
+    val resistance: Dp = Default.resistance,
 ) {
     /** How strongly the edge bends at [press], as a factor of the glass's refraction. */
     fun bendAt(press: Float): Float = 1f + bend * press.coerceAtLeast(0f)
@@ -97,15 +100,17 @@ data class GlassPress(
     /**
      * Where glass of [base] size is drawn, in its own bounds' pixels, [press] of the way in and dragged [drag] pixels
      * by the finger, its pull limit [pullPx] pixels: grown by the swell on every side alike, stretched along the drag
-     * as the elastic gives (a drag of [pullPx] gives half), and moved that little toward it. [still] (animations off),
-     * it stays as it is.
+     * and moved that little toward it as the elastic gives, half at a drag of [resistancePx]. [still] (animations
+     * off), it stays as it is.
      */
+    @Suppress("LongParameterList") // the press, the drag and the lengths it is measured against
     fun pose(
         base: Size,
         press: Float,
         drag: Offset,
         still: Boolean,
         pullPx: Float,
+        resistancePx: Float,
     ): GlassPose {
         val side = base.minDimension
         val grow = (swell - 1f) * side * press.coerceIn(0f, 1f)
@@ -115,10 +120,11 @@ data class GlassPress(
         // the content grows as the glass's longer side does: a chip's with it, a wide panel's text barely
         val content = 1f + grow / base.maxDimension.coerceAtLeast(1f)
         val far = drag.getDistance()
-        if (far == 0f || pullPx <= 0f) {
+        if (far == 0f) {
             return GlassPose(Offset(-grow / 2f, -grow / 2f), swollen, content, content)
         }
-        val give = far / (pullPx + far)
+        // squared, the elastic resists the first of a drag and gives more as it goes on, never past its limits
+        val give = if (resistancePx > 0f) far * far / (resistancePx * resistancePx + far * far) else 1f
         val toward = drag / far
         // along the drag longer, across it narrower: how much of the drag is across, less how much is down
         val lean = toward.x * toward.x - toward.y * toward.y
@@ -130,7 +136,16 @@ data class GlassPress(
     }
 
     companion object {
-        val Default = GlassPress(swell = 1.1f, light = 0.6f, reach = 36.dp, bend = 0.35f, pull = 3.dp, stretch = 0.08f)
+        val Default =
+            GlassPress(
+                swell = 1.1f,
+                light = 0.6f,
+                reach = 36.dp,
+                bend = 0.35f,
+                pull = 2.dp,
+                stretch = 0.05f,
+                resistance = 64.dp,
+            )
     }
 }
 

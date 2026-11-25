@@ -130,6 +130,7 @@ object SavedGlass {
             val bend: Float? = null,
             val pull: Float? = null,
             val stretch: Float? = null,
+            val resistance: Float? = null,
         ) {
             fun over(base: GlassPress) =
                 GlassPress(
@@ -139,10 +140,12 @@ object SavedGlass {
                     bend = bend ?: base.bend,
                     pull = pull.dpOr(base.pull),
                     stretch = stretch ?: base.stretch,
+                    resistance = resistance.dpOr(base.resistance),
                 )
 
             companion object {
-                fun of(p: GlassPress) = Press(p.swell, p.light, p.reach.value, p.bend, p.pull.value, p.stretch)
+                fun of(p: GlassPress) =
+                    Press(p.swell, p.light, p.reach.value, p.bend, p.pull.value, p.stretch, p.resistance.value)
             }
         }
     }

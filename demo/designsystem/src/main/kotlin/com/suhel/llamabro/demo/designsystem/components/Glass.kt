@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.SystemClock
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -288,6 +289,9 @@ private class GlassNode(
      */
     private var liftedDrag by mutableStateOf(Offset.Zero)
 
+    /** Where the pane's drag is: the finger's [drag], caught up with a little after it moves (D155). */
+    private var pane = Animatable(Offset.Zero, Offset.VectorConverter)
+
     /**
      * The glass follows the finger itself rather than through a click's press (D155), pressable or not, as every
      * panel answers a touch: a click's press reports only where the finger came down, and is cancelled as it slides
@@ -332,6 +336,7 @@ private class GlassNode(
         watching = null
         releasing = null
         press = Animatable(0f)
+        pane = Animatable(Offset.Zero, Offset.VectorConverter)
         held = false
         drag = Offset.Zero
         liftedDrag = Offset.Zero
@@ -358,22 +363,27 @@ private class GlassNode(
     private fun touched(at: Offset) {
         held = true
         drag = Offset.Zero
+        coroutineScope.launch { pane.snapTo(Offset.Zero) }
         pressed(at, animationsOff())
     }
 
+    /** The finger moved: the light follows it at once, the pane after it, as a heavy thing does (D155). */
     private fun moved(from: Offset, to: Offset) {
         finger = to
         drag = to - from
-        register()
+        coroutineScope.launch {
+            pane.animateTo(drag, tween(DemoMotion.PANE_LAG_MILLIS, easing = DemoMotion.enter)) { register() }
+        }
     }
 
     private fun lifted() {
         // a gesture ended by the node leaving has no scope left to settle in, nor need to
         if (!held || !isAttached) return
         // the drag eases back as the press does, from wherever the press is as the finger lifts
-        liftedDrag = if (press.value > 0f) drag / press.value else Offset.Zero
+        liftedDrag = if (press.value > 0f) pane.value / press.value else Offset.Zero
         held = false
         drag = Offset.Zero
+        coroutineScope.launch { pane.snapTo(Offset.Zero) }
         released()
     }
 
@@ -415,7 +425,7 @@ private class GlassNode(
         this.still = still
         pressedAt = SystemClock.uptimeMillis()
         coroutineScope.launch {
-            press.animateTo(1f, tween(DemoMotion.PRESS_IN_MILLIS, easing = DemoMotion.enter)) { register() }
+            press.animateTo(1f, tween(DemoMotion.PRESS_IN_MILLIS, easing = DemoMotion.standard)) { register() }
         }
     }
 
@@ -425,7 +435,7 @@ private class GlassNode(
             coroutineScope.launch {
                 // a tap released the frame it lands still shows its press
                 delay(DemoMotion.PRESS_HOLD_MILLIS - (SystemClock.uptimeMillis() - pressedAt))
-                press.animateTo(0f, tween(DemoMotion.PRESS_OUT_MILLIS, easing = DemoMotion.enter)) { register() }
+                press.animateTo(0f, tween(DemoMotion.PRESS_OUT_MILLIS, easing = DemoMotion.standard)) { register() }
             }
     }
 
@@ -438,8 +448,10 @@ private class GlassNode(
 
     /** Where glass of [base] size is drawn this frame (D155): swollen, pulled and stretched as the finger has it. */
     private fun poseNow(feel: GlassPress, base: Size): GlassPose {
-        val pulled = if (held) drag else liftedDrag * press.value
-        return feel.pose(base, press.value, pulled, still, with(requireDensity()) { feel.pull.toPx() })
+        val pulled = if (held) pane.value else liftedDrag * press.value
+        return with(requireDensity()) {
+            feel.pose(base, press.value, pulled, still, feel.pull.toPx(), feel.resistance.toPx())
+        }
     }
 
     /** Its corners' radius drawn at [pose] from [base]: grown with the glass's shorter side, a pill at most. */

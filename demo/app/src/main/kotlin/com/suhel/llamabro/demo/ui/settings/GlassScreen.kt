@@ -142,6 +142,9 @@ private fun GroupScope.pressSliders(press: GlassPress, onChange: (GlassPress) ->
     share("press-bend", "Extra refraction", press.bend, MAX_PRESS_BEND) { onChange(press.copy(bend = it)) }
     dp("press-pull", "Pull when dragged", press.pull, MAX_PULL) { onChange(press.copy(pull = it)) }
     share("press-stretch", "Stretch when dragged", press.stretch, MAX_STRETCH) { onChange(press.copy(stretch = it)) }
+    dp("press-resistance", "Drag for half the stretch", press.resistance, MAX_RESISTANCE) {
+        onChange(press.copy(resistance = it))
+    }
 }
 
 /** A length from 0 to [max] in steps of [step] dp. */
@@ -205,7 +208,8 @@ internal fun describe(glass: GlassTheme): String {
         "bar = BarGlass(blur = ${trim(b.blur.value)}.dp, dispersion = ${trim(b.dispersion.value)}.dp, " +
         "veil = ${b.veil}f, bareVeil = ${b.bareVeil}f, fade = ${trim(b.fade.value)}.dp, hold = ${b.hold}f)\n" +
         "press = GlassPress(swell = ${p.swell}f, light = ${p.light}f, reach = ${trim(p.reach.value)}.dp, " +
-        "bend = ${p.bend}f, pull = ${trim(p.pull.value)}.dp, stretch = ${p.stretch}f)"
+        "bend = ${p.bend}f, pull = ${trim(p.pull.value)}.dp, stretch = ${p.stretch}f, " +
+        "resistance = ${trim(p.resistance.value)}.dp)"
 }
 
 private const val MAX_EDGE = 24f
@@ -220,6 +224,7 @@ private const val MAX_FADE = 64f
 // past a quarter, swollen glass crowds what sits beside it: it draws past its bounds (D155)
 private const val MAX_SWELL = 0.25f
 private const val MAX_PULL = 16f
+private const val MAX_RESISTANCE = 160f
 private const val MAX_STRETCH = 0.3f
 private const val MAX_REACH = 96f
 private const val MAX_PRESS_BEND = 2f
