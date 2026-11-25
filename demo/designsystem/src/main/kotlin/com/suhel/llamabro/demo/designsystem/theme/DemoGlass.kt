@@ -102,5 +102,15 @@ data class GlassTheme(val chip: GlassStyle, val panel: GlassStyle, val bar: BarG
     }
 }
 
+/**
+ * How much glass a phone can afford to draw (D153), measured on a flagship only (F183, F185, F186). [Full]: every
+ * pass. [Light], for a weaker phone: a chip's or a panel's lens bends the page without its own blur pass, and a heavy
+ * bar blur runs at a quarter of the resolution instead of half; the look is the same glass, a little plainer.
+ */
+enum class GlassTier { Full, Light }
+
+/** The phone's [GlassTier]; the app provides it at its root. */
+val LocalGlassTier = staticCompositionLocalOf { GlassTier.Full }
+
 /** The glass for the subtree: [GlassTheme.Default] unless a screen provides another. */
 val LocalGlass = staticCompositionLocalOf { GlassTheme.Default }

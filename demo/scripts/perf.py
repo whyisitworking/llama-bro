@@ -19,7 +19,8 @@ BUDGETS = [
     ("ScrollBenchmark", "flingTheChatList", "fling the Chat list of 300 chats, frameOverrunMs P90", ("sampled", "frameOverrunMs", "P90"), 0),
     ("ScrollBenchmark", "flingTheChatList", "fling the Chat list of 300 chats, frameOverrunMs P99", ("sampled", "frameOverrunMs", "P99"), 4),
     ("ScrollBenchmark", "flingAChatOf300Messages", "fling a chat of 300 messages, frameOverrunMs P90", ("sampled", "frameOverrunMs", "P90"), 0),
-    ("ScrollBenchmark", "flingAChatOf300Messages", "fling a chat of 300 messages, frameDurationCpuMs P90", ("sampled", "frameDurationCpuMs", "P90"), 6),
+    # 7, not 6, since the glass (F186): its render passes cost a flagship about 0.8 ms of it, which D153 keeps there
+    ("ScrollBenchmark", "flingAChatOf300Messages", "fling a chat of 300 messages, frameDurationCpuMs P90", ("sampled", "frameDurationCpuMs", "P90"), 7),
     ("StreamingBenchmark", "streamAReply", "streaming 60 tokens/s for 20 s, frameOverrunMs P90", ("sampled", "frameOverrunMs", "P90"), 0),
     ("StreamingBenchmark", "streamAReply", "ChatEngine.onDelta per call (median, ms)", ("per_call", "ChatEngine.onDeltaSumMs", "onDeltaCountCount"), 0.5),
     ("StreamingBenchmark", "streamAReply", "Markdown.parse per call (median, ms)", ("per_call", "Markdown.parseSumMs", "parseCountCount"), 0.5),

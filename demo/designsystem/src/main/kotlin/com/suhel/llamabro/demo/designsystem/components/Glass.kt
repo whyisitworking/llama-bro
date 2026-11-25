@@ -45,8 +45,10 @@ import com.suhel.llamabro.demo.designsystem.theme.BarGlass
 import com.suhel.llamabro.demo.designsystem.theme.DemoColors
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.GlassStyle
+import com.suhel.llamabro.demo.designsystem.theme.GlassTier
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
+import com.suhel.llamabro.demo.designsystem.theme.LocalGlassTier
 
 /**
  * A page that glass can be drawn over (D148): the layer the page is recorded into ([page], null before Android 12,
@@ -208,7 +210,8 @@ private class GlassNode(var backdrop: Backdrop?, var corner: Dp?, var style: Gla
             drawRect(backdrop.pageColor)
             translate(-offset.x, -offset.y) { drawLayer(page) }
         }
-        layer.renderEffect = lens.effect(size.width, size.height, corner.x, style, colors.surface, this)
+        val weaker = currentValueOf(LocalGlassTier) == GlassTier.Light
+        layer.renderEffect = lens.effect(size.width, size.height, corner.x, style, colors.surface, weaker, this)
         layer.setRoundRectOutline(Offset.Zero, size, corner.x)
         layer.clip = true
         // the veil is blended into the glass by its shader, not laid over it
@@ -236,12 +239,15 @@ private val GlassLight = Color.White
 private class Lens {
     private val shader = RuntimeShader(LENS)
 
+    /** The lens over a glass [width] by [height]; with [light] (a weaker phone, D153), without its own blur pass. */
+    @Suppress("LongParameterList") // the shader's inputs, all of them
     fun effect(
         width: Float,
         height: Float,
         radius: Float,
         style: GlassStyle,
         tint: Color,
+        light: Boolean,
         density: Density,
     ): RenderEffect {
         with(density) {
@@ -252,14 +258,15 @@ private class Lens {
             shader.setFloatUniform("bezel", minOf(style.bezel.toPx(), radius))
             shader.setFloatUniform("refraction", style.refraction.toPx())
             shader.setFloatUniform("dispersion", style.dispersion)
+            val bend = android.graphics.RenderEffect.createRuntimeShaderEffect(shader, "content")
             val soft = style.blur.toPx()
+            if (light || soft < 1f) return bend.asComposeRenderEffect()
             val blur =
                 android.graphics.RenderEffect.createBlurEffect(
                     soft,
                     soft,
                     android.graphics.Shader.TileMode.CLAMP,
                 )
-            val bend = android.graphics.RenderEffect.createRuntimeShaderEffect(shader, "content")
             return android.graphics.RenderEffect
                 .createChainEffect(bend, blur)
                 .asComposeRenderEffect()

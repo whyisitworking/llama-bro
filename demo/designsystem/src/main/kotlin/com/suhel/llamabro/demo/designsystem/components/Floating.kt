@@ -57,8 +57,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import com.suhel.llamabro.demo.designsystem.theme.BarGlass
 import com.suhel.llamabro.demo.designsystem.theme.FadeMask
+import com.suhel.llamabro.demo.designsystem.theme.GlassTier
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
+import com.suhel.llamabro.demo.designsystem.theme.LocalGlassTier
 import kotlin.math.ceil
 
 /**
@@ -202,7 +204,12 @@ internal fun FloatingLayer(
             // a heavy blur runs on a copy of the page at half its resolution, a quarter of the pixels (F185): drawn
             // back up, the blur hides the copy's softness, and where the blur eases out the copy fades into the page
             val small = rememberGraphicsLayer()
-            val scale = if (style.heavy) HALF_RESOLUTION else 1f
+            val scale =
+                when {
+                    !style.heavy -> 1f
+                    LocalGlassTier.current == GlassTier.Light -> QUARTER_RESOLUTION
+                    else -> HALF_RESOLUTION
+                }
             Box(
                 Modifier.matchParentSize().drawWithCache {
                     val reduced = IntSize(ceil(size.width / scale).toInt(), ceil(size.height / scale).toInt())
@@ -297,6 +304,9 @@ private const val EASE_STEPS = 12
  * pixels (F185).
  */
 private const val HALF_RESOLUTION = 2f
+
+/** How much smaller a heavy bar blur is drawn on a weaker phone ([GlassTier.Light], D153): a 16th of the pixels. */
+private const val QUARTER_RESOLUTION = 4f
 
 /**
  * The progressive blur (Android 13 and up): a separable Gaussian whose radius follows [strength] from the screen's

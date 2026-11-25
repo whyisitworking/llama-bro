@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the [decision records](../decisions.md) (`D<n>`), the [research history](history.md), which summarises each phase, and the experiments under [`research/`](../../research/).
-> **Status:** living document, updated 2026-11-25 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183–F185)
+> **Status:** living document, updated 2026-11-25 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183–F186)
 
 Labels such as P1, PA, PF, PD and PH name the project's phases, and W1 to W9 the workstreams of a phase; the
 [research history](history.md#summary-of-the-phases) summarises each. "Task <n>", "T<n>" and "Feeds:" name the steps
@@ -2318,10 +2318,29 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   quarter-resolution blur or fewer lens layers are the levers left, each measured this way before kept.
 - **Feeds:** D148, F183, `FloatingFrame`.
 
+<a id="f186"></a>
+### F186. The glass's cost on the CPU is its render passes; one pass blurs cleanly only below about 4 dp
+
+- **Finding:** Each chip and panel draws its lens as two offscreen passes (Android's blur, then the lens shader), each
+  bar's blur as two more. Dropping only the lens's blur pass takes flinging a chat of 300 messages from CPU frame time
+  P90 6.76 to 5.91 ms (P50 5.35 to 4.61) and frameOverrun P90 −1.8 to −3.2 ms: the CPU cost is the number of passes,
+  each with a fixed cost on the render thread whatever its size, not the pixels. Folding the blur into the lens
+  shader, on a 7 by 7 grid over the page recorded up to 4 times smaller, makes one pass, but past about 4 dp of blur
+  (a panel's 10 to 12) it shows blocks: the page is drawn smaller, not averaged, so thin shapes turn coarse, and the
+  samples fall several of its pixels apart; Android's blur shrinks with averaging and stays smooth.
+- **Evidence:** phone CPH2649 (performance class 35), the benchmark build, `ScrollBenchmark.flingAChatOf300Messages`,
+  10 iterations, the lens's blur pass switched off (2026-11-25); the one-pass lens on the owner's phone at 12 dp (the
+  owner's screenshot, 2026-11-25). The emulator can't measure any of it: it draws with the host's GPU.
+- **Means:** the two-pass lens stays; the chat's CPU budget is 7 ms, the glass's 0.8 ms recorded against it; and the
+  glass is measured on a flagship only, so a phone that doesn't vouch for itself draws lighter glass (D153). A
+  mid-range phone's numbers are still unknown: its GPU, short of bandwidth for every pass, is the likelier limit.
+- **Feeds:** D153, F185, `demo/scripts/perf.py`.
+
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F186 | The glass's CPU cost is its render passes; one pass blurs cleanly only below about 4 dp | D153, F185 |
 | F185 | A heavy bar blur run at half resolution gives a chat's fling its frame budget back | D148, F183 |
 | F184 | Content composed during a `SubcomposeLayout`'s measure starts its effects mid-layout; a list scrolled from one throws | D148 |
 | F183 | The demo's glass costs a flagship 8 ms of GPU per frame scrolling a chat; a third shader pass lowers the median but doubles the jank | D148, D151 |

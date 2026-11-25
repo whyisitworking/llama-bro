@@ -162,7 +162,7 @@ Measured on the test phone (a 120 Hz screen, 8.3 ms per frame), with the release
 | Cold start to the first frame | time to initial display, median | 450 ms | 116 ms (123 ms without the profile) |
 | Cold start to home fully drawn | time to full display, median | 700 ms | 198 ms (236 ms without the profile); 255 ms after the design system rework |
 | Fling the Chat list (300 chats) | frame overrun P90 / P99 | 0 / 4 ms | P90 -9.0 ms |
-| Fling a chat of 300 messages with code blocks | frame overrun P90; CPU frame time P90 | 0 / 6 ms | P90 -7.3 ms |
+| Fling a chat of 300 messages with code blocks | frame overrun P90; CPU frame time P90 | 0 / 7 ms (6 ms before the glass, F186) | P90 -7.3 ms; with the glass -1.8 ms and 6.8 ms (F185) |
 | A reply streaming at 60 tokens a second for 20 s | frame overrun P90; `ChatEngine.onDelta` and `Markdown.parse` medians | 0 ms; 0.5 ms each | -1.4 ms; 5 microseconds and 0.18 ms per call |
 | Open the model sheet and switch Basic and Advanced 10 times | frame overrun P90 | 0 | -6.0 ms |
 | Switch the layout back and forth 10 times | frame overrun P90 | 0 | -4.5 ms |

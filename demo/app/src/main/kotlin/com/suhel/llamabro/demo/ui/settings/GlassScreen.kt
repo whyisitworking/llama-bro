@@ -21,7 +21,9 @@ import com.suhel.llamabro.demo.designsystem.components.SliderRow
 import com.suhel.llamabro.demo.designsystem.theme.BarGlass
 import com.suhel.llamabro.demo.designsystem.theme.GlassStyle
 import com.suhel.llamabro.demo.designsystem.theme.GlassTheme
+import com.suhel.llamabro.demo.designsystem.theme.GlassTier
 import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
+import com.suhel.llamabro.demo.designsystem.theme.LocalGlassTier
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -42,6 +44,12 @@ fun GlassScreen(onChange: (GlassTheme?) -> Unit, onBack: () -> Unit) {
         bottomBar = { BottomBar { GlassPreview() } },
     ) {
         Notice("Each change applies across the app when you let go, and is kept. Scroll to see it in the glass below.")
+        if (LocalGlassTier.current == GlassTier.Light) {
+            Notice(
+                "This phone draws lighter glass, to keep scrolling smooth: no blur inside chips and panels, and a " +
+                    "coarser blur under the bars.",
+            )
+        }
         Section("Chips: icon buttons, the title") {
             GroupedList { styleSliders("chip", glass.chip) { onChange(glass.copy(chip = it)) } }
         }

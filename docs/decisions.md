@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D152 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D153 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -186,6 +186,7 @@ its amendments to know what holds now.
 | [D150](#d150-replies-in-the-serif-the-rest-in-figtree) Replies in the serif, the rest in Figtree | 2026-11-25 | |
 | [D151](#d151-a-debug-build-tunes-the-glass-on-the-phone) A debug build tunes the glass on the phone | 2026-11-25 | D152 |
 | [D152](#d152-the-glass-is-a-setting-under-appearance-saved-with-a-sample-at-the-bottom) The glass is a setting under Appearance, saved, with a sample at the bottom | 2026-11-25 | |
+| [D153](#d153-the-glass-scales-to-the-phone-lighter-where-the-phone-doesnt-vouch-for-itself) The glass scales to the phone: lighter where the phone doesn't vouch for itself | 2026-11-25 | |
 
 **Repository and process**
 
@@ -2369,5 +2370,22 @@ fallback's slider (the fill drawn where a chip or panel can't be a lens, before 
 blur, before Android 12) shows only on a phone that draws it, where it changes something. The first screen waits for
 the saved glass as it waits for the layout, so a tuned glass never flickers in after a frame of the default.
 Consequences: A person's tuned glass outlives a change to `GlassTheme.Default` until they reset it. `Screen` and
-`SettingsPage` take a `bottomBar`. Next free IDs: D153, F186.
+`SettingsPage` take a `bottomBar`.
+
+<a id="d153"></a>
+### D153. The glass scales to the phone: lighter where the phone doesn't vouch for itself
+
+Status: Decided (2026-11-25)
+
+Context: The glass is measured on one flagship (F183, F185, F186), where it costs about 0.8 ms of CPU and most of
+the GPU's frame at full resolution; a mid-range phone, with slower cores and a GPU short of bandwidth, would feel
+every pass more, and the emulator can't stand in for one. A one-pass lens blurs cleanly only below about 4 dp (F186).
+Decision: Two tiers (`GlassTier`, provided as `LocalGlassTier`). Full, on a phone that declares Android 13's media
+performance class or a later one (`Build.VERSION.MEDIA_PERFORMANCE_CLASS` ≥ 33) and isn't a low-memory phone: every
+pass, as tuned. Light, otherwise (a phone that declares no class included): a chip's or a panel's lens bends the page
+without its own blur pass, and a heavy bar blur runs at a quarter of the resolution, not half. The Glass screen says
+so on a Light phone. The lens keeps its two passes on a Full phone, and the chat's CPU budget goes from 6 to 7 ms,
+the glass's share recorded (F186). A blur of under 1 px skips its pass on any phone.
+Consequences: A weaker phone draws plainer glass, by the class it declares rather than by measurement; a mid-range
+phone's frames are still to be measured, and the tiers to be revised by what that finds. Next free IDs: D154, F187.
 

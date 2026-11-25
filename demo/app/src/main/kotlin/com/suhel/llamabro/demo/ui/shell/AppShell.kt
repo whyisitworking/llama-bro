@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
@@ -56,6 +57,7 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.LightDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
+import com.suhel.llamabro.demo.designsystem.theme.LocalGlassTier
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 import com.suhel.llamabro.demo.ui.Screens
@@ -125,10 +127,16 @@ fun AppShell(
     val firstRun by shell.startsWithFirstRun.collectAsStateWithLifecycle()
     val seen by shell.seenFirstRun.collectAsStateWithLifecycle()
     SystemBars(theme)
-    // the glass as the person tuned it on Settings › Appearance › Glass (D152); null until it is read
+    // the glass as the person tuned it on Settings › Appearance › Glass (D152); null until it is read; and as much of
+    // it as this phone can afford (D153)
     val glass by shell.glass.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val tier = remember(context) { glassTierOf(context) }
     DemoTheme(theme) {
-        CompositionLocalProvider(LocalGlass provides (glass ?: LocalGlass.current)) {
+        CompositionLocalProvider(
+            LocalGlass provides (glass ?: LocalGlass.current),
+            LocalGlassTier provides tier,
+        ) {
             Box(
                 Modifier
                     .fillMaxSize()
