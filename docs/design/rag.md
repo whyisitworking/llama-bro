@@ -41,10 +41,12 @@ is that layer, as a separate optional artifact, so core stays llama-server's fea
 
 ## Constraints from the code as it is
 
-- **An embedding model answers only the embedding routes.** A model loaded with `ModelTask.Embedding` serves
-  `/v1/embeddings`, `/embeddings` and nothing else (ModelConfig.kt, `ModelTask`), so the chunker can't ask it to
-  tokenize. Chunk sizes are estimated from characters with a margin, and a chunk that still exceeds the batch
-  (`LlamaBroException.InputTooLong(tokens, limit)`, which carries the real count) is split again and retried.
+- **Counting tokens on an embedding model: check first.** `ModelTask`'s doc says an embedding model answers only the
+  embedding routes, but upstream's `/tokenize` doesn't depend on generation and likely works on an `--embeddings`
+  load. Step 1 checks upstream. If it works, the chunker counts real tokens with the embedder's own tokenizer (and the
+  doc is corrected). If it doesn't, chunk sizes are estimated from characters with a margin, and a chunk that still
+  exceeds the batch (`LlamaBroException.InputTooLong(tokens, limit)`, which carries the real count) is split and
+  retried.
 - **The SDK neither splits text nor raises the batch size** (the embeddings decision): the module chooses chunk sizes
   under the model's batch, read from `ModelInfo`/`loadReport`.
 - **Speed we know:** bge-small embeds about 108 sentences a second on the NPU, 46 on the GPU, 42 on the CPU;
@@ -167,8 +169,8 @@ jina-reranker-tiny).
 
 Each step ends with its checks passing and a commit.
 
-1. **Spikes:** two models loaded at once in the runtime (host test); Android PDF text extraction on five real PDFs
-   (notes only).
+1. **Spikes:** two models loaded at once in the runtime (host test); `/tokenize` on an embedding load, upstream and
+   SDK (host test); Android PDF text extraction on five real PDFs (notes only).
 2. **Module skeleton:** `sdk/llamabro-rag`, `Document`, `Hit`, `EmbeddingFormat` with presets, the chunker and its
    tests.
 3. **Store:** the folder format, atomic writes, tombstones, compaction, `IndexMismatch`; tests including crash safety.

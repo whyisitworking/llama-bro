@@ -51,9 +51,11 @@ byte for byte, because it *is* llama-server's core (D12, F1).
   `llamabro` stays socket-free. To record as a new decision.
 - **`Model.rawRequest` is not enough to forward bytes faithfully.** Its `SseParser` keeps only `data:` lines
   (`internal/SseParser.kt`), but the Anthropic Messages stream and the Responses stream carry `event:` lines that
-  their SDKs dispatch on. Errors become `LlamaBroException`s, losing llama-server's JSON error body and status. The
-  native side already delivers raw bytes (`Model.requestBytes`, `BodyMode.Each`), so core gets one small
-  `@InternalLlamaBroApi` call that returns the status and the raw byte chunks. `llamabro-server` is the only user.
+  their SDKs dispatch on. And `rawRequest` turns an error into a typed `LlamaBroException` for app code, which keeps
+  the message but not the rest of llama-server's JSON error body (`type`, `code`, `param`) that OpenAI and Anthropic
+  clients read. `rawRequest` and the typed calls stay exactly as they are. The native side already delivers raw bytes
+  (`Model.requestBytes`, `BodyMode.Each`), so core gains one small `@InternalLlamaBroApi` call that returns
+  llama-server's status, content type and body unchanged, error bodies included. `llamabro-server` is its only user.
 - **The demo holds one model at a time** through `ModelHost` (`hold` returns a `Lease`; a `hold` of another model
   waits for leases and then replaces it). Slots are 1, or 2 in voice mode (D99, D100). The server shares that host, so
   the chat and remote clients share a model and its slots.
@@ -136,7 +138,7 @@ no policy for the app. The demo sets both.
 | `GET /v1/models`, `/health`, `/props`, `/slots`, `/metrics` | `ServedModels.list`; the rest through `exchange` | on |
 | `POST /v1/audio/transcriptions` | multipart → `Model.transcribe` | on, when the model hears |
 | `POST /v1/audio/speech` | `Model.speak`, streamed | on, when the model speaks |
-| `POST /props`, `/lora-adapters`, `/slots/:id` | `exchange` | **off**: they change or save the shared model |
+| `POST /props`, `/lora-adapters`, `/slots/:id` | `exchange` | **off**: they change or save the shared model. Upstream gates two of them the same way: `POST /props` needs `--props` (`endpoint_props`), slot save and restore need `--slot-save-path` (`server-context.cpp`) |
 | `/v1/realtime` | | not in v1 |
 
 **Request checks**, before a body reaches the model:
@@ -144,7 +146,8 @@ no policy for the app. The demo sets both.
   `/health` and `/v1/models` stay open, as upstream's `--api-key` leaves them.
 - Media: every `image_url`, `input_audio` and file part must be a `data:` URL. `file://`, `http(s)://` and anything
   else get a 400 in OpenAI's error shape. This closes the media-folder read (anti-goals) and stops the phone being
-  used to fetch URLs on the LAN.
+  used to fetch URLs on the LAN. Refusing `http(s)` media is a deviation from upstream, so it gets its own decision
+  citing the reason, as the project's rule asks.
 - The body size limit (`maxBodyBytes`), and a JSON parse error as a 400.
 
 **Concurrency:** a request waits for a free slot up to a timeout (503 with `Retry-After`). Slots come from the
