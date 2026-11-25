@@ -8,6 +8,7 @@ import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.BatteryManager
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,12 +39,21 @@ class NetworkState {
         _charging.value = value
     }
 
-    /** Follows the default network and the battery from now on; the returned handle stops it. */
+    /** Follows the Wi-Fi and Ethernet networks and the battery from now on; the returned handle stops it. */
     fun watch(context: Context): AutoCloseable {
         val app = context.applicationContext
         val connectivity = app.getSystemService(ConnectivityManager::class.java)
         val network = Callback()
-        connectivity.registerDefaultNetworkCallback(network)
+        // not the default network: a LAN without internet is not the default while cellular is. The request asks for
+        // no internet capability, which the builder would otherwise leave required
+        val request =
+            NetworkRequest
+                .Builder()
+                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+        connectivity.registerNetworkCallback(request, network)
         val battery =
             object : BroadcastReceiver() {
                 override fun onReceive(context: Context, intent: Intent) = readBattery(intent)
@@ -66,29 +76,36 @@ class NetworkState {
         setCharging(isCharging(intent.getIntExtra(BatteryManager.EXTRA_STATUS, BatteryManager.BATTERY_STATUS_UNKNOWN)))
     }
 
-    /** The default network's changes. Its properties and capabilities arrive separately, so each is kept. */
+    /**
+     * Each Wi-Fi or Ethernet network's addresses, kept per network: a LAN with no internet is listed even when
+     * cellular is the default network, and two networks at once are both listed.
+     */
     private inner class Callback : ConnectivityManager.NetworkCallback() {
-        private var local = false
-        private var found: List<InetAddress> = emptyList()
-
-        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-            local = carriesLocalNetwork(capabilities::hasTransport)
-            publish()
-        }
+        private var book = AddressBook<Network>()
 
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
-            found = properties.linkAddresses.map { it.address }
-            publish()
+            book = book.with(network, reachableAddresses(properties.linkAddresses.map { it.address }, true))
+            setAddresses(book.merged())
         }
 
         override fun onLost(network: Network) {
-            local = false
-            found = emptyList()
-            publish()
+            book = book.without(network)
+            setAddresses(book.merged())
         }
-
-        private fun publish() = setAddresses(reachableAddresses(found, local))
     }
+}
+
+/** The addresses of each network by key, merged into the one sorted, de-duplicated list the page shows. */
+internal class AddressBook<K>(private val byNetwork: Map<K, List<String>> = emptyMap()) {
+    fun with(key: K, addresses: List<String>) = AddressBook(byNetwork + (key to addresses))
+
+    fun without(key: K) = AddressBook(byNetwork - key)
+
+    fun merged(): List<String> =
+        byNetwork.values
+            .flatten()
+            .distinct()
+            .sorted()
 }
 
 /** [addresses]' IPv4 ones that a computer on the same network could use, when that network is [wifiOrEthernet]. */

@@ -25,8 +25,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -74,6 +76,7 @@ class ServerService : Service() {
             watching = true
             holdLocks()
             scope.launch { watch() }
+            scope.launch { endWithServing() }
         }
         return START_NOT_STICKY
     }
@@ -81,10 +84,21 @@ class ServerService : Service() {
     /** The notification follows the state, the address and the charger; the end of serving ends the service. */
     private suspend fun watch() {
         combine(feed.state, feed.served, feed.network.addresses, feed.network.charging, ::Facts).collect { facts ->
-            if (facts.state is ServingState.Off || facts.state is ServingState.Failed) {
-                stopSelf()
-            } else {
+            if (facts.state !is ServingState.Off && facts.state !is ServingState.Failed) {
                 getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(facts))
+            }
+        }
+    }
+
+    /**
+     * Ends the service when serving has ended for good: a restart goes through Off to Starting, and the Server page
+     * asks for the service only when serving begins, so an Off that Starting follows must leave it running.
+     */
+    private suspend fun endWithServing() {
+        feed.state.collectLatest { state ->
+            if (state is ServingState.Off || state is ServingState.Failed) {
+                delay(SETTLE_MILLIS)
+                stopSelf()
             }
         }
     }
@@ -185,6 +199,9 @@ class ServerService : Service() {
         private const val NOTIFICATION_ID = 7_300
         private const val ACTION_STOP = "com.suhel.llamabro.demo.STOP_SERVING"
         private const val LOCK_TAG = "LlamaBro:serving"
+
+        /** How long Off or Failed must last to count as the end of serving, not the middle of a restart. */
+        const val SETTLE_MILLIS = 1_000L
 
         /** Replaced by tests that feed the service without an app container. */
         @VisibleForTesting internal var feedOf: ((Context) -> ServingFeed)? = null

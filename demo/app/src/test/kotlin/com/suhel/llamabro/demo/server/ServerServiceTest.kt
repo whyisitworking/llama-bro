@@ -30,6 +30,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ServiceController
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowPowerManager
+import java.time.Duration
 
 /** The service that keeps serving alive (docs/design/server.md §3): its notification, its locks, and its life. */
 @RunWith(AndroidJUnit4::class)
@@ -65,6 +66,9 @@ class ServerServiceTest {
     }
 
     private fun idle() = shadowOf(Looper.getMainLooper()).idle()
+
+    /** Past the time Off must last to end the service. */
+    private fun settle() = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(ServerService.SETTLE_MILLIS + 1))
 
     private fun Notification.title() = extras.getCharSequence(Notification.EXTRA_TITLE).toString()
 
@@ -103,14 +107,31 @@ class ServerServiceTest {
             assertFalse(shadowOf(service).isStoppedBySelf)
 
             state.value = ServingState.Off
-            idle()
+            settle()
             assertTrue(shadowOf(service).isStoppedBySelf)
         }
+
+    @Test fun restartKeepsTheServiceRunning() {
+        val service = running()
+        // a restart: Off, then Starting a moment later, as ServerMode.start does after a stop
+        state.value = ServingState.Off
+        idle()
+        state.value = ServingState.Starting()
+        settle()
+        assertFalse(shadowOf(service).isStoppedBySelf)
+        state.value = ServingState.Serving(model, 8080, 2)
+        settle()
+        assertFalse(shadowOf(service).isStoppedBySelf)
+        // and an Off that stays ends it
+        state.value = ServingState.Off
+        settle()
+        assertTrue(shadowOf(service).isStoppedBySelf)
+    }
 
     @Test fun failedEndsIt() {
         val service = running()
         state.value = ServingState.Failed("no port")
-        idle()
+        settle()
         assertTrue(shadowOf(service).isStoppedBySelf)
     }
 
@@ -120,7 +141,7 @@ class ServerServiceTest {
         assertEquals("Stop", stop.title.toString())
         // the action's intent, delivered to the service as Android would
         controller.get().onStartCommand(shadowOf(stop.actionIntent).savedIntent, 0, 3)
-        idle()
+        settle()
         assertEquals(1, stops)
         assertEquals(ServingState.Off, state.value)
         assertTrue(shadowOf(service).isStoppedBySelf)

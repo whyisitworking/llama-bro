@@ -55,4 +55,26 @@ class NetworkStateTest {
         assertEquals(emptyList<String>(), state.addresses.value)
         assertFalse(state.charging.value)
     }
+
+    @Test fun lanOnlyWifiWhileCellularIsDefaultStillListed() {
+        // the book holds the Wi-Fi's addresses whatever the default network is; cellular never enters it
+        val book = AddressBook<String>().with("wifi", listOf("192.168.8.2"))
+        assertEquals(listOf("192.168.8.2"), book.merged())
+    }
+
+    @Test fun lostNetworkDropsItsAddresses() {
+        val book = AddressBook<String>().with("wifi", listOf("192.168.8.2")).with("eth", listOf("10.0.0.5"))
+        assertEquals(listOf("10.0.0.5"), book.without("wifi").merged())
+        assertEquals(emptyList<String>(), book.without("wifi").without("eth").merged())
+    }
+
+    @Test fun twoNetworksMerge() {
+        val book =
+            AddressBook<String>()
+                .with("wifi", listOf("192.168.1.20", "10.0.0.5"))
+                .with("eth", listOf("10.0.0.5", "172.16.0.9"))
+        assertEquals(listOf("10.0.0.5", "172.16.0.9", "192.168.1.20"), book.merged())
+        // a network's later properties replace its earlier ones
+        assertEquals(listOf("10.0.0.5", "172.16.0.9"), book.with("wifi", listOf("10.0.0.5")).merged())
+    }
 }
