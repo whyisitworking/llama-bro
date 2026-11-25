@@ -286,8 +286,9 @@ fi
 # nothing of the demo is left running for the next session's pre-flight to find, and the lock goes, also on Ctrl-C
 let_device_go() {
     local app
-    # the debug build and its tests; never the release beside them (the person's own app)
-    for app in com.suhel.llamabro.demo.debug com.suhel.llamabro.demo.debug.test com.suhel.llamabro.demo.benchmark; do
+    # the debug and benchmark builds and their tests; never the release beside them (the person's own app)
+    for app in com.suhel.llamabro.demo.debug com.suhel.llamabro.demo.debug.test \
+        com.suhel.llamabro.demo.benchmark com.suhel.llamabro.demo.benchmark.test; do
         adb -s "${DEMO_DEVICE:-}" shell am force-stop "$app" > /dev/null 2>&1
     done
     rm -f "$device_lock"

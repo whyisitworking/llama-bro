@@ -2308,8 +2308,9 @@ Decision: The debug build is `com.suhel.llamabro.demo.debug` (`applicationIdSuff
 "Llama Bro Debug", its icon the release's with an amber band across the bottom (a dot on the themed icon). The device
 steps, the guard and the real-model run name that package and never stop or touch the release.
 Consequences: Both builds can be on one phone, each with its own data; the device tests run while the release stays.
-The benchmark builds still use the release's package (they are built from the release), so `--perf` would still
-replace the release.
+The benchmark builds (2026-11-25) are `com.suhel.llamabro.demo.benchmark`, named "Llama Bro Benchmark", set on the
+variant (the Baseline Profile plugin makes their build types after the DSL is read), and their tests
+`com.suhel.llamabro.demo.benchmark.test`: `--perf` leaves the release alone too.
 
 <a id="d150"></a>
 ### D150. Replies in the serif, the rest in Figtree

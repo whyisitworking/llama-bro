@@ -8,6 +8,8 @@ android {
     compileSdk = 37
 
     defaultConfig {
+        // the app under test is com.suhel.llamabro.demo.benchmark (D149's suffix): these tests sit beside it
+        testApplicationId = "com.suhel.llamabro.demo.benchmark.test"
         minSdk = 29
         targetSdk = 36
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

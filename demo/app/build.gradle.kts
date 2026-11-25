@@ -213,6 +213,13 @@ android.sourceSets.configureEach {
         kotlin.directories.add("src/benchmark/kotlin")
     }
 }
+// beside the installed release, never over it, as the debug build is (D149): a benchmark run installs and clears its app
+androidComponents.onVariants { variant ->
+    if (variant.buildType in benchmarkBuilds) {
+        variant.applicationId.set("com.suhel.llamabro.demo.benchmark")
+        variant.manifestPlaceholders.put("appLabel", "Llama Bro Benchmark")
+    }
+}
 configurations.configureEach {
     if (name in benchmarkBuilds.map { "${it}Implementation" }) {
         dependencies.add(project.dependencies.create(project(":llamabro-testing")))

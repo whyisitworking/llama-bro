@@ -8,8 +8,11 @@ import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 
-/** The app under test, and the steps the benchmarks and the Baseline Profile share. */
-const val PACKAGE = "com.suhel.llamabro.demo"
+/**
+ * The app under test (its benchmark build, beside the person's own release: D149), and the steps the benchmarks and
+ * the Baseline Profile share.
+ */
+const val PACKAGE = "com.suhel.llamabro.demo.benchmark"
 const val BIG_CHAT_TITLE = "Big chat of 300 messages"
 private const val WAIT_MILLIS = 30_000L
 private const val SEED_WAIT_MILLIS = 180_000L
