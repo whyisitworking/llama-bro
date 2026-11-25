@@ -2421,25 +2421,33 @@ Context: The glass chips and panels (D148) answered a press with Material's ripp
 otherwise behaves like a piece of glass. Apple's Liquid Glass answers a touch by swelling and gathering light where the
 finger is; the demo wants an answer of its own in that spirit, cheap enough for the chat's 7 ms budget (F186).
 Decision: A piece of glass given the `InteractionSource` of its click (`Modifier.glass(..., interactions)`,
-`GlassSurface(onClick)`, the bar's icon chips, a tappable title, the FAB, the jump button) follows its presses in its
-own node: a spring (`DemoMotion.PRESS_*`) takes it in, landing just past full, and a softer one settles it back, a tap
-held at least 90 ms so a quick one still shows. Pressed, the glass is drawn swollen about its middle (`swell`, 1.05),
-its bounds and layout unchanged: the lens reads the page under the swollen shape, the content is scaled with it, and
-its edge bends the page `bend` (0.35) of its refraction more. A light gathers on the rim around the finger, out to
-`reach` (36 dp) at `light` (0.6), with a faint glow through the glass under it. Everything moves by draw alone: a
-press redraws the node frame by frame and recomposes nothing, and no pass is added. On a bar that draws its glass
-(D154) the pressed shape and bend go into its `MergedShape`, so the bar's shader agrees with the rim the node draws.
-The glass is the press's indication, so these clicks draw no ripple (buttons off glass keep it), and a keyboard's
-focus lights it in the middle without a swell. The glass never draws smaller than at rest as the release swings back,
-and a glass whose interaction source changes starts at rest. With animations off the glass doesn't swell, but the
-light still comes and goes. A phone with no lens (before Android 13) or a Light tier
-one (D153) swells and lights its fill or its plainer lens the same way. The four values are `GlassTheme.press`
-(`GlassPress`), saved with the rest and tuned under Settings › Appearance › Glass (the swell up to 1.12), whose
-sample chip and panel answer a press.
+`GlassSurface(onClick)`, the bar's icon chips, a tappable title, the FAB, the jump button) is pressable, and follows the
+finger itself from down to up, watching pointer events on their way in without consuming them: a click's press reports
+only where the finger came down and is cancelled as it slides off, while the glass must follow it until it lifts (the
+click still cancels as usual). A spring (`DemoMotion.PRESS_*`) takes it in, landing just past full, and a softer one
+settles it back, a tap held at least 90 ms so a quick one still shows. Pressed, the glass is drawn swollen about its
+middle (`swell`, 1.10, first tried at 1.05 and found too subtle on the owner's phone), its bounds and layout unchanged:
+the lens reads the page under the swollen shape, the content is scaled with it, and its edge bends the page `bend`
+(0.35) of its refraction more. A light gathers on the rim around the finger, out to `reach` (36 dp) at `light` (0.6),
+with a faint glow through the glass under it, following the finger as it moves. Dragged, the glass follows the finger on
+an elastic that gives less the further it goes (`pull`, 10 dp, its limit; a drag of the limit moves it half that) and
+stretches along the drag by up to `stretch` (0.08), as much narrower across: a stretch on the axes, not a shear, so the
+lens's rounded-rectangle maths holds unchanged. Let go, it springs back on a bouncy spring (`DemoMotion.PULL_*`),
+overshooting its place once. Everything moves by draw alone: a press redraws the node frame by frame and recomposes
+nothing, and no pass is added. On a bar that draws its glass (D154) the pressed shape and bend go into its
+`MergedShape`, so the bar's shader agrees with the rim the node draws. The glass is the press's indication, so these
+clicks draw no ripple (buttons off glass keep it), and a keyboard's focus lights it in the middle without a swell. The
+glass never draws smaller than at rest as the release swings back, and a glass whose interaction source changes starts
+at rest. With animations off the glass neither swells nor moves, but the light still comes and goes and follows the
+finger. A phone with no lens (before Android 13) or a Light tier one (D153) swells and lights its fill or its plainer
+lens the same way. The six values are `GlassTheme.press` (`GlassPress`), saved with the rest and tuned first under
+Settings › Appearance › Glass (the swell up to 1.25, the pull up to 32 dp), with its own Reset and a note to press and
+drag the sample chip and panel at the bottom.
 Consequences: A pressed piece of glass costs a redraw per frame while it moves, its lens re-recorded and, on a merged
 bar (a Light phone's default), the bar's effect rebuilt and its page re-recorded; a still screen costs nothing more.
-That cost is unmeasured: the chat's budget is for a fling, not a press, and a benchmark is the owner's call. The swell draws past the glass's bounds, so glass
-inside something that clips it loses its swollen edge. Its look is tuned by eye on the owner's phone; a host test
-checks the press still clicks with animations on and off, not what it draws.
+That cost is unmeasured: the chat's budget is for a fling, not a press, and a benchmark is the owner's call. The swell
+draws past the glass's bounds, so glass inside something that clips it, or pulled toward the edge of a bar that draws
+it, loses its edge; the tap target stays where the glass sits at rest. Its look is tuned by eye on the owner's phone; a
+host test checks the press still clicks with animations on and off, not what it draws.
 Next free IDs: D156, F189.
 

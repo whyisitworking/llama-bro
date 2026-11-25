@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -23,8 +24,9 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 /**
- * A chip of glass answers a press itself (D155), with the press it shares with its click: held, it draws each frame of
- * its swell and its light (here with or without animations), and let go it settles and has clicked once. How it looks
+ * A chip of glass answers a finger itself (D155), alongside its click: held or dragged, it draws each frame of its
+ * swell, pull and light (here with or without animations), and let go it settles, having clicked once unless the
+ * finger slid off it. How it looks
  * is for a phone: a host test draws no pixels to compare.
  */
 @RunWith(AndroidJUnit4::class)
@@ -72,6 +74,32 @@ class GlassPressTest {
     @Test fun withAnimationsOffAPressedChipStillClicks() {
         show(animatorScale = 0f)
         pressAndLetGo()
+        assertEquals(1, clicks)
+    }
+
+    @Test fun aChipDraggedOffAndLetGoDoesntClick() {
+        show(animatorScale = 1f)
+        val chip = rule.onNodeWithTag("chip")
+        chip.performTouchInput {
+            down(center)
+            moveBy(Offset(width * 3f, height * 2f))
+        }
+        rule.mainClock.advanceTimeBy(HELD_MILLIS)
+        chip.performTouchInput { up() }
+        rule.mainClock.advanceTimeBy(SETTLED_MILLIS)
+        assertEquals(0, clicks)
+    }
+
+    @Test fun aChipDraggedWithinItselfStillClicks() {
+        show(animatorScale = 1f)
+        val chip = rule.onNodeWithTag("chip")
+        chip.performTouchInput {
+            down(center)
+            moveBy(Offset(width / 4f, 0f))
+        }
+        rule.mainClock.advanceTimeBy(HELD_MILLIS)
+        chip.performTouchInput { up() }
+        rule.mainClock.advanceTimeBy(SETTLED_MILLIS)
         assertEquals(1, clicks)
     }
 

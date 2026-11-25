@@ -42,7 +42,7 @@ fun GlassPreview(modifier: Modifier = Modifier) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "A panel of glass",
+                    "Press and drag the glass",
                     Modifier.weight(1f),
                     color = LocalDemoColors.current.muted,
                     style = DemoType.body,

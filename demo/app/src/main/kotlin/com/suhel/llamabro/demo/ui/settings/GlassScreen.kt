@@ -18,6 +18,7 @@ import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.Notice
 import com.suhel.llamabro.demo.designsystem.components.Section
+import com.suhel.llamabro.demo.designsystem.components.SectionNote
 import com.suhel.llamabro.demo.designsystem.components.SegmentedSwitch
 import com.suhel.llamabro.demo.designsystem.components.SliderRow
 import com.suhel.llamabro.demo.designsystem.theme.BarGlass
@@ -27,6 +28,7 @@ import com.suhel.llamabro.demo.designsystem.theme.GlassTheme
 import com.suhel.llamabro.demo.designsystem.theme.GlassTier
 import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
 import com.suhel.llamabro.demo.designsystem.theme.LocalGlassTier
+import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -34,7 +36,8 @@ import kotlin.math.roundToInt
  * Settings › Appearance › Glass (D152): a slider for every value of the app's glass (the chips', the panels' and the
  * bars'), each saved and applied across the app as it is let go ([onChange]), so the look is tuned by eye; a sample
  * chip and panel float at the bottom ([GlassPreview]) over the sliders as they scroll. Copy values puts them on the
- * clipboard as the Kotlin of [GlassTheme.Default], and Reset forgets them ([onChange] with null).
+ * clipboard as the Kotlin of [GlassTheme.Default], and Reset forgets them ([onChange] with null). How glass answers a
+ * finger (D155) comes first, with its own Reset, since the sample is there to press and drag while it is tuned.
  */
 @Composable
 fun GlassScreen(onChange: (GlassTheme?) -> Unit, onBack: () -> Unit) {
@@ -62,6 +65,22 @@ fun GlassScreen(onChange: (GlassTheme?) -> Unit, onBack: () -> Unit) {
                 Modifier.fillMaxWidth().testTag("glass_merged"),
             )
         }
+        // first among the values: the sample at the bottom is right there to press and drag while tuning them (D155)
+        Section(
+            "Press: how glass answers a finger",
+            action = "Reset".takeIf { glass.press != GlassPress.Default },
+            onAction = { onChange(glass.copy(press = GlassPress.Default)) },
+        ) {
+            SectionNote(
+                if (animationsDisabled()) {
+                    "Animations are off on this phone, so pressed glass only lights up: it doesn't swell or move."
+                } else {
+                    "Press and drag the chip or the panel at the bottom: it swells, lights up under your finger and " +
+                        "pulls after it, then springs back when you let go."
+                },
+            )
+            GroupedList { pressSliders(glass.press) { onChange(glass.copy(press = it)) } }
+        }
         Section("Chips: icon buttons, the title") {
             GroupedList { styleSliders("chip", glass.chip) { onChange(glass.copy(chip = it)) } }
         }
@@ -70,9 +89,6 @@ fun GlassScreen(onChange: (GlassTheme?) -> Unit, onBack: () -> Unit) {
         }
         Section("Bars: the blur under the top and bottom") {
             GroupedList { barSliders(glass.bar) { onChange(glass.copy(bar = it)) } }
-        }
-        Section("Press: how glass answers a finger") {
-            GroupedList { pressSliders(glass.press) { onChange(glass.copy(press = it)) } }
         }
         Section("Values") {
             GroupedList {
@@ -124,6 +140,8 @@ private fun GroupScope.pressSliders(press: GlassPress, onChange: (GlassPress) ->
     share("press-light", "Light at the finger", press.light) { onChange(press.copy(light = it)) }
     dp("press-reach", "Light's reach", press.reach, MAX_REACH) { onChange(press.copy(reach = it)) }
     share("press-bend", "Extra refraction", press.bend, MAX_PRESS_BEND) { onChange(press.copy(bend = it)) }
+    dp("press-pull", "Pull when dragged", press.pull, MAX_PULL) { onChange(press.copy(pull = it)) }
+    share("press-stretch", "Stretch when dragged", press.stretch, MAX_STRETCH) { onChange(press.copy(stretch = it)) }
 }
 
 /** A length from 0 to [max] in steps of [step] dp. */
@@ -187,7 +205,7 @@ internal fun describe(glass: GlassTheme): String {
         "bar = BarGlass(blur = ${trim(b.blur.value)}.dp, dispersion = ${trim(b.dispersion.value)}.dp, " +
         "veil = ${b.veil}f, bareVeil = ${b.bareVeil}f, fade = ${trim(b.fade.value)}.dp, hold = ${b.hold}f)\n" +
         "press = GlassPress(swell = ${p.swell}f, light = ${p.light}f, reach = ${trim(p.reach.value)}.dp, " +
-        "bend = ${p.bend}f)"
+        "bend = ${p.bend}f, pull = ${trim(p.pull.value)}.dp, stretch = ${p.stretch}f)"
 }
 
 private const val MAX_EDGE = 24f
@@ -199,8 +217,10 @@ private const val MAX_BAR_BLUR = 48f
 private const val MAX_BAR_SPLIT = 20f
 private const val MAX_FADE = 64f
 
-// past an eighth, swollen glass crowds what sits beside it: it draws past its bounds (D155)
-private const val MAX_SWELL = 0.12f
+// past a quarter, swollen glass crowds what sits beside it: it draws past its bounds (D155)
+private const val MAX_SWELL = 0.25f
+private const val MAX_PULL = 32f
+private const val MAX_STRETCH = 0.3f
 private const val MAX_REACH = 96f
 private const val MAX_PRESS_BEND = 2f
 private const val HALF = 0.5f

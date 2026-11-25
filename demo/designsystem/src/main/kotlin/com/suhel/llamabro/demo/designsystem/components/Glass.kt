@@ -5,8 +5,11 @@ import android.os.Build
 import android.os.SystemClock
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.FocusInteraction
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -45,10 +48,14 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.ui.input.pointer.SuspendingPointerInputModifierNode
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.node.CompositionLocalConsumerModifierNode
+import androidx.compose.ui.node.DelegatingNode
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.GlobalPositionAwareModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
@@ -66,6 +73,7 @@ import com.suhel.llamabro.demo.designsystem.theme.BarGlass
 import com.suhel.llamabro.demo.designsystem.theme.DemoColors
 import com.suhel.llamabro.demo.designsystem.theme.DemoMotion
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
+import com.suhel.llamabro.demo.designsystem.theme.GlassPose
 import com.suhel.llamabro.demo.designsystem.theme.GlassPress
 import com.suhel.llamabro.demo.designsystem.theme.GlassStyle
 import com.suhel.llamabro.demo.designsystem.theme.GlassTier
@@ -244,7 +252,7 @@ private class GlassNode(
     var corner: Dp?,
     var style: GlassStyle,
     var interactions: InteractionSource?,
-) : Modifier.Node(),
+) : DelegatingNode(),
     DrawModifierNode,
     GlobalPositionAwareModifierNode,
     CompositionLocalConsumerModifierNode {
@@ -262,8 +270,29 @@ private class GlassNode(
      */
     private var press = Animatable(0f)
 
-    /** Where the finger is, in the glass's own pixels: the light gathers there and stays as the press fades. */
-    private var finger = Offset.Unspecified
+    /**
+     * Where the finger is, in the glass's own pixels, followed as it moves: the light gathers there and stays as the
+     * press fades. Snapshot state, so a moving finger redraws the glass.
+     */
+    private var finger by mutableStateOf(Offset.Unspecified)
+
+    /** How far the finger has been dragged since it touched down, while it is down (D155). */
+    private var drag by mutableStateOf(Offset.Zero)
+
+    /** Whether a finger is down on the glass: its drag is [drag], else the spring of [pull] settling back. */
+    private var held by mutableStateOf(false)
+
+    /** The drag settling back to rest once the finger lifts, on a bouncy spring (D155). */
+    private var pull = Animatable(Offset.Zero, Offset.VectorConverter)
+    private var pulling: Job? = null
+
+    /**
+     * The glass follows the finger itself rather than through its click's press (D155): a click's press reports only
+     * where the finger came down, and is cancelled as it slides off, while the glass must follow it until it lifts.
+     * It watches the events on their way in and consumes none, so the click below still gets them all.
+     */
+    @Suppress("unused") // delegated: the node is attached with this one
+    private val touches = delegate(SuspendingPointerInputModifierNode { follow() })
 
     /** Whether animations are off as the press began: the glass then doesn't swell (D155). */
     private var still = false
@@ -299,7 +328,57 @@ private class GlassNode(
         // the scope's jobs end with it; a node reused later starts at rest
         watching = null
         releasing = null
+        pulling = null
         press = Animatable(0f)
+        pull = Animatable(Offset.Zero, Offset.VectorConverter)
+        held = false
+        drag = Offset.Zero
+    }
+
+    /** Follows each finger that touches pressable glass from down to up, sliding off it or not (D155). */
+    private suspend fun PointerInputScope.follow() {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            if (interactions == null) return@awaitEachGesture
+            touched(down.position)
+            try {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val finger = event.changes.firstOrNull { it.id == down.id }
+                    if (finger == null || !finger.pressed) break
+                    moved(down.position, finger.position)
+                }
+            } finally {
+                lifted()
+            }
+        }
+    }
+
+    private fun touched(at: Offset) {
+        pulling?.cancel()
+        held = true
+        drag = Offset.Zero
+        pressed(at, animationsOff())
+    }
+
+    private fun moved(from: Offset, to: Offset) {
+        finger = to
+        drag = to - from
+        register()
+    }
+
+    private fun lifted() {
+        // a gesture ended by the node leaving has no scope left to settle in, nor need to
+        if (!held || !isAttached) return
+        val from = drag
+        held = false
+        drag = Offset.Zero
+        pulling =
+            coroutineScope.launch {
+                pull.snapTo(from)
+                pull.animateTo(Offset.Zero, spring(DemoMotion.PULL_DAMPING, DemoMotion.PULL_STIFFNESS)) { register() }
+            }
+        released()
     }
 
     /**
@@ -310,14 +389,20 @@ private class GlassNode(
     private fun watch() {
         watching?.cancel()
         releasing?.cancel()
-        if (press.value != 0f) coroutineScope.launch { press.snapTo(0f) }
+        if (press.value != 0f || pull.value != Offset.Zero) {
+            coroutineScope.launch {
+                press.snapTo(0f)
+                pull.snapTo(Offset.Zero)
+            }
+        }
         val source = interactions ?: return
         watching =
             coroutineScope.launch {
                 source.interactions.collect {
                     when (it) {
+                        // a finger's press is the one the glass follows itself; this is a key's
                         is PressInteraction.Press -> {
-                            pressed(it.pressPosition, animationsOff())
+                            if (!held) pressed(it.pressPosition, animationsOff())
                         }
 
                         is FocusInteraction.Focus -> {
@@ -325,7 +410,7 @@ private class GlassNode(
                         }
 
                         is PressInteraction.Release, is PressInteraction.Cancel, is FocusInteraction.Unfocus -> {
-                            released()
+                            if (!held) released()
                         }
                     }
                 }
@@ -360,10 +445,17 @@ private class GlassNode(
                 ?: currentValueOf(LocalContext).contentResolver.animatorDurationScale()
         ) == 0f
 
-    /** How the glass is drawn this frame: [scale] times its size, its edge bending [bend] times as far. */
-    private fun pressNow(feel: GlassPress): Pair<Float, Float> {
-        val p = press.value
-        return feel.scaleAt(p, still) to feel.bendAt(p)
+    /** Where glass of [base] size is drawn this frame (D155): swollen, pulled and stretched as the finger has it. */
+    private fun poseNow(feel: GlassPress, base: Size): GlassPose {
+        val pulled = if (held) drag else pull.value
+        return feel.pose(base, press.value, pulled, still, with(requireDensity()) { feel.pull.toPx() })
+    }
+
+    /** Its corners' radius drawn at [pose]: the corner scaled with the glass's narrower side, a pill at most. */
+    private fun cornerOf(pose: GlassPose, density: Density): Float {
+        val pill = pose.size.minDimension / 2f
+        val radius = corner?.let { with(density) { it.toPx() } * minOf(pose.scaleX, pose.scaleY) }
+        return radius?.coerceAtMost(pill) ?: pill
     }
 
     /**
@@ -382,12 +474,15 @@ private class GlassNode(
             container = bar
         }
         if (bar == null || extent == IntSize.Zero) return
-        val (scale, bend) = pressNow(currentValueOf(LocalGlass).press)
-        val grown = extent.toSize() * scale
-        val pill = grown.minDimension / 2f
-        val radius = corner?.let { with(requireDensity()) { it.toPx() } * scale }?.coerceAtMost(pill) ?: pill
-        val shift = grown.shiftFrom(extent.toSize())
-        val shape = MergedShape(Rect(at - shift, grown), radius, style, bend)
+        val feel = currentValueOf(LocalGlass).press
+        val pose = poseNow(feel, extent.toSize())
+        val shape =
+            MergedShape(
+                Rect(at + pose.topLeft, pose.size),
+                cornerOf(pose, requireDensity()),
+                style,
+                feel.bendAt(press.value),
+            )
         if (bar.shapes[this] != shape) bar.shapes[this] = shape
     }
 
@@ -418,22 +513,15 @@ private class GlassNode(
     override fun ContentDrawScope.draw() {
         val colors = currentValueOf(LocalDemoColors)
         val feel = currentValueOf(LocalGlass).press
-        // pressed, the glass is drawn swollen about its middle (D155): its bounds, and what it lays out, stay put
-        val (scale, bend) = pressNow(feel)
-        val grown = size * scale
-        val shift = grown.shiftFrom(size)
-        val pill = grown.minDimension / 2
-        val corner =
-            CornerRadius(
-                this@GlassNode
-                    .corner
-                    ?.toPx()
-                    ?.times(scale)
-                    ?.coerceAtMost(pill) ?: pill,
-            )
+        // pressed, the glass is drawn swollen, pulled and stretched (D155): its bounds, and what it lays out, stay put
+        val pose = poseNow(feel, size)
+        val bend = feel.bendAt(press.value)
+        val grown = pose.size
+        val shift = pose.topLeft
+        val corner = CornerRadius(cornerOf(pose, this))
         // a bar drawing this glass in its own passes leaves it only the rim, the hairline and the content (D154)
         val merged = container?.active == true
-        translate(-shift.x, -shift.y) {
+        translate(shift.x, shift.y) {
             val lensed =
                 merged ||
                     (
@@ -450,11 +538,16 @@ private class GlassNode(
                 style = Stroke(DemoSize.hairline.toPx()),
             )
         }
-        if (scale == 1f) drawContent() else scale(scale) { this@draw.drawContent() }
+        if (pose.scaleX == 1f && pose.scaleY == 1f && shift == Offset.Zero) {
+            drawContent()
+        } else {
+            val moved = pose.moved(size)
+            translate(moved.x, moved.y) { scale(pose.scaleX, pose.scaleY) { this@draw.drawContent() } }
+        }
     }
 
     /**
-     * The lens over [grown] (the glass's size, swollen when pressed, drawn [shift] up and left of its bounds): the page
+     * The lens over [grown] (the glass's size, posed when pressed, drawn at [shift] in its bounds): the page
      * under it, bent ([bend] times its refraction) and split, the veil and the light on its rim; false if it can't.
      */
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -471,7 +564,7 @@ private class GlassNode(
         val layer = glass ?: return false
         val lens = lens as? Lens ?: return false
         // the part of the page under the glass: its place in the window less the page's
-        val offset = at - shift - backdrop.origin
+        val offset = at + shift - backdrop.origin
         layer.record(IntSize(ceil(grown.width).toInt(), ceil(grown.height).toInt())) {
             drawRect(backdrop.pageColor)
             translate(-offset.x, -offset.y) { drawLayer(page) }
@@ -500,15 +593,15 @@ private class GlassNode(
 
     /**
      * The light a press gathers around the finger (D155): brightest on the rim near it, fading out to
-     * [GlassPress.reach], with a faint glow through the glass under it. The finger is [shift] further in on the
-     * swollen glass.
+     * [GlassPress.reach], with a faint glow through the glass under it, the finger where it is now, the posed glass
+     * drawn at [shift] in its bounds.
      */
     private fun DrawScope.drawPressLight(grown: Size, shift: Offset, corner: CornerRadius, feel: GlassPress) {
         val strength = feel.lightAt(press.value)
         if (strength <= 0f) return
         val reach = feel.reach.toPx().coerceAtLeast(1f)
         // a keyboard's focus has no finger: the light gathers in the middle
-        val at = if (finger.isSpecified) finger + shift else grown.center
+        val at = if (finger.isSpecified) finger - shift else grown.center
         val light = GlassLight.copy(alpha = strength)
         val rim = Brush.radialGradient(listOf(light, light.copy(alpha = 0f)), center = at, radius = reach)
         drawRoundRect(rim, size = grown, cornerRadius = corner, style = Stroke(style.rim.toPx() * PRESS_RIM))
@@ -520,10 +613,6 @@ private class GlassNode(
         )
     }
 }
-
-/** How far up and left a glass [grown] from [this] size is drawn, so it swells about its middle (D155). */
-private fun Size.shiftFrom(base: Size): Offset =
-    Offset((this.width - base.width) / 2f, (this.height - base.height) / 2f)
 
 /** How much thicker the rim's light is where a finger presses it than the rim light at rest (D155). */
 private const val PRESS_RIM = 1.5f

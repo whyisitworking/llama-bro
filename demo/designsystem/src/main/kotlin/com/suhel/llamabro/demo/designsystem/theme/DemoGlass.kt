@@ -2,6 +2,8 @@ package com.suhel.llamabro.demo.designsystem.theme
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -66,8 +68,9 @@ data class BarGlass(
 /**
  * How a piece of glass answers a finger (D155): while pressed it swells to [swell] times its size on a spring, a light
  * gathers on its rim around the finger, out to [reach] at [light]'s strength, and its edge bends the page [bend] more
- * (a share of its refraction); on release it settles back. With animations off it doesn't swell; the light still
- * comes and goes.
+ * (a share of its refraction). Dragged, it follows the finger elastically, out to [pull] at most, stretched along the
+ * drag by up to [stretch] and narrowed across it; let go, it springs back and settles. With animations off it neither
+ * swells nor moves; the light still comes and goes, and follows the finger.
  */
 @Immutable
 data class GlassPress(
@@ -79,6 +82,10 @@ data class GlassPress(
     val reach: Dp,
     /** How much more the pressed glass's edge bends the page, as a share of its refraction. */
     val bend: Float,
+    /** How far dragged glass can be pulled from its place, however far the finger goes: the elastic's limit. */
+    val pull: Dp = Default.pull,
+    /** How much longer dragged glass grows along the drag at [pull], as a share of its size; narrower across. */
+    val stretch: Float = Default.stretch,
 ) {
     /**
      * The scale pressed glass is drawn at, [press] of the way in: a little past [swell] as its spring lands, never
@@ -92,9 +99,60 @@ data class GlassPress(
     /** How bright the light around the finger is at [press]: never past [light], even as a spring overshoots. */
     fun lightAt(press: Float): Float = (light * press).coerceIn(0f, light)
 
-    companion object {
-        val Default = GlassPress(swell = 1.05f, light = 0.6f, reach = 36.dp, bend = 0.35f)
+    /**
+     * Where glass of [base] size is drawn, in its own bounds' pixels, [press] of the way in and dragged [drag] pixels
+     * by the finger, its pull limit [pullPx] pixels: swollen, moved toward the drag on an elastic that gives less the
+     * further it goes (a drag of [pullPx] moves it half that), and stretched along the drag, as much narrower across.
+     * [still] (animations off), it stays as it is.
+     */
+    fun pose(
+        base: Size,
+        press: Float,
+        drag: Offset,
+        still: Boolean,
+        pullPx: Float,
+    ): GlassPose {
+        val scale = scaleAt(press, still)
+        val far = drag.getDistance()
+        if (still || far == 0f || pullPx <= 0f) {
+            val size = base * scale
+            return GlassPose(
+                Offset((base.width - size.width) / 2f, (base.height - size.height) / 2f),
+                size,
+                scale,
+                scale,
+            )
+        }
+        val moved = pullPx * far / (pullPx + far)
+        val toward = drag / far
+        val give = stretch * moved / pullPx
+        // along the drag longer, across it narrower: horizontal and vertical shares of the drag's direction
+        val lean = toward.x * toward.x - toward.y * toward.y
+        val scaleX = scale * (1f + give * lean)
+        val scaleY = scale * (1f - give * lean)
+        val size = Size(base.width * scaleX, base.height * scaleY)
+        val topLeft =
+            Offset(
+                (base.width - size.width) / 2f + toward.x * moved,
+                (base.height - size.height) / 2f + toward.y * moved,
+            )
+        return GlassPose(topLeft, size, scaleX, scaleY)
     }
+
+    companion object {
+        val Default = GlassPress(swell = 1.1f, light = 0.6f, reach = 36.dp, bend = 0.35f, pull = 10.dp, stretch = 0.08f)
+    }
+}
+
+/**
+ * Where pressed glass is drawn (D155), in its bounds' pixels: its swollen, moved and stretched rectangle ([topLeft],
+ * [size]), and the scale its content is drawn at across ([scaleX]) and down ([scaleY]).
+ */
+@Immutable
+data class GlassPose(val topLeft: Offset, val size: Size, val scaleX: Float, val scaleY: Float) {
+    /** How far the glass's middle has moved from its bounds' middle. */
+    fun moved(base: Size): Offset =
+        Offset(topLeft.x + size.width / 2f - base.width / 2f, topLeft.y + size.height / 2f - base.height / 2f)
 }
 
 /**

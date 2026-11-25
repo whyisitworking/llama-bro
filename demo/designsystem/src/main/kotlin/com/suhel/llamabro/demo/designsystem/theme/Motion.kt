@@ -66,6 +66,10 @@ object DemoMotion {
     const val RELEASE_STIFFNESS = 350f
     const val PRESS_HOLD_MILLIS = 90L
 
+    /** Dragged glass let go springs back to its place on a bouncy spring, overshooting it once (D155). */
+    const val PULL_DAMPING = 0.45f
+    const val PULL_STIFFNESS = 400f
+
     /** The sweep's gradient covers this share of the width. */
     const val SWEEP_WIDTH_FRACTION = 0.30f
     val standard: Easing = FastOutSlowInEasing
