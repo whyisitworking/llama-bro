@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 
 /**
  * What the model switcher sheet and the model card opened from it show and write: the phone's library, the fit facts
- * (already for the chip chosen in Settings › Memory, D72, which the other pane can change meanwhile), the model in
+ * (already for the chip chosen in Settings › Processor, D72, which the other pane can change meanwhile), the model in
  * memory, and the chat's own sampling. The sheet's writes run on [background], the app's scope: the sheet closes as
  * it writes ("Use for new chats", Unload), and its own scope ends with it.
  */

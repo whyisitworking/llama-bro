@@ -16,7 +16,7 @@ import org.junit.Test
 class ChatViewModelVoiceTest : ChatViewModelFixture() {
     @Test fun theMicShowsOnlyForAModelThatHears() =
         runBlocking {
-            settings.setHears(swift.toString(), true)
+            rememberHearing(swift)
             val hearing = viewModel(recorder = microphone(1))
             eventually("the mic") { hearing.composerState.value.showsMic }
             val deaf = viewModel(model = plain, recorder = microphone(1))
@@ -62,7 +62,7 @@ class ChatViewModelVoiceTest : ChatViewModelFixture() {
             fake.supportsAudio = true
             fake.streamsAudio = true
             fake.transcription("call the bank tomorrow.")
-            settings.setHears(swift.toString(), true)
+            rememberHearing(swift)
             val vm = viewModel(recorder = microphone(1), dictating = 10)
             eventually("the mic and its hint") { vm.composerState.value.showsMic && vm.composerState.value.micHint }
             vm.onText("Remind me to")
@@ -94,7 +94,7 @@ class ChatViewModelVoiceTest : ChatViewModelFixture() {
         runBlocking {
             fake.supportsAudio = true
             fake.streamsAudio = true
-            settings.setHears(swift.toString(), true)
+            rememberHearing(swift)
             val vm = viewModel(recorder = microphone(1), dictating = 400)
             eventually("the mic") { vm.composerState.value.canRecord }
             vm.onText("Hello")
@@ -111,7 +111,7 @@ class ChatViewModelVoiceTest : ChatViewModelFixture() {
     @Test fun aRecordingIsSentAsAVoiceMessageAndLeavesTheBar() =
         runBlocking {
             fake.supportsAudio = true
-            settings.setHears(swift.toString(), true)
+            rememberHearing(swift)
             reply("I hear you")
             val vm = viewModel(recorder = microphone(10))
             eventually("the mic") { vm.composerState.value.showsMic }
@@ -131,7 +131,7 @@ class ChatViewModelVoiceTest : ChatViewModelFixture() {
 
     @Test fun discardingARecordingDeletesItAndARefusedMicSaysWhereToAllowIt() =
         runBlocking {
-            settings.setHears(swift.toString(), true)
+            rememberHearing(swift)
             val vm = viewModel(recorder = microphone(2))
             eventually("the mic") { vm.composerState.value.showsMic }
             vm.voice!!.refused()

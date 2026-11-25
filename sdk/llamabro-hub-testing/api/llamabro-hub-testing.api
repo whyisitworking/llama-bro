@@ -32,8 +32,8 @@ public final class com/suhel/llamabro/hub/testing/FakeLlamaBroHub$Repo {
 	public final fun getTags ()Ljava/util/List;
 	public final fun getTakesImages ()Z
 	public final fun getTask ()Ljava/lang/String;
-	public final fun gguf (Ljava/lang/String;ILcom/suhel/llamabro/chat/Sampling;)V
-	public static synthetic fun gguf$default (Lcom/suhel/llamabro/hub/testing/FakeLlamaBroHub$Repo;Ljava/lang/String;ILcom/suhel/llamabro/chat/Sampling;ILjava/lang/Object;)V
+	public final fun gguf (Ljava/lang/String;ILcom/suhel/llamabro/chat/Sampling;Ljava/lang/String;Ljava/util/Map;)V
+	public static synthetic fun gguf$default (Lcom/suhel/llamabro/hub/testing/FakeLlamaBroHub$Repo;Ljava/lang/String;ILcom/suhel/llamabro/chat/Sampling;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public final fun setArchitecture (Ljava/lang/String;)V
 	public final fun setBaseModel (Ljava/lang/String;)V
 	public final fun setChatTemplate (Z)V

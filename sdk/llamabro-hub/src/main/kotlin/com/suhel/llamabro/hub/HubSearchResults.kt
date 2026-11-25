@@ -28,6 +28,12 @@ public class SearchOptions internal constructor() {
     /** Only repos of this user or organisation, such as `ggml-org`; null for anyone's. */
     public var author: String? = null
 
+    /**
+     * Only the uploads quantized from this original, an `owner/name` repo id such as `Qwen/Qwen3-8B` (the Hub's
+     * `base_model:quantized:` filter); null for any. An id that is not a repo id is refused.
+     */
+    public var quantizedFrom: String? = null
+
     /** Only models that take pictures as well as text (the Hub's `image-text-to-text` task). */
     public var takesImages: Boolean = false
 

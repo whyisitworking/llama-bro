@@ -48,8 +48,8 @@ class SamplingJourneys : Journey() {
 
         compose.onNodeWithTag("model_title").performClick()
         see("THIS CHAT")
-        tap("Sampling")
-        see("SAMPLING FOR THIS CHAT")
+        tap("Inference")
+        see("INFERENCE FOR THIS CHAT")
         compose.waitForIdle()
         Thread.sleep(SHEET_SETTLE)
         compose.onNodeWithContentDescription("Temperature").performSemanticsAction(SemanticsActions.SetProgress) {
@@ -66,7 +66,7 @@ class SamplingJourneys : Journey() {
 
         compose.onNodeWithTag("model_title").performClick()
         see("1 value changed for this chat")
-        tap("Sampling")
+        tap("Inference")
         tap("Use the model's values")
         gone("Changed for this chat")
     }
@@ -81,7 +81,7 @@ class SamplingJourneys : Journey() {
 
         tapDescription("Chats")
         tapDescription("Settings")
-        tap("Sampling")
+        tap("Inference")
         seeTag("reply_length")
         tap("Short")
         shot("1-reply-length")

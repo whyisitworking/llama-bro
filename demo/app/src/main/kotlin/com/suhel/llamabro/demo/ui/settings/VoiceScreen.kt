@@ -8,6 +8,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.suhel.llamabro.demo.data.VoiceTurns
 import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListRow
+import com.suhel.llamabro.demo.designsystem.components.RuledLabel
 import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.SectionNote
 import com.suhel.llamabro.demo.designsystem.components.SwitchRow
@@ -68,6 +69,7 @@ fun VoiceScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
  * Settings › Voice (demo design §4.8, D100): the voice a model that talks speaks with (its first unless another is
  * chosen; a model without the chosen one speaks with its first), and whether voice mode captions what the person
  * says, which loads the model with a second slot; how a turn ends, and whether talking over a reply stops it (D147).
+ * Two ruled parts (D157): voice mode's options, then dictation's, which belongs to the message bar.
  */
 @Composable
 fun VoiceContent(
@@ -79,7 +81,8 @@ fun VoiceContent(
     talking: TalkingActions = TalkingActions(),
 ) {
     SettingsPage("Voice", onBack, Modifier.testTag("voice_settings")) {
-        Section("Voice") {
+        RuledLabel("Voice mode")
+        Section("Its voice") {
             if (state.voices.isEmpty()) {
                 SectionNote("Talk with a model that speaks once, and its voices show here.")
             } else {
@@ -110,13 +113,14 @@ fun VoiceContent(
                 row {
                     ListRow(
                         "Don't caption",
-                        subtitle = "Uses less memory; your turns stay as voice messages",
+                        subtitle = "Uses less memory; your turns stay as voice messages; changing it reloads the model",
                         selected = !state.captionYou,
                         onClick = { onCaption(false) },
                     )
                 }
             }
         }
+        RuledLabel("In the message bar")
         Section("Dictation") {
             GroupedList {
                 row {

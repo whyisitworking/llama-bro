@@ -222,6 +222,7 @@ internal class ScriptedHub(endpoint: String) : Transport {
         val images = params["pipeline_tag"] == IMAGE_TASK
         val range = parameterRange(params["num_parameters"])
         val hideGated = params["gated"] == "false"
+        val fromOriginal = quantizedFrom(params)
         val found =
             repos.entries
                 .map { (id, history) -> id to history.last() }
@@ -232,7 +233,8 @@ internal class ScriptedHub(endpoint: String) : Transport {
                         (!images || commit.repo.takesImages) &&
                         (range == null || commit.repo.parameters?.let { it in range } == true) &&
                         (!hideGated || !commit.repo.gated)
-                }.sortedWith(order(params["sort"]))
+                }.filter { (_, commit) -> fromOriginal(commit) }
+                .sortedWith(order(params["sort"]))
         val offset = params["cursor"]?.toIntOrNull() ?: 0
         val limit = params["limit"]?.toIntOrNull() ?: found.size
         val page = found.drop(offset).take(limit)
@@ -325,6 +327,12 @@ internal class ScriptedHub(endpoint: String) : Transport {
         return Response(status, all, url, bytes.inputStream()) {}
     }
 
+    /** Whether a commit's repo is quantized from the original a search asks for; a repeated `filter` keeps its last. */
+    private fun quantizedFrom(params: Map<String, String>): (Commit) -> Boolean {
+        val original = params["filter"]?.takeIf { it.startsWith(QUANTIZED) }?.removePrefix(QUANTIZED)
+        return { commit -> original == null || commit.repo.baseModel.equals(original, ignoreCase = true) }
+    }
+
     private fun query(uri: URI): Map<String, String> =
         uri.rawQuery
             .orEmpty()
@@ -340,6 +348,7 @@ internal class ScriptedHub(endpoint: String) : Transport {
         const val RESOLVE_PARTS = 5
         const val REVISION = 3 // owner, name, "resolve", revision
         const val IMAGE_TASK = "image-text-to-text"
+        const val QUANTIZED = "base_model:quantized:"
 
         fun decode(value: String): String = URLDecoder.decode(value, Charsets.UTF_8.name())
     }
@@ -441,15 +450,27 @@ internal object Gguf {
     private const val ALIGNMENT = 32
     private const val TYPE_I32 = 5
     private const val TYPE_F32 = 6
+    private const val TYPE_BOOL = 7
     private const val TYPE_STRING = 8
 
     /**
-     * A GGUF of [size] bytes: a header with [name] as `general.name` and [sampling] as `general.sampling.*`, then
-     * zeros. The name makes each file's bytes, and so its digest, its own: the cache stores equal bytes once.
+     * A GGUF of [size] bytes: a header with [name] as `general.name`, [sampling] as `general.sampling.*`,
+     * [chatTemplate] as `tokenizer.chat_template` and [extra] as given (Boolean, String, Int or Float), then zeros.
+     * The name makes each file's bytes, and so its digest, its own: the cache stores equal bytes once.
      */
-    fun bytes(name: String, sampling: Sampling?, size: Int): ByteArray {
+    fun bytes(
+        name: String,
+        sampling: Sampling?,
+        size: Int,
+        chatTemplate: String? = null,
+        extra: Map<String, Any> = emptyMap(),
+    ): ByteArray {
         val out = ByteArrayOutputStream()
-        val metadata = mapOf<String, Any>("general.name" to name) + sampling?.let(::keys).orEmpty()
+        val metadata =
+            mapOf<String, Any>("general.name" to name) +
+                sampling?.let(::keys).orEmpty() +
+                listOfNotNull(chatTemplate?.let { "tokenizer.chat_template" to it }) +
+                extra
 
         fun put(count: Int, fill: ByteBuffer.() -> Unit) =
             out.write(
@@ -473,14 +494,20 @@ internal object Gguf {
             string(key)
             when (value) {
                 is String -> put(Int.SIZE_BYTES) { putInt(TYPE_STRING) }.also { string(value) }
+                is Boolean -> put(Int.SIZE_BYTES + 1) { putInt(TYPE_BOOL).put(if (value) 1 else 0) }
                 is Float -> put(Int.SIZE_BYTES + Float.SIZE_BYTES) { putInt(TYPE_F32).putFloat(value) }
-                else -> put(Int.SIZE_BYTES * 2) { putInt(TYPE_I32).putInt((value as Number).toInt()) }
+                is Int -> put(Int.SIZE_BYTES * 2) { putInt(TYPE_I32).putInt(value) }
+                else -> throw IllegalArgumentException(unsupported(key, value))
             }
         }
         val header = (out.size() + ALIGNMENT - 1) / ALIGNMENT * ALIGNMENT
         require(size >= header) { "a GGUF with this header needs at least $header bytes, was $size" }
         return out.toByteArray().copyOf(size)
     }
+
+    // a Long or Double is refused, not cut to fit: the test that wrote it would read another value
+    private fun unsupported(key: String, value: Any) =
+        "unsupported GGUF metadata value for $key: ${value::class.simpleName}; use Boolean, String, Int or Float"
 
     /** The `general.sampling.*` keys upstream reads (common/sampling.cpp), under its names. */
     private fun keys(sampling: Sampling): Map<String, Number> =

@@ -33,12 +33,14 @@ import com.suhel.llamabro.demo.chat.Streamer
 import com.suhel.llamabro.demo.chat.VoiceChat
 import com.suhel.llamabro.demo.chat.recommendedCard
 import com.suhel.llamabro.demo.chat.sdkStream
+import com.suhel.llamabro.demo.chat.senses
 import com.suhel.llamabro.demo.data.AudioStore
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.TokenStore
 import com.suhel.llamabro.demo.data.db.ChatDatabase
+import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.DownloadScheduler
 import com.suhel.llamabro.demo.models.FitView
@@ -186,6 +188,7 @@ class AppContainer(
             streamer = streamer ?: ::sdkStream,
             beforeTurn = recovery::await,
             card = { sampling.card(it) },
+            readSenses = { key -> hub.capabilities(key)?.senses(Catalog.byRepo(key.repo)) },
         )
 
     /** The loaded model as Settings › Memory and the model sheet show it, with Unload (D59). */
@@ -221,7 +224,7 @@ class AppContainer(
 
     /**
      * The memory budget (half the phone's RAM, D101) and chips, read from the SDK the first time a screen asks; the
-     * chip fits use is the one chosen in Settings › Memory when this phone has it (D72).
+     * chip fits use is the one chosen in Settings › Processor when this phone has it (D72).
      */
     suspend fun deviceFacts(): DeviceFacts =
         (facts ?: DeviceFacts.read(llamaBro).also { facts = it }).preferring(
@@ -278,12 +281,13 @@ class AppContainer(
             onExactFit = onExactFit,
             startTier = startTier,
             asksForNotifications = asksForNotifications,
+            related = discovery::related,
         )
 
     override fun switcherViewModel(handle: ChatEngine.ChatHandle) =
         SwitcherViewModel(
             library = models.library,
-            // the estimates follow the chip chosen in Settings › Memory (D72), which the other pane can change
+            // the estimates follow the chip chosen in Settings › Processor (D72), which the other pane can change
             // meanwhile
             facts =
                 settings.settings

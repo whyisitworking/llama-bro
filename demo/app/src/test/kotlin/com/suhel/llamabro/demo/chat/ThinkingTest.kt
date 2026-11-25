@@ -37,11 +37,11 @@ class ThinkingTest {
 
     @Test fun canThinkForACatalogModel() {
         val swift = Catalog.byKey(HfModel.parse("unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M"))!!
-        assertEquals(swift.thinks, Thinking.canThink(infoOf(), swift))
+        assertEquals(swift.thinks, infoOf().let { Thinking.canThink(it.chatTemplate, it.templateCaps, swift) })
     }
 
     @Test fun canThinkIsFalseForNone() {
         // the fake model has no thinking template, no capability flag, and no catalog entry
-        assertFalse(Thinking.canThink(infoOf(), null))
+        assertFalse(infoOf().let { Thinking.canThink(it.chatTemplate, it.templateCaps, null) })
     }
 }

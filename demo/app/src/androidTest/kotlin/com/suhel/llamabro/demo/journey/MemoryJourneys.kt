@@ -77,17 +77,16 @@ class MemoryJourneys : Journey() {
         see("Qwen3.5 0.8B is running on the CPU: this phone has no GPU.")
         shot("1-chip-note")
 
-        // its Settings opens the choice, which says the same under it
+        // its Settings opens Processor, whose choice says the same under it
         compose.onNode(hasText("Settings") and hasAnyAncestor(hasTestTag("limit_line"))).performClick()
         seeTag("runs_on")
         see("Running on the CPU: this phone has no GPU.")
         see("Not on this phone", substring = true)
         shot("2-runs-on")
-        // the chip's Automatic, not the context length's
         compose.onNode(hasText("Automatic") and hasAnyAncestor(hasTestTag("runs_on"))).performScrollTo().performClick()
-        // no reply holds it: the model loaded for the GPU is freed now
-        see("Nothing loaded")
+        // no reply holds it: the model loaded for the GPU is freed now, so no line says it runs on the CPU or moves
         gone("Running on the CPU", substring = true)
+        gone("Moves to", substring = true)
         robot.pressBack()
 
         send("again")
@@ -106,13 +105,17 @@ class MemoryJourneys : Journey() {
         tapDescription("Chats")
         tapDescription("Settings")
         tap("Memory")
-        seeTag("context_length")
         // the size the SDK picked, beside the chip: the test app's engine picks 8 192 tokens
         see("CPU · 8k context", substring = true)
+        robot.pressBack()
+        tap("Inference")
+        seeTag("context_length")
         compose.onNodeWithText("8k").performScrollTo().performClick()
-        // no reply holds it: the model loaded at Automatic is freed now, as for a chip change (D72)
-        see("Nothing loaded")
         shot("1-context-length")
+        robot.pressBack()
+        // no reply holds it: the model loaded at Automatic is freed now, as for a chip change (D72)
+        tap("Memory")
+        see("Nothing loaded")
         robot.pressBack()
         robot.pressBack()
 

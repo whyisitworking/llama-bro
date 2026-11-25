@@ -47,8 +47,8 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * The reply length (Settings › Sampling) reaching the request, and the context length (Settings › Memory) reaching the
- * load and reloading the model as a chip change does (D72).
+ * The reply length and the context length (both Settings › Inference): the reply length reaching the request, the
+ * context length reaching the load and reloading the model as a chip change does (D72).
  */
 class ChatEngineLengthTest {
     @get:Rule val folder = TemporaryFolder()

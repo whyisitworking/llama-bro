@@ -6,6 +6,11 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
 
 ## Unreleased
 
+- **`SearchOptions.quantizedFrom`**: only the GGUF uploads quantized from one original (`Qwen/Qwen3-8B`), through the
+  Hub's `base_model:quantized:` filter; an id that is not `owner/name` is refused.
+- **`LlamaBroHub.capabilities`** (D155): what an installed model can do before it loads, read from its GGUF headers
+  on the phone with no request: the chat template and whether an installed projector takes images and audio, or null
+  when no complete copy is installed. `FakeLlamaBroHub`'s `gguf` takes `chatTemplate` and `metadata`.
 - **llama.cpp b12653** (D137) with six carried patches: upstream fixed the cache bug 0004 carried (F180). New with
   the pin: Qwen3-ASR's audio tail, LFM2.5-VL's template, the realtime sleep state and transcription prompt, recurrent
   state that no longer keeps a NaN, and safer reads of untrusted GGUF and grammars.

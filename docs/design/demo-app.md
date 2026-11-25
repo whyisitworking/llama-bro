@@ -26,7 +26,7 @@ It has to work for two kinds of person: someone who has never heard of a model o
 - Downloads that continue in the background, survive process death and resume where they stopped, verified by hash (D40, D47).
 - Chat with streaming replies, markdown and code blocks, a folded thought ("Thought for 8 s"), Think levels, image input for models that can see, voice messages for models that hear (D76), stop, edit, regenerate, copy, share, and a divider when the model changes mid-chat.
 - Custom instructions applied to every chat, a default model, an optional Hugging Face token for gated models, and storage management.
-- A choice of chip in Settings › Memory (Automatic, NPU, GPU or CPU), with where the model actually runs and why when that isn't the chip chosen (D72).
+- A choice of chip in Settings › Processor (Automatic, NPU, GPU or CPU), with where the model actually runs and why when that isn't the chip chosen (D72).
 - Two layouts, Sidebar and Chat list, and light, dark and system themes, both themes first-class.
 - Voice mode for a model that talks (D95, D100): a spoken conversation, tap or hold to talk or hands-free (D147), with captions, saved as an ordinary chat (section 4.8).
 - Plain limit lines with one action each: not enough memory, context full, missing model, a failed or gated download.
@@ -192,7 +192,7 @@ a fresh answer from Hugging Face changes words in place, never the layout (F177)
   - Labels name the quant, never a tier: Smaller, Recommended and Best quality are only Basic's titles. Every
     progress figure is one string in the total's unit ("0.9 of 3.4 GB", "35 of 740 MB").
 - **Motion** (D119, D120): words that change in place fade through (out, then in), never crossfade; lists move exit,
-  then place, then enter; a part that comes or goes folds with its height; screens fade through; every closing action
+  then place, then enter; a part that comes or goes folds with its height; screens fade through, sliding along one axis, forward from the end and back from the start (D160); every closing action
   slides the sheet down first. All instant with animations off.
 
 ### 4.4 Chat
@@ -212,18 +212,25 @@ a fresh answer from Hugging Face changes words in place, never the layout (F177)
 - **Speed and the rest of what was measured:** behind the info icon among a reply's actions, in a "Reply details" sheet: the model, the chip it ran on, the speed ("38 words/s · 14.2 tokens/s", words being tokens times 0.75), the reply's and the prompt's tokens (with what came from the cache), how fast the prompt was read, how long it thought, and how many MTP drafts were kept. Each line shows only when it's known. The actions themselves (copy, share, regenerate, details) are 18 dp glyphs in 48 dp targets.
 - **Scrolling:** the list keeps a streaming reply's newest text in view while the reader is at its end. Scrolling up, even within a reply taller than the screen, stops that and shows a **back to the latest message** button; the button, scrolling back to the very end, or sending a message follows the reply again.
 - **Custom instructions** (Settings) become the system prompt of every chat; with none, no system prompt is sent.
+- **What the model can do, before it loads** (D155): the Think chip, photos and the mic show from the model's header,
+  read once it is on the phone (its template; its projector's vision and audio flags), so a new chat on a model found
+  in search shows them before its first send. The load corrects them: a model whose load says it can't think loses
+  the chip, and its turn sends no reasoning settings. A Think level chosen before the load is the one the turn uses.
+  Without a header's word the catalog's stands for any quant of its repo, else nothing shows until the load. The
+  chosen Think level now carries across model switches; a model that can't think shows no chip and its turns send no
+  reasoning settings.
 
 ### 4.5 Settings
 
-Appearance (Layout with previews; Theme: System, Light, Dark; Glass, a slider for each of its values, how pressed glass answers among them, with a sample chip and panel floating at the bottom that answer a press, kept: D152, D158), Custom instructions, Default model, a Hugging Face token (optional, for gated models; a masked field that is never suggested or corrected), Sampling (section 4.7), Voice (section 4.8), Memory (section 4.6), Storage (the library) and About (versions and licences). Settings, About and Storage are grouped cards (section 8).
+Appearance (Layout with previews; Theme: System, Light, Dark; Glass, a slider for each of its values, how pressed glass answers among them, with a sample chip and panel floating at the bottom that answer a press, kept: D152, D158), Custom instructions, Default model, a Hugging Face token (optional, for gated models; a masked field that is never suggested or corrected), Inference (the context length, the reply length and each model's values: section 4.7), Processor (where models run: section 4.6), Memory (section 4.6), Voice (section 4.8) and About (versions and licences). Settings and About are grouped cards (section 8). Options are grouped by what they change: Inference what the model reads and writes, Processor where it runs, Memory how long it stays (D157). There is no Storage row: the Models page is reached from the app's own navigation.
 
 ### 4.6 The model's memory
 
 One model is in memory at a time, owned by the app, not by a chat: the first message loads it, a switch replaces it, and a chat that is left keeps it for the next (D56, D59). A model is never closed while a reply streams from it: each turn holds the model until it ends, so a message sent in another chat on another model waits behind the wake line until that reply ends, then its model replaces the one in memory and answers; nothing has to be sent again. Stop ends the wait; the model still changes once that reply ends. Until then Settings › Memory and the model sheet still show the model in memory. The person sees it and decides:
 
-- **In memory now.** Settings › Memory, and the chat's model sheet under "In memory", show the loaded model ("Qwen3.5 4B", "2.8 GB · NPU · 16k context": the weights, the chip, and the context the SDK picked, in whole k rounded down; the context's memory comes on top of the size) with **Unload**. In Settings one line under it says, for both choices below: "Changing the chip or the context length reloads the model." While a reply is being written the row says so instead: a reply is never cut off. Nothing loaded shows no row in the sheet, and "Nothing loaded" in Settings.
-- **Runs on.** Automatic (the default: "The fastest chip that can run the model", the SDK's `Auto`), NPU, GPU or CPU, each `Prefer(kind)`, so a chip that can't load the model falls back instead of failing (D72). A kind this phone doesn't have stays listed as "Not on this phone, so the fastest chip it has runs the model". Under the choice: "Running on the CPU: the GPU couldn't load it." when the model was loaded for this choice and isn't on that chip; "Moves to the CPU after this reply." (or "… with the next message.") while the model in memory was loaded for an earlier choice (no line when it already runs on the chip chosen). A change frees a model loaded for another choice once no reply holds it, and the next message loads it on the new chip; a message sent while another reply is still being written shares the model in use. Fit and speed estimates use the chosen chip when the phone has it.
-- **Context length.** How much of the chat the model sees at once (D78).
+- **In memory now.** Settings › Memory, and the chat's model sheet under "In memory", show the loaded model ("Qwen3.5 4B", "2.8 GB · NPU · 16k context": the weights, the chip, and the context the SDK picked, in whole k rounded down; the context's memory comes on top of the size) with **Unload**. While a reply is being written the row says so instead: a reply is never cut off. Nothing loaded shows no row in the sheet, and "Nothing loaded" in Settings.
+- **Runs on** (Settings › Processor, D157). Automatic (the default: "The fastest chip that can run the model", the SDK's `Auto`), NPU, GPU or CPU, each `Prefer(kind)`, so a chip that can't load the model falls back instead of failing (D72). A kind this phone doesn't have stays listed as "Not on this phone, so the fastest chip it has runs the model". Under the choice: "Running on the CPU: the GPU couldn't load it." when the model was loaded for this choice and isn't on that chip; "Moves to the CPU after this reply." (or "… with the next message.") while the model in memory was loaded for an earlier choice (no line when it already runs on the chip chosen). A change frees a model loaded for another choice once no reply holds it, and the next message loads it on the new chip; a message sent while another reply is still being written shares the model in use. Under the choice: "Changing it reloads the model." Fit and speed estimates use the chosen chip when the phone has it.
+- **Context length** (Settings › Inference, D157). How much of the chat the model sees at once (D78); the page says "Changing it reloads the model."
   - **Choices**: Automatic (the default: "The most that fits in memory, up to 16k", the SDK's `Auto`), 4k, 8k, 16k or 32k, each `UpTo(n)`. `UpTo(n)` is a ceiling the SDK still fits to free memory (and to the model's training context), never below 4k, so a choice never fails a load.
   - **Subtitles** give each in words ("About 3,000 words; the least memory" … "About 24,000 words, for long documents; the most memory").
   - **Under the choice**, while the model in memory was loaded at another length: "Reloads at 8k after this reply." (or "… with the next message."; for Automatic "Reloads at the most that fits …"). Otherwise: "How much of the chat the model sees at once. Each size is the most it gets: with less memory free, it gets less, down to 4k."
@@ -233,7 +240,7 @@ One model is in memory at a time, owned by the app, not by a chat: the first mes
 
 After the model is freed the next message loads it again behind the wake line, and the chat rebuilds its conversation from the stored messages (F133).
 
-### 4.7 Sampling and the reply's length
+### 4.7 Inference: sampling and the reply's length
 
 How a model picks its words starts from what its makers recommend and can be changed for the model or for one chat (D60):
 
@@ -246,20 +253,20 @@ How a model picks its words starts from what its makers recommend and can be cha
   (D64). It runs in the background and never holds a turn: until it answers nothing is sent and the file's own values
   apply (F17). One that fails, or an answer given offline (the file's values alone, the base model not reachable), is
   asked again after five minutes; an answer given online is kept. Settings
-  › Sampling lists the models on the phone ("Model defaults", "2 values changed"); a model's page shows "Model default",
+  › Inference lists the models on the phone ("Model defaults", "2 values changed"); a model's page shows "Model default",
   "Changed" or "llama.cpp default" under each value, a Thinking / Not thinking switch when its card has two sets, and
   **Reset to the model's defaults** once something changed. A change applies in both modes. In a chat, the model sheet's
-  **This chat › Sampling** opens the same sliders at the chat's Think level, marked "Changed for this chat", "The
+  **This chat › Inference** opens the same sliders under "Inference for this chat" at the chat's Think level, marked "Changed for this chat", "The
   model's setting", "Model default" or "llama.cpp default", with **Use the model's values**. The chat's value wins over
   the model's, the model's over the card's. A value nobody set is not sent, so a model file's own recommendation still
   applies. A chat with no message yet has no row: its values would have nothing to belong to.
-- **The length limit.** Every reply has one unless the person removes it, its thinking and answer together. Settings › Sampling › **Reply length** sets it for every model and chat, with no per-chat override (D78).
+- **The length limit.** Every reply has one unless the person removes it, its thinking and answer together. Settings › Inference › **Reply length** sets it for every model and chat, with no per-chat override (D78).
 
   | Choice | Limit |
   |---|---|
   | **Automatic** (the default) | About 2,000 tokens for the answer plus the Think level's budget (table in section 7.2) |
-  | **Short** | 1,024 tokens |
-  | **Long** | 8,192 tokens |
+  | **Short** | 1,024 tokens, shown as "About 750 words, thinking included" |
+  | **Long** | 8,192 tokens, shown as "About 6,000 words, thinking included" |
   | **No limit** | "Until the model stops or the context is full": no `max_tokens` is sent |
 
   - Short and Long replace the level's total and leave its thinking budget as it is, so a Short reply at Balanced or Deep can stop while it still thinks.
@@ -277,7 +284,7 @@ A spoken conversation with a model that talks (D95, D100). The previous context 
 - **Talking.** Tap or hold: a tap starts a turn that the next tap sends ("Tap to send"), and a press held past 400 ms (Material's long-press timeout) sends on release ("Release to send"). The button fills with the accent while it listens. Pressing it while the model speaks stops the reply and listens ("Talk to interrupt"). **Hands-free** (D147, Settings › Voice): voice mode listens by itself when it opens and after each reply; 250 ms of speech starts a turn and 900 ms of quiet after it sends it, and a tap sends at once (or, before any speech, stops listening until the next tap). **Interrupt by talking** (off by default): speech well over the reply's echo, after a 600 ms warm-up, stops the reply and starts a turn. The app detects turns itself, as upstream's realtime conversation still has no turn detection (`turn_detection` is null at b12653); tuning is in [hands-free-tuning.md](./hands-free-tuning.md). Stop ends the reply. Close ends voice mode and returns to the chat.
 - **The logo in each state.** Ready: still. Listening: it swells with the voice's level and a warm amber glow behind it brightens with the voice, eased so it never flickers. Thinking (about 0.3 s, F170): that glow breathes. Speaking: it moves with the reply's speech. With animations off it holds still in every state, and the state line carries the meaning.
 - **What is saved.** Each turn is an ordinary message: the person's as a voice bubble (D76) with its caption under it in muted `bodyMedium` when captions are on, the reply as its text with a speaker action among its actions that replays its speech. The chat goes on by typing.
-- **Settings.** Settings › Voice: the voice, from the model's list (the first by default), Talking (Tap to talk or Hands-free, and the Interrupt by talking switch, D147), and captions of the person's words (on by default; they load the model with two slots, D99). The spoken language follows the phone's when the model has it, else English. The built-in answering instruction comes first, the custom instructions after it (F166).
+- **Settings.** Settings › Voice reads in two ruled parts (D157): "Voice mode", then "In the message bar" (dictation's language). Voice mode: "Its voice", the voice, from the model's list (the first by default), Talking (Tap to talk or Hands-free, and the Interrupt by talking switch, D147), and captions of the person's words (on by default; they load the model with two slots, D99; changing it reloads the model). The spoken language follows the phone's when the model has it, else English. The built-in answering instruction comes first, the custom instructions after it (F166).
 - **Leaving.** Home, a call or the lock stops recording and playback as Stop does and closes the session; the view is ready to talk again on return. Playback goes to the speaker or the connected headset; the mic uses the voice-communication source, with the phone's echo cancellation.
 
 ## 5. Model naming
@@ -326,7 +333,7 @@ Every model, size and file is shown with one fit word, coloured, never a card ti
 
 ### 7.2 Think levels
 
-The **Think** lightbulb appears in the message bar only for a model that can think: a suggested model says so, else the chat template reports reasoning effort, else it mentions `enable_thinking` or `<think>` (F97). It opens a menu of four levels:
+The **Think** lightbulb appears in the message bar only for a model that can think: a suggested model (any quant of its repo) says so, else the chat template reports reasoning effort, else it mentions `enable_thinking` or `<think>` (F97). Before a load the template is the header's, after it the loaded model's (section 4.4, D155). It opens a menu of four levels:
 
 | Level | What the request sends | The reply's length limit |
 |---|---|---|
@@ -335,7 +342,7 @@ The **Think** lightbulb appears in the message bar only for a model that can thi
 | Balanced | thinking enabled with a budget of 2,048 tokens | 4,096 |
 | Deep | thinking enabled, no budget | 8,192 |
 
-The budget covers the reasoning only; the limit covers the whole reply (section 4.7). These limits are the Automatic reply length; Short, Long and No limit in Settings › Sampling replace the total and keep the budget (D78). A model that can't think has Off's limit. A reply shows "Thought for 4 s" folded, and while thinking, the live thoughts can be opened. The bulb's description says "Think" or "Think · Quick".
+The budget covers the reasoning only; the limit covers the whole reply (section 4.7). These limits are the Automatic reply length; Short, Long and No limit in Settings › Inference replace the total and keep the budget (D78). A model that can't think has Off's limit. A reply shows "Thought for 4 s" folded, and while thinking, the live thoughts can be opened. The bulb's description says "Think" or "Think · Quick".
 
 A small model can loop in its answer (F113). The model card's presence penalty makes it less likely, and the length limit ends it; Continue picks a reply up that was only long (D60).
 
@@ -554,7 +561,7 @@ A limit is one plain line at the moment it matters, with the fix as a button; th
 | Situation | Line | Action |
 |---|---|---|
 | The memory check doubted the model | "<Name> is using more memory than was free. Android may close apps in the background." | A note, not a wall (F128, D57): the SDK loaded the model at the smallest context and the reply goes on; it has a small ✕ to close it, the next message clears it anyway, and it shows on every load of such a model (each load can be closed again). Only a note can be closed: a line the chat waits on keeps its way out. **Smaller size** opens this model's own sheet on the Smaller size; Get then starts that file and moves the chat to it (D49, F107) |
-| The model runs on another chip than the one chosen | "<Name> is running on the CPU: the GPU couldn't load it." (or "this phone has no NPU", "the NPU isn't available here") | A note, like the memory note: a ✕ closes it, the next message clears it, and it shows on every load that falls back (D72). **Settings** opens Settings › Memory. Automatic never shows it. When the memory note also applies, the memory note wins the line |
+| The model runs on another chip than the one chosen | "<Name> is running on the CPU: the GPU couldn't load it." (or "this phone has no NPU", "the NPU isn't available here") | A note, like the memory note: a ✕ closes it, the next message clears it, and it shows on every load that falls back (D72). **Settings** opens Settings › Processor. Automatic never shows it. When the memory note also applies, the memory note wins the line |
 | Not enough memory to load | "<Name> needs more memory than this phone has free right now." | The load failed all the same: **Smaller size**, as above, with the question held, or **Try again** |
 | Context full | "This chat is longer than <Name> can hold." | Start a new chat |
 | A reply fails | "That didn't work." under the reply | Try again (regenerates it) |

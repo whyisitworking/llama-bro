@@ -109,18 +109,18 @@ fun SettingsHome(onBack: () -> Unit, onOpen: (String) -> Unit, routes: SettingsR
                 }
                 row {
                     ListRow(
-                        "Sampling",
-                        subtitle = "How each model picks its words",
+                        "Inference",
+                        subtitle = "Context, reply length and each model's values",
                         chevron = true,
-                        onClick = { onOpen(routes.sampling) },
+                        onClick = { onOpen(routes.inference) },
                     )
                 }
                 row {
                     ListRow(
-                        "Voice",
-                        subtitle = "How a model that talks sounds",
+                        "Processor",
+                        subtitle = "Where models run: NPU, GPU or CPU",
                         chevron = true,
-                        onClick = { onOpen(routes.voice) },
+                        onClick = { onOpen(routes.processor) },
                     )
                 }
                 row {
@@ -133,10 +133,10 @@ fun SettingsHome(onBack: () -> Unit, onOpen: (String) -> Unit, routes: SettingsR
                 }
                 row {
                     ListRow(
-                        "Storage",
-                        subtitle = "The models on this phone",
+                        "Voice",
+                        subtitle = "Voice mode and dictation",
                         chevron = true,
-                        onClick = { onOpen(routes.storage) },
+                        onClick = { onOpen(routes.voice) },
                     )
                 }
             }
@@ -162,11 +162,11 @@ data class SettingsRoutes(
     val instructions: String,
     val defaultModel: String,
     val token: String,
-    val storage: String,
+    val inference: String,
+    val processor: String,
     val memory: String,
-    val sampling: String,
-    val about: String,
     val voice: String,
+    val about: String,
 )
 
 @Composable

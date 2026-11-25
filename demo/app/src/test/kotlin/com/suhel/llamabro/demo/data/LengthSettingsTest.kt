@@ -24,7 +24,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 
-/** The context length (Settings › Memory) and the reply length (Settings › Sampling): what is stored and sent. */
+/** The context length and the reply length (both Settings › Inference): what is stored and sent. */
 class LengthSettingsTest {
     @get:Rule val folder = TemporaryFolder()
     private val scopes = mutableListOf<CoroutineScope>()

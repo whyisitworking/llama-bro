@@ -23,6 +23,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -42,6 +43,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.LinkInteractionListener
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
@@ -126,7 +128,8 @@ data class MarkdownBlocks(val blocks: List<MarkdownBlock>)
 /**
  * Renders parsed markdown (parsing stays in `:app`): paragraphs and list items in the body style, headings in the
  * title roles, quotes muted behind a soft bar, tables and code scrolling sideways, a rule as a hairline. Links open in
- * the browser (`:app` keeps links to http, https and mailto only).
+ * the browser (`:app` keeps links to http, https and mailto only), unless [onLink] is given: then a tap hands it the
+ * link instead (a model's page opens a linked model in its own sheet, D156).
  *
  * A [page] (a model's page under its card) sits under the card's own lines, quiet (D123): small airy text in the muted
  * ink, every heading a soft Regular label, links muted with their underline, so the app speaks first and the page's H1
@@ -138,14 +141,18 @@ fun MarkdownText(
     onCopyCode: (String) -> Unit,
     modifier: Modifier = Modifier,
     page: Boolean = false,
+    onLink: ((String) -> Unit)? = null,
 ) {
-    CompositionLocalProvider(LocalPage provides page) {
+    CompositionLocalProvider(LocalPage provides page, LocalOnLink provides onLink) {
         Column(modifier) { MarkdownBlockList(blocks.blocks, onCopyCode, muted = false, depth = 0) }
     }
 }
 
 /** True inside a model's page ([MarkdownText]'s `page`), however deep in lists and quotes. */
 private val LocalPage = staticCompositionLocalOf { false }
+
+/** [MarkdownText]'s `onLink`: who a tapped link goes to; null leaves it to the platform, which opens it. */
+private val LocalOnLink = staticCompositionLocalOf<((String) -> Unit)?> { null }
 
 /**
  * A heading's role: a reply's in the serif like its text, a calibrated ladder from H1 to H4 and deeper (D150); on a
@@ -438,8 +445,12 @@ private fun rememberSpans(
     colors: DemoColors,
     page: Boolean = false,
     strong: Color = Color.Unspecified,
-): AnnotatedString =
-    remember(spans, colors, page, strong) {
+): AnnotatedString {
+    val onLink = LocalOnLink.current
+    // the text is built again only when a handler comes or goes, not each time its lambda is a new instance
+    val handler by rememberUpdatedState(onLink)
+    val handled = onLink != null
+    return remember(spans, colors, page, strong, handled) {
         buildAnnotatedString {
             for (span in spans) {
                 val style =
@@ -460,13 +471,16 @@ private fun rememberSpans(
                                 textDecoration = TextDecoration.Underline,
                             ),
                         )
-                    withLink(LinkAnnotation.Url(span.link, linkStyle)) { withStyle(style) { append(span.text) } }
+                    val url = span.link
+                    val listener = if (handled) LinkInteractionListener { handler?.invoke(url) } else null
+                    withLink(LinkAnnotation.Url(url, linkStyle, listener)) { withStyle(style) { append(span.text) } }
                 } else {
                     withStyle(style) { append(span.text) }
                 }
             }
         }
     }
+}
 
 /**
  * A code block: the [language] (or "Code") and a copy action over the code in monospace, on a fill one step off the

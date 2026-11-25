@@ -113,6 +113,21 @@ class SearchOptionsTest {
         assertTrue(asked.isEmpty())
     }
 
+    @Test fun quantizedFromAddsTheBaseModelFilter() =
+        runBlocking {
+            hub.search("") { quantizedFrom = "Qwen/Qwen3-8B" }
+            val first = asked.single()
+            assertTrue(first, "filter=gguf" in first)
+            assertTrue(first, "filter=base_model%3Aquantized%3AQwen%2FQwen3-8B" in first)
+        }
+
+    @Test fun anInvalidQuantizedFromIsRefused() {
+        val error =
+            runCatching { runBlocking { hub.search("qwen") { quantizedFrom = "not a repo" } } }.exceptionOrNull()
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(asked.isEmpty())
+    }
+
     @Test fun aCursorKeptAsTextFetchesTheSamePage() =
         runBlocking {
             val second = url() + "&cursor=abc"

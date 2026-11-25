@@ -49,7 +49,7 @@ class SettingsViewModel(
     private val models: ModelRepository,
     private val memory: ModelMemory,
     private val sampling: SamplingStore,
-    /** The phone's chips, for Settings › Memory's choice (D72); the SDK is asked once, by the container. */
+    /** The phone's chips, for Settings › Processor's choice (D72); the SDK is asked once, by the container. */
     private val facts: suspend () -> DeviceFacts = { DeviceFacts.Fallback },
 ) : ViewModel() {
     val state: StateFlow<AppSettings> =
@@ -95,7 +95,7 @@ class SettingsViewModel(
             DeviceKind.entries.toSet(),
         )
 
-    /** Settings › Sampling's models, each with how many of its values were changed (D60). */
+    /** Settings › Inference's models, each with how many of its values were changed (D60). */
     val samplingRows: StateFlow<List<SamplingModelRow>> =
         combine(models.library, sampling.changed) { lib, changed ->
             samplingRows(lib, changed.mapValues { it.value.values.size })

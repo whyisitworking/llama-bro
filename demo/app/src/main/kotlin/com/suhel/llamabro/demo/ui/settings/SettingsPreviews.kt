@@ -125,49 +125,12 @@ internal data class MemoryPreview(val name: String, val state: MemoryState) {
 
 internal class MemoryStates : PreviewParameterProvider<MemoryPreview> {
     private val qwen = InMemory("Qwen3.5 4B", "2.8 GB · NPU · 16k context")
-    private val allChips = DeviceKind.entries.toSet()
-    private val idle = MemoryState(qwen, false, KeepLoaded.OneMinute, ChipChoice.Automatic, allChips, runsOn = null)
+    private val idle = MemoryState(qwen, false, KeepLoaded.OneMinute)
     override val values =
         sequenceOf(
             MemoryPreview("Loaded, the default", idle),
             MemoryPreview("Writing a reply", idle.copy(replying = true, keep = KeepLoaded.FiveMinutes)),
             MemoryPreview("Nothing loaded", idle.copy(inMemory = null, keep = KeepLoaded.UntilNeeded)),
-            MemoryPreview(
-                "GPU chosen, fell back to the CPU",
-                idle.copy(
-                    inMemory = InMemory("Qwen3.5 4B", "2.8 GB · CPU · 16k context"),
-                    chip = ChipChoice.Gpu,
-                    runsOn = ChipFallback(DeviceKind.Cpu, DeviceKind.Gpu, "the GPU couldn't load it").line,
-                ),
-            ),
-            MemoryPreview(
-                "A phone with no NPU",
-                idle.copy(
-                    inMemory = InMemory("Qwen3.5 4B", "2.8 GB · GPU · 16k context"),
-                    chip = ChipChoice.Npu,
-                    chips = setOf(DeviceKind.Gpu, DeviceKind.Cpu),
-                    runsOn = ChipFallback(DeviceKind.Gpu, DeviceKind.Npu, "this phone has no NPU").line,
-                ),
-            ),
-            MemoryPreview(
-                "CPU chosen while a reply is written",
-                idle.copy(replying = true, chip = ChipChoice.Cpu, runsOn = "Moves to the CPU after this reply."),
-            ),
-            MemoryPreview(
-                "32k chosen, memory fitted less",
-                idle.copy(
-                    inMemory = InMemory("Qwen3.5 4B", "2.8 GB · NPU · 12k context"),
-                    context = ContextChoice.UpTo32k,
-                ),
-            ),
-            MemoryPreview(
-                "8k chosen while a reply is written",
-                idle.copy(
-                    replying = true,
-                    context = ContextChoice.UpTo8k,
-                    contextLine = "Reloads at 8k after this reply.",
-                ),
-            ),
         )
 }
 
@@ -176,7 +139,47 @@ internal class MemoryStates : PreviewParameterProvider<MemoryPreview> {
 internal fun MemoryContentPreview(
     @PreviewParameter(MemoryStates::class) p: MemoryPreview,
 ) {
-    PreviewFrame { MemoryContent(p.state, onUnload = {}, onKeep = {}, onChip = {}, onContext = {}, onBack = {}) }
+    PreviewFrame { MemoryContent(p.state, onUnload = {}, onKeep = {}, onBack = {}) }
+}
+
+internal data class ProcessorPreview(val name: String, val state: ProcessorState) {
+    override fun toString() = name
+}
+
+internal class ProcessorStates : PreviewParameterProvider<ProcessorPreview> {
+    private val allChips = DeviceKind.entries.toSet()
+    private val idle = ProcessorState(ChipChoice.Automatic, allChips, runsOn = null)
+    override val values =
+        sequenceOf(
+            ProcessorPreview("Automatic, the default", idle),
+            ProcessorPreview(
+                "GPU chosen, fell back to the CPU",
+                idle.copy(
+                    chip = ChipChoice.Gpu,
+                    runsOn = ChipFallback(DeviceKind.Cpu, DeviceKind.Gpu, "the GPU couldn't load it").line,
+                ),
+            ),
+            ProcessorPreview(
+                "A phone with no NPU",
+                idle.copy(
+                    chip = ChipChoice.Npu,
+                    chips = setOf(DeviceKind.Gpu, DeviceKind.Cpu),
+                    runsOn = ChipFallback(DeviceKind.Gpu, DeviceKind.Npu, "this phone has no NPU").line,
+                ),
+            ),
+            ProcessorPreview(
+                "CPU chosen while a reply is written",
+                idle.copy(chip = ChipChoice.Cpu, runsOn = "Moves to the CPU after this reply."),
+            ),
+        )
+}
+
+@DemoScreenPreviews
+@Composable
+internal fun ProcessorContentPreview(
+    @PreviewParameter(ProcessorStates::class) p: ProcessorPreview,
+) {
+    PreviewFrame { ProcessorContent(p.state, onChip = {}, onBack = {}) }
 }
 
 private val samplingRows =
@@ -185,30 +188,33 @@ private val samplingRows =
         SamplingModelRow(HfModel.parse("unsloth/gemma-3-4b-it-qat-GGUF:Q4_K_M"), "Gemma 3 4B", 2),
     )
 
-@DemoScreenPreviews
-@Composable
-internal fun SamplingModelsPreview() {
-    PreviewFrame { SamplingModelsContent(ReplyLength.Automatic, samplingRows, onLength = {}, onOpen = {}, onBack = {}) }
-}
-
-internal data class ReplyLengthPreview(val name: String, val length: ReplyLength, val rows: List<SamplingModelRow>) {
+internal data class InferencePreview(val name: String, val state: InferenceState) {
     override fun toString() = name
 }
 
-internal class ReplyLengthStates : PreviewParameterProvider<ReplyLengthPreview> {
+internal class InferenceStates : PreviewParameterProvider<InferencePreview> {
+    private val idle = InferenceState(ContextChoice.Automatic, null, ReplyLength.Automatic, samplingRows)
     override val values =
         sequenceOf(
-            ReplyLengthPreview("Short replies", ReplyLength.Short, samplingRows),
-            ReplyLengthPreview("No limit, no models yet", ReplyLength.NoLimit, emptyList()),
+            InferencePreview("Defaults, two models", idle),
+            InferencePreview("Short replies", idle.copy(length = ReplyLength.Short)),
+            InferencePreview(
+                "8k chosen while a reply is written",
+                idle.copy(context = ContextChoice.UpTo8k, contextLine = "Reloads at 8k after this reply."),
+            ),
+            InferencePreview(
+                "32k, no limit, no models yet",
+                InferenceState(ContextChoice.UpTo32k, null, ReplyLength.NoLimit, emptyList()),
+            ),
         )
 }
 
 @DemoScreenPreviews
 @Composable
-internal fun SamplingReplyLengthPreview(
-    @PreviewParameter(ReplyLengthStates::class) p: ReplyLengthPreview,
+internal fun InferenceContentPreview(
+    @PreviewParameter(InferenceStates::class) p: InferencePreview,
 ) {
-    PreviewFrame { SamplingModelsContent(p.length, p.rows, onLength = {}, onOpen = {}, onBack = {}) }
+    PreviewFrame { InferenceContent(p.state, onContext = {}, onLength = {}, onOpen = {}, onBack = {}) }
 }
 
 internal data class SamplingPreview(val name: String, val model: String, val repo: String, val own: Knobs) {
@@ -231,11 +237,11 @@ internal class SamplingStates : PreviewParameterProvider<SamplingPreview> {
 
 @DemoScreenPreviews
 @Composable
-internal fun SamplingModelPreview(
+internal fun InferenceModelPreview(
     @PreviewParameter(SamplingStates::class) p: SamplingPreview,
 ) {
     val layers = SamplingLayers(Catalog.byRepo(p.repo)?.sampling, p.own)
-    PreviewFrame { SamplingModelContent(p.model, layers, onChange = { _, _ -> }, onReset = {}, onBack = {}) }
+    PreviewFrame { InferenceModelContent(p.model, layers, onChange = { _, _ -> }, onReset = {}, onBack = {}) }
 }
 
 internal class VoiceSettingsStates : PreviewParameterProvider<VoiceSettingsState> {

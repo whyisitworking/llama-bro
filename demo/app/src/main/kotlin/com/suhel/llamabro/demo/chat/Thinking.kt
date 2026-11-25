@@ -1,6 +1,5 @@
 package com.suhel.llamabro.demo.chat
 
-import com.suhel.llamabro.ModelInfo
 import com.suhel.llamabro.chat.Reasoning
 import com.suhel.llamabro.demo.data.ReplyLength
 import com.suhel.llamabro.demo.models.CatalogEntry
@@ -20,7 +19,7 @@ object Thinking {
     /** Deep has no thinking budget, so its limit is a fixed, generous one. */
     private const val DEEP_REPLY_TOKENS = 8_192
 
-    /** Settings › Sampling's Short and Long reply lengths: about 750 and 6,000 words, thinking included. */
+    /** Settings › Inference's Short and Long reply lengths: about 750 and 6,000 words, thinking included. */
     private const val SHORT_REPLY_TOKENS = 1_024
     private const val LONG_REPLY_TOKENS = 8_192
 
@@ -41,10 +40,10 @@ object Thinking {
         }
 
     /**
-     * The reply's length limit under the [length] chosen in Settings › Sampling: [ReplyLength.Automatic] is the level's
-     * own ([replyTokens]); Short and Long replace that total and leave the level's thinking budget as it is, so a short
-     * reply can stop while it still thinks, and Continue goes on; null, for No limit, sends none: the reply runs until
-     * the model stops or the context is full.
+     * The reply's length limit under the [length] chosen in Settings › Inference: [ReplyLength.Automatic] is the
+     * level's own ([replyTokens]); Short and Long replace that total and leave the level's thinking budget as it is,
+     * so a short reply can stop while it still thinks, and Continue goes on; null, for No limit, sends none: the reply
+     * runs until the model stops or the context is full.
      */
     fun replyTokens(level: Think?, length: ReplyLength): Int? =
         when (length) {
@@ -55,13 +54,14 @@ object Thinking {
         }
 
     /**
-     * Whether the Think chip shows: the catalog says so, else the template reports reasoning, else it mentions
-     * `enable_thinking` or `<think>` (F97).
+     * Whether the Think chip shows: the catalog says so for any quant of its repo, else the [template]'s capabilities
+     * ([templateCaps], a load's) report reasoning, else the template mentions `enable_thinking` or `<think>` (F97). A
+     * header read before the load has no capabilities and follows the same rule on the template alone (D155).
      */
-    fun canThink(info: ModelInfo, catalog: CatalogEntry?): Boolean {
+    fun canThink(template: String?, templateCaps: Map<String, Boolean>, catalog: CatalogEntry?): Boolean {
         if (catalog != null) return catalog.thinks
-        if (info.templateCaps["supports_reasoning_effort"] == true) return true
-        val template = info.chatTemplate ?: return false
+        if (templateCaps["supports_reasoning_effort"] == true) return true
+        if (template == null) return false
         return template.contains("enable_thinking") || template.contains("<think>")
     }
 

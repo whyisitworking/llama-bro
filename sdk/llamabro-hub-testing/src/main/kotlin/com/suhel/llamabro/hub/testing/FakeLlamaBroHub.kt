@@ -23,7 +23,7 @@ import kotlin.time.Duration.Companion.milliseconds
  * ([D70](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d70),
  * [D75](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d75)). Pass [hub] to the code under
  * test. It is the real hub, over a scripted Hugging Face Hub and a temporary folder, so `model`, `download`,
- * `progress`, `hasUpdate`, `search`, `files`, `recommendedSampling` and the installed-copy rule
+ * `progress`, `hasUpdate`, `search`, `files`, `recommendedSampling`, `capabilities` and the installed-copy rule
  * ([D64](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d64)) run as in the app, as
  * `FakeLlamaBro` runs the real `Model` over a scripted engine
  * ([D27](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d27)).
@@ -231,11 +231,18 @@ public class FakeLlamaBroHub(script: FakeLlamaBroHub.() -> Unit = {}) : Closeabl
         /**
          * A GGUF file at [path] (`Q8_0/model-Q8_0-00001-of-00002.gguf` for a split part, `mmproj-…` for an image
          * encoder, `dflash-…` for a draft), [sizeBytes] long: a valid header naming the file and holding [sampling]
-         * as its `general.sampling.*` keys (the ones a GGUF can hold), then zeros. The bytes are kept in memory: keep
-         * it small.
+         * as its `general.sampling.*` keys (the ones a GGUF can hold), [chatTemplate] as `tokenizer.chat_template` and
+         * [metadata] (Boolean, String, Int or Float values) as further keys, e.g. `clip.has_vision_encoder` on a
+         * projector, which `capabilities` reads; then zeros. The bytes are kept in memory: keep it small.
          */
-        public fun gguf(path: String, sizeBytes: Int = DEFAULT_GGUF_BYTES, sampling: Sampling? = null) {
-            files += ScriptedFile(path, Gguf.bytes(path, sampling, sizeBytes))
+        public fun gguf(
+            path: String,
+            sizeBytes: Int = DEFAULT_GGUF_BYTES,
+            sampling: Sampling? = null,
+            chatTemplate: String? = null,
+            metadata: Map<String, Any> = emptyMap(),
+        ) {
+            files += ScriptedFile(path, Gguf.bytes(path, sampling, sizeBytes, chatTemplate, metadata))
         }
 
         /** The repo's `generation_config.json`, as the base model's authors publish it (`recommendedSampling`). */

@@ -8,6 +8,10 @@ import com.suhel.llamabro.demo.designsystem.components.DownloadPanel
 import com.suhel.llamabro.demo.designsystem.components.DownloadStage
 import com.suhel.llamabro.demo.designsystem.components.DownloadView
 import com.suhel.llamabro.demo.designsystem.components.FitLevel
+import com.suhel.llamabro.demo.designsystem.components.MarkdownBlock
+import com.suhel.llamabro.demo.designsystem.components.MarkdownBlocks
+import com.suhel.llamabro.demo.designsystem.components.MarkdownSpan
+import com.suhel.llamabro.demo.designsystem.components.MarkdownText
 import com.suhel.llamabro.demo.designsystem.components.ModelRow
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 
@@ -30,7 +34,8 @@ internal fun DownloadPanelSamples() {
 
 /**
  * The one model row (D123): a Hugging Face result, a suggestion before its fit is known, the default model on the
- * phone, a model that can't chat, and a row in each download stage with its compact panel.
+ * phone, a model that can't chat, a row in each download stage with its compact panel, and a model's page whose link
+ * the app takes (a linked model opens in the card's sheet, D156).
  */
 @Composable
 internal fun ModelRowSamples() {
@@ -93,8 +98,23 @@ internal fun ModelRowSamples() {
                 download = { DownloadPanel(view, onToggle = {}, onCancel = {}, compact = true) },
             )
         }
+        MarkdownText(LinkedPage, onCopyCode = {}, page = true, onLink = {})
     }
 }
+
+/** A line of a model's page that links its original, as a quantized upload's page does. */
+private val LinkedPage =
+    MarkdownBlocks(
+        listOf(
+            MarkdownBlock.Paragraph(
+                listOf(
+                    MarkdownSpan("Quantized from "),
+                    MarkdownSpan("Qwen/Qwen3.5-4B", link = "https://huggingface.co/Qwen/Qwen3.5-4B"),
+                    MarkdownSpan(" with llama.cpp."),
+                ),
+            ),
+        ),
+    )
 
 @LightDarkPreviews
 @Composable

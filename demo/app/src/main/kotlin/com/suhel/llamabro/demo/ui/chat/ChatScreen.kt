@@ -42,8 +42,8 @@ import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.ui.Screens
+import com.suhel.llamabro.demo.ui.models.ModelCardStack
 import com.suhel.llamabro.demo.ui.models.ModelEntry
-import com.suhel.llamabro.demo.ui.models.ModelSheetRoute
 import com.suhel.llamabro.demo.ui.models.rememberSheetViewModelOwner
 import com.suhel.llamabro.demo.ui.shell.ChatChrome
 import com.suhel.llamabro.hub.HfModel
@@ -263,7 +263,7 @@ private fun limitAction(
         LimitAction.GetVisionModel -> chrome.onGetModels()
         LimitAction.AddToken -> chrome.onToken()
         LimitAction.StartNewChat -> chrome.onNewChat()
-        LimitAction.OpenMemorySettings -> chrome.onMemory()
+        LimitAction.OpenProcessorSettings -> chrome.onProcessor()
         LimitAction.CloseOtherAppsAndRetry, LimitAction.Retry -> vm.retry()
         LimitAction.OpenAppSettings -> openAppSettings(context)
     }
@@ -341,18 +341,19 @@ private fun openAppSettings(context: Context) {
 
 /**
  * "Smaller size" (beside "Try again"): this model's own sheet, on Smaller; Get starts it and the chat moves to it. No
- * "Chat with": the chat already runs this model.
+ * "Chat with": the chat already runs this model, and a card its page's links open has none either. Only a size of the
+ * chat's own model moves the chat: Get on another model's card just downloads it.
  */
 @Composable
 private fun SmallerHost(screens: Screens, vm: ChatViewModel, onDismiss: () -> Unit) {
     val current by vm.handle.current.collectAsStateWithLifecycle()
     val name by vm.handle.name.collectAsStateWithLifecycle()
     val key = current ?: return
-    ModelSheetRoute(
+    ModelCardStack(
         screens,
         // the chat's own file, so the card follows it rather than another quant of its repo
         ModelEntry.ofKey(key, name).copy(key = key),
-        onStarted = vm.handle::switchModel,
+        onStarted = { started -> if (started.repo.equals(key.repo, ignoreCase = true)) vm.handle.switchModel(started) },
         onDismiss = onDismiss,
         onChatWith = null,
         startTier = SizeTier.Smaller,
@@ -407,7 +408,7 @@ private fun CardHost(screens: Screens, switcher: SwitcherViewModel, key: HfModel
         LaunchedEffect(Unit) { onDismiss() }
         return
     }
-    ModelSheetRoute(screens, ModelEntry.of(model), onStarted = {}, onDismiss = onDismiss, onChatWith = null)
+    ModelCardStack(screens, ModelEntry.of(model), onStarted = {}, onDismiss = onDismiss, onChatWith = null)
 }
 
 /** The chat's sampling sheet, at the chat's Think level; it closes if the chat has no model or no row yet. */

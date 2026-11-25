@@ -91,13 +91,13 @@ fun ModelsRoute(
     val viewModel =
         viewModel(key = "models") { screens.modelsViewModel(initialQuery, initialIntro, createSavedStateHandle()) }
     ModelsHost(viewModel, onBack, onOpenChat) { row ->
-        ModelSheetRoute(
+        ModelCardStack(
             screens,
             row,
             onStarted = viewModel::started,
             onDismiss = viewModel::dismiss,
             onChatWith = onChatWith,
-            onExactFit = { viewModel.exactFit(row, it) },
+            onExactFit = viewModel::exactFit,
         )
     }
 }

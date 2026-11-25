@@ -120,7 +120,7 @@ fun ColumnScope.ModelSwitcherContent(
             GroupedList(Modifier.testTag("chat_sampling_row")) {
                 row {
                     ListRow(
-                        "Sampling",
+                        "Inference",
                         subtitle =
                             when (it.changed) {
                                 0 -> "The model's values"

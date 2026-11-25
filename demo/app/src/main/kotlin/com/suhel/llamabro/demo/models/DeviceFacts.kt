@@ -6,7 +6,7 @@ import kotlinx.coroutines.CancellationException
 
 /**
  * What the phone can do, read from the SDK once: the memory a model may use ([budgetBytes], half the phone's total RAM,
- * D101), the chip a model is expected to run on ([chip]: `Auto`'s pick, or the one chosen in Settings › Memory, see
+ * D101), the chip a model is expected to run on ([chip]: `Auto`'s pick, or the one chosen in Settings › Processor, see
  * [preferring]), and every kind of chip the app can use here ([kinds], D72).
  */
 data class DeviceFacts(

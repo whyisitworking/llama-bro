@@ -175,6 +175,7 @@ public final class com/suhel/llamabro/hub/LlamaBroHub {
 	public static final field Companion Lcom/suhel/llamabro/hub/LlamaBroHub$Companion;
 	public final fun baseModel (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun cached (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun capabilities (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun delete (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun download (Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;)Lkotlinx/coroutines/flow/Flow;
 	public static synthetic fun download$default (Lcom/suhel/llamabro/hub/LlamaBroHub;Lcom/suhel/llamabro/hub/HfModel;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
@@ -202,6 +203,13 @@ public final class com/suhel/llamabro/hub/LlamaBroHub$Companion {
 	public final fun create (Landroid/content/Context;Lcom/suhel/llamabro/hub/HubConfig;)Lcom/suhel/llamabro/hub/LlamaBroHub;
 	public static synthetic fun create$default (Lcom/suhel/llamabro/hub/LlamaBroHub$Companion;Landroid/content/Context;Lcom/suhel/llamabro/hub/HubConfig;ILjava/lang/Object;)Lcom/suhel/llamabro/hub/LlamaBroHub;
 	public final fun withTransport (Lcom/suhel/llamabro/hub/spi/Transport;Lcom/suhel/llamabro/hub/spi/Storage;Lcom/suhel/llamabro/hub/HubConfig;)Lcom/suhel/llamabro/hub/LlamaBroHub;
+}
+
+public final class com/suhel/llamabro/hub/ModelCapabilities {
+	public final fun getChatTemplate ()Ljava/lang/String;
+	public final fun getTakesAudio ()Z
+	public final fun getTakesImages ()Z
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/suhel/llamabro/hub/PlanOptions {
@@ -249,6 +257,7 @@ public final class com/suhel/llamabro/hub/SearchOptions {
 	public final fun getLimit ()I
 	public final fun getMaxParameters ()Ljava/lang/Long;
 	public final fun getMinParameters ()Ljava/lang/Long;
+	public final fun getQuantizedFrom ()Ljava/lang/String;
 	public final fun getSort ()Lcom/suhel/llamabro/hub/SearchSort;
 	public final fun getTakesImages ()Z
 	public final fun setAuthor (Ljava/lang/String;)V
@@ -256,6 +265,7 @@ public final class com/suhel/llamabro/hub/SearchOptions {
 	public final fun setLimit (I)V
 	public final fun setMaxParameters (Ljava/lang/Long;)V
 	public final fun setMinParameters (Ljava/lang/Long;)V
+	public final fun setQuantizedFrom (Ljava/lang/String;)V
 	public final fun setSort (Lcom/suhel/llamabro/hub/SearchSort;)V
 	public final fun setTakesImages (Z)V
 }
