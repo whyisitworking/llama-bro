@@ -132,12 +132,7 @@ internal class FakeModel(
         val text = String(body, Charsets.UTF_8)
 
         fun send(status: Int, data: String) = sink.onChunk(status, data.toByteArray(Charsets.UTF_8))
-        synchronized(fake.lock) { fake.rawQueue.removeFirstOrNull() }?.let { raw ->
-            raw.chunks.forEach { send(raw.status, it) }
-            if (raw.holdOpen) return Held(fake, sink)
-            sink.onDone()
-            return Finished
-        }
+        answerRaw(sink)?.let { return it }
         when (endpoint) {
             "chat" -> {
                 chat(text, attachments, ::send)
@@ -172,6 +167,15 @@ internal class FakeModel(
                 send(501, notSupported("FakeLlamaBro doesn't script the $endpoint route"))
             }
         }
+        sink.onDone()
+        return Finished
+    }
+
+    /** The next [FakeLlamaBro.raw] answer, if one is queued, sent whatever the endpoint; null when none is. */
+    private fun answerRaw(sink: RequestSink): EngineRequest? {
+        val raw = synchronized(fake.lock) { fake.rawQueue.removeFirstOrNull() } ?: return null
+        raw.chunks.forEach { sink.onChunk(raw.status, it.toByteArray(Charsets.UTF_8)) }
+        if (raw.holdOpen) return Held(fake, sink)
         sink.onDone()
         return Finished
     }
