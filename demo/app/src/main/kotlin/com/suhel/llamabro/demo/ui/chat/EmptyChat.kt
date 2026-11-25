@@ -14,7 +14,7 @@ import com.suhel.llamabro.demo.designsystem.components.StarterChips
 /** The starter prompts of an empty chat (plain, everyday wording). */
 val StarterPrompts = listOf("Plan my week", "Explain something simply", "Help me write a message")
 
-/** A chat with no messages: the 72 dp logo (D158), the serif line and three starter chips. */
+/** A chat with no messages: the 72 dp logo (D161), the serif line and three starter chips. */
 @Composable
 fun EmptyChat(onStarter: (String) -> Unit, modifier: Modifier = Modifier) {
     Centered(modifier) {

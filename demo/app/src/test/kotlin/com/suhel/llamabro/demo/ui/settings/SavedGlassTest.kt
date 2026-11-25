@@ -6,7 +6,7 @@ import com.suhel.llamabro.demo.designsystem.theme.GlassTheme
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** The glass tuned in Settings › Appearance › Glass, as it is saved and read back (D152, D155). */
+/** The glass tuned in Settings › Appearance › Glass, as it is saved and read back (D152, D158). */
 class SavedGlassTest {
     @Test fun aTunedGlassReadsBackAsItWasSaved() {
         val tuned =
@@ -40,7 +40,7 @@ class SavedGlassTest {
                     ),
             )
         assertEquals(tuned, SavedGlass.decode(SavedGlass.encode(tuned)))
-        // saved before D155, with no press in it
+        // saved before D158, with no press in it
         assertEquals(GlassPress.Default, SavedGlass.decode("""{"chip":{"bezel":9.0}}""").press)
     }
 

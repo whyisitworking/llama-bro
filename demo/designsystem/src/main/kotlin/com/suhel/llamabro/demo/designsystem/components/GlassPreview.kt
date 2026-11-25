@@ -20,7 +20,7 @@ import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 /**
  * A sample of the app's glass to tune it by (Settings › Appearance › Glass, D152), for a screen's bottom bar: a chip
  * beside a panel shaped like the message bar, over the page as it scrolls, so the chips', the panels' and the bar's
- * glass all answer each change at once. Its chip and its panel answer a press as glass does (D155); they do nothing
+ * glass all answer each change at once. Its chip and its panel answer a press as glass does (D158); they do nothing
  * else, being there to be seen and pressed.
  */
 @Composable

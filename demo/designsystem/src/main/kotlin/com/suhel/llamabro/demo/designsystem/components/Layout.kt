@@ -141,7 +141,7 @@ fun TopBarTitle(
     /** How many lines the title may wrap to before it is cut: 2 for a model's name, which must be read whole (D150). */
     lines: Int = 1,
     /**
-     * Small (D156): the title in [DemoType.titleSmall] and the subtitle, dimmer, in [DemoType.bodySmall], each on one
+     * Small (D159): the title in [DemoType.titleSmall] and the subtitle, dimmer, in [DemoType.bodySmall], each on one
      * line, the subtitle on two at a large font, so a model's name under a chat's is still read whole.
      */
     compact: Boolean = false,
@@ -191,7 +191,7 @@ fun TopBarTitle(
     }
 }
 
-/** A [TopBarTitle]'s second line, dimmer, with the chevron after it when it has one; [compact] as there (D156). */
+/** A [TopBarTitle]'s second line, dimmer, with the chevron after it when it has one; [compact] as there (D159). */
 @Composable
 private fun TopBarSubtitle(subtitle: String, chevron: Boolean, compact: Boolean) {
     val colors = LocalDemoColors.current

@@ -37,7 +37,7 @@ import kotlin.math.roundToInt
  * bars'), each saved and applied across the app as it is let go ([onChange]), so the look is tuned by eye; a sample
  * chip and panel float at the bottom ([GlassPreview]) over the sliders as they scroll. Copy values puts them on the
  * clipboard as the Kotlin of [GlassTheme.Default], and Reset forgets them ([onChange] with null). How glass answers a
- * finger (D155) comes first, with its own Reset, since the sample is there to press and drag while it is tuned.
+ * finger (D158) comes first, with its own Reset, since the sample is there to press and drag while it is tuned.
  */
 @Composable
 fun GlassScreen(onChange: (GlassTheme?) -> Unit, onBack: () -> Unit) {
@@ -65,7 +65,7 @@ fun GlassScreen(onChange: (GlassTheme?) -> Unit, onBack: () -> Unit) {
                 Modifier.fillMaxWidth().testTag("glass_merged"),
             )
         }
-        // first among the values: the sample at the bottom is right there to press and drag while tuning them (D155)
+        // first among the values: the sample at the bottom is right there to press and drag while tuning them (D158)
         Section(
             "Press: how glass answers a finger",
             action = "Reset".takeIf { glass.press != GlassPress.Default },
@@ -132,7 +132,7 @@ private fun GroupScope.barSliders(bar: BarGlass, onChange: (BarGlass) -> Unit) {
 }
 
 /**
- * Sliders for how pressed glass answers ([press], D155): the swell as the share it grows by, so 0 is none and the
+ * Sliders for how pressed glass answers ([press], D158): the swell as the share it grows by, so 0 is none and the
  * slider's travel is all in the range worth trying.
  */
 private fun GroupScope.pressSliders(press: GlassPress, onChange: (GlassPress) -> Unit) {
@@ -221,7 +221,7 @@ private const val MAX_BAR_BLUR = 48f
 private const val MAX_BAR_SPLIT = 20f
 private const val MAX_FADE = 64f
 
-// past a quarter, swollen glass crowds what sits beside it: it draws past its bounds (D155)
+// past a quarter, swollen glass crowds what sits beside it: it draws past its bounds (D158)
 private const val MAX_SWELL = 0.25f
 private const val MAX_PULL = 16f
 private const val MAX_RESISTANCE = 160f

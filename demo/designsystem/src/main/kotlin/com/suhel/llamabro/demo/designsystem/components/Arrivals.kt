@@ -240,7 +240,7 @@ fun <T> enterFadeSpec(): FiniteAnimationSpec<T> =
     )
 
 /**
- * A screen arriving (a navigation), along one axis (D157, Material's shared axis): it slides in from the end a
+ * A screen arriving (a navigation), along one axis (D160, Material's shared axis): it slides in from the end a
  * [DemoMotion.SCREEN_SLIDE_SHARE] of the screen's width, or from the start when going [back], settling over
  * [DemoMotion.ENTER_MILLIS]; it waits [DemoMotion.TEXT_OUT_MILLIS] for the one leaving to fade out, then fades in, so
  * two screens' text never draw over each other (D119). The way it slides follows the layout's direction. None when
@@ -259,7 +259,7 @@ fun <S> AnimatedContentTransitionScope<S>.screenEnter(still: Boolean, back: Bool
     }
 
 /**
- * A screen leaving, along the same axis (D157): it fades out before the next fades in, sliding half as far the other
+ * A screen leaving, along the same axis (D160): it fades out before the next fades in, sliding half as far the other
  * way as it goes. None when [still].
  */
 fun <S> AnimatedContentTransitionScope<S>.screenExit(still: Boolean, back: Boolean = false): ExitTransition =

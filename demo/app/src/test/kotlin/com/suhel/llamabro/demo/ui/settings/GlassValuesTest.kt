@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * What Settings › Appearance › Glass copies (D151, D152, D155): every value of the glass, as the Kotlin that sets it.
+ * What Settings › Appearance › Glass copies (D151, D152, D158): every value of the glass, as the Kotlin that sets it.
  */
 class GlassValuesTest {
     @Test fun theCopiedValuesAreTheGlassesAsKotlin() {

@@ -181,14 +181,14 @@ its amendments to know what holds now.
 | [D145](#d145-the-sidebar-pushes-the-chat-aside-and-dims-it-and-its-head-is-as-tall-as-the-top-bar) The sidebar pushes the chat aside and dims it, and its head is as tall as the top bar | 2026-11-24 |[D148](#d148-pages-scroll-edge-to-edge-under-floating-bars-the-drawer-holds-still-under-the-page) |
 | [D146](#d146-a-reply-is-one-row-while-it-is-written-and-once-it-is-saved-and-its-actions-ease-in) A reply is one row while it is written and once it is saved, and its actions ease in | 2026-11-24 | |
 | [D147](#d147-hands-free-voice-mode-ends-a-turn-at-a-pause-and-talking-can-interrupt-a-reply) Hands-free voice mode ends a turn at a pause, and talking can interrupt a reply | 2026-11-24 | |
-| [D148](#d148-pages-scroll-edge-to-edge-under-floating-bars-the-drawer-holds-still-under-the-page) Pages scroll edge to edge under floating bars; the drawer holds still under the page | 2026-11-24 | [D155](#d155-pressed-glass-swells-and-lights-up-under-the-finger) |
+| [D148](#d148-pages-scroll-edge-to-edge-under-floating-bars-the-drawer-holds-still-under-the-page) Pages scroll edge to edge under floating bars; the drawer holds still under the page | 2026-11-24 | [D158](#d158-pressed-glass-swells-and-lights-up-under-the-finger) |
 | [D149](#d149-the-demos-debug-build-installs-beside-the-release-with-its-own-name-and-icon) The demo's debug build installs beside the release, with its own name and icon | 2026-11-24 | |
 | [D150](#d150-replies-in-the-serif-the-rest-in-figtree) Replies in the serif, the rest in Figtree | 2026-11-25 | |
 | [D151](#d151-a-debug-build-tunes-the-glass-on-the-phone) A debug build tunes the glass on the phone | 2026-11-25 | D152 |
 | [D152](#d152-the-glass-is-a-setting-under-appearance-saved-with-a-sample-at-the-bottom) The glass is a setting under Appearance, saved, with a sample at the bottom | 2026-11-25 | |
 | [D153](#d153-the-glass-scales-to-the-phone-lighter-where-the-phone-doesnt-vouch-for-itself) The glass scales to the phone: lighter where the phone doesn't vouch for itself | 2026-11-25 | D154 |
-| [D154](#d154-a-bar-can-draw-the-glass-on-it-in-its-own-passes-a-lighter-phone-does-by-default) A bar can draw the glass on it in its own passes; a lighter phone does by default | 2026-11-25 | [D155](#d155-pressed-glass-swells-and-lights-up-under-the-finger) |
-| [D155](#d155-pressed-glass-swells-and-lights-up-under-the-finger) Pressed glass swells and lights up under the finger | 2026-11-25 | |
+| [D154](#d154-a-bar-can-draw-the-glass-on-it-in-its-own-passes-a-lighter-phone-does-by-default) A bar can draw the glass on it in its own passes; a lighter phone does by default | 2026-11-25 | [D158](#d158-pressed-glass-swells-and-lights-up-under-the-finger) |
+| [D158](#d158-pressed-glass-swells-and-lights-up-under-the-finger) Pressed glass swells and lights up under the finger | 2026-11-25 | |
 
 **Repository and process**
 
@@ -2412,8 +2412,8 @@ chips are a touch softer, drawn at the bar's half resolution and with the bar's 
 into their edge, so a Full phone keeps the sharper glass by default. A Light phone keeps the chips' and panels' blur.
 Next free IDs: D155, F189.
 
-<a id="d155"></a>
-### D155. Pressed glass swells and lights up under the finger
+<a id="d158"></a>
+### D158. Pressed glass swells and lights up under the finger
 
 Status: Decided (2026-11-25). Amends D148 and D154.
 
@@ -2455,5 +2455,5 @@ That cost is unmeasured: the chat's budget is for a fling, not a press, and a be
 draws past the glass's bounds, so glass inside something that clips it, or pulled toward the edge of a bar that draws
 it, loses its edge; the tap target stays where the glass sits at rest. Its look is tuned by eye on the owner's phone; a
 host test checks the press still clicks with animations on and off, not what it draws.
-Next free IDs: D156, F189.
+Next free IDs: D159, F189.
 

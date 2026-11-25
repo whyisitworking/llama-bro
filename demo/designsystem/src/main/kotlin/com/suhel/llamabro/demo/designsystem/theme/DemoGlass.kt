@@ -66,7 +66,7 @@ data class BarGlass(
 }
 
 /**
- * How a piece of glass answers a finger (D155): pressed, it swells, a light gathers on its rim around the finger, out
+ * How a piece of glass answers a finger (D158): pressed, it swells, a light gathers on its rim around the finger, out
  * to [reach] at [light]'s strength, and its edge bends the page [bend] more (a share of its refraction). Dragged, it
  * stretches along the drag and narrows across it, and moves after the finger only a little, on an elastic limited to
  * [pull]; both give slowly at first and more as the drag goes on, half of each at a drag of [resistance], as a heavy
@@ -150,7 +150,7 @@ data class GlassPress(
 }
 
 /**
- * Where pressed glass is drawn (D155), in its bounds' pixels: its swollen, moved and stretched rectangle ([topLeft],
+ * Where pressed glass is drawn (D158), in its bounds' pixels: its swollen, moved and stretched rectangle ([topLeft],
  * [size]), and the scale its content is drawn at across ([scaleX]) and down ([scaleY]).
  */
 @Immutable

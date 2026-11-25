@@ -327,7 +327,7 @@ private fun Graph(
         }
     }
     // screens fade through, never crossfade: the chat's greeting, orb and chips drew over the Models rows for 300 ms.
-    // The one leaving fades out, then the one arriving fades in, on the text motion tokens, both along one axis (D157):
+    // The one leaving fades out, then the one arriving fades in, on the text motion tokens, both along one axis (D160):
     // forward from the end, back from the start
     val still = animationsDisabled()
     NavHost(

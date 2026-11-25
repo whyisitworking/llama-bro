@@ -6,7 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** How pressed glass is drawn at each point of its press and its drag (D155). */
+/** How pressed glass is drawn at each point of its press and its drag (D158). */
 class GlassPressValuesTest {
     private val press = GlassPress.Default.copy(swell = 1.1f, light = 0.5f, bend = 0.4f, stretch = 0.1f)
     private val chip = Size(40f, 40f)

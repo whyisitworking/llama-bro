@@ -165,7 +165,7 @@ fun IconAction(
     val colors = LocalDemoColors.current
     val glyph = if (small) DemoSize.iconSmall else DemoSize.icon
     val backdrop = LocalBackdrop.current.takeIf { LocalGlassChips.current }
-    // a chip of glass answers its press itself (D155)
+    // a chip of glass answers its press itself (D158)
     val presses = if (backdrop != null) remember { MutableInteractionSource() } else null
     Box(
         modifier

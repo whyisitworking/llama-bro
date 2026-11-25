@@ -48,7 +48,7 @@ fun Logo(size: LogoSize, modifier: Modifier = Modifier) {
 }
 
 /**
- * The logo, the app icon's llama alone (D158), [size] tall: in the dark theme the icon's own artwork, its outline
+ * The logo, the app icon's llama alone (D161), [size] tall: in the dark theme the icon's own artwork, its outline
  * glowing violet and amber as on its night; in the light theme, where that white glow would vanish, its traced outline
  * in the ink. 56 dp on the first run, 72 dp in an empty chat. Decorative: the words beside it say what it is for.
  */
@@ -109,7 +109,7 @@ fun ModelName(name: String, modifier: Modifier = Modifier, realName: String? = n
 }
 
 /**
- * The logo at the voice view's size (D100, D158), alive with the conversation: still while the [phase] is
+ * The logo at the voice view's size (D100, D161), alive with the conversation: still while the [phase] is
  * [VoicePhase.Ready]; while [VoicePhase.Listening] it swells with the voice's [level] (0 to 1) and a warm glow behind
  * it brightens with it; while [VoicePhase.Thinking] that glow breathes; while [VoicePhase.Speaking] it moves
  * with the reply's [level]. With animations off it holds still in every phase, and the screen's state line carries the

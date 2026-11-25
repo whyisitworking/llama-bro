@@ -45,7 +45,7 @@ object DemoMotion {
     const val SWAP_MILLIS = 200
     const val SWEEP_MILLIS = 1_400
 
-    /** Voice mode's thinking: the glow behind the logo comes and goes once in this time (D100, D158). */
+    /** Voice mode's thinking: the glow behind the logo comes and goes once in this time (D100, D161). */
     const val LOGO_BREATH_MILLIS = 2_400
 
     /** One wave across the three typing dots, each a fifth of the cycle after the one before. */
@@ -53,7 +53,7 @@ object DemoMotion {
     const val DOTS_STAGGER = 0.2f
 
     /**
-     * A screen arriving slides in this share of the screen's width along the navigation's axis (D157): a fifth, more
+     * A screen arriving slides in this share of the screen's width along the navigation's axis (D160): a fifth, more
      * than Material's 30 dp shared axis, so a navigation reads as one.
      */
     const val SCREEN_SLIDE_SHARE = 0.2f
@@ -62,7 +62,7 @@ object DemoMotion {
     const val POP_SCALE = 0.8f
 
     /**
-     * Pressed glass (D155) is a heavy pane: it eases in over [PRESS_IN_MILLIS] and back out over [PRESS_OUT_MILLIS],
+     * Pressed glass (D158) is a heavy pane: it eases in over [PRESS_IN_MILLIS] and back out over [PRESS_OUT_MILLIS],
      * both on [standard]'s curve (slow to start, as a mass is, then settling), with no spring: a spring's overshoot
      * read as a cartoon on the owner's phone. Dragged, it trails the finger, catching up over [PANE_LAG_MILLIS] on
      * [enter]'s curve. A tap holds the press [PRESS_HOLD_MILLIS] at least, or a quick one, released the frame it lands,

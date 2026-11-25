@@ -135,7 +135,7 @@ val LocalBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 /**
  * A piece of glass a floating bar draws in its own passes (D154): where it is in the window ([rect]), its corners'
  * radius in pixels ([corner]), its [style], and how much more than the style says its edge bends while pressed
- * ([bend], D155); [rect] and [corner] are the pressed glass's, swollen.
+ * ([bend], D158); [rect] and [corner] are the pressed glass's, swollen.
  */
 @Immutable
 internal data class MergedShape(val rect: Rect, val corner: Float, val style: GlassStyle, val bend: Float = 1f)
@@ -167,7 +167,7 @@ internal val LocalGlassChips = staticCompositionLocalOf { false }
  * upper rim and a hairline round it. Before that, or with no [backdrop], a translucent fill and the hairline. Clip the
  * content to the same shape after it.
  *
- * It answers a finger (D155, [GlassPress]): it swells, a light gathers on its rim around the finger and its edge
+ * It answers a finger (D158, [GlassPress]): it swells, a light gathers on its rim around the finger and its edge
  * bends more, and dragged it stretches after it, then all of it eases back. With the [interactions] of what makes it
  * pressable (a clickable on the same bounds) it answers a key's press and a keyboard's focus too, and is the press's
  * indication, so the clickable needs no ripple of its own.
@@ -181,7 +181,7 @@ fun Modifier.glass(
 
 /**
  * [content] on a piece of glass ([glass]) over the page under it ([LocalBackdrop]), clipped to its shape: corners
- * [corner], a pill when null. With [onClick] it is a button whose glass answers the press (D155).
+ * [corner], a pill when null. With [onClick] it is a button whose glass answers the press (D158).
  */
 @Composable
 fun GlassSurface(
@@ -211,7 +211,7 @@ fun GlassSurface(
 
 /**
  * A part of a floating bar as a chip of glass in [style], when on one ([backdrop]), answering presses from
- * [interactions] (D155); nothing otherwise.
+ * [interactions] (D158); nothing otherwise.
  */
 internal fun Modifier.chipGlass(
     backdrop: Backdrop?,
@@ -220,7 +220,7 @@ internal fun Modifier.chipGlass(
 ): Modifier = if (backdrop == null) this else glass(backdrop, style, interactions = interactions)
 
 /**
- * A button's click on glass that answers its press (D155): the glass is the indication, so no ripple is drawn over
+ * A button's click on glass that answers its press (D158): the glass is the indication, so no ripple is drawn over
  * it; off glass ([glass] false), the usual ripple.
  */
 @Composable
@@ -266,7 +266,7 @@ private class GlassNode(
     private var container: GlassContainer? = null
 
     /**
-     * How far in the press is (D155): 0 at rest, 1 pressed, eased between; snapshot state read where the glass draws,
+     * How far in the press is (D158): 0 at rest, 1 pressed, eased between; snapshot state read where the glass draws,
      * so a press redraws it frame by frame and recomposes nothing.
      */
     private var press = Animatable(0f)
@@ -277,23 +277,23 @@ private class GlassNode(
      */
     private var finger by mutableStateOf(Offset.Unspecified)
 
-    /** How far the finger has been dragged since it touched down, while it is down (D155). */
+    /** How far the finger has been dragged since it touched down, while it is down (D158). */
     private var drag by mutableStateOf(Offset.Zero)
 
     /** Whether a finger is down on the glass: its drag is [drag], else [lifted]'s, easing out with the press. */
     private var held by mutableStateOf(false)
 
     /**
-     * The drag as the finger lifted, eased back to rest by the press itself (D155): swell, stretch and movement go
+     * The drag as the finger lifted, eased back to rest by the press itself (D158): swell, stretch and movement go
      * back together on one curve, not the swell first and the rest after.
      */
     private var liftedDrag by mutableStateOf(Offset.Zero)
 
-    /** Where the pane's drag is: the finger's [drag], caught up with a little after it moves (D155). */
+    /** Where the pane's drag is: the finger's [drag], caught up with a little after it moves (D158). */
     private var pane = Animatable(Offset.Zero, Offset.VectorConverter)
 
     /**
-     * The glass follows the finger itself rather than through a click's press (D155), pressable or not, as every
+     * The glass follows the finger itself rather than through a click's press (D158), pressable or not, as every
      * panel answers a touch: a click's press reports only where the finger came down, and is cancelled as it slides
      * off, while the glass must follow it until it lifts. It watches the events on their way in and consumes none, so
      * what is on the glass (a click, a text field) still gets them all.
@@ -301,7 +301,7 @@ private class GlassNode(
     @Suppress("unused") // delegated: the node is attached with this one
     private val touches = delegate(SuspendingPointerInputModifierNode { follow() })
 
-    /** Whether animations are off as the press began: the glass then doesn't swell (D155). */
+    /** Whether animations are off as the press began: the glass then doesn't swell (D158). */
     private var still = false
     private var pressedAt = 0L
     private var watching: Job? = null
@@ -342,7 +342,7 @@ private class GlassNode(
         liftedDrag = Offset.Zero
     }
 
-    /** Follows each finger that touches the glass from down to up, sliding off it or not (D155). */
+    /** Follows each finger that touches the glass from down to up, sliding off it or not (D158). */
     private suspend fun PointerInputScope.follow() {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -367,7 +367,7 @@ private class GlassNode(
         pressed(at, animationsOff())
     }
 
-    /** The finger moved: the light follows it at once, the pane after it, as a heavy thing does (D155). */
+    /** The finger moved: the light follows it at once, the pane after it, as a heavy thing does (D158). */
     private fun moved(from: Offset, to: Offset) {
         finger = to
         drag = to - from
@@ -388,7 +388,7 @@ private class GlassNode(
     }
 
     /**
-     * Follows the presses of [interactions], if any (D155), and a keyboard's focus, which lights the glass as a press
+     * Follows the presses of [interactions], if any (D158), and a keyboard's focus, which lights the glass as a press
      * would but doesn't swell it: with no ripple, the glass is the only sign of either. A new source starts at rest,
      * or a press whose release went to the old one would hold the glass swollen.
      */
@@ -439,14 +439,14 @@ private class GlassNode(
             }
     }
 
-    /** Whether the person turned animations off, read as a press begins rather than observed (D155). */
+    /** Whether the person turned animations off, read as a press begins rather than observed (D158). */
     private fun animationsOff(): Boolean =
         (
             currentValueOf(LocalAnimatorDurationScale)
                 ?: currentValueOf(LocalContext).contentResolver.animatorDurationScale()
         ) == 0f
 
-    /** Where glass of [base] size is drawn this frame (D155): swollen, pulled and stretched as the finger has it. */
+    /** Where glass of [base] size is drawn this frame (D158): swollen, pulled and stretched as the finger has it. */
     private fun poseNow(feel: GlassPress, base: Size): GlassPose {
         val pulled = if (held) pane.value else liftedDrag * press.value
         return with(requireDensity()) {
@@ -517,7 +517,7 @@ private class GlassNode(
     override fun ContentDrawScope.draw() {
         val colors = currentValueOf(LocalDemoColors)
         val feel = currentValueOf(LocalGlass).press
-        // pressed, the glass is drawn swollen, pulled and stretched (D155): its bounds, and what it lays out, stay put
+        // pressed, the glass is drawn swollen, pulled and stretched (D158): its bounds, and what it lays out, stay put
         val pose = poseNow(feel, size)
         val bend = feel.bendAt(press.value)
         val grown = pose.size
@@ -596,7 +596,7 @@ private class GlassNode(
     }
 
     /**
-     * The light a press gathers around the finger (D155): brightest on the rim near it, fading out to
+     * The light a press gathers around the finger (D158): brightest on the rim near it, fading out to
      * [GlassPress.reach], with a faint glow through the glass under it, the finger where it is now, the posed glass
      * drawn at [shift] in its bounds.
      */
@@ -618,10 +618,10 @@ private class GlassNode(
     }
 }
 
-/** How much thicker the rim's light is where a finger presses it than the rim light at rest (D155). */
+/** How much thicker the rim's light is where a finger presses it than the rim light at rest (D158). */
 private const val PRESS_RIM = 1.5f
 
-/** How bright the glow through pressed glass is, as a share of the light on its rim (D155). */
+/** How bright the glow through pressed glass is, as a share of the light on its rim (D158). */
 private const val PRESS_GLOW = 0.25f
 
 /** The light caught on a lens's rim: light in either theme, as a highlight on glass is; the style sets its strength. */
@@ -638,7 +638,7 @@ private class Lens {
 
     /**
      * The lens over a glass [width] by [height], its edge bending [bend] times the style's refraction (more while
-     * pressed, D155); with [light] (a weaker phone, D153), without its own blur pass.
+     * pressed, D158); with [light] (a weaker phone, D153), without its own blur pass.
      */
     @Suppress("LongParameterList") // the shader's inputs, all of them
     fun effect(

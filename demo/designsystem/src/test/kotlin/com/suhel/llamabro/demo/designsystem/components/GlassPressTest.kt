@@ -24,7 +24,7 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 /**
- * A chip of glass answers a finger itself (D155), alongside its click: held or dragged, it draws each frame of its
+ * A chip of glass answers a finger itself (D158), alongside its click: held or dragged, it draws each frame of its
  * swell, pull and light (here with or without animations), and let go it settles, having clicked once unless the
  * finger slid off it. How it looks
  * is for a phone: a host test draws no pixels to compare.

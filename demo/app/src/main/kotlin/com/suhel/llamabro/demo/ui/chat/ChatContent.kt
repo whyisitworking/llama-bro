@@ -155,7 +155,7 @@ private fun ChatTopBar(bar: ChatBar, layout: AppLayout, actions: ChatScreenActio
 }
 
 /**
- * The Sidebar layout's title, small (D156): the chat's name on one line over its model's, dimmer, with the download's
+ * The Sidebar layout's title, small (D159): the chat's name on one line over its model's, dimmer, with the download's
  * ring and words right beside it (while the model arrives). A chat not yet named shows its model's name alone, on two
  * lines if it needs them: which model answers must be read, not guessed (D150).
  */

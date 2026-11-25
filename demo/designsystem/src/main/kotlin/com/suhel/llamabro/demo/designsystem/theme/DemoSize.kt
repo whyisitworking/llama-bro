@@ -118,7 +118,7 @@ object DemoSize {
     /**
      * Voice mode (D100): the logo at the voice view's size, the hold-to-talk button and its glyph, and how far the
      * caption's older lines fade at its top. Chosen: the logo leads the view as the hero logo leads the first run
-     * (D158), and the talk button is Material's large floating button rounded to a circle.
+     * (D161), and the talk button is Material's large floating button rounded to a circle.
      */
     val logoVoice = 152.dp
     val talkButton = 80.dp
