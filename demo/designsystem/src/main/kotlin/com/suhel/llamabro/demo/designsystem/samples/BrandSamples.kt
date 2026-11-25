@@ -17,7 +17,7 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 
-/** The first run's head (56 dp logo), an empty chat's (40 dp), a model's name and a screen title. */
+/** The first run's head (56 dp logo), an empty chat's (72 dp), a model's name and a screen title. */
 @Composable
 internal fun BrandSamples() {
     val c = LocalDemoColors.current
@@ -34,7 +34,7 @@ internal fun BrandSamples() {
             )
         }
         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Logo(40.dp, Modifier.padding(bottom = 12.dp))
+            Logo(72.dp, Modifier.padding(bottom = 12.dp))
             EmptyLine("What's on your mind?")
         }
         ModelName("Qwen3.5 0.8B", realName = "by Alibaba · by Alibaba Qwen")

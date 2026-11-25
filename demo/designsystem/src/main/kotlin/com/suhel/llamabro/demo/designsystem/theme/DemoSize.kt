@@ -70,7 +70,7 @@ object DemoSize {
 
     /** The brand mark in a hero, and in an empty state. */
     val markHero = 56.dp
-    val markEmpty = 40.dp
+    val markEmpty = 72.dp
 
     /** A starter chip (Material's 32 dp chip). */
     val chip = 32.dp

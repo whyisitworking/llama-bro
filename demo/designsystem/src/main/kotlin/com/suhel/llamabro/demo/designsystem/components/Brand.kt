@@ -20,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
@@ -51,7 +50,7 @@ fun Logo(size: LogoSize, modifier: Modifier = Modifier) {
 /**
  * The logo, the app icon's llama alone (D158), [size] tall: in the dark theme the icon's own artwork, its outline
  * glowing violet and amber as on its night; in the light theme, where that white glow would vanish, its traced outline
- * in the ink. 56 dp on the first run, 40 dp in an empty chat. Decorative: the words beside it say what it is for.
+ * in the ink. 56 dp on the first run, 72 dp in an empty chat. Decorative: the words beside it say what it is for.
  */
 @Composable
 fun Logo(size: Dp, modifier: Modifier = Modifier) {
@@ -111,14 +110,13 @@ fun ModelName(name: String, modifier: Modifier = Modifier, realName: String? = n
 
 /**
  * The logo at the voice view's size (D100, D158), alive with the conversation: still while the [phase] is
- * [VoicePhase.Ready]; while [VoicePhase.Listening] it swells with the voice's [level] (0 to 1) and a hairline ring
- * spreads round it; while [VoicePhase.Thinking] a warm glow breathes behind it; while [VoicePhase.Speaking] it moves
+ * [VoicePhase.Ready]; while [VoicePhase.Listening] it swells with the voice's [level] (0 to 1) and a warm glow behind
+ * it brightens with it; while [VoicePhase.Thinking] that glow breathes; while [VoicePhase.Speaking] it moves
  * with the reply's [level]. With animations off it holds still in every phase, and the screen's state line carries the
  * meaning.
  */
 @Composable
 fun VoiceLogo(phase: VoicePhase, level: Float, modifier: Modifier = Modifier) {
-    val colors = LocalDemoColors.current
     val still = animationsDisabled()
     val clamped = level.coerceIn(0f, 1f)
     val swell =
@@ -133,8 +131,14 @@ fun VoiceLogo(phase: VoicePhase, level: Float, modifier: Modifier = Modifier) {
         tween(DemoMotion.SWAP_MILLIS, easing = DemoMotion.standard),
         label = "logo",
     )
+    // listening, the glow follows the voice, eased so it swells and fades rather than flickering with each sample
+    val heard by animateFloatAsState(
+        if (phase == VoicePhase.Listening && !still) LISTEN_GLOW_FLOOR + (1f - LISTEN_GLOW_FLOOR) * clamped else 0f,
+        tween(DemoMotion.STANDARD_MILLIS, easing = DemoMotion.standard),
+        label = "logo heard",
+    )
     val breathing = phase == VoicePhase.Thinking && !still
-    val glow =
+    val breath =
         if (breathing) {
             rememberInfiniteTransition(label = "logo glow")
                 .animateFloat(
@@ -149,18 +153,9 @@ fun VoiceLogo(phase: VoicePhase, level: Float, modifier: Modifier = Modifier) {
         } else {
             0f
         }
+    val glow = maxOf(heard, breath)
     val size = DemoSize.logoVoice
     Box(modifier.size(size), contentAlignment = Alignment.Center) {
-        if (phase == VoicePhase.Listening && !still) {
-            Canvas(Modifier.fillMaxSize()) {
-                val radius = this.size.minDimension / 2 * (RING_FROM + RING_SPREAD * clamped)
-                drawCircle(
-                    colors.muted.copy(alpha = RING_ALPHA * (1f - clamped / 2)),
-                    radius = radius,
-                    style = Stroke(DemoSize.hairline.toPx()),
-                )
-            }
-        }
         if (glow > 0f) {
             Canvas(Modifier.fillMaxSize()) {
                 val warm = DemoBrand.amber.copy(alpha = GLOW_ALPHA * glow)
@@ -179,9 +174,9 @@ fun VoiceLogo(phase: VoicePhase, level: Float, modifier: Modifier = Modifier) {
 
 private const val LISTEN_SWELL = 0.09f
 private const val SPEAK_SWELL = 0.06f
-private const val RING_FROM = 1.04f
-private const val RING_SPREAD = 0.2f
-private const val RING_ALPHA = 0.5f
 
-/** How bright the thinking glow behind the logo is at its fullest. */
+/** How strong the listening glow is in silence, as a share of its fullest: it shows the logo hears, voice or none. */
+private const val LISTEN_GLOW_FLOOR = 0.3f
+
+/** How bright the glow behind the logo, listening or thinking, is at its fullest. */
 private const val GLOW_ALPHA = 0.35f
