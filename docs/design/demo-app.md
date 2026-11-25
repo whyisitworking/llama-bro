@@ -216,7 +216,9 @@ a fresh answer from Hugging Face changes words in place, never the layout (F177)
   read once it is on the phone (its template; its projector's vision and audio flags), so a new chat on a model found
   in search shows them before its first send. The load corrects them: a model whose load says it can't think loses
   the chip, and its turn sends no reasoning settings. A Think level chosen before the load is the one the turn uses.
-  Without a header's word the catalog's stands for any quant of its repo, else nothing shows until the load.
+  Without a header's word the catalog's stands for any quant of its repo, else nothing shows until the load. The
+  chosen Think level now carries across model switches; a model that can't think shows no chip and its turns send no
+  reasoning settings.
 
 ### 4.5 Settings
 

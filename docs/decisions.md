@@ -188,6 +188,9 @@ its amendments to know what holds now.
 | [D152](#d152-the-glass-is-a-setting-under-appearance-saved-with-a-sample-at-the-bottom) The glass is a setting under Appearance, saved, with a sample at the bottom | 2026-11-25 | |
 | [D153](#d153-the-glass-scales-to-the-phone-lighter-where-the-phone-doesnt-vouch-for-itself) The glass scales to the phone: lighter where the phone doesn't vouch for itself | 2026-11-25 | D154 |
 | [D154](#d154-a-bar-can-draw-the-glass-on-it-in-its-own-passes-a-lighter-phone-does-by-default) A bar can draw the glass on it in its own passes; a lighter phone does by default | 2026-11-25 | |
+| [D155](#d155-a-chat-knows-what-its-model-can-do-before-it-loads-the-hub-reads-the-installed-headers-each-load-corrects-it) A chat knows what its model can do before it loads: the hub reads the installed headers; each load corrects it | 2026-11-25 | |
+| [D156](#d156-a-link-on-a-models-page-to-another-gguf-model-opens-its-card-in-the-same-sheet-every-card-opens-on-hugging-face-from-its-top-row) A link on a model's page to another GGUF model opens its card in the same sheet; every card opens on Hugging Face from its top row | 2026-11-25 | |
+| [D157](#d157-settings-groups-options-by-what-they-change-inference-what-the-model-reads-and-writes-processor-where-it-runs-memory-how-long-it-stays) Settings groups options by what they change: Inference (what the model reads and writes), Processor (where it runs), Memory (how long it stays) | 2026-11-25 | |
 
 **Repository and process**
 
