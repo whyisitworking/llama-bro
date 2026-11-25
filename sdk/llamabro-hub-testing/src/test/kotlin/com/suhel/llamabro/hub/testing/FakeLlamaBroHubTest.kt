@@ -277,6 +277,28 @@ class FakeLlamaBroHubTest {
         }
 
     @Test
+    fun ggufCarriesItsTemplateAndMetadata() =
+        runBlocking {
+            val fake =
+                FakeLlamaBroHub {
+                    repo(qwen) {
+                        gguf("Qwen3-4B-Q4_K_M.gguf", sizeBytes = 8192, chatTemplate = "<think>")
+                        gguf(
+                            "mmproj-F16.gguf",
+                            metadata = mapOf("clip.has_vision_encoder" to true, "clip.has_audio_encoder" to false),
+                        )
+                    }
+                }
+            fake.hub.download(model).collect()
+
+            val capabilities = fake.hub.capabilities(model)
+
+            assertEquals("<think>", capabilities?.chatTemplate)
+            assertEquals(true, capabilities?.takesImages)
+            assertEquals(false, capabilities?.takesAudio)
+        }
+
+    @Test
     fun scriptedDownloadReportsProgressThenCompletes() =
         runBlocking {
             val fake =

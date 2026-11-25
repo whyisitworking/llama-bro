@@ -187,6 +187,22 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
         }
 
     /**
+     * [model]'s chat template and, from [projector] (null when none is installed), whether it takes images and audio
+     * (D155): headers mapped read-only, no request. Throws [IllegalArgumentException] on a header that isn't GGUF.
+     */
+    fun capabilitiesOf(model: File, projector: File?): ModelCapabilities {
+        val template = header(model) { it == CHAT_TEMPLATE }[CHAT_TEMPLATE] as? String
+        val clip = projector?.let { header(it) { key -> key == HAS_VISION || key == HAS_AUDIO } }.orEmpty()
+        return ModelCapabilities(template, clip[HAS_VISION] == true, clip[HAS_AUDIO] == true)
+    }
+
+    private fun header(file: File, wanted: (String) -> Boolean): Map<String, Any> =
+        RandomAccessFile(file, "r").use { raf ->
+            val bytes = raf.channel.map(FileChannel.MapMode.READ_ONLY, 0, minOf(raf.length(), HEADER_LIMIT_BYTES))
+            GgufHeader.metadata(bytes, wanted)
+        }
+
+    /**
      * A GGUF's `general.sampling.*` (F17) read with the hub's bounded range requests into a stub that goes when this
      * returns, also on failure or cancellation. A refusal is thrown.
      */
@@ -266,6 +282,9 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
         }
 
         private const val MAX_LIMIT = 100
+        private const val CHAT_TEMPLATE = "tokenizer.chat_template"
+        private const val HAS_VISION = "clip.has_vision_encoder"
+        private const val HAS_AUDIO = "clip.has_audio_encoder"
         private const val HEADER_LIMIT_BYTES = 256L shl 20 // HeaderFetch's bound on a GGUF header
         private const val IMAGE_TASK = "image-text-to-text"
         private val EXPANDED_FIELDS =

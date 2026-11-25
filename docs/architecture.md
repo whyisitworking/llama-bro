@@ -714,6 +714,7 @@ val page = hub.search("qwen3") { sort = SearchSort.Trending; takesImages = true 
 page.next?.let { hub.search(it) }                    // the next page, through the Hub's cursor
 hub.files("unsloth/Qwen3.5-4B-GGUF")                 // each quantisation with its bytes, image encoder or not
 hub.recommendedSampling(ref)                         // fromFile and fromBaseModel, each or null (D79)
+hub.capabilities(ref)                                // template, takesImages, takesAudio from installed headers, offline (D155)
 ```
 
 Search (D68) asks `/api/models` for GGUF repos, and the calls around it are looks that move nothing:

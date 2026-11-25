@@ -2411,3 +2411,23 @@ chips are a touch softer, drawn at the bar's half resolution and with the bar's 
 into their edge, so a Full phone keeps the sharper glass by default. A Light phone keeps the chips' and panels' blur.
 Next free IDs: D155, F189.
 
+<a id="d155"></a>
+### D155. A chat knows what its model can do before it loads: the hub reads the installed headers; each load corrects it
+
+Status: Decided (2026-11-25)
+
+Context: The demo learns that a model hears or speaks only once it has loaded and remembers it for the next load (D76,
+D100); a new chat, a picker or a message bar can't tell before then, and whether a model thinks isn't in `/props` at all
+(F97). The facts are in files already on the phone: the model's `tokenizer.chat_template` and, in a projector,
+`clip.has_vision_encoder` and `clip.has_audio_encoder`.
+Decision: `LlamaBroHub.capabilities(model)` reads the installed model GGUF's header and its installed projector's, from
+disk with no request, and returns `ModelCapabilities` (`chatTemplate`, `takesImages`, `takesAudio`), or null when no
+complete installed copy is on the phone. Whether a template thinks is the app's to judge; the SDK reports the text. A
+header that isn't GGUF throws `IllegalArgumentException` rather than a guess. A load's `ModelInfo` stays the final word
+and the app corrects what it showed. `installedProjectorFile` finds the projector as `installedModelFile` finds the
+model, from any complete installed copy.
+Consequences: A model that was never loaded can show its senses offline. A copy made without its projector takes no
+images or audio as far as this call knows; a projector's `has_*` flags are the file's claim, not a loaded model's.
+Next free IDs: D156, F189.
+
+

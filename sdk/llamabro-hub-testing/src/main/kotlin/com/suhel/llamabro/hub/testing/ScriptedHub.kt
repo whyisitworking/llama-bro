@@ -441,15 +441,26 @@ internal object Gguf {
     private const val ALIGNMENT = 32
     private const val TYPE_I32 = 5
     private const val TYPE_F32 = 6
+    private const val TYPE_BOOL = 7
     private const val TYPE_STRING = 8
 
     /**
-     * A GGUF of [size] bytes: a header with [name] as `general.name` and [sampling] as `general.sampling.*`, then
-     * zeros. The name makes each file's bytes, and so its digest, its own: the cache stores equal bytes once.
+     * A GGUF of [size] bytes: a header with [name] as `general.name`, [sampling] as `general.sampling.*`, [chatTemplate]
+     * as `tokenizer.chat_template` and [extra] as given (Boolean, String, Int or Float), then zeros. The name makes each file's bytes, and so its digest, its own: the cache stores equal bytes once.
      */
-    fun bytes(name: String, sampling: Sampling?, size: Int): ByteArray {
+    fun bytes(
+        name: String,
+        sampling: Sampling?,
+        size: Int,
+        chatTemplate: String? = null,
+        extra: Map<String, Any> = emptyMap(),
+    ): ByteArray {
         val out = ByteArrayOutputStream()
-        val metadata = mapOf<String, Any>("general.name" to name) + sampling?.let(::keys).orEmpty()
+        val metadata =
+            mapOf<String, Any>("general.name" to name) +
+                sampling?.let(::keys).orEmpty() +
+                listOfNotNull(chatTemplate?.let { "tokenizer.chat_template" to it }) +
+                extra
 
         fun put(count: Int, fill: ByteBuffer.() -> Unit) =
             out.write(
@@ -473,6 +484,7 @@ internal object Gguf {
             string(key)
             when (value) {
                 is String -> put(Int.SIZE_BYTES) { putInt(TYPE_STRING) }.also { string(value) }
+                is Boolean -> put(Int.SIZE_BYTES + 1) { putInt(TYPE_BOOL).put(if (value) 1 else 0) }
                 is Float -> put(Int.SIZE_BYTES + Float.SIZE_BYTES) { putInt(TYPE_F32).putFloat(value) }
                 else -> put(Int.SIZE_BYTES * 2) { putInt(TYPE_I32).putInt((value as Number).toInt()) }
             }
