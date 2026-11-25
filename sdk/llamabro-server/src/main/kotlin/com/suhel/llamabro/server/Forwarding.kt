@@ -11,7 +11,6 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
-import io.ktor.server.request.receive
 import io.ktor.server.request.userAgent
 import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondBytesWriter
@@ -23,7 +22,7 @@ import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -44,7 +43,7 @@ internal class Forwarding(private val models: ServedModels, private val emit: (S
     /** The routes [config] serves, and a 404 in OpenAI's shape for every other path, as upstream answers one. */
     fun Route.modelRoutes(config: ServerConfig) {
         routeTable.filter { !it.answeredHere && it.isServed(config) }.forEach { served ->
-            route(served.path, served.method) { handle { forward(call, served) } }
+            route(served.path, served.method) { handle { forward(call, served, config.maxBodyBytes) } }
         }
         route("{...}") {
             handle {
@@ -56,18 +55,31 @@ internal class Forwarding(private val models: ServedModels, private val emit: (S
         }
     }
 
-    private suspend fun forward(call: ApplicationCall, served: ServedRoute) {
-        val id = ids.incrementAndFetch()
+    private suspend fun forward(call: ApplicationCall, served: ServedRoute, maxBodyBytes: Long) {
         val request = call.request
         val client = request.local.remoteAddress
+        // the checks come before a model is asked for: a refused request never holds a lease
+        val body =
+            when (val guarded = call.guardedBody(served.method == HttpMethod.Post, maxBodyBytes)) {
+                is GuardedBody.Passed -> {
+                    guarded
+                }
+
+                is GuardedBody.Refused -> {
+                    emit(ServerEvent.Rejected(client, request.path(), guarded.status.value, guarded.reason))
+                    call.respondError(guarded.status, guarded.message, ErrorType.INVALID_REQUEST)
+                    return
+                }
+            }
+        val id = ids.incrementAndFetch()
         emit(ServerEvent.RequestStarted(id, client, request.httpMethod.value, request.path(), request.userAgent()))
         val began = TimeSource.Monotonic.markNow()
         val outcome = Outcome()
         try {
-            val body = if (served.method == HttpMethod.Post) call.receive<ByteArray>() else ByteArray(0)
-            val lease = call.acquire(requestedModel(body), outcome) ?: return
+            val lease = call.acquire(requestedModel(body.json), outcome) ?: return
             try {
-                call.respondParts(lease.model.exchange(served.endpoint, body, call.forwardedParams()), served, outcome)
+                val parts = lease.model.exchange(served.endpoint, body.bytes, call.forwardedParams())
+                call.respondParts(parts, served, outcome)
             } finally {
                 lease.release()
             }
@@ -164,12 +176,9 @@ internal class Forwarding(private val models: ServedModels, private val emit: (S
     }
 }
 
-/** The body's `model` field, which picks the model; null for no body, no field, or a body that isn't JSON. */
-internal fun requestedModel(body: ByteArray): String? =
-    runCatching { Json.parseToJsonElement(body.decodeToString()) }
-        .getOrNull()
-        .let { (it as? JsonObject)?.get("model") as? JsonPrimitive }
-        ?.contentOrNull
+/** The body's `model` field, which picks the model; null for no body or no field. */
+internal fun requestedModel(body: JsonElement?): String? =
+    ((body as? JsonObject)?.get("model") as? JsonPrimitive)?.contentOrNull
 
 /** Path and query parameters, `id_slot` and `action` for `POST /slots/:id_slot`, as `Model.exchange` takes them. */
 private fun ApplicationCall.forwardedParams(): Map<String, String> =

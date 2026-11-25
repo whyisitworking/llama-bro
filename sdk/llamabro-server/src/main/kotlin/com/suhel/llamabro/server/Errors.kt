@@ -26,6 +26,7 @@ internal suspend fun ApplicationCall.respondError(status: HttpStatusCode, messag
 /** llama-server's names for the error types. */
 internal object ErrorType {
     const val AUTHENTICATION = "authentication_error"
+    const val INVALID_REQUEST = "invalid_request_error"
     const val NOT_FOUND = "not_found_error"
     const val SERVER = "server_error"
     const val UNAVAILABLE = "unavailable_error"
