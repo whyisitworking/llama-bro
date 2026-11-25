@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the [decision records](../decisions.md) (`D<n>`), the [research history](history.md), which summarises each phase, and the experiments under [`research/`](../../research/).
-> **Status:** living document, updated 2026-11-25 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183–F187)
+> **Status:** living document, updated 2026-11-25 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183–F188)
 
 Labels such as P1, PA, PF, PD and PH name the project's phases, and W1 to W9 the workstreams of a phase; the
 [research history](history.md#summary-of-the-phases) summarises each. "Task <n>", "T<n>" and "Feeds:" name the steps
@@ -2350,10 +2350,26 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   one its own lenses (D154). On a weaker GPU it should save more, as each piece no longer writes and reads two images.
 - **Feeds:** D154, D153, F186.
 
+<a id="f188"></a>
+### F188. A message sent as an edit ends could land between the edited message and its reply
+
+- **Finding:** A send while an edit, a regenerate or a switch is under way waits for it (`rewrites`). When the edit
+  ended, the waiting send and the edit's pump, which answers the edited message, woke on the engine's one thread
+  together, and the send was queued first: it stored its message before the edited one had a reply, so the chat read
+  "changed, second, Edited., Second." `ChatEngineTurnTest.aSendWhileAnEditCutsWaitsForItAndLandsAfterTheEdit` failed
+  so, about one run in four when the demo's two unit suites ran together, and passed alone.
+- **Evidence:** the test with its rows printed on failure, `:demo:designsystem:testDebugUnitTest` and
+  `:demo:app:testDebugUnitTest` in one Gradle run: 3 of 12 failed before the fix, every one with that order; 0 of 24
+  after, neither suite failing (2026-11-25).
+- **Means:** the rewrite queues its pump before its count falls, so the pump takes the turn first, and a send that
+  waited for a rewrite waits for that turn too before it stores its message; a send at any other time is as before.
+- **Feeds:** `ChatEngine` (`take`, `rewriting`).
+
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F188 | A message sent as an edit ends could land between the edited message and its reply | ChatEngine |
 | F187 | A bar drawing the glass on it saves a quarter of a chat's CPU time per frame, a touch softer | D154 |
 | F186 | The glass's CPU cost is its render passes; one pass blurs cleanly only below about 4 dp | D153, F185 |
 | F185 | A heavy bar blur run at half resolution gives a chat's fling its frame budget back | D148, F183 |

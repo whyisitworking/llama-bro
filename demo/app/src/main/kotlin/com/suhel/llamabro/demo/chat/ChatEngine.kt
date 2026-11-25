@@ -372,7 +372,12 @@ class ChatEngine(
             withContext(confined) { take(text, images, voice) }
 
         private suspend fun take(text: String, images: List<String>, voice: NewVoice?): Boolean {
-            rewrites.first { it == 0 }
+            if (rewrites.value > 0) {
+                rewrites.first { it == 0 }
+                // the rewrite's pump took the turn before the count fell ([rewriting]): what the rewrite left held is
+                // answered first, so this message lands after its reply, not between the two (F188)
+                turn.withLock { }
+            }
             val names = images.take(MAX_IMAGES)
             val empty = text.isBlank() && names.isEmpty() && voice == null
             val id = if (empty || !canTake()) null else chatFor(names.isNotEmpty(), voice != null)
@@ -574,16 +579,18 @@ class ChatEngine(
         private fun rewriting(block: suspend () -> Boolean) {
             hs.launch {
                 rewrites.value++
-                val changed =
-                    try {
-                        stopAndWait()
-                        turn.withLock { block() }
-                    } finally {
-                        rewrites.value--
+                var changed = false
+                try {
+                    stopAndWait()
+                    changed = turn.withLock { block() }
+                } finally {
+                    // the pump is queued before the count falls, so it takes the turn ahead of a send that waited
+                    // for the count: that send then waits for the pump's turn ([take], F188)
+                    if (changed) {
+                        stopped = null
+                        pump()
                     }
-                if (changed) {
-                    stopped = null
-                    pump()
+                    rewrites.value--
                 }
             }
         }
