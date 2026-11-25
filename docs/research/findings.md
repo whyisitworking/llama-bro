@@ -2368,7 +2368,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 ## The server against upstream (F189)
 
 <a id="f189"></a>
-### F189. `llamabro-server` answers as upstream `llama-server` does, byte for byte, and the official OpenAI and Anthropic clients work against it
+### F189. `llamabro-server` answers as upstream `llama-server` does: identical statuses and bodies (generated ids and timings masked, headers not compared), and the official OpenAI and Anthropic clients work against it
 
 - **Finding:** The same requests to upstream's `llama-server` and to `LlamaBroServer` over the real core give identical
   bodies and statuses: chat completions (plain, tools, JSON schema, thinking, a `model` field, usage in the stream,
@@ -2389,20 +2389,24 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   checkpoints, seed 42, batch and micro-batch 512, CPU, on a free port with no key, both through `http-run.py` and
   `compare.py`: Qwen3.5 4B Q4_K_M 27/27 statuses equal, 27/27 identical; bge-small-f16 5/5, 5/5;
   `server-clients.py` with openai 3.59.0 and anthropic 2.14.0 (`server-clients-requirements.txt`), every call OK
-  (Mac, 2026-11-26). The case left out, run once: the bad body 400 with the server's message. `contract` on the
+  (Mac, 2026-11-26). What is compared: status and body, with generated ids (chat, response, message and `tool_use` ids) and timings masked, and the cache counts
+  that `compare_timings` names kept; headers are not compared. `--load-mode none` and `--fit off` are the core's
+  defaults (D30 and the fit in section 9 of the architecture), so the server run sets nothing for them. Request s-27, the unparseable body, is absent from
+  `server-requests.jsonl` on purpose: upstream and the server give different messages there (D157), so it can't be
+  compared; it was run once by hand: the bad body 400 with the server's message. `contract` on the
   C API still 76/76, 75/75 (Llama 3.2 3B) and 12/12 (audio) identical with the `tool_use` mask.
 - **Means:** the server adds nothing to what the core answers, so the C API contract (F180) carries over to HTTP: a
   llama.cpp upgrade that keeps `contract` identical keeps the server's answers too, and `server-contract` checks it.
   What the server sends that upstream would not is its own checks (key, media, body size and JSON) and
   `/v1/models`; anthropic 2.x has no `temperature` argument, so a client sets it through `extra_body`. Content
   types are not compared (`http-run.py` records no headers); the module tests cover them.
-- **Feeds:** `server-run.sh`, `HostServerContractTest`, design `server.md` §4.
+- **Feeds:** `server-run.sh`, `HostServerContractTest`, D155, D157, design `server.md` §4.
 
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
-| F189 | `llamabro-server` answers as upstream `llama-server` does; the official OpenAI and Anthropic clients work against it | server.md §4 |
+| F189 | `llamabro-server` answers as upstream `llama-server` does; the official OpenAI and Anthropic clients work against it | D155, D157, server.md §4 |
 | F188 | A message sent as an edit ends could land between the edited message and its reply | ChatEngine |
 | F187 | A bar drawing the glass on it saves a quarter of a chat's CPU time per frame, a touch softer | D154 |
 | F186 | The glass's CPU cost is its render passes; one pass blurs cleanly only below about 4 dp | D153, F185 |

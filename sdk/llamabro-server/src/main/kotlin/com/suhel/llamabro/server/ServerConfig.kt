@@ -5,7 +5,8 @@ import kotlinx.io.files.Path
 
 /**
  * How a [LlamaBroServer] listens: `ServerConfig { host = "0.0.0.0"; apiKey = "secret" }`. The defaults follow
- * upstream's llama-server: this device only and no key, because the SDK makes no policy for the app.
+ * upstream's llama-server: this device only and no key, because the SDK makes no policy for the app
+ * ([D156](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d156)).
  */
 public class ServerConfig internal constructor(
     /** The address to bind. `127.0.0.1` is this device only; `0.0.0.0` is every network the device is on. */

@@ -6,6 +6,15 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
 
 ## Unreleased
 
+- **`llamabro-server`** (D155-D157), a new opt-in module: serves a loaded `Model` over HTTP with llama-server's API
+  (OpenAI chat, completions, embeddings and audio, Anthropic messages, Responses, token counts, `/health`, `/props`,
+  `/metrics`), streaming included, so Claude Code, Codex, the OpenAI SDKs and `npx llama-chat` work against it.
+  `LlamaBroServer(ServerConfig { … }, ServedModels)` has `state`, `events`, `start()` and `stop()`. It binds
+  `127.0.0.1:8080` with no key by default (D156); `POST /props`, `/lora-adapters` and `/slots/:id` are off unless
+  enabled. Media in a request must be a `data:` URL or base64 (D157), an optional `advertise` announces the server
+  with NSD, and its answers match upstream's (F189). Core stays socket-free.
+- **`Model.exchange`** (`@InternalLlamaBroApi`, D155): a request's status, content type and body bytes as llama-server
+  wrote them, error bodies and SSE `event:` lines included. Its only user is `llamabro-server`; `rawRequest` is unchanged.
 - **llama.cpp b12653** (D137) with six carried patches: upstream fixed the cache bug 0004 carried (F180). New with
   the pin: Qwen3-ASR's audio tail, LFM2.5-VL's template, the realtime sleep state and transcription prompt, recurrent
   state that no longer keeps a NaN, and safer reads of untrusted GGUF and grammars.

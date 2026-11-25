@@ -1,7 +1,7 @@
 # Serving on Wi-Fi: `llamabro-server` and the demo's server mode
 
-Status: **approved** (2026-11-26); plan in [docs/superpowers/plans/2026-11-26-llamabro-server.md](../superpowers/plans/2026-11-26-llamabro-server.md). Decisions are recorded in
-[decisions.md](../decisions.md) as they are taken; the next free IDs when this was written were D155 and F189.
+Status: **being built**; the SDK part (plan Tasks 1-8: core `exchange`, `llamabro-server`, its tests and these docs) is done, the demo part is not (2026-11-26); plan in [docs/superpowers/plans/2026-11-26-llamabro-server.md](../superpowers/plans/2026-11-26-llamabro-server.md). Decisions are recorded in
+[decisions.md](../decisions.md) as they are taken; the module's are D155-D157 and F189.
 
 ## Intent
 
@@ -11,7 +11,7 @@ box with a GPU. The phone is not used for anything else while it serves. Phones 
 so the feature should look better every year without changing shape.
 
 It also proves the SDK's central claim from the outside: the model on the phone answers llama-server's own HTTP API,
-byte for byte, because it *is* llama-server's core (D12, F1).
+with the same statuses and bodies (F189), because it *is* llama-server's core (D12, F1).
 
 ## Goals
 

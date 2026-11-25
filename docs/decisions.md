@@ -250,6 +250,7 @@ Status: Decided (2026-11-03)
 Context: Running the engine in a separate process would add IPC, a service lifecycle and a second memory footprint.
 Decision: The engine runs in-process only.
 Consequences: A native crash takes the app down; in exchange there is no IPC cost and no local network surface (see D12).
+Amended by D155: core stays socket-free; serving the network is a separate opt-in module.
 
 <a id="d6"></a>
 ### D6. Engine lifetime
@@ -2409,5 +2410,76 @@ and Drawn by the bar. Glass off the bars (the jump button, the FAB) keeps its ow
 Consequences: On the owner's phone merged glass takes a chat's fling from CPU P90 6.77 to 5.13 ms (F187), but its
 chips are a touch softer, drawn at the bar's half resolution and with the bar's heavier blur bleeding a few pixels
 into their edge, so a Full phone keeps the sharper glass by default. A Light phone keeps the chips' and panels' blur.
-Next free IDs: D155, F190.
 
+<a id="d155"></a>
+### D155. Serving over the network is a separate, opt-in module, `llamabro-server`; core stays socket-free
+
+Status: Decided (2026-11-26)
+
+Context: A docked phone can serve a model to the machines on its Wi-Fi, which a laptop's agent, coding tool or chat UI
+then calls as it would llama-server (docs/design/server.md). D5 ruled out a local network surface for the SDK, because
+the engine was meant to be used inside the app. The three ways to serve are in the design's Approaches table.
+Decision: D5's scope is amended, not reversed. Core `llamabro` opens no socket. `llamabro-server` is a separate module
+an app adds on purpose; it listens only when the app starts it. It is built on `Model.exchange`
+(`@InternalLlamaBroApi`), a new call in core that returns llama-server's status, content type and body bytes
+unchanged, error bodies and SSE `event:` lines included. `rawRequest` is unchanged: it keeps only `data:` lines and
+turns an error into a typed exception, which an HTTP client of the Anthropic or Responses API can't use. The choices:
+- A Kotlin server over the SDK (chosen): it shares the model the app already loaded, stays about 2% from the binary
+  (F1), is multiplatform-friendly, and is a module other apps can embed. The cost is a thin HTTP layer to keep in step
+  with upstream's routes, which `server-contract` checks (F189).
+- Upstream's cpp-httplib layer in the bridge: upstream's HTTP behaviour exactly, but much C++ and JNI work for start,
+  stop and threads, the part D12 left out, and nothing a later iOS port could reuse.
+- A llama-server subprocess: upstream untouched, but it shows llama.cpp rather than Llama Bro, holds a second copy of
+  the model in memory, needs a second build with our patches and NPU setup, and dies with the app.
+Consequences: An app that doesn't depend on `llamabro-server` has no listening code and no new permission. The module
+adds Ktor, and Android's NSD for discovery, at its edge. Router mode, MCP, the CORS proxy and upstream's `/models`
+management routes are not served. F189 shows that what the module answers is what the core answers.
+
+<a id="d156"></a>
+### D156. `llamabro-server`'s defaults follow upstream; the routes that change the shared model are off
+
+Status: Decided (2026-11-26)
+
+Context: The SDK makes no policy for the app, and upstream's llama-server is the baseline. The model on the phone is
+shared with the chat, so a remote client that changes or saves it would act behind the chat's back.
+Decision: `ServerConfig.Default` binds `127.0.0.1:8080` with no key; the app sets a host and a key. A key goes in
+`Authorization: Bearer` or `x-api-key` (Anthropic clients send that), is compared in constant time, and every key a
+request presents must be right; `/health` and `/v1/models` stay open, as upstream's `--api-key` leaves them.
+`POST /props`, `POST /lora-adapters` and `POST /slots/:id` are off unless the app enables them (`Routes.enable`),
+matching upstream, which gates the first on `--props` and slot save and restore on `--slot-save-path`
+(`server-context.cpp`). `GET /lora-adapters` and `POST /v1/chat/completions/control` are on: the first reads, the
+second ends a running completion's reasoning early, the client's own request. There is no queue of ours: a request
+beyond the model's slots waits in llama-server's own task queue, and a client that hangs up cancels its request. A
+model that is closed, or none loaded, is a 503; an id the app doesn't serve is a 404. A route that doesn't exist or is
+switched off is a 404 in OpenAI's error shape, as upstream answers one. Audio: `POST /v1/audio/transcriptions` takes
+multipart and answers `json` or `text`; `POST /v1/audio/speech` streams `pcm` (the default) or `wav` only, since the
+SDK has no encoder for others, and a `voice` the model doesn't have is dropped, since OpenAI clients always send one.
+CORS is off (`Cors.None`) unless the app sets `Cors.Any`. Discovery is opt-in: with `advertise`, the server registers
+`_http._tcp` and `_llamabro._tcp` through `NsdManager` while it serves, and a stop that comes before NSD confirms the
+registration is carried out when it does, since NSD refuses to unregister one it hasn't confirmed.
+Consequences: Out of the box the module serves this device only; reaching the Wi-Fi is the app's explicit choice, and
+so is changing the shared model. An app that wants the three routes opts in per route.
+
+<a id="d157"></a>
+### D157. Media in a served request must be a `data:` URL or raw base64; a body must be JSON and under `maxBodyBytes`
+
+Status: Decided (2026-11-26)
+
+Context: Upstream's `handle_media` (`server-common.cpp`) fetches what starts with `http` and reads `file://` from
+`media_path`, which the SDK sets to its media folder for chat attachments (D87). Served to the network, that lets a
+remote client read another chat's pictures and make the phone fetch URLs on the LAN. Three behaviours differ from
+upstream because of it.
+Decision: The deviations, each with its reason:
+1. A media value must be a `data:` URL or raw base64 (a string with no `:`, which OpenAI's `input_audio` sends).
+   Anything else is a 400 in `invalid_request_error` shape. It is checked on every media key (`image_url`,
+   `video_url`, `audio_url`, `file_url`, `file_data`, `image`, and the `url` or `data` of `input_audio`,
+   `input_video` and Anthropic's `source`) wherever it appears in the body, so a nesting upstream adds can't pass. Text
+   is never media, so `file://` in a message's text passes. A media key inside a `tool_use` input is refused too: that
+   is the cost of checking keys anywhere.
+2. A body that isn't valid JSON gets the server's own 400, not upstream's parser message, because the server must
+   parse every body to check its media. The status and error type are upstream's.
+3. `maxBodyBytes` (32 MiB by default) gives a 413, counted as the body is read, so a client can't make the device
+   hold more.
+Consequences: A client can't read the phone's files or reach its network through a request. A client that sends an
+image by URL must send it as `data:`. Every other request and answer is upstream's (F189).
+Next free IDs: D158, F190.

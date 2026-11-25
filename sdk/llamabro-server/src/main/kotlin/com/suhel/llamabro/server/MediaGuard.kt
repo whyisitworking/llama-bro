@@ -26,7 +26,8 @@ private val rawDataTypes = setOf("base64", "text")
  * `handle_media` (server-common.cpp) fetches what starts with `http`, reads `file://` from the media folder the SDK
  * gives it for chat attachments, decodes `data:` URLs and decodes anything else as base64 (OpenAI's `input_audio`
  * sends raw base64). So a remote client could read another chat's pictures or reach the LAN through the device;
- * only a `data:` URL or a value with no scheme passes. The keys are
+ * only a `data:` URL or a value with no scheme passes
+ * ([D157](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d157)). The keys are
  * checked wherever they are, so a nesting upstream adds (a history, a tool result) can't slip past; text is never
  * media, so `file://` in a message's text passes.
  */

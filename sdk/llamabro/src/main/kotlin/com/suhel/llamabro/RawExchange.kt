@@ -5,9 +5,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
 /**
- * [Model.rawRequest] for a server in front of the model: llama-server's status and body bytes as its handler wrote
- * them, SSE `event:` lines and JSON error bodies included, where `rawRequest` keeps only `data:` payloads and fails
- * on an error status. One [RawPart.Head] first, then the [RawPart.Body] parts; the flow ends when the response does.
+ * [Model.rawRequest] for a server in front of the model
+ * ([D155](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d155)):
+ * llama-server's status and body bytes as its handler wrote them, SSE `event:` lines and JSON error bodies
+ * included, where `rawRequest` keeps only `data:` payloads and fails on an error status.
+ * One [RawPart.Head] first, then the [RawPart.Body] parts; the flow ends when the response does.
  * An error status is a head and its body, not an exception. Cancelling the collector cancels the request; a closed
  * model fails the flow with [LlamaBroException.ModelClosed], as `rawRequest` does.
  */
