@@ -140,7 +140,7 @@ data class GlassPress(
     }
 
     companion object {
-        val Default = GlassPress(swell = 1.1f, light = 0.6f, reach = 36.dp, bend = 0.35f, pull = 10.dp, stretch = 0.08f)
+        val Default = GlassPress(swell = 1.1f, light = 0.6f, reach = 36.dp, bend = 0.35f, pull = 8.dp, stretch = 0.03f)
     }
 }
 
