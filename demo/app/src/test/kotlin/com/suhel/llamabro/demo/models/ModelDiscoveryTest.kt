@@ -320,4 +320,4 @@ class ModelDiscoveryTest {
     }
 }
 
-private const val ENCODER_BYTES = 204
+private const val ENCODER_BYTES = 2048
