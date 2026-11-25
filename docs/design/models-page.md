@@ -222,9 +222,11 @@ the same place in every state, and its height is reserved from the first frame:
    images, and HTML blocks that are only links and images (logos, badge rows). Its source closes it: "Source:
    unsloth/Qwen3.5-4B-GGUF" (bodySmall, soft). Tables span the width and scroll sideways, fading at their end while
    they can. While the page is unknown, nothing (no bar). Chat replies keep their own scale. A page's relative links
-   point into the repo the page is from. A tapped link to a model with GGUF uploads opens that model's card in the
-   same sheet, "Opening <repo>…" saying so under the state line while the Hub is asked; any other link opens the
-   browser (D156).
+   point into the repo the page is from. A tapped link to a model's own page (`huggingface.co/<owner>/<name>`, or its
+   bare `/tree/main`) with GGUF uploads opens that model's card in the same sheet, "Opening <repo>…" saying so under
+   the state line while the Hub is asked; any other link opens the browser (D156): a file, folder or discussion in a
+   repo (`/blob/`, `/resolve/`, `/raw/`, `/discussions`, a deeper `/tree/` path), and a link to the card already
+   shown.
 5. **Pinned foot**, outside the scroll, 64 dp in every state, so the page scrolls under it and nothing above it moves
    when a download starts or ends:
    - **Not here:** Get, naming the file: "Get Q4_K_M · 3.4 GB · about 8 min" (the same formula in Basic and Advanced).

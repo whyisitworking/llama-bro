@@ -12,6 +12,9 @@ object HubLinks {
     private val SCHEME = Regex("^([a-zA-Z][a-zA-Z0-9+.-]*):")
     private val UNSAFE = Regex("[\\s\\u0000-\\u001f\\\\]")
 
+    /** The one path past `owner/name` that is still the repo's own page: its file list on the main branch. */
+    private val REPO_PAGE = listOf("tree", "main")
+
     /** First path segments of the site that are not a model's owner. */
     private val NOT_OWNERS =
         setOf(
@@ -28,7 +31,11 @@ object HubLinks {
             "login",
         )
 
-    /** The `owner/name` a link names on huggingface.co or hf.co, or null for anything else. */
+    /**
+     * The `owner/name` whose own page a link opens on huggingface.co or hf.co (`/<owner>/<name>`, or its bare
+     * `/tree/main`), or null for anything else. A file, a folder or the discussions of a repo are not its page: they
+     * go to the browser, never to the card of the repo they sit in (D156).
+     */
     fun repoOf(url: String): String? {
         val link = url.trim()
         if (schemeOf(link) !in WEB) return null
@@ -36,7 +43,8 @@ object HubLinks {
         val authority = afterScheme.takeWhile { it !in "/?#" }
         val path = afterScheme.removePrefix(authority).substringBefore('#').substringBefore('?')
         val segments = path.split('/').filter { it.isNotEmpty() }
-        val named = authority.lowercase() in HOSTS && segments.size >= 2 && segments[0].lowercase() !in NOT_OWNERS
+        val page = segments.size == 2 || segments.drop(2) == REPO_PAGE
+        val named = authority.lowercase() in HOSTS && page && segments[0].lowercase() !in NOT_OWNERS
         val repo = if (named) "${segments[0]}/${segments[1]}" else null
         // an id the SDK refuses is no repo (it would throw), so its link goes to the browser
         return repo?.takeIf { !UNSAFE.containsMatchIn(path) && validId(it) }

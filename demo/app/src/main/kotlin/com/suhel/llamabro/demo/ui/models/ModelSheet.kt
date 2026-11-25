@@ -123,10 +123,10 @@ internal fun ModelSheetRoute(
     LaunchedEffect(viewModel) {
         viewModel.opened.collect { target ->
             when (target) {
+                // a link to this very card arrives as the browser (ModelSheetViewModel.openLink)
                 is LinkTarget.Card -> {
                     val entry = ModelEntry.of(target.model)
-                    // a page linking its own model has nothing to open
-                    if (!entry.repo.equals(row.repo, ignoreCase = true)) leave { related(entry) }
+                    leave { related(entry) }
                 }
 
                 is LinkTarget.Browser -> {

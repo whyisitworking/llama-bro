@@ -2442,9 +2442,11 @@ Status: Decided (2026-11-25)
 Context: A model's page links its original, its siblings and other uploads. Every link opened the browser, out of the
 app, though the app can show and get those models itself; and a card had no way to the model's own page on Hugging
 Face, where its files, discussions and licence are.
-Decision: A tap on a link in a card's page asks the Hub what it opens (`ModelDiscovery.related`): a repo with GGUF
-uploads, its own or those quantized from it, opens that model's card over the one shown; anything else opens the
-browser. While it is asked, "Opening <repo>…" sits where the card's problem line does; a newer tap cancels the older
+Decision: A tap on a link in a card's page asks the Hub what it opens (`ModelDiscovery.related`): a link to a repo's
+own page (`/<owner>/<name>` with an optional trailing slash, query or fragment, or its bare `/tree/main`) whose repo
+has GGUF uploads, its own or those quantized from it, opens that model's card over the one shown; anything else opens
+the browser, including a file, folder or discussion inside a repo (`/blob/`, `/resolve/`, `/raw/`, `/discussions`,
+`/tree/<branch>/<path>`), which is not the repo's card, and a link that resolves to the card already shown. While it is asked, "Opening <repo>…" sits where the card's problem line does; a newer tap cancels the older
 lookup, so only the latest acts. The cards are a stack (`CardStack`, a view model of the screen's back-stack entry):
 Back, in the card's new top row or the system's, slides the card down and the one under it rises; only the root's Back
 closes the sheet. A link to a model already in the stack pops back to its card. Each card's view model lives in a store

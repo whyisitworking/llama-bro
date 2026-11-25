@@ -17,8 +17,8 @@ class HubLinksTest {
                 "https://HuggingFace.co/Qwen/Qwen3-8B",
                 "https://www.huggingface.co/Qwen/Qwen3-8B",
                 "https://huggingface.co/Qwen/Qwen3-8B/tree/main",
-                "https://huggingface.co/Qwen/Qwen3-8B/blob/main/README.md",
-                "https://huggingface.co/Qwen/Qwen3-8B/resolve/main/x.gguf",
+                "https://huggingface.co/Qwen/Qwen3-8B/tree/main/",
+                "https://huggingface.co/Qwen/Qwen3-8B/tree/main?x=1",
                 "https://huggingface.co/Qwen/Qwen3-8B?library=gguf",
                 "https://huggingface.co/Qwen/Qwen3-8B#usage",
                 "https://hf.co/Qwen/Qwen3-8B",
@@ -54,6 +54,23 @@ class HubLinksTest {
             "ftp://huggingface.co/Qwen/Qwen3-8B",
             "javascript:alert(1)",
             "",
+        ).forEach { assertNull(it, HubLinks.repoOf(it)) }
+    }
+
+    @Test fun aFileFolderOrDiscussionIsNotItsRepo() {
+        listOf(
+            "https://huggingface.co/Qwen/Qwen3-8B/blob/main/README.md",
+            "https://huggingface.co/Qwen/Qwen3-8B/blob/main/LICENSE",
+            "https://huggingface.co/Qwen/Qwen3-8B/resolve/main/x.gguf",
+            "https://huggingface.co/Qwen/Qwen3-8B/raw/main/config.json",
+            "https://huggingface.co/Qwen/Qwen3-8B/discussions",
+            "https://huggingface.co/Qwen/Qwen3-8B/discussions/12",
+            "https://huggingface.co/Qwen/Qwen3-8B/tree/dev",
+            "https://huggingface.co/Qwen/Qwen3-8B/tree/main/images",
+            "https://huggingface.co/Qwen/Qwen3-8B/tree",
+            "https://huggingface.co/Qwen/Qwen3-8B/x",
+            HubLinks.absolute("LICENSE", repo)!!,
+            HubLinks.absolute("./images/chart.png", repo)!!,
         ).forEach { assertNull(it, HubLinks.repoOf(it)) }
     }
 

@@ -422,7 +422,7 @@ class ModelSheetViewModel(
         lookup =
             viewModelScope.launch {
                 try {
-                    val target = related(url)
+                    val target = related(url).awayFromHere(url)
                     if (!leaving) openedTargets.send(target)
                 } finally {
                     // a cancelled lookup leaves the notice to the tap that replaced it
@@ -430,6 +430,10 @@ class ModelSheetViewModel(
                 }
             }
     }
+
+    // a link that opens this very card (its original, say) would push it again: its page goes to the browser instead
+    private fun LinkTarget.awayFromHere(url: String): LinkTarget =
+        if (this is LinkTarget.Card && model.repo.lowercase() == repo) LinkTarget.Browser(url) else this
 
     /**
      * The card started to slide away for a link's card or Back: the lookup still running is cancelled and an answer not

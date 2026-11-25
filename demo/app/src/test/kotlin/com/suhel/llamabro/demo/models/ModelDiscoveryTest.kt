@@ -311,6 +311,13 @@ class ModelDiscoveryTest {
         val url = "https://huggingface.co/Qwen/Qwen3-8B."
         assertEquals(LinkTarget.Browser(url), runBlocking { discovery.related(url) })
     }
+
+    @Test fun aFileInAGgufRepoOpensTheBrowser() {
+        listOf(
+            HubLinks.absolute("LICENSE", "someone/Mid-7B-GGUF")!!,
+            "https://huggingface.co/someone/Mid-7B-GGUF/resolve/main/Mid-7B-Q4_K_M.gguf",
+        ).forEach { assertEquals(LinkTarget.Browser(it), runBlocking { discovery.related(it) }) }
+    }
 }
 
-private const val ENCODER_BYTES = 2048
+private const val ENCODER_BYTES = 204

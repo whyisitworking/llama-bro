@@ -3,9 +3,12 @@ package com.suhel.llamabro.demo.ui.models
 import com.suhel.llamabro.DeviceKind
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
+import com.suhel.llamabro.demo.models.HubLinks
 import com.suhel.llamabro.demo.models.LinkTarget
+import com.suhel.llamabro.demo.models.ModelDiscovery
 import com.suhel.llamabro.demo.models.SearchModel
 import com.suhel.llamabro.demo.ui.shutDown
+import com.suhel.llamabro.hub.testing.FakeLlamaBroHub
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -33,8 +36,17 @@ class ModelSheetViewModelLinksTest {
     private val second = "https://huggingface.co/Qwen/Qwen3.5-4B"
     private val gemma =
         SearchModel("gemma 3 4b", "gemma-3-4b-it-GGUF", "unsloth/gemma-3-4b-it-GGUF", "unsloth", 10, false, null)
+    // not the card shown (the catalog's unsloth upload): a link to that one opens the browser
     private val qwen =
-        SearchModel("qwen3.5 4b", "Qwen3.5-4B-GGUF", "unsloth/Qwen3.5-4B-GGUF", "unsloth", 10, false, null)
+        SearchModel(
+            "qwen3.5 4b",
+            "Qwen_Qwen3.5-4B-GGUF",
+            "bartowski/Qwen_Qwen3.5-4B-GGUF",
+            "bartowski",
+            10,
+            false,
+            null,
+        )
 
     @Before fun setUpMain() = Dispatchers.setMain(main)
 
@@ -130,5 +142,26 @@ class ModelSheetViewModelLinksTest {
             assertEquals(emptyList<LinkTarget>(), opened(vm) {})
             vm.stay()
             assertEquals(listOf(LinkTarget.Card(qwen)), opened(vm) { vm.openLink(second) })
+        }
+
+    @Test fun aRelativeFileLinkOpensItsPageInTheBrowser() =
+        runTest {
+            val shown = Catalog.picks.last().key.repo
+            FakeLlamaBroHub { repo(shown) { gguf("x-Q4_K_M.gguf") } }.use { fake ->
+                val vm = viewModel(ModelDiscovery(fake.hub)::related)
+                val license = HubLinks.absolute("LICENSE", shown)!!
+                assertEquals("https://huggingface.co/$shown/blob/main/LICENSE", license)
+                assertEquals(listOf(LinkTarget.Browser(license)), opened(vm) { vm.openLink(license) })
+                assertNull(vm.opening.value)
+            }
+        }
+
+    @Test fun aLinkToTheCardShownOpensTheBrowser() =
+        runTest {
+            val shown = Catalog.picks.last().key.repo
+            val self = SearchModel("same", "same", shown.uppercase(), "unsloth", 10, false, null)
+            val vm = viewModel { LinkTarget.Card(self) }
+            val page = "https://huggingface.co/$shown"
+            assertEquals(listOf(LinkTarget.Browser(page)), opened(vm) { vm.openLink(page) })
         }
 }
