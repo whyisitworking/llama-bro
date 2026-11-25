@@ -140,7 +140,7 @@ data class GlassPress(
             GlassPress(
                 swell = 1.1f,
                 light = 0.6f,
-                reach = 36.dp,
+                reach = 64.dp,
                 bend = 0.35f,
                 pull = 2.dp,
                 stretch = 0.05f,

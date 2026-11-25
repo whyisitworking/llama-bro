@@ -596,33 +596,77 @@ private class GlassNode(
     }
 
     /**
-     * The light a press gathers around the finger (D158): brightest on the rim near it, fading out to
-     * [GlassPress.reach], with a faint glow through the glass under it, the finger where it is now, the posed glass
-     * drawn at [shift] in its bounds.
+     * The light a press sheds on the glass (D158), as light through a pane does: a sheen across all of it, brightest
+     * under the finger and fading over the pane; the whole rim catching it; and the rim brightest near the finger, out
+     * to [GlassPress.reach]. The light stays within the glass: a finger that slides off leaves it at the nearest edge.
+     * The posed glass is drawn at [shift] in its bounds.
      */
     private fun DrawScope.drawPressLight(grown: Size, shift: Offset, corner: CornerRadius, feel: GlassPress) {
         val strength = feel.lightAt(press.value)
         if (strength <= 0f) return
-        val reach = feel.reach.toPx().coerceAtLeast(1f)
         // a keyboard's focus has no finger: the light gathers in the middle
-        val at = if (finger.isSpecified) finger - shift else grown.center
+        val at = if (finger.isSpecified) (finger - shift).insideRoundRect(grown, corner.x) else grown.center
         val light = GlassLight.copy(alpha = strength)
-        val rim = Brush.radialGradient(listOf(light, light.copy(alpha = 0f)), center = at, radius = reach)
-        drawRoundRect(rim, size = grown, cornerRadius = corner, style = Stroke(style.rim.toPx() * PRESS_RIM))
-        val glow = light.copy(alpha = strength * PRESS_GLOW)
+        val sheen = GlassLight.copy(alpha = strength * PRESS_SHEEN)
         drawRoundRect(
-            Brush.radialGradient(listOf(glow, glow.copy(alpha = 0f)), center = at, radius = reach),
+            Brush.radialGradient(
+                0f to sheen,
+                SHEEN_FALL to sheen.copy(alpha = sheen.alpha * SHEEN_FAR),
+                1f to sheen.copy(alpha = 0f),
+                center = at,
+                radius = grown.maxDimension * SHEEN_SPREAD,
+            ),
             size = grown,
             cornerRadius = corner,
+        )
+        val rim = style.rim.toPx()
+        drawRoundRect(
+            GlassLight.copy(alpha = strength * PRESS_RIM_LIFT),
+            size = grown,
+            cornerRadius = corner,
+            style = Stroke(rim),
+        )
+        val reach = maxOf(feel.reach.toPx(), grown.minDimension)
+        drawRoundRect(
+            Brush.radialGradient(listOf(light, light.copy(alpha = 0f)), center = at, radius = reach),
+            size = grown,
+            cornerRadius = corner,
+            style = Stroke(rim * PRESS_RIM),
         )
     }
 }
 
-/** How much thicker the rim's light is where a finger presses it than the rim light at rest (D158). */
-private const val PRESS_RIM = 1.5f
+/**
+ * This point held within a rounded rectangle of [size] and corner [radius] (D158): unchanged inside it, else the
+ * nearest point on its outline, so a press's light stays on the glass when the finger leaves it.
+ */
+internal fun Offset.insideRoundRect(size: Size, radius: Float): Offset {
+    val r = radius.coerceIn(0f, size.minDimension / 2f)
+    val x = x.coerceIn(0f, size.width)
+    val y = y.coerceIn(0f, size.height)
+    // in a corner's square, held to its arc
+    val cx = x.coerceIn(r, size.width - r)
+    val cy = y.coerceIn(r, size.height - r)
+    val out = Offset(x - cx, y - cy)
+    val far = out.getDistance()
+    return if (far <= r || far == 0f) Offset(x, y) else Offset(cx, cy) + out * (r / far)
+}
 
-/** How bright the glow through pressed glass is, as a share of the light on its rim (D158). */
-private const val PRESS_GLOW = 0.25f
+/** How much thicker the rim's light is near a pressing finger than the rim light at rest (D158). */
+private const val PRESS_RIM = 2f
+
+/** How brightly the whole rim catches a press's light, as a share of the light near the finger (D158). */
+private const val PRESS_RIM_LIFT = 0.35f
+
+/**
+ * The sheen a press sheds across the pane (D158): its brightness under the finger, as a share of the light; how far
+ * across it spreads, as a share of the pane's longer side; where it has fallen to [SHEEN_FAR] of that, which it keeps
+ * to the far side, so the whole pane is lit, not a spot.
+ */
+private const val PRESS_SHEEN = 0.3f
+private const val SHEEN_SPREAD = 1.1f
+private const val SHEEN_FALL = 0.45f
+private const val SHEEN_FAR = 0.4f
 
 /** The light caught on a lens's rim: light in either theme, as a highlight on glass is; the style sets its strength. */
 @Suppress("DemoRawColour")
