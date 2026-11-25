@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D161 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D162 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -186,7 +186,7 @@ its amendments to know what holds now.
 | [D150](#d150-replies-in-the-serif-the-rest-in-figtree) Replies in the serif, the rest in Figtree | 2026-11-25 | [D159](#d159-the-sidebar-chats-title-is-small-its-name-over-its-model) |
 | [D151](#d151-a-debug-build-tunes-the-glass-on-the-phone) A debug build tunes the glass on the phone | 2026-11-25 | D152 |
 | [D152](#d152-the-glass-is-a-setting-under-appearance-saved-with-a-sample-at-the-bottom) The glass is a setting under Appearance, saved, with a sample at the bottom | 2026-11-25 | |
-| [D153](#d153-the-glass-scales-to-the-phone-lighter-where-the-phone-doesnt-vouch-for-itself) The glass scales to the phone: lighter where the phone doesn't vouch for itself | 2026-11-25 | D154 |
+| [D153](#d153-the-glass-scales-to-the-phone-lighter-where-the-phone-doesnt-vouch-for-itself) The glass scales to the phone: lighter where the phone doesn't vouch for itself | 2026-11-25 | D154, [D162](#d162-a-bars-copy-of-the-page-is-as-much-smaller-as-its-blur-can-hide) |
 | [D154](#d154-a-bar-can-draw-the-glass-on-it-in-its-own-passes-a-lighter-phone-does-by-default) A bar can draw the glass on it in its own passes; a lighter phone does by default | 2026-11-25 | |
 | [D155](#d155-a-chat-knows-what-its-model-can-do-before-it-loads-the-hub-reads-the-installed-headers-each-load-corrects-it) A chat knows what its model can do before it loads: the hub reads the installed headers; each load corrects it | 2026-11-25 | |
 | [D156](#d156-a-link-on-a-models-page-to-another-gguf-model-opens-its-card-in-the-same-sheet-every-card-opens-on-hugging-face-from-its-top-row) A link on a model's page to another GGUF model opens its card in the same sheet; every card opens on Hugging Face from its top row | 2026-11-25 | |
@@ -195,6 +195,7 @@ its amendments to know what holds now.
 | [D159](#d159-the-sidebar-chats-title-is-small-its-name-over-its-model) The Sidebar chat's title is small: its name over its model | 2026-11-25 | |
 | [D160](#d160-screens-move-along-one-axis-as-they-fade-through) Screens move along one axis as they fade through | 2026-11-25 | |
 | [D161](#d161-the-logo-replaces-the-orb) The logo replaces the orb | 2026-11-26 | |
+| [D162](#d162-a-bars-copy-of-the-page-is-as-much-smaller-as-its-blur-can-hide) A bar's copy of the page is as much smaller as its blur can hide | 2026-11-26 | |
 
 **Repository and process**
 
@@ -2576,4 +2577,22 @@ still and does not glow. The design system keeps its own copies of the two icon 
 the app's resources. `DemoBrand` keeps only the amber.
 Consequences: The violet comes into the app in the dark theme with the logo; the light theme's logo has no colour,
 only the ink. A change to the icon's artwork must be copied to the design system's two drawables.
-Next free IDs: D162, F189.
+<a id="d162"></a>
+### D162. A bar's copy of the page is as much smaller as its blur can hide
+
+Status: Decided (2026-11-26). Amends D153 and F185's rule.
+
+Context: A bar's blur of 12 dp or more ran on a copy of the page at half its width and height (F185), and on a Light
+phone at a quarter (D153); a lighter one on the page itself. At the low end of that range, as the owner turned the
+blur down in Settings, the copy's coarseness showed through: a 12 dp blur hides a half-size copy far less than 24 dp
+does. Two ways to cut the glass's render time were weighed and dropped: the colour split in a third pass after the
+blur (measured slower in its slow frames, F183), and taps read in pairs between pixels (13 instead of 25 a pass), which
+a model of the shader on a page of text showed visibly coarser at the app's blur (a mean error of about 10 in 255).
+Decision: `BarGlass.reduction` makes the copy as many times smaller as the blur over 12 dp, from 1 (the page itself, at
+12 dp and less) to 2 (the app's 24 dp and more), so a copied pixel is as small a share of the blur at every setting;
+a Light phone's copy is twice as small, from 1 at 6 dp to 4 at 24 dp and more. The scale is continuous, not a switch.
+Consequences: At the app's 24 dp nothing changes (F185's measurement holds). A blur between 12 and 24 dp now reads a
+larger copy than before, more pixels to blur, and 12 dp the whole page; its cost on the phone is not yet measured.
+A Light phone at 12 dp reads a half-size copy, not a quarter.
+
+Next free IDs: D163, F189.

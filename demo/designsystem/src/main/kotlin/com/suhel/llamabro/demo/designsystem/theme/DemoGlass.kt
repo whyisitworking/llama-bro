@@ -57,11 +57,22 @@ data class BarGlass(
     /** How far from the screen's edge, as a share of the bar's layer, the blur and the veil stay full. */
     val hold: Float,
 ) {
-    /** Whether [blur] is strong enough to run on a half-resolution copy of the page, its softness hidden (F185). */
-    val heavy: Boolean get() = blur >= HeavyBlur
+    /**
+     * How many times smaller than the screen the page is copied for this blur (F185, D162): [blur] over [SharpCopy],
+     * so a copied pixel stays as small a share of the blur at every setting and the copy's softness never shows. The
+     * app's 24 dp reads a copy at half size; 12 dp and less, the page itself; between, sizes between. A [GlassTier.Light]
+     * phone copies twice as small, to a quarter at most.
+     */
+    fun reduction(tier: GlassTier): Float {
+        val share = blur / SharpCopy
+        return if (tier == GlassTier.Light) (share * 2f).coerceIn(1f, LIGHT_MOST) else share.coerceIn(1f, FULL_MOST)
+    }
 
     private companion object {
-        val HeavyBlur = 12.dp
+        /** The strongest blur read from the page itself, at full resolution. */
+        val SharpCopy = 12.dp
+        const val FULL_MOST = 2f
+        const val LIGHT_MOST = 4f
     }
 }
 
@@ -218,8 +229,8 @@ data class GlassTheme(
 
 /**
  * How much glass a phone can afford to draw (D153), measured on a flagship only (F183, F185, F186). [Full]: every
- * pass. [Light], for a weaker phone: a chip's or a panel's lens bends the page without its own blur pass, and a heavy
- * bar blur runs at a quarter of the resolution instead of half; the look is the same glass, a little plainer.
+ * pass. [Light], for a weaker phone: a chip's or a panel's lens bends the page without its own blur pass, and a bar's
+ * blur reads a copy of the page twice as small ([BarGlass.reduction]); the look is the same glass, a little plainer.
  */
 enum class GlassTier { Full, Light }
 
