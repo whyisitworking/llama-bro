@@ -5,7 +5,8 @@
 #   - another check holds this phone's lock (a symlink in LB_DEVICE_LOCK_DIR, default /tmp, which every worktree
 #     and session sees);
 #   - an adb forward or reverse to the phone exists (a running script or one that died without cleaning up);
-#   - a llama-server, lb-run or Llama Bro app process (com.suhel.llamabro*) runs on the phone.
+#   - a llama-server, lb-run or Llama Bro app process (com.suhel.llamabro*) runs on the phone, but the demo's
+#     release build (com.suhel.llamabro.demo): that is the person's own app, which no run installs or touches (D149).
 # On success takes the lock for OWNER_PID and prints its path, which the owner removes when it ends; a lock whose
 # owner is gone is taken over.
 #
@@ -50,7 +51,7 @@ forwards="$(adb forward --list 2> /dev/null | tr -d '\r' | awk -v s="$serial" '$
 reverses="$(adb -s "$serial" reverse --list 2> /dev/null | tr -d '\r')"
 [ -z "$reverses" ] || problems+=("adb reverses: $(tr '\n' ';' <<< "$reverses")")
 processes="$(adb -s "$serial" shell ps -A -o NAME 2> /dev/null | tr -d '\r' |
-    grep -E '^(llama-server|lb-run)$|^com\.suhel\.llamabro' | sort -u)"
+    grep -E '^(llama-server|lb-run)$|^com\.suhel\.llamabro' | grep -vxE 'com\.suhel\.llamabro\.demo(:.*)?' | sort -u)"
 [ -z "$processes" ] || problems+=("running on the phone: $(tr '\n' ' ' <<< "$processes")")
 
 if [ ${#problems[@]} -gt 0 ]; then

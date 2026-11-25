@@ -28,6 +28,8 @@ expect 1 "a reverse left on the phone" STUB_REVERSES='UsbFfs tcp:18190 tcp:18190
 expect 1 "llama-server running" STUB_PS='llama-server\r\n'
 expect 1 "lb-run running" STUB_PS='lb-run\r\n'
 expect 1 "a test app running" STUB_PS='com.suhel.llamabro.sample\r\ncom.suhel.llamabro.sample:remote\r\n'
+expect 1 "the demo's debug build running" STUB_PS='com.suhel.llamabro.demo.debug\r\n'
+expect 0 "the person's own release demo running (D149)" STUB_PS='com.suhel.llamabro.demo\r\ncom.suhel.llamabro.demo:remote\r\n'
 expect 0 "an unrelated llama-ish name" STUB_PS='com.example.llama-server-ui\r\n'
 rm -rf "$S/locks"/*
 expect 1 "no phone (no serial)" STUB_SERIAL=''
