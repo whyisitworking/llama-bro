@@ -34,8 +34,13 @@ class ModelSheetViewModelLinksTest {
 
     private val first = "https://huggingface.co/google/gemma-3-4b-it"
     private val second = "https://huggingface.co/Qwen/Qwen3.5-4B"
+    private val shownEntry = Catalog.picks.last()
+
+    // the repo of the card shown
+    private val shown = shownEntry.key.repo
     private val gemma =
         SearchModel("gemma 3 4b", "gemma-3-4b-it-GGUF", "unsloth/gemma-3-4b-it-GGUF", "unsloth", 10, false, null)
+
     // not the card shown (the catalog's unsloth upload): a link to that one opens the browser
     private val qwen =
         SearchModel(
@@ -56,7 +61,7 @@ class ModelSheetViewModelLinksTest {
 
     private fun viewModel(related: suspend (String) -> LinkTarget) =
         ModelSheetViewModel(
-            ModelEntry.of(Catalog.picks.last()),
+            ModelEntry.of(shownEntry),
             FakeHubCard(),
             FakeModelLibrary(),
             { phone },
@@ -146,7 +151,6 @@ class ModelSheetViewModelLinksTest {
 
     @Test fun aRelativeFileLinkOpensItsPageInTheBrowser() =
         runTest {
-            val shown = Catalog.picks.last().key.repo
             FakeLlamaBroHub { repo(shown) { gguf("x-Q4_K_M.gguf") } }.use { fake ->
                 val vm = viewModel(ModelDiscovery(fake.hub)::related)
                 val license = HubLinks.absolute("LICENSE", shown)!!
@@ -158,7 +162,6 @@ class ModelSheetViewModelLinksTest {
 
     @Test fun aLinkToTheCardShownOpensTheBrowser() =
         runTest {
-            val shown = Catalog.picks.last().key.repo
             val self = SearchModel("same", "same", shown.uppercase(), "unsloth", 10, false, null)
             val vm = viewModel { LinkTarget.Card(self) }
             val page = "https://huggingface.co/$shown"

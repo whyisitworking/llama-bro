@@ -497,17 +497,17 @@ internal object Gguf {
                 is Boolean -> put(Int.SIZE_BYTES + 1) { putInt(TYPE_BOOL).put(if (value) 1 else 0) }
                 is Float -> put(Int.SIZE_BYTES + Float.SIZE_BYTES) { putInt(TYPE_F32).putFloat(value) }
                 is Int -> put(Int.SIZE_BYTES * 2) { putInt(TYPE_I32).putInt(value) }
-                // a Long or Double would be cut to fit silently: the test that wrote it would read another value
-                else -> throw IllegalArgumentException(
-                    "unsupported GGUF metadata value for $key: ${value::class.simpleName}; use Boolean, String, Int " +
-                        "or Float",
-                )
+                else -> throw IllegalArgumentException(unsupported(key, value))
             }
         }
         val header = (out.size() + ALIGNMENT - 1) / ALIGNMENT * ALIGNMENT
         require(size >= header) { "a GGUF with this header needs at least $header bytes, was $size" }
         return out.toByteArray().copyOf(size)
     }
+
+    // a Long or Double is refused, not cut to fit: the test that wrote it would read another value
+    private fun unsupported(key: String, value: Any) =
+        "unsupported GGUF metadata value for $key: ${value::class.simpleName}; use Boolean, String, Int or Float"
 
     /** The `general.sampling.*` keys upstream reads (common/sampling.cpp), under its names. */
     private fun keys(sampling: Sampling): Map<String, Number> =
