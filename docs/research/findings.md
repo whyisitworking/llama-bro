@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the [decision records](../decisions.md) (`D<n>`), the [research history](history.md), which summarises each phase, and the experiments under [`research/`](../../research/).
-> **Status:** living document, updated 2026-11-25 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183–F186)
+> **Status:** living document, updated 2026-11-25 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183–F187)
 
 Labels such as P1, PA, PF, PD and PH name the project's phases, and W1 to W9 the workstreams of a phase; the
 [research history](history.md#summary-of-the-phases) summarises each. "Task <n>", "T<n>" and "Feeds:" name the steps
@@ -2336,10 +2336,25 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   mid-range phone's numbers are still unknown: its GPU, short of bandwidth for every pass, is the likelier limit.
 - **Feeds:** D153, F185, `demo/scripts/perf.py`.
 
+<a id="f187"></a>
+### F187. A bar drawing the glass on it saves a quarter of a chat's CPU time per frame, a touch softer
+
+- **Finding:** With the bars drawing the chips and panels on them in their own two passes (D154), flinging a chat of
+  300 messages takes CPU frame time P50/P90/P99 from 5.25, 6.77 and 8.36 ms to 3.87, 5.13 and 7.32 ms, and
+  frameOverrun P90 from −1.34 to −2.85 ms: more than dropping the chips' blur alone (5.91 ms, F186), with the blur
+  kept. By eye on the owner's phone the two look alike; the merged chips are a touch softer, as they are drawn at
+  the bar's half resolution, and the bar's heavier blur bleeds a few pixels into their edge.
+- **Evidence:** phone CPH2649, the benchmark build, `ScrollBenchmark.flingAChatOf300Messages`, 10 iterations each,
+  the same build run merged then not, back to back (2026-11-25); the owner's comparison on the phone.
+- **Means:** merged glass is the cheaper glass at a small cost in sharpness: a Light phone draws it by default, a Full
+  one its own lenses (D154). On a weaker GPU it should save more, as each piece no longer writes and reads two images.
+- **Feeds:** D154, D153, F186.
+
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F187 | A bar drawing the glass on it saves a quarter of a chat's CPU time per frame, a touch softer | D154 |
 | F186 | The glass's CPU cost is its render passes; one pass blurs cleanly only below about 4 dp | D153, F185 |
 | F185 | A heavy bar blur run at half resolution gives a chat's fling its frame budget back | D148, F183 |
 | F184 | Content composed during a `SubcomposeLayout`'s measure starts its effects mid-layout; a list scrolled from one throws | D148 |

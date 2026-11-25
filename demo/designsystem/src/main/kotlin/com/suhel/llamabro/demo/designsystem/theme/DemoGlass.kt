@@ -63,9 +63,25 @@ data class BarGlass(
     }
 }
 
-/** The glass of every kind the app draws: [chip] (icon buttons, the title), [panel] (fields, tabs, a FAB), [bar]. */
+/**
+ * The glass of every kind the app draws: [chip] (icon buttons, the title), [panel] (fields, tabs, a FAB), [bar].
+ * With [mergedLens], a floating bar draws the chips and panels on it in its own blur passes, instead of each drawing
+ * its lens in two passes of its own: a quarter less CPU, a touch softer (D154, F187). Null leaves it to the phone's
+ * [GlassTier] ([merges]).
+ */
 @Immutable
-data class GlassTheme(val chip: GlassStyle, val panel: GlassStyle, val bar: BarGlass) {
+data class GlassTheme(
+    val chip: GlassStyle,
+    val panel: GlassStyle,
+    val bar: BarGlass,
+    val mergedLens: Boolean? = null,
+) {
+    /**
+     * Whether the bars draw the glass on them (D154): as [mergedLens] says, else on a [GlassTier.Light] phone only,
+     * where the passes it saves matter most; a [GlassTier.Full] phone keeps the sharper glass of its own.
+     */
+    fun merges(tier: GlassTier): Boolean = mergedLens ?: (tier == GlassTier.Light)
+
     companion object {
         /** The app's glass: dramatic refraction and colour on a thin edge. */
         val Default =

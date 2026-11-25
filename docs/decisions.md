@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D153 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D154 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -186,7 +186,8 @@ its amendments to know what holds now.
 | [D150](#d150-replies-in-the-serif-the-rest-in-figtree) Replies in the serif, the rest in Figtree | 2026-11-25 | |
 | [D151](#d151-a-debug-build-tunes-the-glass-on-the-phone) A debug build tunes the glass on the phone | 2026-11-25 | D152 |
 | [D152](#d152-the-glass-is-a-setting-under-appearance-saved-with-a-sample-at-the-bottom) The glass is a setting under Appearance, saved, with a sample at the bottom | 2026-11-25 | |
-| [D153](#d153-the-glass-scales-to-the-phone-lighter-where-the-phone-doesnt-vouch-for-itself) The glass scales to the phone: lighter where the phone doesn't vouch for itself | 2026-11-25 | |
+| [D153](#d153-the-glass-scales-to-the-phone-lighter-where-the-phone-doesnt-vouch-for-itself) The glass scales to the phone: lighter where the phone doesn't vouch for itself | 2026-11-25 | D154 |
+| [D154](#d154-a-bar-can-draw-the-glass-on-it-in-its-own-passes-a-lighter-phone-does-by-default) A bar can draw the glass on it in its own passes; a lighter phone does by default | 2026-11-25 | |
 
 **Repository and process**
 
@@ -2387,5 +2388,26 @@ without its own blur pass, and a heavy bar blur runs at a quarter of the resolut
 so on a Light phone. The lens keeps its two passes on a Full phone, and the chat's CPU budget goes from 6 to 7 ms,
 the glass's share recorded (F186). A blur of under 1 px skips its pass on any phone.
 Consequences: A weaker phone draws plainer glass, by the class it declares rather than by measurement; a mid-range
-phone's frames are still to be measured, and the tiers to be revised by what that finds. Next free IDs: D154, F187.
+phone's frames are still to be measured, and the tiers to be revised by what that finds. D154 changes what a Light
+phone draws: its bars draw the glass on them, blur and all, by default.
+
+<a id="d154"></a>
+### D154. A bar can draw the glass on it in its own passes; a lighter phone does by default
+
+Status: Decided (2026-11-25)
+
+Context: Each chip and panel on a bar redid, for its own patch, what the bar had just done for its whole strip: copy
+the page, blur it, then bend it, two offscreen passes each (F186). Apple's Liquid Glass groups glass shapes in a
+container (SwiftUI's `GlassEffectContainer`) so they render together rather than each sampling the screen.
+Decision: A floating bar (`FloatingLayer`) is a `GlassContainer`: each piece of glass on it over the same page
+registers its shape and style (`MergedShape`), and when the glass is merged the bar's two blur passes draw it, the
+first blurring each shape at its own strength, the second bending, splitting and veiling it as the lens shader does,
+with a pixel of smoothed edge, up to eight shapes per bar; the piece then draws only its rim light, its hairline and
+its content. `GlassTheme.mergedLens` chooses: true or false on every phone, or null (Automatic, the default) for
+`merges(tier)`: merged on a Light phone, its own lens on a Full one. The Glass screen offers Automatic, Each its own
+and Drawn by the bar. Glass off the bars (the jump button, the FAB) keeps its own lens.
+Consequences: On the owner's phone merged glass takes a chat's fling from CPU P90 6.77 to 5.13 ms (F187), but its
+chips are a touch softer, drawn at the bar's half resolution and with the bar's heavier blur bleeding a few pixels
+into their edge, so a Full phone keeps the sharper glass by default. A Light phone keeps the chips' and panels' blur.
+Next free IDs: D155, F188.
 

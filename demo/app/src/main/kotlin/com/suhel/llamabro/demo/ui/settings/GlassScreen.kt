@@ -2,6 +2,7 @@ package com.suhel.llamabro.demo.ui.settings
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -17,6 +18,7 @@ import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.Notice
 import com.suhel.llamabro.demo.designsystem.components.Section
+import com.suhel.llamabro.demo.designsystem.components.SegmentedSwitch
 import com.suhel.llamabro.demo.designsystem.components.SliderRow
 import com.suhel.llamabro.demo.designsystem.theme.BarGlass
 import com.suhel.llamabro.demo.designsystem.theme.GlassStyle
@@ -46,8 +48,17 @@ fun GlassScreen(onChange: (GlassTheme?) -> Unit, onBack: () -> Unit) {
         Notice("Each change applies across the app when you let go, and is kept. Scroll to see it in the glass below.")
         if (LocalGlassTier.current == GlassTier.Light) {
             Notice(
-                "This phone draws lighter glass, to keep scrolling smooth: no blur inside chips and panels, and a " +
-                    "coarser blur under the bars.",
+                "This phone draws lighter glass, to keep scrolling smooth: a coarser blur under the bars, which " +
+                    "draw the glass on them (Automatic), or no blur inside chips and panels that draw their own.",
+            )
+        }
+        Section("Glass on the bars") {
+            val choices = listOf(null, false, true)
+            SegmentedSwitch(
+                listOf("Automatic", "Each its own", "Drawn by the bar"),
+                choices.indexOf(glass.mergedLens),
+                { onChange(glass.copy(mergedLens = choices[it])) },
+                Modifier.fillMaxWidth().testTag("glass_merged"),
             )
         }
         Section("Chips: icon buttons, the title") {
@@ -154,7 +165,8 @@ internal fun describe(glass: GlassTheme): String {
             "dispersion = ${s.dispersion}f, blur = ${trim(s.blur.value)}.dp, veil = ${s.veil}f, " +
             "rimLight = ${s.rimLight}f, rim = ${trim(s.rim.value)}.dp, bareVeil = ${s.bareVeil}f)"
     val b = glass.bar
-    return "chip = ${style(glass.chip)}\n" +
+    return "mergedLens = ${glass.mergedLens}\n" +
+        "chip = ${style(glass.chip)}\n" +
         "panel = ${style(glass.panel)}\n" +
         "bar = BarGlass(blur = ${trim(b.blur.value)}.dp, dispersion = ${trim(b.dispersion.value)}.dp, " +
         "veil = ${b.veil}f, bareVeil = ${b.bareVeil}f, fade = ${trim(b.fade.value)}.dp, hold = ${b.hold}f)"

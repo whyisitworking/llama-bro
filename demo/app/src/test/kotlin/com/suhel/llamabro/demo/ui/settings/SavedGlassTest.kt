@@ -18,6 +18,13 @@ class SavedGlassTest {
         assertEquals(tuned, SavedGlass.decode(SavedGlass.encode(tuned)))
     }
 
+    @Test fun theGlassOnTheBarsReadsBackAsChosenOrLeftToThePhone() {
+        for (choice in listOf(null, false, true)) {
+            val glass = GlassTheme.Default.copy(mergedLens = choice)
+            assertEquals(choice, SavedGlass.decode(SavedGlass.encode(glass)).mergedLens)
+        }
+    }
+
     @Test fun nothingSavedIsTheDefault() {
         assertEquals(GlassTheme.Default, SavedGlass.decode(null))
     }

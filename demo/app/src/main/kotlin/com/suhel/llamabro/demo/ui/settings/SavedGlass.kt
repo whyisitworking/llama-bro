@@ -17,7 +17,14 @@ object SavedGlass {
     private val json = Json { ignoreUnknownKeys = true }
 
     fun encode(glass: GlassTheme): String =
-        json.encode(Saved(Saved.Style.of(glass.chip), Saved.Style.of(glass.panel), Saved.Bar.of(glass.bar)))
+        json.encode(
+            Saved(
+                Saved.Style.of(glass.chip),
+                Saved.Style.of(glass.panel),
+                Saved.Bar.of(glass.bar),
+                glass.mergedLens,
+            ),
+        )
 
     fun decode(text: String?): GlassTheme {
         val default = GlassTheme.Default
@@ -26,6 +33,7 @@ object SavedGlass {
             chip = saved.chip?.over(default.chip) ?: default.chip,
             panel = saved.panel?.over(default.panel) ?: default.panel,
             bar = saved.bar?.over(default.bar) ?: default.bar,
+            mergedLens = saved.mergedLens,
         )
     }
 
@@ -42,7 +50,12 @@ object SavedGlass {
     private fun Json.encode(saved: Saved): String = encodeToString(Saved.serializer(), saved)
 
     @Serializable
-    private data class Saved(val chip: Style? = null, val panel: Style? = null, val bar: Bar? = null) {
+    private data class Saved(
+        val chip: Style? = null,
+        val panel: Style? = null,
+        val bar: Bar? = null,
+        val mergedLens: Boolean? = null,
+    ) {
         @Serializable
         data class Style(
             val bezel: Float? = null,

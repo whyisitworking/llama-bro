@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -19,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RenderEffect
@@ -38,9 +41,12 @@ import androidx.compose.ui.node.GlobalPositionAwareModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.currentValueOf
 import androidx.compose.ui.node.invalidateDraw
+import androidx.compose.ui.node.requireDensity
 import androidx.compose.ui.node.requireGraphicsContext
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.toSize
 import com.suhel.llamabro.demo.designsystem.theme.BarGlass
 import com.suhel.llamabro.demo.designsystem.theme.DemoColors
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
@@ -96,6 +102,27 @@ fun Modifier.backdropSource(backdrop: Backdrop): Modifier {
 val LocalBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
 /**
+ * A piece of glass a floating bar draws in its own passes (D154): where it is in the window ([rect]), its corners'
+ * radius in pixels ([corner]), and its [style].
+ */
+@Immutable
+internal data class MergedShape(val rect: Rect, val corner: Float, val style: GlassStyle)
+
+/**
+ * The glass a floating bar draws itself (D154): each piece of glass on the bar over the same [backdrop] puts its
+ * [MergedShape] here, and while [active] (the glass's [GlassTheme.mergedLens], where the bar can run its shader) the
+ * bar bends and blurs it in the passes it runs anyway, and the piece draws only its rim and its content.
+ */
+@Stable
+internal class GlassContainer(val backdrop: Backdrop) {
+    val shapes = mutableStateMapOf<Any, MergedShape>()
+    var active by mutableStateOf(false)
+}
+
+/** The bar the content is on, which may draw its glass (D154); null off a floating bar. */
+internal val LocalGlassContainer = staticCompositionLocalOf<GlassContainer?> { null }
+
+/**
  * Whether an [IconAction] or a tappable [TopBarTitle] is a chip of glass: in a [TopBar] or the drawer's head, not
  * inside a glass panel (a search field's filters) or the message bar's row.
  */
@@ -146,8 +173,12 @@ private class GlassNode(var backdrop: Backdrop?, var corner: Dp?, var style: Gla
     GlobalPositionAwareModifierNode,
     CompositionLocalConsumerModifierNode {
     private var at = Offset.Zero
+    private var extent = IntSize.Zero
     private var glass: GraphicsLayer? = null
     private var lens: Any? = null // a Lens, made only where it can run
+
+    /** The bar this glass is on, which draws its lens while it is [GlassContainer.active] (D154). */
+    private var container: GlassContainer? = null
 
     fun update(backdrop: Backdrop?, corner: Dp?, style: GlassStyle) {
         val lensChanged = (backdrop?.page != null) != (this.backdrop?.page != null)
@@ -158,12 +189,39 @@ private class GlassNode(var backdrop: Backdrop?, var corner: Dp?, var style: Gla
             release()
             prepare()
         }
+        register()
         invalidateDraw()
     }
 
     override fun onAttach() = prepare()
 
-    override fun onDetach() = release()
+    override fun onDetach() {
+        container?.shapes?.remove(this)
+        container = null
+        release()
+    }
+
+    /**
+     * Puts this glass's shape on the bar it is on, where the bar could draw it: a bar over the same page, on a phone
+     * whose bar runs its shader (Android 13 and up).
+     */
+    private fun register() {
+        if (!isAttached) return
+        val bar =
+            currentValueOf(LocalGlassContainer)?.takeIf {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backdrop?.page != null &&
+                    it.backdrop === backdrop
+            }
+        if (bar !== container) {
+            container?.shapes?.remove(this)
+            container = bar
+        }
+        if (bar == null || extent == IntSize.Zero) return
+        val pill = minOf(extent.width, extent.height) / 2f
+        val radius = corner?.let { with(requireDensity()) { it.toPx() } }?.coerceAtMost(pill) ?: pill
+        val shape = MergedShape(Rect(at, extent.toSize()), radius, style)
+        if (bar.shapes[this] != shape) bar.shapes[this] = shape
+    }
 
     /** A lens needs a page to bend and a shader to bend it (Android 13 and up). */
     private fun prepare() {
@@ -181,8 +239,10 @@ private class GlassNode(var backdrop: Backdrop?, var corner: Dp?, var style: Gla
 
     override fun onGloballyPositioned(coordinates: LayoutCoordinates) {
         val now = coordinates.positionInWindow()
-        if (now != at) {
+        if (now != at || coordinates.size != extent) {
             at = now
+            extent = coordinates.size
+            register()
             invalidateDraw()
         }
     }
@@ -191,7 +251,10 @@ private class GlassNode(var backdrop: Backdrop?, var corner: Dp?, var style: Gla
         val colors = currentValueOf(LocalDemoColors)
         val pill = size.minDimension / 2
         val corner = CornerRadius(this@GlassNode.corner?.toPx()?.coerceAtMost(pill) ?: pill)
-        val lensed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && drawLens(corner, colors)
+        // a bar drawing this glass in its own passes leaves it only the rim, the hairline and the content (D154)
+        val merged = container?.active == true
+        val lensed = merged || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && drawLens(corner, colors))
+        if (merged) drawRimLight(corner)
         if (!lensed) drawRoundRect(colors.surface.copy(alpha = style.bareVeil), cornerRadius = corner)
         drawRoundRect(colors.hairline, cornerRadius = corner, style = Stroke(DemoSize.hairline.toPx()))
         drawContent()
@@ -216,14 +279,18 @@ private class GlassNode(var backdrop: Backdrop?, var corner: Dp?, var style: Gla
         layer.clip = true
         // the veil is blended into the glass by its shader, not laid over it
         drawLayer(layer)
-        // the light on the glass: bright along the upper rim, fading down it
+        drawRimLight(corner)
+        return true
+    }
+
+    /** The light on the glass: bright along the upper rim, fading down it. */
+    private fun ContentDrawScope.drawRimLight(corner: CornerRadius) {
         val light = GlassLight.copy(alpha = style.rimLight)
         drawRoundRect(
             Brush.verticalGradient(listOf(light, light.copy(alpha = 0f)), endY = size.height * 0.6f),
             cornerRadius = corner,
             style = Stroke(style.rim.toPx()),
         )
-        return true
     }
 }
 
