@@ -48,7 +48,7 @@ class SamplingJourneys : Journey() {
 
         compose.onNodeWithTag("model_title").performClick()
         see("THIS CHAT")
-        tap("Sampling")
+        tap("Inference")
         see("INFERENCE FOR THIS CHAT")
         compose.waitForIdle()
         Thread.sleep(SHEET_SETTLE)
@@ -66,7 +66,7 @@ class SamplingJourneys : Journey() {
 
         compose.onNodeWithTag("model_title").performClick()
         see("1 value changed for this chat")
-        tap("Sampling")
+        tap("Inference")
         tap("Use the model's values")
         gone("Changed for this chat")
     }

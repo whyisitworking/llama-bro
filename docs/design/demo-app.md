@@ -254,7 +254,7 @@ How a model picks its words starts from what its makers recommend and can be cha
   › Inference lists the models on the phone ("Model defaults", "2 values changed"); a model's page shows "Model default",
   "Changed" or "llama.cpp default" under each value, a Thinking / Not thinking switch when its card has two sets, and
   **Reset to the model's defaults** once something changed. A change applies in both modes. In a chat, the model sheet's
-  **This chat › Sampling** opens the same sliders under "Inference for this chat" at the chat's Think level, marked "Changed for this chat", "The
+  **This chat › Inference** opens the same sliders under "Inference for this chat" at the chat's Think level, marked "Changed for this chat", "The
   model's setting", "Model default" or "llama.cpp default", with **Use the model's values**. The chat's value wins over
   the model's, the model's over the card's. A value nobody set is not sent, so a model file's own recommendation still
   applies. A chat with no message yet has no row: its values would have nothing to belong to.

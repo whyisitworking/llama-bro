@@ -84,8 +84,9 @@ class MemoryJourneys : Journey() {
         see("Not on this phone", substring = true)
         shot("2-runs-on")
         compose.onNode(hasText("Automatic") and hasAnyAncestor(hasTestTag("runs_on"))).performScrollTo().performClick()
-        // no reply holds it: the model loaded for the GPU is freed now, so nothing runs on the CPU any more
+        // no reply holds it: the model loaded for the GPU is freed now, so no line says it runs on the CPU or moves
         gone("Running on the CPU", substring = true)
+        gone("Moves to", substring = true)
         robot.pressBack()
 
         send("again")

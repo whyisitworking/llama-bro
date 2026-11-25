@@ -49,7 +49,7 @@ internal fun fallbackWhy(wanted: DeviceKind, tried: Boolean, deviceName: String?
 private const val ENCODER_LINE = "image encoder"
 
 /**
- * The line under Settings › Processor choice (D72) for the model in memory ([ready], null when none): where it runs
+ * The line under Settings › Processor's choice (D72) for the model in memory ([ready], null when none): where it runs
  * and why when it was loaded for the chip [chosen] and landed elsewhere, or, while it is still the one loaded for an
  * earlier choice, when it moves; null when there is nothing to say.
  */
@@ -66,7 +66,7 @@ fun runsOnLine(ready: HostState.Ready?, chosen: ChipChoice, replying: Boolean): 
 }
 
 /**
- * The line under Settings › Inference context length for the model in memory ([ready], null when none): while it is
+ * The line under Settings › Inference's context length for the model in memory ([ready], null when none): while it is
  * still the one loaded for another length than the one [chosen], when it reloads at the new one, as [runsOnLine] says
  * when a chip change moves it; null when there is nothing to say.
  */

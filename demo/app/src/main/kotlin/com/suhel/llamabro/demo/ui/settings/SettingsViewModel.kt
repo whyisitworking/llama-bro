@@ -49,7 +49,7 @@ class SettingsViewModel(
     private val models: ModelRepository,
     private val memory: ModelMemory,
     private val sampling: SamplingStore,
-    /** The phone's chips, for Settings › Processor choice (D72); the SDK is asked once, by the container. */
+    /** The phone's chips, for Settings › Processor's choice (D72); the SDK is asked once, by the container. */
     private val facts: suspend () -> DeviceFacts = { DeviceFacts.Fallback },
 ) : ViewModel() {
     val state: StateFlow<AppSettings> =
