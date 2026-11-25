@@ -1,6 +1,5 @@
 package com.suhel.llamabro.demo.chat
 
-import com.suhel.llamabro.ModelInfo
 import com.suhel.llamabro.chat.Reasoning
 import com.suhel.llamabro.demo.data.ReplyLength
 import com.suhel.llamabro.demo.models.CatalogEntry
@@ -55,13 +54,14 @@ object Thinking {
         }
 
     /**
-     * Whether the Think chip shows: the catalog says so, else the template reports reasoning, else it mentions
-     * `enable_thinking` or `<think>` (F97).
+     * Whether the Think chip shows: the catalog says so for any quant of its repo, else the [template]'s capabilities
+     * ([templateCaps], a load's) report reasoning, else the template mentions `enable_thinking` or `<think>` (F97). A
+     * header read before the load has no capabilities and follows the same rule on the template alone (D155).
      */
-    fun canThink(info: ModelInfo, catalog: CatalogEntry?): Boolean {
+    fun canThink(template: String?, templateCaps: Map<String, Boolean>, catalog: CatalogEntry?): Boolean {
         if (catalog != null) return catalog.thinks
-        if (info.templateCaps["supports_reasoning_effort"] == true) return true
-        val template = info.chatTemplate ?: return false
+        if (templateCaps["supports_reasoning_effort"] == true) return true
+        if (template == null) return false
         return template.contains("enable_thinking") || template.contains("<think>")
     }
 

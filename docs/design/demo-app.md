@@ -212,6 +212,11 @@ a fresh answer from Hugging Face changes words in place, never the layout (F177)
 - **Speed and the rest of what was measured:** behind the info icon among a reply's actions, in a "Reply details" sheet: the model, the chip it ran on, the speed ("38 words/s · 14.2 tokens/s", words being tokens times 0.75), the reply's and the prompt's tokens (with what came from the cache), how fast the prompt was read, how long it thought, and how many MTP drafts were kept. Each line shows only when it's known. The actions themselves (copy, share, regenerate, details) are 18 dp glyphs in 48 dp targets.
 - **Scrolling:** the list keeps a streaming reply's newest text in view while the reader is at its end. Scrolling up, even within a reply taller than the screen, stops that and shows a **back to the latest message** button; the button, scrolling back to the very end, or sending a message follows the reply again.
 - **Custom instructions** (Settings) become the system prompt of every chat; with none, no system prompt is sent.
+- **What the model can do, before it loads** (D155): the Think chip, photos and the mic show from the model's header,
+  read once it is on the phone (its template; its projector's vision and audio flags), so a new chat on a model found
+  in search shows them before its first send. The load corrects them: a model whose load says it can't think loses
+  the chip, and its turn sends no reasoning settings. A Think level chosen before the load is the one the turn uses.
+  Without a header's word the catalog's stands for any quant of its repo, else nothing shows until the load.
 
 ### 4.5 Settings
 
@@ -326,7 +331,7 @@ Every model, size and file is shown with one fit word, coloured, never a card ti
 
 ### 7.2 Think levels
 
-The **Think** lightbulb appears in the message bar only for a model that can think: a suggested model says so, else the chat template reports reasoning effort, else it mentions `enable_thinking` or `<think>` (F97). It opens a menu of four levels:
+The **Think** lightbulb appears in the message bar only for a model that can think: a suggested model (any quant of its repo) says so, else the chat template reports reasoning effort, else it mentions `enable_thinking` or `<think>` (F97). Before a load the template is the header's, after it the loaded model's (section 4.4, D155). It opens a menu of four levels:
 
 | Level | What the request sends | The reply's length limit |
 |---|---|---|

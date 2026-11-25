@@ -2428,6 +2428,10 @@ and the app corrects what it showed. `installedProjectorFile` finds the projecto
 model, from any complete installed copy.
 Consequences: A model that was never loaded can show its senses offline. A copy made without its projector takes no
 images or audio as far as this call knows; a projector's `has_*` flags are the file's claim, not a loaded model's.
+In the demo, the chip, photos and mic show from the header before a load; the load corrects them. One stored
+`ModelSenses` per model (thinks, sees, hears) replaces the hearing-only set of D76: the header's is written once the
+model is on the phone and only when nothing is known yet, a load's always. A turn takes its Think level from the model
+it loaded, not from the chip, so a model whose load says it can't think gets no reasoning settings.
 Next free IDs: D156, F189.
 
 

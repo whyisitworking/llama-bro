@@ -4,6 +4,7 @@ import com.suhel.llamabro.Model
 import com.suhel.llamabro.ModelInfo
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.loadConfig
+import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -16,18 +17,14 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Records whether the model heard on this load, so the mic shows before its next load (D76). */
-private suspend fun rememberHearing(settings: SettingsRepository, key: HfModel, hears: Boolean) {
-    val known = key.toString() in settings.hearingModels.first()
-    if (known != hears) settings.setHears(key.toString(), hears)
-}
-
 /**
- * Records what the model heard and spoke with on this load (D76, D100): the mic and the voice-mode button show before
- * its next load, and Settings › Voice lists its voices.
+ * Records what the model could do and spoke with on this load (D76, D100, D155): its word replaces the header's, the
+ * Think chip, photos, the mic and the voice-mode button show by it before its next load, and Settings › Voice lists
+ * its voices.
  */
 internal suspend fun rememberSenses(settings: SettingsRepository, key: HfModel, info: ModelInfo) {
-    rememberHearing(settings, key, info.supportsAudio)
+    val senses = info.senses(Catalog.byRepo(key.repo))
+    if (settings.modelSenses.first()[key.toString()] != senses) settings.setSenses(key.toString(), senses)
     val voices = if (info.supportsAudio) info.voices else emptyList()
     if (settings.talkingModels.first()[key.toString()].orEmpty() != voices) settings.setVoices(key.toString(), voices)
 }

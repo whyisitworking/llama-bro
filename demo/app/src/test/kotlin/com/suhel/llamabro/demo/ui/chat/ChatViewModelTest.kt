@@ -5,11 +5,14 @@ import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.demo.chat.LimitAction
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
+import com.suhel.llamabro.demo.data.ModelSenses
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 import com.suhel.llamabro.demo.eventually
+import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -285,7 +288,49 @@ class ChatViewModelTest : ChatViewModelFixture() {
             )
         }
 
+    @Test fun theThinkChipShowsForANewChatOnASearchModelBeforeAnySend() =
+        runBlocking {
+            readSenses = { key -> headerThinks.takeIf { key == searchThinker } }
+            val vm = viewModel(searchThinker)
+            // the header said so: the chip shows, and nothing was loaded to find out (D155)
+            eventually("the chip") { vm.composerState.value.think == ThinkLevel.Off }
+            assertEquals(0, fake.openModels)
+            assertTrue(fake.chatRequests.isEmpty())
+        }
+
+    @Test fun aLevelChosenBeforeTheLoadSurvivesIt() =
+        runBlocking {
+            reply("hello")
+            val vm = viewModel(swift)
+            eventually("the chip") { vm.composerState.value.think == ThinkLevel.Off }
+            vm.setThink(ThinkLevel.Balanced)
+            eventually("the level") { vm.composerState.value.think == ThinkLevel.Balanced }
+            vm.onText("Hi there")
+            vm.send()
+            eventually("the request") { fake.chatRequests.isNotEmpty() }
+            assertTrue(fake.chatRequests.single(), "\"reasoning_budget_tokens\":2048" in fake.chatRequests.single())
+            assertEquals(ThinkLevel.Balanced, vm.composerState.value.think)
+        }
+
+    @Test fun aModelTheLoadSaysCantThinkLosesTheChip() =
+        runBlocking {
+            reply("hello")
+            readSenses = { key -> headerThinks.takeIf { key == searchThinker } }
+            val vm = viewModel(searchThinker)
+            eventually("the chip") { vm.composerState.value.think == ThinkLevel.Off }
+            vm.setThink(ThinkLevel.Deep)
+            vm.onText("Hi there")
+            vm.send()
+            // the fake's template has no sign of thinking: the load is the final word
+            eventually("the reply") { vm.rows.value.any { it is ReplyItem && it.text == "hello" } }
+            eventually("the chip goes") { vm.composerState.value.think == null }
+            val request = fake.chatRequests.single()
+            assertFalse(request, "enable_thinking" in request || "reasoning_budget_tokens" in request)
+        }
+
     private companion object {
         val ComposerDraftEmpty = ComposerDraft()
+        val searchThinker = HfModel.parse("someone/Thinker-GGUF:Q4_K_M")
+        val headerThinks = ModelSenses(thinks = true, sees = false, hears = false)
     }
 }

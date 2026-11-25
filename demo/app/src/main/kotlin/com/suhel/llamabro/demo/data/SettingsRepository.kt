@@ -213,16 +213,29 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     }
 
     /**
-     * The models (by key) that heard on their last load (`ModelInfo.supportsAudio`), so a chat shows the mic before
-     * its model is loaded again (D76): the SDK can only say once a model is loaded.
+     * What each model (by key) can do, so a chat shows the Think chip, photos and the mic before its model loads: read
+     * from its header once it is on the phone (D155), then corrected by each load (D76).
      */
-    val hearingModels: Flow<Set<String>> = store.data.map { it[HEARING_MODELS].orEmpty() }
+    val modelSenses: Flow<Map<String, ModelSenses>> =
+        store.data.map { p ->
+            p
+                .asMap()
+                .mapNotNull { (k, v) ->
+                    k.name.takeIf { it.startsWith(SENSES_PREFIX) }?.let { name ->
+                        name.removePrefix(SENSES_PREFIX) to decodeSenses(v as? String)
+                    }
+                }.toMap()
+        }
 
-    /** Records whether [modelKey] heard when it loaded. */
-    suspend fun setHears(modelKey: String, hears: Boolean) {
+    /**
+     * Records what [modelKey] can do; [ifUnknown] writes only when nothing is recorded yet, so a header read never
+     * overwrites what a load said meanwhile. The first write drops the hearing-only set it replaces.
+     */
+    suspend fun setSenses(modelKey: String, senses: ModelSenses, ifUnknown: Boolean = false) {
+        val key = stringPreferencesKey(SENSES_PREFIX + modelKey)
         store.edit {
-            val now = it[HEARING_MODELS].orEmpty()
-            if ((modelKey in now) != hears) it[HEARING_MODELS] = if (hears) now + modelKey else now - modelKey
+            if (!ifUnknown || it[key] == null) it[key] = encodeSenses(senses)
+            it.remove(HEARING_MODELS)
         }
     }
 
@@ -311,9 +324,12 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     private companion object {
         const val SAMPLING_PREFIX = "sampling:"
+        const val SENSES_PREFIX = "senses:"
         val PENDING_DOWNLOADS = stringSetPreferencesKey("pending_downloads")
         val PAUSED_DOWNLOADS = stringSetPreferencesKey("paused_downloads")
         val DOWNLOADS_NEEDING_TOKEN = stringSetPreferencesKey("downloads_needing_token")
+
+        /** Before D155: the models that heard on their last load. Each model's senses hold it now. */
         val HEARING_MODELS = stringSetPreferencesKey("hearing_models")
         val TALKING_MODELS = stringSetPreferencesKey("talking_models")
 
@@ -336,4 +352,20 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val SEARCH_SIZE = stringPreferencesKey("search_size")
         val SEARCH_SEES_IMAGES = booleanPreferencesKey("search_sees_images")
     }
+}
+
+/** What a model can do: think (the Think chip), see pictures, hear voice messages (D76, D155). */
+data class ModelSenses(val thinks: Boolean, val sees: Boolean, val hears: Boolean)
+
+/** A model's senses as stored: the names of those it has, separated by commas. */
+private fun encodeSenses(senses: ModelSenses): String =
+    listOfNotNull(
+        "thinks".takeIf { senses.thinks },
+        "sees".takeIf { senses.sees },
+        "hears".takeIf { senses.hears },
+    ).joinToString(",")
+
+private fun decodeSenses(stored: String?): ModelSenses {
+    val names = stored.orEmpty().split(",")
+    return ModelSenses(thinks = "thinks" in names, sees = "sees" in names, hears = "hears" in names)
 }

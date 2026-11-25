@@ -1,6 +1,6 @@
 package com.suhel.llamabro.demo.chat
 
-import com.suhel.llamabro.demo.models.Catalog
+import com.suhel.llamabro.demo.data.ModelSenses
 import com.suhel.llamabro.demo.models.DownloadFailure
 import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.models.LibraryModel
@@ -15,46 +15,21 @@ internal fun missingOrDownloading(name: String, status: DownloadStatus): ChatMod
     }
 
 /**
- * The chat's model as the composer sees it. Loaded, the model says whether it sees, hears and talks; otherwise the
- * catalog says whether it sees, [heard] (the models that heard on their last load) whether it hears (D76), and
- * [talking] (those that spoke on their last load) whether it talks (D100).
+ * The chat's model as the composer sees it: waking while it loads, else ready with what it can do ([sensesOf]): the
+ * loaded model's word, else what [senses] remembers of its header or last load (D76, D155), else the catalog's; voice
+ * mode by its load, or [talking] (those that spoke on their last load, D100).
  */
 internal fun readyOrWaking(
     key: HfModel,
     name: String,
     hostState: HostState,
-    heard: Set<String> = emptySet(),
+    senses: Map<String, ModelSenses> = emptyMap(),
     talking: Set<String> = emptySet(),
-): ChatModelState =
-    when {
-        hostState is HostState.Waking && hostState.key == key -> {
-            ChatModelState.Waking(hostState.progress)
-        }
-
-        hostState is HostState.Ready && hostState.key == key -> {
-            ChatModelState.Ready(
-                name,
-                hostState.model.info.supportsVision,
-                Thinking.canThink(hostState.model.info, Catalog.byKey(key)),
-                hears = hostState.model.info.supportsAudio,
-                talks = hostState.model.info.supportsAudio && hostState.model.info.supportsSpeech,
-            )
-        }
-
-        else -> {
-            // not loaded: what its last load showed, else the catalog's word for any quant of the repo, so a suggested
-            // model that talks shows the mic and voice mode before its first load (a model that talks hears)
-            val catalog = Catalog.byRepo(key.repo)
-            val catalogTalks = catalog?.talks == true
-            ChatModelState.Ready(
-                name,
-                catalog?.sees ?: false,
-                catalog?.thinks ?: false,
-                hears = key.toString() in heard || catalogTalks,
-                talks = key.toString() in talking || catalogTalks,
-            )
-        }
-    }
+): ChatModelState {
+    if (hostState is HostState.Waking && hostState.key == key) return ChatModelState.Waking(hostState.progress)
+    val known = sensesOf(key, hostState, senses[key.toString()], talking)
+    return ChatModelState.Ready(name, known.sees, known.thinks, hears = known.hears, talks = known.talks)
+}
 
 /**
  * Why model [name] can't take a message's pictures or voice message, when it can't see or hear them, or null when it
@@ -98,7 +73,7 @@ internal data class ModelInputs(
     val choice: ModelChoice,
     val library: List<LibraryModel>?,
     val host: HostState,
-    val heard: Set<String>,
+    val senses: Map<String, ModelSenses>,
     val talking: Set<String>,
 )
 

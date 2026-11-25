@@ -121,7 +121,7 @@ class ChatEngineVoiceTest {
             assertTrue(chat.send("hi"))
             eventually("the first reply") { rows(chat).count { it.state == MessageState.Done } == 2 }
             eventually("the model is known to hear") { (chat.model.value as? ChatModelState.Ready)?.hears == true }
-            assertTrue(swift.toString() in settings.hearingModels.first())
+            assertTrue(settings.modelSenses.first()[swift.toString()]?.hears == true)
             assertTrue(chat.send("", emptyList(), NewVoice("a.wav", 1_000, listOf(0.5f))))
             eventually("the second reply") { rows(chat).count { it.state == MessageState.Done } == 4 }
             val audio = sent.last().filterIsInstance<Content.Audio>().single()

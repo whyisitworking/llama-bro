@@ -33,12 +33,14 @@ import com.suhel.llamabro.demo.chat.Streamer
 import com.suhel.llamabro.demo.chat.VoiceChat
 import com.suhel.llamabro.demo.chat.recommendedCard
 import com.suhel.llamabro.demo.chat.sdkStream
+import com.suhel.llamabro.demo.chat.senses
 import com.suhel.llamabro.demo.data.AudioStore
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.TokenStore
 import com.suhel.llamabro.demo.data.db.ChatDatabase
+import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.DownloadScheduler
 import com.suhel.llamabro.demo.models.FitView
@@ -186,6 +188,7 @@ class AppContainer(
             streamer = streamer ?: ::sdkStream,
             beforeTurn = recovery::await,
             card = { sampling.card(it) },
+            readSenses = { key -> hub.capabilities(key)?.senses(Catalog.byRepo(key.repo)) },
         )
 
     /** The loaded model as Settings › Memory and the model sheet show it, with Unload (D59). */
