@@ -52,6 +52,12 @@ object DemoMotion {
     const val DOTS_MILLIS = 1_200
     const val DOTS_STAGGER = 0.2f
 
+    /**
+     * A screen arriving slides in this share of the screen's width along the navigation's axis (D157): a fifth, more
+     * than Material's 30 dp shared axis, so a navigation reads as one.
+     */
+    const val SCREEN_SLIDE_SHARE = 0.2f
+
     /** A button arriving grows from this share of its size while it fades in (Material's FAB). */
     const val POP_SCALE = 0.8f
 

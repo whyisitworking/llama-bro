@@ -326,16 +326,17 @@ private fun Graph(
             if (layout == AppLayout.Sidebar) popUpTo(Routes.CHAT_PATTERN) { inclusive = true }
         }
     }
-    // screens fade through, never crossfade: the chat's greeting, orb and chips drew over
-    // the Models rows for 300 ms. The one leaving fades out, then the one arriving fades in, on the text motion tokens
+    // screens fade through, never crossfade: the chat's greeting, orb and chips drew over the Models rows for 300 ms.
+    // The one leaving fades out, then the one arriving fades in, on the text motion tokens, both along one axis (D157):
+    // forward from the end, back from the start
     val still = animationsDisabled()
     NavHost(
         nav,
         startDestination = start,
         enterTransition = { screenEnter(still) },
         exitTransition = { screenExit(still) },
-        popEnterTransition = { screenEnter(still) },
-        popExitTransition = { screenExit(still) },
+        popEnterTransition = { screenEnter(still, back = true) },
+        popExitTransition = { screenExit(still, back = true) },
     ) {
         composable(Routes.CHATS) {
             ChatListHome(shell, openChat, onNewChat = { openChat(Routes.NEW_CHAT_ID) }, onDelete = deleteChat)

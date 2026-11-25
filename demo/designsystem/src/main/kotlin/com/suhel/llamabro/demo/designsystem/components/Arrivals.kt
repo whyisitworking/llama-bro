@@ -1,6 +1,8 @@
 package com.suhel.llamabro.demo.designsystem.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -54,6 +56,7 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 import kotlin.math.PI
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -237,19 +240,39 @@ fun <T> enterFadeSpec(): FiniteAnimationSpec<T> =
     )
 
 /**
- * A screen arriving (a navigation): it waits [DemoMotion.TEXT_OUT_MILLIS] for the one leaving to fade out, then fades
- * in, so two screens' text never draw over each other (D119). None when [still].
+ * A screen arriving (a navigation), along one axis (D157, Material's shared axis): it slides in from the end a
+ * [DemoMotion.SCREEN_SLIDE_SHARE] of the screen's width, or from the start when going [back], settling over
+ * [DemoMotion.ENTER_MILLIS]; it waits [DemoMotion.TEXT_OUT_MILLIS] for the one leaving to fade out, then fades in, so
+ * two screens' text never draw over each other (D119). The way it slides follows the layout's direction. None when
+ * [still].
  */
-fun screenEnter(still: Boolean): EnterTransition =
+fun <S> AnimatedContentTransitionScope<S>.screenEnter(still: Boolean, back: Boolean = false): EnterTransition =
     if (still) {
         EnterTransition.None
     } else {
-        fadeIn(tween(DemoMotion.TEXT_IN_MILLIS, delayMillis = DemoMotion.TEXT_OUT_MILLIS, easing = DemoMotion.enter))
+        fadeIn(tween(DemoMotion.TEXT_IN_MILLIS, delayMillis = DemoMotion.TEXT_OUT_MILLIS, easing = DemoMotion.enter)) +
+            slideIntoContainer(
+                if (back) SlideDirection.End else SlideDirection.Start,
+                tween(DemoMotion.ENTER_MILLIS, easing = DemoMotion.enter),
+                initialOffset = { (it * DemoMotion.SCREEN_SLIDE_SHARE).roundToInt() },
+            )
     }
 
-/** A screen leaving: it fades out before the next fades in. None when [still]. */
-fun screenExit(still: Boolean): ExitTransition =
-    if (still) ExitTransition.None else fadeOut(tween(DemoMotion.TEXT_OUT_MILLIS, easing = DemoMotion.exit))
+/**
+ * A screen leaving, along the same axis (D157): it fades out before the next fades in, sliding half as far the other
+ * way as it goes. None when [still].
+ */
+fun <S> AnimatedContentTransitionScope<S>.screenExit(still: Boolean, back: Boolean = false): ExitTransition =
+    if (still) {
+        ExitTransition.None
+    } else {
+        fadeOut(tween(DemoMotion.TEXT_OUT_MILLIS, easing = DemoMotion.exit)) +
+            slideOutOfContainer(
+                if (back) SlideDirection.End else SlideDirection.Start,
+                tween(DemoMotion.EXIT_MILLIS, easing = DemoMotion.exit),
+                targetOffset = { (it * DemoMotion.SCREEN_SLIDE_SHARE / 2f).roundToInt() },
+            )
+    }
 
 /**
  * How a row's size changes and its neighbours move: one spec for both, the list motion's place step

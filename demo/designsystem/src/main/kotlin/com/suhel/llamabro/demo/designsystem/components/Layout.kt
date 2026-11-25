@@ -140,6 +140,11 @@ fun TopBarTitle(
     light: Boolean = false,
     /** How many lines the title may wrap to before it is cut: 2 for a model's name, which must be read whole (D150). */
     lines: Int = 1,
+    /**
+     * Small (D156): the title in [DemoType.titleSmall] and the subtitle, dimmer, in [DemoType.bodySmall], each on one
+     * line, the subtitle on two at a large font, so a model's name under a chat's is still read whole.
+     */
+    compact: Boolean = false,
 ) {
     val colors = LocalDemoColors.current
     // on a floating bar a title that opens something is a raised pill of its own (D148); a page's name is just text
@@ -164,7 +169,12 @@ fun TopBarTitle(
                 title,
                 Modifier.weight(1f, fill = false),
                 color = colors.ink,
-                style = if (light) DemoType.screenTitleLight else DemoType.screenTitle,
+                style =
+                    when {
+                        compact -> DemoType.titleSmall
+                        light -> DemoType.screenTitleLight
+                        else -> DemoType.screenTitle
+                    },
                 maxLines = maxOf(lines, if (isLargeText()) 2 else 1),
                 overflow = TextOverflow.Ellipsis,
             )
@@ -177,24 +187,30 @@ fun TopBarTitle(
                 )
             }
         }
-        if (subtitle != null) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    subtitle,
-                    color = colors.muted,
-                    style = DemoType.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (chevron) {
-                    Icon(
-                        DemoIcons.ChevronDown,
-                        contentDescription = null,
-                        tint = colors.muted,
-                        modifier = Modifier.size(DemoSize.iconSmall),
-                    )
-                }
-            }
+        if (subtitle != null) TopBarSubtitle(subtitle, chevron, compact)
+    }
+}
+
+/** A [TopBarTitle]'s second line, dimmer, with the chevron after it when it has one; [compact] as there (D156). */
+@Composable
+private fun TopBarSubtitle(subtitle: String, chevron: Boolean, compact: Boolean) {
+    val colors = LocalDemoColors.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            subtitle,
+            Modifier.weight(1f, fill = false),
+            color = colors.muted,
+            style = if (compact) DemoType.bodySmall else DemoType.bodyMedium,
+            maxLines = if (compact && isLargeText()) 2 else 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (chevron) {
+            Icon(
+                DemoIcons.ChevronDown,
+                contentDescription = null,
+                tint = colors.muted,
+                modifier = Modifier.size(DemoSize.iconSmall),
+            )
         }
     }
 }
