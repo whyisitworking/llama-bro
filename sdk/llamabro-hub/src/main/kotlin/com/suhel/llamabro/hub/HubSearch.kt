@@ -180,11 +180,7 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
     }
 
     /** A GGUF's `general.sampling.*` (F17) from a file on the phone: no request at all (D79). */
-    fun fromLocalFile(file: File): Sampling? =
-        RandomAccessFile(file, "r").use { raf ->
-            val bytes = raf.channel.map(FileChannel.MapMode.READ_ONLY, 0, minOf(raf.length(), HEADER_LIMIT_BYTES))
-            samplingOf(GgufHeader.metadata(bytes) { it.startsWith(GGUF_SAMPLING) })
-        }
+    fun fromLocalFile(file: File): Sampling? = samplingOf(header(file) { it.startsWith(GGUF_SAMPLING) })
 
     /**
      * [model]'s chat template and, from [projector] (null when none is installed), whether it takes images and audio
