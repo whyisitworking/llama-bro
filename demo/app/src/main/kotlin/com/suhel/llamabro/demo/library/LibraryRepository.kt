@@ -17,6 +17,7 @@ import com.suhel.llamabro.rag.LibraryContents
 import com.suhel.llamabro.rag.TokenCounter
 import com.suhel.llamabro.rag.search
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,11 +41,15 @@ import okio.Path
  */
 data class Mismatch(val built: String, val wanted: String)
 
+/** The library is being rebuilt: what needs it fails at once rather than wait minutes for the rebuild to end. */
+class LibraryBusy : IllegalStateException("the library is being rebuilt")
+
 /**
  * The person's library (docs/design/rag.md): documents imported from files, cut and embedded by [embedder] through
  * [embedders], and kept in [dir] (under `noBackupFilesDir`: the vectors are rebuilt from the documents, so a backup
  * needn't carry them). The list is read from the folder without loading the embedder; importing, removing, searching
- * and rebuilding load it, one at a time.
+ * and rebuilding load it. The repository's lock covers only opening and closing the library and a rebuild's claim on
+ * the folder, so a search never waits behind an import or a rebuild.
  *
  * A library another embedder built is never changed or deleted behind the person's back: opening it fails with
  * [IndexMismatch], [mismatch] says so, and [rebuild] embeds its passages again with the embedder on the phone.
@@ -84,10 +89,14 @@ class LibraryRepository(
     /** The folder was built by another embedder; null when it opens, or hasn't been opened yet. */
     val mismatch: StateFlow<Mismatch?> = _mismatch.asStateFlow()
 
+    // covers opening and closing the library and the rebuild's claim on the folder, never a whole import or rebuild
     private val lock = Mutex()
 
     /** The library open on a loaded embedder; opened again when the host has loaded the embedder again. */
     private var open: Pair<Model, Library>? = null
+
+    /** A rebuild owns the folder; under [lock]. */
+    private var rebuilding = false
 
     /**
      * Reads [uri] ([read]: a [TextImport]) and adds it, replacing the document from the same file: the library's
@@ -151,34 +160,35 @@ class LibraryRepository(
     /**
      * Runs [block] with the library open on the embedder, which stays leased until [block] ends: a chat's turn, whose
      * model may search through the SDK's tool (D172) while it writes. The repository's lock is held only to open the
-     * library, so an import or a removal can run meanwhile (the library takes one write at a time itself); a rebuild
-     * closes it, and a search after that fails as a closed library does.
+     * library, so an import or a removal can run meanwhile (the library takes one write at a time itself), and a turn
+     * never waits for one. During a rebuild it fails at once with [LibraryBusy]; a rebuild that starts later closes
+     * the library, and a search after that fails as a closed library does.
      */
-    suspend fun <T> leased(block: suspend (Library) -> T): T =
-        embedders.use(embedder) { model ->
-            val library = lock.withLock { open?.takeIf { it.first === model }?.second ?: openOn(model) }
-            block(library)
-        }
+    suspend fun <T> leased(block: suspend (Library) -> T): T = withLibrary(block)
 
-    /** The passages that best answer [query] (the library's defaults, F191). */
+    /** The passages that best answer [query] (the library's defaults, F191), as of the last commit. */
     suspend fun search(query: String): List<Hit> = withLibrary { it.search(query) }
 
     /**
      * Embeds the library again with the embedder on the phone, from the passages it stored (`Library.rebuild`):
-     * nothing is deleted, and until it ends the folder holds the old library.
+     * nothing is deleted, and until it ends the folder holds the old library. It claims the folder while it runs:
+     * searches, imports and removals fail at once with [LibraryBusy] rather than wait, and a second rebuild too.
      */
     fun rebuild(): Flow<IngestProgress> =
         flow {
-            lock.withLock {
-                embedders.use(embedder) { model ->
+            embedders.use(embedder) { model ->
+                lock.withLock {
+                    if (rebuilding) throw LibraryBusy()
+                    rebuilding = true
                     open?.second?.close()
                     open = null
-                    try {
-                        emitAll(Library.rebuild(fs, dir, model, EmbeddingFormat.of(model.info), chunker(model)))
-                        _mismatch.value = null
-                    } finally {
-                        changes.update { it + 1 }
-                    }
+                }
+                try {
+                    emitAll(Library.rebuild(fs, dir, model, EmbeddingFormat.of(model.info), chunker(model)))
+                    _mismatch.value = null
+                } finally {
+                    withContext(NonCancellable) { lock.withLock { rebuilding = false } }
+                    changes.update { it + 1 }
                 }
             }
         }
@@ -193,12 +203,17 @@ class LibraryRepository(
         }
     }
 
+    // the lock covers opening the library, not [block]: the library serializes its own writes, and embedding runs
+    // outside them, so a search sees the library as of the last commit and never waits for an import
     private suspend fun <T> withLibrary(block: suspend (Library) -> T): T =
-        lock.withLock {
-            embedders.use(embedder) { model ->
-                val library = open?.takeIf { it.first === model }?.second ?: openOn(model)
-                block(library)
-            }
+        embedders.use(embedder) { model ->
+            val library =
+                lock.withLock {
+                    // the rebuild owns the folder: opening it now would delete the rebuild's half-written folder
+                    if (rebuilding) throw LibraryBusy()
+                    open?.takeIf { it.first === model }?.second ?: openOn(model)
+                }
+            block(library)
         }
 
     private suspend fun openOn(model: Model): Library {

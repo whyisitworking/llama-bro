@@ -16,13 +16,16 @@ import com.suhel.llamabro.rag.IngestProgress.Embedded
 import com.suhel.llamabro.rag.IngestProgress.Saved
 import com.suhel.llamabro.rag.Library
 import com.suhel.llamabro.testing.FakeLlamaBro
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 import org.junit.After
@@ -133,6 +136,37 @@ class LibraryRepositoryTest {
             assertEquals(listOf("Para 01 text."), repository.search("para").map { it.text })
         }
 
+    @Test fun searchDuringImportReturnsPromptly() =
+        runBlocking {
+            fake.embeddings(unit(0))
+            fake.embeddings(unit(1))
+            repository.import(file("a.md", "Para 00 text.")).toList()
+
+            // an import held between its passages' cutting and their embedding
+            val held = CompletableDeferred<Unit>()
+            val resume = CompletableDeferred<Unit>()
+            val importing =
+                scope.launch {
+                    repository.import(file("b.md", "Para 01 text.", "Para 02 text.")).collect {
+                        if (it is Chunked) {
+                            held.complete(Unit)
+                            resume.await()
+                        }
+                    }
+                }
+            try {
+                held.await()
+                fake.embeddings(unit(1)) // the query
+                val hits = withTimeout(PROMPTLY) { repository.search("para") }
+                assertEquals("the library as of the last commit", listOf("Para 00 text."), hits.map { it.text })
+            } finally {
+                fake.embeddings(unit(2), unit(3))
+                resume.complete(Unit)
+            }
+            importing.join()
+            assertEquals(listOf("a", "b"), repository.documents.first().map { it.id })
+        }
+
     @Test fun mismatchOffersRebuild() =
         runBlocking {
             // a library another embedder built: vectors of 3 floats, where the one on the phone gives 4
@@ -181,4 +215,9 @@ class LibraryRepositoryTest {
             assertEquals(0, fake.openModels)
             assertEquals(emptyList<DocumentInfo>(), repository.documents.first())
         }
+
+    private companion object {
+        /** Far longer than a search over a few passages takes, far shorter than an import's wait. */
+        const val PROMPTLY = 5_000L
+    }
 }
