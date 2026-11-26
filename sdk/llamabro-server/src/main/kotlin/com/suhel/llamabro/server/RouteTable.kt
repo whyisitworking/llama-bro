@@ -25,7 +25,7 @@ private fun get(path: String, endpoint: Endpoint) = ServedRoute(HttpMethod.Get, 
  * The design's route table ([§2 Routes](https://github.com/whyisitworking/llama-bro/blob/main/docs/design/server.md)).
  * Off by default: the routes that change or save the shared model, which upstream gates too (`POST /props` needs
  * `--props`, slot save and restore `--slot-save-path`;
- * [D156](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d156)).
+ * [D164](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d164)).
  * Audio has its own routes, and `/v1/realtime` isn't served.
  */
 internal val routeTable: List<ServedRoute> =

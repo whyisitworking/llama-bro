@@ -2392,7 +2392,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   (Mac, 2026-11-26). What is compared: status and body, with generated ids (chat, response, message and `tool_use` ids) and timings masked, and the cache counts
   that `compare_timings` names kept; headers are not compared. `--load-mode none` and `--fit off` are the core's
   defaults (D30 and the fit in section 9 of the architecture), so the server run sets nothing for them. Request s-27, the unparseable body, is absent from
-  `server-requests.jsonl` on purpose: upstream and the server give different messages there (D157), so it can't be
+  `server-requests.jsonl` on purpose: upstream and the server give different messages there (D165), so it can't be
   compared; it was run once by hand: the bad body 400 with the server's message. `contract` on the
   C API still 76/76, 75/75 (Llama 3.2 3B) and 12/12 (audio) identical with the `tool_use` mask.
 - **Means:** the server adds nothing to what the core answers, so the C API contract (F180) carries over to HTTP: a
@@ -2400,13 +2400,13 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   What the server sends that upstream would not is its own checks (key, media, body size and JSON) and
   `/v1/models`; anthropic 2.x has no `temperature` argument, so a client sets it through `extra_body`. Content
   types are not compared (`http-run.py` records no headers); the module tests cover them.
-- **Feeds:** `server-run.sh`, `HostServerContractTest`, D155, D157, design `server.md` §4.
+- **Feeds:** `server-run.sh`, `HostServerContractTest`, D163, D165, design `server.md` §4.
 
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
-| F189 | `llamabro-server` answers as upstream `llama-server` does; the official OpenAI and Anthropic clients work against it | D155, D157, server.md §4 |
+| F189 | `llamabro-server` answers as upstream `llama-server` does; the official OpenAI and Anthropic clients work against it | D163, D165, server.md §4 |
 | F188 | A message sent as an edit ends could land between the edited message and its reply | ChatEngine |
 | F187 | A bar drawing the glass on it saves a quarter of a chat's CPU time per frame, a touch softer | D154 |
 | F186 | The glass's CPU cost is its render passes; one pass blurs cleanly only below about 4 dp | D153, F185 |

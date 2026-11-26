@@ -1,7 +1,7 @@
 # Serving on Wi-Fi: `llamabro-server` and the demo's server mode
 
 Status: **built, phone run pending**; the SDK part (plan Tasks 1-8: core `exchange`, `llamabro-server`, its tests and these docs) and the demo part (the Server page and the docked view) are built; the phone run that verifies them is still to do (2026-11-26); plan in [docs/superpowers/plans/2026-11-26-llamabro-server.md](../superpowers/plans/2026-11-26-llamabro-server.md). Decisions are recorded in
-[decisions.md](../decisions.md) as they are taken; the module's are D155-D157 and F189, the demo's D158.
+[decisions.md](../decisions.md) as they are taken; the module's are D163-D165 and F189, the demo's D166.
 
 ## Intent
 
@@ -43,7 +43,7 @@ with the same statuses and bodies (F189), because it *is* llama-server's core (D
 - A remote client changing the shared model behind the chat's back: `POST /props`, `POST /lora-adapters` and
   `POST /slots/:id` (save and restore write files) are refused unless the app opts in per route.
 - Anything listening when the person didn't ask: no auto-start, and the server stops when the person stops it (Stop
-  on the page or the notification); swiping the app away does not stop it (D158).
+  on the page or the notification); swiping the app away does not stop it (D166).
 
 ## Constraints from the code as it is (main at `0896b33e`)
 
@@ -201,7 +201,7 @@ Failed    no Wi-Fi · port in use · the model didn't load   [Try again]
 - **Temperature:** `PowerManager.currentThermalStatus` and `getThermalHeadroom`, shown, not acted on (the throttle is
   a separate piece of work).
 - **One model in v1.** `/v1/models` lists the served model, and every request is answered by it whatever its
-  `model` names, as upstream's single-model llama-server answers (D156, amended): Claude Code sends its own model's
+  `model` names, as upstream's single-model llama-server answers (D164, amended): Claude Code sends its own model's
   name. The module's own `ModelUnavailable` 404 stays for an app whose `ServedModels` refuses an id.
 
 ### 4. Tests

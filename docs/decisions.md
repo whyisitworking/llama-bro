@@ -250,7 +250,7 @@ Status: Decided (2026-11-03)
 Context: Running the engine in a separate process would add IPC, a service lifecycle and a second memory footprint.
 Decision: The engine runs in-process only.
 Consequences: A native crash takes the app down; in exchange there is no IPC cost and no local network surface (see D12).
-Amended by D155: core stays socket-free; serving the network is a separate opt-in module.
+Amended by D163: core stays socket-free; serving the network is a separate opt-in module.
 
 <a id="d6"></a>
 ### D6. Engine lifetime
@@ -2412,7 +2412,7 @@ chips are a touch softer, drawn at the bar's half resolution and with the bar's 
 into their edge, so a Full phone keeps the sharper glass by default. A Light phone keeps the chips' and panels' blur.
 
 <a id="d155"></a>
-### D155. Serving over the network is a separate, opt-in module, `llamabro-server`; core stays socket-free
+### D163. Serving over the network is a separate, opt-in module, `llamabro-server`; core stays socket-free
 
 Status: Decided (2026-11-26)
 
@@ -2436,7 +2436,7 @@ adds Ktor, and Android's NSD for discovery, at its edge. Router mode, MCP, the C
 management routes are not served. F189 shows that what the module answers is what the core answers.
 
 <a id="d156"></a>
-### D156. `llamabro-server`'s defaults follow upstream; the routes that change the shared model are off
+### D164. `llamabro-server`'s defaults follow upstream; the routes that change the shared model are off
 
 Status: Decided (2026-11-26)
 
@@ -2467,7 +2467,7 @@ name (and a second one for its background calls), so a 404 would refuse every ca
 needs no `ANTHROPIC_MODEL`. `/v1/models` still lists the served model alone.
 
 <a id="d157"></a>
-### D157. Media in a served request must be a `data:` URL or raw base64; a body must be JSON and under `maxBodyBytes`
+### D165. Media in a served request must be a `data:` URL or raw base64; a body must be JSON and under `maxBodyBytes`
 
 Status: Decided (2026-11-26)
 
@@ -2491,7 +2491,7 @@ Consequences: A client can't read the phone's files or reach its network through
 image by URL must send it as `data:`. Every other request and answer is upstream's (F189).
 
 <a id="d158"></a>
-### D158. Swiping the app away from Recents keeps the phone serving; Stop ends it
+### D166. Swiping the app away from Recents keeps the phone serving; Stop ends it
 
 Status: Decided (2026-11-26)
 
@@ -2507,4 +2507,4 @@ The manifest sets `android:stopWithTask="false"` on the service, Android's defau
 Consequences: The notification is the control once the app is swiped away: it names the model and the address and
 carries Stop. A person who swipes the app away expecting serving to end finds the notification still there, which is
 the one place that says the phone still serves.
-Next free IDs: D159, F190.
+Next free IDs: D167, F190.

@@ -28,7 +28,7 @@ tool. The demo adds a second small host for the embedder, a Library page and sou
 - Every SDK task ends with `sdk/scripts/check.sh --only jvm` (and `api`, `lint`, `quality` once the module exists)
   passing; the docs task with the full `sdk/scripts/check.sh`; demo tasks with `demo/scripts/check.sh`. No inference
   on an emulator; device runs only in Task 11, attended.
-- IDs: take the next free D and F numbers at the time of writing (the server plan reserves D155-D157, F189-F190).
+- IDs: take the next free D and F numbers at the time of writing (the server plan reserves D163-D165, F189-F190).
   Commit after each task; do not push.
 
 ## Review Focus

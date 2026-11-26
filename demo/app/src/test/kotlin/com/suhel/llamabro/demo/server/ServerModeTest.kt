@@ -137,7 +137,7 @@ class ServerModeTest {
             val port = serving().port
             val key = keys.current()
             // Claude Code names its own model; as upstream's llama-server with one model loaded, the phone serves its
-            // one model whatever the name (D156)
+            // one model whatever the name (D164)
             fake.raw(200, "{}")
             assertEquals(200, call(port, chat, key = key, body = """{"model":"claude-sonnet-4-5"}""").status)
             fake.raw(200, "{}")

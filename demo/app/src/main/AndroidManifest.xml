@@ -49,7 +49,7 @@
             android:foregroundServiceType="shortService" />
         <!-- server mode keeps serving with the app in the background; it ends with serving, with Stop in its notification.
              stopWithTask="false" is Android's default, set here so the choice shows: swiping the app away from Recents
-             keeps serving (D158) -->
+             keeps serving (D166) -->
         <service
             android:name=".ServerService"
             android:exported="false"

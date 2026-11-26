@@ -58,7 +58,7 @@ The SDK deviates from upstream in these places, each justified by a measurement 
 
 ### 1.3 In-process, one runtime
 
-The engine runs in the application's process (D5). Core opens no socket (an app may add the opt-in `llamabro-server`, D155, section 5.9): a localhost port would be reachable by any other app on the phone, and an out-of-process service would add IPC and a second memory footprint. The runtime is a process singleton (D6, section 13).
+The engine runs in the application's process (D5). Core opens no socket (an app may add the opt-in `llamabro-server`, D163, section 5.9): a localhost port would be reachable by any other app on the phone, and an out-of-process service would add IPC and a second memory footprint. The runtime is a process singleton (D6, section 13).
 
 ---
 
@@ -387,13 +387,13 @@ Typed output and typed tools live in their own module, `llamabro-typed` (package
 
 ### 5.9 `llamabro-server`
 
-`llamabro-server` (package `com.suhel.llamabro.server`) serves a loaded `Model` over HTTP with llama-server's own API, for a docked phone that other devices on the Wi-Fi call. It is a separate, opt-in module: core stays socket-free and the module listens only when the app calls `start()` (D155). It is a Kotlin server (Ktor CIO) over the SDK, not upstream's HTTP layer and not a subprocess.
+`llamabro-server` (package `com.suhel.llamabro.server`) serves a loaded `Model` over HTTP with llama-server's own API, for a docked phone that other devices on the Wi-Fi call. It is a separate, opt-in module: core stays socket-free and the module listens only when the app calls `start()` (D163). It is a Kotlin server (Ktor CIO) over the SDK, not upstream's HTTP layer and not a subprocess.
 
 - **The seam.** Core gains `Model.exchange(endpoint, body)` (`@InternalLlamaBroApi`), which returns a `RawPart.Head` (status and content type) and then the body's bytes, exactly as llama-server's handler wrote them: SSE `event:` lines and JSON error bodies included. `rawRequest` keeps only `data:` lines and turns an error into an exception, so it can't carry the Anthropic or Responses streams. No native change: the C API already passes the status with every chunk. Cancelling the collector cancels the request, so a client that hangs up stops generation.
 - **API.** `LlamaBroServer(config, models)` has `state` (`Stopped`, `Starting`, `Serving(port)`, `Failed`), `events` (`RequestStarted`, `RequestEnded`, `Rejected`, for an app's request log) and `start()` and `stop()`. `ServedModels` is the app's side: `list()` for `/v1/models` and `acquire(id)`, which hands out a `ServedLease` the server releases when the request ends, however it ends; `ModelUnavailable` is a 404 for an unknown id and a 503 when none is loaded. `ServerConfig { }` holds `host`, `port`, `apiKey`, `cors`, `routes`, `maxBodyBytes`, `workDir` and `advertise`.
-- **Defaults (D156).** `127.0.0.1:8080`, no key, no CORS, 32 MiB bodies. A key goes in `Authorization: Bearer` or `x-api-key`; `/health` and `/v1/models` are open. `POST /props`, `/lora-adapters` and `/slots/:id` are off unless enabled with `Routes.enable`, as upstream gates them (`--props`, `--slot-save-path`). There is no queue of ours: a request beyond the slots waits in llama-server's own. Unknown or switched-off routes answer 404 in OpenAI's shape.
+- **Defaults (D164).** `127.0.0.1:8080`, no key, no CORS, 32 MiB bodies. A key goes in `Authorization: Bearer` or `x-api-key`; `/health` and `/v1/models` are open. `POST /props`, `/lora-adapters` and `/slots/:id` are off unless enabled with `Routes.enable`, as upstream gates them (`--props`, `--slot-save-path`). There is no queue of ours: a request beyond the slots waits in llama-server's own. Unknown or switched-off routes answer 404 in OpenAI's shape.
 - **Routes.** Chat, completions, `/completion`, `/infill`, Anthropic messages and `count_tokens`, Responses and `input_tokens`, embeddings, rerank, tokenize, detokenize, apply-template, `/props`, `/slots`, `/metrics` and `GET /lora-adapters` go through `exchange`. `/health` and `/v1/models` are answered by the module. Audio is answered from `Model.transcribe` (multipart, `json` or `text`) and `Model.speak` (streamed `pcm` or `wav`, since there is no encoder for others; a `voice` the model lacks is dropped). The realtime WebSocket is not served.
-- **Checks before a model (D157).** Size (413), JSON (the server's own 400), and media: every media key anywhere in the body must hold a `data:` URL or raw base64, so a remote client can't make the phone read `file://` under the SDK's media folder (D87) or fetch a URL. A refused request never holds a lease.
+- **Checks before a model (D165).** Size (413), JSON (the server's own 400), and media: every media key anywhere in the body must hold a `data:` URL or raw base64, so a remote client can't make the phone read `file://` under the SDK's media folder (D87) or fetch a URL. A refused request never holds a lease.
 - **Discovery.** With `advertise`, `NsdManager` registers `_http._tcp` and `_llamabro._tcp` (TXT `path=/v1`, `auth=key|none`) while the server serves; a stop before NSD confirms a registration still withdraws it. A network that refuses the registration leaves the server serving.
 - **Verified.** `FakeLlamaBro` host tests cover each guard, the streams and the audio routes. `server-contract` runs the same requests against upstream's `llama-server` and the module, and the official `openai` and `anthropic` Python SDKs against the module (F189).
 
@@ -916,7 +916,7 @@ Deliberately not part of the SDK, with the reason:
 | Deciding which calls need approval, and gating (policy) | Application policy (D11); the SDK only pauses (D62, §6.2) |
 | Scheduling, background execution and notifications for downloads | The application's choice of executor (D9) |
 | Model recommendations | Which model suits an app is the app's choice; the hub searches the Hub and estimates fit (D68, D110, §12) but ranks nothing for the app |
-| An out-of-process server or a subprocess `llama-server` | In-process only (D5); serving HTTP from the same process is the opt-in `llamabro-server` (D155, section 5.9) |
+| An out-of-process server or a subprocess `llama-server` | In-process only (D5); serving HTTP from the same process is the opt-in `llamabro-server` (D163, section 5.9) |
 | Router mode | Needs subprocesses; load several `Model`s instead |
 | llama-server's built-in tools and MCP | Kotlin tools cover the need |
 | Context shift | Not supported for multimodal or hybrid models; compaction is a client feature (D13) |

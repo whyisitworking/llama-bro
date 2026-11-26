@@ -32,7 +32,7 @@ process alive with a `specialUse` foreground service, and shows a Server page an
 - Every SDK task ends with `sdk/scripts/check.sh --only <step>` passing, the whole `sdk/scripts/check.sh` before the
   docs task's commit; demo tasks with `demo/scripts/check.sh`. Never run inference on an emulator; device runs only in
   Task 13, attended.
-- Next free IDs: D155, F189. Commit after each task; do not push.
+- Next free IDs: D163, F189. Commit after each task; do not push.
 
 ## Review Focus
 
@@ -268,14 +268,14 @@ process alive with a `specialUse` foreground service, and shows a Server page an
 
 ### Task 8: SDK docs and decisions
 
-**Files:** `docs/decisions.md` (D155: D5's scope, core stays socket-free, the server is a separate opt-in module;
-D156: `llamabro-server`'s defaults follow upstream, the routes off by default and why; D157: media as `data:` only, a
-deviation from upstream, with the reason), `docs/architecture.md` (a section on the module, citing D155-D157),
+**Files:** `docs/decisions.md` (D163: D5's scope, core stays socket-free, the server is a separate opt-in module;
+D164: `llamabro-server`'s defaults follow upstream, the routes off by default and why; D165: media as `data:` only, a
+deviation from upstream, with the reason), `docs/architecture.md` (a section on the module, citing D163-D165),
 `docs/release-notes.md`, `README.md` modules table, `docs/design/server.md` (status: building).
 
 - [ ] **Step 1:** write the entries; cite them from `ServerConfig`, `MediaGuard` and `RouteTable` KDoc.
 - [ ] **Step 2: Run** `sdk/scripts/check.sh`. Expected: `ALL PASS`.
-- [ ] **Step 3: Commit** `docs: D155-D157, llamabro-server in the architecture and release notes`.
+- [ ] **Step 3: Commit** `docs: D163-D165, llamabro-server in the architecture and release notes`.
 
 ### Task 9: Demo server mode (no UI)
 

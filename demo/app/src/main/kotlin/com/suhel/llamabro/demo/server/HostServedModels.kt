@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * The one model server mode serves, [key], listed by its `HfModel` string; [created] is Unix seconds. Every request is
  * answered by [model], whatever its `model` field names, as upstream's llama-server answers with one model loaded:
- * Claude Code and other clients send their own model's name (D156). [model] is the serving lease's, so a request never
+ * Claude Code and other clients send their own model's name (D164). [model] is the serving lease's, so a request never
  * touches `ModelHost`: a per-request hold would start a new load whenever the host has let go of the served model (a
  * delete), and wait behind the serving lease for ever. The requests in flight are counted instead, so serving releases
  * its lease only once they have ended ([drained]).

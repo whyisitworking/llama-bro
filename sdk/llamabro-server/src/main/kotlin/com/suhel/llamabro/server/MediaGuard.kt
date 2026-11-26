@@ -27,7 +27,7 @@ private val rawDataTypes = setOf("base64", "text")
  * gives it for chat attachments, decodes `data:` URLs and decodes anything else as base64 (OpenAI's `input_audio`
  * sends raw base64). So a remote client could read another chat's pictures or reach the LAN through the device;
  * only a `data:` URL or a value with no scheme passes
- * ([D157](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d157)). The keys are
+ * ([D165](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d165)). The keys are
  * checked wherever they are, so a nesting upstream adds (a history, a tool result) can't slip past; text is never
  * media, so `file://` in a message's text passes.
  */

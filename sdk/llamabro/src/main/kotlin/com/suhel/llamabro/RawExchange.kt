@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.flow
 
 /**
  * [Model.rawRequest] for a server in front of the model
- * ([D155](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d155)):
+ * ([D163](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d163)):
  * llama-server's status and body bytes as its handler wrote them, SSE `event:` lines and JSON error bodies
  * included, where `rawRequest` keeps only `data:` payloads and fails on an error status.
  * One [RawPart.Head] first, then the [RawPart.Body] parts; the flow ends when the response does.
