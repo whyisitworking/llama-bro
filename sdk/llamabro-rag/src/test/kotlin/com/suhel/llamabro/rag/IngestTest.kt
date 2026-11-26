@@ -228,6 +228,40 @@ class IngestTest {
         }
 
     @Test
+    fun compactionFailureAfterCommitStillSaves() =
+        runBlocking {
+            val crashing = CrashingFileSystem(fs)
+            val model = embedder()
+            val library = open(model, files = crashing)
+            for (id in listOf("a", "b")) {
+                fake.embeddings(*vectors(2))
+                library.add(document(id, 2)).toList()
+            }
+
+            // replacing "a" tombstones two of six rows, past a quarter: the commit is followed by a compaction
+            crashing.crashAt = "manifest.next"
+            fake.embeddings(*vectors(2, from = 1))
+            val progress = library.add(document("a", 2, title = "Second")).toList()
+            assertEquals(Saved, progress.last())
+            assertTrue(crashing.crashed)
+            crashing.recover()
+
+            val expected = listOf(DocumentInfo("b", "Tb", null, 2), DocumentInfo("a", "Second", null, 2))
+            assertEquals(expected, library.documents())
+            assertEquals(expected, open(model).documents())
+            // the compaction didn't happen: the old rows are still on disk
+            assertEquals(6, storeOf(library).rowCount)
+
+            // the next write, still past a quarter, compacts
+            fake.embeddings(unit(3))
+            library.add(document("c", 1)).toList()
+            val store = storeOf(library)
+            assertEquals(5, store.rowCount)
+            assertTrue((0 until store.rowCount).all { store.isLive(it) })
+            assertEquals(listOf("b", "a", "c"), library.documents().map { it.id })
+        }
+
+    @Test
     fun anotherEmbedderIsIndexMismatch() =
         runBlocking {
             val model = embedder()

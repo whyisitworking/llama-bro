@@ -47,6 +47,9 @@ internal class LibraryStore(private val fs: FileSystem, private val dir: Path) {
     /** A write that failed; the files are whole, but which state they hold is known only by opening them again. */
     private var failure: Exception? = null
 
+    /** A write failed, or the compaction after a commit did: open the store again before the next write. */
+    val needsReopen: Boolean get() = failure != null
+
     private val dimensions: Int get() = manifest.embedder.dimensions
 
     /** The rows' vectors, for search. */
@@ -115,7 +118,8 @@ internal class LibraryStore(private val fs: FileSystem, private val dir: Path) {
     /**
      * Adds a document's [chunks] and their [vectors] (unit length, one per chunk, in order), replacing the document
      * with the same [documentId]. It's in the library once this returns. If a write fails this throws, the library
-     * on disk holds the document whole or not at all, and this store must be opened again before another write.
+     * on disk holds what it held before, and this store must be opened again before another write. If the compaction
+     * that may follow the commit fails, this returns (the document is in) and [needsReopen] is set.
      */
     suspend fun commit(
         documentId: String,
@@ -165,7 +169,18 @@ internal class LibraryStore(private val fs: FileSystem, private val dir: Path) {
         flat.append(halves)
         tombstones = nextTombstones
         replaced?.let { flat.kill(it.firstRow, it.rowCount) }
-        if (pastAQuarter(tombstones)) compact(manifest.documents)
+        if (pastAQuarter(tombstones)) compactAfterCommit()
+    }
+
+    // The commit above stands whatever happens here: a failed compaction leaves the committed library (open() finishes
+    // one whose manifest.next was written and drops the rest), so it marks the store for reopening instead of failing
+    // the commit, and the next write, still past a quarter, compacts again.
+    private fun compactAfterCommit() {
+        try {
+            compact(manifest.documents)
+        } catch (e: IOException) {
+            failure = e
+        }
     }
 
     /** Removes [documentId]'s rows; nothing if it isn't in the library. A failed write is as in [commit]. */

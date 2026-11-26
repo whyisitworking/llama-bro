@@ -30,8 +30,9 @@ public data class DocumentInfo(val id: String, val title: String, val source: St
  * One write at a time: a mutex guards the folder, and every call that reads or changes it takes the mutex, so reads
  * wait for a commit in progress (a commit is short; embedding, the slow part of [add], runs outside the mutex). The
  * folder's I/O runs on [Dispatchers.IO]. If a write fails, that document's [add] (or [remove]) fails with the
- * [IOException] and the folder holds the library as it was (or, when the failure was in the compaction that follows a
- * commit, with the document in); the next call opens the folder again and carries on.
+ * [IOException] and the folder holds the library as it was; the next call opens the folder again and carries on. A
+ * compaction that fails after a document is committed doesn't fail its [add]: the document is in, and the next write
+ * compacts again.
  */
 public class Library internal constructor(
     private val fs: FileSystem,
@@ -87,7 +88,7 @@ public class Library internal constructor(
         mutex.withLock {
             checkOpen()
             withContext(Dispatchers.IO) {
-                if (failed) {
+                if (failed || store.needsReopen) {
                     store = LibraryStore(fs, dir).apply { open(identity) }
                     failed = false
                 }
