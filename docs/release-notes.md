@@ -10,7 +10,7 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
 
 No change to the SDK's API or behaviour; the modules are republished at the new version.
 
-- **Demo:** the release APK is about 39 MB again: the release workflow packed its native libraries with their debug
+- **Demo:** the release APK is about 39 MB: the release workflow packed its native libraries with their debug
   symbols (248 MB for 2.1.0-alpha, 238 MB for 2.0.0-alpha), because the app named no NDK to strip them with and CI
   has only the SDK's.
 - **Demo:** a bottom sheet's glass keeps its curved edge under a finger (it no longer swells as pressed glass does,

@@ -57,10 +57,11 @@
 
 <!-- the last two releases; older ones live in the release notes -->
 
-- **Next release** (on `main`): live dictation with `transcriptionSession`, text to speech with `speak`, llama.cpp
-  b12653, and a demo app with glass bars, dictation and read-aloud.
-- **2.0.0-alpha** (November 23, 2026): a rewrite on llama-server's own engine, with NPU and GPU backends, on Maven
-  Central.
+- **2.1.1-alpha** (November 26, 2026): the demo's APK is 39 MB, down from 248 MB, and two fixes to its glass and
+  drawer. The SDK is unchanged.
+- **2.1.0-alpha** (November 26, 2026): `llamabro-server` serves a loaded model to your Wi-Fi with llama-server's API,
+  and `llamabro-rag` answers from your own documents; live dictation with `transcriptionSession`, text to speech with
+  `speak`, and llama.cpp b12653. The demo app gains a Server page, a Library, dictation, read-aloud and glass.
 
 Every change is in the [release notes](docs/release-notes.md).
 
@@ -165,8 +166,6 @@ val dictation = model.transcriptionSession { language = "en" }
 dictation.append(pcm, 0, read)   // the words stream back on dictation.events as they're spoken
 ```
 
-Live dictation and `speak` below are in the next release, on `main`.
-
 [Pictures and speech](sdk/README.md#pictures-and-speech) · [Live transcription](sdk/README.md#live-transcription)
 
 ### Speak
@@ -251,7 +250,7 @@ native libraries built alongside the core's.
 ```toml
 # gradle/libs.versions.toml
 [versions]
-llamabro = "2.0.0-alpha"
+llamabro = "2.1.1-alpha"
 
 [libraries]
 llamabro-bom        = { module = "io.github.whyisitworking:llamabro-bom", version.ref = "llamabro" }
@@ -260,6 +259,8 @@ llamabro-hexagon    = { module = "io.github.whyisitworking:llamabro-hexagon" }
 llamabro-opencl     = { module = "io.github.whyisitworking:llamabro-opencl" }
 llamabro-hub        = { module = "io.github.whyisitworking:llamabro-hub" }
 llamabro-hubWork    = { module = "io.github.whyisitworking:llamabro-hub-work" }
+llamabro-server     = { module = "io.github.whyisitworking:llamabro-server" }
+llamabro-rag        = { module = "io.github.whyisitworking:llamabro-rag" }
 llamabro-typed      = { module = "io.github.whyisitworking:llamabro-typed" }
 llamabro-typedKsp   = { module = "io.github.whyisitworking:llamabro-typed-ksp" }
 llamabro-testing    = { module = "io.github.whyisitworking:llamabro-testing" }
@@ -288,7 +289,7 @@ dependencies {
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))
+    implementation(platform("io.github.whyisitworking:llamabro-bom:2.1.1-alpha"))
     implementation("io.github.whyisitworking:llamabro")
     implementation("io.github.whyisitworking:llamabro-hexagon")
     implementation("io.github.whyisitworking:llamabro-opencl")
@@ -296,7 +297,7 @@ dependencies {
 ```
 
 Or give every module the same version and leave out the BOM:
-`implementation("io.github.whyisitworking:llamabro:2.0.0-alpha")`.
+`implementation("io.github.whyisitworking:llamabro:2.1.1-alpha")`.
 
 </details>
 
@@ -322,8 +323,8 @@ ksp(libs.llamabro.typedKsp)
 | `llamabro-opencl` | The Adreno GPU | `implementation` |
 | `llamabro-hub` | Hugging Face search, and downloads that resume and verify each file's SHA-256 | `implementation` |
 | `llamabro-hub-work` | Downloads that run in WorkManager and outlive your app's process | `implementation` |
-| `llamabro-server` | Serving a loaded model to other devices over HTTP with llama-server's API, off the network until the app opts in (in the next release) | `implementation` |
-| `llamabro-rag` | Asking your own documents: chunking, a folder index on the phone, hybrid keyword and vector search, and a search tool for a conversation (in the next release) | `implementation` |
+| `llamabro-server` | Serving a loaded model to other devices over HTTP with llama-server's API, off the network until the app opts in | `implementation` |
+| `llamabro-rag` | Asking your own documents: chunking, a folder index on the phone, hybrid keyword and vector search, and a search tool for a conversation | `implementation` |
 | `llamabro-typed` | Replies and tools typed by `@Serializable` classes | `implementation` |
 | `llamabro-typed-ksp` | Annotated toolboxes, checked when the app builds | `ksp` |
 | `llamabro-testing`, `llamabro-hub-testing` | `FakeLlamaBro` and `FakeLlamaBroHub`: the real API over a scripted engine and Hub | `testImplementation` |
@@ -382,8 +383,8 @@ The design is in the [architecture](docs/architecture.md), and every choice and 
 
 ## Roadmap
 
-- **Now:** serving a loaded model to other devices on your Wi-Fi, and search over your own documents (RAG).
-- **Next:** testing on more phones, starting with other Snapdragon generations.
+- **Now:** testing on more phones, starting with other Snapdragon generations, and sending the SDK's llama.cpp fixes
+  upstream.
 - **Later:** Kotlin Multiplatform, then iOS and Flutter.
 
 More in [ROADMAP.md](ROADMAP.md).
@@ -417,6 +418,7 @@ More in [ROADMAP.md](ROADMAP.md).
 | **November 13** | **The cooler.** The phone ran so hot during benchmarks that it has worn a cooler on its back for every run since. |
 | **November 18** | **600 replies.** The voice model sometimes wouldn't stop talking. Going through 600 replies found the pattern. |
 | **November 23** | **2.0.0-alpha.** On Maven Central. |
+| **November 26** | **2.1.0-alpha.** The phone became a server: a laptop on the same Wi-Fi talks to the model it holds, and the model can answer from your own documents. |
 | **Next** | The [roadmap](#roadmap). |
 
 ## Documentation
