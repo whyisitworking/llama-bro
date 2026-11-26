@@ -1,5 +1,6 @@
 package com.suhel.llamabro.demo.server
 
+import android.util.Log
 import com.suhel.llamabro.demo.chat.HostState
 import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.data.SettingsRepository
@@ -65,6 +66,8 @@ class ServerMode(
     private val clock: () -> Long = System::currentTimeMillis,
     private val approvals: PairingApprovals = PairingApprovals(),
     private val onStopped: suspend () -> Unit = {},
+    /** The address the server binds; every one by default. A test points it at one the phone doesn't have. */
+    private val bindAddress: () -> String = { ANY_ADDRESS },
 ) : Pairing by approvals {
     private val _state = MutableStateFlow<ServingState>(ServingState.Off)
     val state: StateFlow<ServingState> = _state.asStateFlow()
@@ -123,7 +126,7 @@ class ServerMode(
                 scope.async(start = CoroutineStart.UNDISPATCHED) { open(model, slots) }.also { starting = it }
             }
         work.join()
-        if (_state.value is ServingState.Failed) onStopped()
+        if (_state.value is ServingState.Failed) notifyStopped()
     }
 
     /**
@@ -133,30 +136,50 @@ class ServerMode(
      */
     suspend fun stop() {
         control.withLock { shutDown() }
-        onStopped()
+        notifyStopped()
+    }
+
+    /** [onStopped], which never breaks stopping: a failure is logged, a cancellation passes. */
+    private suspend fun notifyStopped() {
+        try {
+            onStopped()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (
+            @Suppress("TooGenericExceptionCaught") e: Exception,
+        ) {
+            Log.w("ServerMode", "could not unload after stopping: ${e.javaClass.simpleName}")
+        }
     }
 
     /**
      * A new key ([ServerKey.renew]); a running server restarts with it, which drops the clients connected with the old
      * one. Returns the new key.
      */
-    suspend fun renewKey(): String =
-        control.withLock {
-            starting?.join()
-            val key = keys.renew()
-            val current = session ?: return@withLock key
-            withContext(NonCancellable) { current.running.close() }
-            val running = bind(current.model, current.lease.config.slots, current.models, key)
-            if (running == null) {
-                withContext(NonCancellable) { current.models.drained() }
-                current.lease.release()
-                session = null
-                _served.value = null
-            } else {
-                current.running = running
+    suspend fun renewKey(): String {
+        var unbound = false
+        val key =
+            control.withLock {
+                starting?.join()
+                val key = keys.renew()
+                val current = session ?: return@withLock key
+                withContext(NonCancellable) { current.running.close() }
+                val running = bind(current.model, current.lease.config.slots, current.models, key)
+                if (running == null) {
+                    withContext(NonCancellable) { current.models.drained() }
+                    current.lease.release()
+                    session = null
+                    _served.value = null
+                    unbound = true
+                } else {
+                    current.running = running
+                }
+                key
             }
-            key
-        }
+        // after the lock, like stop's: a model nothing serves any more is unloaded unless a chat uses it
+        if (unbound) notifyStopped()
+        return key
+    }
 
     private suspend fun shutDown() {
         starting?.cancelAndJoin()
@@ -263,7 +286,7 @@ class ServerMode(
 
     private fun serverConfig(port: Int, key: String) =
         ServerConfig {
-            host = ANY_ADDRESS
+            host = bindAddress()
             this.port = port
             apiKey = key
             // the key is typed on a laptop: case, spaces and dashes don't matter (D173)

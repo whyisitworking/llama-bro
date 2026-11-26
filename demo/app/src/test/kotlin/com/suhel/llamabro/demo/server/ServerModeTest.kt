@@ -88,7 +88,10 @@ class ServerModeTest {
 
     private var port = 0
     private var onStopped: suspend () -> Unit = {}
-    private val server by lazy { ServerMode(host, settings, keys, scope, port = port, onStopped = { onStopped() }) }
+    private var address = "0.0.0.0"
+    private val server by lazy {
+        ServerMode(host, settings, keys, scope, port = port, onStopped = { onStopped() }, bindAddress = { address })
+    }
 
     @After fun stop() {
         runBlocking {
@@ -417,6 +420,35 @@ class ServerModeTest {
             assertEquals(0, stopped)
             assertTrue(host.state.value is HostState.Ready)
             assertEquals(1, fake.openModels)
+        }
+
+    @Test fun stopCompletesWhenUnloadThrows() =
+        runBlocking {
+            onStopped = { error("the unload broke") }
+            server.start(a, 1)
+            serving()
+            server.stop()
+            assertEquals(ServingState.Off, server.state.value)
+            assertNull(server.served.value)
+        }
+
+    @Test fun failedRenewalUnloads() =
+        runBlocking {
+            val hub = TestHub()
+            try {
+                val engine = engine(hub)
+                onStopped = { engine.releaseModelIfIdle() }
+                server.start(a, 1)
+                serving()
+                // 192.0.2.0/24 is reserved for documentation: no interface has it, so neither port binds
+                address = "192.0.2.1"
+                server.renewKey()
+                assertTrue(server.state.value is ServingState.Failed)
+                assertEquals(HostState.Idle, host.state.value)
+                assertEquals(0, fake.openModels)
+            } finally {
+                hub.close()
+            }
         }
 
     @Test fun switchingTheChatModelWhileServingAsksFirst() =
