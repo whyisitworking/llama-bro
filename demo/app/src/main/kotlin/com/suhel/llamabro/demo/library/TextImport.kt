@@ -44,7 +44,9 @@ class TextImport(private val resolver: ContentResolver) {
         /** Larger than a book; a file over it is refused rather than read into memory whole. */
         const val MAX_BYTES = 8 * 1024 * 1024
         private const val BYTES_PER_MIB = 1024 * 1024
-        private const val BYTE_ORDER_MARK = ""
+
+        // written as an escape: the character itself is invisible, and was once lost in an edit
+        private const val BYTE_ORDER_MARK = "\uFEFF"
         private const val ID_HEX_CHARS = 16
         private const val HEX = 16
         private val TEXT_NAMES = setOf("txt", "text", "md", "markdown")

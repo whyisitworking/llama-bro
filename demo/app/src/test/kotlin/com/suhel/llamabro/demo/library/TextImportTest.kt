@@ -55,9 +55,16 @@ class TextImportTest {
         val markdown = read(notes)
         assertEquals("Trip notes", markdown.title)
         assertEquals("Trip notes.md", markdown.source)
-        assertEquals("the byte-order mark is not text", "# Trip\n\nPack light.", markdown.text)
+        assertEquals("# Trip\n\nPack light.", markdown.text)
         assertEquals("todo", read(plain).title)
         assertEquals("Milk, eggs.", read(plain).text)
+    }
+
+    @Test fun aByteOrderMarkIsNotText() {
+        // EF BB BF, the UTF-8 byte-order mark some editors write first
+        val bom = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
+        val notes = file("Trip notes.md", "text/markdown", bom + "# Trip\n\nPack light.".toByteArray())
+        assertEquals("# Trip\n\nPack light.", read(notes).text)
     }
 
     @Test fun theIdIsTheUrisAndStaysTheSame() {
