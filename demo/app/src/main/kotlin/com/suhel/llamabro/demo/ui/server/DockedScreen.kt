@@ -2,9 +2,9 @@ package com.suhel.llamabro.demo.ui.server
 
 import android.view.WindowManager
 import androidx.activity.compose.LocalActivity
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -15,11 +15,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.Gap
 import com.suhel.llamabro.demo.designsystem.components.IconAction
+import com.suhel.llamabro.demo.designsystem.components.Inline
 import com.suhel.llamabro.demo.designsystem.components.Screen
 import com.suhel.llamabro.demo.designsystem.components.Stack
 import com.suhel.llamabro.demo.designsystem.components.TopBar
@@ -83,30 +85,64 @@ fun DockedContent(docked: Docked.Showing?, onBack: () -> Unit, modifier: Modifie
             )
         },
         modifier = modifier.testTag("docked_page"),
-        scrolls = false,
     ) {
         if (docked == null) return@Screen
-        Column(
-            Modifier.fillMaxSize(),
-            Arrangement.SpaceEvenly,
-            Alignment.CenterHorizontally,
-        ) {
-            Glance(docked.speed, "tokens per second", "docked_speed")
-            Glance(docked.busy, "requests at once", "docked_busy")
-            docked.temperature?.let { Glance(it, "temperature", "docked_temperature") }
-            Stack(Gap.Inline, horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    docked.last ?: "No requests yet",
-                    color = colors.muted,
-                    style = DemoType.bodyMedium,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.testTag("docked_last"),
-                )
-                docked.url?.let { Text(it, color = colors.muted, style = DemoType.code) }
+        // the body scrolls where even the wide layout doesn't fit (a very small window)
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val numbers: @Composable () -> Unit = {
+                Glance(docked.speed, "tokens per second", "docked_speed")
+                Glance(docked.busy, "requests at once", "docked_busy")
+                docked.temperature?.let { Glance(it, "temperature", "docked_temperature") }
+            }
+            val layout = dockedLayoutFor(maxWidth, maxHeight)
+            Stack(Gap.Block, Modifier.fillMaxWidth(), Alignment.CenterHorizontally) {
+                if (layout == DockedLayout.Wide) {
+                    Inline(Gap.Block, Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                        Box(
+                            Modifier.weight(1f),
+                            Alignment.TopCenter,
+                        ) { Glance(docked.speed, "tokens per second", "docked_speed") }
+                        Box(
+                            Modifier.weight(1f),
+                            Alignment.TopCenter,
+                        ) { Glance(docked.busy, "requests at once", "docked_busy") }
+                        docked.temperature?.let {
+                            Box(
+                                Modifier.weight(1f),
+                                Alignment.TopCenter,
+                            ) { Glance(it, "temperature", "docked_temperature") }
+                        }
+                    }
+                } else {
+                    numbers()
+                }
+                Stack(Gap.Inline, horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        docked.last ?: "No requests yet",
+                        color = colors.muted,
+                        style = DemoType.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.testTag("docked_last"),
+                    )
+                    docked.url?.let { Text(it, color = colors.muted, style = DemoType.code) }
+                }
             }
         }
     }
 }
+
+/** How the docked numbers are laid out: stacked in a window taller than wide, side by side in one wider than tall. */
+internal enum class DockedLayout { Tall, Wide }
+
+/** A phone docked sideways is wider than tall; three stacked numbers would push the last request off its screen. */
+internal fun dockedLayoutFor(width: Dp, height: Dp): DockedLayout =
+    if (width >
+        height
+    ) {
+        DockedLayout.Wide
+    } else {
+        DockedLayout.Tall
+    }
 
 /** One number as large as the scale goes, with what it counts under it. */
 @Composable

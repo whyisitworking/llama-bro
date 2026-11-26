@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
@@ -47,6 +48,12 @@ class DockedScreenTest {
         rule.waitForIdle()
         assertFalse(window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0)
         assertEquals(before, window.attributes.screenBrightness, 0f)
+    }
+
+    @Test fun landscapeUsesTheWideLayout() {
+        assertEquals(DockedLayout.Wide, dockedLayoutFor(780.dp, 360.dp))
+        assertEquals(DockedLayout.Tall, dockedLayoutFor(360.dp, 780.dp))
+        assertEquals(DockedLayout.Tall, dockedLayoutFor(400.dp, 400.dp))
     }
 
     @Test fun servingEndedLeavesDocked() {

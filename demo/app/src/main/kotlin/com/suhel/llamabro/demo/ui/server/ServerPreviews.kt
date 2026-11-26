@@ -1,7 +1,9 @@
 package com.suhel.llamabro.demo.ui.server
 
+import android.content.res.Configuration
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import com.suhel.llamabro.demo.designsystem.components.DialogCard
@@ -139,4 +141,13 @@ internal fun DockedNoRequestsPreview() {
     PreviewFrame {
         DockedContent(Docked.Showing("—", "0 of 2", null, null, "http://192.168.1.20:8080"), onBack = {})
     }
+}
+
+private const val LANDSCAPE = "spec:width=780dp,height=360dp,dpi=420"
+
+@Preview(name = "Landscape light", device = LANDSCAPE, showBackground = false)
+@Preview(name = "Landscape dark", device = LANDSCAPE, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = false)
+@Composable
+internal fun DockedLandscapePreview() {
+    PreviewFrame { DockedContent(docked, onBack = {}) }
 }
