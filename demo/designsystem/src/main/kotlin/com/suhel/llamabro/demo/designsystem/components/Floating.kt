@@ -315,7 +315,7 @@ private fun BoxScope.EvenBlur(edge: Edge, backdrop: Backdrop, at: () -> Offset) 
                 drawRect(backdrop.pageColor)
                 val over = at() - backdrop.origin
                 translate(-over.x, -over.y) { drawLayer(page) }
-                drawRect(eased(edge, size.height, style.hold, FadeMask), blendMode = BlendMode.DstIn)
+                drawRect(eased(edge, size.height, style.hold, FadeMask, style::blurAt), blendMode = BlendMode.DstIn)
             },
     )
 }
@@ -329,13 +329,22 @@ private fun strength(fraction: Float, hold: Float): Float {
     return 1f - t * t * (3f - 2f * t)
 }
 
-/** [color] over a layer [height] tall, at [strength] from its screen edge ([edge]) inward, in even steps. */
-private fun eased(edge: Edge, height: Float, hold: Float, color: Color): Brush {
+/**
+ * [color] over a layer [height] tall, at [strength] from its screen edge ([edge]) inward, in even steps; a blur's
+ * mask passes its [shape] of that strength (D163), so it eases out as the shader's does.
+ */
+private fun eased(
+    edge: Edge,
+    height: Float,
+    hold: Float,
+    color: Color,
+    shape: (Float) -> Float = { it },
+): Brush {
     val stops =
         Array(EASE_STEPS + 1) { i ->
             val at = i / EASE_STEPS.toFloat()
             val fromEdge = if (edge == Edge.Top) at else 1f - at
-            at to color.copy(alpha = color.alpha * strength(fromEdge, hold))
+            at to color.copy(alpha = color.alpha * shape(strength(fromEdge, hold)))
         }
     return Brush.verticalGradient(*stops, endY = height)
 }
@@ -385,6 +394,7 @@ private class ProgressiveBlur {
             shader.setFloatUniform("fromTop", if (pass.edge == Edge.Top) 1f else 0f)
             shader.setFloatUniform("radius", radius)
             shader.setFloatUniform("hold", style.hold)
+            shader.setFloatUniform("easing", style.easing)
             shader.setFloatUniform("count", glass.size.toFloat())
             shader.setFloatUniform("shapeRect", rects)
             shader.setFloatUniform("shapeLens", lenses)
@@ -400,8 +410,9 @@ private class ProgressiveBlur {
 
 /**
  * One pass of the progressive blur, along [dir]: a Gaussian of `radius` times the strength at this row (full to
- * `hold`, then smoothstep to none at the layer's inner end), in a fixed number of taps; at no radius, the page as is.
- * With a `spread`, red is read that far ahead along [dir] and blue as far behind, scaled by the same strength: the
+ * `hold`, then smoothstep to none at the layer's inner end) raised to `easing` (D163, [BarGlass.blurAt]), in a fixed
+ * number of taps; at no radius, the page as is. With a `spread`, red is read that far ahead along [dir] and blue as
+ * far behind, scaled by the same eased strength: the
  * colour fringes of light through glass (D148). With a `veil`, the `tint` (the surface) is overlay-blended into the
  * finished blur by that share times the strength: the blur's own lights and darks pulled toward the surface, not a
  * flat film laid over it.
@@ -414,6 +425,7 @@ uniform float height;
 uniform float fromTop;
 uniform float radius;
 uniform float hold;
+uniform float easing;
 uniform float spread;
 uniform float3 tint;
 uniform float veil;
@@ -454,13 +466,15 @@ half4 along(float2 q, float r) {
 
 // the bar's own blur at p, of the given strength: split and veiled on the last pass
 half4 bar(float2 p, float strength) {
-    float r = radius * strength;
+    // the radius eases out slower than the veil as it gets small, where the eye sees it most (D163)
+    float blur = pow(strength, easing);
+    float r = radius * blur;
     // a reduced copy fades out over the last tenth of the blur, where it is all but the page: the page shows sharp
-    half keep = fadeOut > 0.5 ? half(smoothstep(0.0, 0.1, strength)) : 1.0;
+    half keep = fadeOut > 0.5 ? half(smoothstep(0.0, 0.1, blur)) : 1.0;
     if (r < 0.5) {
         return tap(p) * keep;
     }
-    float d = spread * strength;
+    float d = spread * blur;
     half4 c;
     if (d > 0.5) {
         float sigma = r / 2.0;

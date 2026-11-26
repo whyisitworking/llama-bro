@@ -106,6 +106,7 @@ object SavedGlass {
             val bareVeil: Float? = null,
             val fade: Float? = null,
             val hold: Float? = null,
+            val softness: Float? = null,
         ) {
             fun over(base: BarGlass) =
                 BarGlass(
@@ -115,10 +116,12 @@ object SavedGlass {
                     bareVeil = bareVeil ?: base.bareVeil,
                     fade = fade.dpOr(base.fade),
                     hold = hold ?: base.hold,
+                    softness = softness ?: base.softness,
                 )
 
             companion object {
-                fun of(b: BarGlass) = Bar(b.blur.value, b.dispersion.value, b.veil, b.bareVeil, b.fade.value, b.hold)
+                fun of(b: BarGlass) =
+                    Bar(b.blur.value, b.dispersion.value, b.veil, b.bareVeil, b.fade.value, b.hold, b.softness)
             }
         }
 

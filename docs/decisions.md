@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D162 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D163 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -196,6 +196,7 @@ its amendments to know what holds now.
 | [D160](#d160-screens-move-along-one-axis-as-they-fade-through) Screens move along one axis as they fade through | 2026-11-25 | |
 | [D161](#d161-the-logo-replaces-the-orb) The logo replaces the orb | 2026-11-26 | |
 | [D162](#d162-a-bars-copy-of-the-page-is-as-much-smaller-as-its-blur-can-hide) A bar's copy of the page is as much smaller as its blur can hide | 2026-11-26 | |
+| [D163](#d163-a-bars-blur-lingers-as-a-light-blur-before-the-page-turns-sharp) A bar's blur lingers as a light blur before the page turns sharp | 2026-11-26 | |
 
 **Repository and process**
 
@@ -2595,4 +2596,21 @@ Consequences: At the app's 24 dp nothing changes (F185's measurement holds). A b
 larger copy than before, more pixels to blur, and 12 dp the whole page; its cost on the phone is not yet measured.
 A Light phone at 12 dp reads a half-size copy, not a quarter.
 
-Next free IDs: D163, F189.
+<a id="d163"></a>
+### D163. A bar's blur lingers as a light blur before the page turns sharp
+
+Status: Decided (2026-11-26). Amends D148's fade.
+
+Context: The bars' blur eases from full to none past `hold` along a smoothstep, its radius in step with the veil. The
+owner found the edge where the page turns sharp abrupt: the eye sees the step from a 3 dp blur to none far more than
+the one from 24 to 12 dp, and with the radius linear in the strength those last few dp fill a thin strip at the inner
+end. A reduced copy (F185, D162) also faded into the page over only the last tenth of the strength. The two sliders
+there were (how far past the bar, and where the fade starts) move the fade, not its shape.
+Decision: `BarGlass.softness`, 0 to 1, raises the strength to a power from 1 to 3 for the blur's radius and its colour
+split (`blurAt`); the veil keeps the plain strength. The reduced copy fades out over the last tenth of that eased
+radius, a wider band, and the blur's mask before Android 13 follows the same curve. The app's default is 0.5, a
+square; Settings › Appearance › Glass › Bars has a "Fade softness" slider, saved with the rest of the glass.
+Consequences: At 0 the bars look as before. A softer fade blurs less across the fade's middle, so the bar's frost
+looks a little shallower unless "Full blur over" is raised. It costs one `pow` a pixel a pass, no taps.
+
+Next free IDs: D164, F189.

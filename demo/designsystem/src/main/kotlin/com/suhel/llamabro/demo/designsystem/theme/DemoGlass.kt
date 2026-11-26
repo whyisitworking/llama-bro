@@ -6,6 +6,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlin.math.pow
 
 /**
  * How a piece of glass looks (D148), after Apple's Liquid Glass: a lens over the page from Android 13, a translucent
@@ -56,7 +57,22 @@ data class BarGlass(
     val fade: Dp,
     /** How far from the screen's edge, as a share of the bar's layer, the blur and the veil stay full. */
     val hold: Float,
+    /**
+     * How gently the blur gives way to the sharp page, 0 to 1 (D163): at 0 its radius follows the fade's strength;
+     * higher, it lingers longer as a light blur before the page turns sharp, as the eye sees a small blur far more
+     * than the difference between two large ones.
+     */
+    val softness: Float,
 ) {
+    /**
+     * The share of [blur] at [strength] of the fade (1 full, 0 none): the strength raised to a power, 1 at no
+     * [softness] and 3 at the most, so the radius shrinks fast while it is large and slowly once it is small.
+     */
+    fun blurAt(strength: Float): Float = strength.coerceIn(0f, 1f).pow(easing)
+
+    /** The power the fade's strength is raised to for the blur's radius: see [blurAt]. */
+    val easing: Float get() = 1f + softness.coerceIn(0f, 1f) * SOFTEST
+
     /**
      * How many times smaller than the screen the page is copied for this blur (F185, D162): [blur] over [SharpCopy],
      * so a copied pixel stays as small a share of the blur at every setting and the copy's softness never shows. The
@@ -73,6 +89,9 @@ data class BarGlass(
         val SharpCopy = 12.dp
         const val FULL_MOST = 2f
         const val LIGHT_MOST = 4f
+
+        /** How much [softness] at its most adds to the power: past a cube, the blur all but ends where it starts. */
+        const val SOFTEST = 2f
     }
 }
 
@@ -221,6 +240,8 @@ data class GlassTheme(
                             // nears them, fully frosted beneath them
                             fade = 16.dp,
                             hold = 0.55f,
+                            // a light blur lingers before the page turns sharp: a linear radius snaps into focus
+                            softness = 0.5f,
                         ),
                 )
             }

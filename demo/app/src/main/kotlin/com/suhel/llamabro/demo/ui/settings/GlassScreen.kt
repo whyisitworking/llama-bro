@@ -129,6 +129,7 @@ private fun GroupScope.barSliders(bar: BarGlass, onChange: (BarGlass) -> Unit) {
     if (BarsVeilInstead) share("bar-bare", "Tint without blur", bar.bareVeil) { onChange(bar.copy(bareVeil = it)) }
     dp("bar-fade", "Reach past the bar", bar.fade, MAX_FADE) { onChange(bar.copy(fade = it)) }
     share("bar-hold", "Full blur over", bar.hold) { onChange(bar.copy(hold = it)) }
+    share("bar-softness", "Fade softness", bar.softness) { onChange(bar.copy(softness = it)) }
 }
 
 /**
@@ -206,7 +207,8 @@ internal fun describe(glass: GlassTheme): String {
         "chip = ${style(glass.chip)}\n" +
         "panel = ${style(glass.panel)}\n" +
         "bar = BarGlass(blur = ${trim(b.blur.value)}.dp, dispersion = ${trim(b.dispersion.value)}.dp, " +
-        "veil = ${b.veil}f, bareVeil = ${b.bareVeil}f, fade = ${trim(b.fade.value)}.dp, hold = ${b.hold}f)\n" +
+        "veil = ${b.veil}f, bareVeil = ${b.bareVeil}f, fade = ${trim(b.fade.value)}.dp, hold = ${b.hold}f, " +
+        "softness = ${b.softness}f)\n" +
         "press = GlassPress(swell = ${p.swell}f, light = ${p.light}f, reach = ${trim(p.reach.value)}.dp, " +
         "bend = ${p.bend}f, pull = ${trim(p.pull.value)}.dp, stretch = ${p.stretch}f, " +
         "resistance = ${trim(p.resistance.value)}.dp)"

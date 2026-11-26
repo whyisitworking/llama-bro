@@ -13,7 +13,7 @@ class SavedGlassTest {
             GlassTheme.Default.let {
                 it.copy(
                     panel = it.panel.copy(bezel = 15.dp, refraction = 22.dp, dispersion = 1.2f, blur = 7.dp),
-                    bar = it.bar.copy(blur = 30.dp, hold = 0.4f),
+                    bar = it.bar.copy(blur = 30.dp, hold = 0.4f, softness = 0.8f),
                 )
             }
         assertEquals(tuned, SavedGlass.decode(SavedGlass.encode(tuned)))
