@@ -5,6 +5,8 @@ import androidx.lifecycle.SavedStateHandle
 import com.suhel.llamabro.demo.audio.SampleSource
 import com.suhel.llamabro.demo.audio.VoiceRecorder
 import com.suhel.llamabro.demo.chat.ChatEngine
+import com.suhel.llamabro.demo.chat.ChatLibrary
+import com.suhel.llamabro.demo.chat.ChatServing
 import com.suhel.llamabro.demo.chat.FakeChatDao
 import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.chat.VoiceChat
@@ -29,6 +31,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
@@ -40,6 +43,7 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Quiet reads of 50 ms before a steady voice starts. */
 internal const val QUIET_BLOCKS = 4
@@ -80,11 +84,30 @@ abstract class ChatViewModelFixture {
     protected val host by lazy { ModelHost(fake.llamaBro, { hub.installedModel(it) }, scope) }
     protected val models by lazy { ModelRepository(hub, settings, FakeScheduler(), scope, host) }
 
+    /** The model server mode serves (docs/design/server.md §3); null when it is off, as in most tests. */
+    protected val served = MutableStateFlow<HfModel?>(null)
+
+    /** How many times a chat stopped serving. */
+    protected val serverStops = AtomicInteger()
+
     /** What the engine reads from a model's header before it loads (D155); set it before the first [viewModel]. */
     protected var readSenses: suspend (HfModel) -> ModelSenses? = { null }
     protected val engine by lazy {
-        ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope, readSenses = { readSenses(it) })
+        ChatEngine(
+            chats,
+            host,
+            models,
+            settings,
+            System::currentTimeMillis,
+            scope,
+            readSenses = { readSenses(it) },
+            served = { served.value },
+            chatLibrary = chatLibrary,
+        )
     }
+
+    /** The person's library (docs/design/rag.md); none unless a test gives one, before the first [viewModel]. */
+    protected open val chatLibrary: ChatLibrary? = null
     protected val viewModels = mutableListOf<ChatViewModel>()
 
     /** The draft pictures the view models built by [viewModel] deleted (from the draft folder, as the app does). */
@@ -126,6 +149,7 @@ abstract class ChatViewModelFixture {
             savedState = saved,
             background = scope,
             draftPictureExists = draftPictureExists,
+            documentText = { chatLibrary?.documentText(it) },
             audio =
                 ChatAudio(
                     recorder = recorder,
@@ -144,6 +168,15 @@ abstract class ChatViewModelFixture {
                         },
                     micHint = settings.settings.map { !it.voice.seenMicHint },
                     onMicHintSeen = { settings.voice.setSeenMicHint() },
+                ),
+            servingMode =
+                ChatServing(
+                    { served.value },
+                    { to -> served.value.let { it != null && it != to } },
+                    {
+                        serverStops.incrementAndGet()
+                        served.value = null
+                    },
                 ),
         ).also(viewModels::add)
     }

@@ -268,6 +268,8 @@ data class ComposerState(
     val dictation: DictationBar? = null,
     /** The one-time line by the mic that a hold records a voice message (D140). */
     val micHint: Boolean = false,
+    /** The **+** opens a menu (a photo, and more) rather than the photo picker: it is named for that. */
+    val attachMenu: Boolean = false,
 ) {
     /** Send can act: there is something to send (text or a photo), or a reply is coming and the button is stop. */
     val canAct: Boolean get() = busy || text.isNotBlank() || hasAttachment
@@ -392,7 +394,7 @@ fun Composer(
             } else if (state.dictation != null) {
                 BarButton(DemoIcons.Close, stringResource(R.string.ds_discard_dictation), voice.onDiscardDictation)
             } else if (state.canAttach) {
-                BarButton(DemoIcons.Plus, stringResource(R.string.ds_attach), onAttach)
+                AttachButton(state.attachMenu, onAttach)
             }
             if (state.micHint && state.showsMic && voice.onDictate != null) {
                 Text(
@@ -423,6 +425,12 @@ fun Composer(
             BarEnd(state, voice, onSend, onStop)
         }
     }
+}
+
+/** The **+**: named for the menu it opens ([ComposerState.attachMenu]), else for the photo picker. */
+@Composable
+private fun AttachButton(menu: Boolean, onAttach: () -> Unit) {
+    BarButton(DemoIcons.Plus, stringResource(if (menu) R.string.ds_attach_menu else R.string.ds_attach), onAttach)
 }
 
 /** The bar's end: send the recording, the voice-mode button (D100), the mic alone (D76), or the mic and send. */

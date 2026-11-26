@@ -10,6 +10,15 @@ object Routes {
     const val QUERY_ARG = "q"
     const val MODELS = "models?q={q}"
     const val SETTINGS = "settings"
+
+    /** Server mode's page (docs/design/server.md §3): a mode the phone is in, beside Models, not a setting. */
+    const val SERVER = "server"
+
+    /** The Library page (docs/design/rag.md): the person's documents, indexed on the phone. */
+    const val LIBRARY = "library"
+
+    /** Server mode's docked view: full screen and dim, for a phone serving from a charger. */
+    const val SERVER_DOCKED = "server/docked"
     const val APPEARANCE = "settings/appearance"
     const val INSTRUCTIONS = "settings/instructions"
     const val DEFAULT_MODEL = "settings/default_model"

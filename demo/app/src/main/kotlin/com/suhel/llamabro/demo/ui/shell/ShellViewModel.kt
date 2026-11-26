@@ -13,10 +13,12 @@ import com.suhel.llamabro.demo.models.ModelLibrary
 import com.suhel.llamabro.demo.ui.mode
 import com.suhel.llamabro.demo.ui.settings.SavedGlass
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -37,6 +39,8 @@ class ShellViewModel(
      * and stops a reply streaming into it first (ChatEngine.delete, D87).
      */
     private val deleteChat: ((Long) -> Unit)? = null,
+    /** Whether server mode is serving (or loading) a model, for the drawer's Server row. */
+    serving: Flow<Boolean> = flowOf(false),
 ) : ViewModel() {
     val layout: StateFlow<AppLayout?> =
         settings.settings
@@ -94,6 +98,9 @@ class ShellViewModel(
         models.library
             .map<_, Int?> { it.size }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
+
+    val serving: StateFlow<Boolean> =
+        serving.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), false)
 
     fun search(q: String) {
         query.value = q

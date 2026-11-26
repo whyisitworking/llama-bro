@@ -25,11 +25,16 @@ import com.suhel.llamabro.demo.designsystem.components.TopBar
 import com.suhel.llamabro.demo.designsystem.components.TopBarTitle
 import java.time.ZoneId
 
+/** Where each of [ChatListTabs] goes, in their order. */
+val chatListRoutes = listOf(Routes.CHATS, Routes.models(), Routes.LIBRARY, Routes.SERVER, Routes.SETTINGS)
+
 /** The Chat list layout's bottom tabs. */
 val ChatListTabs =
     listOf(
         BottomTab("Chats", DemoIcons.Chats),
         BottomTab("Models", DemoIcons.Models),
+        BottomTab("Library", DemoIcons.Library),
+        BottomTab("Server", DemoIcons.Serve),
         BottomTab("Settings", DemoIcons.Settings),
     )
 

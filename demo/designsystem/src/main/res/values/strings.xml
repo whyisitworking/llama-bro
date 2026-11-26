@@ -4,6 +4,7 @@
     <string name="ds_send">Send</string>
     <string name="ds_stop">Stop</string>
     <string name="ds_attach">Add a photo</string>
+    <string name="ds_attach_menu">Add to your message</string>
     <string name="ds_jump_to_latest">Back to the latest message</string>
     <string name="ds_think">Think</string>
     <string name="ds_think_with_level">Think · %1$s</string>

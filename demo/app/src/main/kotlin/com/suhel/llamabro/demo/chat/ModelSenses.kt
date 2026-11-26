@@ -46,6 +46,8 @@ internal fun ModelCapabilities.senses(catalog: CatalogEntry?): ModelSenses =
         thinks = Thinking.canThink(chatTemplate, emptyMap(), catalog),
         sees = takesImages,
         hears = takesAudio,
+        // an embedding or rerank model's GGUF has no chat template: the one word on it the header read gives
+        chats = chatTemplate != null,
     )
 
 /** What the loaded model can do: the final word. */

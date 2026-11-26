@@ -10,11 +10,12 @@ A published version cannot be changed or removed. Check the staged files before 
 
 ## What is published
 
-Nine modules, all `io.github.whyisitworking:<module>:<version>`: `llamabro`, `llamabro-typed`, `llamabro-typed-ksp`,
-`llamabro-hub`, `llamabro-hub-work`, `llamabro-hexagon`, `llamabro-opencl`, `llamabro-testing`, `llamabro-hub-testing`.
+Ten modules, all `io.github.whyisitworking:<module>:<version>`: `llamabro`, `llamabro-typed`, `llamabro-typed-ksp`,
+`llamabro-hub`, `llamabro-hub-work`, `llamabro-hexagon`, `llamabro-opencl`, `llamabro-server`, `llamabro-testing`,
+`llamabro-hub-testing`.
 Each is the release build with a sources jar, the placeholder javadoc jar Maven Central accepts, a POM and Gradle
-module metadata; the Android modules are AARs and `llamabro-typed-ksp` is a jar. A tenth artifact, `llamabro-bom`, is
-a POM (and Gradle module metadata) that constrains all nine to its own version (D135).
+module metadata; the Android modules are AARs and `llamabro-typed-ksp` is a jar. An eleventh artifact, `llamabro-bom`,
+is a POM (and Gradle module metadata) that constrains all ten to its own version (D135).
 
 The version is one line, `llamabro` under `[versions]` in [`gradle/libs.versions.toml`](../gradle/libs.versions.toml).
 A version ending in `-SNAPSHOT` is not a release; anything else (`2.0.0-alpha`, `2.0.0`) is.

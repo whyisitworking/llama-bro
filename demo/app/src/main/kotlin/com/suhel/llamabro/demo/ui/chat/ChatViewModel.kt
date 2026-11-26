@@ -13,6 +13,7 @@ import com.suhel.llamabro.demo.audio.VoicePlayer
 import com.suhel.llamabro.demo.audio.VoiceRecorder
 import com.suhel.llamabro.demo.chat.ChatEngine
 import com.suhel.llamabro.demo.chat.ChatModelState
+import com.suhel.llamabro.demo.chat.ChatServing
 import com.suhel.llamabro.demo.chat.ClosedNotes
 import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.Limits
@@ -69,6 +70,8 @@ private data class BarInputs(
     val take: Take? = null,
     val dictation: DictationShown? = null,
     val micHint: Boolean = false,
+    /** The library is offered, so the **+** is a menu (docs/design/rag.md). */
+    val attachMenu: Boolean = false,
 )
 
 /** The message bar's text and what is attached to it, apart from the list so typing never touches the messages. */
@@ -104,6 +107,10 @@ class ChatViewModel(
     private val background: CoroutineScope,
     /** The chat's audio features (D76, D100, D140, D141); null where there is no microphone or speaker (most tests). */
     audio: ChatAudio? = null,
+    /** Server mode: the model it serves, and stopping it (docs/design/server.md §3). */
+    servingMode: ChatServing = ChatServing.None,
+    /** A library document's whole text, for a source's surroundings; null once it is gone (docs/design/rag.md). */
+    private val documentText: suspend (String) -> String? = { null },
 ) : ViewModel() {
     private val recorder: VoiceRecorder? = audio?.recorder
 
@@ -361,6 +368,7 @@ class ChatViewModel(
             canTalk = voiceMode.available && bar.talks && d.editing == null,
             dictation = bar.dictation?.let(::dictationBar),
             micHint = bar.micHint,
+            attachMenu = bar.attachMenu,
         )
     }
 
@@ -377,8 +385,10 @@ class ChatViewModel(
                 ),
                 dictation?.shown ?: flowOf(null),
                 audio?.micHint ?: flowOf(false),
-            ) { inputs, dictating, hint -> inputs.copy(dictation = dictating, micHint = hint) }
-                .collect { barInputs.value = it }
+                handle.useLibrary,
+            ) { inputs, dictating, hint, library ->
+                inputs.copy(dictation = dictating, micHint = hint, attachMenu = library != null)
+            }.collect { barInputs.value = it }
         }
         // a new chat's id, once its first message made it: the restored screen reopens it instead of a blank chat
         viewModelScope.launch { handle.chatId.collect { if (it != 0L) savedState[CHAT_ID_KEY] = it } }
@@ -486,6 +496,12 @@ class ChatViewModel(
     }
 
     fun setThink(level: ThinkLevel) = handle.setThink(level.think())
+
+    /** The library in this chat: "Use my library" and the source sheet (docs/design/rag.md). */
+    val library = ChatLibraryHolder(handle, documentText, viewModelScope)
+
+    /** Server mode from the chat: the switcher's question and the serving line's Stop serving. */
+    val serving: ChatServingActions = ChatServingActions(servingMode, handle, ::retry, background)
 
     /** The system has no photo picker to open: one plain line instead of a crash. */
     fun photoPickerMissing() {

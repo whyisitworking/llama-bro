@@ -62,7 +62,12 @@ object History {
                         if (p == null) {
                             next
                         } else {
-                            PendingUser(joinText(p.text, next.text), p.images + next.images, p.voices + next.voices)
+                            PendingUser(
+                                joinText(p.text, next.text),
+                                p.images + next.images,
+                                p.voices + next.voices,
+                                joinText(p.passages, next.passages),
+                            )
                         }
                 }
 
@@ -92,14 +97,23 @@ object History {
     /** A recording and its caption, empty when it has none. */
     private class Spoken(val file: File, val caption: String)
 
-    private class PendingUser(val text: String, val images: List<File>, val voices: List<Spoken>) {
+    /** A user turn: its text, pictures and voice messages, and the library [passages] it was asked with, read first. */
+    private class PendingUser(
+        val text: String,
+        val images: List<File>,
+        val voices: List<Spoken>,
+        val passages: String = "",
+    ) {
         fun toMessage(hears: Boolean): Message {
-            val words =
+            val said =
                 when {
                     voices.isEmpty() -> text
                     !hears -> joinText(voices.joinToString("\n\n") { it.caption.ifEmpty { VOICE_PLACEHOLDER } }, text)
                     else -> text.ifEmpty { VOICE_REPLY }
                 }
+            // the passages before the words: the same in the turn and in every history after it, so the prompt cache
+            // keeps the chat's prefix (rag.md)
+            val words = joinText(passages, said)
             if (images.isEmpty() && (voices.isEmpty() || !hears)) return Message.user(words)
             val content =
                 buildList<Content> {
@@ -113,8 +127,9 @@ object History {
         companion object {
             /** [m]'s parts: a voice message's text is its caption (D100), kept with its recording. */
             fun of(m: StoredMessage): PendingUser {
-                val voice = m.voice ?: return PendingUser(m.text, m.images, emptyList())
-                return PendingUser("", m.images, listOf(Spoken(voice.file, m.text)))
+                val passages = m.passages.orEmpty()
+                val voice = m.voice ?: return PendingUser(m.text, m.images, emptyList(), passages)
+                return PendingUser("", m.images, listOf(Spoken(voice.file, m.text)), passages)
             }
         }
     }

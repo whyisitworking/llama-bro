@@ -8,6 +8,7 @@ import com.suhel.llamabro.demo.data.settings.Knob
 import com.suhel.llamabro.demo.data.settings.Knobs
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.LibraryModel
+import com.suhel.llamabro.demo.models.forChat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -39,8 +41,8 @@ class SwitcherViewModel(
 ) : ViewModel() {
     private val shown = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS)
 
-    /** The models on the phone; null until read (the model card waits for it). */
-    val library: StateFlow<List<LibraryModel>?> = library.stateIn(viewModelScope, shown, null)
+    /** The chat models on the phone ([forChat]); null until read (the model card waits for it). */
+    val library: StateFlow<List<LibraryModel>?> = library.map { it.forChat() }.stateIn(viewModelScope, shown, null)
 
     val facts: StateFlow<DeviceFacts> = facts.stateIn(viewModelScope, shown, DeviceFacts.Fallback)
 

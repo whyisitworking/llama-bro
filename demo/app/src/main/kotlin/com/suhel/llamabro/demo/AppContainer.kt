@@ -2,6 +2,8 @@ package com.suhel.llamabro.demo
 
 import android.annotation.SuppressLint
 import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.PowerManager
 import android.os.StatFs
 import android.util.Log
 import androidx.compose.ui.graphics.ImageBitmap
@@ -17,6 +19,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerFactory
 import com.suhel.llamabro.LlamaBro
 import com.suhel.llamabro.Model
+import com.suhel.llamabro.ModelTask
 import com.suhel.llamabro.demo.audio.MediaVoicePlayer
 import com.suhel.llamabro.demo.audio.Microphone
 import com.suhel.llamabro.demo.audio.SampleSource
@@ -26,6 +29,9 @@ import com.suhel.llamabro.demo.audio.TrackSpeech
 import com.suhel.llamabro.demo.audio.VoiceFocus
 import com.suhel.llamabro.demo.audio.VoiceRecorder
 import com.suhel.llamabro.demo.chat.ChatEngine
+import com.suhel.llamabro.demo.chat.ChatLibrary
+import com.suhel.llamabro.demo.chat.ChatServing
+import com.suhel.llamabro.demo.chat.HostState
 import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.chat.ModelMemory
 import com.suhel.llamabro.demo.chat.SamplingStore
@@ -40,17 +46,29 @@ import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.TokenStore
 import com.suhel.llamabro.demo.data.db.ChatDatabase
+import com.suhel.llamabro.demo.library.ChatBeside
+import com.suhel.llamabro.demo.library.EmbedderEstimate
+import com.suhel.llamabro.demo.library.EmbedderHost
+import com.suhel.llamabro.demo.library.LibraryRepository
+import com.suhel.llamabro.demo.library.TextImport
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.DownloadScheduler
+import com.suhel.llamabro.demo.models.DownloadStatus
 import com.suhel.llamabro.demo.models.FitView
 import com.suhel.llamabro.demo.models.HubRepository
 import com.suhel.llamabro.demo.models.ModelDiscovery
 import com.suhel.llamabro.demo.models.ModelNotifications
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.models.WorkDownloadScheduler
 import com.suhel.llamabro.demo.models.installedModel
+import com.suhel.llamabro.demo.server.NetworkState
+import com.suhel.llamabro.demo.server.ServerKey
+import com.suhel.llamabro.demo.server.ServerMode
+import com.suhel.llamabro.demo.server.ServerSettings
+import com.suhel.llamabro.demo.server.thermalReadings
 import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.demo.ui.chat.ChatAudio
 import com.suhel.llamabro.demo.ui.chat.ChatSamplingViewModel
@@ -58,9 +76,15 @@ import com.suhel.llamabro.demo.ui.chat.ChatViewModel
 import com.suhel.llamabro.demo.ui.chat.MessageStyle
 import com.suhel.llamabro.demo.ui.chat.SwitcherViewModel
 import com.suhel.llamabro.demo.ui.chat.messageStyle
+import com.suhel.llamabro.demo.ui.library.EmbedderDownload
+import com.suhel.llamabro.demo.ui.library.LibraryControl
+import com.suhel.llamabro.demo.ui.library.LibraryViewModel
 import com.suhel.llamabro.demo.ui.models.ModelEntry
 import com.suhel.llamabro.demo.ui.models.ModelSheetViewModel
 import com.suhel.llamabro.demo.ui.models.ModelsViewModel
+import com.suhel.llamabro.demo.ui.server.PhoneFacts
+import com.suhel.llamabro.demo.ui.server.ServerControl
+import com.suhel.llamabro.demo.ui.server.ServerViewModel
 import com.suhel.llamabro.demo.ui.settings.SettingsViewModel
 import com.suhel.llamabro.demo.ui.shell.ShellViewModel
 import com.suhel.llamabro.demo.voice.Dictation
@@ -68,6 +92,9 @@ import com.suhel.llamabro.demo.voice.VoiceConversation
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.LlamaBroHub
 import com.suhel.llamabro.hub.work.LlamaBroWorkerFactory
+import com.suhel.llamabro.rag.Library
+import com.suhel.llamabro.server.Advertise
+import com.suhel.llamabro.server.PairingRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -78,12 +105,16 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import okio.FileSystem
+import okio.Path.Companion.toOkioPath
 import java.io.File
 import java.time.ZoneId
 
@@ -139,6 +170,8 @@ class AppContainer(
     ) -> SpeechOutput = { rate, focus -> TrackSpeech(app, rate, focus) },
     /** Voice mode's one claim on the phone's audio for a session (D147); the phone tests take none. */
     val voiceFocus: () -> SessionFocus = { VoiceFocus(app) },
+    /** The library as a chat uses it (docs/design/rag.md); the phone tests pass one over passages they choose. */
+    chatLibraryOverride: ChatLibrary? = null,
 ) : Screens {
     /** The app's own scope: work that outlives a screen or a view model runs here, never in an ad-hoc scope. */
     val appScope: CoroutineScope get() = scope
@@ -176,6 +209,152 @@ class AppContainer(
         recovery.start()
     }
 
+    /**
+     * Server mode (docs/design/server.md §3): the held model served to the Wi-Fi behind a key kept with the settings,
+     * announced as "Llama Bro".
+     */
+    private val serverKey = ServerKey(ServerSettings(settingsStore))
+
+    val server: ServerMode =
+        ServerMode(
+            host,
+            settings,
+            serverKey,
+            scope,
+            advertise = Advertise("Llama Bro", app),
+            clock = clock,
+            // engine is built below; the hook runs only after a stop, long after construction
+            onStopped = { engine.releaseModelIfIdle() },
+        )
+
+    /** The phone's Wi-Fi addresses and charger, for the Server page and the serving notification. */
+    val network: NetworkState by lazy { NetworkState().also { it.watch(app) } }
+
+    /** Server mode as the Server page drives it. */
+    private val serverControl =
+        object : ServerControl {
+            override val state = server.state
+            override val served = server.served
+            override val log = server.log
+            override val key = serverKey.value
+            override val busy = server.busy
+
+            override suspend fun start(model: HfModel, slots: Int) = server.start(model, slots)
+
+            override suspend fun stop() = server.stop()
+
+            override suspend fun renewKey() {
+                server.renewKey()
+            }
+
+            override val pairing = server.pairing
+
+            override fun answerPairing(request: PairingRequest, approved: Boolean) =
+                server.answerPairing(request, approved)
+        }
+
+    /**
+     * The Library's embedder (docs/design/rag.md), in its own host beside the chat model's: under the chip chosen in
+     * Settings › Processor (D72), after a fit estimate that keeps room for the chat model.
+     */
+    val embedders: EmbedderHost =
+        EmbedderHost(
+            llamaBro,
+            source = { hub.installedModel(it) },
+            policy = {
+                settings.settings
+                    .first()
+                    .chip.policy
+            },
+            estimate = { key, policy, reserveBytes ->
+                val fit =
+                    llamaBro.estimateFit(hub.installedModel(key)) {
+                        task = ModelTask.Embedding()
+                        devicePolicy = policy
+                        memoryReserveMib += (reserveBytes / BYTES_PER_MIB).toInt()
+                    }
+                EmbedderEstimate(fit.fits, fit.bytesAtMinimum, fit.budgetBytes)
+            },
+            beside = ::chatBeside,
+            scope = scope,
+        )
+
+    /**
+     * The chat model the embedder loads beside: the one in memory, which the free memory already leaves out, or else
+     * the default model, whose files' size is kept free for the next chat.
+     */
+    private suspend fun chatBeside(): ChatBeside? =
+        when (val state = host.state.value) {
+            is HostState.Ready -> {
+                ChatBeside(Names.of(state.key), reserveBytes = 0)
+            }
+
+            else -> {
+                models.library
+                    .first()
+                    .firstOrNull { it.isDefault }
+                    ?.let { ChatBeside(it.name, it.totalBytes) }
+            }
+        }
+
+    /** The person's documents, under `noBackupFilesDir`: the vectors can be rebuilt, so backups don't carry them. */
+    val library: LibraryRepository =
+        LibraryRepository(
+            FileSystem.SYSTEM,
+            File(app.noBackupFilesDir, "library").toOkioPath(),
+            embedders,
+            Catalog.embedder.key,
+            read = TextImport(app.contentResolver)::read,
+            texts = File(app.noBackupFilesDir, "library-texts").toOkioPath(),
+        )
+
+    /** The library as a chat answers from it: "Use my library", its search, and a source's document. */
+    private val chatLibrary: ChatLibrary =
+        chatLibraryOverride ?: object : ChatLibrary {
+            override val hasDocuments = library.documents.map { it.isNotEmpty() }.distinctUntilChanged()
+
+            override suspend fun <T> use(block: suspend (Library) -> T): T = library.leased(block)
+
+            override suspend fun documentText(documentId: String) = library.documentText(documentId)
+        }
+
+    /** The library as the Library page drives it, with the embedder's download from the models' library. */
+    private val libraryControl =
+        object : LibraryControl {
+            private val key = Catalog.embedder.key
+            override val documents = library.documents
+            override val mismatch = library.mismatch
+            override val work = library.work
+            override val embedder =
+                combine(models.library.map { all -> all.any { it.key == key } }, models.state(key)) { onPhone, status ->
+                    when {
+                        onPhone || status is DownloadStatus.Complete -> {
+                            EmbedderDownload.OnPhone
+                        }
+
+                        status is DownloadStatus.Downloading -> {
+                            EmbedderDownload.Downloading(
+                                status.bytesDone.toFloat() / status.bytesTotal.coerceAtLeast(1),
+                            )
+                        }
+
+                        else -> {
+                            EmbedderDownload.Absent
+                        }
+                    }
+                }.distinctUntilChanged()
+
+            override suspend fun fit() = embedders.fit(key)
+
+            override fun getEmbedder() = models.get(key)
+
+            override fun import(uri: Uri) = library.import(uri)
+
+            override suspend fun remove(id: String) = library.remove(id)
+
+            override fun rebuild() = library.rebuild()
+        }
+
     /** Runs every chat (one handle per open chat); the chat screens read it. */
     val engine: ChatEngine =
         ChatEngine(
@@ -189,6 +368,8 @@ class AppContainer(
             beforeTurn = recovery::await,
             card = { sampling.card(it) },
             readSenses = { key -> hub.capabilities(key)?.senses(Catalog.byRepo(key.repo)) },
+            served = { server.served.value },
+            chatLibrary = chatLibrary,
         )
 
     /** The loaded model as Settings › Memory and the model sheet show it, with Unload (D59). */
@@ -245,7 +426,14 @@ class AppContainer(
     // ---- the screens' view models (see [Screens]) -----------------------------------------------------------------
 
     override fun shellViewModel(saved: SavedStateHandle) =
-        ShellViewModel(chats, settings, models, savedState = saved, deleteChat = { engine.delete(it) })
+        ShellViewModel(
+            chats,
+            settings,
+            models,
+            savedState = saved,
+            deleteChat = { engine.delete(it) },
+            serving = server.served.map { it != null },
+        )
 
     override fun settingsViewModel() = SettingsViewModel(settings, tokenStore, models, memory, sampling, ::deviceFacts)
 
@@ -270,6 +458,8 @@ class AppContainer(
             savedState = saved,
             searchFilters = settings.settings.map { it.searchFilters }.distinctUntilChanged(),
             saveSearchFilters = settings::updateSearchFilters,
+            served = { server.served.value },
+            stopServing = server::stop,
         )
 
     override fun modelSheetViewModel(row: ModelEntry, onExactFit: (FitView) -> Unit, startTier: SizeTier?) =
@@ -283,6 +473,22 @@ class AppContainer(
             asksForNotifications = asksForNotifications,
             related = discovery::related,
         )
+
+    override fun serverViewModel() =
+        ServerViewModel(
+            serverControl,
+            models.library,
+            PhoneFacts(
+                network.addresses,
+                network.charging,
+                // read while the page shows, off the main thread: each read is a call into the system
+                thermalReadings(app.getSystemService(PowerManager::class.java)).flowOn(Dispatchers.Default),
+            ),
+            scope,
+        )
+
+    override fun libraryViewModel() =
+        LibraryViewModel(libraryControl, Catalog.embedder.realName, Catalog.embedder.modelBytes, scope)
 
     override fun switcherViewModel(handle: ChatEngine.ChatHandle) =
         SwitcherViewModel(
@@ -330,6 +536,8 @@ class AppContainer(
         savedState = saved,
         background = scope,
         audio = chatAudio(),
+        servingMode = ChatServing({ server.served.value }, server::blocksSwitch, server::stop),
+        documentText = chatLibrary::documentText,
     )
 
     /**
@@ -386,7 +594,10 @@ class AppContainer(
         // a write already under way (a stopped reply is saved even when cancelled) must finish before the database
         // closes; the turns end first, so the model's leases are released and closing it doesn't wait for a reply
         runBlocking { scope.coroutineContext[Job]?.join() }
+        // the server's lease too, or the release below would wait for it
+        runBlocking { server.stop() }
         runBlocking { host.release() }
+        runBlocking { embedders.release() }
         database.close()
     }
 }
@@ -395,6 +606,8 @@ class AppContainer(
  * The app scope's last resort: background work that fails with nothing to catch it (a full disk, a database error) is
  * logged and ends only itself. Unhandled, it would reach the thread's handler and close the app.
  */
+private const val BYTES_PER_MIB = 1024L * 1024
+
 private val logFailures =
     CoroutineExceptionHandler { _, e -> Log.e("AppContainer", "background work failed", e) }
 

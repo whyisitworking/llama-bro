@@ -26,6 +26,7 @@ import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.ModelRepository
+import com.suhel.llamabro.demo.models.forChat
 import com.suhel.llamabro.demo.ui.theme
 import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.Job
@@ -58,8 +59,10 @@ class SettingsViewModel(
             SharingStarted.WhileSubscribed(STOP_TIMEOUT),
             AppSettings(),
         )
+
+    /** The chat models on the phone, for the default model's choice ([forChat]: never the Library's embedder). */
     val library: StateFlow<List<LibraryModel>> =
-        models.library.stateIn(
+        models.library.map { it.forChat() }.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(STOP_TIMEOUT),
             emptyList(),

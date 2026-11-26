@@ -12,7 +12,8 @@ import androidx.room.migration.AutoMigrationSpec
  * Room migrates on its own. Version 5 adds the Hub cache and the download records, new tables only;
  * version 6 a record's model-file bytes (a column with a default), so a download's fit takes its speed from the model
  * file alone; version 7 Hugging Face search's pages with their cursors in place of the one-page answer per query
- * (models-search design, D127).
+ * (models-search design, D127); version 8 a chat's "Use my library" and a reply's sources (docs/design/rag.md): a
+ * column with a default and a nullable one.
  */
 @Database(
     entities = [
@@ -26,7 +27,7 @@ import androidx.room.migration.AutoMigrationSpec
         RecentSearchEntity::class,
         DownloadRecordEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(
@@ -36,6 +37,7 @@ import androidx.room.migration.AutoMigrationSpec
         AutoMigration(from = 4, to = 5),
         AutoMigration(from = 5, to = 6),
         AutoMigration(from = 6, to = 7, spec = ChatDatabase.SearchPages::class),
+        AutoMigration(from = 7, to = 8),
     ],
 )
 abstract class ChatDatabase : RoomDatabase() {

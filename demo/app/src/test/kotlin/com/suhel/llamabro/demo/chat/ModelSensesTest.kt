@@ -55,6 +55,17 @@ class ModelSensesTest {
     private fun loaded(): Model = runBlocking { FakeLlamaBro().llamaBro.loadModel(ModelSource.file("/fake.gguf")) }
 
     @Test
+    fun aHeaderWithNoChatTemplateIsStoredAsNoChatModel() =
+        runBlocking {
+            val none = ModelSenses(thinks = false, sees = false, hears = false, chats = false)
+            settings.setSenses(search.toString(), none)
+            settings.setSenses(quiet.toString(), ModelSenses(thinks = true, sees = false, hears = false))
+            val known = settings.modelSenses.first()
+            assertEquals(none, known[search.toString()])
+            assertTrue("chats unless a header said otherwise", known.getValue(quiet.toString()).chats)
+        }
+
+    @Test
     fun aSuggestedModelThatTalksShowsTheMicAndVoiceModeBeforeItsFirstLoad() {
         val state = readyOrWaking(talker, "Omni", HostState.Idle) as ChatModelState.Ready
         assertTrue(state.hears)

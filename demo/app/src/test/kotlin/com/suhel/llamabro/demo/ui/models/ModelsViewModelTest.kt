@@ -445,6 +445,44 @@ internal class ModelsViewModelTest : ModelsViewModelFixture() {
             assertNull(vm.pendingRemove.value)
         }
 
+    @Test fun deletingTheServedModelAsksToStopServing() =
+        runTest {
+            testHub.install(swift)
+            val served = MutableStateFlow<HfModel?>(swift)
+            val vm = viewModel(served = served)
+            vm.browse.arrives { it != null && it.onPhone.isNotEmpty() }
+            val model = models.library.first().single()
+            // the swipe asks to stop serving instead of the plain remove question
+            vm.askRemove(model)
+            assertNull(vm.pendingRemove.value)
+            assertEquals(model, vm.pendingStopServing.value)
+            vm.dismissStopServing()
+            assertNull(vm.pendingStopServing.value)
+            assertEquals(swift, served.value)
+            assertTrue("dismissing keeps the model", testHub.onPhone(swift))
+            // confirmed, serving stops first, then the model is deleted
+            vm.askRemove(model)
+            vm.confirmStopServing()
+            withContext(Dispatchers.Default) { eventually("the model is deleted") { !testHub.onPhone(swift) } }
+            assertNull(served.value)
+            assertNull(vm.pendingStopServing.value)
+        }
+
+    @Test fun servingThatStartsAfterTheQuestionStillAsks() =
+        runTest {
+            testHub.install(swift)
+            val served = MutableStateFlow<HfModel?>(null)
+            val vm = viewModel(served = served)
+            vm.browse.arrives { it != null && it.onPhone.isNotEmpty() }
+            val model = models.library.first().single()
+            vm.askRemove(model)
+            assertEquals(model, vm.pendingRemove.value)
+            served.value = swift
+            vm.confirmRemove()
+            assertEquals(model, vm.pendingStopServing.value)
+            assertTrue("nothing deleted while it is served", testHub.onPhone(swift))
+        }
+
     @Test fun aRemoveThatCantStopTheWorkSaysSo() =
         runTest {
             testHub.install(swift)

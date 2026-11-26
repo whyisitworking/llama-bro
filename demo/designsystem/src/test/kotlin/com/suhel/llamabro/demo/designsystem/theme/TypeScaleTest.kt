@@ -38,6 +38,7 @@ class TypeScaleTest {
             "pageBody" to DemoType.pageBody,
             "sidebarTitle" to DemoType.sidebarTitle,
             "rowLine" to DemoType.rowLine,
+            "glance" to DemoType.glance,
         )
 
     private data class Spec(val size: Float, val line: Float, val weight: FontWeight, val tracking: Float)
@@ -70,6 +71,8 @@ class TypeScaleTest {
             // the sidebar's quiet roles (D126)
             "sidebarTitle" to Spec(22f, 28f, FontWeight.Normal, 0f),
             "rowLine" to Spec(15f, 20f, FontWeight.Normal, 0.1f),
+            // the docked view's numbers, read across a desk
+            "glance" to Spec(64f, 72f, FontWeight.Light, 0f),
         )
 
     @Test
@@ -118,6 +121,13 @@ class TypeScaleTest {
         for ((a, b) in ladder.zipWithNext()) assertTrue(a.fontSize.value - b.fontSize.value >= 2f)
         assertNotEquals(DemoType.bodyMedium.fontWeight, DemoType.label.fontWeight)
         assertNotEquals(DemoType.bodySmall.fontWeight, DemoType.labelSmall.fontWeight)
+    }
+
+    @Test
+    fun glanceIsTheLargestRoleAndLight() {
+        val others = allRoles.filterKeys { it != "glance" }.values
+        assertTrue(others.all { it.fontSize.value < DemoType.glance.fontSize.value })
+        assertEquals(DemoType.body.fontFamily, DemoType.glance.fontFamily)
     }
 
     @Test

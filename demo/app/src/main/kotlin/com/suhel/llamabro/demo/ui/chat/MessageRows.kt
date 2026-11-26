@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -16,6 +17,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.testTag
 import com.suhel.llamabro.demo.audio.PlayingClip
+import com.suhel.llamabro.demo.data.Source
 import com.suhel.llamabro.demo.designsystem.components.DayLabel
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.Gap
@@ -28,6 +30,7 @@ import com.suhel.llamabro.demo.designsystem.components.ModelBubble
 import com.suhel.llamabro.demo.designsystem.components.OpenReply
 import com.suhel.llamabro.demo.designsystem.components.ReplyActions
 import com.suhel.llamabro.demo.designsystem.components.Stack
+import com.suhel.llamabro.demo.designsystem.components.StarterChips
 import com.suhel.llamabro.demo.designsystem.components.SwitchDivider
 import com.suhel.llamabro.demo.designsystem.components.ThoughtFold
 import com.suhel.llamabro.demo.designsystem.components.ThoughtState
@@ -65,6 +68,8 @@ class MessageActions(
     val readAloud: (messageId: Long, text: String) -> Unit = { _, _ -> },
     /** The reply being read aloud now, or null. */
     val reading: () -> Long? = { null },
+    /** Opens one of a reply's sources in its sheet (docs/design/rag.md). */
+    val openSource: (Source) -> Unit = {},
 )
 
 @Composable
@@ -133,6 +138,7 @@ private fun ReplyRow(
         if (item.canContinue) {
             LimitLine(CUT_LINE, "Continue", { actions.continueReply(item.position) }, Modifier.testTag("cut_line"))
         }
+        if (item.sources.isNotEmpty()) SourceChips(item.sources, actions.openSource)
         // the row's last line, which eases in once the reply is whole; nothing is reserved for it before
         if (showActions && item.failure == null) {
             ReplyActions(easeIn = easeIn) {
@@ -235,6 +241,21 @@ private fun SpeakerAction(item: ReplyItem, actions: MessageActions) {
             small = true,
         )
     }
+}
+
+/**
+ * A reply's sources, one chip each, numbered as the reply cites them ("[1] Llamas"); a tap opens the passage. The
+ * starter chips' look, starting where the reply's text does.
+ */
+@Composable
+private fun SourceChips(sources: List<Source>, onOpen: (Source) -> Unit) {
+    val labels = remember(sources) { sources.associateBy { "[${it.number}] ${it.title}" } }
+    StarterChips(
+        labels.keys.toList(),
+        onPick = { label -> labels[label]?.let(onOpen) },
+        modifier = Modifier.testTag("source_chips"),
+        centered = false,
+    )
 }
 
 /** A reply that reached its length limit (D60). */

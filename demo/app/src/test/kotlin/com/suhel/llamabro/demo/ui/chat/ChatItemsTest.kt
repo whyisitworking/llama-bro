@@ -2,6 +2,7 @@ package com.suhel.llamabro.demo.ui.chat
 
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
+import com.suhel.llamabro.demo.data.Source
 import com.suhel.llamabro.demo.data.StoredMessage
 import com.suhel.llamabro.demo.data.db.ReplyStats
 import org.junit.Assert.assertEquals
@@ -53,6 +54,18 @@ class ChatItemsTest {
             details.drop(1), // the first line is the model's name, from the catalog
         )
         assertEquals("Model", details.first().label)
+    }
+
+    @Test fun aReplyThatUsedTheLibraryListsTheSourcesItCites() {
+        val one = Source(1, "a", "Llamas", 0, 4, emptyList(), "Hums")
+        val two = Source(2, "a", "Llamas", 5, 10, emptyList(), "Spits")
+        val reply = msg(2, MessageKind.Assistant, "They spit [2].", now).copy(sources = listOf(one, two))
+        assertEquals(listOf(two), (builder(MessageStyle.Open).build(listOf(reply), null).single() as ReplyItem).sources)
+        val plain = msg(3, MessageKind.Assistant, "Hi.", now)
+        assertEquals(
+            emptyList<Source>(),
+            (builder(MessageStyle.Open).build(listOf(plain), null).single() as ReplyItem).sources,
+        )
     }
 
     @Test fun aReplyFromBeforeStatsShowsWhatItHas() {

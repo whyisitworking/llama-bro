@@ -47,6 +47,13 @@ data class StoredMessage(
     val stats: ReplyStats? = null,
     /** A voice message's recording (D76); null for any other message. */
     val voice: StoredVoice? = null,
+    /** The library's passages a reply used, numbered as it cites them; empty for any other message. */
+    val sources: List<Source> = emptyList(),
+    /**
+     * The library's passages a question was asked with (rag.md): the model reads them before its words, in its turn and
+     * in the history after; the chat never shows them. Null for none.
+     */
+    val passages: String? = null,
 )
 
 /** A row to append; [images] are file names in the [ImageStore]; [sentAt] defaults to the repository's clock. */
@@ -74,6 +81,10 @@ data class MessageChange(
     val state: MessageState? = null,
     val failure: String? = null,
     val stats: ReplyStats? = null,
+    /** The library's passages the reply used; null leaves them as they were. */
+    val sources: List<Source>? = null,
+    /** A question's library passages; empty takes them away, null leaves them as they were. */
+    val passages: String? = null,
 )
 
 /** Room is the source of truth for chats (demo design §3). Every call runs on Room's own threads. */
@@ -116,9 +127,18 @@ class ChatRepository(
     fun lastUsed(): Flow<Map<String, Long>> =
         dao.lastUseByModel().map { rows -> rows.associate { it.modelKey to it.lastUsed } }
 
-    suspend fun createChat(modelKey: String): Long {
+    /** A new chat on [modelKey]; [useLibrary] is its "Use my library", chosen before its first message. */
+    suspend fun createChat(modelKey: String, useLibrary: Boolean = false): Long {
         val now = clock()
-        return dao.insertChat(ChatEntity(title = NEW_CHAT_TITLE, createdAt = now, updatedAt = now, modelKey = modelKey))
+        return dao.insertChat(
+            ChatEntity(
+                title = NEW_CHAT_TITLE,
+                createdAt = now,
+                updatedAt = now,
+                modelKey = modelKey,
+                useLibrary = useLibrary,
+            ),
+        )
     }
 
     /** Appends at the end; the first user message becomes the chat's title (see [titleFrom]). */
@@ -157,6 +177,8 @@ class ChatRepository(
                 reasoningMillis = change.reasoningMillis ?: old.reasoningMillis,
                 wordsPerSecond = change.wordsPerSecond ?: old.wordsPerSecond,
                 stats = change.stats ?: old.stats,
+                sources = change.sources?.let(SourcesColumn::encode) ?: old.sources,
+                passages = if (change.passages == null) old.passages else change.passages.ifEmpty { null },
                 state = change.state?.key ?: old.state,
                 failure =
                     change.failure
@@ -190,6 +212,12 @@ class ChatRepository(
     /** Changes the chat's own sampling values in one step; [Knobs.None] gives the chat back to its model's. */
     suspend fun updateSampling(chatId: Long, change: (Knobs) -> Knobs) =
         dao.modifyChat(chatId) { it.copy(sampling = change(Knobs.decode(it.sampling)).encode().ifEmpty { null }) }
+
+    /** Whether the chat answers from the library; off for a chat that doesn't exist. */
+    fun useLibrary(chatId: Long): Flow<Boolean> = dao.useLibrary(chatId).map { it == true }
+
+    /** Turns the chat's "Use my library" on or off. */
+    suspend fun setUseLibrary(chatId: Long, on: Boolean) = dao.modifyChat(chatId) { it.copy(useLibrary = on) }
 
     /** Titles are never empty: a blank [title] is rejected. */
     suspend fun rename(chatId: Long, title: String) {
@@ -256,6 +284,8 @@ class ChatRepository(
                 audio?.let { name ->
                     StoredVoice(audioStore?.file(name) ?: File(name), audioMillis ?: 0, Levels.decode(audioLevels))
                 },
+            sources = SourcesColumn.decode(sources),
+            passages = passages,
         )
 
     private companion object {

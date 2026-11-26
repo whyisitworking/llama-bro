@@ -63,6 +63,14 @@ its amendments to know what holds now.
 | [D106](#d106-create-compares-settings-not-the-logger-or-token-provider-hub-locks-key-by-canonical-path-saves-read-version-3-only) `create` compares settings, not the logger or token provider; hub locks key by canonical path;… | 2026-11-19 | |
 | [D115](#d115-the-bridges-own-errors-carry-a-code-upstreams-matched-words-are-pinned-against-its-source) The bridge's own errors carry a code; upstream's matched words are pinned against its source | 2026-11-19 | |
 | [D142](#d142-one-error-model-a-missing-capability-is-notsupported-on-every-path-an-unreadable-reply-is-servererror-and-every-c-api-call-reports-a-status-and-its-reason) One error model: a missing capability is `NotSupported` on every path, an unreadable reply is… | 2026-11-24 | |
+| [D167](#d167) `llamabro-rag` is a separate optional module: pure Kotlin, exact search behind `VectorStore` | 2026-11-26 | |
+| [D168](#d168) A library is a folder whose manifest is written last; a crash leaves the last good library | 2026-11-26 | |
+| [D169](#d169) Chunks are cut at headings, paragraphs, sentences and characters and counted with the embedder's tokenizer | 2026-11-26 | |
+| [D170](#d170) Search is BM25 and dense search fused by rank, with an optional rerank; reranking is not on by default | 2026-11-26 | |
+| [D171](#d171) The library's search tool returns numbered passages, answers failures safely and lets cancellation through | 2026-11-26 | [D172](#d172) |
+| [D172](#d172) The search tool numbers passages on across its calls and tells the app what the model saw (`onHits`) | 2026-11-26 | |
+| [D173](#d173) The server can match a typable key and throttles wrong keys per address; the demo's key is 16 Crockford characters and its QR code goes | 2026-11-26 | |
+| [D174](#d174) A computer pairs from its browser and the phone approves it; the key goes to that page once | 2026-11-26 | |
 
 **Hub**
 
@@ -260,6 +268,7 @@ Status: Decided (2026-11-03)
 Context: Running the engine in a separate process would add IPC, a service lifecycle and a second memory footprint.
 Decision: The engine runs in-process only.
 Consequences: A native crash takes the app down; in exchange there is no IPC cost and no local network surface (see D12).
+Amended by D163: core stays socket-free; serving the network is a separate opt-in module.
 
 <a id="d6"></a>
 ### D6. Engine lifetime
@@ -2419,7 +2428,6 @@ and Drawn by the bar. Glass off the bars (the jump button, the FAB) keeps its ow
 Consequences: On the owner's phone merged glass takes a chat's fling from CPU P90 6.77 to 5.13 ms (F187), but its
 chips are a touch softer, drawn at the bar's half resolution and with the bar's heavier blur bleeding a few pixels
 into their edge, so a Full phone keeps the sharper glass by default. A Light phone keeps the chips' and panels' blur.
-Next free IDs: D155, F189.
 
 <a id="d155"></a>
 ### D155. A chat knows what its model can do before it loads: the hub reads the installed headers; each load corrects it
@@ -2597,6 +2605,343 @@ Consequences: At the app's 24 dp nothing changes (F185's measurement holds). A b
 larger copy than before, more pixels to blur, and 12 dp the whole page; its cost on the phone is not yet measured.
 A Light phone at 12 dp reads a half-size copy, not a quarter.
 
+Next free IDs: D163, F189.
+
+<a id="d163"></a>
+### D163. Serving over the network is a separate, opt-in module, `llamabro-server`; core stays socket-free
+
+Status: Decided (2026-11-26)
+
+Context: A docked phone can serve a model to the machines on its Wi-Fi, which a laptop's agent, coding tool or chat UI
+then calls as it would llama-server (docs/design/server.md). D5 ruled out a local network surface for the SDK, because
+the engine was meant to be used inside the app. The three ways to serve are in the design's Approaches table.
+Decision: D5's scope is amended, not reversed. Core `llamabro` opens no socket. `llamabro-server` is a separate module
+an app adds on purpose; it listens only when the app starts it. It is built on `Model.exchange`
+(`@InternalLlamaBroApi`), a new call in core that returns llama-server's status, content type and body bytes
+unchanged, error bodies and SSE `event:` lines included. `rawRequest` is unchanged: it keeps only `data:` lines and
+turns an error into a typed exception, which an HTTP client of the Anthropic or Responses API can't use. The choices:
+- A Kotlin server over the SDK (chosen): it shares the model the app already loaded, stays about 2% from the binary
+  (F1), is multiplatform-friendly, and is a module other apps can embed. The cost is a thin HTTP layer to keep in step
+  with upstream's routes, which `server-contract` checks (F189).
+- Upstream's cpp-httplib layer in the bridge: upstream's HTTP behaviour exactly, but much C++ and JNI work for start,
+  stop and threads, the part D12 left out, and nothing a later iOS port could reuse.
+- A llama-server subprocess: upstream untouched, but it shows llama.cpp rather than Llama Bro, holds a second copy of
+  the model in memory, needs a second build with our patches and NPU setup, and dies with the app.
+Consequences: An app that doesn't depend on `llamabro-server` has no listening code and no new permission. The module
+adds Ktor, and Android's NSD for discovery, at its edge. Router mode, MCP, the CORS proxy and upstream's `/models`
+management routes are not served. F189 shows that what the module answers is what the core answers.
+
+<a id="d164"></a>
+### D164. `llamabro-server`'s defaults follow upstream; the routes that change the shared model are off
+
+Status: Decided (2026-11-26)
+
+Context: The SDK makes no policy for the app, and upstream's llama-server is the baseline. The model on the phone is
+shared with the chat, so a remote client that changes or saves it would act behind the chat's back.
+Decision: `ServerConfig.Default` binds `127.0.0.1:8080` with no key; the app sets a host and a key. A key goes in
+`Authorization: Bearer` or `x-api-key` (Anthropic clients send that), is compared in constant time, and every key a
+request presents must be right; `/health` and `/v1/models` stay open, as upstream's `--api-key` leaves them.
+`POST /props`, `POST /lora-adapters` and `POST /slots/:id` are off unless the app enables them (`Routes.enable`),
+matching upstream, which gates the first on `--props` and slot save and restore on `--slot-save-path`
+(`server-context.cpp`). `GET /lora-adapters` and `POST /v1/chat/completions/control` are on: the first reads, the
+second ends a running completion's reasoning early, the client's own request. There is no queue of ours: a request
+beyond the model's slots waits in llama-server's own task queue, and a client that hangs up cancels its request. A
+model that is closed, or none loaded, is a 503; an id the app doesn't serve is a 404. A route that doesn't exist or is
+switched off is a 404 in OpenAI's error shape, as upstream answers one. Audio: `POST /v1/audio/transcriptions` takes
+multipart and answers `json` or `text`; `POST /v1/audio/speech` streams `pcm` (the default) or `wav` only, since the
+SDK has no encoder for others, and a `voice` the model doesn't have is dropped, since OpenAI clients always send one.
+CORS is off (`Cors.None`) unless the app sets `Cors.Any`. Discovery is opt-in: with `advertise`, the server registers
+`_http._tcp` and `_llamabro._tcp` through `NsdManager` while it serves, and a stop that comes before NSD confirms the
+registration is carried out when it does, since NSD refuses to unregister one it hasn't confirmed.
+Consequences: Out of the box the module serves this device only; reaching the Wi-Fi is the app's explicit choice, and
+so is changing the shared model. An app that wants the three routes opts in per route.
+Amended (2026-11-26): the 404 for an id the app doesn't serve is the module's behaviour, and `ServedModels` is the
+app's policy. The demo serves its one model whatever a request's `model` names, as upstream's llama-server does with
+one model loaded: outside router mode it never reads `model` beyond echoing it in the reply
+(`server-common.cpp`), which is why F189's contract passes with any id. Claude Code always sends its own model's
+name (and a second one for its background calls), so a 404 would refuse every call it makes; with this its snippet
+needs no `ANTHROPIC_MODEL`. `/v1/models` still lists the served model alone.
+
+<a id="d165"></a>
+### D165. Media in a served request must be a `data:` URL or raw base64; a body must be JSON and under `maxBodyBytes`
+
+Status: Decided (2026-11-26)
+
+Context: Upstream's `handle_media` (`server-common.cpp`) fetches what starts with `http` and reads `file://` from
+`media_path`, which the SDK sets to its media folder for chat attachments (D87). Served to the network, that lets a
+remote client read another chat's pictures and make the phone fetch URLs on the LAN. Three behaviours differ from
+upstream because of it.
+Decision: The deviations, each with its reason:
+1. A media value must be a `data:` URL or raw base64 (a string with no `:` that doesn't start with `http`, which
+   upstream would fetch; OpenAI's `input_audio` sends raw base64).
+   Anything else is a 400 in `invalid_request_error` shape. It is checked on every media key (`image_url`,
+   `video_url`, `audio_url`, `file_url`, `file_data`, `image`, and the `url` or `data` of `input_audio`,
+   `input_video` and Anthropic's `source`) wherever it appears in the body, so a nesting upstream adds can't pass. Text
+   is never media, so `file://` in a message's text passes. A media key inside a `tool_use` input is refused too: that
+   is the cost of checking keys anywhere.
+2. A body that isn't valid JSON gets the server's own 400, not upstream's parser message, because the server must
+   parse every body to check its media. The status and error type are upstream's.
+3. `maxBodyBytes` (32 MiB by default) gives a 413, counted as the body is read, so a client can't make the device
+   hold more.
+Consequences: A client can't read the phone's files or reach its network through a request. A client that sends an
+image by URL must send it as `data:`. Every other request and answer is upstream's (F189).
+
+<a id="d166"></a>
+### D166. Swiping the app away from Recents keeps the phone serving; Stop ends it
+
+Status: Decided (2026-11-26)
+
+Context: Server mode runs `ServerService`, a `specialUse` foreground service with a wake lock and a Wi-Fi lock, so
+serving goes on with the app in the background (docs/design/server.md §3). Swiping a task away from Recents finishes
+its activities, and Android stops a service only when it says `stopWithTask`; otherwise the process, the locks and the
+listening server stay. The spec's anti-goal said the server stops when the person stops it "or the app is closed", and
+nothing said which the swipe is.
+Decision: The swipe does not stop serving. A docked phone serving the Wi-Fi is a dedicated server: the person sets it
+down and leaves it, and clearing Recents is housekeeping, not a request to stop. Serving ends when the person says so,
+with Stop serving on the page or Stop in the notification, which stays while it serves; it also ends with the process.
+The manifest sets `android:stopWithTask="false"` on the service, Android's default, so the choice is visible there.
+Consequences: The notification is the control once the app is swiped away: it names the model and the address and
+carries Stop. A person who swipes the app away expecting serving to end finds the notification still there, which is
+the one place that says the phone still serves.
+
+<a id="d167"></a>
+### D167. Retrieval is a separate, optional module, `llamabro-rag`: pure Kotlin, exact search behind `VectorStore`
+
+Status: Decided (2026-11-26)
+
+Context: The embeddings decision (D65) gave the SDK `Model.embed` and `Model.rerank` and left out similarity and search
+helpers, so core stays llama-server's features. Answering questions over a person's own documents needs what sits
+around those calls: chunking, storing vectors, searching, citing (docs/design/rag.md). Three ways to build the store
+and search were weighed:
+- A, pure Kotlin with exact search: vectors in a flat float16 file scanned in full, BM25 in memory, reciprocal rank
+  fusion. No native code and multiplatform-friendly; memory and scan time grow with the corpus, so past about 100k
+  chunks it needs another store.
+- B, SQLite with its full-text search: durable and queryable, but Android's platform SQLite doesn't promise FTS5, a
+  bundled one is a native dependency, and it isn't multiplatform as it stands.
+- C, a native approximate index (sqlite-vec, usearch): scales to millions, at the cost of a native build per ABI that no
+  phone corpus needs yet.
+Decision: `sdk/llamabro-rag` (package `com.suhel.llamabro.rag`) is a separate module an app adds on purpose; core does
+not depend on it and gains nothing for it. It is pure Kotlin (Okio for files, coroutines, kotlinx.serialization; no
+`android.*`), as the multiplatform soft rule asks, and depends on `llamabro` and `llamabro-typed` (for the tool). A is
+chosen, behind the `VectorStore` interface (`nearest(query, k)`), so B or C can replace it without changing `Library`'s
+API. The module does no policy: it indexes what it is given and refuses nothing, as the SDK makes no app policy. Reading file formats is the app's: the module takes text.
+Consequences: Core stays what D65 made it. An app that doesn't add the module carries none of it. A library of
+hundreds of thousands of chunks needs a `VectorStore` of its own; the scan's cost at 100k chunks has not been measured
+on a phone. The folder format is D168, chunking D169, search D170 and the tool D171.
+Amended (2026-11-26): `VectorStore` is internal, a seam inside the module and not a plug point. No public API took or
+returned one, and its rows are the store's own numbering, which compaction changes, so publishing it would have frozen
+a signature that another store (B or C, with its own ids, persistence and part in removal and compaction) would
+change. A public plug point is designed when B or C is; until then a larger library needs a change to the module.
+
+<a id="d168"></a>
+### D168. A library is a folder whose manifest is written last; a crash leaves the last good library
+
+Status: Decided (2026-11-26)
+
+Context: A library lives on a phone that can lose power or be killed in the middle of a write, and an index that opens
+half-written, or that mixes vectors from two embedding models, returns confident nonsense.
+Decision: A library is a folder: `manifest.json` (format version, the embedder's identity, the documents with their row
+ranges, and the counts of rows, bytes of chunks and tombstones), `vectors.f16` (a row per chunk, float16, little-endian),
+`chunks.jsonl` (a line per row) and `deleted` (tombstones). The rules:
+- The manifest is written last and names only what is already on disk. The two data files are append-only; bytes past
+  what the manifest counts, which a crash mid-append leaves, are truncated by the next write, not read.
+- Whole files (the manifest, the first write) are written to `<name>.tmp`, flushed and moved over the old one, so a move
+  is atomic.
+- A document is added or replaced in one write: its new rows and the old ones' removal commit with one manifest, so a
+  crash leaves one version or the other. `remove` appends a tombstone (`firstRow rowCount`) and rewrites the manifest.
+- Compaction runs once tombstoned rows pass a quarter of the rows. It writes `vectors.f16.tmp` and `chunks.jsonl.tmp`,
+  then `manifest.next`, which is the point it is committed at; moving the three into place follows, and an open that
+  finds `manifest.next` finishes it.
+- A compaction that fails after a document is committed does not fail that `add`: the document is in, the store is
+  marked to open again before the next write, and that write compacts again. A write that fails leaves the folder
+  holding the library as it was, and the call fails with the `IOException`.
+- `EmbedderIdentity` is the model's name, the weights' size in bytes, the vectors' dimensions, the pooling, the
+  normalisation and the `EmbeddingFormat` (query and document prefixes). Opening a folder with another identity throws
+  `IndexMismatch(built, wanted)` and changes nothing: any of these puts vectors in a different space. The weights'
+  size stands in for the file name, which a loaded model does not report; the pooling is passed by the app, since a
+  model does not report it either.
+- One write at a time: a mutex guards the folder, and reads wait for a commit in progress. Embedding, the slow part of
+  an `add`, runs outside it, and cancelling before the commit saves nothing of the document.
+Consequences: Tests make the file system die at each file a commit writes or moves onto (`CrashingFileSystem`), and the library
+opens to the last committed state each time. A library built with one embedder cannot be quietly reused with another; the app rebuilds
+it. The format is version 1 and is not promised stable across the alpha.
+
+<a id="d169"></a>
+### D169. Chunks are cut at headings, then paragraphs, sentences and characters, and counted with the embedder's own tokenizer
+
+Status: Decided (2026-11-26)
+
+Context: An embedding input cannot be split across batches, and one longer than the batch fails (D65). Estimating
+tokens from characters was the design's first plan; F190 showed that `/tokenize` answers on an embedding load in
+upstream and in the SDK, so the embedder's own count is available.
+Decision: `Chunker` cuts a document at Markdown headings first (each chunk keeps its heading path), then at blank-line
+paragraphs, then sentences, then characters, into chunks of at most 256 tokens (`maxTokens`), and packs small pieces
+together up to that limit. Every chunk is counted with `TokenCounter.Model`, the embedder's tokenizer through
+`POST /tokenize` with special tokens (`[CLS]`, `[SEP]`) counted, and with the document prefix, as the model will see it,
+so none is over the batch; a character estimate (three to a token) only guides where to split, and no range is counted
+twice. The `Library` gives its chunker the format's document prefix, so `maxTokens` covers the prefix and the text.
+Overlap is 15% of the limit and repeats whole pieces (paragraphs, then sentences); text that had to be split by
+characters, as a wall without stops is, gets none. Offsets into the document stay exact. If the embedder still refuses
+a batch (`InputTooLong`), the ingest cuts the chunk again and retries; with a limit below the chunker's, every chunk not
+yet embedded is cut again with that limit.
+Consequences: Each chunk costs a tokenize call where the estimate is near the limit, which is small beside embedding.
+The 256 and 15% defaults were kept by F191, which also tried 128 and 512. The design's estimate-with-margin is gone
+(the estimate remains as `TokenCounter.Estimate` for tests and apps without a model).
+
+<a id="d170"></a>
+### D170. Search is BM25 and dense search fused by rank, with an optional rerank; reranking is not on by default
+
+Status: Decided (2026-11-26)
+
+Context: Small embedding models miss exact names, numbers and rare words that keyword search catches, and keyword
+search misses a question put in other words. F191 measured both on this repository's docs.
+Decision: `Library.search(query, limit = 6, reranker = null)` takes the dense top 50 (the query embedded with the
+format's query prefix, cosine against every row) and the BM25 top 50 (k1 = 1.2, b = 0.75, Lucene's idf; tokens are
+lowercase runs of letters and digits, each Han character and kana its own token, no stemming and no stop words), and
+merges them by reciprocal rank fusion with k = 60. With a `reranker` (a model loaded with `ModelTask.Rerank`), the
+fused top 20 are reranked and the best `limit` kept, and `Hit.score` is the reranker's; without one, the fused top
+`limit`, scored by the fusion. An empty library, a blank query or a limit under 1 returns an empty list without
+embedding. The matching step runs under the library's lock, so one answer comes from one state of the library; the
+query is embedded, and the reranker run, outside it.
+The defaults were kept by F191: hybrid at 256 tokens found 44 of 47 answers in the top 5, level with BM25 alone at 512,
+and was never far from the better of its two lists. Hybrid is kept over BM25 alone because each list alone has a size
+where it falls behind, and the question set shares the docs' words more than a stranger's would.
+Reranking is not on by default, and the module has no default for it: on that set jina-reranker-tiny found one to four
+questions fewer at 5 and added 0.3 to 1.0 s a query on a CPU. That is one tiny reranker on one English set, so there is
+no evidence for turning it on, and none against a larger reranker; an app passes one when it has measured its own.
+Consequences: Search is exact and in memory, in the single-digit milliseconds on the Mac at 2 000 passages (F191). The
+BM25 index is built on open and kept in step with every write, and costs memory in proportion to the corpus (the
+tests hold 50 000 chunk-sized rows to a budget of 80 MB). Top-k and the fusion constant were not varied.
+Amended (2026-11-26): the passages' text is the largest steady cost of a library on a small embedder. Every passage
+is held in memory once, as its chunk: a 256-token English passage is about 1 KB of text, and twice that once it holds
+a character outside Latin-1, so 50 000 passages hold roughly 50 to 100 MB beside the vectors (about 38 MB at 384
+dimensions) and the BM25 index. Opening reads `chunks.jsonl` a line at a time, so the text is never also held as the
+whole file in one String and its split copy, and a rebuild streams the old library's passages a document at a time,
+without loading its vectors or building its BM25 index. An app that wants that memory back closes the library.
+
+<a id="d171"></a>
+### D171. The library's search tool returns numbered passages, answers failures safely and lets cancellation through
+
+Status: Decided (2026-11-26)
+
+Context: A model that calls tools searches when it needs to (D14), and a tool's errors reach the model as text (D62,
+D83): nothing in them may be a path or an exception message. A model with no tools needs the same passages in its
+prompt.
+Decision: `Library.searchTool(name = "search_library", limit = 6, reranker = null, description)` is a typed tool
+(`llamabro-typed`) taking `SearchArgs(query)` and returning `List<Hit>.asContext()`: one block per passage, `[n] <title>
+› <headings>` (just `[n] <title>` with none), the passage on the next line, blocks separated by a blank line, `n` being
+the position from 1 so a reply can cite `[n]`. The description tells the model to answer from the passages and cite
+them by number. No match returns "No passages in the library match this query." so the model does not invent one.
+Failures are an `LbToolError` with a fixed short message and the cause attached, so the cause reaches the app and the
+model sees only the message (D83): "the library is not available" (closed), "the library could not be read" (I/O),
+"the search failed" (the embedder or reranker threw a `LlamaBroException`). `CancellationException` is rethrown first,
+since on the JVM it is an `IllegalStateException`, so a cancelled turn stops the search and is not reported to the model
+as an error. `asContext()` is public for the app that puts passages in a prompt itself.
+Consequences: The module chooses no policy about when to search; the app adds the tool or the passages. How well a
+small chat model uses either is not measured here. The hit's offsets and headings let an app show its source, which the
+design's anti-goal needs; the tool's text carries only the title and headings.
+
+<a id="d172"></a>
+### D172. The search tool numbers passages on across its calls and tells the app what the model saw (`onHits`)
+
+Status: Decided (2026-11-26). Amends D171.
+
+Context: An app that shows a reply's sources (the demo's chips, rag.md) must know which passages the model was shown
+and under which number. D171's tool returned only text, so the demo first wrapped `search` in a tool of its own to see
+the hits, duplicating the tool's text and failure messages. And each call numbered from [1], so a model that searched
+twice in one turn had two different [1]s, and a cited `[n]` didn't name one passage.
+Decision: `Library.searchTool` gains `onHits: suspend (List<Hit>) -> Unit = {}`, called once per call, before the model
+reads the result, with the passages as shown, in order, each `Hit.rank` set to its `[n]` (an empty list when nothing
+matched). One tool instance numbers on across its calls: after a call showed [1] to [6], the next call's first passage
+is [7]; parallel calls take their numbers one after another under a lock. An app wanting numbers that start at [1]
+each turn makes a tool per turn. `List<Hit>.asContext()` is unchanged (numbered from 1 by position). The demo uses the
+SDK tool with `onHits` and makes one per turn, so every `[n]` in a reply is one chip.
+Consequences: A source chip and the `[n]` the model cites always agree within a turn. A conversation that keeps one
+tool across turns sees numbers grow across them; its `[n]`s still name one passage each. `onHits` runs inside the
+tool's call: what it throws reaches the model as `Error: the tool failed` (D62), so an app keeps it to recording.
+
+<a id="d173"></a>
+### D173. The server can match a typable key and throttles wrong keys per address; the demo's key is 16 Crockford characters and its QR code goes
+
+Status: Decided (2026-11-26)
+
+Context: The client of a phone server is almost always a laptop, which can't scan the Server page's QR code, and the
+demo's key (32 random bytes, 43 characters of base64url) is painful to type (docs/design/server.md §6). A shorter key
+is only safe if guessing it is slow, and upstream's llama-server has no throttle: every wrong key gets its 401.
+Decision: In `llamabro-server`:
+- `ServerConfig.keyMatching`: `KeyMatching.Exact` (the default, as upstream: byte for byte) or `Typable`, which upper
+  cases both keys, drops their spaces and dashes and reads Crockford's decode aliases (O as 0, I and L as 1) before
+  the same constant-time compare, so a person who types O for 0 is let in. It only normalises: every other character
+  must still be right. A key that is only spaces and dashes is refused with `Typable`, so it can't
+  match an empty one.
+- `ServerConfig.throttle`: `Throttle.Default` (on) or `Throttle.Off`; it applies only when a key is set, and never to
+  `/health`, `/v1/models` or a preflight. Per client address, the fifth wrong key within a minute starts a wait:
+  further requests get 429 in OpenAI's error shape (type `rate_limit_error`, Anthropic's name) with `Retry-After` in
+  whole seconds, and `ServerEvent.Rejected` with status 429. The wait is 30 s, doubling with each one after, up to
+  5 min; a right key clears the address's record, doubling included. While an address waits, its requests get 429
+  whatever their key, so no answer tells a right guess from a wrong one. Each request's key is judged first (in
+  constant time), and the throttle then decides and records it in one locked step, so guesses sent in parallel can't
+  all pass its check: at most 5 are judged per wait. A request with no key guesses nothing
+  and does not count. The state is bounded: an address idle for 10 minutes is forgotten (its doubling with it), and at
+  most 1,024 addresses are tracked, the one idle longest going first. It lives with the running server, so a restart
+  starts it over. This is a deviation from upstream, which has no throttle.
+In the demo: the key is 16 random characters of Crockford base32 (0-9 and A-Z without I, L, O, U: 80 bits), stored
+upper case without dashes and shown, copied and put in the snippets in four groups (`K7QM-4RTX-9HCD-2WNB`); the server
+uses `Typable`. A key stored in the old format is replaced on first use. The QR code is removed from the Server page,
+and the design system's `QrCode` and the ZXing dependency with it.
+Consequences: Guessing goes through the phone one address at a time, at most 5 guesses per wait, so 80 bits is ample
+for a key on a home or office Wi-Fi; over plain HTTP its length protects only against guessing, as before. A client
+with many addresses (IPv6 privacy addresses) gets 5 guesses per address, and enough of them can push others out of
+the 1,024 tracked. Anyone paired with an old demo key must enter the new one. The module's defaults change in one
+way: a server with a key now throttles unless the app sets `Throttle.Off`.
+
+<a id="d174"></a>
+### D174. A computer pairs from its browser and the phone approves it; the key goes to that page once
+
+Status: Decided (2026-11-26)
+
+Context: Even typable (D173), the key is 16 characters to read off a phone and type on a laptop, and the laptop can't
+scan a code. The laptop has a browser, and the phone is in reach while it is set up (docs/design/server.md §6).
+Upstream's llama-server has nothing like it: its web UI asks for the key.
+Decision: In `llamabro-server`, `ServerConfig.pairing: Pairing?` (null by default, as upstream; it needs `apiKey`).
+`Pairing` is the app's `fun interface` with `suspend fun approve(PairingRequest): Boolean`, where `PairingRequest` has
+`code`, `client` (the address) and `userAgent`. With it set, three routes need no key:
+- `GET /` serves one self-contained HTML page (a resource in the module: inline CSS and script, no external script,
+  font, image or link; light and dark from `prefers-color-scheme`), with `Cache-Control: no-store`, a CSP that allows
+  only itself and requests to the server, and `X-Frame-Options: DENY`.
+- `POST /pair` answers `{"id", "code"}`: a 128-bit random id (base64url) and a 4-digit code (`SecureRandom`,
+  0000-9999). An address has at most one pairing waiting (a second POST gets the same one) and three wait in all (a
+  fourth gets 429 with `Retry-After` until the oldest expires). The server calls `approve` once per pairing, on the
+  running server's scope, never twice at once for an address, and cancels it after 2 minutes: an expiry is a deny, as
+  is an `approve` that throws.
+- `GET /pair/{id}` answers `pending`, `denied`, `expired`, or `approved` with `key` and `baseUrl` (`http://` and the
+  `Host` the page used). A final answer is given once and the id is then gone (404); an answer no one polls is
+  forgotten 2 minutes after it. Only the address that started a pairing may poll it; another gets 404.
+- All three sit behind the key's throttle (D173), in its one locked step: a wrong or unknown id is a wrong guess, and
+  a throttled address gets 429 on every pairing route. They answer only the page's own origin: a request with an
+  `Origin` other than `http://<Host>` gets 403 whatever the server's CORS (the demo's is `Cors.Any`, for the API), and
+  so does a `Host` that isn't an address, `localhost`, a single label or a `.local`, `.lan`, `.home.arpa` or
+  `.internal` name, which stops another site from rebinding its name to the phone (DNS rebinding) to read the key.
+The page shows the code large and "Approve on your phone", polls every 1.5 s, and after an approval shows the curl,
+OpenAI Python and Claude Code snippets and the key, each with Copy (the clipboard API where the browser allows it,
+else select and `execCommand`, since plain HTTP is not a secure context).
+In the demo, `ServerMode` is the `Pairing`: each request waits in line (`PairingApprovals`) and the first is shown as
+a dialog over the Server page and the docked view ("Pair a computer?", the code in `glance`, the address with the
+system and browser from the user agent, "192.168.1.12 · Mac · Chrome", Approve and Deny). While the app is behind
+another, `ServerService` posts a high-importance notification with the code, the address and Approve and Deny actions,
+withdrawn once it is answered, expires or the app comes to the front. No answer within 2 minutes is a deny.
+Approving needs the phone unlocked: the notification's Approve requires authentication (Android 12 and up) or opens
+the app (below 12), so the keyguard asks first; Deny stays one tap from the lock screen. The notification is private,
+and the lock screen shows only "A device wants to pair", with no code or address.
+Consequences: Security, for a LAN over plain HTTP: the key travels in the clear to the page, as it does in every API
+request, so pairing adds no exposure that using the key doesn't. The 4-digit code is not a secret to guess, since it
+is never typed: the person checks it by eye against the phone, so it guards against another device's pairing racing
+this one and being approved by mistake. What protects the key is that the phone must approve each pairing, on the
+device, and a pairing nobody approves expires. Another site in the laptop's browser can't pair (Origin and Host
+checks), and a stranger on the Wi-Fi can only ask, at most three at a time and throttled. A LAN whose DNS names end in
+something else than the suffixes above must use the address or `.local`. The module's defaults are unchanged: without
+`pairing`, `/` and `/pair` are ordinary unknown routes behind the key.
+
 <a id="d175"></a>
 ### D175. A bar's blur lingers as a light blur before the page turns sharp
 
@@ -2637,4 +2982,4 @@ drawn); while it slides or scrolls, the page under it is drawn again, including 
 blurs twice). Measured (F192): about 1.5 ms more CPU a frame while a sheet slides, every budget still met. The scrim
 still dims only the page around the sheet; the glass reads the page undimmed.
 
-Next free IDs: D165, F190.
+Next free IDs: D177, F193.

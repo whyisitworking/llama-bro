@@ -42,6 +42,9 @@ class FakeChatDao : ChatDao() {
 
     override fun sampling(id: Long): Flow<String?> = chats.map { list -> list.firstOrNull { it.id == id }?.sampling }
 
+    override fun useLibrary(id: Long): Flow<Boolean?> =
+        chats.map { list -> list.firstOrNull { it.id == id }?.useLibrary }
+
     override fun lastUseByModel(): Flow<List<ModelUseRow>> =
         messages.map { all ->
             all

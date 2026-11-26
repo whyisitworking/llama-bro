@@ -87,6 +87,7 @@ class TestDemoApp : DemoApp() {
             speech = c.speech,
             voiceSpeech = { rate, _ -> c.speech(rate) },
             voiceFocus = { SessionFocus.None },
+            chatLibraryOverride = c.chatLibrary,
         )
 
     private fun deleteFiles(c: TestConfig) {

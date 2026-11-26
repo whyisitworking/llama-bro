@@ -61,11 +61,13 @@ jobs:
           ./gradlew -p sdk
           :llamabro:apiCheck :llamabro-typed:apiCheck :llamabro-testing:apiCheck
           :llamabro-hub:apiCheck :llamabro-hub-work:apiCheck :llamabro-hub-testing:apiCheck
+          :llamabro-server:apiCheck :llamabro-rag:apiCheck
       - name: Lint
         run: >
           ./gradlew -p sdk
           :llamabro:lintRelease :llamabro-testing:lintRelease :llamabro-hub:lintRelease
           :llamabro-hub-work:lintRelease :llamabro-hub-testing:lintRelease :llamabro-typed:lintRelease
+          :llamabro-server:lintRelease :llamabro-rag:lintRelease
       # the host-native tests skip without -Pllamabro.host.* (they need a host build and models)
       - name: JVM tests
         run: >
@@ -73,6 +75,7 @@ jobs:
           :llamabro:testDebugUnitTest :llamabro-testing:testDebugUnitTest
           :llamabro-hub:testDebugUnitTest :llamabro-hub-work:testDebugUnitTest :llamabro-hub-testing:testDebugUnitTest
           :llamabro-typed:testDebugUnitTest :llamabro-typed-ksp:test
+          :llamabro-server:testDebugUnitTest :llamabro-rag:testDebugUnitTest
       - name: AARs (the native build, with -Werror on the bridge)
         run: >
           ./gradlew -p sdk

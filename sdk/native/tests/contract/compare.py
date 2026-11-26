@@ -71,14 +71,15 @@ def rebuild_chat(events):
     return msg
 
 
-# random per process or per call: the media marker in /props, tool call ids (server-common.cpp) anywhere in a body
+# random per process or per call: the media marker in /props, tool call ids (server-common.cpp; OpenAI function calls
+# and Anthropic tool_use blocks) anywhere in a body
 RANDOM_ANYWHERE = {"media_marker"}
 
 
 def drop_random(obj):
     if isinstance(obj, dict):
         out = {k: drop_random(v) for k, v in obj.items() if k not in RANDOM_ANYWHERE}
-        if obj.get("type") == "function" and "function" in obj:
+        if obj.get("type") == "function" and "function" in obj or obj.get("type") == "tool_use":
             out.pop("id", None)
         return out
     if isinstance(obj, list):
@@ -129,7 +130,9 @@ RANDOM_ID = re.compile(r"^(resp|msg|chatcmpl|fc|rs|call)[_-][A-Za-z0-9]{20,}$")
 
 def without_random(obj):
     if isinstance(obj, dict):
-        return {k: without_random(v) for k, v in obj.items() if k not in WALL_CLOCK and k != "timings"}
+        # an Anthropic tool_use block's id is a bare random string (no prefix for RANDOM_ID to match)
+        return {k: "<id>" if k == "id" and obj.get("type") == "tool_use" and isinstance(v, str) else without_random(v)
+                for k, v in obj.items() if k not in WALL_CLOCK and k != "timings"}
     if isinstance(obj, list):
         return [without_random(v) for v in obj]
     if isinstance(obj, str) and RANDOM_ID.match(obj):

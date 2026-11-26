@@ -20,6 +20,9 @@ enum class LimitAction {
     SwitchModel,
     OpenProcessorSettings,
     OpenAppSettings,
+
+    /** Server mode holds another model: stop serving it, then the chat's turn goes on (docs/design/server.md §3). */
+    StopServing,
 }
 
 /**
@@ -125,6 +128,32 @@ object Limits {
             "Llama Bro needs the microphone for voice messages.",
             LimitAction.OpenAppSettings,
             "Open settings",
+            dismissible = true,
+        )
+
+    /**
+     * Server mode holds [served] (docs/design/server.md §3): a turn on another model would wait for serving to stop and
+     * stall every request meanwhile, so it doesn't start. Switch model offers the served one; Stop serving ends serving
+     * and asks the chat's question again, as Try again does.
+     */
+    fun serving(served: String, name: String) =
+        Limit(
+            "$served is being served to the Wi-Fi. Stop serving to chat with $name.",
+            LimitAction.SwitchModel,
+            "Switch model",
+            LimitAction.StopServing,
+            "Stop serving",
+        )
+
+    /**
+     * "Use my library" is on but the library couldn't be searched (its embedder doesn't fit or failed, or another
+     * built it): the reply goes on without it, so this is a note.
+     */
+    fun libraryNotSearched() =
+        Limit(
+            "Your library couldn't be searched, so this answer doesn't use it.",
+            LimitAction.Retry,
+            "Try again",
             dismissible = true,
         )
 

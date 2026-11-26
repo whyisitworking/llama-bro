@@ -43,12 +43,15 @@ fun SidebarDrawer(
     onNewChat: () -> Unit,
     onOpenChat: (Long) -> Unit,
     onModels: () -> Unit,
+    onLibrary: () -> Unit,
+    onServer: () -> Unit,
     onSettings: () -> Unit,
     onDelete: (Long) -> Unit,
 ) {
     val groups by viewModel.groups.collectAsStateWithLifecycle()
     val searchText by viewModel.searchText.collectAsStateWithLifecycle()
     val modelCount by viewModel.modelCount.collectAsStateWithLifecycle()
+    val serving by viewModel.serving.collectAsStateWithLifecycle()
     // the rows' times are read against the moment the groups were made, so a row and its group agree
     val now = remember(groups) { viewModel.now() }
     var pressed by remember { mutableStateOf<ChatSummary?>(null) }
@@ -63,16 +66,19 @@ fun SidebarDrawer(
         onNewChat = onNewChat,
         onOpenChat = onOpenChat,
         onModels = onModels,
+        onLibrary = onLibrary,
+        onServer = onServer,
         onSettings = onSettings,
         onLongPress = { pressed = it },
+        serving = serving,
     )
     ChatActionsSheets(pressed, { pressed = null }, viewModel::rename, onDelete)
 }
 
 /**
  * The drawer, stateless (demo design §4.2, D126 "Quiet list"): the app's name with New chat, the search, the chats in
- * Today / This week / Earlier groups with each one's time, then Models and Settings as labelled rows at the foot.
- * [currentChatId] marks the open chat; [now] and [zone] give the rows their times.
+ * Today / This week / Earlier groups with each one's time, then Models, Library, Server and Settings as labelled rows
+ * at the foot. [currentChatId] marks the open chat; [now] and [zone] give the rows their times.
  */
 @Composable
 fun DrawerContent(
@@ -86,9 +92,13 @@ fun DrawerContent(
     onNewChat: () -> Unit,
     onOpenChat: (Long) -> Unit,
     onModels: () -> Unit,
+    onLibrary: () -> Unit,
+    onServer: () -> Unit,
     onSettings: () -> Unit,
     onLongPress: (ChatSummary) -> Unit,
     modifier: Modifier = Modifier,
+    /** Whether the phone is serving a model to the Wi-Fi: the Server row says so. */
+    serving: Boolean = false,
 ) {
     FloatingFrame(
         top = {
@@ -116,6 +126,8 @@ fun DrawerContent(
                 // before the library is read the count is unknown: "Models" alone, not a "0" that a frame later
                 // corrects
                 NavRow(DemoIcons.Models, "Models", onModels, note = modelCount?.let { "$it on this phone" })
+                NavRow(DemoIcons.Library, "Library", onLibrary)
+                NavRow(DemoIcons.Serve, "Server", onServer, note = if (serving) "Serving" else null)
                 NavRow(DemoIcons.Settings, "Settings", onSettings)
             }
         },

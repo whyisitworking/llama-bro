@@ -16,6 +16,7 @@ import com.suhel.llamabro.LogLevel
 import com.suhel.llamabro.Logger
 import com.suhel.llamabro.demo.chat.BackgroundRelease
 import com.suhel.llamabro.hub.HubConfig
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -43,6 +44,8 @@ open class DemoApp :
         forgetOldDownloads()
         ProcessLifecycleOwner.get().lifecycle.addObserver(release)
         ProcessLifecycleOwner.get().lifecycle.addObserver(replyKeeper)
+        // serving started on the Server page, with the app in front, is kept alive for when it is left
+        container.appScope.launch(Dispatchers.Main.immediate) { keepServing(this@DemoApp, container.server.state) }
     }
 
     /**

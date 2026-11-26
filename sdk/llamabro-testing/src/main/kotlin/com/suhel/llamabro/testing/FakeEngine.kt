@@ -132,6 +132,7 @@ internal class FakeModel(
         val text = String(body, Charsets.UTF_8)
 
         fun send(status: Int, data: String) = sink.onChunk(status, data.toByteArray(Charsets.UTF_8))
+        answerRaw(endpoint, paramsJson, text, sink)?.let { return it }
         when (endpoint) {
             "chat" -> {
                 chat(text, attachments, ::send)
@@ -166,6 +167,20 @@ internal class FakeModel(
                 send(501, notSupported("FakeLlamaBro doesn't script the $endpoint route"))
             }
         }
+        sink.onDone()
+        return Finished
+    }
+
+    /** The next [FakeLlamaBro.raw] answer, if one is queued, sent whatever the endpoint; null when none is. */
+    private fun answerRaw(endpoint: String, paramsJson: String?, body: String, sink: RequestSink): EngineRequest? {
+        val raw =
+            synchronized(fake.lock) {
+                fake.rawQueue.removeFirstOrNull()?.also {
+                    fake.rawLog += FakeLlamaBro.RawRequest(endpoint, params(paramsJson), body)
+                }
+            } ?: return null
+        raw.chunks.forEach { sink.onChunk(raw.status, it.toByteArray(Charsets.UTF_8)) }
+        if (raw.holdOpen) return Held(fake, sink)
         sink.onDone()
         return Finished
     }
@@ -292,10 +307,30 @@ internal class FakeModel(
     }
 }
 
+private fun params(json: String?): Map<String, String> =
+    (json?.let { Json.parseToJsonElement(it) } as? JsonObject)
+        ?.mapValues { (_, value) -> (value as JsonPrimitive).content }
+        .orEmpty()
+
 /** A request that was answered whole: nothing is left to cancel or free. */
 @OptIn(InternalLlamaBroApi::class)
 internal object Finished : EngineRequest {
     override fun cancel() {}
+
+    override fun free() {}
+}
+
+/** A request [FakeLlamaBro.raw] holds open: it ends when cancelled, as a streaming one does. */
+@OptIn(InternalLlamaBroApi::class)
+internal class Held(private val fake: FakeLlamaBro, private val sink: RequestSink) : EngineRequest {
+    private val ended = AtomicBoolean(false)
+
+    override fun cancel() {
+        if (ended.compareAndSet(false, true)) {
+            fake.cancelled.incrementAndGet()
+            sink.onCancelled()
+        }
+    }
 
     override fun free() {}
 }

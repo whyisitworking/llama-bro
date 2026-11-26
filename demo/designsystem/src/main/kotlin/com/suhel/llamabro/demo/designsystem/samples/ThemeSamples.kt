@@ -53,6 +53,7 @@ internal fun ThemeSamples() {
             )
             Text("Instant replies, everyday questions", style = DemoType.bodyMedium, color = c.muted)
             Text("38 words/s", style = DemoType.bodySmall, color = c.muted)
+            Text("18.4", style = DemoType.glance, color = c.ink)
             Text("val reversed = list.asReversed()", style = DemoType.code, color = c.ink)
         }
     }

@@ -36,6 +36,7 @@ internal data class ChatPreview(
     val streaming: StreamingItem? = null,
     val draft: ComposerDraft = ComposerDraft(),
     val composer: ComposerState = ChatPreviewData.composerIdle,
+    val library: Boolean = false,
 ) {
     override fun toString() = name
 }
@@ -119,6 +120,12 @@ internal class ChatScreenStates : PreviewParameterProvider<ChatPreview> {
                     ),
                 composer = ChatPreviewData.composerTyping,
             ),
+            ChatPreview(
+                "Answering from the library",
+                AppLayout.Sidebar,
+                screen(swift, ChatPreviewData.fromLibrary),
+                library = true,
+            ),
         )
 }
 
@@ -136,6 +143,7 @@ internal fun ChatContentPreview(
                     draft = { preview.draft },
                     composer = { preview.composer },
                     thumbnail = { null },
+                    library = { preview.library },
                 ),
             actions = ChatScreenActions(),
             layout = preview.layout,
@@ -168,6 +176,12 @@ internal class MessageRowStates : PreviewParameterProvider<RowPreview> {
             RowPreview("Reply cut earlier", data.cut[1], MessageStyle.Open),
             RowPreview("Reply failed", data.failed[1], MessageStyle.Open),
             RowPreview("Switched model", data.withSwitch.last(), MessageStyle.Open),
+            RowPreview(
+                "Reply from the library, with sources",
+                data.fromLibrary[1],
+                MessageStyle.Open,
+                showActions = true,
+            ),
             RowPreview("Question, bubbles", data.bubbles[1], MessageStyle.Bubbles),
             RowPreview("Reply, bubbles", data.bubbles[2], MessageStyle.Bubbles),
             RowPreview("Day label", data.bubbles[0], MessageStyle.Bubbles),
@@ -242,6 +256,28 @@ internal fun ThinkMenuPreview() {
             Modifier.gutterPadding(),
         ) { SheetFrame { ThinkMenuContent(ThinkLevel.Balanced, onPick = {}, onDone = {}) } }
     }
+}
+
+@DemoPreviews
+@Composable
+internal fun AttachMenuPreview() {
+    PreviewFrame {
+        Column(Modifier.gutterPadding()) {
+            SheetFrame { AttachMenuContent(useLibrary = true, onPhoto = {}, onUseLibrary = {}, onDone = {}) }
+        }
+    }
+}
+
+internal class PassageStates : PreviewParameterProvider<PassageView> {
+    override val values = sequenceOf(ChatPreviewData.passage, ChatPreviewData.passageAlone)
+}
+
+@DemoPreviews
+@Composable
+internal fun PassageSheetPreview(
+    @PreviewParameter(PassageStates::class) view: PassageView,
+) {
+    PreviewFrame { Column(Modifier.gutterPadding()) { SheetFrame { PassageSheetContent(view) } } }
 }
 
 // last used relative to now, so the rows read "Used today" and "2 weeks ago" as on the phone

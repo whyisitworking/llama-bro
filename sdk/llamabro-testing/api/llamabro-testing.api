@@ -8,6 +8,7 @@ public final class com/suhel/llamabro/testing/FakeLlamaBro : java/lang/AutoClose
 	public final fun error (ILjava/lang/String;Ljava/lang/String;)V
 	public final fun failLoad (Lcom/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason;Ljava/lang/String;I)V
 	public static synthetic fun failLoad$default (Lcom/suhel/llamabro/testing/FakeLlamaBro;Lcom/suhel/llamabro/LlamaBroException$ModelLoadFailed$Reason;Ljava/lang/String;IILjava/lang/Object;)V
+	public final fun getCancelledRequests ()I
 	public final fun getChatAttachments ()Ljava/util/List;
 	public final fun getChatRequests ()Ljava/util/List;
 	public final fun getContextSize ()I
@@ -15,6 +16,7 @@ public final class com/suhel/llamabro/testing/FakeLlamaBro : java/lang/AutoClose
 	public final fun getLlamaBro ()Lcom/suhel/llamabro/LlamaBro;
 	public final fun getLoadMillis ()J
 	public final fun getOpenModels ()I
+	public final fun getRawRequests ()Ljava/util/List;
 	public final fun getRealtimeEvents ()Ljava/util/List;
 	public final fun getRerankRequests ()Ljava/util/List;
 	public final fun getSpeaks ()Z
@@ -28,6 +30,8 @@ public final class com/suhel/llamabro/testing/FakeLlamaBro : java/lang/AutoClose
 	public final fun inputTooLong (II)V
 	public static synthetic fun inputTooLong$default (Lcom/suhel/llamabro/testing/FakeLlamaBro;IIILjava/lang/Object;)V
 	public final fun ranking ([F)V
+	public final fun raw (I[Ljava/lang/String;Z)V
+	public static synthetic fun raw$default (Lcom/suhel/llamabro/testing/FakeLlamaBro;I[Ljava/lang/String;ZILjava/lang/Object;)V
 	public final fun reply (Lkotlin/jvm/functions/Function1;)V
 	public final fun setContextSize (I)V
 	public final fun setLoadMillis (J)V
@@ -44,6 +48,21 @@ public final class com/suhel/llamabro/testing/FakeLlamaBro : java/lang/AutoClose
 	public static synthetic fun transcript$default (Lcom/suhel/llamabro/testing/FakeLlamaBro;Ljava/lang/String;ZILjava/lang/Object;)V
 	public final fun transcription (Ljava/lang/String;)V
 	public final fun voiceReply (Lkotlin/jvm/functions/Function1;)V
+}
+
+public final class com/suhel/llamabro/testing/FakeLlamaBro$RawRequest {
+	public fun <init> (Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/Map;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)Lcom/suhel/llamabro/testing/FakeLlamaBro$RawRequest;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/testing/FakeLlamaBro$RawRequest;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/testing/FakeLlamaBro$RawRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBody ()Ljava/lang/String;
+	public final fun getParams ()Ljava/util/Map;
+	public final fun getRoute ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/suhel/llamabro/testing/FakeLlamaBro$Reply {

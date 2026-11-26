@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- the notification that keeps server mode alive in the background (docs/design/server.md §3) -->
+    <string name="serving_channel">Serving</string>
+    <string name="serving_title">Serving %1$s on %2$s</string>
+    <string name="serving_title_offline">Serving %1$s, not on Wi-Fi</string>
+    <string name="serving_title_loading">Loading %1$s</string>
+    <string name="serving_charging">Charging</string>
+    <string name="serving_not_charging">Not charging</string>
+    <string name="serving_stop">Stop</string>
+    <string name="pairing_channel">Pairing requests</string>
+    <string name="pairing_title">Pair a computer? Code %1$s</string>
+    <string name="pairing_text">%1$s asks for the key</string>
+    <string name="pairing_approve">Approve</string>
+    <string name="pairing_deny">Deny</string>
+    <string name="pairing_public_title">A device wants to pair</string>
+</resources>

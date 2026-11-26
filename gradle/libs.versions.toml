@@ -35,6 +35,12 @@ okhttp = "5.3.2"
 hiltNavigationCompose = "1.3.0"
 paging = "3.4.1"
 kotlinxCoroutines = "1.10.2"
+# the server module (llamabro-server): CIO engine, pure Kotlin
+ktor = "3.6.2"
+# the version Ktor brings; ServerConfig.workDir names its Path type
+kotlinxIo = "0.9.3"
+# the RAG module (llamabro-rag): its store reads and writes through Okio
+okio = "3.18.2"
 work = "2.12.0"
 leakcanary = "2.14"
 # the demo's markdown (D74)
@@ -109,6 +115,13 @@ room-paging = { group = "androidx.room", name = "room-paging", version.ref = "ro
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
+okio = { group = "com.squareup.okio", name = "okio", version.ref = "okio" }
+okio-fakefilesystem = { group = "com.squareup.okio", name = "okio-fakefilesystem", version.ref = "okio" }
+kotlinx-io-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-io-core", version.ref = "kotlinxIo" }
+ktor-server-core = { group = "io.ktor", name = "ktor-server-core", version.ref = "ktor" }
+ktor-server-cio = { group = "io.ktor", name = "ktor-server-cio", version.ref = "ktor" }
+ktor-server-cors = { group = "io.ktor", name = "ktor-server-cors", version.ref = "ktor" }
+ktor-server-test-host = { group = "io.ktor", name = "ktor-server-test-host", version.ref = "ktor" }
 ktlint-cli = { group = "com.pinterest.ktlint", name = "ktlint-cli", version.ref = "ktlint" }
 kotlinx-bcv = { group = "org.jetbrains.kotlinx", name = "binary-compatibility-validator", version.ref = "bcv" }
 bcv-asm = { group = "org.ow2.asm", name = "asm", version.ref = "bcvAsm" }

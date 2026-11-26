@@ -27,6 +27,9 @@ import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.hub.HfModel
+import com.suhel.llamabro.rag.SearchArgs
+import com.suhel.llamabro.typed.TypedTool
+import com.suhel.llamabro.typed.tool
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -140,8 +143,17 @@ class ChatEngine(
      * app reads the hub's; tests answer for it.
      */
     private val readSenses: suspend (HfModel) -> ModelSenses? = { null },
+    /**
+     * The model server mode serves, if any (docs/design/server.md §3): a turn on it shares the load whatever its
+     * config, and the model is not freed while it is served.
+     */
+    private val served: () -> HfModel? = { null },
+    /** The person's library, which a chat answers from when its "Use my library" is on; null in apps without one. */
+    private val chatLibrary: ChatLibrary? = null,
+    /** Whether a loaded model calls tools: the search tool then, else the passages in the turn. Tests answer for it. */
+    private val callsTools: (ModelInfo) -> Boolean = { callsTools(it.templateCaps) },
 ) {
-    private val leases = ModelLeases(host, settings)
+    private val leases = ModelLeases(host, settings, served)
 
     /** Stores each model's header senses once it is on the phone, for every chat (D155). */
     private val sensesReader = SensesReader(settings, readSenses)
@@ -164,10 +176,10 @@ class ChatEngine(
         leases.hold(key, name, slots, limit)
 
     /**
-     * Releases the loaded model unless a turn is loading it or streaming from it (the app went to the background); the
-     * next send loads it again. True when it was released.
+     * Releases the loaded model unless a turn is loading it or streaming from it, or it is served (the app went to the
+     * background); the next send loads it again. True when it was released.
      */
-    suspend fun releaseModelIfIdle(): Boolean = host.release { activeTurns.value > 0 }
+    suspend fun releaseModelIfIdle(): Boolean = host.release { activeTurns.value > 0 || served() != null }
 
     /** The system prompt from Settings › Instructions as it is now, or null when there are none. */
     private suspend fun systemPrompt(): String? =
@@ -341,27 +353,25 @@ class ChatEngine(
                 }
             }.stateIn(hs, SharingStarted.Eagerly, ChatModelState.Waking())
 
+        /** The chat's use of the library: its "Use my library", and what a turn gets from it. */
+        private val libraryUse = ChatLibraryUse(chats, chatLibrary, callsTools)
+
+        /**
+         * "Use my library" (docs/design/rag.md): on or off, saved per chat; null while it isn't offered, with no
+         * library or no document in it. A turn reads it from the chat's row, not from here.
+         */
+        val useLibrary: StateFlow<Boolean?> =
+            libraryUse.offered(_chatId).stateIn(hs, SharingStarted.Eagerly, null)
+
         /** Held by the pump for its whole loop, by a continue, and by a rewrite ([rewriting]). */
         private val turn = Mutex()
 
         /** The turn under way, load and reply both; volatile only because [stop] cancels it from the UI's thread. */
         @Volatile private var running: Job? = null
         private var conversation: Conversation? = null
-        private var conversationKey: HfModel? = null
 
-        /**
-         * The loaded model [conversation] was made on. A conversation lives inside one load: after a release (the app
-         * went to the background, or the person unloaded it) the same key loads a new model and the old conversation
-         * is closed with the old one, so it is rebuilt from the stored rows.
-         */
-        private var conversationModel: Model? = null
-
-        /**
-         * The system prompt [conversation] was made with. Settings › Instructions opens over the chat, which stays
-         * open: a turn that finds the setting changed since rebuilds the conversation, so the new instructions apply at
-         * once.
-         */
-        private var conversationSystem: String? = null
+        /** What [conversation] was made for: a turn asking with anything else builds a new one ([MadeFor]). */
+        private var conversationMadeFor: MadeFor? = null
 
         init {
             hs.launch {
@@ -567,6 +577,12 @@ class ChatEngine(
             thinkLevel.value = level
         }
 
+        /**
+         * Turns "Use my library" on or off: saved with the chat, or, for a new chat, kept until its first message
+         * creates it with the choice. Under [creating], so a choice made while the chat is created isn't lost.
+         */
+        fun setUseLibrary(on: Boolean): Job = hs.launch { creating.withLock { libraryUse.set(_chatId.value, on) } }
+
         // ---- the engine ----------------------------------------------------------------------------------
 
         /**
@@ -634,9 +650,7 @@ class ChatEngine(
 
         private fun invalidate() {
             conversation = null
-            conversationKey = null
-            conversationModel = null
-            conversationSystem = null
+            conversationMadeFor = null
         }
 
         /**
@@ -695,37 +709,42 @@ class ChatEngine(
                 val hears = loaded.info.supportsAudio
                 rememberSenses(settings, key, loaded.info)
                 val rows = chats.messages(id).first()
-                val convo = conversationFor(loaded, key, rows, user, hears)
-                val replyId =
-                    chats.append(
-                        id,
-                        NewMessage(
-                            MessageKind.Assistant,
-                            "",
-                            modelKey = key.toString(),
-                            state = MessageState.Streaming,
-                            sentAt = clock(),
-                        ),
+                // the library: the search tool on a model that calls tools, else the passages in the turn
+                val notSearched: (Exception) -> Unit = { _limit.value = Limits.libraryNotSearched() }
+                libraryUse.forTurn(id, loaded.info, user.text, notSearched) { library ->
+                    val asked = libraryUse.ask(user, library)
+                    val convo = conversationFor(loaded, key, rows, asked, hears, systemPrompt(), library.tool)
+                    val replyId =
+                        chats.append(
+                            id,
+                            NewMessage(
+                                MessageKind.Assistant,
+                                "",
+                                modelKey = key.toString(),
+                                state = MessageState.Streaming,
+                                sentAt = clock(),
+                            ),
+                        )
+                    onReply()
+                    // a model that can't hear gets a note for each voice message, and the line says so (D76)
+                    if (!hears && rows.any { it.voice != null && it.position <= user.position }) {
+                        _limit.value = Limits.cantHear(currentName())
+                    }
+                    val parts = (History.userMessage(asked, hears) as Message.User).content
+                    val text = parts.filterIsInstance<Content.Text>().joinToString("") { it.text }
+                    val media = parts.filterNot { it is Content.Text }.toTypedArray()
+                    val report = loaded.loadReport
+                    val draft = ReplyDraft(clock, report.device.label, contextSize = report.contextSize)
+                    stream(
+                        convo,
+                        replyId,
+                        user,
+                        text,
+                        media,
+                        turnOptions(id, key, levelFor(key, loaded.info), continues = false),
+                        draft,
                     )
-                onReply()
-                // a model that can't hear gets a note for each voice message, and the line says so (D76)
-                if (!hears && rows.any { it.voice != null && it.position <= user.position }) {
-                    _limit.value = Limits.cantHear(currentName())
                 }
-                val parts = (History.userMessage(user, hears) as Message.User).content
-                val text = parts.filterIsInstance<Content.Text>().joinToString("") { it.text }
-                val media = parts.filterNot { it is Content.Text }.toTypedArray()
-                val report = loaded.loadReport
-                val draft = ReplyDraft(clock, report.device.label, contextSize = report.contextSize)
-                stream(
-                    convo,
-                    replyId,
-                    user,
-                    text,
-                    media,
-                    turnOptions(id, key, levelFor(key, loaded.info), continues = false),
-                    draft,
-                )
             }
 
         /**
@@ -760,20 +779,23 @@ class ChatEngine(
         }
 
         /**
-         * The conversation for [user]'s turn: the one kept from the last turn while the model, its load and the system
-         * prompt are the same, else a new one from [rows].
+         * The conversation for [user]'s turn: the one kept from the last turn while the model, its load, the system
+         * prompt ([system], the instructions) and its tools are
+         * the same, else a new one from [rows]. A turn with the library's search [tool] always gets a new one: the tool
+         * is made for the turn, so its numbers start at [1] (D172).
          */
-        private suspend fun conversationFor(
+        @Suppress("LongParameterList") // the turn's model, rows and what it is asked with
+        private fun conversationFor(
             loaded: Model,
             key: HfModel,
             rows: List<StoredMessage>,
             user: StoredMessage,
             hears: Boolean,
+            system: String?,
+            tool: TypedTool<SearchArgs, String>?,
         ): Conversation {
-            val system = systemPrompt()
-            conversation
-                ?.takeIf { conversationKey == key && conversationModel === loaded && conversationSystem == system }
-                ?.let { return it }
+            val madeFor = MadeFor(key, loaded, system, tools = tool != null)
+            conversation?.takeIf { tool == null && conversationMadeFor == madeFor }?.let { return it }
             // what the model has seen: answered rows before this question, and replies; other held questions wait
             // their turn
             val seen =
@@ -781,12 +803,13 @@ class ChatEngine(
                     it.id != user.id && it.state != MessageState.Held &&
                         (it.position < user.position || it.kind == MessageKind.Assistant)
                 }
-            return loaded.conversation(system, History.forModel(seen, hears = hears)).also {
-                conversation = it
-                conversationKey = key
-                conversationModel = loaded
-                conversationSystem = system
-            }
+            return loaded
+                .conversation(system, History.forModel(seen, hears = hears)) {
+                    if (tool != null) tool(tool)
+                }.also {
+                    conversation = it
+                    conversationMadeFor = madeFor
+                }
         }
 
         /**
@@ -824,6 +847,8 @@ class ChatEngine(
                     Message.Assistant(content = reply.text, reasoning = reply.reasoning)
             // a one-off: kept, this conversation would hold the reply twice once the next message is sent
             invalidate()
+            // the reply keeps the sources it has: a continue searches nothing
+            libraryUse.found.clear()
             val convo = loaded.conversation(systemPrompt(), history)
             chats.update(reply.id, MessageChange(state = MessageState.Streaming))
             val draft =
@@ -901,7 +926,8 @@ class ChatEngine(
 
         /** Stores how the reply ended, marks the question answered and stops showing the stream. */
         private suspend fun finish(replyId: Long, user: StoredMessage, change: MessageChange) {
-            chats.update(replyId, change)
+            val sources = libraryUse.found.take()
+            chats.update(replyId, if (sources.isEmpty()) change else change.copy(sources = sources))
             chats.update(user.id, MessageChange(state = MessageState.Done))
             _streaming.value = null
         }
@@ -949,7 +975,7 @@ class ChatEngine(
                 val key =
                     choice.value.key ?: initialModelKey()?.also { choice.value = ModelChoice.Chosen(it) }
                         ?: return@withLock null
-                chats.createChat(key.toString()).also { _chatId.value = it }
+                chats.createChat(key.toString(), useLibrary = libraryUse.pending.value).also { _chatId.value = it }
             }
 
         /**
@@ -978,6 +1004,14 @@ class ChatEngine(
                 ?.firstOrNull { sensesOf(it.key, host.state.value, known[it.key.toString()], emptySet()).sees }
                 ?.name
     }
+
+    /**
+     * What a chat's conversation was made for: the model's [key]; its [loaded] model (a conversation lives inside one
+     * load: after a release the same key loads a new model and the old conversation is closed with the old one, so it
+     * is rebuilt from the stored rows); the [system] prompt (Settings › Instructions opens over the chat, which stays
+     * open, so a changed setting applies at the next turn); and whether it has the library's search [tools].
+     */
+    private data class MadeFor(val key: HfModel, val loaded: Model, val system: String?, val tools: Boolean)
 
     companion object {
         /** Builder's call, settled here: at most four images per message. */

@@ -86,6 +86,9 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) : AutoCloseable 
     /** Errors queued by [speechError]: the HTTP status and the body. */
     internal val speechErrors = ArrayDeque<Pair<Int, String>>()
     internal val speech = mutableListOf<String>()
+    internal val rawQueue = ArrayDeque<RawAnswer>()
+    internal val rawLog = mutableListOf<RawRequest>()
+    internal val cancelled = AtomicInteger()
 
     /**
      * How long each model load takes, reported as progress in four steps. A `loadModel` cancelled meanwhile
@@ -124,6 +127,12 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) : AutoCloseable 
      * (`session.update`, `input_audio_buffer.append`, `input_audio_buffer.commit`, `response.create`, …), in order.
      */
     public val realtimeEvents: List<String> get() = synchronized(lock) { realtime.toList() }
+
+    /** How many requests answered by [raw] were cancelled before they ended, as a client hanging up cancels one. */
+    public val cancelledRequests: Int get() = cancelled.get()
+
+    /** Every request a [raw] answer went to, in order, as the engine received it. */
+    public val rawRequests: List<RawRequest> get() = synchronized(lock) { rawLog.toList() }
 
     /** The body of every speech request (`Model.speak`), as JSON, in order. */
     public val speechRequests: List<String> get() = synchronized(lock) { speech.toList() }
@@ -191,6 +200,15 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) : AutoCloseable 
                     ).toString(),
                 )
         }
+    }
+
+    /**
+     * Queues an answer for the next request on any endpoint, whatever it is: [status] and each of [chunks] as the
+     * handler wrote them, bytes unchanged (what `Model.exchange` passes on). With [holdOpen] the request keeps
+     * streaming after the chunks until it is cancelled, which [cancelledRequests] counts.
+     */
+    public fun raw(status: Int, vararg chunks: String, holdOpen: Boolean = false) {
+        synchronized(lock) { rawQueue += RawAnswer(status, chunks.toList(), holdOpen) }
     }
 
     /** Queues a reply for the next chat request. */
@@ -343,6 +361,14 @@ public class FakeLlamaBro(script: FakeLlamaBro.() -> Unit = {}) : AutoCloseable 
             outputTokens = tokens
         }
     }
+
+    /**
+     * A request [raw] answered: [route] is its name in `llamabro.h` (`chat`, `slots_action`), [params] its path and
+     * query parameters (`id_slot`, `action`), [body] what was sent.
+     */
+    public data class RawRequest(val route: String, val params: Map<String, String>, val body: String)
+
+    internal class RawAnswer(val status: Int, val chunks: List<String>, val holdOpen: Boolean)
 
     internal sealed interface Scripted {
         class Stream(val reply: Reply) : Scripted

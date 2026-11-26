@@ -322,6 +322,8 @@ ksp(libs.llamabro.typedKsp)
 | `llamabro-opencl` | The Adreno GPU | `implementation` |
 | `llamabro-hub` | Hugging Face search, and downloads that resume and verify each file's SHA-256 | `implementation` |
 | `llamabro-hub-work` | Downloads that run in WorkManager and outlive your app's process | `implementation` |
+| `llamabro-server` | Serving a loaded model to other devices over HTTP with llama-server's API, off the network until the app opts in (in the next release) | `implementation` |
+| `llamabro-rag` | Asking your own documents: chunking, a folder index on the phone, hybrid keyword and vector search, and a search tool for a conversation (in the next release) | `implementation` |
 | `llamabro-typed` | Replies and tools typed by `@Serializable` classes | `implementation` |
 | `llamabro-typed-ksp` | Annotated toolboxes, checked when the app builds | `ksp` |
 | `llamabro-testing`, `llamabro-hub-testing` | `FakeLlamaBro` and `FakeLlamaBroHub`: the real API over a scripted engine and Hub | `testImplementation` |

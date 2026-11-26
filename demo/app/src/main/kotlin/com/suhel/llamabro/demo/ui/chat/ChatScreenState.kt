@@ -36,6 +36,8 @@ class ChatLive(
     val draft: () -> ComposerDraft,
     val composer: () -> ComposerState,
     val thumbnail: suspend (String) -> ImageBitmap?,
+    /** "Use my library" is on: the bar says so (docs/design/rag.md). */
+    val library: () -> Boolean = { false },
 )
 
 /** The screen's own doings: the top bar's, the message bar's, a limit line's button, and a message's. */

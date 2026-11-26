@@ -40,6 +40,7 @@ import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
+import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.demo.ui.models.ModelCardStack
@@ -52,7 +53,7 @@ import kotlinx.coroutines.flow.flowOf
 /** Sidebar writes replies on the page; Chat list puts them in bubbles (demo design §4.2). */
 fun AppLayout.messageStyle(): MessageStyle = if (this == AppLayout.Sidebar) MessageStyle.Open else MessageStyle.Bubbles
 
-private enum class Sheet { Switcher, Think, Smaller, Sampling }
+private enum class Sheet { Switcher, Think, Smaller, Sampling, Attach }
 
 private data class MenuTarget(val position: Int, val isReply: Boolean)
 
@@ -111,9 +112,23 @@ fun ChatScreen(
     var details by rememberSaveable { mutableStateOf<Int?>(null) }
     var photo by rememberSaveable(stateSaver = OpenPhotoSaver) { mutableStateOf<OpenPhoto?>(null) }
     var shareRequest by rememberSaveable(stateSaver = ShareRequestSaver) { mutableStateOf<ShareCardContent?>(null) }
+    // the model a switch would move to while another is served: the switcher asks first (docs/design/server.md §3)
+    var stopServingFor by rememberSaveable { mutableStateOf<String?>(null) }
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(vm::attach) }
     val voice = rememberComposerVoiceActions(vm.voice, vm.dictation, vm.voiceMode::open)
+    val library = vm.library.useLibrary.collectAsStateWithLifecycle()
+    val passage by vm.library.passage.collectAsStateWithLifecycle()
+    val pickPhoto: () -> Unit =
+        remember(vm, picker) {
+            {
+                try {
+                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                } catch (_: ActivityNotFoundException) {
+                    vm.photoPickerMissing() // a phone with no picker at all: say so, don't crash
+                }
+            }
+        }
     val playing = vm.player.clip.collectAsStateWithLifecycle()
     val reading = vm.reading.collectAsStateWithLifecycle()
     val talks = vm.talks.collectAsStateWithLifecycle()
@@ -145,6 +160,7 @@ fun ChatScreen(
                 canReadAloud = { vm.readAloud != null && talks.value },
                 readAloud = { id, text -> vm.readAloud?.toggle(id, text) },
                 reading = { reading.value },
+                openSource = vm.library::show,
             )
         }
     val actions =
@@ -159,13 +175,8 @@ fun ChatScreen(
                 onText = vm::onText,
                 onSend = vm::send,
                 onStop = vm::stop,
-                onAttach = {
-                    try {
-                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    } catch (_: ActivityNotFoundException) {
-                        vm.photoPickerMissing() // a phone with no picker at all: say so, don't crash
-                    }
-                },
+                // with a document in the library, the + is a menu: a photo, and "Use my library"
+                onAttach = { if (library.value != null) sheet = Sheet.Attach else pickPhoto() },
                 onRemovePhoto = vm::removeAttachment,
                 onCancelEdit = vm::cancelEdit,
                 onDismissLimit = { vm.notes.close(vm.limit.value) },
@@ -185,12 +196,18 @@ fun ChatScreen(
                 draft = { draft.value },
                 composer = { composer.value },
                 thumbnail = vm::thumbnail,
+                library = { library.value == true },
             )
         }
 
     ChatContent(state, live, actions, chrome.layout, style, modifier)
 
-    ChatSheets(screens, vm, chrome, sheet, { sheet = it }, card, { card = it })
+    ChatSheets(screens, vm, chrome, sheet, { sheet = it }, card, { card = it }) { stopServingFor = it.toString() }
+    if (sheet == Sheet.Attach) {
+        AttachMenu(library.value == true, pickPhoto, vm.library::setUseLibrary, onDismiss = { sheet = null })
+    }
+    passage?.let { PassageSheet(it, onDismiss = { vm.library.show(null) }) }
+    stopServingFor?.let { key -> StopServingQuestion(vm, HfModel.parse(key)) { stopServingFor = null } }
     menu?.let { target -> MessageMenu(target, state.rows, messageActions, onDismiss = { menu = null }) }
     details?.let { position -> ReplyDetailsSheet(position, state.rows, onDismiss = { details = null }) }
     photo?.let { target ->
@@ -202,7 +219,7 @@ fun ChatScreen(
 
 /** The chat's sheets: one of [sheet] at a time, and the card the switcher's info action opened ([card], by key). */
 @Composable
-@Suppress("LongParameterList") // the two sheet states and their setters, kept by the screen across rotation
+@Suppress("LongParameterList") // the sheet states and their setters, kept by the screen across rotation
 private fun ChatSheets(
     screens: Screens,
     vm: ChatViewModel,
@@ -211,6 +228,7 @@ private fun ChatSheets(
     onSheet: (Sheet?) -> Unit,
     card: String?,
     onCard: (String?) -> Unit,
+    onAskStopServing: (HfModel) -> Unit,
 ) {
     // the switcher's state serves the sheet and the card it opens, so it lives while either is shown
     val switcher = if (sheet == Sheet.Switcher || card != null) rememberSwitcher(screens, vm) else null
@@ -221,6 +239,10 @@ private fun ChatSheets(
                 vm,
                 chrome,
                 onSampling = { onSheet(Sheet.Sampling) },
+                onSwitch = { key ->
+                    val asks = vm.serving.switchStopsServing(key) != null
+                    if (asks) onAskStopServing(key) else vm.handle.switchModel(key)
+                },
                 onInfo = { key ->
                     onSheet(null)
                     onCard(key.toString())
@@ -241,7 +263,8 @@ private fun ChatSheets(
             SmallerHost(screens, vm, onDismiss = { onSheet(null) })
         }
 
-        null -> {
+        // the screen draws it: it opens the photo picker the screen owns
+        Sheet.Attach, null -> {
             Unit
         }
     }
@@ -266,7 +289,30 @@ private fun limitAction(
         LimitAction.OpenProcessorSettings -> chrome.onProcessor()
         LimitAction.CloseOtherAppsAndRetry, LimitAction.Retry -> vm.retry()
         LimitAction.OpenAppSettings -> openAppSettings(context)
+        LimitAction.StopServing -> vm.serving.stopAndRetry()
     }
+}
+
+/**
+ * "Stop serving <served> to use <other>?", for a switch to [to] while another model is served. Serving that ended
+ * meanwhile needs no question: it closes.
+ */
+@Composable
+private fun StopServingQuestion(vm: ChatViewModel, to: HfModel, onDone: () -> Unit) {
+    val served = vm.serving.switchStopsServing(to)
+    if (served == null) {
+        LaunchedEffect(to) { onDone() }
+        return
+    }
+    StopServingDialog(
+        served,
+        Names.of(to),
+        onStop = {
+            onDone()
+            vm.serving.stopAndSwitch(to)
+        },
+        onCancel = onDone,
+    )
 }
 
 /**
@@ -371,6 +417,7 @@ private fun SwitcherHost(
     vm: ChatViewModel,
     chrome: ChatChrome,
     onSampling: () -> Unit,
+    onSwitch: (HfModel) -> Unit,
     onInfo: (HfModel) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -384,7 +431,7 @@ private fun SwitcherHost(
         library = library.orEmpty(),
         current = current,
         facts = facts,
-        onSwitch = vm.handle::switchModel,
+        onSwitch = onSwitch,
         onUseForNewChats = { key -> switcher.pinDefault(key.toString()) },
         onInfo = onInfo,
         onGetMore = chrome.onGetModels,

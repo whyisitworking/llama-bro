@@ -22,6 +22,8 @@ data class ChatSummaryRow(
 /** When a model last answered in any chat. */
 data class ModelUseRow(val modelKey: String, val lastUsed: Long)
 
+// the chats' and messages' one API surface: a query each, not a grab-bag
+@Suppress("TooManyFunctions")
 @Dao
 abstract class ChatDao {
     @Insert abstract suspend fun insertChat(chat: ChatEntity): Long
@@ -33,6 +35,10 @@ abstract class ChatDao {
 
     @Query("SELECT sampling FROM chats WHERE id = :id")
     abstract fun sampling(id: Long): Flow<String?>
+
+    /** Whether the chat answers from the library; null while the chat doesn't exist. */
+    @Query("SELECT useLibrary FROM chats WHERE id = :id")
+    abstract fun useLibrary(id: Long): Flow<Boolean?>
 
     /**
      * Newest first. [pattern] is a LIKE pattern (escaped with `\`) or empty for every chat; it matches titles and

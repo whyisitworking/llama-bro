@@ -5,9 +5,12 @@
 #   hub-golden     upstream model-resolution self-test and recorded golden cases
 #   contract       the C API vs upstream llama-server, same build, same flags, per model (run.sh); audio on
 #                  upstream's audio test model with the committed clip (fixtures/clip.wav)
+#   server-contract llamabro-server vs upstream llama-server, same build, same flags (server-run.sh): chat, messages,
+#                  responses, completions, streamed and whole, on the model; embeddings on bge-small; then the official
+#                  OpenAI and Anthropic Python clients against the server with a key (a venv in the host build)
 #   tools-ui       llama.cpp's own Llama Chat compaction code (ui/apps/chat; tools/ui before b12479) regenerated in
 #                  node; must equal the committed golden
-#   api            core, llamabro-typed and llamabro-testing release public APIs equal their reviewed dumps (D26)
+#   api            core, llamabro-typed, llamabro-testing, llamabro-server and llamabro-rag release public APIs equal their reviewed dumps (D26)
 #   hub-api        Hub, hub-work and hub-testing release public APIs equal their dumps (sdk/llamabro-hub*/api/*.api)
 #   quality        ktlint and detekt on every Kotlin module (the root build's qualityCheck; detekt's baselines list what predates it)
 #   lint           Android lint on all SDK libraries, warnings as errors
@@ -17,7 +20,9 @@
 #   e2e            Kotlin + JNI + native on this machine vs upstream llama-server (HostNativeTest), load cancel;
 #                  typed output on the same model, Think off and on (HostTypedTest); speech input from a file, a
 #                  descriptor and bytes on upstream's audio test model (HostAudioTest); a voice session over the
-#                  in-memory /v1/realtime on the same model (HostVoiceTest)
+#                  in-memory /v1/realtime on the same model (HostVoiceTest); a chat model and an embedder in one
+#                  runtime, and /tokenize on an embedding load (HostTwoModelsTest, HostEmbeddingTokenizeTest, F190); a
+#                  retrieval library on bge-small: add, reopen (HostLibraryTest)
 #   aar            release AAR: libraries, names, exports, 16 KB alignment (check-aar.sh); hub, hub-work and typed carry
 #                  no native code, and hub-work's manifest declares the dataSync foreground service
 #   scripts        the host scripts against stubs, no phone: device-preflight.sh (tests/device-preflight-test.sh), installed-guard.sh
@@ -79,7 +84,7 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
-steps="build native hub-golden contract tools-ui api hub-api quality lint jvm e2e aar scripts device hub-device hub-resume device-contract device-speech"
+steps="build native hub-golden contract server-contract tools-ui api hub-api quality lint jvm e2e aar scripts device hub-device hub-resume device-contract device-speech"
 if [ -n "$only" ]; then
     for step in $(echo "$only" | tr ',' ' '); do
         case " $steps " in
@@ -179,6 +184,7 @@ step_jvm() {
         :llamabro-hub-work:testDebugUnitTest :llamabro-hub-work:compileDebugAndroidTestKotlin \
         :llamabro:compileDebugAndroidTestKotlin \
         :llamabro-hub-testing:testDebugUnitTest :llamabro-typed:testDebugUnitTest :llamabro-typed-ksp:test \
+        :llamabro-server:testDebugUnitTest :llamabro-rag:testDebugUnitTest \
         -Pllamabro.hub.model.dir="$models_dir" -Pllamabro.hub.golden.dir="$logs/hub-golden" || return 1
     grep -q 'skipped="0"' \
         "$sdk/llamabro-hub/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.hub.GgufHeaderTest.xml" || {
@@ -200,6 +206,13 @@ step_contract() {
     echo "=== contract: audio on $(basename "$omni")"
     LB_TEST_MODEL="$omni" LB_TEST_MMPROJ="$omni_mmproj" LB_CONTRACT_REQUESTS="$native/tests/contract/audio.jsonl" \
         LB_CONTRACT_PORT="$(contract_port 4)" bash "$native/tests/contract/run.sh"
+}
+
+step_server_contract() {
+    bash "$native/tests/contract/server-run.sh" || return 1
+    echo "=== server-contract: embeddings on bge-small-f16.gguf"
+    LB_TEST_MODEL="$LB_TEST_MODELS_DIR/bge-small-f16.gguf" LB_SERVER_TASK=embed LB_CONTRACT_PORT="$(contract_port 5)" \
+        bash "$native/tests/contract/server-run.sh"
 }
 
 contract_port() {  # contract_port OFFSET: LB_CONTRACT_PORT + OFFSET when it is set, else 0 (a free one)
@@ -226,11 +239,14 @@ step_e2e() {
     for _ in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" > /dev/null && break; sleep 1; done
     # HostEmbeddingTest: typed embed and rerank on upstream's test models (D65); HostAudioTest: speech input through
     # the public API (D84); HostVoiceTest: the voice session (D95, D97); HostTranscriptionTest: live transcription
-    # (D138); HostSpeechTest: speech (D139); none needs a server
+    # (D138); HostSpeechTest: speech (D139); HostTwoModelsTest and HostEmbeddingTokenizeTest: a chat model and an
+    # embedder in one runtime, and /tokenize on an embedding load, which the demo's library relies on (F190); none
+    # needs a server
     gradle :llamabro:testDebugUnitTest --tests 'com.suhel.llamabro.HostNative*' \
         --tests 'com.suhel.llamabro.HostEmbeddingTest' --tests 'com.suhel.llamabro.HostAudioTest' \
         --tests 'com.suhel.llamabro.HostVoiceTest' --tests 'com.suhel.llamabro.HostTranscriptionTest' \
-        --tests 'com.suhel.llamabro.HostSpeechTest' --rerun-tasks -i \
+        --tests 'com.suhel.llamabro.HostSpeechTest' --tests 'com.suhel.llamabro.HostTwoModelsTest' \
+        --tests 'com.suhel.llamabro.HostEmbeddingTokenizeTest' --rerun-tasks -i \
         -Pllamabro.host.lib="$native/build/host/bin" -Pllamabro.host.server="http://127.0.0.1:$port" \
         -Pllamabro.host.model="$model" ${mmproj:+-Pllamabro.host.mmproj="$mmproj"} \
         -Pllamabro.host.models="$LB_TEST_MODELS_DIR" -Pllamabro.host.clip="$LB_TEST_CLIP"
@@ -239,12 +255,16 @@ step_e2e() {
     # typed output over the same core and model, Think off and on (D63, F143); it needs no server
     gradle :llamabro-typed:testDebugUnitTest --tests 'com.suhel.llamabro.typed.HostTyped*' --rerun-tasks -i \
         -Pllamabro.host.lib="$native/build/host/bin" -Pllamabro.host.model="$model" || status=1
+    # a retrieval library over bge-small: add, reopen (llamabro-rag); it needs no server
+    gradle :llamabro-rag:testDebugUnitTest --tests 'com.suhel.llamabro.rag.HostLibrary*' --rerun-tasks -i \
+        -Pllamabro.host.lib="$native/build/host/bin" -Pllamabro.host.models="$LB_TEST_MODELS_DIR" || status=1
     local t
     for t in HostNativeTest HostNativeLogTest HostNativeFailedInitTest HostNativeLoadCancelTest HostNativeAttachmentTest \
-        HostEmbeddingTest HostAudioTest HostVoiceTest; do
+        HostEmbeddingTest HostAudioTest HostVoiceTest HostTwoModelsTest HostEmbeddingTokenizeTest; do
         grep -q 'skipped="0"' "$sdk/llamabro/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.$t.xml" || { echo "$t was skipped or has no result"; return 1; }
     done
     grep -q 'skipped="0"' "$sdk/llamabro-typed/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.typed.HostTypedTest.xml" || { echo "HostTypedTest was skipped or has no result"; return 1; }
+    grep -q 'skipped="0"' "$sdk/llamabro-rag/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.rag.HostLibraryTest.xml" || { echo "HostLibraryTest was skipped or has no result"; return 1; }
     return $status
 }
 
@@ -413,12 +433,14 @@ run build    step_build
 run native   ctest --test-dir "$native/build/host" --output-on-failure
 run hub-golden step_hub_golden
 run contract step_contract
+run server-contract step_server_contract
 run tools-ui step_tools_ui
-run api      gradle :llamabro:apiCheck :llamabro-typed:apiCheck :llamabro-testing:apiCheck
+run api      gradle :llamabro:apiCheck :llamabro-typed:apiCheck :llamabro-testing:apiCheck :llamabro-server:apiCheck :llamabro-rag:apiCheck
 run hub-api  gradle :llamabro-hub:apiCheck :llamabro-hub-work:apiCheck :llamabro-hub-testing:apiCheck
 run quality  step_quality
 run lint     gradle :llamabro:lintRelease :llamabro-testing:lintRelease :llamabro-hexagon:lintRelease :llamabro-opencl:lintRelease :llamabro-hub:lintRelease \
-    :llamabro-hub-work:lintRelease :llamabro-hub-testing:lintRelease :llamabro-typed:lintRelease
+    :llamabro-hub-work:lintRelease :llamabro-hub-testing:lintRelease :llamabro-typed:lintRelease \
+    :llamabro-server:lintRelease :llamabro-rag:lintRelease
 run jvm      step_jvm
 run e2e      step_e2e
 run aar      step_aar

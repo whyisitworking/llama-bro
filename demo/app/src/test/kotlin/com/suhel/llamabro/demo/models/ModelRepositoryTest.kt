@@ -3,6 +3,7 @@ package com.suhel.llamabro.demo.models
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.suhel.llamabro.demo.chat.HostState
 import com.suhel.llamabro.demo.chat.ModelHost
+import com.suhel.llamabro.demo.data.ModelSenses
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.settings.LoadConfig
 import com.suhel.llamabro.demo.eventually
@@ -90,6 +91,32 @@ class ModelRepositoryTest {
 
     private suspend fun ModelRepository.stateBecomes(model: HfModel, wanted: (DownloadStatus) -> Boolean) =
         withTimeout(5_000) { state(model).first(wanted) }
+
+    @Test fun aModelWhoseHeaderHasNoChatTemplateIsNoChatModel() =
+        runBlocking {
+            testHub.install(swift, other)
+            val repo = repository()
+            eventually("both listed, both chat models by their names") {
+                repo.library.first().let { all -> all.size == 2 && all.all { it.chats } }
+            }
+            // the header read before a load (D155) found no chat template: an embedding or rerank model
+            settings.setSenses(
+                other.toString(),
+                ModelSenses(thinks = false, sees = false, hears = false, chats = false),
+            )
+            eventually("the header's word is the library's") {
+                repo.library
+                    .first()
+                    .single { it.key == other }
+                    .chats == false
+            }
+            assertTrue(
+                repo.library
+                    .first()
+                    .single { it.key == swift }
+                    .chats,
+            )
+        }
 
     @Test fun getEnqueuesOnce() {
         val repo = repository()

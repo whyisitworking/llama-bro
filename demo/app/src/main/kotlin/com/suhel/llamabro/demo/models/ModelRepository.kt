@@ -53,6 +53,8 @@ data class LibraryModel(
     val lastUsed: Long?,
     val isDefault: Boolean,
     val readerBytes: Long = 0,
+    /** A chat can use it ([isChatModel]): the switcher, the Server page and its card's "Chat with" offer only these. */
+    val chats: Boolean = isChatModel(key),
 ) {
     val totalBytes: Long get() = sizeBytes + readerBytes
 }
@@ -123,7 +125,8 @@ class ModelRepository(
                 .flatMapLatest { scanned -> listings(scanned.entries).map { scanned to it } },
             settings.settings.map { it.defaultModel }.distinctUntilChanged(),
             lastUsed.distinctUntilChanged(),
-        ) { (scanned, listings), defaultKey, used ->
+            settings.modelSenses.distinctUntilChanged(),
+        ) { (scanned, listings), defaultKey, used, headers ->
             scanned.entries
                 .map { entry ->
                     LibraryModel(
@@ -133,6 +136,7 @@ class ModelRepository(
                         lastUsed = used[entry.model.toString()],
                         isDefault = entry.model.toString() == defaultKey,
                         readerBytes = readerOf(entry.model, listings),
+                        chats = isChatModel(entry.model, headers[entry.model.toString()]),
                     )
                 }.sortedWith(compareByDescending<LibraryModel> { it.lastUsed ?: 0L }.thenBy { it.name })
         }.distinctUntilChanged()

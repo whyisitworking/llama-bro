@@ -14,6 +14,7 @@ import com.suhel.llamabro.demo.models.SearchModel
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.ui.keepAlive
 import com.suhel.llamabro.demo.ui.shutDown
+import com.suhel.llamabro.hub.HfModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -90,6 +91,7 @@ internal abstract class ModelsViewModelFixture {
         repository: ModelRepository = models,
         filters: MutableStateFlow<SearchFilters> = MutableStateFlow(SearchFilters()),
         savedFilters: Flow<SearchFilters> = filters,
+        served: MutableStateFlow<HfModel?> = MutableStateFlow(null),
     ): ModelsViewModel =
         ModelsViewModel(
             hub = cache,
@@ -107,6 +109,8 @@ internal abstract class ModelsViewModelFixture {
             savedState = savedState,
             searchFilters = savedFilters,
             saveSearchFilters = { change -> filters.update(change) },
+            served = { served.value },
+            stopServing = { served.value = null },
         ).also {
             viewModels += it
             it.browse.keepAlive(backgroundScope)

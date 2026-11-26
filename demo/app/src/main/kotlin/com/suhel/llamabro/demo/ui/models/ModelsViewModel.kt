@@ -170,6 +170,10 @@ class ModelsViewModel(
     searchFilters: Flow<SearchFilters> = flowOf(SearchFilters()),
     /** Applies a change to the filters as the settings hold them (D128). */
     private val saveSearchFilters: suspend (FiltersChange) -> Unit = {},
+    /** The model server mode serves, or null (docs/design/server.md §3): deleting it asks to stop serving first. */
+    private val served: () -> HfModel? = { null },
+    /** Stops server mode, releasing its model. */
+    private val stopServing: suspend () -> Unit = {},
 ) : ViewModel() {
     // user input: the field gaining or losing focus
     private val focusInput = MutableStateFlow(false)
@@ -347,6 +351,12 @@ class ModelsViewModel(
     /** The model a swipe is asking about; the dialog names it and its size. */
     val pendingRemove: StateFlow<LibraryModel?> = pendingRemoveInput.asStateFlow()
 
+    // user input: a remove of the served model, asking to stop serving first
+    private val pendingStopServingInput = MutableStateFlow<LibraryModel?>(null)
+
+    /** The served model a swipe is asking to remove: "Stop serving <model> to delete it?". */
+    val pendingStopServing: StateFlow<LibraryModel?> = pendingStopServingInput.asStateFlow()
+
     // an action's outcome: a remove or cancel that failed, closed by the person
     private val problemInput = MutableStateFlow<String?>(null)
 
@@ -437,24 +447,49 @@ class ModelsViewModel(
     /** When [entry], a model on the phone, was last used: "Used today", "3 days ago". */
     fun lastUsed(entry: ModelEntry): String = Format.usedAgo(entry.lastUsed, clock(), zone)
 
+    /** A swipe on [model]: the remove question, or, for the model being served, the stop-serving one. */
     fun askRemove(model: LibraryModel) {
-        pendingRemoveInput.value = model
+        if (served() == model.key) pendingStopServingInput.value = model else pendingRemoveInput.value = model
     }
 
     fun dismissRemove() {
         pendingRemoveInput.value = null
     }
 
+    fun dismissStopServing() {
+        pendingStopServingInput.value = null
+    }
+
+    /**
+     * The stop-serving question answered: serving ends, then the model is removed. A delete while it serves would wait
+     * for serving to end, with the page's remove and every request on hold meanwhile.
+     */
+    fun confirmStopServing() {
+        val model = pendingStopServingInput.value ?: return
+        pendingStopServingInput.value = null
+        viewModelScope.launch {
+            stopServing()
+            remove(model)
+        }
+    }
+
     fun dismissProblem() {
         problemInput.value = null
     }
 
+    /** The remove question answered; serving that began since it was asked asks its own question first. */
     fun confirmRemove() {
         val model = pendingRemoveInput.value ?: return
         pendingRemoveInput.value = null
-        viewModelScope.launch {
-            if (!models.remove(model.key)) problemInput.value = "Couldn't remove ${model.name}. Try again."
+        if (served() == model.key) {
+            pendingStopServingInput.value = model
+            return
         }
+        viewModelScope.launch { remove(model) }
+    }
+
+    private suspend fun remove(model: LibraryModel) {
+        if (!models.remove(model.key)) problemInput.value = "Couldn't remove ${model.name}. Try again."
     }
 
     companion object {

@@ -1,0 +1,251 @@
+public final class com/suhel/llamabro/rag/Chunk {
+	public fun <init> (Ljava/lang/String;ILjava/lang/String;IILjava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;ILjava/lang/String;IILjava/util/List;)Lcom/suhel/llamabro/rag/Chunk;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/Chunk;Ljava/lang/String;ILjava/lang/String;IILjava/util/List;ILjava/lang/Object;)Lcom/suhel/llamabro/rag/Chunk;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDocumentId ()Ljava/lang/String;
+	public final fun getEnd ()I
+	public final fun getHeadings ()Ljava/util/List;
+	public final fun getIndex ()I
+	public final fun getStart ()I
+	public final fun getText ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/rag/Chunker {
+	public fun <init> ()V
+	public fun <init> (IFLcom/suhel/llamabro/rag/TokenCounter;Ljava/lang/String;)V
+	public synthetic fun <init> (IFLcom/suhel/llamabro/rag/TokenCounter;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun chunks (Lcom/suhel/llamabro/rag/Document;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/suhel/llamabro/rag/Document {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/suhel/llamabro/rag/Document;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/Document;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/rag/Document;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()Ljava/lang/String;
+	public final fun getSource ()Ljava/lang/String;
+	public final fun getText ()Ljava/lang/String;
+	public final fun getTitle ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/rag/DocumentInfo {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Lcom/suhel/llamabro/rag/DocumentInfo;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/DocumentInfo;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IILjava/lang/Object;)Lcom/suhel/llamabro/rag/DocumentInfo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getChunks ()I
+	public final fun getId ()Ljava/lang/String;
+	public final fun getSource ()Ljava/lang/String;
+	public final fun getTitle ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/rag/EmbedderIdentity {
+	public fun <init> (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;Lcom/suhel/llamabro/rag/EmbeddingFormat;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Lcom/suhel/llamabro/rag/EmbeddingFormat;
+	public final fun copy (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;Lcom/suhel/llamabro/rag/EmbeddingFormat;)Lcom/suhel/llamabro/rag/EmbedderIdentity;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/EmbedderIdentity;Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;Lcom/suhel/llamabro/rag/EmbeddingFormat;ILjava/lang/Object;)Lcom/suhel/llamabro/rag/EmbedderIdentity;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDimensions ()I
+	public final fun getFileBytes ()J
+	public final fun getFormat ()Lcom/suhel/llamabro/rag/EmbeddingFormat;
+	public final fun getModelName ()Ljava/lang/String;
+	public final fun getNormalization ()Ljava/lang/String;
+	public final fun getPooling ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/rag/EmbeddingFormat {
+	public static final field Companion Lcom/suhel/llamabro/rag/EmbeddingFormat$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lcom/suhel/llamabro/rag/EmbeddingFormat;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/EmbeddingFormat;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/rag/EmbeddingFormat;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDocumentPrefix ()Ljava/lang/String;
+	public final fun getQueryPrefix ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/rag/EmbeddingFormat$Companion {
+	public final fun getNone ()Lcom/suhel/llamabro/rag/EmbeddingFormat;
+	public final fun of (Lcom/suhel/llamabro/ModelInfo;)Lcom/suhel/llamabro/rag/EmbeddingFormat;
+}
+
+public final class com/suhel/llamabro/rag/Hit {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IILjava/util/List;FI)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()Ljava/util/List;
+	public final fun component7 ()F
+	public final fun component8 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IILjava/util/List;FI)Lcom/suhel/llamabro/rag/Hit;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/Hit;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IILjava/util/List;FIILjava/lang/Object;)Lcom/suhel/llamabro/rag/Hit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDocumentId ()Ljava/lang/String;
+	public final fun getEnd ()I
+	public final fun getHeadings ()Ljava/util/List;
+	public final fun getRank ()I
+	public final fun getScore ()F
+	public final fun getStart ()I
+	public final fun getText ()Ljava/lang/String;
+	public final fun getTitle ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/rag/IndexMismatch : java/lang/Exception {
+	public final fun getBuilt ()Lcom/suhel/llamabro/rag/EmbedderIdentity;
+	public final fun getWanted ()Lcom/suhel/llamabro/rag/EmbedderIdentity;
+}
+
+public abstract interface class com/suhel/llamabro/rag/IngestProgress {
+}
+
+public final class com/suhel/llamabro/rag/IngestProgress$Chunked : com/suhel/llamabro/rag/IngestProgress {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lcom/suhel/llamabro/rag/IngestProgress$Chunked;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/IngestProgress$Chunked;IILjava/lang/Object;)Lcom/suhel/llamabro/rag/IngestProgress$Chunked;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getChunks ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/rag/IngestProgress$Embedded : com/suhel/llamabro/rag/IngestProgress {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lcom/suhel/llamabro/rag/IngestProgress$Embedded;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/IngestProgress$Embedded;IIILjava/lang/Object;)Lcom/suhel/llamabro/rag/IngestProgress$Embedded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDone ()I
+	public final fun getOf ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/rag/IngestProgress$Saved : com/suhel/llamabro/rag/IngestProgress {
+	public static final field INSTANCE Lcom/suhel/llamabro/rag/IngestProgress$Saved;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/rag/Library : java/lang/AutoCloseable {
+	public static final field Companion Lcom/suhel/llamabro/rag/Library$Companion;
+	public final fun add (Lcom/suhel/llamabro/rag/Document;)Lkotlinx/coroutines/flow/Flow;
+	public fun close ()V
+	public final fun documents (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun remove (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/suhel/llamabro/rag/Library$Companion {
+	public final fun contents (Lokio/FileSystem;Lokio/Path;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun open (Lokio/FileSystem;Lokio/Path;Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/rag/EmbeddingFormat;Lcom/suhel/llamabro/rag/Chunker;Lcom/suhel/llamabro/Pooling;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun open$default (Lcom/suhel/llamabro/rag/Library$Companion;Lokio/FileSystem;Lokio/Path;Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/rag/EmbeddingFormat;Lcom/suhel/llamabro/rag/Chunker;Lcom/suhel/llamabro/Pooling;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun rebuild (Lokio/FileSystem;Lokio/Path;Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/rag/EmbeddingFormat;Lcom/suhel/llamabro/rag/Chunker;Lcom/suhel/llamabro/Pooling;)Lkotlinx/coroutines/flow/Flow;
+	public static synthetic fun rebuild$default (Lcom/suhel/llamabro/rag/Library$Companion;Lokio/FileSystem;Lokio/Path;Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/rag/EmbeddingFormat;Lcom/suhel/llamabro/rag/Chunker;Lcom/suhel/llamabro/Pooling;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
+}
+
+public final class com/suhel/llamabro/rag/LibraryContents {
+	public fun <init> (Lcom/suhel/llamabro/rag/EmbedderIdentity;Ljava/util/List;)V
+	public final fun component1 ()Lcom/suhel/llamabro/rag/EmbedderIdentity;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Lcom/suhel/llamabro/rag/EmbedderIdentity;Ljava/util/List;)Lcom/suhel/llamabro/rag/LibraryContents;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/LibraryContents;Lcom/suhel/llamabro/rag/EmbedderIdentity;Ljava/util/List;ILjava/lang/Object;)Lcom/suhel/llamabro/rag/LibraryContents;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBuiltBy ()Lcom/suhel/llamabro/rag/EmbedderIdentity;
+	public final fun getDocuments ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/rag/LibraryToolKt {
+	public static final fun asContext (Ljava/util/List;)Ljava/lang/String;
+	public static final fun searchTool (Lcom/suhel/llamabro/rag/Library;Ljava/lang/String;ILcom/suhel/llamabro/Model;Ljava/lang/String;Lkotlin/jvm/functions/Function2;)Lcom/suhel/llamabro/typed/TypedTool;
+	public static synthetic fun searchTool$default (Lcom/suhel/llamabro/rag/Library;Ljava/lang/String;ILcom/suhel/llamabro/Model;Ljava/lang/String;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)Lcom/suhel/llamabro/typed/TypedTool;
+}
+
+public final class com/suhel/llamabro/rag/SearchArgs {
+	public static final field Companion Lcom/suhel/llamabro/rag/SearchArgs$Companion;
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lcom/suhel/llamabro/rag/SearchArgs;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/SearchArgs;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/rag/SearchArgs;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getQuery ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class com/suhel/llamabro/rag/SearchArgs$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lcom/suhel/llamabro/rag/SearchArgs$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lcom/suhel/llamabro/rag/SearchArgs;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lcom/suhel/llamabro/rag/SearchArgs;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/suhel/llamabro/rag/SearchArgs$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class com/suhel/llamabro/rag/SearchKt {
+	public static final fun search (Lcom/suhel/llamabro/rag/Library;Ljava/lang/String;ILcom/suhel/llamabro/Model;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun search$default (Lcom/suhel/llamabro/rag/Library;Ljava/lang/String;ILcom/suhel/llamabro/Model;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public abstract interface class com/suhel/llamabro/rag/TokenCounter {
+	public abstract fun count (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/suhel/llamabro/rag/TokenCounter$Estimate : com/suhel/llamabro/rag/TokenCounter {
+	public static final field INSTANCE Lcom/suhel/llamabro/rag/TokenCounter$Estimate;
+	public fun count (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/rag/TokenCounter$Model : com/suhel/llamabro/rag/TokenCounter {
+	public fun <init> (Lcom/suhel/llamabro/Model;)V
+	public fun count (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+

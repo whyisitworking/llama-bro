@@ -38,12 +38,13 @@ Durations below are approximate and depend on the machine, the cached builds and
 | `native` | The C API's host tests (`ctest`, upstream's own server tests for embeddings, rerank and LoRA on its small models included; the DFlash fit projection against a real load's peak memory footprint, which on macOS counts compressed pages, F90, F160) | the test models | under a minute |
 | `hub-golden` | The Hub's resolver and cache match upstream's: its model-resolution self-test and recorded real repo listings, the GGUF header offsets of three real models, and the cache tree upstream writes from the same fake server, replayed through the Kotlin Hub (`CacheGoldenTest`, which must not be skipped) | Python 3, the three models in `~/Downloads` | a few minutes |
 | `contract` | The C API answers exactly like upstream `llama-server` built from the same tree with the same flags: about 75 requests (chat, multi-turn, thinking on and off, tool calls, JSON schema, one image, sampling fields, completions, `/props`, `/metrics` names, cache counters across turns, a cancel and the request after it, error bodies), compared on reply text and counters. Runs once per model (Qwen3.5 4B, then each extra model), then the audio cases (`audio.jsonl`) on upstream's audio test model: the clip through upstream's multipart `/v1/audio/transcriptions` and a data URL in chat, against the bridge's attachments by path, descriptor and bytes (F55, D84), and four `/v1/realtime` sessions (a spoken turn answered in text and speech, two text turns, a transcription session, bad events) over a real WebSocket against the in-memory `realtime` endpoint, every event compared without its random ids, both sides at seed 42 (D97, F168) | the model, the mmproj, a free port | minutes per model |
+| `server-contract` | `llamabro-server` answers like upstream `llama-server` from the same build with the same flags (statuses and bodies identical, generated ids and timings masked, headers not compared) (`sdk/native/tests/contract/server-run.sh`): chat, Anthropic messages, Responses and completions, streamed and whole, token counts, `/props`, `/metrics` names and errors, every body and status compared, on the model; embeddings on `bge-small`. Then the official `openai` and `anthropic` Python SDKs (pinned in `sdk/scripts/tests/server-clients-requirements.txt`, in a venv under `sdk/native/build/host/server-contract/venv` made on the first run, which needs the network) make a whole and a streamed call each against the server with a key, and a wrong key raises each SDK's `AuthenticationError` (F189) | the model, `bge-small` | about a minute |
 | `tools-ui` | llama.cpp's own `tools/ui` compaction code (Llama Chat, `ui/apps/chat` since b12479), regenerated in node, equals the committed golden of 400 seeded message lists; the Kotlin replay of the golden is part of `jvm` | node | seconds |
-| `api` | The public APIs of the core, `llamabro-typed` and `llamabro-testing` equal their reviewed dumps (`sdk/<module>/api/<module>.api`). An intended change is reviewed with `./gradlew -p sdk :<module>:apiDump` and committed with the code | Gradle | seconds |
+| `api` | The public APIs of the core, `llamabro-typed`, `llamabro-testing`, `llamabro-server` and `llamabro-rag` equal their reviewed dumps (`sdk/<module>/api/<module>.api`). An intended change is reviewed with `./gradlew -p sdk :<module>:apiDump` and committed with the code | Gradle | seconds |
 | `hub-api` | The same for `llamabro-hub`, `llamabro-hub-work` and `llamabro-hub-testing` | Gradle | seconds |
 | `quality` | ktlint and detekt over every Kotlin module (the root build's `qualityCheck`); detekt baselines list what predates the rule | Gradle | about a minute |
 | `lint` | Android lint on every SDK library, warnings as errors | Gradle | minutes |
-| `jvm` | The Kotlin unit tests of the core, `llamabro-testing`, `llamabro-hexagon`, `llamabro-hub`, `llamabro-hub-work` and `llamabro-hub-testing`, including the 400-case `tools/ui` replay and `GgufHeaderTest` (which must not be skipped); `llamabro-hub-work`'s androidTest compiles | the golden output of `hub-golden` | a few minutes |
+| `jvm` | The Kotlin unit tests of the core, `llamabro-testing`, `llamabro-hexagon`, `llamabro-hub`, `llamabro-hub-work` and `llamabro-hub-testing`, including the 400-case `tools/ui` replay and `GgufHeaderTest` (which must not be skipped), and `llamabro-server`'s and `llamabro-rag`'s (the chunker, BM25, fusion, the store's crash safety over a file system that dies at each write, ingest, search and the tool, all over fakes); `llamabro-hub-work`'s androidTest compiles | the golden output of `hub-golden` | a few minutes |
 | `e2e` | Kotlin, JNI and native together on the host (`HostNativeTest`): every request replayed to a running upstream `llama-server` in the same order (typed chat, image, raw endpoints, an error, an agent conversation with tools, compaction, a send after it), cache counters included. Then the typed embeddings, speech input (`HostAudioTest`) and the voice session (`HostVoiceTest`: a spoken turn answered in text and speech through Kotlin, JNI's `requestSend` and the in-memory `/v1/realtime`, a refused event, a refused setup, the model closed under a session) on upstream's small test models. Fails if a test was skipped | the model, the mmproj, a free port | a few minutes |
 | `aar` | The release AARs: the native libraries under their own `llamabro-` names, the exported symbols (only `lb_*`, `JNI_OnLoad` and the type information that C++ catches need), 16 KB `LOAD` alignment, the five Hexagon skeletons and their checksums, no `libomp.so`, no `jni/` folder in the Hub and hub-work AARs, the `dataSync` foreground service and its permissions in hub-work's manifest, no copy of the core's libraries in a backend AAR (`check-aar.sh`) | Gradle, the NDK | minutes |
 | `scripts` | The host scripts against stubs, with no phone: `device-preflight.sh` (the phone lock and the refusals, `tests/device-preflight-test.sh`), `bench.sh` run end to end against a stub adb that plays a phone and stub Gradle, `say` and `afconvert` (a missing model file, a phone that never cools, a failed instrumentation call, two rounds with the arm order reversed in the second and the results written only after the last arm, no serial in any file or line; `tests/bench-sh-test.sh`), and `bench.py`'s merge, charts and README check (`tests/bench-test.py`) | Python, bash | seconds |
@@ -99,7 +100,7 @@ demo/scripts/check.sh --only ds,quality                 # a slice, by step name
 
 | Needs | Steps |
 |---|---|
-| Nothing but the host | SDK: `build`, `native`, `hub-golden`, `contract`, `tools-ui`, `api`, `hub-api`, `quality`, `lint`, `jvm`, `e2e`, `aar`, `scripts`. Demo: `unit`, `lint`, `assemble`, `ds`, `quality` |
+| Nothing but the host | SDK: `build`, `native`, `hub-golden`, `contract`, `server-contract`, `tools-ui`, `api`, `hub-api`, `quality`, `lint`, `jvm`, `e2e`, `aar`, `scripts`. Demo: `unit`, `lint`, `assemble`, `ds`, `quality` |
 | A device or an emulator (fake engine, no model) | Demo: `device`, `journey`, `monkey`, `coverage`, `map` |
 | The physical phone | SDK: `device`, `hub-device`, `hub-resume`, `device-contract`, `device-speech` (a Qualcomm phone for the NPU steps). Demo: `perf`, `real`, and the journeys that need a photo picker (`sendAnImage`) |
 
@@ -179,6 +180,8 @@ SDK-side speed, memory and device measurements (prefill and decode rates per chi
 |---|---|
 | C API host tests | `sdk/native/bridge/tests/` (built as `lb-tests`) |
 | Contract against upstream | `sdk/native/tests/contract/` (`run.sh`, the request set from `make-requests.py`, `compare.py`) |
+| Server contract and client smoke | `sdk/native/tests/contract/server-run.sh`, `server-requests.jsonl`; `sdk/scripts/tests/server-clients.py`; `HostServerContractTest` in `sdk/llamabro-server` |
+| Retrieval library | `sdk/llamabro-rag/src/test` (`HostLibraryTest`, in `e2e`, adds and reopens a library on bge-small and searches with jina-reranker-tiny, failing if skipped); the retrieval evaluation `HostRagEvalTest` with its questions in `research/rag/eval/` (F191) |
 | Device contract on the NPU | `sdk/native/tests/device-contract/` |
 | Speech on the NPU | `sdk/native/tests/device-speech/` |
 | Hub goldens from upstream's code | `sdk/native/tests/hub-golden/`, `sdk/scripts/hub-fake/` |
@@ -189,5 +192,19 @@ SDK-side speed, memory and device measurements (prefill and decode rates per chi
 | Demo component tests | `demo/designsystem/src/test`, `demo/designsystem/src/androidTest` |
 | Demo benchmarks | `demo/benchmark/` |
 | Real-model driver | `demo/scripts/e2e/` |
+
+### Retrieval evaluation (manual)
+
+`HostRagEvalTest` measures recall of dense, keyword, hybrid and reranked search on this repository's docs. It gates
+nothing and is not a check step; it takes about eight minutes on a Mac's CPU (F191). It needs the host build and the
+small test models:
+
+```bash
+./gradlew -p sdk :llamabro-rag:testDebugUnitTest --tests 'com.suhel.llamabro.rag.HostRagEvalTest' --rerun-tasks -i \
+    -Pllamabro.host.lib="$PWD/sdk/native/build/host/bin" \
+    -Pllamabro.host.models="${LB_TEST_MODELS_DIR:-$HOME/Downloads/llamabro-test}"
+```
+
+Without the two properties it is skipped. [research/rag/eval/README.md](../research/rag/eval/README.md) has the method.
 
 See also: [the SDK README](../sdk/README.md), [the demo README](../demo/README.md), [the demo's design](design/demo-app.md).

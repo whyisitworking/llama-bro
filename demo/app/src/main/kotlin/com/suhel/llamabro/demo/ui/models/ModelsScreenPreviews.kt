@@ -119,6 +119,16 @@ internal class ModelsStates : PreviewParameterProvider<ModelsPreview> {
                     pendingRemove = LibraryModel(deepKey, "Qwen3.5 4B", 3_400_000_000, 0, isDefault = false),
                 ),
             ),
+            ModelsPreview(
+                "Asking to stop serving before a remove",
+                ModelsPage(
+                    browse(),
+                    idle,
+                    searching = false,
+                    fetching = false,
+                    pendingStopServing = LibraryModel(deepKey, "Qwen3.5 4B", 3_400_000_000, 0, isDefault = false),
+                ),
+            ),
             ModelsPreview("Not read yet", ModelsPage(null, idle, searching = false, fetching = false)),
             ModelsPreview(
                 "Search, before typing",

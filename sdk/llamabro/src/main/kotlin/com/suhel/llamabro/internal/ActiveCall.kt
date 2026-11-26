@@ -74,7 +74,9 @@ internal class ActiveCall<T>(val scope: ProducerScope<T>, private val chunks: Ch
 
             override fun onChunk(httpStatus: Int, data: ByteArray) {
                 if (failed) return
-                if (httpStatus >= HttpStatus.ERROR_FROM) {
+                if (mode == BodyMode.Raw) {
+                    scope.trySend(chunks.of(httpStatus, data))
+                } else if (httpStatus >= HttpStatus.ERROR_FROM) {
                     fail(ErrorMapping.fromBody(httpStatus, String(data, Charsets.UTF_8)))
                 } else if (mode == BodyMode.Each) {
                     scope.trySend(chunks.of(data))
@@ -133,6 +135,9 @@ internal enum class BodyMode {
 
     /** Each chunk as it comes: a realtime conversation's events (D97), or speech's audio (D139). */
     Each,
+
+    /** Each chunk with its status, an error status included: `Model.exchange` passes llama-server's reply on as is. */
+    Raw,
 }
 
 /** What a response's chunks become: text, or bytes for a binary body such as speech (D139). */
@@ -141,10 +146,24 @@ internal sealed interface Chunks<T> {
 
     fun of(text: String): T
 
+    /** A chunk with the HTTP status it came with; only [Raw] mode asks for it. */
+    fun of(status: Int, bytes: ByteArray): T = of(bytes)
+
+    /** A chunk and its status, for `Model.exchange`. */
+    class Statused(val status: Int, val bytes: ByteArray)
+
     data object Text : Chunks<String> {
         override fun of(bytes: ByteArray): String = bytes.decodeToString()
 
         override fun of(text: String): String = text
+    }
+
+    data object Statuses : Chunks<Statused> {
+        override fun of(bytes: ByteArray): Statused = Statused(HttpStatus.OK, bytes)
+
+        override fun of(text: String): Statused = of(text.encodeToByteArray())
+
+        override fun of(status: Int, bytes: ByteArray): Statused = Statused(status, bytes)
     }
 
     data object Bytes : Chunks<ByteArray> {

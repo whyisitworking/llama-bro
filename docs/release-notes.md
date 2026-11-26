@@ -6,11 +6,43 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
 
 ## Unreleased
 
+- **`llamabro-server`: pairing from a browser** (D174). `ServerConfig.pairing = Pairing { request -> … }` serves a page
+  at `GET /` from which a computer asks for the key; the app approves each request (`PairingRequest` has the 4-digit
+  `code` the page shows, the `client` address and the `userAgent`), and the page then shows the key and the curl,
+  OpenAI Python and Claude Code snippets. Off by default; it needs `apiKey`. Typable keys now also accept Crockford's
+  O, I and L for 0, 1 and 1, and parallel wrong keys can no longer get past the throttle's 5 per wait (D173).
+- **Demo: pair a laptop from its browser** (D174). Open the phone's address in the laptop's browser and approve the
+  request on the phone: a dialog over the Server page or the docked view, or a notification with Approve and Deny
+  when the app is in the background. The key is filled into the laptop's snippets.
+- **`llamabro-server`: typable keys and throttling** (D173). `ServerConfig.keyMatching = KeyMatching.Typable` ignores
+  case, spaces and dashes on both sides before the constant-time compare (`Exact`, the default, is unchanged).
+  `ServerConfig.throttle` is on (`Throttle.Default`) whenever a key is set: after 5 wrong keys within a minute an
+  address gets 429 with `Retry-After`, the wait doubling from 30 s to 5 min, until a right key; `Throttle.Off` turns
+  it off. Behaviour change: a server with a key throttled nothing before.
+- **Demo: a key you can type, and no QR code** (D173). The Server page's key is now 16 characters in four groups
+  (`K7QM-4RTX-9HCD-2WNB`), and the QR code is gone. The old key is replaced on first use after the update, so every
+  computer connected to the phone's server must enter the new key.
+- **`llamabro-rag`** (D167-D172), a new optional module for asking your own documents: `Library.open` a folder,
+  `add` a `Document` (a flow of progress: chunked, embedded n of m, saved), `remove`, `search` for `Hit`s with their
+  document, offsets and headings, and `searchTool()` for a `Conversation`, which numbers passages on across its calls and hands the app what
+  the model saw through `onHits` (or `asContext()` for a prompt). Chunks are
+  cut at headings, paragraphs and sentences and counted with the embedder's own tokenizer; search is keyword (BM25) and
+  vector search fused, with an optional rerank (F191 set the defaults). The folder survives a crash (D168), and opening
+  it with another embedder throws `IndexMismatch`. Pure Kotlin; core is unchanged.
 - **`SearchOptions.quantizedFrom`**: only the GGUF uploads quantized from one original (`Qwen/Qwen3-8B`), through the
   Hub's `base_model:quantized:` filter; an id that is not `owner/name` is refused.
 - **`LlamaBroHub.capabilities`** (D155): what an installed model can do before it loads, read from its GGUF headers
   on the phone with no request: the chat template and whether an installed projector takes images and audio, or null
   when no complete copy is installed. `FakeLlamaBroHub`'s `gguf` takes `chatTemplate` and `metadata`.
+- **`llamabro-server`** (D163-D165), a new opt-in module: serves a loaded `Model` over HTTP with llama-server's API
+  (OpenAI chat, completions, embeddings and audio, Anthropic messages, Responses, token counts, `/health`, `/props`,
+  `/metrics`), streaming included, so Claude Code, Codex, the OpenAI SDKs and `npx llama-chat` work against it.
+  `LlamaBroServer(ServerConfig { … }, ServedModels)` has `state`, `events`, `start()` and `stop()`. It binds
+  `127.0.0.1:8080` with no key by default (D164); `POST /props`, `/lora-adapters` and `/slots/:id` are off unless
+  enabled. Media in a request must be a `data:` URL or base64 (D165), an optional `advertise` announces the server
+  with NSD, and its answers match upstream's (F189). Core stays socket-free.
+- **`Model.exchange`** (`@InternalLlamaBroApi`, D163): a request's status, content type and body bytes as llama-server
+  wrote them, error bodies and SSE `event:` lines included. Its only user is `llamabro-server`; `rawRequest` is unchanged.
 - **llama.cpp b12653** (D137) with six carried patches: upstream fixed the cache bug 0004 carried (F180). New with
   the pin: Qwen3-ASR's audio tail, LFM2.5-VL's template, the realtime sleep state and transcription prompt, recurrent
   state that no longer keeps a NaN, and safer reads of untrusted GGUF and grammars.
