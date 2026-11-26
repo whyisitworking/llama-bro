@@ -2724,6 +2724,10 @@ API. The module does no policy: it indexes what it is given and refuses nothing,
 Consequences: Core stays what D65 made it. An app that doesn't add the module carries none of it. A library of
 hundreds of thousands of chunks needs a `VectorStore` of its own; the scan's cost at 100k chunks has not been measured
 on a phone. The folder format is D168, chunking D169, search D170 and the tool D171.
+Amended (2026-11-26): `VectorStore` is internal, a seam inside the module and not a plug point. No public API took or
+returned one, and its rows are the store's own numbering, which compaction changes, so publishing it would have frozen
+a signature that another store (B or C, with its own ids, persistence and part in removal and compaction) would
+change. A public plug point is designed when B or C is; until then a larger library needs a change to the module.
 
 <a id="d168"></a>
 ### D168. A library is a folder whose manifest is written last; a crash leaves the last good library

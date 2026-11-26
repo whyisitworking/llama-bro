@@ -249,7 +249,3 @@ public final class com/suhel/llamabro/rag/TokenCounter$Model : com/suhel/llamabr
 	public fun count (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
-public abstract interface class com/suhel/llamabro/rag/VectorStore {
-	public abstract fun nearest ([FILkotlin/coroutines/Continuation;)Ljava/lang/Object;
-}
-

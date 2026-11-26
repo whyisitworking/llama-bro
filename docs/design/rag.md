@@ -210,6 +210,8 @@ record the choices. Where it differs from the text above, the code is right:
 - **`add` is one commit** for a document and the removal of any older one with its id; a compaction that fails
   afterwards does not fail the `add`.
 - **Search** is as designed (D170). `Hit.score` is the fusion's score, or the reranker's with one.
+- **`VectorStore` is internal** (D167, amended): a seam inside the module, not a public plug point; one is designed
+  when another store is.
 - **The tool** is `Library.searchTool(name, limit, reranker, description, onHits)` (D171; `onHits` and numbering
   that goes on across a tool's calls, D172), and `asContext()` is `List<Hit>.asContext()`
   (D171).
