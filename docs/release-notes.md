@@ -6,6 +6,8 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
 
 ## Unreleased
 
+## 2.1.0-alpha
+
 - **`llamabro-server`: pairing from a browser** (D174). `ServerConfig.pairing = Pairing { request -> … }` serves a page
   at `GET /` from which a computer asks for the key; the app approves each request (`PairingRequest` has the 4-digit
   `code` the page shows, the `client` address and the `userAgent`), and the page then shows the key and the curl,
@@ -122,6 +124,8 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
   model that speaks can be read aloud (D141).
 - **Demo:** pages scroll edge to edge under frosted glass bars (D148), a setting under Appearance (D152) that scales to
   what the phone can draw smoothly (D153, D154) and swells under the finger when pressed (D158).
+- **Demo:** bottom sheets are glass too, over the whole window, on phones that draw the full glass (D176, F192); the
+  bars' blur eases out more gently toward the sharp page, with a Fade softness setting (D175).
 
 ## 2.0.0-alpha
 

@@ -1,6 +1,6 @@
 [versions]
 # the SDK's version: every published module's (llamabro.publish, D133); docs/release-notes.md names it too
-llamabro = "2.0.0-alpha"
+llamabro = "2.1.0-alpha"
 agp = "9.5.1"
 # Android Lint ships with AGP: its version is AGP's plus 23.0.0
 lint = "32.5.1"
