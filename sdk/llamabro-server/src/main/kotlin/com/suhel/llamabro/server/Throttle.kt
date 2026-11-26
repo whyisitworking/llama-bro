@@ -48,36 +48,39 @@ internal class WrongKeys(private val clock: () -> Long) {
     private val records = LinkedHashMap<String, Record>()
     private val lock = Mutex()
 
-    /** The milliseconds [client] must still wait, or null when it may send a key. */
-    suspend fun waitFor(client: String): Long? =
+    /**
+     * Judges one request from [client] in a single step, so parallel requests can't all pass the check before any of
+     * them is recorded: the milliseconds it must still wait, or null when it was let through to be judged, in which
+     * case a right key ([ok]) starts it over and a wrong one ([guessed]: a key was presented and was not [ok]) counts
+     * towards the [MAX_WRONG]th within a minute that starts a wait, double the last one. A request with no key ([ok]
+     * and [guessed] both false) guesses nothing and changes nothing.
+     */
+    suspend fun check(client: String, ok: Boolean, guessed: Boolean): Long? =
         lock.withLock {
             val now = clock()
             forgetIdle(now)
-            val record = records[client] ?: return@withLock null
-            touch(client, record, now)
-            (record.until - now).takeIf { it > 0 }
-        }
-
-    /** [client] sent a wrong key: its [MAX_WRONG]th within a minute starts a wait, double the last one. */
-    suspend fun wrong(client: String) =
-        lock.withLock {
-            val now = clock()
-            forgetIdle(now)
-            val record = records[client] ?: Record()
-            touch(client, record, now)
-            while (record.misses.firstOrNull()?.let { now - it >= WINDOW_MILLIS } == true) record.misses.removeFirst()
-            record.misses.addLast(now)
-            if (record.misses.size >= MAX_WRONG) {
-                record.misses.clear()
-                record.until = now + waitAfter(record.waits)
-                record.waits++
+            val existing = records[client]
+            val wait = existing?.let { it.until - now }?.takeIf { it > 0 }
+            when {
+                wait != null -> touch(client, existing, now)
+                ok -> records.remove(client)
+                guessed -> wrong(client, existing ?: Record(), now)
+                existing != null -> touch(client, existing, now)
             }
-            while (records.size > MAX_TRACKED) records.remove(records.keys.first())
+            wait
         }
 
-    /** [client] sent the right key: it starts over. */
-    suspend fun right(client: String) {
-        lock.withLock { records.remove(client) }
+    private fun wrong(client: String, record: Record, now: Long) {
+        touch(client, record, now)
+        while (record.misses.firstOrNull()?.let { now - it >= WINDOW_MILLIS } == true) record.misses.removeFirst()
+        record.misses.addLast(now)
+        if (record.misses.size >= MAX_WRONG) {
+            record.misses.clear()
+            record.until = now + waitAfter(record.waits)
+            record.waits++
+        }
+        // only a wrong key adds an address, so trimming here keeps the map within its cap
+        while (records.size > MAX_TRACKED) records.remove(records.keys.first())
     }
 
     suspend fun tracked(): Int = lock.withLock { records.size }

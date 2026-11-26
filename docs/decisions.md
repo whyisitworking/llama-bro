@@ -2875,8 +2875,10 @@ Decision: In `llamabro-server`:
   `/health`, `/v1/models` or a preflight. Per client address, the fifth wrong key within a minute starts a wait:
   further requests get 429 in OpenAI's error shape (type `rate_limit_error`, Anthropic's name) with `Retry-After` in
   whole seconds, and `ServerEvent.Rejected` with status 429. The wait is 30 s, doubling with each one after, up to
-  5 min; a right key clears the address's record, doubling included. While an address waits, its requests are refused
-  before their key is read, so no answer tells a right guess from a wrong one. A request with no key guesses nothing
+  5 min; a right key clears the address's record, doubling included. While an address waits, its requests get 429
+  whatever their key, so no answer tells a right guess from a wrong one. Each request's key is judged first (in
+  constant time), and the throttle then decides and records it in one locked step, so guesses sent in parallel can't
+  all pass its check: at most 5 are judged per wait. A request with no key guesses nothing
   and does not count. The state is bounded: an address idle for 10 minutes is forgotten (its doubling with it), and at
   most 1,024 addresses are tracked, the one idle longest going first. It lives with the running server, so a restart
   starts it over. This is a deviation from upstream, which has no throttle.

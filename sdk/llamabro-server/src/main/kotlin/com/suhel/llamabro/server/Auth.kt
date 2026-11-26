@@ -40,55 +40,56 @@ internal fun carriesKey(
 internal class AuthConfig {
     var apiKey: String? = null
     var keyMatching: KeyMatching = KeyMatching.Exact
-    var throttle: Throttle = Throttle.Default
+
+    /** The running server's throttle, shared with any other route that counts failures; null when it is off. */
+    var wrongKeys: WrongKeys? = null
     var onRejected: (client: String, path: String, status: Int, reason: String) -> Unit = { _, _, _, _ -> }
+}
+
+/** The 429 a throttled address gets, with `Retry-After` in whole seconds, for [wait] milliseconds more. */
+internal suspend fun ApplicationCall.respondThrottled(
+    wait: Long,
+    onRejected: (client: String, path: String, status: Int, reason: String) -> Unit,
+) {
+    val seconds = (wait + MILLIS_PER_SECOND - 1) / MILLIS_PER_SECOND
+    val status = HttpStatusCode.TooManyRequests
+    response.header(HttpHeaders.RetryAfter, seconds.toString())
+    onRejected(request.local.remoteAddress, request.path(), status.value, "too many wrong API keys")
+    respondError(status, "Too many wrong API keys; try again in $seconds s", ErrorType.RATE_LIMIT)
 }
 
 internal val ApiKeyAuth =
     createApplicationPlugin("LlamaBroApiKey", ::AuthConfig) {
         val key = pluginConfig.apiKey
         val matching = pluginConfig.keyMatching
-        val wrongKeys = pluginConfig.throttle.takeIf { it.enabled }?.let { WrongKeys(it.clock) }
+        val wrongKeys = pluginConfig.wrongKeys
         val onRejected = pluginConfig.onRejected
-
-        suspend fun ApplicationCall.reject(status: HttpStatusCode, reason: String, message: String, type: String) {
-            onRejected(request.local.remoteAddress, request.path(), status.value, reason)
-            respondError(status, message, type)
-        }
 
         onCall { call ->
             if (key == null) return@onCall
             if (call.request.httpMethod == HttpMethod.Options || call.request.path() in openPaths) return@onCall
-            val client = call.request.local.remoteAddress
-            // a throttled address is refused before its key is looked at, so no answer tells a right guess apart
-            val wait = wrongKeys?.waitFor(client)
-            if (wait != null) {
-                val seconds = (wait + MILLIS_PER_SECOND - 1) / MILLIS_PER_SECOND
-                call.response.header(HttpHeaders.RetryAfter, seconds.toString())
-                call.reject(
-                    HttpStatusCode.TooManyRequests,
-                    "too many wrong API keys",
-                    "Too many wrong API keys; try again in $seconds s",
-                    ErrorType.RATE_LIMIT,
-                )
-                return@onCall
-            }
             val authorization = call.request.headers[HttpHeaders.Authorization]
             val xApiKey = call.request.headers["x-api-key"]
+            // the key is judged first, in constant time, and the throttle then decides and records in one step, so
+            // parallel guesses can't all pass its check; a throttled address gets 429 whatever the answer, so no
+            // answer tells a right guess apart
+            val ok = carriesKey(key, authorization, xApiKey, matching)
+            val guessed = !ok && presented(authorization, xApiKey).isNotEmpty()
+            val wait = wrongKeys?.check(call.request.local.remoteAddress, ok, guessed)
             when {
-                carriesKey(key, authorization, xApiKey, matching) -> {
-                    wrongKeys?.right(client)
+                wait != null -> {
+                    call.respondThrottled(wait, onRejected)
                 }
 
-                else -> {
-                    // a request with no key guesses nothing, so only a wrong one counts towards the throttle
-                    if (presented(authorization, xApiKey).isNotEmpty()) wrongKeys?.wrong(client)
-                    call.reject(
-                        HttpStatusCode.Unauthorized,
+                !ok -> {
+                    val status = HttpStatusCode.Unauthorized
+                    onRejected(
+                        call.request.local.remoteAddress,
+                        call.request.path(),
+                        status.value,
                         "invalid or missing API key",
-                        "Invalid API Key",
-                        ErrorType.AUTHENTICATION,
                     )
+                    call.respondError(status, "Invalid API Key", ErrorType.AUTHENTICATION)
                 }
             }
         }

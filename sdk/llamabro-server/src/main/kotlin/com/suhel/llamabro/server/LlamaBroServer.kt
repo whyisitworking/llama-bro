@@ -140,7 +140,7 @@ public class LlamaBroServer(private val config: ServerConfig, private val models
         install(ApiKeyAuth) {
             apiKey = config.apiKey
             keyMatching = config.keyMatching
-            throttle = config.throttle
+            wrongKeys = config.throttle.takeIf { it.enabled && config.apiKey != null }?.let { WrongKeys(it.clock) }
             onRejected = { client, path, status, reason ->
                 mutableEvents.tryEmit(ServerEvent.Rejected(client, path, status, reason))
             }

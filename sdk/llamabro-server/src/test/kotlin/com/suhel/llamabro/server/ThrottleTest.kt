@@ -3,6 +3,9 @@ package com.suhel.llamabro.server
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.runBlocking
@@ -14,6 +17,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+
+/** A wrong key from [client], as the server records one. */
+private suspend fun WrongKeys.wrong(client: String) = check(client, ok = false, guessed = true)
+
+/** What [client] must still wait, asked by a request with no key, which changes nothing. */
+private suspend fun WrongKeys.waitFor(client: String) = check(client, ok = false, guessed = false)
 
 /** Wrong keys from one address are throttled (docs/design/server.md §6, D173), on a clock the test moves. */
 class ThrottleTest {
@@ -69,6 +78,16 @@ class ThrottleTest {
             // the wait counts down
             now += 12_500
             assertEquals("18", guarded(port, wrong).headers["retry-after"])
+        }
+
+    @Test
+    fun parallelWrongKeysGetAtMostFiveGuesses() =
+        withServer(keyed()) { _, port ->
+            // fifty at once from one address: the check and the record of each guess are one step, so only five are
+            // judged however the requests interleave; the clock stands still, so none of the waits runs out
+            val statuses =
+                coroutineScope { List(50) { async(Dispatchers.IO) { guarded(port, wrong).status } }.awaitAll() }
+            assertEquals(mapOf(401 to 5, 429 to 45), statuses.groupingBy { it }.eachCount())
         }
 
     @Test
