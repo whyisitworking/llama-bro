@@ -25,6 +25,9 @@ apply(from = "../robolectric.gradle.kts")
 android {
     namespace = "com.suhel.llamabro.demo"
     compileSdk = 37
+    // the SDK's NDK, the one the release workflow installs: without it the build strips the native libraries with its
+    // own default NDK, which CI lacks, and packed them with their debug symbols (a 248 MB APK for 39 MB of code)
+    ndkVersion = rootDir.resolve("sdk/native/ndk.version").readText().trim()
 
     defaultConfig {
         applicationId = "com.suhel.llamabro.demo"
