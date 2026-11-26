@@ -6,6 +6,16 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
 
 ## Unreleased
 
+## 2.1.1-alpha
+
+No change to the SDK's API or behaviour; the modules are republished at the new version.
+
+- **Demo:** the release APK is about 39 MB again: the release workflow packed its native libraries with their debug
+  symbols (248 MB for 2.1.0-alpha, 238 MB for 2.0.0-alpha), because the app named no NDK to strip them with and CI
+  has only the SDK's.
+- **Demo:** a bottom sheet's glass keeps its curved edge under a finger (it no longer swells as pressed glass does,
+  D176); opening the Sidebar's drawer closes a keyboard the chat left up, and the drawer's places stay at its foot.
+
 ## 2.1.0-alpha
 
 - **`llamabro-server`: pairing from a browser** (D174). `ServerConfig.pairing = Pairing { request -> … }` serves a page
