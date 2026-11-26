@@ -3,7 +3,6 @@ package com.suhel.llamabro.demo.ui.server
 import android.view.WindowManager
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -13,6 +12,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -87,45 +88,39 @@ fun DockedContent(docked: Docked.Showing?, onBack: () -> Unit, modifier: Modifie
         modifier = modifier.testTag("docked_page"),
     ) {
         if (docked == null) return@Screen
+        // the layout follows the window, not this body: a scrolling body is measured without a height limit
+        val size = LocalWindowInfo.current.containerSize
+        val density = LocalDensity.current
+        val wide =
+            with(density) { dockedLayoutFor(size.width.toDp(), size.height.toDp()) } == DockedLayout.Wide
+        val numbers =
+            listOfNotNull(
+                Triple(docked.speed, "tokens per second", "docked_speed"),
+                Triple(docked.busy, "requests at once", "docked_busy"),
+                docked.temperature?.let { Triple(it, "temperature", "docked_temperature") },
+            )
         // the body scrolls where even the wide layout doesn't fit (a very small window)
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val numbers: @Composable () -> Unit = {
-                Glance(docked.speed, "tokens per second", "docked_speed")
-                Glance(docked.busy, "requests at once", "docked_busy")
-                docked.temperature?.let { Glance(it, "temperature", "docked_temperature") }
-            }
-            val layout = dockedLayoutFor(maxWidth, maxHeight)
-            Stack(Gap.Block, Modifier.fillMaxWidth(), Alignment.CenterHorizontally) {
-                if (layout == DockedLayout.Wide) {
-                    Inline(Gap.Block, Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                        Box(
-                            Modifier.weight(1f),
-                            Alignment.TopCenter,
-                        ) { Glance(docked.speed, "tokens per second", "docked_speed") }
-                        Box(
-                            Modifier.weight(1f),
-                            Alignment.TopCenter,
-                        ) { Glance(docked.busy, "requests at once", "docked_busy") }
-                        docked.temperature?.let {
-                            Box(
-                                Modifier.weight(1f),
-                                Alignment.TopCenter,
-                            ) { Glance(it, "temperature", "docked_temperature") }
-                        }
+        Stack(Gap.Block, Modifier.fillMaxWidth(), Alignment.CenterHorizontally) {
+            if (wide) {
+                Inline(Gap.Block, Modifier.fillMaxWidth().testTag("docked_wide"), verticalAlignment = Alignment.Top) {
+                    for ((value, label, tag) in numbers) {
+                        Box(Modifier.weight(1f), Alignment.TopCenter) { Glance(value, label, tag) }
                     }
-                } else {
-                    numbers()
                 }
-                Stack(Gap.Inline, horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        docked.last ?: "No requests yet",
-                        color = colors.muted,
-                        style = DemoType.bodyMedium,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.testTag("docked_last"),
-                    )
-                    docked.url?.let { Text(it, color = colors.muted, style = DemoType.code) }
+            } else {
+                Stack(Gap.Block, Modifier.testTag("docked_tall"), Alignment.CenterHorizontally) {
+                    for ((value, label, tag) in numbers) Glance(value, label, tag)
                 }
+            }
+            Stack(Gap.Inline, horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    docked.last ?: "No requests yet",
+                    color = colors.muted,
+                    style = DemoType.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.testTag("docked_last"),
+                )
+                docked.url?.let { Text(it, color = colors.muted, style = DemoType.code) }
             }
         }
     }

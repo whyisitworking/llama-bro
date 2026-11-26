@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
@@ -54,6 +55,22 @@ class DockedScreenTest {
         assertEquals(DockedLayout.Wide, dockedLayoutFor(780.dp, 360.dp))
         assertEquals(DockedLayout.Tall, dockedLayoutFor(360.dp, 780.dp))
         assertEquals(DockedLayout.Tall, dockedLayoutFor(400.dp, 400.dp))
+    }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w780dp-h360dp-land")
+    fun sidewaysShowsTheWideArrangement() {
+        rule.setContent { DemoTheme(ThemeMode.Light) { DockedContent(showing, onBack = {}) } }
+        rule.onNodeWithTag("docked_wide").assertExists()
+        rule.onNodeWithTag("docked_tall").assertDoesNotExist()
+    }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w360dp-h780dp-port")
+    fun uprightShowsTheTallArrangement() {
+        rule.setContent { DemoTheme(ThemeMode.Light) { DockedContent(showing, onBack = {}) } }
+        rule.onNodeWithTag("docked_tall").assertExists()
+        rule.onNodeWithTag("docked_wide").assertDoesNotExist()
     }
 
     @Test fun servingEndedLeavesDocked() {
