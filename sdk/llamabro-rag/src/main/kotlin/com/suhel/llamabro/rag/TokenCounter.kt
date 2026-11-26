@@ -28,13 +28,18 @@ public fun interface TokenCounter {
 
     /**
      * The embedding model's own tokenizer, through `POST /tokenize`, which an embedding load answers
-     * ([F190](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f190)). One request per
-     * text; the [Chunker] asks only where the estimate is near its limit.
+     * ([F190](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f190)). Its special
+     * tokens (`[CLS]`, `[SEP]`) are counted, as they are when it embeds. One request per text; the [Chunker] asks only
+     * where the estimate is near its limit, and once for each range.
      * @param embedder the loaded embedding model ([com.suhel.llamabro.ModelTask.Embedding]).
      */
     public class Model(private val embedder: LoadedModel) : TokenCounter {
         override suspend fun count(text: String): Int {
-            val body = buildJsonObject { put("content", text) }.toString()
+            val body =
+                buildJsonObject {
+                    put("content", text)
+                    put("add_special", true)
+                }.toString()
             val response = embedder.rawRequest(Endpoint.Tokenize, body).toList().joinToString("")
             val tokens = (Json.parseToJsonElement(response) as JsonObject)["tokens"]
             return checkNotNull(

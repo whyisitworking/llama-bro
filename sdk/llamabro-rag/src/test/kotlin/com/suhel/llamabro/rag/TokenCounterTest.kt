@@ -17,13 +17,13 @@ class TokenCounterTest {
         }
 
     @Test
-    fun modelCountsWhatTheTokenizeRouteReturns() =
+    fun modelCountsWhatTheTokenizeRouteReturnsWithSpecialTokens() =
         runBlocking {
             val fake = FakeLlamaBro { raw(200, """{"tokens":[1037,4937,2003]}""") }
             val model = fake.llamaBro.loadModel(ModelSource.file("/m.gguf"))
             assertEquals(3, TokenCounter.Model(model).count("a \"quoted\"\ncat"))
             val request = fake.rawRequests.single()
             assertEquals("tokenize", request.route)
-            assertEquals("""{"content":"a \"quoted\"\ncat"}""", request.body)
+            assertEquals("""{"content":"a \"quoted\"\ncat","add_special":true}""", request.body)
         }
 }

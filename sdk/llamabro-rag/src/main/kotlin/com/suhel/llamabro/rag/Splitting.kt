@@ -43,9 +43,19 @@ internal fun markdownSections(text: String): List<Section> {
 
 /**
  * Cuts text into pieces that each fit [max] tokens, along the coarsest boundary that does the job: paragraphs, then
- * sentences, then characters. Every piece keeps the whitespace after it, so the pieces tile the range.
+ * sentences, then characters. Every piece keeps the whitespace after it, so the pieces tile the range. What the model
+ * embeds is [prefix] and the text, so [prefixTokens] of the limit are spoken for. Each range is counted at most once.
  */
-internal class Splitter(private val text: String, private val max: Int, private val counter: TokenCounter) {
+internal class Splitter(
+    private val text: String,
+    private val prefix: String,
+    private val prefixTokens: Int,
+    private val maxTokens: Int,
+    private val counter: TokenCounter,
+) {
+    private val max = maxTokens - prefixTokens
+    private val counted = HashMap<Long, Int>()
+
     suspend fun pieces(start: Int, end: Int, level: Int): List<Piece> {
         val whole = measure(start, end)
         if (whole.tokens <= max) return listOf(whole)
@@ -59,29 +69,34 @@ internal class Splitter(private val text: String, private val max: Int, private 
         return parts.flatMap { pieces(it.start, it.end, level + 1) }
     }
 
-    /** The tokens of the text from [start] to [end], by the counter. */
-    suspend fun count(start: Int, end: Int): Int = counter.count(text.substring(start, end))
+    /** The tokens the model embeds for the text from [start] to [end]: the prefix and the text, counted once. */
+    suspend fun count(start: Int, end: Int): Int =
+        counted.getOrPut(start.toLong() shl Int.SIZE_BITS or end.toLong()) {
+            counter.count(prefix + text.substring(start, end))
+        }
 
-    // The estimate decides when it is far from the limit and the text is Latin, Greek or Cyrillic, where a token is
-    // never shorter than a character in three; otherwise the counter is asked. Text of more than eight limits cannot
-    // fit.
+    // The estimate decides when it is far from the limit: three characters a token for Latin, Greek and Cyrillic, and
+    // one for other scripts, and a count may be twice either (the chunker checks a packed chunk once it comes near the
+    // limit). Otherwise the counter is asked. Text of more than eight limits cannot fit.
     private suspend fun measure(start: Int, end: Int): Piece {
-        val estimate = (end - start + 2) / 3
+        val chars = end - start
+        val estimate = (chars + 2) / 3
         return when {
             counter is TokenCounter.Estimate -> {
                 Piece(start, end, estimate)
             }
 
-            end - start > max * TOO_LONG_CHARS_PER_TOKEN -> {
+            chars > max * TOO_LONG_CHARS_PER_TOKEN -> {
                 Piece(start, end, max + 1)
             }
 
-            estimate * 2 <= max && (start until end).all { text[it].code < WIDE_SCRIPTS } -> {
-                Piece(start, end, estimate, exact = false)
-            }
-
             else -> {
-                Piece(start, end, count(start, end))
+                val guess = if ((start until end).all { text[it].code < WIDE_SCRIPTS }) estimate else chars
+                if (guess * 2 <= max) {
+                    Piece(start, end, guess, exact = false)
+                } else {
+                    Piece(start, end, maxOf(0, count(start, end) - prefixTokens))
+                }
             }
         }
     }

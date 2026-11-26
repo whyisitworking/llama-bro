@@ -149,4 +149,53 @@ class ChunkerTest {
         val e = runCatching { Chunker(overlap = 1f) }.exceptionOrNull()
         assertTrue(e is IllegalArgumentException)
     }
+
+    @Test
+    fun eachRangeIsCountedAtMostOnce() {
+        val seen = mutableListOf<String>()
+        val recording =
+            TokenCounter {
+                seen += it
+                it.length
+            }
+        // unique, wide text in one paragraph and in several, so every level of the split meets the same ranges again
+        val one = (1..120).joinToString("") { "文章番号${it}です。" }
+        val many = (1..30).joinToString("\n\n") { n -> (1..8).joinToString("") { "段落${n}の${it}番目。" } }
+        val chunks = chunk("$one\n\n$many", max = 64, overlap = 0.15f, counter = recording)
+        assertTrue(chunks.size > 10)
+        assertEquals("a text was counted twice", seen.distinct().size, seen.size)
+    }
+
+    @Test
+    fun aLongDocumentStaysUnderNRequests() {
+        var requests = 0
+        val counting =
+            TokenCounter {
+                requests++
+                it.length
+            }
+        val text = (1..400).joinToString("\n\n") { n -> (1..12).joinToString("") { "段落${n}の${it}番目です。" } }
+        assertTrue(text.length > 50_000)
+        val chunks = chunk(text, max = 256, overlap = 0.15f, counter = counting)
+        assertTrue("$requests requests for ${chunks.size} chunks", requests <= chunks.size * 2)
+    }
+
+    @Test
+    fun prefixIsCountedWithEachChunk() {
+        val prefix = "search_document: " // 17 tokens at one a character
+        val seen = mutableListOf<String>()
+        val recording =
+            TokenCounter {
+                seen += it
+                it.length
+            }
+        val text = "x".repeat(200) + "\n\n" + "日本語".repeat(40) + "\n\n" + "tail"
+        val chunks = runBlocking { Chunker(40, 0f, recording, prefix).chunks(Document("d", "t", text)) }
+        assertTrue(chunks.size > 4)
+        assertTrue(chunks.all { prefix.length + it.text.length <= 40 })
+        assertTrue(seen.contains(prefix))
+        assertEquals(text.replace("\n\n", ""), chunks.joinToString("") { it.text }.replace("\n\n", ""))
+        val e = runCatching { runBlocking { Chunker(10, 0f, recording, prefix).chunks(Document("d", "t", "a")) } }
+        assertTrue(e.exceptionOrNull() is IllegalArgumentException)
+    }
 }
