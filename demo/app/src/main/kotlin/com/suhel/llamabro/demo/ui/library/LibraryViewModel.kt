@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.demo.library.EmbedderDoesNotFit
 import com.suhel.llamabro.demo.library.EmbedderFit
 import com.suhel.llamabro.demo.library.ImportRefused
+import com.suhel.llamabro.demo.library.LibraryBusy
+import com.suhel.llamabro.demo.library.LibraryWork
 import com.suhel.llamabro.demo.library.Mismatch
 import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.rag.DocumentInfo
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -43,6 +46,9 @@ interface LibraryControl {
     val documents: Flow<List<DocumentInfo>?>
     val mismatch: Flow<Mismatch?>
     val embedder: Flow<EmbedderDownload>
+
+    /** The import or rebuild under way, wherever it was started. */
+    val work: StateFlow<LibraryWork?>
 
     /** Whether the embedder fits beside the chat model, asked once it is on the phone. */
     suspend fun fit(): EmbedderFit
@@ -96,8 +102,9 @@ data class MismatchLine(val text: String, val action: String)
 data class DocumentRow(val id: String, val title: String, val detail: String)
 
 /**
- * The Library page's state, derived from the library, the embedder's download and fit, and the work this page
- * started. Imports and rebuilds run on [background], the app's scope, so leaving the page never stops one halfway.
+ * The Library page's state, derived from the library, the embedder's download and fit, and the work under way. Imports
+ * and rebuilds run on [background], the app's scope, so leaving the page never stops one halfway, and their progress is
+ * the library's, so a page opened meanwhile shows it and keeps Add and Rebuild off until it ends.
  */
 class LibraryViewModel(
     private val library: LibraryControl,
@@ -105,7 +112,6 @@ class LibraryViewModel(
     private val embedderBytes: Long,
     private val background: CoroutineScope,
 ) : ViewModel() {
-    private val work = MutableStateFlow<WorkLine?>(null)
     private val notice = MutableStateFlow<String?>(null)
 
     /** A load that found no room: it holds until the next import tries again. */
@@ -131,29 +137,30 @@ class LibraryViewModel(
             embedder,
             library.documents,
             library.mismatch,
-            work,
+            library.work,
             notice,
         ) { embedder, documents, mismatch, work, notice ->
             documents?.let {
                 LibraryPage(
                     embedder,
                     it.map(::row),
-                    work,
-                    mismatch?.let { m -> mismatchLine(m, it.size) },
+                    work?.let(::workLine),
+                    // while work runs its line takes the mismatch's place, so Rebuild can't be pressed twice
+                    mismatch?.takeIf { work == null }?.let { m -> mismatchLine(m, it.size) },
                     notice,
                 )
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
 
     fun import(uri: Uri) {
-        if (work.value != null) return
+        if (library.work.value != null) return
         refused.value = null
         notice.value = null
         run(IMPORTING, library.import(uri))
     }
 
     fun rebuild() {
-        if (work.value != null) return
+        if (library.work.value != null) return
         notice.value = null
         run(REBUILDING, library.rebuild())
     }
@@ -178,20 +185,15 @@ class LibraryViewModel(
         notice.value = null
     }
 
+    // the progress itself is the library's ([LibraryControl.work]); this only says how it ended
     private fun run(what: String, progress: Flow<IngestProgress>) {
-        work.value = WorkLine(what, null)
         background.launch {
             try {
-                progress.collect { step ->
-                    work.value =
-                        when (step) {
-                            is IngestProgress.Chunked -> passages(what, 0, step.chunks)
-                            is IngestProgress.Embedded -> passages(what, step.done, step.of)
-                            IngestProgress.Saved -> null
-                        }
-                }
+                progress.collect()
             } catch (e: CancellationException) {
                 throw e
+            } catch (_: LibraryBusy) {
+                // another page's import or rebuild got there first: its line shows
             } catch (e: ImportRefused) {
                 notice.value = e.message
             } catch (e: EmbedderDoesNotFit) {
@@ -202,8 +204,6 @@ class LibraryViewModel(
                 @Suppress("TooGenericExceptionCaught") e: Exception,
             ) {
                 notice.value = failure(if (what == IMPORTING) "Couldn't add the document" else "Couldn't rebuild", e)
-            } finally {
-                work.value = null
             }
         }
     }
@@ -239,6 +239,16 @@ class LibraryViewModel(
                 document.title,
                 listOfNotNull(count(document.chunks, "passage"), document.source).joinToString(" · "),
             )
+
+        fun workLine(work: LibraryWork): WorkLine? {
+            val what = if (work.kind == LibraryWork.Kind.Import) IMPORTING else REBUILDING
+            return when (val step = work.progress) {
+                null -> WorkLine(what, null)
+                is IngestProgress.Chunked -> passages(what, 0, step.chunks)
+                is IngestProgress.Embedded -> passages(what, step.done, step.of)
+                IngestProgress.Saved -> null
+            }
+        }
 
         fun passages(what: String, done: Int, of: Int) =
             WorkLine("$what: $done of $of passages", if (of > 0) done.toFloat() / of else null)

@@ -316,6 +316,7 @@ class AppContainer(
             private val key = Catalog.embedder.key
             override val documents = library.documents
             override val mismatch = library.mismatch
+            override val work = library.work
             override val embedder =
                 combine(models.library.map { all -> all.any { it.key == key } }, models.state(key)) { onPhone, status ->
                     when {

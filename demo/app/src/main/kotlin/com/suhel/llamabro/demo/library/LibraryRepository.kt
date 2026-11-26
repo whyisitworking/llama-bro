@@ -19,6 +19,7 @@ import com.suhel.llamabro.rag.search
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,8 +42,16 @@ import okio.Path
  */
 data class Mismatch(val built: String, val wanted: String)
 
-/** The library is being rebuilt: what needs it fails at once rather than wait minutes for the rebuild to end. */
-class LibraryBusy : IllegalStateException("the library is being rebuilt")
+/**
+ * The library is being rebuilt, or an import or rebuild is already under way: what needs it fails at once rather than
+ * wait minutes for that to end.
+ */
+class LibraryBusy(what: String) : IllegalStateException(what)
+
+/** An import or a rebuild under way: what it is, and its latest [progress] (null before the first). */
+data class LibraryWork(val kind: Kind, val progress: IngestProgress?) {
+    enum class Kind { Import, Rebuild }
+}
 
 /**
  * The person's library (docs/design/rag.md): documents imported from files, cut and embedded by [embedder] through
@@ -95,6 +104,11 @@ class LibraryRepository(
     /** The library open on a loaded embedder; opened again when the host has loaded the embedder again. */
     private var open: Pair<Model, Library>? = null
 
+    private val _work = MutableStateFlow<LibraryWork?>(null)
+
+    /** The import or rebuild under way, app-wide: a page that comes back shows it. */
+    val work: StateFlow<LibraryWork?> = _work.asStateFlow()
+
     /** Whether a library, with its whole index, is in memory: for the tests. */
     internal val holdsIndex: Boolean get() = open != null
 
@@ -118,10 +132,10 @@ class LibraryRepository(
      * Reads [uri] ([read]: a [TextImport]) and adds it, replacing the document from the same file: the library's
      * progress, ending with [IngestProgress.Saved] once it is listed.
      * @throws ImportRefused for a file it can't take; [EmbedderDoesNotFit] and [IndexMismatch] before anything is
-     * embedded.
+     * embedded; [LibraryBusy] while another import or a rebuild runs.
      */
     fun import(uri: Uri): Flow<IngestProgress> =
-        flow {
+        working(LibraryWork.Kind.Import) {
             val document = read(uri)
             writing { library ->
                 emitAll(library.add(document))
@@ -188,13 +202,12 @@ class LibraryRepository(
     /**
      * Embeds the library again with the embedder on the phone, from the passages it stored (`Library.rebuild`):
      * nothing is deleted, and until it ends the folder holds the old library. It claims the folder while it runs:
-     * searches, imports and removals fail at once with [LibraryBusy] rather than wait, and a second rebuild too.
+     * searches and removals fail at once with [LibraryBusy] rather than wait.
      */
     fun rebuild(): Flow<IngestProgress> =
-        flow {
+        working(LibraryWork.Kind.Rebuild) {
             embedders.use(embedder) { model ->
                 lock.withLock {
-                    if (rebuilding) throw LibraryBusy()
                     rebuilding = true
                     open?.second?.close()
                     open = null
@@ -206,6 +219,28 @@ class LibraryRepository(
                     withContext(NonCancellable) { lock.withLock { rebuilding = false } }
                     changes.update { it + 1 }
                 }
+            }
+        }
+
+    /**
+     * [steps] as the one import or rebuild under way, its progress kept in [work] while it runs; a second one is
+     * refused with [LibraryBusy], whatever page asks.
+     */
+    private fun working(
+        kind: LibraryWork.Kind,
+        steps: suspend FlowCollector<IngestProgress>.() -> Unit,
+    ): Flow<IngestProgress> =
+        flow {
+            if (!_work.compareAndSet(null, LibraryWork(kind, null))) {
+                throw LibraryBusy("an import or a rebuild is under way")
+            }
+            try {
+                flow(steps).collect { step ->
+                    _work.value = LibraryWork(kind, step)
+                    emit(step)
+                }
+            } finally {
+                _work.value = null
             }
         }
 
@@ -226,7 +261,7 @@ class LibraryRepository(
             val library =
                 lock.withLock {
                     // the rebuild owns the folder: opening it now would delete the rebuild's half-written folder
-                    if (rebuilding) throw LibraryBusy()
+                    if (rebuilding) throw LibraryBusy("the library is being rebuilt")
                     open?.takeIf { it.first === model }?.second ?: openOn(model)
                 }
             block(library)

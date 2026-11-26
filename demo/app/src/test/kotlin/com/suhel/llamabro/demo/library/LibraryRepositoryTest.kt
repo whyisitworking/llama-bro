@@ -169,6 +169,48 @@ class LibraryRepositoryTest {
             assertEquals(listOf("a", "b"), repository.documents.first().map { it.id })
         }
 
+    @Test fun secondRebuildRefusedWhileOneRuns() =
+        runBlocking {
+            fake.embeddings(unit(0))
+            fake.embeddings(unit(1))
+            repository.import(file("a.md", "Para 00 text.")).toList()
+
+            val held = CompletableDeferred<Unit>()
+            val resume = CompletableDeferred<Unit>()
+            val rebuilding =
+                scope.launch {
+                    repository.rebuild().collect {
+                        if (it is Chunked) {
+                            held.complete(Unit)
+                            resume.await()
+                        }
+                    }
+                }
+            try {
+                held.await()
+                assertEquals(LibraryWork(LibraryWork.Kind.Rebuild, Chunked(1)), repository.work.value)
+                for ((what, call) in listOf<Pair<String, suspend () -> Unit>>(
+                    "a second rebuild" to { repository.rebuild().toList() },
+                    "an import" to { repository.import(file("b.md", "Para 01 text.")).toList() },
+                    "a search" to { repository.search("para") },
+                )) {
+                    try {
+                        withTimeout(PROMPTLY) { call() }
+                        fail("$what ran during the rebuild")
+                    } catch (_: LibraryBusy) {
+                        // refused at once
+                    }
+                }
+            } finally {
+                fake.embeddings(unit(0)) // the rebuilt library's probe
+                fake.embeddings(unit(1))
+                resume.complete(Unit)
+            }
+            rebuilding.join()
+            assertNull("the work is over", repository.work.value)
+            assertEquals(listOf("a"), repository.documents.first().map { it.id })
+        }
+
     @Test fun idleReleaseAlsoDropsTheIndex() =
         runBlocking {
             val quick =

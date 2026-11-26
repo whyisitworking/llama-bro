@@ -237,5 +237,12 @@ record the choices. Where it differs from the text above, the code is right:
   the demo keeps beside the library (`library-texts/`), or alone once the document is removed. The Library's embedder
   is never offered as a chat model, nor is a model whose header (read before a load, D155) has no chat template, or,
   with its header unread, a model named for embedding or reranking.
+- **The demo's library work (final review, I1, I2, I4):** the repository's lock covers only opening and closing the
+  library and a rebuild's claim on the folder, so a chat's search never waits behind an import (it sees the library as
+  of the last commit); during a rebuild, a search or a removal fails at once with `LibraryBusy`, and the chat shows
+  its "couldn't be searched" note. The embedder's idle release closes the open library too, so its vectors, BM25 index
+  and passages go with it, and it opens again on the next use. The import or rebuild under way is the repository's
+  (`LibraryRepository.work`, app-wide): a page opened meanwhile shows its progress, and one import or rebuild runs at
+  a time.
 - **Still pending:** the PDF text spike (needs the phone), the phone run (step 11) and
   the phone measurements.

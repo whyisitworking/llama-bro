@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.suhel.llamabro.demo.library.EmbedderDoesNotFit
 import com.suhel.llamabro.demo.library.EmbedderFit
 import com.suhel.llamabro.demo.library.ImportRefused
+import com.suhel.llamabro.demo.library.LibraryWork
 import com.suhel.llamabro.demo.library.Mismatch
 import com.suhel.llamabro.demo.ui.keepAlive
 import com.suhel.llamabro.demo.ui.shutDown
@@ -20,6 +21,9 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -52,6 +56,7 @@ class LibraryViewModelTest {
         override val documents = MutableStateFlow<List<DocumentInfo>?>(emptyList())
         override val mismatch = MutableStateFlow<Mismatch?>(null)
         override val embedder = MutableStateFlow<EmbedderDownload>(EmbedderDownload.OnPhone)
+        override val work = MutableStateFlow<LibraryWork?>(null)
         var fit: EmbedderFit = EmbedderFit.Fits
         var progress = Channel<IngestProgress>(Channel.UNLIMITED)
         var importing: Flow<IngestProgress> = progress.receiveAsFlow()
@@ -68,7 +73,7 @@ class LibraryViewModelTest {
 
         override fun import(uri: Uri): Flow<IngestProgress> {
             imported += uri
-            return importing
+            return tracked(LibraryWork.Kind.Import, importing)
         }
 
         override suspend fun remove(id: String) {
@@ -78,8 +83,15 @@ class LibraryViewModelTest {
 
         override fun rebuild(): Flow<IngestProgress> {
             rebuilds++
-            return progress.receiveAsFlow()
+            return tracked(LibraryWork.Kind.Rebuild, progress.receiveAsFlow())
         }
+
+        // as the repository keeps it: the work under way, app-wide, while its flow runs
+        private fun tracked(kind: LibraryWork.Kind, steps: Flow<IngestProgress>): Flow<IngestProgress> =
+            steps
+                .onStart { work.value = LibraryWork(kind, null) }
+                .onEach { work.value = LibraryWork(kind, it) }
+                .onCompletion { work.value = null }
     }
 
     private val library = FakeLibrary()
@@ -115,6 +127,28 @@ class LibraryViewModelTest {
         assertNull(page.work)
         assertEquals(listOf(DocumentRow("n", "Trip notes", "4 passages · Trip notes.md")), page.documents)
         assertTrue(page.canImport)
+    }
+
+    @Test fun progressSurvivesLeavingThePage() {
+        library.documents.value = listOf(DocumentInfo("a", "Handbook", "a.md", 2))
+        viewModel().import(notes)
+        runBlocking { library.progress.send(IngestProgress.Chunked(4)) }
+
+        // the person leaves and comes back: a new page, the same import
+        val back = viewModel()
+        assertEquals(WorkLine("Adding a document: 0 of 4 passages", 0f), back.page().work)
+        assertFalse("Add stays off while the import runs", back.page().canImport)
+        back.import(Uri.parse("content://files/other.md"))
+        assertEquals("no second import", listOf(notes), library.imported)
+
+        library.mismatch.value = Mismatch(built = "bge-small-en-v1.5-f16", wanted = EMBEDDER)
+        assertNull("no Rebuild while work runs", back.page().mismatch)
+        back.rebuild()
+        assertEquals(0, library.rebuilds)
+
+        runBlocking { library.progress.send(IngestProgress.Saved) }
+        library.progress.close()
+        assertNull(back.page().work)
     }
 
     @Test fun removeDropsIt() {
