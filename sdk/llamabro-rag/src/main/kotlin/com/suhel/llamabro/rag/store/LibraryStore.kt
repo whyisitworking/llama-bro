@@ -10,6 +10,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.Json
 import okio.Buffer
 import okio.BufferedSink
+import okio.BufferedSource
 import okio.FileSystem
 import okio.IOException
 import okio.Path
@@ -104,9 +105,10 @@ internal class LibraryStore(private val fs: FileSystem, private val dir: Path) {
         if (manifest.rows > 0) fs.read(vectorsPath) { flat.read(this, manifest.rows) }
         chunks.clear()
         if (manifest.chunkBytes > 0) {
+            // a line at a time: the passages' text is held once, as the chunks, never also as one String of the file
             fs.read(chunksPath) {
-                val lines = readUtf8(manifest.chunkBytes).split('\n').filter { it.isNotEmpty() }
-                lines.mapTo(chunks) { json.decodeFromString<ChunkJson>(it).toChunk() }
+                val rows = ChunkRows(this, manifest.chunkBytes)
+                while (true) chunks += rows.next() ?: break
             }
         }
         if (chunks.size != manifest.rows) throw IOException("chunks.jsonl has ${chunks.size} of ${manifest.rows} rows")
@@ -117,6 +119,22 @@ internal class LibraryStore(private val fs: FileSystem, private val dir: Path) {
                 add(chunks)
                 tombstones.forEach { kill(it.firstRow, it.rowCount) }
             }
+    }
+
+    /**
+     * The library's documents and their passages, to be read one document at a time without loading the vectors or
+     * building the keyword index ([StoredPassages]): what a rebuild needs of the library it replaces. Null when the
+     * folder holds none. Like [open], it finishes an interrupted compaction first.
+     */
+    fun passages(): StoredPassages? {
+        if (!fs.exists(manifestPath) && !fs.exists(nextManifestPath)) return null
+        finishCompaction()
+        val stored = json.decodeFromString<Manifest>(fs.readUtf8(manifestPath))
+        if (stored.version != Manifest.VERSION) {
+            throw IOException("library format ${stored.version} is not ${Manifest.VERSION}: $dir")
+        }
+        val source = if (stored.chunkBytes > 0) fs.source(chunksPath).buffer() else Buffer()
+        return StoredPassages(stored.documents, source, ChunkRows(source, stored.chunkBytes))
     }
 
     private fun readTombstones(): List<Tombstone> =
@@ -337,6 +355,71 @@ internal class LibraryStore(private val fs: FileSystem, private val dir: Path) {
         const val QUARTERS = 4
         val json = Json { ignoreUnknownKeys = true }
     }
+}
+
+/**
+ * The rows of `chunks.jsonl` in order, read from [source] a line at a time up to [bytes], what the manifest counts:
+ * a row costs its line and what the buffer reads ahead, never the whole file. Not thread-safe.
+ */
+internal class ChunkRows(private val source: BufferedSource, private var bytes: Long) {
+    /** The next row's chunk; null past the last row the manifest counts. */
+    fun next(): Chunk? {
+        while (true) {
+            val end = lineEnd() ?: return null
+            val line = source.readUtf8(end)
+            source.skip(1)
+            bytes -= end + 1
+            if (line.isNotEmpty()) return json.decodeFromString<ChunkJson>(line).toChunk()
+        }
+    }
+
+    /** Passes over the next row without decoding it; false past the last row. */
+    fun skip(): Boolean {
+        val end = lineEnd() ?: return false
+        source.skip(end + 1)
+        bytes -= end + 1
+        return true
+    }
+
+    private fun lineEnd(): Long? {
+        if (bytes == 0L) return null
+        val end = source.indexOf(NEWLINE, 0, bytes)
+        if (end < 0) throw IOException("chunks.jsonl ends inside a row")
+        return end
+    }
+
+    private companion object {
+        const val NEWLINE = '\n'.code.toByte()
+        val json = Json { ignoreUnknownKeys = true }
+    }
+}
+
+/**
+ * A library's live [documents] and their passages, read from `chunks.jsonl` one document at a time ([read]), in the
+ * documents' order: their rows ascend, since a document is appended in full and a replaced one moves to the end.
+ * Close it when done.
+ */
+internal class StoredPassages(
+    documents: List<StoredDocument>,
+    private val source: BufferedSource,
+    private val rows: ChunkRows,
+) : AutoCloseable {
+    val documents: List<StoredDocument> = documents.sortedBy { it.firstRow }
+    private var nextRow = 0
+
+    /** [document]'s passages, in order. Documents are read in [documents]' order. */
+    fun read(document: StoredDocument): List<Chunk> {
+        require(document.firstRow >= nextRow) { "documents are read in their rows' order" }
+        while (nextRow < document.firstRow) {
+            if (!rows.skip()) throw IOException("chunks.jsonl has fewer rows than the manifest names")
+            nextRow++
+        }
+        return List(document.rowCount) {
+            rows.next() ?: throw IOException("chunks.jsonl has fewer rows than the manifest names")
+        }.also { nextRow += document.rowCount }
+    }
+
+    override fun close() = source.close()
 }
 
 /**

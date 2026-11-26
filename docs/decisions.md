@@ -2804,6 +2804,12 @@ no evidence for turning it on, and none against a larger reranker; an app passes
 Consequences: Search is exact and in memory, in the single-digit milliseconds on the Mac at 2 000 passages (F191). The
 BM25 index is built on open and kept in step with every write, and costs memory in proportion to the corpus (the
 tests hold 50 000 chunk-sized rows to a budget of 80 MB). Top-k and the fusion constant were not varied.
+Amended (2026-11-26): the passages' text is the largest steady cost of a library on a small embedder. Every passage
+is held in memory once, as its chunk: a 256-token English passage is about 1 KB of text, and twice that once it holds
+a character outside Latin-1, so 50 000 passages hold roughly 50 to 100 MB beside the vectors (about 38 MB at 384
+dimensions) and the BM25 index. Opening reads `chunks.jsonl` a line at a time, so the text is never also held as the
+whole file in one String and its split copy, and a rebuild streams the old library's passages a document at a time,
+without loading its vectors or building its BM25 index. An app that wants that memory back closes the library.
 
 <a id="d171"></a>
 ### D171. The library's search tool returns numbered passages, answers failures safely and lets cancellation through

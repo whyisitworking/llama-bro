@@ -7,14 +7,19 @@ import com.suhel.llamabro.rag.EmbedderIdentity
 import com.suhel.llamabro.rag.EmbeddingFormat
 import com.suhel.llamabro.rag.IndexMismatch
 import kotlinx.coroutines.runBlocking
+import okio.Buffer
 import okio.FileSystem
+import okio.ForwardingSource
 import okio.IOException
 import okio.Path
 import okio.Path.Companion.toPath
+import okio.Source
+import okio.buffer
 import okio.fakefilesystem.FakeFileSystem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -430,5 +435,70 @@ class LibraryStoreTest {
         assertEquals(EmbedderIdentity("bert 33M F16", 1, 2, "mean", "p3", EmbeddingFormat.None), chosen)
     }
 
+    @Test
+    fun chunksAreReadALineAtATime() {
+        val store = store()
+        val rows = 2_000
+        runBlocking { store.commit("a", "A", null, chunks("a", rows), List(rows) { unit() }) }
+        val bytes = fake.metadata(dir / "chunks.jsonl").size ?: error("no size")
+        assertTrue("$bytes bytes: many segments", bytes > 8 * SEGMENT)
+
+        val counting = CountingSource(fake.source(dir / "chunks.jsonl"))
+        val reader = ChunkRows(counting.buffer(), bytes)
+        assertEquals(chunks("a", rows)[0], reader.next())
+        // a row costs a line and what the buffer reads ahead, not the whole file in one String and its split copy
+        assertTrue("${counting.pulled} of $bytes bytes read for one row", counting.pulled <= 2 * SEGMENT)
+        assertTrue(reader.skip())
+        assertEquals(chunks("a", rows)[2], reader.next())
+        val rest = generateSequence { reader.next() }.toList()
+        assertEquals(chunks("a", rows).drop(3), rest)
+        assertNull(reader.next())
+        assertFalse(reader.skip())
+    }
+
+    @Test
+    fun aRowCutShortIsAnError() {
+        val line = "{\"documentId\":\"a\"}"
+        val reader = ChunkRows(Buffer().writeUtf8(line), line.length.toLong())
+        try {
+            reader.next()
+            fail("a row with no line end was read")
+        } catch (_: IOException) {
+            // the manifest counts bytes past the last line's end
+        }
+    }
+
+    @Test
+    fun passagesAreReadPerDocumentWithoutTheIndex() {
+        val store = store()
+        store.add("a", rows = 3)
+        store.add("b", rows = 1)
+        store.add("c", rows = 4)
+        store.runRemove("b") // one row of eight: a tombstone, no compaction
+        store.add("a", rows = 2) // replaced: its first rows are tombstoned and it moves to the end
+
+        val passages = LibraryStore(fake, dir).passages() ?: error("no library")
+        passages.use {
+            assertEquals(listOf("c", "a"), it.documents.map { d -> d.id })
+            assertEquals(chunks("c", 4), it.read(it.documents[0]))
+            assertEquals(chunks("a", 2), it.read(it.documents[1]))
+        }
+        assertNull(LibraryStore(fake, "/nothing".toPath()).passages())
+    }
+
+    private class CountingSource(source: Source) : ForwardingSource(source) {
+        var pulled = 0L
+
+        override fun read(sink: Buffer, byteCount: Long): Long {
+            val read = super.read(sink, byteCount)
+            if (read > 0) pulled += read
+            return read
+        }
+    }
+
     private fun LibraryStore.runRemove(documentId: String) = runBlocking { remove(documentId) }
+
+    private companion object {
+        const val SEGMENT = 8_192
+    }
 }

@@ -10,6 +10,8 @@ import com.suhel.llamabro.rag.store.LibraryStore
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import okio.ForwardingFileSystem
+import okio.Path
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 import org.junit.Assert.assertEquals
@@ -94,6 +96,31 @@ class RebuildTest {
             val rebuilt = open(model, nomic, dims = 3)
             fake.embeddings(unit(2, 3))
             assertEquals("Para 02 text.", rebuilt.search("02", limit = 1).single().text)
+        }
+
+    @Test
+    fun rebuildReadsTheOldPassagesWithoutItsVectors() =
+        runBlocking {
+            val model = embedder()
+            open(model).apply { addTwo() }.close()
+            val read = mutableListOf<Path>()
+            val recording =
+                object : ForwardingFileSystem(fs) {
+                    override fun onPathParameter(path: Path, functionName: String, parameterName: String): Path {
+                        if (functionName == "source" || functionName == "openReadOnly") read += path
+                        return path
+                    }
+                }
+
+            fake.embeddings(unit(0, 3))
+            fake.embeddings(unit(0, 3), unit(1, 3))
+            fake.embeddings(unit(2, 3))
+            Library.rebuild(recording, dir, model, nomic, chunker).toList()
+
+            assertTrue(read.toString(), dir / "chunks.jsonl" in read)
+            // no vectors loaded and no keyword index built for a library about to be replaced
+            assertFalse(read.toString(), read.any { it.name == "vectors.f16" })
+            assertEquals(listOf("a", "b"), Library.contents(fs, dir)?.documents?.map { it.id })
         }
 
     @Test

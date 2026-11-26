@@ -188,28 +188,40 @@ public class Library internal constructor(
             pooling: Pooling = Pooling.ModelDefault,
         ): Flow<IngestProgress> =
             flow {
-                val documents = withContext(Dispatchers.IO) { storedPassages(fs, dir) }
-                var left = documents.sumOf { it.second.size }
-                emit(IngestProgress.Chunked(left))
+                // the old library's passages stream from its folder a document at a time: its vectors and keyword
+                // index are never loaded, and only the document being embedded is held beside the new library
+                val old =
+                    withContext(Dispatchers.IO) {
+                        finishRebuild(fs, dir)
+                        LibraryStore(fs, dir).passages()
+                    }
                 val next = sibling(dir, REBUILDING)
-                withContext(Dispatchers.IO) { fs.deleteRecursively(next) }
-                val library = open(fs, next, embedder, format, chunker, pooling)
                 try {
-                    var done = 0
-                    for ((document, passages) in documents) {
-                        left -= passages.size
-                        val embedded =
-                            Ingest(embedder, library.chunker).embed(passages) { n, of ->
-                                emit(IngestProgress.Embedded(done + n, done + of + left))
+                    val documents = old?.documents.orEmpty()
+                    var left = documents.sumOf { it.rowCount }
+                    emit(IngestProgress.Chunked(left))
+                    withContext(Dispatchers.IO) { fs.deleteRecursively(next) }
+                    val library = open(fs, next, embedder, format, chunker, pooling)
+                    try {
+                        var done = 0
+                        for (document in documents) {
+                            val passages = withContext(Dispatchers.IO) { checkNotNull(old).read(document) }
+                            left -= passages.size
+                            val embedded =
+                                Ingest(embedder, library.chunker).embed(passages) { n, of ->
+                                    emit(IngestProgress.Embedded(done + n, done + of + left))
+                                }
+                            val (chunks, vectors) = embedded.unzip()
+                            library.writing {
+                                library.store.commit(document.id, document.title, document.source, chunks, vectors)
                             }
-                        val (chunks, vectors) = embedded.unzip()
-                        library.writing {
-                            library.store.commit(document.id, document.title, document.source, chunks, vectors)
+                            done += embedded.size
                         }
-                        done += embedded.size
+                    } finally {
+                        library.close()
                     }
                 } finally {
-                    library.close()
+                    old?.close()
                 }
                 withContext(Dispatchers.IO) {
                     fs.atomicMove(next, sibling(dir, REBUILT))
@@ -217,16 +229,6 @@ public class Library internal constructor(
                 }
                 emit(IngestProgress.Saved)
             }
-
-        // each live document of the library in [dir] with its passages in order; none when there is no library
-        private suspend fun storedPassages(fs: FileSystem, dir: Path): List<Pair<DocumentInfo, List<Chunk>>> {
-            finishRebuild(fs, dir)
-            val manifest = readManifest(fs, dir) ?: return emptyList()
-            val store = LibraryStore(fs, dir).apply { open(manifest.embedder.toIdentity()) }
-            return store.documents.map { d ->
-                DocumentInfo(d.id, d.title, d.source, d.rowCount) to List(d.rowCount) { store.chunk(d.firstRow + it) }
-            }
-        }
 
         private const val PROBE = "a"
     }
