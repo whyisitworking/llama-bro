@@ -30,6 +30,7 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.okio.fakefilesystem)
     testImplementation(project(":llamabro-testing"))
     testImplementation(testFixtures(project(":llamabro")))
 }
