@@ -13,4 +13,5 @@
     <string name="pairing_text">%1$s asks for the key</string>
     <string name="pairing_approve">Approve</string>
     <string name="pairing_deny">Deny</string>
+    <string name="pairing_public_title">A device wants to pair</string>
 </resources>

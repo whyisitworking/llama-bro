@@ -63,6 +63,7 @@ class ServingFeed(
  * It holds no model itself: [com.suhel.llamabro.demo.chat.BackgroundRelease] frees nothing while serving.
  * A computer asking to pair while the app is behind another gets a high-importance notification of its own, with the
  * code, the address and Approve and Deny (docs/design/server.md §6, D174); in front, the app's dialog asks instead.
+ * Approve needs the phone unlocked, and the lock screen shows neither the code nor the address.
  */
 class ServerService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -142,20 +143,16 @@ class ServerService : Service() {
             ),
         )
 
-        fun action(action: String, label: Int) =
-            NotificationCompat.Action(
-                0,
-                getString(label),
-                PendingIntent.getService(
-                    this,
-                    // one per request, so a new request never rewrites the extras of an old one's actions
-                    (action + request.code + request.client).hashCode(),
-                    Intent(this, ServerService::class.java)
-                        .setAction(action)
-                        .putExtra(EXTRA_CODE, request.code)
-                        .putExtra(EXTRA_CLIENT, request.client),
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                ),
+        fun answer(action: String) =
+            PendingIntent.getService(
+                this,
+                // one per request, so a new request never rewrites the extras of an old one's actions
+                (action + request.code + request.client).hashCode(),
+                Intent(this, ServerService::class.java)
+                    .setAction(action)
+                    .putExtra(EXTRA_CODE, request.code)
+                    .putExtra(EXTRA_CLIENT, request.client),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
         val open =
             PendingIntent.getActivity(
@@ -164,7 +161,31 @@ class ServerService : Service() {
                 Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
+        val approve =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // the system asks for the unlock before the answer reaches the service: a locked phone in a
+                // stranger's hand can't hand the key to their laptop
+                NotificationCompat.Action
+                    .Builder(0, getString(R.string.pairing_approve), answer(ACTION_APPROVE))
+                    .setAuthenticationRequired(true)
+                    .build()
+            } else {
+                // no such flag before Android 12: Approve opens the app, so the keyguard asks first, and the dialog
+                // answers
+                NotificationCompat.Action(0, getString(R.string.pairing_approve), open)
+            }
+        // a deny gives nothing away, so it stays one tap, from the lock screen too
+        val deny = NotificationCompat.Action(0, getString(R.string.pairing_deny), answer(ACTION_DENY))
         val client = listOfNotNull(request.client, ServerFormat.device(request.userAgent)).joinToString(" · ")
+        // what the lock screen shows: no code and no address, which would let an onlooker pair as this request
+        val public =
+            NotificationCompat
+                .Builder(this, PAIRING_CHANNEL)
+                .setSmallIcon(android.R.drawable.stat_sys_upload)
+                .setContentTitle(getString(R.string.pairing_public_title))
+                .setContentIntent(open)
+                .addAction(deny)
+                .build()
         return NotificationCompat
             .Builder(this, PAIRING_CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
@@ -172,9 +193,11 @@ class ServerService : Service() {
             .setContentText(getString(R.string.pairing_text, client))
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(public)
             .setContentIntent(open)
-            .addAction(action(ACTION_APPROVE, R.string.pairing_approve))
-            .addAction(action(ACTION_DENY, R.string.pairing_deny))
+            .addAction(approve)
+            .addAction(deny)
             // the question lasts two minutes at most; the server withdraws it then, and this goes with it
             .setTimeoutAfter(PairingApprovals.EXPIRY_MILLIS)
             .build()

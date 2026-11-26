@@ -2928,6 +2928,9 @@ a dialog over the Server page and the docked view ("Pair a computer?", the code 
 system and browser from the user agent, "192.168.1.12 · Mac · Chrome", Approve and Deny). While the app is behind
 another, `ServerService` posts a high-importance notification with the code, the address and Approve and Deny actions,
 withdrawn once it is answered, expires or the app comes to the front. No answer within 2 minutes is a deny.
+Approving needs the phone unlocked: the notification's Approve requires authentication (Android 12 and up) or opens
+the app (below 12), so the keyguard asks first; Deny stays one tap from the lock screen. The notification is private,
+and the lock screen shows only "A device wants to pair", with no code or address.
 Consequences: Security, for a LAN over plain HTTP: the key travels in the clear to the page, as it does in every API
 request, so pairing adds no exposure that using the key doesn't. The 4-digit code is not a secret to guess, since it
 is never typed: the person checks it by eye against the phone, so it guards against another device's pairing racing

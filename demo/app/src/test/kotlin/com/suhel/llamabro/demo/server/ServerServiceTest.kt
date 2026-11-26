@@ -4,9 +4,11 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.suhel.llamabro.demo.MainActivity
 import com.suhel.llamabro.demo.ServerService
 import com.suhel.llamabro.demo.ServingFeed
 import com.suhel.llamabro.demo.keepServing
@@ -31,6 +33,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ServiceController
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowPowerManager
+import org.robolectric.util.ReflectionHelpers
 import java.time.Duration
 
 /** The service that keeps serving alive (docs/design/server.md §3): its notification, its locks, and its life. */
@@ -127,6 +130,62 @@ class ServerServiceTest {
         idle()
         assertEquals(listOf(mac to true, pc to false), answers)
         assertFalse(shadowOf(service).isStoppedBySelf)
+    }
+
+    @Test fun approveActionRequiresUnlock() {
+        running()
+        pairing.value = PairingRequest("4821", "192.168.1.12", null)
+        idle()
+        val (approve, deny) = asking()!!.actions.toList()
+        // from Android 12 the system asks for the unlock before Approve reaches the service; Deny needs none
+        assertTrue(approve.isAuthenticationRequired)
+        assertFalse(deny.isAuthenticationRequired)
+        assertTrue(shadowOf(approve.actionIntent).isServiceIntent)
+    }
+
+    @Test fun approveActionOpensTheAppBeforeAndroid12() {
+        // the build's Robolectric runtimes are 35 and 36 only, so Android 11 is the version the code reads
+        val sdk = Build.VERSION.SDK_INT
+        ReflectionHelpers.setStaticField(Build.VERSION::class.java, "SDK_INT", Build.VERSION_CODES.R)
+        val (approve, deny) =
+            try {
+                running()
+                pairing.value = PairingRequest("4821", "192.168.1.12", null)
+                idle()
+                asking()!!.actions.toList()
+            } finally {
+                ReflectionHelpers.setStaticField(Build.VERSION::class.java, "SDK_INT", sdk)
+            }
+        // no unlock flag before 12: Approve opens the app, so the keyguard asks first and the dialog answers
+        assertTrue(shadowOf(approve.actionIntent).isActivityIntent)
+        assertEquals(MainActivity::class.java.name, shadowOf(approve.actionIntent).savedIntent.component?.className)
+        assertTrue(shadowOf(deny.actionIntent).isServiceIntent)
+    }
+
+    @Test fun lockScreenVersionHidesCodeAndAddress() {
+        running()
+        pairing.value = PairingRequest("4821", "192.168.1.12", "Mozilla/5.0 (Macintosh) Chrome/131.0.0.0")
+        idle()
+        val note = asking()!!
+        assertEquals(Notification.VISIBILITY_PRIVATE, note.visibility)
+        val public = note.publicVersion!!
+        assertEquals("A device wants to pair", public.title())
+        val shown = listOfNotNull(public.title(), public.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString())
+        shown.forEach { assertFalse(it, "4821" in it || "192.168" in it || "Mac" in it) }
+        assertEquals(listOf("Deny"), public.actions.map { it.title.toString() })
+    }
+
+    @Test fun denyStillWorksFromLockScreen() {
+        running()
+        val mac = PairingRequest("4821", "192.168.1.12", null)
+        pairing.value = mac
+        idle()
+        val deny = asking()!!.publicVersion!!.actions.single()
+        assertFalse(deny.isAuthenticationRequired)
+        controller.get().onStartCommand(shadowOf(deny.actionIntent).savedIntent, 0, 7)
+        idle()
+        assertEquals(listOf(mac to false), answers)
+        assertNull(asking())
     }
 
     @Test fun inFrontTheDialogAsksNotTheNotification() {
