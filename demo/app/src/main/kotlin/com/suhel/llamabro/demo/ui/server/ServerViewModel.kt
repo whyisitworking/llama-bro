@@ -154,6 +154,14 @@ class ServerViewModel(
         combine(serverNow, phoneNow) { s, p -> dockedOf(s, p) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), null)
 
+    init {
+        // a revealed key, and its QR, belong to the session they were revealed in: once serving stops or starts again,
+        // the next session opens masked
+        viewModelScope.launch {
+            server.state.collect { if (it !is ServingState.Serving) revealed.value = false }
+        }
+    }
+
     fun choose(model: HfModel) {
         chosen.value = model
     }

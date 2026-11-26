@@ -270,6 +270,24 @@ class ServerViewModelTest {
         assertTrue(page.canShowQr)
     }
 
+    @Test fun revealResetsWhenServingStops() {
+        val vm = viewModel()
+        serving()
+        vm.reveal(true)
+        assertTrue((vm.page() as ServerPage.Serving).key.revealed)
+        server.served.value = null
+        server.state.value = ServingState.Off
+        serving()
+        val next = vm.page() as ServerPage.Serving
+        assertFalse("the next session opens with the key masked", next.key.revealed)
+        assertNull(next.qr)
+        // and a restart (Starting again) masks it too
+        vm.reveal(true)
+        server.state.value = ServingState.Starting()
+        serving()
+        assertFalse((vm.page() as ServerPage.Serving).key.revealed)
+    }
+
     @Test fun revealShowsKeyAndQr() {
         val vm = viewModel()
         serving()
