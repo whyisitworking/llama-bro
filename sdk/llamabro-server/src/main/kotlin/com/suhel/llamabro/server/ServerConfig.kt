@@ -112,17 +112,30 @@ public enum class KeyMatching {
 
     /**
      * For a key a person types: case, spaces and dashes are ignored on both sides, so `k7qm-4rtx-9hcd-2wnb` matches
-     * `K7QM4RTX9HCD2WNB`. Only normalised: every other character must still be right.
+     * `K7QM4RTX9HCD2WNB`, and Crockford base32's aliases are read as it decodes them, O as 0 and I and L as 1. Only
+     * normalised: every other character must still be right.
      */
     Typable,
     ;
 
     internal fun normalise(key: String): String =
         when (this) {
-            Exact -> key
-            Typable -> key.filterNot { it == ' ' || it == '-' }.uppercase()
+            Exact -> {
+                key
+            }
+
+            Typable -> {
+                key
+                    .filterNot { it == ' ' || it == '-' }
+                    .uppercase()
+                    .map { crockfordAliases[it] ?: it }
+                    .joinToString("")
+            }
         }
 }
+
+/** Crockford base32 decodes these as the digits they look like. */
+private val crockfordAliases = mapOf('O' to '0', 'I' to '1', 'L' to '1')
 
 /** Which browsers may call the server. */
 public enum class Cors {

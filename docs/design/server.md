@@ -234,11 +234,12 @@ Failed    no Wi-Fi · port in use · the model didn't load   [Try again]
 The client is almost always a laptop, which can't scan a QR code, and a 43-character key is painful to type. So:
 
 - **The QR code goes.** The Address section lists the URLs with Copy; nothing else.
-- **A typable key (demo).** 16 characters of Crockford base32 (no 0/O, 1/I/L, U), 80 bits, shown as
+- **A typable key (demo).** 16 characters of standard Crockford base32 (the digits and the letters but I, L, O and U), 80 bits, shown as
   `K7QM-4RTX-9HCD-2WNB` and stored without dashes, upper case. Over plain HTTP length protects only against guessing,
   which goes through the phone one request at a time, so 80 bits with throttling is ample.
 - **Key matching (module).** `ServerConfig.keyMatching`: `Exact` (default, as upstream) or `Typable`, which ignores
-  case, spaces and dashes on both sides before the constant-time compare. The demo sets `Typable`.
+  case, spaces and dashes on both sides and reads Crockford's aliases as it decodes them (O as 0, I and L as 1),
+  before the constant-time compare, so someone who types O for 0 is still let in. The demo sets `Typable`.
 - **Throttling (module, on by default when a key is set).** Per client address: after 5 wrong keys within a minute,
   further requests from that address get 429 with `Retry-After`, the wait doubling from 30 s up to 5 min; a right key
   resets it. `ServerConfig.throttle` can turn it off. A deviation from upstream (which has none), recorded as a

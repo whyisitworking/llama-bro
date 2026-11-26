@@ -90,6 +90,22 @@ class AuthTest {
         }
 
     @Test
+    fun typableAcceptsCrockfordAliases() =
+        withServer(
+            ServerConfig {
+                port = 0
+                apiKey = "K7QM4RTX9HCD2WNB0001"
+                keyMatching = KeyMatching.Typable
+            },
+        ) { _, port ->
+            // Crockford's decode aliases: O reads as 0, I and L as 1, in either case
+            listOf("K7QM-4RTX-9HCD-2WNB-O0OI", "k7qm-4rtx-9hcd-2wnb-o00l", "K7QM4RTX9HCD2WNBOOOL").forEach {
+                assertEquals(it, 404, guarded(port, mapOf("Authorization" to "Bearer $it")))
+            }
+            assertEquals(401, guarded(port, mapOf("Authorization" to "Bearer K7QM4RTX9HCD2WNB000U")))
+        }
+
+    @Test
     fun typableMatchingNormalisesTheConfiguredKeyToo() =
         withServer(
             ServerConfig {

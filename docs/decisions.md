@@ -2867,8 +2867,9 @@ demo's key (32 random bytes, 43 characters of base64url) is painful to type (doc
 is only safe if guessing it is slow, and upstream's llama-server has no throttle: every wrong key gets its 401.
 Decision: In `llamabro-server`:
 - `ServerConfig.keyMatching`: `KeyMatching.Exact` (the default, as upstream: byte for byte) or `Typable`, which upper
-  cases both keys and drops their spaces and dashes before the same constant-time compare. It only normalises: every
-  other character must still be right. A key that is only spaces and dashes is refused with `Typable`, so it can't
+  cases both keys, drops their spaces and dashes and reads Crockford's decode aliases (O as 0, I and L as 1) before
+  the same constant-time compare, so a person who types O for 0 is let in. It only normalises: every other character
+  must still be right. A key that is only spaces and dashes is refused with `Typable`, so it can't
   match an empty one.
 - `ServerConfig.throttle`: `Throttle.Default` (on) or `Throttle.Off`; it applies only when a key is set, and never to
   `/health`, `/v1/models` or a preflight. Per client address, the fifth wrong key within a minute starts a wait:
