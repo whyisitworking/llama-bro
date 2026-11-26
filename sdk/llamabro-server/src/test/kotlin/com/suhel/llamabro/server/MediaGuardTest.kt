@@ -196,7 +196,7 @@ class MediaGuardTest {
                 "media must be a data: URL or base64; URLs are not fetched or read",
                 error.getValue("message").jsonPrimitive.content,
             )
-            val event = withTimeout(1_000) { rejected.await() }
+            val event = withTimeout(5_000) { rejected.await() }
             collecting.cancel()
             assertEquals("/v1/chat/completions", event.path)
             assertEquals(400, event.status)

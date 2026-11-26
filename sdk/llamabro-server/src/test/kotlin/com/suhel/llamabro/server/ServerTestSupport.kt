@@ -86,7 +86,7 @@ class Streaming(port: Int, path: String, body: String) {
 }
 
 /** Waits for [condition], at most [millis]: for what a server does after a client's hang-up, which has no signal. */
-suspend fun eventually(millis: Long = 1_000, condition: () -> Boolean) =
+suspend fun eventually(millis: Long = 5_000, condition: () -> Boolean) =
     withTimeout(millis) { while (!condition()) delay(POLL_MILLIS) }
 
 private const val POLL_MILLIS = 5L

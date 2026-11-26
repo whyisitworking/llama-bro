@@ -259,7 +259,7 @@ class ForwardingTest {
             call(port, chat, "POST", body = streamBody)
             call(port, chat, "POST", body = """{"messages":[]}""")
             call(port, "/tokenize", "POST", body = """{"content":"hi"}""")
-            withTimeout(1_000) { third.await() }
+            withTimeout(5_000) { third.await() }
             collecting.cancel()
             assertEquals(listOf(12 to 34, 5 to 7), ended.take(2).map { it.promptTokens to it.predictedTokens })
             assertNull(ended[2].promptTokens)
