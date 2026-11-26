@@ -161,6 +161,12 @@ object DemoSize {
         val lineGap = 8.dp
     }
 
+    /**
+     * A QR code's side, its quiet zone included (chosen): a phone camera reads a version 7 code from a screen at arm's
+     * length at this size, its 53 modules (45 and the quiet zone) about 3.6 dp each.
+     */
+    val qrCode = 192.dp
+
     /** The widest a reading column grows on a tablet (D48). */
     val contentMaxWidth = 640.dp
 

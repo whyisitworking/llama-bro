@@ -30,6 +30,7 @@ val ChatListTabs =
     listOf(
         BottomTab("Chats", DemoIcons.Chats),
         BottomTab("Models", DemoIcons.Models),
+        BottomTab("Server", DemoIcons.Serve),
         BottomTab("Settings", DemoIcons.Settings),
     )
 

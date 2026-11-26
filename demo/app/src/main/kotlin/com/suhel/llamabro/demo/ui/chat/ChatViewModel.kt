@@ -13,6 +13,7 @@ import com.suhel.llamabro.demo.audio.VoicePlayer
 import com.suhel.llamabro.demo.audio.VoiceRecorder
 import com.suhel.llamabro.demo.chat.ChatEngine
 import com.suhel.llamabro.demo.chat.ChatModelState
+import com.suhel.llamabro.demo.chat.ChatServing
 import com.suhel.llamabro.demo.chat.ClosedNotes
 import com.suhel.llamabro.demo.chat.Limit
 import com.suhel.llamabro.demo.chat.Limits
@@ -104,6 +105,8 @@ class ChatViewModel(
     private val background: CoroutineScope,
     /** The chat's audio features (D76, D100, D140, D141); null where there is no microphone or speaker (most tests). */
     audio: ChatAudio? = null,
+    /** Server mode: the model it serves, and stopping it (docs/design/server.md §3). */
+    servingMode: ChatServing = ChatServing.None,
 ) : ViewModel() {
     private val recorder: VoiceRecorder? = audio?.recorder
 
@@ -486,6 +489,9 @@ class ChatViewModel(
     }
 
     fun setThink(level: ThinkLevel) = handle.setThink(level.think())
+
+    /** Server mode from the chat: the switcher's question and the serving line's Stop serving. */
+    val serving: ChatServingActions = ChatServingActions(servingMode, handle, ::retry, background)
 
     /** The system has no photo picker to open: one plain line instead of a crash. */
     fun photoPickerMissing() {

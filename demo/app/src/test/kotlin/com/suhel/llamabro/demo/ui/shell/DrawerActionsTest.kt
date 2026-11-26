@@ -25,8 +25,8 @@ import org.robolectric.annotation.GraphicsMode
 import java.time.ZoneOffset
 
 /**
- * The Sidebar drawer (demo design §4.2, D126): New chat at its head and Models and Settings as labelled rows at its
- * foot, all on screen around a list of chats with their times; Models says how many models are on the phone; the search
+ * The Sidebar drawer (demo design §4.2, D126): New chat at its head and Models, Server and Settings as labelled rows at
+ * its foot, all on screen around a list of chats with their times; Models says how many models are on the phone; the search
  * filters, and says so when nothing matches.
  */
 @RunWith(AndroidJUnit4::class)
@@ -43,6 +43,8 @@ class DrawerActionsTest {
         search: String = "",
         onSearch: (String) -> Unit = {},
         onModels: () -> Unit = {},
+        onServer: () -> Unit = {},
+        serving: Boolean = false,
     ) {
         rule.setContent {
             DemoTheme(ThemeMode.Light) {
@@ -58,8 +60,10 @@ class DrawerActionsTest {
                         onNewChat = {},
                         onOpenChat = {},
                         onModels = onModels,
+                        onServer = onServer,
                         onSettings = {},
                         onLongPress = {},
+                        serving = serving,
                     )
                 }) {}
             }
@@ -72,7 +76,7 @@ class DrawerActionsTest {
 
     @Test fun theDrawersActionsAreOnScreenAroundItsChats() {
         drawer(listOf(ChatSummary(1, "Portfolio bio", now, "a/b:Q4_K_M", "hello", true)), 0)
-        for (action in listOf("New chat", "Models, 0 on this phone", "Settings")) {
+        for (action in listOf("New chat", "Models, 0 on this phone", "Server", "Settings")) {
             rule.onNode(inDrawer(action)).assertIsDisplayed()
         }
         rule.onNodeWithText("Llama Bro").assertIsDisplayed()
@@ -105,5 +109,13 @@ class DrawerActionsTest {
         rule.onAllNodes(hasText("No chats yet. Start one.")).assertCountEquals(0)
         rule.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("drawer"))).performTextReplacement("plan")
         assertEquals(listOf("plan"), typed)
+    }
+
+    @Test fun serverSaysWhenThePhoneIsServing() {
+        var opened = 0
+        drawer(emptyList(), 3, onServer = { opened++ }, serving = true)
+        // docs/design/server.md §3: a mode the phone is in, so the drawer says it is on
+        rule.onNode(inDrawer("Server, Serving")).assertIsDisplayed().performClick()
+        assertEquals(1, opened)
     }
 }

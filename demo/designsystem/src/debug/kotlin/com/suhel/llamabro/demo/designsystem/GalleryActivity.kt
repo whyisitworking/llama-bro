@@ -30,6 +30,7 @@ import com.suhel.llamabro.demo.designsystem.samples.ListsSheetSamples
 import com.suhel.llamabro.demo.designsystem.samples.ModelRowSamples
 import com.suhel.llamabro.demo.designsystem.samples.PhotoViewerSamples
 import com.suhel.llamabro.demo.designsystem.samples.ProgressSamples
+import com.suhel.llamabro.demo.designsystem.samples.QrSamples
 import com.suhel.llamabro.demo.designsystem.samples.RemovalSamples
 import com.suhel.llamabro.demo.designsystem.samples.RowsSamples
 import com.suhel.llamabro.demo.designsystem.samples.RowsSheetSamples
@@ -71,6 +72,7 @@ private val Groups: List<Pair<String, @Composable () -> Unit>> =
         "Chat, bubbles" to { ChatBubbleSamples() },
         "Photo viewer" to { PhotoViewerSamples() },
         "Progress" to { ProgressSamples() },
+        "QR code" to { QrSamples() },
         "Layout" to { LayoutSamples() },
         "Gaps" to { GapSamples() },
         "Rows" to { RowsSamples() },

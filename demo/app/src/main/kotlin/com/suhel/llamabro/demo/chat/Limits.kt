@@ -20,6 +20,9 @@ enum class LimitAction {
     SwitchModel,
     OpenMemorySettings,
     OpenAppSettings,
+
+    /** Server mode holds another model: stop serving it, then the chat's turn goes on (docs/design/server.md §3). */
+    StopServing,
 }
 
 /**
@@ -130,14 +133,16 @@ object Limits {
 
     /**
      * Server mode holds [served] (docs/design/server.md §3): a turn on another model would wait for serving to stop and
-     * stall every request meanwhile, so it doesn't start. Switch model offers the served one; Task 11 adds the way to
-     * stop serving from here ("Stop serving <served> to use <name>?").
+     * stall every request meanwhile, so it doesn't start. Switch model offers the served one; Stop serving ends serving
+     * and asks the chat's question again, as Try again does.
      */
     fun serving(served: String, name: String) =
         Limit(
             "$served is being served to the Wi-Fi. Stop serving to chat with $name.",
             LimitAction.SwitchModel,
             "Switch model",
+            LimitAction.StopServing,
+            "Stop serving",
         )
 
     fun modelGone(name: String) = Limit("$name isn't on this phone any more.", LimitAction.SwitchModel, "Switch model")

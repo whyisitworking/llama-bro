@@ -57,6 +57,8 @@ dependencies {
     api(libs.androidx.compose.material3)
     // the photo viewer sets its dialog window's system bar icons (WindowCompat)
     implementation(libs.androidx.core.ktx)
+    // QrCode encodes its text with ZXing's encoder; the drawing is the component's own
+    implementation(libs.zxing.core)
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(libs.androidx.compose.ui.tooling.preview)
     debugImplementation(libs.androidx.activity.compose)

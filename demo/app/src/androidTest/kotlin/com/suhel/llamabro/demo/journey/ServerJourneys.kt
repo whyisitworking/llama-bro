@@ -1,0 +1,55 @@
+package com.suhel.llamabro.demo.journey
+
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import com.suhel.llamabro.demo.models.Catalog
+import com.suhel.llamabro.demo.server.ServingState
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Test
+
+/**
+ * Server mode from its page (docs/design/server.md §3), over the fake engine: open Server from the drawer, start
+ * serving the model on the phone, see where it answers, stop.
+ */
+@OptIn(ExperimentalTestApi::class)
+class ServerJourneys : Journey() {
+    private val swift = Catalog.picks[0].key
+
+    /** A journey that failed halfway leaves nothing listening. */
+    @After fun stopServing() = runBlocking { app.container.server.stop() }
+
+    @Test fun startServingSeeTheAddressAndStop() {
+        onPhone(swift)
+        see("What's on your mind?")
+        tapDescription("Chats")
+        tapDescription("Server")
+        seeTag("server_models")
+        see("Qwen3.5 0.8B")
+        shot("1-off")
+
+        tapTag("server_start")
+        seeTag("server_stop")
+        compose.waitUntil(WAIT) { app.container.server.state.value is ServingState.Serving }
+        val port = (app.container.server.state.value as ServingState.Serving).port
+        // the address is the device's own Wi-Fi one; a device without Wi-Fi says it found none
+        val address =
+            app.container.network.addresses.value
+                .firstOrNull()
+        if (address != null) {
+            see("http://$address:$port")
+            seeTag("server_qr")
+        } else {
+            seeTag("server_no_address")
+        }
+        compose.waitUntilAtLeastOneExists(hasText("••••••••") and hasAnyAncestor(hasTestTag("server_key")), WAIT)
+        shot("2-serving")
+
+        tapTag("server_stop")
+        seeTag("server_start")
+        compose.waitUntil(WAIT) { app.container.server.state.value == ServingState.Off }
+        shot("3-stopped")
+    }
+}

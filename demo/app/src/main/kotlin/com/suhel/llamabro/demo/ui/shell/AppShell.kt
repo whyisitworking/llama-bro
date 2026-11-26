@@ -62,6 +62,7 @@ import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.demo.ui.models.ModelsRoute
+import com.suhel.llamabro.demo.ui.server.ServerScreen
 import com.suhel.llamabro.demo.ui.settings.AboutScreen
 import com.suhel.llamabro.demo.ui.settings.AppearanceScreen
 import com.suhel.llamabro.demo.ui.settings.DefaultModelScreen
@@ -226,6 +227,10 @@ private fun Shell(
                                 drawerOpen = false
                                 go(Routes.models())
                             },
+                            onServer = {
+                                drawerOpen = false
+                                go(Routes.SERVER)
+                            },
                             onSettings = {
                                 drawerOpen = false
                                 go(Routes.SETTINGS)
@@ -255,7 +260,8 @@ private fun Shell(
                     when (route) {
                         Routes.CHATS -> 0
                         Routes.MODELS -> 1
-                        Routes.SETTINGS -> 2
+                        Routes.SERVER -> 2
+                        Routes.SETTINGS -> 3
                         else -> null
                     }
                 // the tabs float over the page's bottom (D148): the page scrolls on under them, its end kept clear
@@ -284,7 +290,7 @@ private fun Shell(
                         BottomTabs(
                             ChatListTabs,
                             tab,
-                            { go(listOf(Routes.CHATS, Routes.models(), Routes.SETTINGS)[it]) },
+                            { go(listOf(Routes.CHATS, Routes.models(), Routes.SERVER, Routes.SETTINGS)[it]) },
                             Modifier
                                 .align(Alignment.BottomCenter)
                                 .onSizeChanged { tabsHeight = with(density) { it.height.toDp() } },
@@ -394,6 +400,11 @@ private fun Graph(
                 onOpenChat = { id -> nav.navigate(Routes.chat(id)) { popUpTo(Routes.MODELS) { inclusive = true } } },
                 initialIntro = seenFirstRun?.not(),
             )
+        }
+        composable(Routes.SERVER) { entry ->
+            // Back only when something is under the page: in Chat list it is a tab of its own
+            val under = remember(entry) { nav.previousBackStackEntry != null }
+            ServerScreen(screens, onBack = if (under) back else null, onGetModels = { models("") })
         }
         composable(Routes.SETTINGS) {
             SettingsHome(back, onOpen = { route ->

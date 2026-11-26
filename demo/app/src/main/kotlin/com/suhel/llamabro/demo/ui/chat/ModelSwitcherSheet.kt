@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import com.suhel.llamabro.demo.chat.InMemory
+import com.suhel.llamabro.demo.designsystem.components.DemoDialog
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DemoSheet
 import com.suhel.llamabro.demo.designsystem.components.Gap
@@ -179,3 +180,24 @@ private fun SwitcherRow(
         onInfo = onInfo,
     )
 }
+
+/**
+ * The switcher's question when the chat would move off the model being served (docs/design/server.md §3): the
+ * switch would wait for serving to end, so the person chooses. Stop serving ends it and switches; Cancel keeps both
+ * as they are.
+ */
+@Composable
+fun StopServingDialog(served: String, other: String, onStop: () -> Unit, onCancel: () -> Unit) {
+    DemoDialog(
+        stopServingTitle(served, other),
+        STOP_SERVING_TEXT,
+        confirmLabel = "Stop serving",
+        onConfirm = onStop,
+        onDismiss = onCancel,
+        dismissLabel = "Cancel",
+    )
+}
+
+internal fun stopServingTitle(served: String, other: String) = "Stop serving $served to use $other?"
+
+internal const val STOP_SERVING_TEXT = "Computers on the Wi-Fi using it lose their connection."

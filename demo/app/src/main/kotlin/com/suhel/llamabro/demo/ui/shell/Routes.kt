@@ -10,6 +10,9 @@ object Routes {
     const val QUERY_ARG = "q"
     const val MODELS = "models?q={q}"
     const val SETTINGS = "settings"
+
+    /** Server mode's page (docs/design/server.md §3): a mode the phone is in, beside Models, not a setting. */
+    const val SERVER = "server"
     const val APPEARANCE = "settings/appearance"
     const val INSTRUCTIONS = "settings/instructions"
     const val DEFAULT_MODEL = "settings/default_model"

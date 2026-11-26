@@ -40,6 +40,7 @@ import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.Section
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
+import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.demo.ui.models.ModelEntry
@@ -111,6 +112,8 @@ fun ChatScreen(
     var details by rememberSaveable { mutableStateOf<Int?>(null) }
     var photo by rememberSaveable(stateSaver = OpenPhotoSaver) { mutableStateOf<OpenPhoto?>(null) }
     var shareRequest by rememberSaveable(stateSaver = ShareRequestSaver) { mutableStateOf<ShareCardContent?>(null) }
+    // the model a switch would move to while another is served: the switcher asks first (docs/design/server.md §3)
+    var stopServingFor by rememberSaveable { mutableStateOf<String?>(null) }
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(vm::attach) }
     val voice = rememberComposerVoiceActions(vm.voice, vm.dictation, vm.voiceMode::open)
@@ -190,7 +193,8 @@ fun ChatScreen(
 
     ChatContent(state, live, actions, chrome.layout, style, modifier)
 
-    ChatSheets(screens, vm, chrome, sheet, { sheet = it }, card, { card = it })
+    ChatSheets(screens, vm, chrome, sheet, { sheet = it }, card, { card = it }) { stopServingFor = it.toString() }
+    stopServingFor?.let { key -> StopServingQuestion(vm, HfModel.parse(key)) { stopServingFor = null } }
     menu?.let { target -> MessageMenu(target, state.rows, messageActions, onDismiss = { menu = null }) }
     details?.let { position -> ReplyDetailsSheet(position, state.rows, onDismiss = { details = null }) }
     photo?.let { target ->
@@ -202,7 +206,7 @@ fun ChatScreen(
 
 /** The chat's sheets: one of [sheet] at a time, and the card the switcher's info action opened ([card], by key). */
 @Composable
-@Suppress("LongParameterList") // the two sheet states and their setters, kept by the screen across rotation
+@Suppress("LongParameterList") // the sheet states and their setters, kept by the screen across rotation
 private fun ChatSheets(
     screens: Screens,
     vm: ChatViewModel,
@@ -211,6 +215,7 @@ private fun ChatSheets(
     onSheet: (Sheet?) -> Unit,
     card: String?,
     onCard: (String?) -> Unit,
+    onAskStopServing: (HfModel) -> Unit,
 ) {
     // the switcher's state serves the sheet and the card it opens, so it lives while either is shown
     val switcher = if (sheet == Sheet.Switcher || card != null) rememberSwitcher(screens, vm) else null
@@ -221,6 +226,10 @@ private fun ChatSheets(
                 vm,
                 chrome,
                 onSampling = { onSheet(Sheet.Sampling) },
+                onSwitch = { key ->
+                    val asks = vm.serving.switchStopsServing(key) != null
+                    if (asks) onAskStopServing(key) else vm.handle.switchModel(key)
+                },
                 onInfo = { key ->
                     onSheet(null)
                     onCard(key.toString())
@@ -266,7 +275,30 @@ private fun limitAction(
         LimitAction.OpenMemorySettings -> chrome.onMemory()
         LimitAction.CloseOtherAppsAndRetry, LimitAction.Retry -> vm.retry()
         LimitAction.OpenAppSettings -> openAppSettings(context)
+        LimitAction.StopServing -> vm.serving.stopAndRetry()
     }
+}
+
+/**
+ * "Stop serving <served> to use <other>?", for a switch to [to] while another model is served. Serving that ended
+ * meanwhile needs no question: it closes.
+ */
+@Composable
+private fun StopServingQuestion(vm: ChatViewModel, to: HfModel, onDone: () -> Unit) {
+    val served = vm.serving.switchStopsServing(to)
+    if (served == null) {
+        LaunchedEffect(to) { onDone() }
+        return
+    }
+    StopServingDialog(
+        served,
+        Names.of(to),
+        onStop = {
+            onDone()
+            vm.serving.stopAndSwitch(to)
+        },
+        onCancel = onDone,
+    )
 }
 
 /**
@@ -370,6 +402,7 @@ private fun SwitcherHost(
     vm: ChatViewModel,
     chrome: ChatChrome,
     onSampling: () -> Unit,
+    onSwitch: (HfModel) -> Unit,
     onInfo: (HfModel) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -383,7 +416,7 @@ private fun SwitcherHost(
         library = library.orEmpty(),
         current = current,
         facts = facts,
-        onSwitch = vm.handle::switchModel,
+        onSwitch = onSwitch,
         onUseForNewChats = { key -> switcher.pinDefault(key.toString()) },
         onInfo = onInfo,
         onGetMore = chrome.onGetModels,

@@ -2,6 +2,7 @@ package com.suhel.llamabro.demo
 
 import android.annotation.SuppressLint
 import android.graphics.BitmapFactory
+import android.os.PowerManager
 import android.os.StatFs
 import android.util.Log
 import androidx.compose.ui.graphics.ImageBitmap
@@ -26,6 +27,7 @@ import com.suhel.llamabro.demo.audio.TrackSpeech
 import com.suhel.llamabro.demo.audio.VoiceFocus
 import com.suhel.llamabro.demo.audio.VoiceRecorder
 import com.suhel.llamabro.demo.chat.ChatEngine
+import com.suhel.llamabro.demo.chat.ChatServing
 import com.suhel.llamabro.demo.chat.ModelHost
 import com.suhel.llamabro.demo.chat.ModelMemory
 import com.suhel.llamabro.demo.chat.SamplingStore
@@ -53,6 +55,7 @@ import com.suhel.llamabro.demo.server.NetworkState
 import com.suhel.llamabro.demo.server.ServerKey
 import com.suhel.llamabro.demo.server.ServerMode
 import com.suhel.llamabro.demo.server.ServerSettings
+import com.suhel.llamabro.demo.server.thermalReadings
 import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.demo.ui.chat.ChatAudio
 import com.suhel.llamabro.demo.ui.chat.ChatSamplingViewModel
@@ -63,6 +66,9 @@ import com.suhel.llamabro.demo.ui.chat.messageStyle
 import com.suhel.llamabro.demo.ui.models.ModelEntry
 import com.suhel.llamabro.demo.ui.models.ModelSheetViewModel
 import com.suhel.llamabro.demo.ui.models.ModelsViewModel
+import com.suhel.llamabro.demo.ui.server.PhoneFacts
+import com.suhel.llamabro.demo.ui.server.ServerControl
+import com.suhel.llamabro.demo.ui.server.ServerViewModel
 import com.suhel.llamabro.demo.ui.settings.SettingsViewModel
 import com.suhel.llamabro.demo.ui.shell.ShellViewModel
 import com.suhel.llamabro.demo.voice.Dictation
@@ -84,6 +90,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -183,11 +190,13 @@ class AppContainer(
      * Server mode (docs/design/server.md §3): the held model served to the Wi-Fi behind a key kept with the settings,
      * announced as "Llama Bro".
      */
+    private val serverKey = ServerKey(ServerSettings(settingsStore))
+
     val server: ServerMode =
         ServerMode(
             host,
             settings,
-            ServerKey(ServerSettings(settingsStore)),
+            serverKey,
             scope,
             advertise = Advertise("Llama Bro", app),
             clock = clock,
@@ -195,6 +204,23 @@ class AppContainer(
 
     /** The phone's Wi-Fi addresses and charger, for the Server page and the serving notification. */
     val network: NetworkState by lazy { NetworkState().also { it.watch(app) } }
+
+    /** Server mode as the Server page drives it. */
+    private val serverControl =
+        object : ServerControl {
+            override val state = server.state
+            override val served = server.served
+            override val log = server.log
+            override val key = serverKey.value
+
+            override suspend fun start(model: HfModel, slots: Int) = server.start(model, slots)
+
+            override suspend fun stop() = server.stop()
+
+            override suspend fun renewKey() {
+                server.renewKey()
+            }
+        }
 
     /** Runs every chat (one handle per open chat); the chat screens read it. */
     val engine: ChatEngine =
@@ -265,7 +291,14 @@ class AppContainer(
     // ---- the screens' view models (see [Screens]) -----------------------------------------------------------------
 
     override fun shellViewModel(saved: SavedStateHandle) =
-        ShellViewModel(chats, settings, models, savedState = saved, deleteChat = { engine.delete(it) })
+        ShellViewModel(
+            chats,
+            settings,
+            models,
+            savedState = saved,
+            deleteChat = { engine.delete(it) },
+            serving = server.served.map { it != null },
+        )
 
     override fun settingsViewModel() = SettingsViewModel(settings, tokenStore, models, memory, sampling, ::deviceFacts)
 
@@ -301,6 +334,19 @@ class AppContainer(
             onExactFit = onExactFit,
             startTier = startTier,
             asksForNotifications = asksForNotifications,
+        )
+
+    override fun serverViewModel() =
+        ServerViewModel(
+            serverControl,
+            models.library,
+            PhoneFacts(
+                network.addresses,
+                network.charging,
+                // read while the page shows, off the main thread: each read is a call into the system
+                thermalReadings(app.getSystemService(PowerManager::class.java)).flowOn(Dispatchers.Default),
+            ),
+            scope,
         )
 
     override fun switcherViewModel(handle: ChatEngine.ChatHandle) =
@@ -349,6 +395,7 @@ class AppContainer(
         savedState = saved,
         background = scope,
         audio = chatAudio(),
+        servingMode = ChatServing({ server.served.value }, server::blocksSwitch, server::stop),
     )
 
     /**

@@ -52,6 +52,7 @@ internal data class DrawerPreview(
     val modelCount: Int?,
     val open: Long?,
     val search: String = "",
+    val serving: Boolean = false,
 ) {
     override fun toString() = name
 }
@@ -60,6 +61,7 @@ internal class DrawerStates : PreviewParameterProvider<DrawerPreview> {
     override val values =
         sequenceOf(
             DrawerPreview("Chats, one open", previewChats, 3, open = 3),
+            DrawerPreview("Serving", previewChats, 3, open = 3, serving = true),
             DrawerPreview("No chats yet", emptyList(), 0, open = null),
             DrawerPreview("Nothing matches", emptyList(), 3, open = null, search = "zzzz"),
             DrawerPreview("Count not read yet", previewChats, null, open = null),
@@ -83,9 +85,11 @@ internal fun DrawerContentPreview(
             onNewChat = {},
             onOpenChat = {},
             onModels = {},
+            onServer = {},
             onSettings = {},
             onLongPress = {},
             modifier = Modifier.height(780.dp),
+            serving = p.serving,
         )
     }
 }
