@@ -18,6 +18,7 @@ listOf(
     ":llamabro-typed",
     ":llamabro-typed-ksp",
     ":llamabro-server",
+    ":llamabro-rag",
     ":llamabro-bom",
     ":acceptance",
     ":acceptance:backends",

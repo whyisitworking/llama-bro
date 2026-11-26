@@ -10,7 +10,7 @@
 #                  OpenAI and Anthropic Python clients against the server with a key (a venv in the host build)
 #   tools-ui       llama.cpp's own Llama Chat compaction code (ui/apps/chat; tools/ui before b12479) regenerated in
 #                  node; must equal the committed golden
-#   api            core, llamabro-typed, llamabro-testing and llamabro-server release public APIs equal their reviewed dumps (D26)
+#   api            core, llamabro-typed, llamabro-testing, llamabro-server and llamabro-rag release public APIs equal their reviewed dumps (D26)
 #   hub-api        Hub, hub-work and hub-testing release public APIs equal their dumps (sdk/llamabro-hub*/api/*.api)
 #   quality        ktlint and detekt on every Kotlin module (the root build's qualityCheck; detekt's baselines list what predates it)
 #   lint           Android lint on all SDK libraries, warnings as errors
@@ -182,7 +182,7 @@ step_jvm() {
         :llamabro-hub-work:testDebugUnitTest :llamabro-hub-work:compileDebugAndroidTestKotlin \
         :llamabro:compileDebugAndroidTestKotlin \
         :llamabro-hub-testing:testDebugUnitTest :llamabro-typed:testDebugUnitTest :llamabro-typed-ksp:test \
-        :llamabro-server:testDebugUnitTest \
+        :llamabro-server:testDebugUnitTest :llamabro-rag:testDebugUnitTest \
         -Pllamabro.hub.model.dir="$models_dir" -Pllamabro.hub.golden.dir="$logs/hub-golden" || return 1
     grep -q 'skipped="0"' \
         "$sdk/llamabro-hub/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.hub.GgufHeaderTest.xml" || {
@@ -426,12 +426,12 @@ run hub-golden step_hub_golden
 run contract step_contract
 run server-contract step_server_contract
 run tools-ui step_tools_ui
-run api      gradle :llamabro:apiCheck :llamabro-typed:apiCheck :llamabro-testing:apiCheck :llamabro-server:apiCheck
+run api      gradle :llamabro:apiCheck :llamabro-typed:apiCheck :llamabro-testing:apiCheck :llamabro-server:apiCheck :llamabro-rag:apiCheck
 run hub-api  gradle :llamabro-hub:apiCheck :llamabro-hub-work:apiCheck :llamabro-hub-testing:apiCheck
 run quality  step_quality
 run lint     gradle :llamabro:lintRelease :llamabro-testing:lintRelease :llamabro-hexagon:lintRelease :llamabro-opencl:lintRelease :llamabro-hub:lintRelease \
     :llamabro-hub-work:lintRelease :llamabro-hub-testing:lintRelease :llamabro-typed:lintRelease \
-    :llamabro-server:lintRelease
+    :llamabro-server:lintRelease :llamabro-rag:lintRelease
 run jvm      step_jvm
 run e2e      step_e2e
 run aar      step_aar
