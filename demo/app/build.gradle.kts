@@ -173,8 +173,11 @@ dependencies {
     implementation(project(":llamabro-opencl"))
     // server mode: the held model served to the Wi-Fi (docs/design/server.md §3)
     implementation(project(":llamabro-server"))
+    // the Library page: documents cut, embedded and searched on the phone (docs/design/rag.md)
+    implementation(project(":llamabro-rag"))
     testImplementation(project(":llamabro-testing"))
     testImplementation(project(":llamabro-hub-testing"))
+    testImplementation(libs.okio.fakefilesystem)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

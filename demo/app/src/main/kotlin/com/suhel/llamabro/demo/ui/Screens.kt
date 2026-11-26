@@ -8,6 +8,7 @@ import com.suhel.llamabro.demo.ui.chat.ChatSamplingViewModel
 import com.suhel.llamabro.demo.ui.chat.ChatViewModel
 import com.suhel.llamabro.demo.ui.chat.MessageStyle
 import com.suhel.llamabro.demo.ui.chat.SwitcherViewModel
+import com.suhel.llamabro.demo.ui.library.LibraryViewModel
 import com.suhel.llamabro.demo.ui.models.ModelEntry
 import com.suhel.llamabro.demo.ui.models.ModelSheetViewModel
 import com.suhel.llamabro.demo.ui.models.ModelsViewModel
@@ -32,6 +33,9 @@ interface Screens {
 
     /** The Server page: server mode, the models it can serve and the phone's network, charger and heat. */
     fun serverViewModel(): ServerViewModel
+
+    /** The Library page: the documents, the embedder's download and fit, import, remove and rebuild. */
+    fun libraryViewModel(): LibraryViewModel
 
     /** The model switcher's state and writes for the chat under [handle]. */
     fun switcherViewModel(handle: ChatEngine.ChatHandle): SwitcherViewModel

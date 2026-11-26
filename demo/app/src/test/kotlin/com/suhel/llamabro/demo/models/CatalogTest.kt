@@ -55,6 +55,17 @@ class CatalogTest {
         }
     }
 
+    @Test fun theEmbedderIsPinnedAndIsNotAChatSuggestion() {
+        val embedder = Catalog.embedder
+        assertEquals(HfModel.parse("ggml-org/bge-small-en-v1.5-Q8_0-GGUF:Q8_0"), embedder.key)
+        // the Library page gets it; a chat can't use it, so it is never among the suggestions
+        assertNull(Catalog.byKey(embedder.key))
+        assertNull(Catalog.byRepo(embedder.key.repo))
+        assertEquals("BGE Small", Names.of(embedder.key))
+        val pin = File(repoRoot(), "demo/catalog/pin.md").readText()
+        assertTrue(pin.contains("`${embedder.key}`") && pin.contains("%,d".format(embedder.modelBytes)))
+    }
+
     private fun repoRoot(): File {
         var dir: File? = File("").absoluteFile
         while (dir != null && !File(dir, "demo/catalog/pin.md").exists()) dir = dir.parentFile

@@ -174,8 +174,24 @@ public final class com/suhel/llamabro/rag/Library : java/lang/AutoCloseable {
 }
 
 public final class com/suhel/llamabro/rag/Library$Companion {
+	public final fun contents (Lokio/FileSystem;Lokio/Path;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun open (Lokio/FileSystem;Lokio/Path;Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/rag/EmbeddingFormat;Lcom/suhel/llamabro/rag/Chunker;Lcom/suhel/llamabro/Pooling;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun open$default (Lcom/suhel/llamabro/rag/Library$Companion;Lokio/FileSystem;Lokio/Path;Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/rag/EmbeddingFormat;Lcom/suhel/llamabro/rag/Chunker;Lcom/suhel/llamabro/Pooling;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun rebuild (Lokio/FileSystem;Lokio/Path;Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/rag/EmbeddingFormat;Lcom/suhel/llamabro/rag/Chunker;Lcom/suhel/llamabro/Pooling;)Lkotlinx/coroutines/flow/Flow;
+	public static synthetic fun rebuild$default (Lcom/suhel/llamabro/rag/Library$Companion;Lokio/FileSystem;Lokio/Path;Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/rag/EmbeddingFormat;Lcom/suhel/llamabro/rag/Chunker;Lcom/suhel/llamabro/Pooling;ILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
+}
+
+public final class com/suhel/llamabro/rag/LibraryContents {
+	public fun <init> (Lcom/suhel/llamabro/rag/EmbedderIdentity;Ljava/util/List;)V
+	public final fun component1 ()Lcom/suhel/llamabro/rag/EmbedderIdentity;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Lcom/suhel/llamabro/rag/EmbedderIdentity;Ljava/util/List;)Lcom/suhel/llamabro/rag/LibraryContents;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/LibraryContents;Lcom/suhel/llamabro/rag/EmbedderIdentity;Ljava/util/List;ILjava/lang/Object;)Lcom/suhel/llamabro/rag/LibraryContents;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBuiltBy ()Lcom/suhel/llamabro/rag/EmbedderIdentity;
+	public final fun getDocuments ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class com/suhel/llamabro/rag/LibraryToolKt {

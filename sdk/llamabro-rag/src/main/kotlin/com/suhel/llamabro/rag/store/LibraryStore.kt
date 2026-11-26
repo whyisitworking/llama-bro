@@ -339,6 +339,17 @@ internal class LibraryStore(private val fs: FileSystem, private val dir: Path) {
     }
 }
 
+/**
+ * The manifest of the library in [dir], read without opening it: `manifest.next` when a compaction was committed and
+ * not yet moved into place (it is the library's state), else `manifest.json`; null when there is neither.
+ */
+internal fun readManifest(fs: FileSystem, dir: Path): Manifest? {
+    val path = listOf(dir / "manifest.next", dir / "manifest.json").firstOrNull { fs.exists(it) } ?: return null
+    return manifestJson.decodeFromString<Manifest>(fs.read(path) { readUtf8() })
+}
+
+private val manifestJson = Json { ignoreUnknownKeys = true }
+
 private fun chunkJson(chunk: Chunk): ChunkJson =
     ChunkJson(chunk.documentId, chunk.index, chunk.text, chunk.start, chunk.end, chunk.headings)
 

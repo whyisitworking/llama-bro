@@ -7,6 +7,7 @@ import com.suhel.llamabro.Pooling
 import com.suhel.llamabro.embed
 import com.suhel.llamabro.rag.store.LibraryStore
 import com.suhel.llamabro.rag.store.embedderIdentity
+import com.suhel.llamabro.rag.store.readManifest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -143,8 +144,88 @@ public class Library internal constructor(
             val probe = embedder.embed(format.documentPrefix + PROBE, Normalization.Euclidean)
             val identity = embedderIdentity(embedder.info, probe.size, pooling, Normalization.Euclidean, format)
             val store = LibraryStore(fs, dir)
-            withContext(Dispatchers.IO) { store.open(identity) }
+            withContext(Dispatchers.IO) {
+                finishRebuild(fs, dir)
+                store.open(identity)
+            }
             return Library(fs, dir, embedder, chunker.copy(prefix = format.documentPrefix), identity, store)
+        }
+
+        /**
+         * What the library in [dir] holds and which embedder built it, read without one: a list to show before an
+         * embedder is loaded, and the identity to compare with one. Null when [dir] holds no library. It only reads:
+         * an interrupted write is left for [open] to finish, and what it shows is the state that write committed.
+         */
+        public suspend fun contents(fs: FileSystem, dir: Path): LibraryContents? =
+            withContext(Dispatchers.IO) {
+                val committed = sibling(dir, REBUILT).takeIf { dir.parent != null && fs.exists(it) } ?: dir
+                readManifest(fs, committed)?.let { manifest ->
+                    LibraryContents(
+                        manifest.embedder.toIdentity(),
+                        manifest.documents.map { DocumentInfo(it.id, it.title, it.source, it.rowCount) },
+                    )
+                }
+            }
+
+        /**
+         * Embeds the library in [dir] again with [embedder], for one [open] refused with [IndexMismatch]: every
+         * document's passages, as they were cut and stored, go to a new library beside [dir] (in its parent folder),
+         * which then takes its place. The documents keep their ids, titles, sources and order; a passage too long for
+         * the new embedder is cut again, as in [add]. The parameters are [open]'s.
+         *
+         * A cold flow: [IngestProgress.Chunked] with the passages in the library, [IngestProgress.Embedded] over all
+         * of them, then [IngestProgress.Saved] once the new library is in place. Until then [dir] holds the old one:
+         * cancelling, a failure or a crash leaves it as it was (the next [open] deletes the half-written new one), and
+         * a crash in the moment of the swap is finished by the next [open]. Close every [Library] open on [dir] first,
+         * and run one rebuild of a folder at a time.
+         */
+        public fun rebuild(
+            fs: FileSystem,
+            dir: Path,
+            embedder: Model,
+            format: EmbeddingFormat,
+            chunker: Chunker = Chunker(counter = TokenCounter.Model(embedder)),
+            pooling: Pooling = Pooling.ModelDefault,
+        ): Flow<IngestProgress> =
+            flow {
+                val documents = withContext(Dispatchers.IO) { storedPassages(fs, dir) }
+                var left = documents.sumOf { it.second.size }
+                emit(IngestProgress.Chunked(left))
+                val next = sibling(dir, REBUILDING)
+                withContext(Dispatchers.IO) { fs.deleteRecursively(next) }
+                val library = open(fs, next, embedder, format, chunker, pooling)
+                try {
+                    var done = 0
+                    for ((document, passages) in documents) {
+                        left -= passages.size
+                        val embedded =
+                            Ingest(embedder, library.chunker).embed(passages) { n, of ->
+                                emit(IngestProgress.Embedded(done + n, done + of + left))
+                            }
+                        val (chunks, vectors) = embedded.unzip()
+                        library.writing {
+                            library.store.commit(document.id, document.title, document.source, chunks, vectors)
+                        }
+                        done += embedded.size
+                    }
+                } finally {
+                    library.close()
+                }
+                withContext(Dispatchers.IO) {
+                    fs.atomicMove(next, sibling(dir, REBUILT))
+                    finishRebuild(fs, dir)
+                }
+                emit(IngestProgress.Saved)
+            }
+
+        // each live document of the library in [dir] with its passages in order; none when there is no library
+        private suspend fun storedPassages(fs: FileSystem, dir: Path): List<Pair<DocumentInfo, List<Chunk>>> {
+            finishRebuild(fs, dir)
+            val manifest = readManifest(fs, dir) ?: return emptyList()
+            val store = LibraryStore(fs, dir).apply { open(manifest.embedder.toIdentity()) }
+            return store.documents.map { d ->
+                DocumentInfo(d.id, d.title, d.source, d.rowCount) to List(d.rowCount) { store.chunk(d.firstRow + it) }
+            }
         }
 
         private const val PROBE = "a"

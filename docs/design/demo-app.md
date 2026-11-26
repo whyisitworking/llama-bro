@@ -68,10 +68,11 @@ edge this list forbids, on any domain package that names `ui` or the design syst
 | `data` (with `data.db`) | Room, the settings, token, image and audio stores, `ChatRepository` | `data.settings` |
 | `models` | The catalog, the hub and its cache, downloads, the library, fit; `ModelInUse`, which the chat's model host implements | `data`, `data.settings` |
 | `audio` | The microphone and its capture, `VoiceRecorder`, `VoicePlayer`, `SpeechOutput`, WAV, pause detection | `data`, `data.settings` |
+| `library` | The Library page's domain (docs/design/rag.md): `EmbedderHost` (the embedder beside the chat model), `LibraryRepository` over `llamabro-rag`, `TextImport` | `data`, `data.settings`, `models` |
 | `chat` | `ChatEngine`, `ModelHost`, history, limits, sampling, `Think`, the reply draft, `BackgroundRelease` | `data`, `models`, `audio` |
 | `server` | Server mode: `ServerMode` (the SDK's server over a served model), its key, settings, request log, Wi-Fi addresses and thermal readings (`HostServedModels`, `ServerLog`, `NetworkState`, `Thermal`); `ServerService`, its foreground service, is in the root | `data`, `data.settings`, `models`, `audio`, `chat` |
 | `voice` | Voice mode (`VoiceConversation`), `Dictation`, `ReadAloud`, captions, transcripts, `Steps` | `chat`, `audio`, `models`, `data` |
-| `ui` | Screens and view models by feature (`ui.chat`, `ui.models`, `ui.server`, `ui.settings`, `ui.shell`), `Screens`, the Markdown parser; domain enums (`Theme`, `Think`, `VoiceStage`) are mapped to the design system's at this edge | all, and `designsystem` |
+| `ui` | Screens and view models by feature (`ui.chat`, `ui.library`, `ui.models`, `ui.server`, `ui.settings`, `ui.shell`), `Screens`, the Markdown parser; domain enums (`Theme`, `Think`, `VoiceStage`) are mapped to the design system's at this edge | all, and `designsystem` |
 | root | `DemoApp`, `MainActivity`, `ReplyService`, `AppContainer`, `ContainerFactory`: the Android entry points and the composition root | all |
 
 The design system (`:demo:designsystem`) knows no domain type, and no domain package knows it.
@@ -97,8 +98,8 @@ on a top bar is its own raised circle, the model switcher a raised pill, over th
   - **Chats grouped by date** (Today, This week, Earlier). A group's label is quiet (13 sp, soft, sentence case), 24 dp under the group above (8 dp under the search for the first) and close on its rows.
   - **A chat** is one line, at least 48 dp tall: the title (15 sp Regular, `rowLine`, ellipsized) and the chat's time at the end (12 sp, soft: the time today, the weekday this week, else the date). The row is 12 dp inside and 12 dp from the drawer's edges, so the labels and the titles start on one 24 dp line. The open chat lies on the soft accent fill with 12 dp corners, no outline and no tick. Long press opens Rename and Delete.
   - **No chats at all**: the head, the search and the foot stay, and "No chats yet. Start one." stands where the list would be.
-  - **Foot**, under a hairline: three labelled 48 dp rows, Models (its icon, "Models", and "N on this phone" soft at the end), Server (its `Serve` icon and "Serving" soft at the end while the phone serves or loads a model) and Settings.
-  - **Screen reader**: each place is one button, "Models, 2 on this phone" (or "Models" before the library is read), "Server" and "Settings". The drawer is one traversal group with the head and the foot first, so they are reached before the chats.
+  - **Foot**, under a hairline: four labelled 48 dp rows, Models (its icon, "Models", and "N on this phone" soft at the end), Library (Material's `library_books`), Server (its `Serve` icon and "Serving" soft at the end while the phone serves or loads a model) and Settings.
+  - **Screen reader**: each place is one button, "Models, 2 on this phone" (or "Models" before the library is read), "Library", "Server" and "Settings". The drawer is one traversal group with the head and the foot first, so they are reached before the chats.
 - A new chat opens with the default model: the last model used, unless one was pinned with "Use for new chats". An empty chat shows the small logo (D161), "What's on your mind?" and starter chips.
 - Tapping the model's name in the top bar opens the model switcher: the models on the phone as the Models page's rows
   (§4.3), "Current" on the chat's model and "Default" on the one for new chats as line 2's small soft mark, the fit as
@@ -110,8 +111,16 @@ on a top bar is its own raised circle, the model switcher a raised pill, over th
 **Chat list.**
 
 - Home is the list of chats, newest first, under a sans "Chats" title and a search box. A row shows an avatar with the model's initial, the title, the time or day, and the last message prefixed by its sender.
-- New chat is a floating button. Bottom tabs hold Chats, Models, Server and Settings; Server is a tab of its own, so its page has no back arrow there.
+- New chat is a floating button. Bottom tabs hold Chats, Models, Library, Server and Settings; Library and Server are tabs of their own, so their pages have no back arrow there.
 - A conversation screen has a back arrow, the avatar, the title and the model's name under it (tap to switch). Both sides are in bubbles, the model's on a raised surface; the time sits in each bubble's corner, with the speed on the model's, and quiet day labels separate days. Back from a chat reached after a layout switch goes to the list.
+
+**Library** (docs/design/rag.md; `library`, `ui.library`). The person's documents, indexed on the phone for search (a chat answering from them comes next). The drawer's Library row and the Library tab open it.
+
+- **Top**: what it is for, then the embedder's state. Not on the phone: "Indexing needs BGE Small, a small model (36 MB)" with Get (the catalog's one suggested embedder, `ggml-org/bge-small-en-v1.5-Q8_0-GGUF:Q8_0`, pinned in `demo/catalog/pin.md`); arriving: a progress bar; on the phone: "Indexed with BGE Small", or, when `estimateFit` says it won't load beside the chat model, "BGE Small doesn't fit beside <chat model>: it needs X, and Y is free" (the chat model in memory, else the default model, whose files' size is kept free).
+- **Add a document** in the bar at its foot opens the system's file picker for text and Markdown (`text/*`, and `application/octet-stream` by a `.md` or `.txt` name). PDF and anything else are refused with the reason ("Lease.pdf is a PDF: only text and Markdown files can be added for now."), as is a file over 8 MB or one with no text. The title is the file's name without its extension; the id is a hash of the file's URI, so adding the same file again replaces it. While it embeds: "Adding a document: 16 of 40 passages" over a bar.
+- **Documents**: a row each, the title over "N passages · <file name>", with a ✕ that asks "Remove <title>?" first. "No documents yet." when there are none.
+- **Another embedder built it**: the line says so and offers "Rebuild with BGE Small", which embeds every stored passage again into a new folder that replaces the old one only when it is whole (`Library.rebuild`); nothing is deleted, and adding waits until it is done.
+- **The embedder** has its own host beside the chat's (`EmbedderHost`): it loads with `ModelTask.Embedding` under Settings › Processor's chip, after the fit check, and closes after 2 minutes unused. The folder is `noBackupFilesDir/library`: the vectors can be rebuilt, so backups don't carry them.
 
 **Server** (docs/design/server.md §3; `ui.server`). A mode the phone is in, beside Models and not a setting: the drawer's Server row (Sidebar) and the Server tab (Chat list) open one page whose state decides what it shows.
 

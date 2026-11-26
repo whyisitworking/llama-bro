@@ -37,6 +37,18 @@ data class CatalogEntry(
     val talks: Boolean = false,
 )
 
+/**
+ * The embedding model the Library page indexes documents with (docs/design/rag.md): never a chat suggestion, since a
+ * chat can't use it. Its size is pinned in `demo/catalog/pin.md` like the chat models'.
+ */
+data class EmbedderEntry(
+    val key: HfModel,
+    val realName: String,
+    val maker: String,
+    val baseModel: String,
+    val modelBytes: Long,
+)
+
 object Catalog {
     /** Qwen3.5's card, thinking (every size). */
     private val qwenThinking =
@@ -149,6 +161,19 @@ object Catalog {
             // (audio_temperature 0.4) is the server's, not a chat's
             sampling = CardSampling(Knobs.of(Temperature to 0f, TopK to 1f)),
             talks = true,
+        )
+
+    /**
+     * The Library's embedder: bge-small-en-v1.5, English, 384 dimensions, the model F191 measured retrieval with, in
+     * the llama.cpp team's Q8_0 upload. No reranker is suggested: on that set it found no more answers (F191).
+     */
+    val embedder =
+        EmbedderEntry(
+            key = HfModel.parse("ggml-org/bge-small-en-v1.5-Q8_0-GGUF:Q8_0"),
+            realName = "BGE Small",
+            maker = "BAAI",
+            baseModel = "BAAI/bge-small-en-v1.5",
+            modelBytes = 36_685_152,
         )
 
     /** First run's three picks. */

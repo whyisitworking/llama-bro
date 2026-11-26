@@ -5,10 +5,13 @@ import com.suhel.llamabro.hub.HfModel
 /** How the app names a model and its maker from what the Hub calls them (docs/design/models-page.md §3). */
 object Names {
     /**
-     * The one name a model has on every surface (D50): the catalog's name for any upload of its repo, else [display]
-     * of the repo's name.
+     * The one name a model has on every surface (D50): the catalog's name for any upload of its repo (the embedder's
+     * too), else [display] of the repo's name.
      */
-    fun of(key: HfModel): String = Catalog.byRepo(key.repo)?.realName ?: display(key.repo.substringAfter('/'))
+    fun of(key: HfModel): String =
+        Catalog.byRepo(key.repo)?.realName
+            ?: Catalog.embedder.realName.takeIf { key.repo.equals(Catalog.embedder.key.repo, ignoreCase = true) }
+            ?: display(key.repo.substringAfter('/'))
 
     /**
      * `gemma-4-E4B-it-qat-q4_0-unquantized-GGUF` becomes `Gemma 4 E4B`: the upload's packaging words (GGUF, the

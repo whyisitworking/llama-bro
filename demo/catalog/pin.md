@@ -34,3 +34,13 @@ files F166 and F170 ran on the phone.
 Swift's sizes equal F93's (532,517,120 and 207,346,528). None of the repos is gated.
 
 > **Corrected 2026-11-12 (F112):** the Writer row was `UD-Q4_K_XL` (2,537,530,496). The size picker's Recommended tier is `Q4_K_M` whenever the repo has it, so a Writer fetched the normal way was `Q4_K_M` and the library could not name it. Size and the commit `165f274…` re-read from `https://huggingface.co/api/models/unsloth/gemma-3-4b-it-qat-GGUF/tree/main` on the same day (`gemma-3-4b-it-qat-Q4_K_M.gguf` 2,489,894,016).
+
+## The Library's embedder
+
+Read on 2026-11-26 the same way, metadata only (`https://huggingface.co/api/models/<repo>` and `.../tree/main`), for
+the Library page's suggested embedder (docs/design/rag.md). The repo is not gated, its `base_model` is
+`BAAI/bge-small-en-v1.5`, and its tree holds one file, so the tag `Q8_0` resolves to it. It is not a chat suggestion and
+has no row in the table above (the catalog test counts six).
+
+- `ggml-org/bge-small-en-v1.5-Q8_0-GGUF:Q8_0`, commit `f2068edd9b54f2a369549ccc71f70ed273a2a801`:
+  `bge-small-en-v1.5-q8_0.gguf`, 36,685,152 bytes, no projector.

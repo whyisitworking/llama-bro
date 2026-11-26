@@ -1,6 +1,6 @@
 # Asking your own documents: `llamabro-rag` and the demo's library
 
-Status: **SDK part built (Tasks 1-8); demo pending** (2026-11-26); the sections below describe the design, and where the
+Status: **SDK part built (Tasks 1-8); the demo's Library page built (step 9), chat use pending** (2026-11-26); the sections below describe the design, and where the
 built module differs the note says so (see "As built" at the end). Plan in [docs/superpowers/plans/2026-11-26-llamabro-rag.md](../superpowers/plans/2026-11-26-llamabro-rag.md). Decisions are recorded in
 [decisions.md](../decisions.md): D167 to D171 for the SDK part.
 
@@ -215,4 +215,10 @@ record the choices. Where it differs from the text above, the code is right:
 - **Evaluation (F191):** the defaults of 256 tokens, 15% overlap, top 50 each, k 60, rerank 20 and limit 6 stayed.
   Reranking with jina-reranker-tiny did not help on the question set, so the demo has no evidence for turning it on. The
   multilingual embedder comparison is still open.
-- **Still pending:** the PDF text spike (needs the phone), the demo (steps 9 to 11) and the phone measurements.
+- **Reading and rebuilding without opening:** `Library.contents(fs, dir)` lists a library and the embedder that built
+  it without loading one (the demo's page lists before the embedder loads), and `Library.rebuild(...)` embeds a library
+  another embedder built again from its stored passages, into a folder beside it that takes its place once whole.
+- **The demo's Library page (step 9)** is in [demo-app.md](demo-app.md) §4.2: bge-small-en-v1.5 Q8_0 as the suggested
+  embedder, text and Markdown import, the fit beside the chat model, rebuild on a mismatch.
+- **Still pending:** the PDF text spike (needs the phone), the demo's chat use and the phone run (steps 10 and 11) and
+  the phone measurements.

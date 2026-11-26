@@ -85,6 +85,7 @@ internal fun DrawerContentPreview(
             onNewChat = {},
             onOpenChat = {},
             onModels = {},
+            onLibrary = {},
             onServer = {},
             onSettings = {},
             onLongPress = {},
