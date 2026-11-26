@@ -48,6 +48,7 @@ import com.suhel.llamabro.demo.designsystem.components.FloatingFrame
 import com.suhel.llamabro.demo.designsystem.components.IconAction
 import com.suhel.llamabro.demo.designsystem.components.LocalBottomOverlay
 import com.suhel.llamabro.demo.designsystem.components.TopBar
+import com.suhel.llamabro.demo.designsystem.components.WindowGlass
 import com.suhel.llamabro.demo.designsystem.components.backdropSource
 import com.suhel.llamabro.demo.designsystem.components.rememberBackdrop
 import com.suhel.llamabro.demo.designsystem.components.screenEnter
@@ -138,23 +139,26 @@ fun AppShell(
             LocalGlass provides (glass ?: LocalGlass.current),
             LocalGlassTier provides tier,
         ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(LocalDemoColors.current.canvas)
-                    // the benchmarks (UI Automator) find the screens by their tags
-                    .semantics { testTagsAsResourceId = true }
-                    .testTag("shell_root"),
-            ) {
-                // the start destination is decided once, when both the layout and first run are known
-                val start = firstRun
-                val shown = layout
-                // first run's seen flag too: the Models page's intro is drawn from it on the first frame; and the
-                // glass, so a tuned glass never flickers in after a frame of the default
-                val read = seen != null && glass != null
-                if (shown != null && start != null && read) {
-                    Shell(screens, shown, start, shell, settings, chatScreen)
-                    SideEffect(onReady)
+            // the whole window is the page under the bottom sheets' glass (D164), which open in windows of their own
+            WindowGlass {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(LocalDemoColors.current.canvas)
+                        // the benchmarks (UI Automator) find the screens by their tags
+                        .semantics { testTagsAsResourceId = true }
+                        .testTag("shell_root"),
+                ) {
+                    // the start destination is decided once, when both the layout and first run are known
+                    val start = firstRun
+                    val shown = layout
+                    // first run's seen flag too: the Models page's intro is drawn from it on the first frame; and the
+                    // glass, so a tuned glass never flickers in after a frame of the default
+                    val read = seen != null && glass != null
+                    if (shown != null && start != null && read) {
+                        Shell(screens, shown, start, shell, settings, chatScreen)
+                        SideEffect(onReady)
+                    }
                 }
             }
         }

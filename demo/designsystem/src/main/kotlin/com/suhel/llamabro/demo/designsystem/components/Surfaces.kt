@@ -86,7 +86,11 @@ import com.suhel.llamabro.demo.designsystem.theme.DemoShapes
 import com.suhel.llamabro.demo.designsystem.theme.DemoSize
 import com.suhel.llamabro.demo.designsystem.theme.DemoSpacing
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
+import com.suhel.llamabro.demo.designsystem.theme.GlassStyle
+import com.suhel.llamabro.demo.designsystem.theme.GlassTier
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
+import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
+import com.suhel.llamabro.demo.designsystem.theme.LocalGlassTier
 import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 import com.suhel.llamabro.demo.designsystem.theme.scrim
 import kotlinx.coroutines.flow.first
@@ -153,6 +157,10 @@ fun EdgeChip(text: String, modifier: Modifier = Modifier) {
  * through [state]'s [DemoSheetState.hideThenDismiss], so the sheet slides down first. The scrim's shade follows the
  * sheet's own position, so it is still there while the sheet slides away, not gone before the sheet is.
  *
+ * Over the window's page ([LocalWindowBackdrop]) the sheet is glass (D164) in the glass's sheet style, from Android
+ * 13 on a [GlassTier.Full] phone; elsewhere it is the plain surface: a fill instead of a lens would show the page
+ * sharp through the sheet's text, and a Light phone spares the passes over half its screen.
+ *
  * An [expandable] sheet (a model's card, with its page) has one owner of its height (D119): it opens at
  * [DemoSize.sheetCompactHeight] (or the screen's height, if less) from its first frame, so it rises straight to its
  * top and content that lands later scrolls in room already there. Scrolled or pulled up,
@@ -185,6 +193,7 @@ fun DemoSheet(
     val scope = rememberCoroutineScope()
     val window = LocalWindowInfo.current.containerSize
     val scrim = colors.scrim
+    val glass = sheetGlass()
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         modifier =
@@ -202,7 +211,7 @@ fun DemoSheet(
             },
         sheetState = sheetState,
         shape = DemoShapes.sheet,
-        containerColor = colors.surface,
+        containerColor = if (glass != null) Color.Transparent else colors.surface,
         contentColor = colors.ink,
         tonalElevation = 0.dp,
         // the scrim is drawn above, from the sheet's position; Material's still takes the tap that closes the sheet
@@ -224,16 +233,45 @@ fun DemoSheet(
             }
         },
     ) {
-        GrabHandle(
-            Modifier.align(Alignment.CenterHorizontally),
-            onDismiss = { scope.launch { state.hideThenDismiss(onDismissRequest) } },
-        )
-        if (expandable) {
-            ExpandableBody(content, pinned)
-        } else {
-            SheetBody(content, Modifier.onSizeChanged { contentHeight = it.height }, pinned)
+        Box {
+            if (glass != null) SheetGlass(glass.first, glass.second, Modifier.matchParentSize())
+            Column {
+                GrabHandle(
+                    Modifier.align(Alignment.CenterHorizontally),
+                    onDismiss = { scope.launch { state.hideThenDismiss(onDismissRequest) } },
+                )
+                if (expandable) {
+                    ExpandableBody(content, pinned)
+                } else {
+                    SheetBody(content, Modifier.onSizeChanged { contentHeight = it.height }, pinned)
+                }
+            }
         }
     }
+}
+
+/** The page a sheet's glass is drawn over and its style (D164), or null where the sheet is the plain surface. */
+@Composable
+private fun sheetGlass(): Pair<Backdrop, GlassStyle>? {
+    val backdrop = LocalWindowBackdrop.current ?: return null
+    if (backdrop.page == null || GlassFillsInstead || LocalGlassTier.current == GlassTier.Light) return null
+    return backdrop to LocalGlass.current.sheet
+}
+
+/**
+ * A sheet's glass (D164): a lens over [backdrop]'s page, rounded as the sheet's top. Its bottom corners lie a corner's
+ * height below the sheet, where the sheet's clip cuts them off, so the glass meets the screen's bottom square.
+ */
+@Composable
+private fun SheetGlass(backdrop: Backdrop, style: GlassStyle, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .layout { measurable, constraints ->
+                val below = DemoShapes.sheetRadius.roundToPx()
+                val grown = measurable.measure(Constraints.fixed(constraints.maxWidth, constraints.maxHeight + below))
+                layout(constraints.maxWidth, constraints.maxHeight) { grown.place(0, 0) }
+            }.glass(backdrop, style, DemoShapes.sheetRadius),
+    )
 }
 
 /**

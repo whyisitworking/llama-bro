@@ -25,6 +25,7 @@ object SavedGlass {
                 Saved.Bar.of(glass.bar),
                 glass.mergedLens,
                 Saved.Press.of(glass.press),
+                Saved.Style.of(glass.sheet),
             ),
         )
 
@@ -35,6 +36,7 @@ object SavedGlass {
             chip = saved.chip?.over(default.chip) ?: default.chip,
             panel = saved.panel?.over(default.panel) ?: default.panel,
             bar = saved.bar?.over(default.bar) ?: default.bar,
+            sheet = saved.sheet?.over(default.sheet) ?: default.sheet,
             mergedLens = saved.mergedLens,
             press = saved.press?.over(default.press) ?: default.press,
         )
@@ -59,6 +61,7 @@ object SavedGlass {
         val bar: Bar? = null,
         val mergedLens: Boolean? = null,
         val press: Press? = null,
+        val sheet: Style? = null,
     ) {
         @Serializable
         data class Style(

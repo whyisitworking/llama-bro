@@ -14,6 +14,7 @@ class SavedGlassTest {
                 it.copy(
                     panel = it.panel.copy(bezel = 15.dp, refraction = 22.dp, dispersion = 1.2f, blur = 7.dp),
                     bar = it.bar.copy(blur = 30.dp, hold = 0.4f, softness = 0.8f),
+                    sheet = it.sheet.copy(veil = 0.7f, blur = 24.dp),
                 )
             }
         assertEquals(tuned, SavedGlass.decode(SavedGlass.encode(tuned)))

@@ -49,7 +49,7 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -203,7 +203,7 @@ internal fun FloatingLayer(
         LocalGlass.current.merges(LocalGlassTier.current) && page != null && shaders != null &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     SideEffect { container?.active = merging }
-    Box(Modifier.fillMaxWidth().onGloballyPositioned { at = it.positionInWindow() }) {
+    Box(Modifier.fillMaxWidth().onGloballyPositioned { at = it.positionOnScreen() }) {
         val where = { at }
         if (page != null && shaders != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             ShaderBlur(edge, ground, backdrop, shaders, where, container.takeIf { merging })
@@ -253,7 +253,7 @@ private fun LayerColumn(edge: Edge, fade: Dp, overKeyboard: Boolean, content: @C
 }
 
 /**
- * The page under a bar at [at] in the window, blurred progressively by [shaders] and veiled with [ground] (Android 13
+ * The page under a bar at [at] on the screen, blurred progressively by [shaders] and veiled with [ground] (Android 13
  * and up), with the glass on the bar drawn in the same passes when it has a [container] (D154).
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -283,7 +283,7 @@ private fun BoxScope.ShaderBlur(
                     .orEmpty()
             small.renderEffect = shaders.effect(BarPass(edge, reduced.toSize(), style, ground, scale, glass), this)
             onDrawBehind {
-                // its place in the window less the page's, read here so either moving redraws it
+                // its place on the screen less the page's, read here so either moving redraws it
                 val over = at() - backdrop.origin
                 small.record(reduced) {
                     scale(1f / scale, pivot = Offset.Zero) {
@@ -299,7 +299,7 @@ private fun BoxScope.ShaderBlur(
     )
 }
 
-/** The page under a bar at [at] in the window under one even blur, faded out into the page (Android 12). */
+/** The page under a bar at [at] on the screen under one even blur, faded out into the page (Android 12). */
 @Composable
 private fun BoxScope.EvenBlur(edge: Edge, backdrop: Backdrop, at: () -> Offset) {
     val page = backdrop.page ?: return
@@ -631,7 +631,7 @@ private class BarLens(
     val veil: Float,
 )
 
-/** This shape as a bar at [bar] in the window, drawn [scale] times smaller, draws it. */
+/** This shape as a bar at [bar] on the screen, drawn [scale] times smaller, draws it. */
 private fun MergedShape.onBar(bar: Offset, scale: Float, density: Density): BarLens =
     with(density) {
         val at = rect.translate(-bar)

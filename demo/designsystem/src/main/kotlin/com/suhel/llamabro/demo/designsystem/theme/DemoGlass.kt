@@ -192,15 +192,16 @@ data class GlassPose(val topLeft: Offset, val size: Size, val scaleX: Float, val
 
 /**
  * The glass of every kind the app draws: [chip] (icon buttons, the title), [panel] (fields, tabs, a FAB), [bar],
- * and how a pressed one answers ([press]). With [mergedLens], a floating bar draws the chips and panels on it in its
- * own blur passes, instead of each drawing its lens in two passes of its own: a quarter less CPU, a touch softer (D154,
- * F187). Null leaves it to the phone's [GlassTier] ([merges]).
+ * [sheet] (the bottom sheets, D164), and how a pressed one answers ([press]). With [mergedLens], a floating bar draws
+ * the chips and panels on it in its own blur passes, instead of each drawing its lens in two passes of its own: a
+ * quarter less CPU, a touch softer (D154, F187). Null leaves it to the phone's [GlassTier] ([merges]).
  */
 @Immutable
 data class GlassTheme(
     val chip: GlassStyle,
     val panel: GlassStyle,
     val bar: BarGlass,
+    val sheet: GlassStyle,
     val mergedLens: Boolean? = null,
     val press: GlassPress = GlassPress.Default,
 ) {
@@ -243,6 +244,9 @@ data class GlassTheme(
                             // a light blur lingers before the page turns sharp: a linear radius snaps into focus
                             softness = 0.5f,
                         ),
+                    // a sheet is read at length over half the screen: the densest veil and the strongest blur, so
+                    // its text sits on calm glass, the page under it a soft play of colour
+                    sheet = chip.copy(veil = 0.6f, blur = 20.dp),
                 )
             }
     }

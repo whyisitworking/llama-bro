@@ -87,6 +87,12 @@ fun GlassScreen(onChange: (GlassTheme?) -> Unit, onBack: () -> Unit) {
         Section("Panels: the message bar, fields, tabs, FAB") {
             GroupedList { styleSliders("panel", glass.panel) { onChange(glass.copy(panel = it)) } }
         }
+        // a sheet's glass needs a lens and every pass: elsewhere the sheets are plain, and their sliders change nothing
+        if (!GlassFillsInstead && LocalGlassTier.current == GlassTier.Full) {
+            Section("Sheets: the panels that rise from the bottom") {
+                GroupedList { styleSliders("sheet", glass.sheet) { onChange(glass.copy(sheet = it)) } }
+            }
+        }
         Section("Bars: the blur under the top and bottom") {
             GroupedList { barSliders(glass.bar) { onChange(glass.copy(bar = it)) } }
         }
@@ -206,6 +212,7 @@ internal fun describe(glass: GlassTheme): String {
     return "mergedLens = ${glass.mergedLens}\n" +
         "chip = ${style(glass.chip)}\n" +
         "panel = ${style(glass.panel)}\n" +
+        "sheet = ${style(glass.sheet)}\n" +
         "bar = BarGlass(blur = ${trim(b.blur.value)}.dp, dispersion = ${trim(b.dispersion.value)}.dp, " +
         "veil = ${b.veil}f, bareVeil = ${b.bareVeil}f, fade = ${trim(b.fade.value)}.dp, hold = ${b.hold}f, " +
         "softness = ${b.softness}f)\n" +

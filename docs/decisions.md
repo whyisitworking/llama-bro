@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D163 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D164 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -197,6 +197,7 @@ its amendments to know what holds now.
 | [D161](#d161-the-logo-replaces-the-orb) The logo replaces the orb | 2026-11-26 | |
 | [D162](#d162-a-bars-copy-of-the-page-is-as-much-smaller-as-its-blur-can-hide) A bar's copy of the page is as much smaller as its blur can hide | 2026-11-26 | |
 | [D163](#d163-a-bars-blur-lingers-as-a-light-blur-before-the-page-turns-sharp) A bar's blur lingers as a light blur before the page turns sharp | 2026-11-26 | |
+| [D164](#d164-the-bottom-sheets-are-glass-over-the-whole-window) The bottom sheets are glass over the whole window | 2026-11-26 | |
 
 **Repository and process**
 
@@ -2613,4 +2614,27 @@ square; Settings › Appearance › Glass › Bars has a "Fade softness" slider,
 Consequences: At 0 the bars look as before. A softer fade blurs less across the fade's middle, so the bar's frost
 looks a little shallower unless "Full blur over" is raised. It costs one `pow` a pixel a pass, no taps.
 
-Next free IDs: D164, F189.
+<a id="d164"></a>
+### D164. The bottom sheets are glass over the whole window
+
+Status: Decided (2026-11-26). Builds on D148, D153 and D154.
+
+Context: The owner asked for glass bottom sheets. The plan recorded in the demo's design (§12) assumed `DemoSheet` had
+to leave Material's `ModalBottomSheet`, whose window is its own, for a sheet drawn in the app's window. On the
+emulator, glass in Material's sheet window drew the app window's recorded page in the right place: the sheet's
+composition inherits the page's layer, a node of the same process that the one render thread draws from either window.
+So the sheet keeps Material's drag, Back, keyboard inset, focus and accessibility, and only its surface changes.
+Decision: `WindowGlass` at the app's root records the whole window as a page (`LocalWindowBackdrop`, internal to the
+design system, so glass in the app's window, which lies inside that page, can't read it and draw itself). A
+`DemoSheet` over it draws a lens in `GlassTheme.sheet` (the chip's glass with a 0.6 veil and a 20 dp blur: text is read
+on it at length), rounded as the sheet's top, its bottom corners below the sheet's clip so it meets the screen square.
+Glass and pages find each other by their place on the screen, not in their window, so glass in any window lines up
+with the page; in the app's own window the two are the same. Before Android 13, or on a Light phone (D153), the sheet
+keeps the plain surface: a fill, or a lens without its own blur, shows the page sharp under the sheet's text (seen on
+the emulator). Settings › Appearance › Glass has a Sheets section on phones that draw it.
+Consequences: A sheet is two more passes over half the screen or more. A still sheet costs nothing (no frame is
+drawn); while it slides or scrolls, the page under it is drawn again, including any glass there (a bar under the sheet
+blurs twice). Not yet measured on the phone (`SheetAndLayoutBenchmark`, a long sheet's scroll). The scrim still dims
+only the page around the sheet; the glass reads the page undimmed.
+
+Next free IDs: D165, F189.

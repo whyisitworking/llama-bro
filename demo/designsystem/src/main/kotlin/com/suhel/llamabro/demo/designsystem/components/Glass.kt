@@ -16,9 +16,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -54,7 +56,7 @@ import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.SuspendingPointerInputModifierNode
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.node.CompositionLocalConsumerModifierNode
 import androidx.compose.ui.node.DelegatingNode
 import androidx.compose.ui.node.DrawModifierNode
@@ -90,7 +92,7 @@ import kotlin.math.ceil
 
 /**
  * A page that glass can be drawn over (D148): the layer the page is recorded into ([page], null before Android 12,
- * where nothing can blur), the colour it is drawn on, and where it sits in the window, so a piece of glass anywhere
+ * where nothing can blur), the colour it is drawn on, and where it sits on the screen, so a piece of glass anywhere
  * over it finds the part under itself. Made with [rememberBackdrop]; the page is the content of [backdropSource].
  */
 @Stable
@@ -120,7 +122,8 @@ fun rememberBackdrop(pageColor: Color = LocalDemoColors.current.canvas): Backdro
  */
 fun Modifier.backdropSource(backdrop: Backdrop): Modifier {
     val page = backdrop.page ?: return this
-    return onGloballyPositioned { backdrop.origin = it.positionInWindow() }
+    // on the screen, as glass finds itself: glass in another window (a sheet's, D164) lines up with the page too
+    return onGloballyPositioned { backdrop.origin = it.positionOnScreen() }
         .drawWithContent {
             page.record { this@drawWithContent.drawContent() }
             drawLayer(page)
@@ -134,7 +137,27 @@ fun Modifier.backdropSource(backdrop: Backdrop): Modifier {
 val LocalBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
 /**
- * A piece of glass a floating bar draws in its own passes (D154): where it is in the window ([rect]), its corners'
+ * The whole window's page, for the bottom sheets' glass (D164), provided by [WindowGlass]. Only glass in a window of
+ * its own (a sheet's) may read it: everything in the app's window is inside this page, so glass there drawing it would
+ * draw itself. Internal, so the app can't. Null leaves the sheets plain.
+ */
+internal val LocalWindowBackdrop = staticCompositionLocalOf<Backdrop?> { null }
+
+/**
+ * The app's window as the page under its bottom sheets' glass (D164): [content] fills the window and is recorded once a
+ * frame, for the sheets, which open in windows of their own, to draw it as any glass does. Put it at the app's root,
+ * around everything a sheet can open over.
+ */
+@Composable
+fun WindowGlass(content: @Composable BoxScope.() -> Unit) {
+    val window = rememberBackdrop()
+    CompositionLocalProvider(LocalWindowBackdrop provides window) {
+        Box(Modifier.fillMaxSize().backdropSource(window), content = content)
+    }
+}
+
+/**
+ * A piece of glass a floating bar draws in its own passes (D154): where it is on the screen ([rect]), its corners'
  * radius in pixels ([corner]), its [style], and how much more than the style says its edge bends while pressed
  * ([bend], D158); [rect] and [corner] are the pressed glass's, swollen.
  */
@@ -506,7 +529,7 @@ private class GlassNode(
     }
 
     override fun onGloballyPositioned(coordinates: LayoutCoordinates) {
-        val now = coordinates.positionInWindow()
+        val now = coordinates.positionOnScreen()
         if (now != at || coordinates.size != extent) {
             at = now
             extent = coordinates.size
@@ -569,7 +592,7 @@ private class GlassNode(
         val page = backdrop.page ?: return false
         val layer = glass ?: return false
         val lens = lens as? Lens ?: return false
-        // the part of the page under the glass: its place in the window less the page's
+        // the part of the page under the glass: its place on the screen less the page's
         val offset = at + shift - backdrop.origin
         layer.record(IntSize(ceil(grown.width).toInt(), ceil(grown.height).toInt())) {
             drawRect(backdrop.pageColor)
