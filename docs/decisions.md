@@ -2488,4 +2488,22 @@ Decision: The deviations, each with its reason:
    hold more.
 Consequences: A client can't read the phone's files or reach its network through a request. A client that sends an
 image by URL must send it as `data:`. Every other request and answer is upstream's (F189).
-Next free IDs: D158, F190.
+
+<a id="d158"></a>
+### D158. Swiping the app away from Recents keeps the phone serving; Stop ends it
+
+Status: Decided (2026-11-26)
+
+Context: Server mode runs `ServerService`, a `specialUse` foreground service with a wake lock and a Wi-Fi lock, so
+serving goes on with the app in the background (docs/design/server.md §3). Swiping a task away from Recents finishes
+its activities, and Android stops a service only when it says `stopWithTask`; otherwise the process, the locks and the
+listening server stay. The spec's anti-goal said the server stops when the person stops it "or the app is closed", and
+nothing said which the swipe is.
+Decision: The swipe does not stop serving. A docked phone serving the Wi-Fi is a dedicated server: the person sets it
+down and leaves it, and clearing Recents is housekeeping, not a request to stop. Serving ends when the person says so,
+with Stop serving on the page or Stop in the notification, which stays while it serves; it also ends with the process.
+The manifest sets `android:stopWithTask="false"` on the service, Android's default, so the choice is visible there.
+Consequences: The notification is the control once the app is swiped away: it names the model and the address and
+carries Stop. A person who swipes the app away expecting serving to end finds the notification still there, which is
+the one place that says the phone still serves.
+Next free IDs: D159, F190.

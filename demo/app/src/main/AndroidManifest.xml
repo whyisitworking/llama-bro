@@ -47,11 +47,14 @@
             android:name=".ReplyService"
             android:exported="false"
             android:foregroundServiceType="shortService" />
-        <!-- server mode keeps serving with the app in the background; it ends with serving, with Stop in its notification -->
+        <!-- server mode keeps serving with the app in the background; it ends with serving, with Stop in its notification.
+             stopWithTask="false" is Android's default, set here so the choice shows: swiping the app away from Recents
+             keeps serving (D158) -->
         <service
             android:name=".ServerService"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="false">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="local model server" />

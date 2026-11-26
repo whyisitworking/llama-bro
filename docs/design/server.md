@@ -41,8 +41,8 @@ with the same statuses and bodies (F189), because it *is* llama-server's core (D
   refuse every non-`data:` media URL.
 - A remote client changing the shared model behind the chat's back: `POST /props`, `POST /lora-adapters` and
   `POST /slots/:id` (save and restore write files) are refused unless the app opts in per route.
-- Anything listening when the person didn't ask: no auto-start, and the server stops when the person stops it or the
-  app is closed.
+- Anything listening when the person didn't ask: no auto-start, and the server stops when the person stops it (Stop
+  on the page or the notification); swiping the app away does not stop it (D158).
 
 ## Constraints from the code as it is (main at `0896b33e`)
 
