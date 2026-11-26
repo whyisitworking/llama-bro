@@ -59,7 +59,7 @@ class Bm25Test {
 
     // Chunk-sized rows: a 256-token chunk has about 60 distinct terms, drawn Zipf-like from a vocabulary of ~30k.
     @Test
-    fun fiftyThousandChunkSizedRowsFitInAboutFiftyMegabytes() {
+    fun fiftyThousandChunkSizedRowsFitIn80Megabytes() {
         val random = java.util.Random(7)
         val vocabulary = 30_000
 

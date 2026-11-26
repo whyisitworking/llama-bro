@@ -24,6 +24,11 @@ import okio.Path
 public data class DocumentInfo(val id: String, val title: String, val source: String?, val chunks: Int)
 
 /**
+ * Decisions: the module and its scope,
+ * [D167](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d167); the folder and its crash
+ * safety,
+ * [D168](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d168).
+ *
  * Documents cut into passages, embedded by one model and kept in a folder (docs/design/rag.md). Open it with [open];
  * [add] and [remove] documents; it survives a crash with the last document committed whole.
  *

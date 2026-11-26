@@ -22,6 +22,9 @@ private const val DEFAULT_DESCRIPTION =
         "[1], [2] and so on. Answer from them and cite the passages you used by number, as [n]."
 
 /**
+ * Decision:
+ * [D171](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d171).
+ *
  * A tool for a conversation (`Conversation.Builder.tool`): the model calls it with a `query`, it runs [search] with
  * [limit] and [reranker], and the model gets the passages as [asContext] writes them, so it can cite `[n]`. No match
  * says so plainly, so the model doesn't invent. A closed or unreadable library, or a search model that failed, is an

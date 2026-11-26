@@ -46,9 +46,7 @@ public fun interface TokenCounter {
                 tokens,
             ) { "tokenize answered without tokens: ${response.take(ERROR_EXCERPT)}" }.jsonArray.size
         }
-
-        private companion object {
-            const val ERROR_EXCERPT = 200
-        }
     }
 }
+
+private const val ERROR_EXCERPT = 200

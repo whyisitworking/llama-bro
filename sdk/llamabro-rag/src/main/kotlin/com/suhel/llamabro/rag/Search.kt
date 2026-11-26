@@ -32,6 +32,10 @@ private const val CANDIDATES = 50
 private const val RERANKED = 20
 
 /**
+ * Decision:
+ * [D170](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d170); the defaults were kept by
+ * [F191](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f191).
+ *
  * The [limit] passages that best answer [query]: the dense top 50 (the query embedded with the format's query prefix
  * against every vector) and the keyword (BM25) top 50, merged by reciprocal rank fusion (docs/design/rag.md). With
  * [reranker], a model loaded with `ModelTask.Rerank`, the fused top 20 (fewer if there are fewer) are reranked and

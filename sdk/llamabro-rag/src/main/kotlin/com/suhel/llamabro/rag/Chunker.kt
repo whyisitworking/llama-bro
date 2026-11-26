@@ -1,6 +1,9 @@
 package com.suhel.llamabro.rag
 
 /**
+ * Decision:
+ * [D169](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d169).
+ *
  * Splits a [Document] into passages for embedding: at Markdown headings first (each passage keeps its heading path),
  * then blank-line paragraphs, then sentences, then characters, so a passage never runs past [maxTokens]. Small pieces
  * are packed together up to the limit, and each passage after the first repeats the tail of the one before it.

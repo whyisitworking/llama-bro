@@ -1,7 +1,8 @@
 # Asking your own documents: `llamabro-rag` and the demo's library
 
-Status: **approved** (2026-11-26); plan in [docs/superpowers/plans/2026-11-26-llamabro-rag.md](../superpowers/plans/2026-11-26-llamabro-rag.md). Decisions are recorded in
-[decisions.md](../decisions.md) as they are taken.
+Status: **SDK part built (Tasks 1-8); demo pending** (2026-11-26); the sections below describe the design, and where the
+built module differs the note says so (see "As built" at the end). Plan in [docs/superpowers/plans/2026-11-26-llamabro-rag.md](../superpowers/plans/2026-11-26-llamabro-rag.md). Decisions are recorded in
+[decisions.md](../decisions.md): D167 to D171 for the SDK part.
 
 ## Intent
 
@@ -191,3 +192,27 @@ Rough size: steps 1-8 about a week and a half, steps 9-10 about a week, step 11 
 
 BM25's tokenisation details (lowercasing, simple stemming or none), the JSON layout of `chunks.jsonl`, the exact
 progress events, and the passage sheet's layout within the design system.
+
+## As built (SDK part)
+
+The module is in `sdk/llamabro-rag`; [architecture.md](../architecture.md) section 5.10 describes it and D167 to D171
+record the choices. Where it differs from the text above, the code is right:
+
+- **Tokens are counted, not estimated.** F190 found that `/tokenize` answers on an embedding load, so the chunker counts
+  every chunk with `TokenCounter.Model(embedder)` (special tokens and the document prefix included) and the character
+  estimate only guides where to split (D169). The "estimate with a margin" and the CJK risk are gone; the
+  `InputTooLong` cut-and-retry remains as the safety net.
+- **`Library.open` takes the file system and the pooling:** `Library.open(fs, dir, embedder, format, chunker, pooling)`,
+  with Okio's `FileSystem`, since a loaded model reports neither its file name nor its pooling. The identity holds the
+  model's name and weight size instead of its file name (D168).
+- **The folder** has `manifest.json` written last, append-only data files whose trailing garbage is cut off, and a
+  compaction committed by `manifest.next` (D168). It is not "write a temporary file and rename" throughout.
+- **`add` is one commit** for a document and the removal of any older one with its id; a compaction that fails
+  afterwards does not fail the `add`.
+- **Search** is as designed (D170). `Hit.score` is the fusion's score, or the reranker's with one.
+- **The tool** is `Library.searchTool(name, limit, reranker, description)`, and `asContext()` is `List<Hit>.asContext()`
+  (D171).
+- **Evaluation (F191):** the defaults of 256 tokens, 15% overlap, top 50 each, k 60, rerank 20 and limit 6 stayed.
+  Reranking with jina-reranker-tiny did not help on the question set, so the demo has no evidence for turning it on. The
+  multilingual embedder comparison is still open.
+- **Still pending:** the PDF text spike (needs the phone), the demo (steps 9 to 11) and the phone measurements.

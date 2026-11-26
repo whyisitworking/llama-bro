@@ -229,7 +229,6 @@ public final class com/suhel/llamabro/rag/TokenCounter$Estimate : com/suhel/llam
 }
 
 public final class com/suhel/llamabro/rag/TokenCounter$Model : com/suhel/llamabro/rag/TokenCounter {
-	public static final field ERROR_EXCERPT I
 	public fun <init> (Lcom/suhel/llamabro/Model;)V
 	public fun count (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }

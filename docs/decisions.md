@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D162 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D171 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -63,6 +63,11 @@ its amendments to know what holds now.
 | [D106](#d106-create-compares-settings-not-the-logger-or-token-provider-hub-locks-key-by-canonical-path-saves-read-version-3-only) `create` compares settings, not the logger or token provider; hub locks key by canonical path;… | 2026-11-19 | |
 | [D115](#d115-the-bridges-own-errors-carry-a-code-upstreams-matched-words-are-pinned-against-its-source) The bridge's own errors carry a code; upstream's matched words are pinned against its source | 2026-11-19 | |
 | [D142](#d142-one-error-model-a-missing-capability-is-notsupported-on-every-path-an-unreadable-reply-is-servererror-and-every-c-api-call-reports-a-status-and-its-reason) One error model: a missing capability is `NotSupported` on every path, an unreadable reply is… | 2026-11-24 | |
+| [D167](#d167) `llamabro-rag` is a separate optional module: pure Kotlin, exact search behind `VectorStore` | 2026-11-26 | |
+| [D168](#d168) A library is a folder whose manifest is written last; a crash leaves the last good library | 2026-11-26 | |
+| [D169](#d169) Chunks are cut at headings, paragraphs, sentences and characters and counted with the embedder's tokenizer | 2026-11-26 | |
+| [D170](#d170) Search is BM25 and dense search fused by rank, with an optional rerank; reranking is not on by default | 2026-11-26 | |
+| [D171](#d171) The library's search tool returns numbered passages, answers failures safely and lets cancellation through | 2026-11-26 | |
 
 **Hub**
 
@@ -2693,4 +2698,132 @@ The manifest sets `android:stopWithTask="false"` on the service, Android's defau
 Consequences: The notification is the control once the app is swiped away: it names the model and the address and
 carries Stop. A person who swipes the app away expecting serving to end finds the notification still there, which is
 the one place that says the phone still serves.
-Next free IDs: D167, F192.
+
+<a id="d167"></a>
+### D167. Retrieval is a separate, optional module, `llamabro-rag`: pure Kotlin, exact search behind `VectorStore`
+
+Status: Decided (2026-11-26)
+
+Context: The embeddings decision (D65) gave the SDK `Model.embed` and `Model.rerank` and left out similarity and search
+helpers, so core stays llama-server's features. Answering questions over a person's own documents needs what sits
+around those calls: chunking, storing vectors, searching, citing (docs/design/rag.md). Three ways to build the store
+and search were weighed:
+- A, pure Kotlin with exact search: vectors in a flat float16 file scanned in full, BM25 in memory, reciprocal rank
+  fusion. No native code and multiplatform-friendly; memory and scan time grow with the corpus, so past about 100k
+  chunks it needs another store.
+- B, SQLite with its full-text search: durable and queryable, but Android's platform SQLite doesn't promise FTS5, a
+  bundled one is a native dependency, and it isn't multiplatform as it stands.
+- C, a native approximate index (sqlite-vec, usearch): scales to millions, at the cost of a native build per ABI that no
+  phone corpus needs yet.
+Decision: `sdk/llamabro-rag` (package `com.suhel.llamabro.rag`) is a separate module an app adds on purpose; core does
+not depend on it and gains nothing for it. It is pure Kotlin (Okio for files, coroutines, kotlinx.serialization; no
+`android.*`), as the multiplatform soft rule asks, and depends on `llamabro` and `llamabro-typed` (for the tool). A is
+chosen, behind the `VectorStore` interface (`nearest(query, k)`), so B or C can replace it without changing `Library`'s
+API. The module does no policy: it indexes what it is given and refuses nothing, as the SDK makes no app policy. Reading file formats is the app's: the module takes text.
+Consequences: Core stays what D65 made it. An app that doesn't add the module carries none of it. A library of
+hundreds of thousands of chunks needs a `VectorStore` of its own; the scan's cost at 100k chunks has not been measured
+on a phone. The folder format is D168, chunking D169, search D170 and the tool D171.
+
+<a id="d168"></a>
+### D168. A library is a folder whose manifest is written last; a crash leaves the last good library
+
+Status: Decided (2026-11-26)
+
+Context: A library lives on a phone that can lose power or be killed in the middle of a write, and an index that opens
+half-written, or that mixes vectors from two embedding models, returns confident nonsense.
+Decision: A library is a folder: `manifest.json` (format version, the embedder's identity, the documents with their row
+ranges, and the counts of rows, bytes of chunks and tombstones), `vectors.f16` (a row per chunk, float16, little-endian),
+`chunks.jsonl` (a line per row) and `deleted` (tombstones). The rules:
+- The manifest is written last and names only what is already on disk. The two data files are append-only; bytes past
+  what the manifest counts, which a crash mid-append leaves, are truncated by the next write, not read.
+- Whole files (the manifest, the first write) are written to `<name>.tmp`, flushed and moved over the old one, so a move
+  is atomic.
+- A document is added or replaced in one write: its new rows and the old ones' removal commit with one manifest, so a
+  crash leaves one version or the other. `remove` appends a tombstone (`firstRow rowCount`) and rewrites the manifest.
+- Compaction runs once tombstoned rows pass a quarter of the rows. It writes `vectors.f16.tmp` and `chunks.jsonl.tmp`,
+  then `manifest.next`, which is the point it is committed at; moving the three into place follows, and an open that
+  finds `manifest.next` finishes it.
+- A compaction that fails after a document is committed does not fail that `add`: the document is in, the store is
+  marked to open again before the next write, and that write compacts again. A write that fails leaves the folder
+  holding the library as it was, and the call fails with the `IOException`.
+- `EmbedderIdentity` is the model's name, the weights' size in bytes, the vectors' dimensions, the pooling, the
+  normalisation and the `EmbeddingFormat` (query and document prefixes). Opening a folder with another identity throws
+  `IndexMismatch(built, wanted)` and changes nothing: any of these puts vectors in a different space. The weights'
+  size stands in for the file name, which a loaded model does not report; the pooling is passed by the app, since a
+  model does not report it either.
+- One write at a time: a mutex guards the folder, and reads wait for a commit in progress. Embedding, the slow part of
+  an `add`, runs outside it, and cancelling before the commit saves nothing of the document.
+Consequences: Tests make the file system die at each file a commit writes or moves onto (`CrashingFileSystem`), and the library
+opens to the last committed state each time. A library built with one embedder cannot be quietly reused with another; the app rebuilds
+it. The format is version 1 and is not promised stable across the alpha.
+
+<a id="d169"></a>
+### D169. Chunks are cut at headings, then paragraphs, sentences and characters, and counted with the embedder's own tokenizer
+
+Status: Decided (2026-11-26)
+
+Context: An embedding input cannot be split across batches, and one longer than the batch fails (D65). Estimating
+tokens from characters was the design's first plan; F190 showed that `/tokenize` answers on an embedding load in
+upstream and in the SDK, so the embedder's own count is available.
+Decision: `Chunker` cuts a document at Markdown headings first (each chunk keeps its heading path), then at blank-line
+paragraphs, then sentences, then characters, into chunks of at most 256 tokens (`maxTokens`), and packs small pieces
+together up to that limit. Every chunk is counted with `TokenCounter.Model`, the embedder's tokenizer through
+`POST /tokenize` with special tokens (`[CLS]`, `[SEP]`) counted, and with the document prefix, as the model will see it,
+so none is over the batch; a character estimate (three to a token) only guides where to split, and no range is counted
+twice. The `Library` gives its chunker the format's document prefix, so `maxTokens` covers the prefix and the text.
+Overlap is 15% of the limit and repeats whole pieces (paragraphs, then sentences); text that had to be split by
+characters, as a wall without stops is, gets none. Offsets into the document stay exact. If the embedder still refuses
+a batch (`InputTooLong`), the ingest cuts the chunk again and retries; with a limit below the chunker's, every chunk not
+yet embedded is cut again with that limit.
+Consequences: Each chunk costs a tokenize call where the estimate is near the limit, which is small beside embedding.
+The 256 and 15% defaults were kept by F191, which also tried 128 and 512. The design's estimate-with-margin is gone
+(the estimate remains as `TokenCounter.Estimate` for tests and apps without a model).
+
+<a id="d170"></a>
+### D170. Search is BM25 and dense search fused by rank, with an optional rerank; reranking is not on by default
+
+Status: Decided (2026-11-26)
+
+Context: Small embedding models miss exact names, numbers and rare words that keyword search catches, and keyword
+search misses a question put in other words. F191 measured both on this repository's docs.
+Decision: `Library.search(query, limit = 6, reranker = null)` takes the dense top 50 (the query embedded with the
+format's query prefix, cosine against every row) and the BM25 top 50 (k1 = 1.2, b = 0.75, Lucene's idf; tokens are
+lowercase runs of letters and digits, each Han character and kana its own token, no stemming and no stop words), and
+merges them by reciprocal rank fusion with k = 60. With a `reranker` (a model loaded with `ModelTask.Rerank`), the
+fused top 20 are reranked and the best `limit` kept, and `Hit.score` is the reranker's; without one, the fused top
+`limit`, scored by the fusion. An empty library, a blank query or a limit under 1 returns an empty list without
+embedding. The matching step runs under the library's lock, so one answer comes from one state of the library; the
+query is embedded, and the reranker run, outside it.
+The defaults were kept by F191: hybrid at 256 tokens found 44 of 47 answers in the top 5, level with BM25 alone at 512,
+and was never far from the better of its two lists. Hybrid is kept over BM25 alone because each list alone has a size
+where it falls behind, and the question set shares the docs' words more than a stranger's would.
+Reranking is not on by default, and the module has no default for it: on that set jina-reranker-tiny found one to four
+questions fewer at 5 and added 0.3 to 1.0 s a query on a CPU. That is one tiny reranker on one English set, so there is
+no evidence for turning it on, and none against a larger reranker; an app passes one when it has measured its own.
+Consequences: Search is exact and in memory, in the single-digit milliseconds on the Mac at 2 000 passages (F191). The
+BM25 index is built on open and kept in step with every write, and costs memory in proportion to the corpus (the
+tests hold 50 000 chunk-sized rows to a budget of 80 MB). Top-k and the fusion constant were not varied.
+
+<a id="d171"></a>
+### D171. The library's search tool returns numbered passages, answers failures safely and lets cancellation through
+
+Status: Decided (2026-11-26)
+
+Context: A model that calls tools searches when it needs to (D14), and a tool's errors reach the model as text (D62,
+D83): nothing in them may be a path or an exception message. A model with no tools needs the same passages in its
+prompt.
+Decision: `Library.searchTool(name = "search_library", limit = 6, reranker = null, description)` is a typed tool
+(`llamabro-typed`) taking `SearchArgs(query)` and returning `List<Hit>.asContext()`: one block per passage, `[n] <title>
+› <headings>` (just `[n] <title>` with none), the passage on the next line, blocks separated by a blank line, `n` being
+the position from 1 so a reply can cite `[n]`. The description tells the model to answer from the passages and cite
+them by number. No match returns "No passages in the library match this query." so the model does not invent one.
+Failures are an `LbToolError` with a fixed short message and the cause attached, so the cause reaches the app and the
+model sees only the message (D83): "the library is not available" (closed), "the library could not be read" (I/O),
+"the search failed" (the embedder or reranker threw a `LlamaBroException`). `CancellationException` is rethrown first,
+since on the JVM it is an `IllegalStateException`, so a cancelled turn stops the search and is not reported to the model
+as an error. `asContext()` is public for the app that puts passages in a prompt itself.
+Consequences: The module chooses no policy about when to search; the app adds the tool or the passages. How well a
+small chat model uses either is not measured here. The hit's offsets and headings let an app show its source, which the
+design's anti-goal needs; the tool's text carries only the title and headings.
+
+Next free IDs: D172, F192.

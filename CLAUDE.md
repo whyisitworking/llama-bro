@@ -10,6 +10,7 @@ An Android SDK that runs llama.cpp's llama-server core in-process with a Kotlin 
   `sdk/llamabro-hub`: downloads and search; `sdk/llamabro-hub-work`: the WorkManager download worker;
   `sdk/llamabro-typed`, `sdk/llamabro-typed-ksp`: typed output and tools, and their KSP processor;
   `sdk/llamabro-server`: llama-server's HTTP API over a loaded model (Ktor);
+  `sdk/llamabro-rag`: documents cut, embedded and searched (hybrid) in a folder, and a search tool (pure Kotlin);
   `sdk/llamabro-hexagon`, `sdk/llamabro-opencl`: optional backends; `sdk/llamabro-testing`: `FakeLlamaBro`;
   `sdk/llamabro-hub-testing`: `FakeLlamaBroHub`; `sdk/build-logic`: the modules' shared build conventions;
   `sdk/native`: the C++ bridge, patches and the llama.cpp submodule; `sdk/acceptance`: device test apps.
