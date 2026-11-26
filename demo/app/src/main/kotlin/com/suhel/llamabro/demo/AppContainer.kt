@@ -324,6 +324,8 @@ class AppContainer(
             savedState = saved,
             searchFilters = settings.settings.map { it.searchFilters }.distinctUntilChanged(),
             saveSearchFilters = settings::updateSearchFilters,
+            served = { server.served.value },
+            stopServing = server::stop,
         )
 
     override fun modelSheetViewModel(row: ModelEntry, onExactFit: (FitView) -> Unit, startTier: SizeTier?) =

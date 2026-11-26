@@ -130,6 +130,7 @@ internal fun ModelsHost(
     val searching by viewModel.searching.collectAsStateWithLifecycle()
     val fetching by viewModel.fetching.collectAsStateWithLifecycle()
     val pendingRemove by viewModel.pendingRemove.collectAsStateWithLifecycle()
+    val pendingStopServing by viewModel.pendingStopServing.collectAsStateWithLifecycle()
     val cancelQuestion by viewModel.downloads.question.collectAsStateWithLifecycle()
     val problem by viewModel.problem.collectAsStateWithLifecycle()
     val opened by viewModel.opened.collectAsStateWithLifecycle()
@@ -148,6 +149,8 @@ internal fun ModelsHost(
                 onRemove = { entry -> entry.libraryModel()?.let(viewModel::askRemove) },
                 onConfirmRemove = viewModel::confirmRemove,
                 onDismissRemove = viewModel::dismissRemove,
+                onConfirmStopServing = viewModel::confirmStopServing,
+                onDismissStopServing = viewModel::dismissStopServing,
                 onDismissProblem = viewModel::dismissProblem,
                 onConfirmCancel = viewModel.downloads::confirm,
                 onKeepDownload = viewModel.downloads::keep,
@@ -165,6 +168,7 @@ internal fun ModelsHost(
             cancelQuestion,
             intro == true,
             filters,
+            pendingStopServing,
         ),
         actions,
         onBack,
@@ -220,6 +224,8 @@ data class ModelsPage(
     val intro: Boolean = browse?.intro == true,
     /** The search's filters (models-search design §5): the field's dot and the Hub label's line name changed ones. */
     val filters: SearchFilters = SearchFilters(),
+    /** The served model a swipe asked to remove: serving must stop first (docs/design/server.md §3). */
+    val pendingStopServing: LibraryModel? = null,
 )
 
 /** What the page's controls do. */
@@ -234,6 +240,8 @@ class ModelsActions(
     val onRemove: (ModelEntry) -> Unit = {},
     val onConfirmRemove: () -> Unit = {},
     val onDismissRemove: () -> Unit = {},
+    val onConfirmStopServing: () -> Unit = {},
+    val onDismissStopServing: () -> Unit = {},
     val onDismissProblem: () -> Unit = {},
     val onConfirmCancel: () -> Unit = {},
     val onKeepDownload: () -> Unit = {},
@@ -326,6 +334,9 @@ fun ModelsScreen(
     }
     if (filtering) FilterSheet(page.filters, actions.onFilters, onDismiss = { filtering = false })
     page.pendingRemove?.let { RemoveDialog(it, actions.onConfirmRemove, actions.onDismissRemove) }
+    page.pendingStopServing?.let {
+        StopServingToRemoveDialog(it, actions.onConfirmStopServing, actions.onDismissStopServing)
+    }
     page.cancelQuestion?.let { CancelDialog(it, actions.onConfirmCancel, actions.onKeepDownload) }
     if (explaining) WhatsAModelDialog(onDismiss = { explaining = false })
 }

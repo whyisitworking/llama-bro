@@ -146,6 +146,25 @@ internal fun RemoveDialog(model: LibraryModel, onConfirm: () -> Unit, onDismiss:
 }
 
 /**
+ * A swipe on the model being served (docs/design/server.md §3): the delete would wait for serving to end, so this asks
+ * to stop serving first, as the chat's switch does. The confirm stops serving and deletes, so it is in danger.
+ */
+@Composable
+internal fun StopServingToRemoveDialog(model: LibraryModel, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    DemoDialog(
+        title = "Stop serving ${keepSizeWithName(model.name)} to delete it?",
+        text =
+            "Computers on the Wi-Fi using it lose their connection. Deleting it frees " +
+                "${Format.sizeInGb(model.totalBytes)}.",
+        confirmLabel = "Stop and delete",
+        onConfirm = onConfirm,
+        dismissLabel = "Keep",
+        onDismiss = onDismiss,
+        danger = true,
+    )
+}
+
+/**
  * [name] with a no-break space before its last word, so a title never breaks the name from its size ("Remove
  * Qwen3.5 / 4B?" at 2x): the line breaks before the name instead.
  */
