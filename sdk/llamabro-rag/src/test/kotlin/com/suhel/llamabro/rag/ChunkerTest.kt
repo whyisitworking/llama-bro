@@ -198,4 +198,23 @@ class ChunkerTest {
         val e = runCatching { runBlocking { Chunker(10, 0f, recording, prefix).chunks(Document("d", "t", "a")) } }
         assertTrue(e.exceptionOrNull() is IllegalArgumentException)
     }
+
+    @Test
+    fun denseDigitsAreSplitToFit() {
+        // digits, hex and base64 run to a token a character: three times the Latin estimate
+        val dense = (1..60).joinToString("\n\n") { n -> "$n: " + "0123456789abcdef".repeat(4) }
+        val prefix = "doc: "
+        val chunks = runBlocking { Chunker(60, 0.15f, perChar, prefix).chunks(Document("d", "t", dense)) }
+        assertTrue(chunks.size > 30)
+        assertTrue(chunks.all { prefix.length + it.text.length <= 60 })
+    }
+
+    @Test
+    fun byteFallbackCharactersAreSplitToFit() {
+        val fourEach = TokenCounter { text -> text.sumOf { if (it.code >= 0x0800) 4 else 1 as Int } }
+        val text = (1..40).joinToString("\n\n") { n -> "段$n" + "漢字かな".repeat(6) }
+        val chunks = chunk(text, max = 50, overlap = 0.15f, counter = fourEach)
+        assertTrue(chunks.size > 10)
+        assertTrue(chunks.all { runBlocking { fourEach.count(it.text) } <= 50 })
+    }
 }

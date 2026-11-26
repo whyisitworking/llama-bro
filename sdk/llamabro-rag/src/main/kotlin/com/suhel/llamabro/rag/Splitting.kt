@@ -56,17 +56,23 @@ internal class Splitter(
     private val max = maxTokens - prefixTokens
     private val counted = HashMap<Long, Int>()
 
-    suspend fun pieces(start: Int, end: Int, level: Int): List<Piece> {
-        val whole = measure(start, end)
+    /** Whether the counter is the estimate, which is the count by definition: nothing to check against a model. */
+    val estimating: Boolean get() = counter is TokenCounter.Estimate
+
+    /** Splits an estimated piece that turned out too big, counting every part. */
+    suspend fun resplit(piece: Piece): List<Piece> = pieces(piece.start, piece.end, 1, exact = true)
+
+    suspend fun pieces(start: Int, end: Int, level: Int, exact: Boolean = false): List<Piece> {
+        val whole = measure(start, end, exact)
         if (whole.tokens <= max) return listOf(whole)
         val parts =
             when (level) {
                 0 -> paragraphs(start, end)
                 1 -> sentences(start, end)
-                else -> return characters(start, end)
+                else -> return characters(start, end, exact)
             }
-        if (parts.size <= 1) return pieces(start, end, level + 1)
-        return parts.flatMap { pieces(it.start, it.end, level + 1) }
+        if (parts.size <= 1) return pieces(start, end, level + 1, exact)
+        return parts.flatMap { pieces(it.start, it.end, level + 1, exact) }
     }
 
     /** The tokens the model embeds for the text from [start] to [end]: the prefix and the text, counted once. */
@@ -75,10 +81,11 @@ internal class Splitter(
             counter.count(prefix + text.substring(start, end))
         }
 
-    // The estimate decides when it is far from the limit: three characters a token for Latin, Greek and Cyrillic, and
-    // one for other scripts, and a count may be twice either (the chunker checks a packed chunk once it comes near the
-    // limit). Otherwise the counter is asked. Text of more than eight limits cannot fit.
-    private suspend fun measure(start: Int, end: Int): Piece {
+    // The estimate (three characters a token for Latin, Greek and Cyrillic, one for other scripts) only guides where to
+    // split: a range far under the limit by it is taken as a piece without a request, and the chunker counts every
+    // chunk it builds before it keeps it. Otherwise, or when [exact], the counter is asked. Text of more than eight
+    // limits cannot fit.
+    private suspend fun measure(start: Int, end: Int, exact: Boolean = false): Piece {
         val chars = end - start
         val estimate = (chars + 2) / 3
         return when {
@@ -92,7 +99,7 @@ internal class Splitter(
 
             else -> {
                 val guess = if ((start until end).all { text[it].code < WIDE_SCRIPTS }) estimate else chars
-                if (guess * 2 <= max) {
+                if (!exact && guess * 2 <= max) {
                     Piece(start, end, guess, exact = false)
                 } else {
                     Piece(start, end, maxOf(0, count(start, end) - prefixTokens))
@@ -131,19 +138,19 @@ internal class Splitter(
     }
 
     // as many characters as fit, never between the halves of a surrogate pair
-    private suspend fun characters(start: Int, end: Int): List<Piece> {
+    private suspend fun characters(start: Int, end: Int, exact: Boolean): List<Piece> {
         val pieces = ArrayList<Piece>()
         var from = start
         while (from < end) {
             var to = minOf(end, from + max * CHARS_PER_TOKEN)
-            var piece = measure(from, to)
+            var piece = measure(from, to, exact)
             while (piece.tokens > max && to - from > 1) {
                 to = from + maxOf(1, (to - from) * max / piece.tokens)
-                piece = measure(from, to)
+                piece = measure(from, to, exact)
             }
             if (to < end && text[to - 1].isHighSurrogate() && text[to].isLowSurrogate()) {
                 to = if (to - from > 1) to - 1 else to + 1
-                piece = measure(from, to)
+                piece = measure(from, to, exact)
             }
             pieces += piece
             from = to

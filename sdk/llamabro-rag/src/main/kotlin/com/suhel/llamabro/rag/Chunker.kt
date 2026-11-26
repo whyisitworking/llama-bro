@@ -9,8 +9,8 @@ package com.suhel.llamabro.rag
  * @param overlap the share of [maxTokens] a passage repeats from the previous one in its section, from 0 up to but not
  * including 1.
  * @param counter how tokens are counted. The default [TokenCounter.Estimate] needs no model; [TokenCounter.Model]
- * counts with the embedder's own tokenizer, and the chunker asks it only where the estimate cannot decide, and once
- * for each range of text.
+ * counts with the embedder's own tokenizer: every passage is counted, as the model will see it, before it is kept, and
+ * the estimate only guides where to split. No range is counted twice.
  * @param prefix what is put before every passage when it is embedded (`EmbeddingFormat.documentPrefix`); it is counted
  * with each passage, so [maxTokens] covers the prefix and the text.
  *
@@ -37,7 +37,7 @@ public class Chunker(
         val room = maxTokens - prefixTokens
         val chunks = ArrayList<Chunk>()
         for (section in markdownSections(text)) {
-            val pieces = splitter.pieces(section.start, section.end, 0)
+            val pieces = splitter.pieces(section.start, section.end, 0).toMutableList()
             for (range in pack(splitter, pieces, room, (overlap * room).toInt())) {
                 val start = (range.start until range.end).firstOrNull { !text[it].isWhitespace() } ?: continue
                 val end = (range.end downTo start + 1).first { !text[it - 1].isWhitespace() }
@@ -49,7 +49,9 @@ public class Chunker(
 
     // Greedy: each passage takes pieces while their token sum fits, after the tail of the previous one (whole pieces,
     // at most `budget` tokens, and always leaving room for the next piece) so every passage starts later than the last.
-    private suspend fun pack(splitter: Splitter, pieces: List<Piece>, room: Int, budget: Int): List<Span> {
+    // Then it is counted, prefix and text, as the model will see it: over the limit, it loses its last piece (or, with
+    // one new piece left, its overlap), and an estimated piece that is too big alone is split by counts.
+    private suspend fun pack(splitter: Splitter, pieces: MutableList<Piece>, room: Int, budget: Int): List<Span> {
         val out = ArrayList<Span>()
         var next = 0
         var previousFirst = -1
@@ -62,12 +64,9 @@ public class Chunker(
             ) {
                 sum += pieces[end++].tokens
             }
-            // estimated pieces are counted for real once, as a whole, when the chunk comes near the limit
-            while (end - first > 1 && needsCount(pieces, first, end, room) &&
-                splitter.count(pieces[first].start, pieces[end - 1].end) > maxTokens
-            ) {
-                if (end - 1 > next) end-- else first++
-            }
+            val fitted = fit(splitter, pieces, first, end, next) ?: continue
+            first = fitted.first
+            end = fitted.second
             out += Span(pieces[first].start, pieces[end - 1].end)
             previousFirst = first
             next = end
@@ -75,9 +74,39 @@ public class Chunker(
         return out
     }
 
-    // the tokens may be twice an estimate, so a chunk whose estimates sum to over half the limit may not fit
-    private fun needsCount(pieces: List<Piece>, first: Int, end: Int, room: Int): Boolean =
-        (first until end).any { !pieces[it].exact } && (first until end).sumOf { pieces[it].tokens } * 2 > room
+    // the range of pieces [first, end) trimmed until the model counts it within the limit, or null when the one new
+    // piece was estimated and too big, and has been split in place
+    private suspend fun fit(
+        splitter: Splitter,
+        pieces: MutableList<Piece>,
+        from: Int,
+        to: Int,
+        next: Int,
+    ): Pair<Int, Int>? {
+        var first = from
+        var end = to
+        while (!splitter.estimating && splitter.count(pieces[first].start, pieces[end - 1].end) > maxTokens) {
+            when {
+                end - 1 > next -> {
+                    end--
+                }
+
+                first < next -> {
+                    first++
+                }
+
+                pieces[next].exact -> {
+                    break
+                }
+
+                else -> {
+                    pieces.addAll(next, splitter.resplit(pieces.removeAt(next)))
+                    return null
+                }
+            }
+        }
+        return first to end
+    }
 
     private fun overlapStart(
         pieces: List<Piece>,
