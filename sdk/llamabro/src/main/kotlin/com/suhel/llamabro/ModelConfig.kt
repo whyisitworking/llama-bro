@@ -483,7 +483,9 @@ public sealed interface Speculative {
 
 /**
  * What a model is loaded for ([ModelConfig.task]). llama-server serves one task per load: an embedding or reranking
- * model answers [Endpoint.Embeddings], [Endpoint.EmbeddingsNative] or [Endpoint.Rerank], and nothing else.
+ * model answers [Endpoint.Embeddings], [Endpoint.EmbeddingsNative] or [Endpoint.Rerank] and, as upstream's does, the
+ * routes that only read the tokenizer, [Endpoint.Tokenize] and [Endpoint.Detokenize]
+ * ([F190](https://github.com/whyisitworking/llama-bro/blob/main/docs/research/findings.md#f190)); it does not generate.
  */
 public sealed interface ModelTask {
     /** Chat and text completion, the default. */

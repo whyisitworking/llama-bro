@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the [decision records](../decisions.md) (`D<n>`), the [research history](history.md), which summarises each phase, and the experiments under [`research/`](../../research/).
-> **Status:** living document, updated 2026-11-26 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183–F188; server: F189)
+> **Status:** living document, updated 2026-11-26 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183–F188; server: F189; RAG spikes: F190)
 
 Labels such as P1, PA, PF, PD and PH name the project's phases, and W1 to W9 the workstreams of a phase; the
 [research history](history.md#summary-of-the-phases) summarises each. "Task <n>", "T<n>" and "Feeds:" name the steps
@@ -2402,10 +2402,31 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   types are not compared (`http-run.py` records no headers); the module tests cover them.
 - **Feeds:** `server-run.sh`, `HostServerContractTest`, D163, D165, design `server.md` §4.
 
+## RAG spikes (F190)
+
+<a id="f190"></a>
+### F190. A Generate model and bge-small load at once and both answer, and `/tokenize` answers on an embedding load in upstream and in the SDK
+
+- **Finding:** One runtime holds `stories15M_MOE` (Generate) and `bge-small-f16` (`ModelTask.Embedding(Pooling.Mean)`)
+  loaded together: the embedder returns 384-float vectors before and after the generator completes eight tokens.
+  Upstream `llama-server --embeddings` on bge-small answers `POST /tokenize` with 200 and
+  `{"tokens":[1037,4937,2003,5777,2006,1996,10682,1012]}` for "A cat is sleeping on the sofa."; the SDK's
+  `rawRequest(Endpoint.Tokenize)` on the same model as an embedding load returns those same eight ids. So the SDK
+  needed no change; `ModelTask`'s KDoc, which said an embedding load answers only the embedding routes, is corrected.
+- **Evidence:** `research/rag/tokenize-upstream.sh` (upstream from the host build, bge-small-f16, `-c 512`);
+  `HostTwoModelsTest` and `HostEmbeddingTokenizeTest` through `sdk/scripts/check.sh`'s e2e step, run alone with
+  `-Pllamabro.host.lib` and `-Pllamabro.host.models` (Mac, CPU, 2026-11-26). The two-model test is small models only;
+  it says nothing about the memory two large ones need on a phone.
+- **Means:** a chunker can count an embedder's tokens with `TokenCounter.Model(embedder)` (the model's own tokenizer,
+  no estimate), and an app can run a chat model and an embedder side by side. The PDF-text spike
+  (`research/rag/pdf-text.md`) needs the owner's phone and is not run here.
+- **Feeds:** the `llamabro-rag` plan (Task 2's `Chunker`), `ModelTask`.
+
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
+| F190 | A Generate model and bge-small load at once and both answer; `/tokenize` answers on an embedding load in upstream and the SDK | `llamabro-rag` plan, ModelTask |
 | F189 | `llamabro-server` answers as upstream `llama-server` does; the official OpenAI and Anthropic clients work against it | D163, D165, server.md §4 |
 | F188 | A message sent as an edit ends could land between the edited message and its reply | ChatEngine |
 | F187 | A bar drawing the glass on it saves a quarter of a chat's CPU time per frame, a touch softer | D154 |
