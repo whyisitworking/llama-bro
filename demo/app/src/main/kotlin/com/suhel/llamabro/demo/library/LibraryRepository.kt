@@ -95,8 +95,24 @@ class LibraryRepository(
     /** The library open on a loaded embedder; opened again when the host has loaded the embedder again. */
     private var open: Pair<Model, Library>? = null
 
+    /** Whether a library, with its whole index, is in memory: for the tests. */
+    internal val holdsIndex: Boolean get() = open != null
+
     /** A rebuild owns the folder; under [lock]. */
     private var rebuilding = false
+
+    init {
+        // the embedder's idle release gives its memory back to the chat: the index built on it (vectors, BM25 and
+        // passages) goes too, and the library opens again on the next use, under its lease
+        embedders.onClose { model ->
+            lock.withLock {
+                if (open?.first === model) {
+                    open?.second?.close()
+                    open = null
+                }
+            }
+        }
+    }
 
     /**
      * Reads [uri] ([read]: a [TextImport]) and adds it, replacing the document from the same file: the library's

@@ -30,7 +30,9 @@ import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -165,6 +167,45 @@ class LibraryRepositoryTest {
             }
             importing.join()
             assertEquals(listOf("a", "b"), repository.documents.first().map { it.id })
+        }
+
+    @Test fun idleReleaseAlsoDropsTheIndex() =
+        runBlocking {
+            val quick =
+                EmbedderHost(
+                    fake.llamaBro,
+                    source = { ModelSource.file("/fake/${it.repo}.gguf") },
+                    policy = { DevicePolicy.Auto },
+                    estimate = { _, _, _ -> EmbedderEstimate(true, needBytes = 90_000_000, budgetBytes = null) },
+                    beside = { null },
+                    scope = scope,
+                    idleMillis = 50,
+                )
+            val idling =
+                LibraryRepository(fs, dir, quick, bge, read = { files.getValue(it.toString()) }, chunker = { chunker })
+            try {
+                fake.embeddings(unit(0))
+                fake.embeddings(unit(1))
+                idling.import(file("a.md", "Para 00 text.")).toList()
+                val first = idling.leased { it }
+                assertTrue(idling.holdsIndex)
+
+                withTimeout(PROMPTLY) { quick.loaded.first { it == null } }
+                assertFalse("the index went with the embedder", idling.holdsIndex)
+                try {
+                    first.documents()
+                    fail("the library outlived the embedder's release")
+                } catch (_: IllegalStateException) {
+                    // closed
+                }
+
+                fake.embeddings(unit(0)) // it opens again on the next use: the probe
+                fake.embeddings(unit(1))
+                assertEquals(listOf("Para 00 text."), idling.search("para").map { it.text })
+                assertTrue(idling.holdsIndex)
+            } finally {
+                quick.release()
+            }
         }
 
     @Test fun mismatchOffersRebuild() =

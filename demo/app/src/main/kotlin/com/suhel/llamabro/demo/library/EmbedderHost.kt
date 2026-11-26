@@ -50,8 +50,8 @@ class EmbedderDoesNotFit(val fit: EmbedderFit.DoesNotFit) :
  * and serves no chat, so it has no part in the chat host's one-model rule or its `served` hook. It loads with
  * `ModelTask.Embedding` under the chip Settings › Processor chose ([policy], the `DevicePolicy` a chat model loads
  * under, D72), after [fit] says it fits beside the chat model; a model whose fit is unknown loads. Each [use] leases
- * it; [idleMillis] after the last lease ends it is closed, and the next use loads it again. A use under another chip
- * loads it again under that one once no use holds it.
+ * it; [idleMillis] after the last lease ends it is closed, with what [onClose] built on it, and the next use loads it
+ * again. A use under another chip loads it again under that one once no use holds it.
  */
 class EmbedderHost(
     private val llamaBro: LlamaBro,
@@ -75,6 +75,16 @@ class EmbedderHost(
 
     /** The embedder in memory, or null. */
     val loaded: StateFlow<HfModel?> = _loaded.asStateFlow()
+
+    private val closing = mutableListOf<suspend (Model) -> Unit>()
+
+    /**
+     * Runs [action] with each embedder as it is closed, before its memory goes and before [loaded] says so: what was
+     * built on it (a library's index) is let go with it. It runs under the host's lock, so it must not use the host.
+     */
+    fun onClose(action: suspend (Model) -> Unit) {
+        closing += action
+    }
 
     /** Whether [key] fits beside the chat model now; one in memory fits. */
     suspend fun fit(key: HfModel): EmbedderFit {
@@ -154,6 +164,7 @@ class EmbedderHost(
 
     private suspend fun close(lease: Held) {
         held = null
+        closing.forEach { it(lease.model) }
         _loaded.value = null
         lease.model.closeAndJoin()
     }
