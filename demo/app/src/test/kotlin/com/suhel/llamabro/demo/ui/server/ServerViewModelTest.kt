@@ -149,7 +149,6 @@ class ServerViewModelTest {
         val page = vm.page() as ServerPage.Serving
         assertEquals("Qwen3.5 4B", page.name)
         assertEquals(listOf("http://10.0.0.7:8080", "http://192.168.1.20:8080"), page.urls)
-        assertEquals("llama-bro.local:8080", page.localName)
         assertEquals("{\"url\":\"http://10.0.0.7:8080\",\"key\":\"k3y_-AbC\"}", page.qr)
         assertEquals(ServerFormat.MASK, page.key.shown)
         assertEquals("k3y_-AbC", page.key.copy)

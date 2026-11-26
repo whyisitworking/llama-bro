@@ -16,12 +16,7 @@ object ServerFormat {
     /** The key while it is hidden, in its row and in every snippet: the same length whatever the key. */
     const val MASK = "••••••••"
 
-    /** The name server mode announces itself under on the network ([com.suhel.llamabro.server.Advertise]). */
-    private const val LOCAL_NAME = "llama-bro.local"
-
     fun url(address: String, port: Int) = "http://$address:$port"
-
-    fun localName(port: Int) = "$LOCAL_NAME:$port"
 
     /**
      * "12:04:51 · 192.168.1.12 · 1,912 in / 233 out · 14.1 s" under "POST /v1/messages"; a request turned away before

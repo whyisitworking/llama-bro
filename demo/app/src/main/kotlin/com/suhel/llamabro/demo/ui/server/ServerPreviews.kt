@@ -61,7 +61,6 @@ private fun serving(
     return ServerPage.Serving(
         name = "Qwen3.5 4B",
         urls = urls,
-        localName = ServerFormat.localName(8080),
         qr = first?.let { ConnectSnippets.qrPayload(it, KEY) },
         key = KeyView(shown, KEY, revealed),
         slots = 2,

@@ -58,13 +58,12 @@ sealed interface ServerPage {
     data class Starting(val name: String, val progress: Float?) : ServerPage
 
     /**
-     * [name] answers at each of [urls] (none when the phone has no Wi-Fi address) and [localName]; [qr] holds the
+     * [name] answers at each of [urls] (none when the phone has no Wi-Fi address); [qr] holds the
      * first URL and the key; [speed] is the last request's, [heat] the phone's thermal state.
      */
     data class Serving(
         val name: String,
         val urls: List<String>,
-        val localName: String,
         val qr: String?,
         val key: KeyView,
         val slots: Int,
@@ -191,7 +190,6 @@ class ServerViewModel(
         return ServerPage.Serving(
             name = Names.of(state.model),
             urls = urls,
-            localName = ServerFormat.localName(state.port),
             qr = first?.let { ConnectSnippets.qrPayload(it, key) },
             key = KeyView(shownKey, key, revealed),
             slots = state.slots,

@@ -261,16 +261,15 @@ private fun ServingPage(page: ServerPage.Serving, actions: ServerActions, tab: I
     Log(page.log)
 }
 
-/** Each address the server answers on, with Copy, its announced name under the first, and the QR of it and the key. */
+/** Each address the server answers on, with Copy, and the QR code of the first and the key. */
 @Composable
 private fun Address(page: ServerPage.Serving, actions: ServerActions) {
     Section("Address") {
         GroupedList(Modifier.testTag("server_urls")) {
-            page.urls.forEachIndexed { index, url ->
+            for (url in page.urls) {
                 row(url) {
                     ListRow(
                         url,
-                        subtitle = if (index == 0) "or ${page.localName}" else null,
                         titleStyle = DemoType.code,
                         control = { IconAction(DemoIcons.Copy, "Copy $url", { actions.onCopy(url) }, muted = true) },
                     )
