@@ -20,8 +20,9 @@
 #   e2e            Kotlin + JNI + native on this machine vs upstream llama-server (HostNativeTest), load cancel;
 #                  typed output on the same model, Think off and on (HostTypedTest); speech input from a file, a
 #                  descriptor and bytes on upstream's audio test model (HostAudioTest); a voice session over the
-#                  in-memory /v1/realtime on the same model (HostVoiceTest); a retrieval library on bge-small: add,
-#                  reopen (HostLibraryTest)
+#                  in-memory /v1/realtime on the same model (HostVoiceTest); a chat model and an embedder in one
+#                  runtime, and /tokenize on an embedding load (HostTwoModelsTest, HostEmbeddingTokenizeTest, F190); a
+#                  retrieval library on bge-small: add, reopen (HostLibraryTest)
 #   aar            release AAR: libraries, names, exports, 16 KB alignment (check-aar.sh); hub, hub-work and typed carry
 #                  no native code, and hub-work's manifest declares the dataSync foreground service
 #   scripts        the host scripts against stubs, no phone: device-preflight.sh (tests/device-preflight-test.sh), installed-guard.sh
@@ -238,11 +239,14 @@ step_e2e() {
     for _ in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" > /dev/null && break; sleep 1; done
     # HostEmbeddingTest: typed embed and rerank on upstream's test models (D65); HostAudioTest: speech input through
     # the public API (D84); HostVoiceTest: the voice session (D95, D97); HostTranscriptionTest: live transcription
-    # (D138); HostSpeechTest: speech (D139); none needs a server
+    # (D138); HostSpeechTest: speech (D139); HostTwoModelsTest and HostEmbeddingTokenizeTest: a chat model and an
+    # embedder in one runtime, and /tokenize on an embedding load, which the demo's library relies on (F190); none
+    # needs a server
     gradle :llamabro:testDebugUnitTest --tests 'com.suhel.llamabro.HostNative*' \
         --tests 'com.suhel.llamabro.HostEmbeddingTest' --tests 'com.suhel.llamabro.HostAudioTest' \
         --tests 'com.suhel.llamabro.HostVoiceTest' --tests 'com.suhel.llamabro.HostTranscriptionTest' \
-        --tests 'com.suhel.llamabro.HostSpeechTest' --rerun-tasks -i \
+        --tests 'com.suhel.llamabro.HostSpeechTest' --tests 'com.suhel.llamabro.HostTwoModelsTest' \
+        --tests 'com.suhel.llamabro.HostEmbeddingTokenizeTest' --rerun-tasks -i \
         -Pllamabro.host.lib="$native/build/host/bin" -Pllamabro.host.server="http://127.0.0.1:$port" \
         -Pllamabro.host.model="$model" ${mmproj:+-Pllamabro.host.mmproj="$mmproj"} \
         -Pllamabro.host.models="$LB_TEST_MODELS_DIR" -Pllamabro.host.clip="$LB_TEST_CLIP"
@@ -256,7 +260,7 @@ step_e2e() {
         -Pllamabro.host.lib="$native/build/host/bin" -Pllamabro.host.models="$LB_TEST_MODELS_DIR" || status=1
     local t
     for t in HostNativeTest HostNativeLogTest HostNativeFailedInitTest HostNativeLoadCancelTest HostNativeAttachmentTest \
-        HostEmbeddingTest HostAudioTest HostVoiceTest; do
+        HostEmbeddingTest HostAudioTest HostVoiceTest HostTwoModelsTest HostEmbeddingTokenizeTest; do
         grep -q 'skipped="0"' "$sdk/llamabro/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.$t.xml" || { echo "$t was skipped or has no result"; return 1; }
     done
     grep -q 'skipped="0"' "$sdk/llamabro-typed/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.typed.HostTypedTest.xml" || { echo "HostTypedTest was skipped or has no result"; return 1; }
