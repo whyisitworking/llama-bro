@@ -145,6 +145,18 @@ object Limits {
             "Stop serving",
         )
 
+    /**
+     * "Use my library" is on but the library couldn't be searched (its embedder doesn't fit or failed, or another
+     * built it): the reply goes on without it, so this is a note.
+     */
+    fun libraryNotSearched() =
+        Limit(
+            "Your library couldn't be searched, so this answer doesn't use it.",
+            LimitAction.Retry,
+            "Try again",
+            dismissible = true,
+        )
+
     fun modelGone(name: String) = Limit("$name isn't on this phone any more.", LimitAction.SwitchModel, "Switch model")
 
     /** The line for a model that failed to load or a reply that failed, or null when it needs none. */

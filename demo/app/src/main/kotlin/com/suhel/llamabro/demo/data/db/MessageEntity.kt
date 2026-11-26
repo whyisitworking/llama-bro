@@ -44,4 +44,6 @@ data class MessageEntity(
     val audio: String? = null,
     val audioMillis: Long? = null,
     val audioLevels: String? = null,
+    /** Added in version 8: the library's passages a reply used, as `SourcesColumn` writes them; null for none. */
+    val sources: String? = null,
 )

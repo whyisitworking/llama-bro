@@ -3,6 +3,7 @@ package com.suhel.llamabro.demo.ui.chat
 import androidx.compose.runtime.Immutable
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
+import com.suhel.llamabro.demo.data.Source
 import com.suhel.llamabro.demo.data.StoredMessage
 import com.suhel.llamabro.demo.designsystem.components.MarkdownBlocks
 import com.suhel.llamabro.demo.models.Names
@@ -91,6 +92,8 @@ private const val SECONDS_PER_MINUTE = 60
     val canContinue: Boolean = false,
     /** A reply spoken in voice mode: its speech, which the speaker action plays again (D100). */
     val speech: File? = null,
+    /** The library's passages it cites, its source chips ([Passages.cited]); empty when it used none. */
+    val sources: List<Source> = emptyList(),
 ) : ChatItem {
     override val key get() = "m-$id"
     override val type get() = "reply"
@@ -180,6 +183,7 @@ class ChatItems(
             cut = m.state == MessageState.Cut,
             canContinue = m.state == MessageState.Cut && isLast,
             speech = m.voice?.file,
+            sources = Passages.cited(m.text, m.sources),
         )
 
     /** The details sheet's lines, each only when it's known: replies stored before version 2 have fewer. */

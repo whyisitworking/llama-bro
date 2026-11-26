@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.demo.chat.SamplingLayers
 import com.suhel.llamabro.demo.data.settings.Knob
 import com.suhel.llamabro.demo.data.settings.Knobs
+import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
+import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.ui.keepAlive
 import com.suhel.llamabro.demo.ui.shutDown
 import kotlinx.coroutines.CompletableDeferred
@@ -45,9 +47,11 @@ class SwitcherViewModelTest {
     private var unloads = 0
     private val gate = CompletableDeferred<Unit>()
 
+    private val onPhone = MutableStateFlow<List<LibraryModel>>(emptyList())
+
     private fun switcher() =
         SwitcherViewModel(
-            library = flowOf(emptyList()),
+            library = onPhone,
             facts = flowOf(DeviceFacts.Fallback),
             inMemory = flowOf(null),
             replying = MutableStateFlow(false),
@@ -74,6 +78,18 @@ class SwitcherViewModelTest {
         app.runCurrent()
         assertEquals(listOf("a/b/c.gguf"), pinned)
         assertEquals(1, unloads)
+    }
+
+    @Test fun theLibrarysEmbedderIsNotAChatModel() {
+        val swift = Catalog.suggested.first().key
+        onPhone.value =
+            listOf(
+                LibraryModel(Catalog.embedder.key, "BGE Small", 1, null, false),
+                LibraryModel(swift, "Swift", 1, null, true),
+            )
+        val vm = switcher()
+        vm.library.keepAlive(CoroutineScope(main))
+        assertEquals(listOf(swift), vm.library.value?.map { it.key })
     }
 
     @Test fun aChatWithNoMessageYetHasNoSamplingRow() {

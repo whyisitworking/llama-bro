@@ -9,6 +9,7 @@ import com.suhel.llamabro.demo.models.Guess
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.demo.models.SearchModel
+import com.suhel.llamabro.demo.models.isChatModel
 import com.suhel.llamabro.hub.HfModel
 
 /**
@@ -113,6 +114,7 @@ data class ModelEntry(
                 // the one size: the file on the phone and its image reader; the model file alone for the fit's speed
                 size = SizeText.Exact(model.totalBytes, model.sizeBytes),
                 key = model.key,
+                canChat = isChatModel(model.key),
                 lastUsed = model.lastUsed,
                 isDefault = model.isDefault,
                 onPhone = true,
@@ -126,6 +128,7 @@ data class ModelEntry(
             val known = ofKey(key, Names.of(key))
             return known.copy(
                 name = record?.name ?: Names.of(key),
+                canChat = isChatModel(key),
                 // the catalog's maker wins over the one recorded (P2-3); the recorded one through the one map
                 maker = Catalog.byRepo(key.repo)?.maker ?: record?.maker?.let(Names::maker) ?: known.maker,
                 // the model file alone for the fit's speed, as recorded at Get; a record from before

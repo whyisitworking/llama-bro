@@ -180,4 +180,36 @@ class ChatDatabaseMigrationTest {
             context.deleteDatabase(name)
         }
     }
+
+    /**
+     * Version 8 adds a chat's "Use my library" and a reply's sources (docs/design/rag.md): the phone's version-7 chats
+     * keep every message, start with the library off, and their replies have no sources.
+     */
+    @Test fun version7ChatsOpenInVersion8WithTheLibraryOffAndNoSources() {
+        helper.createDatabase(name, 7).apply {
+            execSQL("INSERT INTO chats (id, title, createdAt, updatedAt, modelKey) VALUES (1, 'Hi', 1, 2, 'r/m:Q4')")
+            execSQL(
+                "INSERT INTO messages (chatId, position, kind, text, images, sentAt, state) " +
+                    "VALUES (1, 0, 'assistant', 'Hello!', '', 2, 'done')",
+            )
+            close()
+        }
+        helper.runMigrationsAndValidate(name, 8, true)
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.databaseBuilder(context, ChatDatabase::class.java, name).build()
+        try {
+            runBlocking {
+                val dao = db.chatDao()
+                val message = dao.messages(1).first().single()
+                assertEquals("Hello!", message.text)
+                assertNull("a reply from version 7 has no sources", message.sources)
+                assertEquals(false, dao.useLibrary(1).first())
+                assertEquals(false, dao.chat(1)!!.useLibrary)
+            }
+        } finally {
+            db.close()
+            context.deleteDatabase(name)
+        }
+    }
 }

@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import com.suhel.llamabro.demo.audio.SampleSource
 import com.suhel.llamabro.demo.audio.VoiceRecorder
 import com.suhel.llamabro.demo.chat.ChatEngine
+import com.suhel.llamabro.demo.chat.ChatLibrary
 import com.suhel.llamabro.demo.chat.ChatServing
 import com.suhel.llamabro.demo.chat.FakeChatDao
 import com.suhel.llamabro.demo.chat.ModelHost
@@ -101,8 +102,12 @@ abstract class ChatViewModelFixture {
             scope,
             readSenses = { readSenses(it) },
             served = { served.value },
+            chatLibrary = chatLibrary,
         )
     }
+
+    /** The person's library (docs/design/rag.md); none unless a test gives one, before the first [viewModel]. */
+    protected open val chatLibrary: ChatLibrary? = null
     protected val viewModels = mutableListOf<ChatViewModel>()
 
     /** The draft pictures the view models built by [viewModel] deleted (from the draft folder, as the app does). */
@@ -144,6 +149,7 @@ abstract class ChatViewModelFixture {
             savedState = saved,
             background = scope,
             draftPictureExists = draftPictureExists,
+            documentText = { chatLibrary?.documentText(it) },
             audio =
                 ChatAudio(
                     recorder = recorder,

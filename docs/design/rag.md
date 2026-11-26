@@ -1,6 +1,6 @@
 # Asking your own documents: `llamabro-rag` and the demo's library
 
-Status: **SDK part built (Tasks 1-8); the demo's Library page built (step 9), chat use pending** (2026-11-26); the sections below describe the design, and where the
+Status: **SDK part built (Tasks 1-8); the demo's Library page (step 9) and chat use (step 10) built, the phone run pending** (2026-11-26); the sections below describe the design, and where the
 built module differs the note says so (see "As built" at the end). Plan in [docs/superpowers/plans/2026-11-26-llamabro-rag.md](../superpowers/plans/2026-11-26-llamabro-rag.md). Decisions are recorded in
 [decisions.md](../decisions.md): D167 to D171 for the SDK part.
 
@@ -220,5 +220,16 @@ record the choices. Where it differs from the text above, the code is right:
   another embedder built again from its stored passages, into a folder beside it that takes its place once whole.
 - **The demo's Library page (step 9)** is in [demo-app.md](demo-app.md) §4.2: bge-small-en-v1.5 Q8_0 as the suggested
   embedder, text and Markdown import, the fit beside the chat model, rebuild on a mismatch.
-- **Still pending:** the PDF text spike (needs the phone), the demo's chat use and the phone run (steps 10 and 11) and
+- **The demo's chat use (step 10):** "Use my library" is a switch in the message bar's **+** menu, which is a menu only
+  while the library has a document (else the **+** opens the photo picker as before); it is saved per chat (database
+  version 8, `chats.useLibrary`). A model whose load reports `supports_tool_calls` gets the search tool; any other gets
+  the top six passages (`search`, no reranker, F191) after the chat's instructions in the turn's system prompt, so the
+  person's message is stored and sent as written. The tool is the demo's own, with `searchTool`'s name, `SearchArgs`,
+  `asContext()` text and D171's failure messages, because the app must see the hits to save them and the embedder is
+  leased per search rather than held for the turn. The hits a reply used are saved with it (`messages.sources`, the
+  passage's text included), numbered from 1 in the order found, so one search's numbers are the `[n]` the reply cites;
+  chips show the cited ones (all of them when none is cited), and a chip opens the passage highlighted in its document's
+  text, which the demo keeps beside the library (`library-texts/`), or alone once the document is removed. The
+  Library's embedder (and any model named for embedding or reranking) is never offered as a chat model.
+- **Still pending:** the PDF text spike (needs the phone), the phone run (step 11) and
   the phone measurements.

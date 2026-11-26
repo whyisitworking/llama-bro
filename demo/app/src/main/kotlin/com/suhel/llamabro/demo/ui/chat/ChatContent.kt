@@ -40,6 +40,7 @@ import com.suhel.llamabro.demo.designsystem.components.BottomBar
 import com.suhel.llamabro.demo.designsystem.components.Composer
 import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DownloadRing
+import com.suhel.llamabro.demo.designsystem.components.EdgeChip
 import com.suhel.llamabro.demo.designsystem.components.FloatingFrame
 import com.suhel.llamabro.demo.designsystem.components.Gap
 import com.suhel.llamabro.demo.designsystem.components.IconAction
@@ -448,6 +449,7 @@ private fun LimitRow(limit: Limit, onAction: (LimitAction) -> Unit, onDismiss: (
 @Composable
 private fun ComposerArea(modelName: String, live: ChatLive, actions: ChatScreenActions) {
     val draft = live.draft()
+    val library = live.library()
     Stack(Gap.Block) {
         Reveal(draft.editing) { LimitLine("Editing your message", "Cancel", actions.onCancelEdit) }
         Composer(
@@ -461,19 +463,28 @@ private fun ComposerArea(modelName: String, live: ChatLive, actions: ChatScreenA
             modifier = Modifier.testTag("composer"),
             voice = actions.voice,
             attachments =
-                if (draft.attachments.isEmpty()) {
+                if (draft.attachments.isEmpty() && !library) {
                     null
                 } else {
-                    { PhotoRow(draft.attachments, live.thumbnail, actions.onRemovePhoto) }
+                    { PhotoRow(draft.attachments, library, live.thumbnail, actions.onRemovePhoto) }
                 },
         )
     }
 }
 
-/** What is attached to the message being written, inside the bar: a small picture each, with a ✕ to take it back. */
+/**
+ * What is attached to the message being written, inside the bar: "Library" while the chat answers from it (turned off
+ * in the **+** menu), then a small picture each, with a ✕ to take it back.
+ */
 @Composable
-private fun PhotoRow(names: List<String>, thumbnail: suspend (String) -> ImageBitmap?, onRemove: (String) -> Unit) {
+private fun PhotoRow(
+    names: List<String>,
+    library: Boolean,
+    thumbnail: suspend (String) -> ImageBitmap?,
+    onRemove: (String) -> Unit,
+) {
     Inline(Gap.Block, Modifier.testTag("attachments")) {
+        if (library) EdgeChip("Library", Modifier.testTag("library_on"))
         for (name in names) PhotoThumb(name, thumbnail, onRemove)
     }
 }

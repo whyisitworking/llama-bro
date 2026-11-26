@@ -1,6 +1,7 @@
 package com.suhel.llamabro.demo.ui.chat
 
 import com.suhel.llamabro.demo.chat.Limits
+import com.suhel.llamabro.demo.data.Source
 import com.suhel.llamabro.demo.designsystem.components.ComposerState
 import com.suhel.llamabro.demo.designsystem.components.ThinkLevel
 
@@ -33,6 +34,7 @@ internal object ChatPreviewData {
         failure: String? = null,
         cut: Boolean = false,
         canContinue: Boolean = false,
+        sources: List<Source> = emptyList(),
     ) = ReplyItem(
         id,
         position,
@@ -46,6 +48,7 @@ internal object ChatPreviewData {
         failure,
         cut = cut,
         canContinue = canContinue,
+        sources = sources,
     )
 
     val conversation: List<ChatItem> =
@@ -55,6 +58,54 @@ internal object ChatPreviewData {
             user(3, 2, "Write me a function that adds two numbers"),
             reply(4, 3, CODE, reasoning = "Two ints, return the sum.", thoughtSeconds = 3),
         )
+
+    private const val CARE =
+        "# Care guide\n\n## Watering\n\nWater the fern when the top inch of soil is dry, about once a week. " +
+            "Keep the soil moist but never soggy.\n\n## Light\n\nBright, indirect light; direct sun scorches its fronds."
+    private val watering = CARE.indexOf("Water the fern")
+    private val wateringEnd = CARE.indexOf("## Light") - 2
+
+    /** A passage of the person's library a reply used, from a care guide they imported. */
+    val source =
+        Source(
+            1,
+            "care-guide",
+            "Fern care guide",
+            watering,
+            wateringEnd,
+            listOf("Care guide", "Watering"),
+            CARE.substring(watering, wateringEnd),
+        )
+    private val light =
+        CARE.indexOf("Bright").let { start ->
+            Source(
+                2,
+                "care-guide",
+                "Fern care guide",
+                start,
+                CARE.length,
+                listOf("Care guide", "Light"),
+                CARE.substring(start),
+            )
+        }
+
+    /** A chat that answered from the library, its reply's sources under it. */
+    val fromLibrary: List<ChatItem> =
+        listOf(
+            user(1, 0, "How often should I water my fern?"),
+            reply(
+                2,
+                1,
+                "About once a week, when the top inch of soil is dry [1]. Keep it out of direct sun [2].",
+                sources = listOf(source, light),
+            ),
+        )
+
+    /** The source's sheet, with the guide's text around the passage. */
+    val passage = Passages.view(source, CARE)
+
+    /** The same source once its document is removed from the library: the passage alone. */
+    val passageAlone = Passages.view(source, null)
 
     /** The same, as the chat list layout draws it: a day label, and a time in each message's corner. */
     val bubbles: List<ChatItem> =

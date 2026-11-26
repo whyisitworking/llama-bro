@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.suhel.llamabro.demo.models.Format
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.Names
+import com.suhel.llamabro.demo.models.forChat
 import com.suhel.llamabro.demo.server.LogLine
 import com.suhel.llamabro.demo.server.ServerMode
 import com.suhel.llamabro.demo.server.ServingState
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.ZoneId
@@ -117,12 +119,15 @@ data class SnippetView(val tool: ConnectTool, val shown: String, val copy: Strin
  */
 class ServerViewModel(
     private val server: ServerControl,
-    private val library: Flow<List<LibraryModel>>,
+    library: Flow<List<LibraryModel>>,
     phone: PhoneFacts,
     private val background: CoroutineScope,
     private val zone: ZoneId = ZoneId.systemDefault(),
     private val locale: Locale = Locale.getDefault(),
 ) : ViewModel() {
+    // only chat models are served from here: the Library's embedder is the Library's ([forChat])
+    private val chatModels = library.map { it.forChat() }
+
     // the person's input
     private val chosen = MutableStateFlow<HfModel?>(null)
     private val slots = MutableStateFlow(1)
@@ -146,7 +151,7 @@ class ServerViewModel(
 
     /** The page; null until its sources are read. */
     val page: StateFlow<ServerPage?> =
-        combine(serverNow, library, choices, phoneNow) { s, models, c, p -> pageOf(s, models, c, p) }
+        combine(serverNow, chatModels, choices, phoneNow) { s, models, c, p -> pageOf(s, models, c, p) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), null)
 
     /** The docked view; null until its sources are read. */
@@ -177,7 +182,7 @@ class ServerViewModel(
     /** Serves the model chosen (the default one until the person picks) with the slots chosen. */
     fun start() {
         background.launch {
-            val model = chosen.value ?: preferred(library.first()) ?: return@launch
+            val model = chosen.value ?: preferred(chatModels.first()) ?: return@launch
             server.start(model, slots.value)
         }
     }

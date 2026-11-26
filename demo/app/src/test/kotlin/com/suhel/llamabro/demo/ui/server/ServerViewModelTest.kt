@@ -1,6 +1,7 @@
 package com.suhel.llamabro.demo.ui.server
 
 import androidx.lifecycle.ViewModel
+import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.server.LogLine
 import com.suhel.llamabro.demo.server.ServingState
@@ -106,6 +107,12 @@ class ServerViewModelTest {
         assertEquals(gemma, off.chosen)
         assertEquals(1, off.slots)
         assertEquals(listOf(1, 2, 4), off.slotChoices)
+    }
+
+    @Test fun theLibrarysEmbedderIsNotOfferedToServe() {
+        library.value = library.value + LibraryModel(Catalog.embedder.key, "BGE Small", 36_685_152, null, false)
+        val off = viewModel().page() as ServerPage.Off
+        assertEquals(listOf("Qwen3.5 4B", "Gemma 3 4B"), off.models.map { it.name })
     }
 
     @Test fun offStartsTheChosenModelWithTheChosenSlots() {

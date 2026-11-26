@@ -16,16 +16,20 @@ import com.suhel.llamabro.rag.Library
 import com.suhel.llamabro.rag.LibraryContents
 import com.suhel.llamabro.rag.TokenCounter
 import com.suhel.llamabro.rag.search
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import okio.ByteString.Companion.encodeUtf8
 import okio.FileSystem
 import okio.IOException
 import okio.Path
@@ -44,6 +48,9 @@ data class Mismatch(val built: String, val wanted: String)
  *
  * A library another embedder built is never changed or deleted behind the person's back: opening it fails with
  * [IndexMismatch], [mismatch] says so, and [rebuild] embeds its passages again with the embedder on the phone.
+ *
+ * Each imported document's text is also kept in [texts] (beside the library's folder, which a rebuild replaces), so a
+ * chat's source can show the passage in its surroundings ([documentText]); it goes when the document is removed.
  */
 class LibraryRepository(
     private val fs: FileSystem,
@@ -52,6 +59,7 @@ class LibraryRepository(
     private val embedder: HfModel,
     private val read: suspend (Uri) -> Document,
     private val chunker: (Model) -> Chunker = { Chunker(counter = TokenCounter.Model(it)) },
+    private val texts: Path? = null,
 ) {
     // bumped after every write, so the list is read again
     private val changes = MutableStateFlow(0)
@@ -90,12 +98,55 @@ class LibraryRepository(
     fun import(uri: Uri): Flow<IngestProgress> =
         flow {
             val document = read(uri)
-            writing { library -> emitAll(library.add(document)) }
+            writing { library ->
+                emitAll(library.add(document))
+                keepText(document)
+            }
         }
 
     suspend fun remove(id: String) {
-        writing { it.remove(id) }
+        writing {
+            it.remove(id)
+            texts?.let { folder -> withContext(Dispatchers.IO) { fs.delete(folder / textName(id)) } }
+        }
     }
+
+    /**
+     * The whole text of document [id] as it was imported; null when it isn't in the library (removed, or never
+     * imported), or was imported before texts were kept.
+     */
+    suspend fun documentText(id: String): String? {
+        val folder = texts ?: return null
+        if (documents.first().none { it.id == id }) return null
+        return withContext(Dispatchers.IO) {
+            val file = folder / textName(id)
+            try {
+                if (fs.exists(file)) fs.read(file) { readUtf8() } else null
+            } catch (e: IOException) {
+                Log.w("LibraryRepository", "a document's text can't be read: ${e.javaClass.simpleName}")
+                null
+            }
+        }
+    }
+
+    // after the document is committed: a text that fails to save only loses the passage's surroundings
+    private suspend fun keepText(document: Document) {
+        val folder = texts ?: return
+        withContext(Dispatchers.IO) {
+            try {
+                fs.createDirectories(folder)
+                val file = folder / textName(document.id)
+                val partial = folder / (textName(document.id) + ".tmp")
+                fs.write(partial) { writeUtf8(document.text) }
+                fs.atomicMove(partial, file)
+            } catch (e: IOException) {
+                Log.w("LibraryRepository", "a document's text can't be kept: ${e.javaClass.simpleName}")
+            }
+        }
+    }
+
+    // a document id is a content URI: its hash names the file
+    private fun textName(id: String) = id.encodeUtf8().sha256().hex() + ".txt"
 
     /** The passages that best answer [query] (the library's defaults, F191). */
     suspend fun search(query: String): List<Hit> = withLibrary { it.search(query) }

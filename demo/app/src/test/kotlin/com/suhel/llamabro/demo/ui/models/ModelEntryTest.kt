@@ -2,6 +2,7 @@ package com.suhel.llamabro.demo.ui.models
 
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.Guess
+import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.SearchModel
 import com.suhel.llamabro.hub.HfModel
 import org.junit.Assert.assertEquals
@@ -48,4 +49,12 @@ class ModelEntryTest {
     }
 
     // recent searches
+
+    @Test fun theLibrarysEmbedderOnThePhoneCantChat() {
+        val embedder = LibraryModel(Catalog.embedder.key, "BGE Small", 36_685_152, null, false)
+        assertEquals(false, ModelEntry.of(embedder).canChat)
+        assertEquals(false, ModelEntry.downloading(Catalog.embedder.key, null).canChat)
+        val chat = Catalog.suggested.first().key
+        assertEquals(true, ModelEntry.of(LibraryModel(chat, "Swift", 1, null, false)).canChat)
+    }
 }

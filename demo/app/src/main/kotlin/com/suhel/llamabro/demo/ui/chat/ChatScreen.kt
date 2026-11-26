@@ -53,7 +53,7 @@ import kotlinx.coroutines.flow.flowOf
 /** Sidebar writes replies on the page; Chat list puts them in bubbles (demo design §4.2). */
 fun AppLayout.messageStyle(): MessageStyle = if (this == AppLayout.Sidebar) MessageStyle.Open else MessageStyle.Bubbles
 
-private enum class Sheet { Switcher, Think, Smaller, Sampling }
+private enum class Sheet { Switcher, Think, Smaller, Sampling, Attach }
 
 private data class MenuTarget(val position: Int, val isReply: Boolean)
 
@@ -117,6 +117,18 @@ fun ChatScreen(
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(vm::attach) }
     val voice = rememberComposerVoiceActions(vm.voice, vm.dictation, vm.voiceMode::open)
+    val library = vm.library.useLibrary.collectAsStateWithLifecycle()
+    val passage by vm.library.passage.collectAsStateWithLifecycle()
+    val pickPhoto: () -> Unit =
+        remember(vm, picker) {
+            {
+                try {
+                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                } catch (_: ActivityNotFoundException) {
+                    vm.photoPickerMissing() // a phone with no picker at all: say so, don't crash
+                }
+            }
+        }
     val playing = vm.player.clip.collectAsStateWithLifecycle()
     val reading = vm.reading.collectAsStateWithLifecycle()
     val talks = vm.talks.collectAsStateWithLifecycle()
@@ -148,6 +160,7 @@ fun ChatScreen(
                 canReadAloud = { vm.readAloud != null && talks.value },
                 readAloud = { id, text -> vm.readAloud?.toggle(id, text) },
                 reading = { reading.value },
+                openSource = vm.library::show,
             )
         }
     val actions =
@@ -162,13 +175,8 @@ fun ChatScreen(
                 onText = vm::onText,
                 onSend = vm::send,
                 onStop = vm::stop,
-                onAttach = {
-                    try {
-                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    } catch (_: ActivityNotFoundException) {
-                        vm.photoPickerMissing() // a phone with no picker at all: say so, don't crash
-                    }
-                },
+                // with a document in the library, the + is a menu: a photo, and "Use my library"
+                onAttach = { if (library.value != null) sheet = Sheet.Attach else pickPhoto() },
                 onRemovePhoto = vm::removeAttachment,
                 onCancelEdit = vm::cancelEdit,
                 onDismissLimit = { vm.notes.close(vm.limit.value) },
@@ -188,12 +196,17 @@ fun ChatScreen(
                 draft = { draft.value },
                 composer = { composer.value },
                 thumbnail = vm::thumbnail,
+                library = { library.value == true },
             )
         }
 
     ChatContent(state, live, actions, chrome.layout, style, modifier)
 
     ChatSheets(screens, vm, chrome, sheet, { sheet = it }, card, { card = it }) { stopServingFor = it.toString() }
+    if (sheet == Sheet.Attach) {
+        AttachMenu(library.value == true, pickPhoto, vm.library::setUseLibrary, onDismiss = { sheet = null })
+    }
+    passage?.let { PassageSheet(it, onDismiss = { vm.library.show(null) }) }
     stopServingFor?.let { key -> StopServingQuestion(vm, HfModel.parse(key)) { stopServingFor = null } }
     menu?.let { target -> MessageMenu(target, state.rows, messageActions, onDismiss = { menu = null }) }
     details?.let { position -> ReplyDetailsSheet(position, state.rows, onDismiss = { details = null }) }
@@ -250,7 +263,8 @@ private fun ChatSheets(
             SmallerHost(screens, vm, onDismiss = { onSheet(null) })
         }
 
-        null -> {
+        // the screen draws it: it opens the photo picker the screen owns
+        Sheet.Attach, null -> {
             Unit
         }
     }

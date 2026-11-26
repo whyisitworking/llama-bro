@@ -1,5 +1,6 @@
 package com.suhel.llamabro.demo.journey
 
+import com.suhel.llamabro.demo.chat.ChatLibrary
 import com.suhel.llamabro.demo.chat.sdkStream
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.CatalogEntry
@@ -9,6 +10,7 @@ import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.testing.FakeDiscovery
 import com.suhel.llamabro.demo.testing.TestConfig
 import com.suhel.llamabro.hub.HfModel
+import com.suhel.llamabro.rag.Hit
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,6 +38,9 @@ class World(private val realDownloads: Boolean = false) : Closeable {
      */
     val holdReplies = MutableStateFlow(false)
 
+    /** The person's library (docs/design/rag.md): empty, so the **+** is the photo picker, until a journey fills it. */
+    val library = JourneyLibrary()
+
     init {
         // the catalog's models are online: each repo lists its file
         for (entry in Catalog.suggested) stock(entry)
@@ -60,12 +65,28 @@ class World(private val realDownloads: Boolean = false) : Closeable {
             scheduler = if (realDownloads) null else downloads,
             discovery = discovery,
             asksForNotifications = asksForNotifications,
+            chatLibrary = library,
             streamer = { convo, text, images, options ->
                 sdkStream(convo, text, images, options).onStart { holdReplies.first { !it } }
             },
         )
 
     override fun close() = hub.close()
+}
+
+/** A library over passages a journey chooses: no document until [documents] is set. */
+class JourneyLibrary : ChatLibrary {
+    override val hasDocuments = MutableStateFlow(false)
+
+    /** What every search finds. */
+    @Volatile var hits: List<Hit> = emptyList()
+
+    /** Each document's text, for a source's surroundings. */
+    val texts: MutableMap<String, String> = ConcurrentHashMap()
+
+    override suspend fun search(query: String): List<Hit> = hits
+
+    override suspend fun documentText(documentId: String): String? = texts[documentId]
 }
 
 /**

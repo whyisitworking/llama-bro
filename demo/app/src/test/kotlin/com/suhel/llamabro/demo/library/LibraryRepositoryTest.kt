@@ -95,6 +95,30 @@ class LibraryRepositoryTest {
             assertEquals(listOf(DocumentInfo("notes", "notes", "notes.md", 2)), repository.documents.first())
         }
 
+    @Test fun aDocumentsTextIsKeptForItsSourcesUntilItIsRemoved() =
+        runBlocking {
+            val texts = "/data/no_backup/library-texts".toPath()
+            val keeping =
+                LibraryRepository(
+                    fs,
+                    dir,
+                    host,
+                    bge,
+                    read = { files.getValue(it.toString()) },
+                    chunker = { chunker },
+                    texts = texts,
+                )
+            fake.embeddings(unit(0))
+            fake.embeddings(unit(1), unit(2))
+            keeping.import(file("a.md", "Para 00 text.", "Para 01 text.")).toList()
+            assertEquals("Para 00 text.\n\nPara 01 text.", keeping.documentText("a"))
+            assertNull("never imported", keeping.documentText("b"))
+
+            keeping.remove("a")
+            assertNull(keeping.documentText("a"))
+            assertEquals("nothing is left behind", emptyList<okio.Path>(), fs.list(texts))
+        }
+
     @Test fun removeDropsIt() =
         runBlocking {
             fake.embeddings(unit(0))

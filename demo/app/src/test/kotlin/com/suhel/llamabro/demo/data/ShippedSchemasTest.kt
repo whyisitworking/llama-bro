@@ -27,6 +27,8 @@ class ShippedSchemasTest {
                 4 to "251f42e141f0a8ee2fa0145c3e35a2bd",
                 5 to "5eb2ca5e9a370dca4777f5d9276ba4eb",
                 6 to "be2a7bf480eb5a6080de34cc1d39a545",
+                // in 2.0.0-alpha
+                7 to "7d6619c3152a90dce9bcf61f3711fdb9",
             )
         shipped.forEach { (version, hash) -> assertEquals("version $version's schema", hash, identityHash(version)) }
     }

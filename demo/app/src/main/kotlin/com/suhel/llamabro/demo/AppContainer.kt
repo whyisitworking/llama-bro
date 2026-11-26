@@ -29,6 +29,7 @@ import com.suhel.llamabro.demo.audio.TrackSpeech
 import com.suhel.llamabro.demo.audio.VoiceFocus
 import com.suhel.llamabro.demo.audio.VoiceRecorder
 import com.suhel.llamabro.demo.chat.ChatEngine
+import com.suhel.llamabro.demo.chat.ChatLibrary
 import com.suhel.llamabro.demo.chat.ChatServing
 import com.suhel.llamabro.demo.chat.HostState
 import com.suhel.llamabro.demo.chat.ModelHost
@@ -167,6 +168,8 @@ class AppContainer(
     ) -> SpeechOutput = { rate, focus -> TrackSpeech(app, rate, focus) },
     /** Voice mode's one claim on the phone's audio for a session (D147); the phone tests take none. */
     val voiceFocus: () -> SessionFocus = { VoiceFocus(app) },
+    /** The library as a chat uses it (docs/design/rag.md); the phone tests pass one over passages they choose. */
+    chatLibraryOverride: ChatLibrary? = null,
 ) : Screens {
     /** The app's own scope: work that outlives a screen or a view model runs here, never in an ad-hoc scope. */
     val appScope: CoroutineScope get() = scope
@@ -293,7 +296,18 @@ class AppContainer(
             embedders,
             Catalog.embedder.key,
             read = TextImport(app.contentResolver)::read,
+            texts = File(app.noBackupFilesDir, "library-texts").toOkioPath(),
         )
+
+    /** The library as a chat answers from it: "Use my library", its search, and a source's document. */
+    private val chatLibrary: ChatLibrary =
+        chatLibraryOverride ?: object : ChatLibrary {
+            override val hasDocuments = library.documents.map { it.isNotEmpty() }.distinctUntilChanged()
+
+            override suspend fun search(query: String) = library.search(query)
+
+            override suspend fun documentText(documentId: String) = library.documentText(documentId)
+        }
 
     /** The library as the Library page drives it, with the embedder's download from the models' library. */
     private val libraryControl =
@@ -345,6 +359,7 @@ class AppContainer(
             card = { sampling.card(it) },
             readSenses = { key -> hub.capabilities(key)?.senses(Catalog.byRepo(key.repo)) },
             served = { server.served.value },
+            chatLibrary = chatLibrary,
         )
 
     /** The loaded model as Settings › Memory and the model sheet show it, with Unload (D59). */
@@ -512,6 +527,7 @@ class AppContainer(
         background = scope,
         audio = chatAudio(),
         servingMode = ChatServing({ server.served.value }, server::blocksSwitch, server::stop),
+        documentText = chatLibrary::documentText,
     )
 
     /**

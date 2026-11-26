@@ -1,5 +1,6 @@
 package com.suhel.llamabro.demo.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -14,4 +15,6 @@ data class ChatEntity(
     val modelKey: String,
     /** The chat's own sampling values over its model's (D60), in `Knobs.encode`'s form; null when it has none. */
     val sampling: String? = null,
+    /** Added in version 8: the chat answers from the person's library ("Use my library", docs/design/rag.md). */
+    @ColumnInfo(defaultValue = "0") val useLibrary: Boolean = false,
 )
