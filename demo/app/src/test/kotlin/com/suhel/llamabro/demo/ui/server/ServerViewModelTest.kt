@@ -283,4 +283,43 @@ class ServerViewModelTest {
         assertEquals(ServerFormat.MASK, hidden.key.shown)
         assertNull(hidden.qr)
     }
+
+    @Test fun dockedShowsTokensPerSecondTemperatureSlotsAndLastRequest() {
+        val vm = viewModel()
+        serving()
+        server.busy.value = 1
+        server.log.value =
+            listOf(
+                LogLine(noon, "192.168.1.12", "POST", "/v1/messages", 200, 14_100, 1_912, 233),
+                LogLine(noon - 1_000, "192.168.1.12", null, "/v1/models", 401, null, null, null),
+            )
+        val docked = vm.docked.keepAlive(background).value as Docked.Showing
+        assertEquals("16.5", docked.speed)
+        assertEquals("1 of 2", docked.busy)
+        assertEquals("Light", docked.temperature)
+        assertEquals("POST /v1/messages · 200 · 12:04:51", docked.last)
+        assertEquals("http://192.168.1.20:8080", docked.url)
+    }
+
+    @Test fun dockedBeforeAnyRequestHasDashesAndNoLastRequest() {
+        val vm = viewModel()
+        serving()
+        thermal.value = null
+        addresses.value = emptyList()
+        val docked = vm.docked.keepAlive(background).value as Docked.Showing
+        assertEquals("—", docked.speed)
+        assertEquals("0 of 2", docked.busy)
+        assertNull(docked.temperature)
+        assertNull(docked.last)
+        assertNull(docked.url)
+    }
+
+    @Test fun servingEndedLeavesDockedInTheViewModel() {
+        val vm = viewModel()
+        serving()
+        val docked = vm.docked.keepAlive(background)
+        assertTrue(docked.value is Docked.Showing)
+        server.state.value = ServingState.Off
+        assertEquals(Docked.Ended, docked.value)
+    }
 }

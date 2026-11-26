@@ -49,8 +49,23 @@ object ServerFormat {
      * The speed of the newest request that wrote anything, "18.4 tok/s": its tokens written over its whole time, the
      * prompt's reading included, as the person on the other end saw it. Null before any.
      */
-    fun speed(log: List<LogLine>, locale: Locale): String? =
-        log.firstNotNullOfOrNull(::tokensPerSecond)?.let { String.format(locale, "%.1f tok/s", it) }
+    fun speed(log: List<LogLine>, locale: Locale): String? = tokensPerSecond(log, locale)?.let { "$it tok/s" }
+
+    /** [speed]'s number alone, "18.4", for where the unit is written beside it. */
+    fun tokensPerSecond(log: List<LogLine>, locale: Locale): String? =
+        log.firstNotNullOfOrNull(::tokensPerSecond)?.let { String.format(locale, "%.1f", it) }
+
+    /** "1 of 2": the requests being answered of the ones the model takes at once. */
+    fun slots(busy: Int, slots: Int) = "$busy of $slots"
+
+    /** Android's thermal status in one word, "Light": the docked view's, where the page's [heat] is a sentence. */
+    fun temperature(thermal: Thermal): String = TEMPERATURE.getOrElse(thermal.status) { TEMPERATURE.last() }
+
+    /** "POST /v1/messages · 200 · 12:04:51": the newest request, in a line. */
+    fun lastRequest(line: LogLine, zone: ZoneId, locale: Locale): String {
+        val row = logRow(line, zone, locale)
+        return "${row.title} · ${row.status} · ${row.line.substringBefore(" · ")}"
+    }
 
     private fun tokensPerSecond(line: LogLine): Double? {
         val tokens = line.predictedTokens ?: 0
@@ -81,6 +96,8 @@ object ServerFormat {
             "Too hot: Android may close apps",
             "Too hot: the phone may shut down",
         )
+
+    private val TEMPERATURE = listOf("Normal", "Light", "Moderate", "Severe", "Critical", "Emergency", "Shutdown")
 
     private const val MILLIS_PER_SECOND = 1_000.0
     private const val PERCENT = 100

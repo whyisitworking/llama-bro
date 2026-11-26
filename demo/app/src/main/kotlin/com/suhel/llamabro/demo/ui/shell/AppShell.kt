@@ -62,6 +62,7 @@ import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
 import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.demo.ui.models.ModelsRoute
+import com.suhel.llamabro.demo.ui.server.DockedScreen
 import com.suhel.llamabro.demo.ui.server.ServerScreen
 import com.suhel.llamabro.demo.ui.settings.AboutScreen
 import com.suhel.llamabro.demo.ui.settings.AppearanceScreen
@@ -404,8 +405,14 @@ private fun Graph(
         composable(Routes.SERVER) { entry ->
             // Back only when something is under the page: in Chat list it is a tab of its own
             val under = remember(entry) { nav.previousBackStackEntry != null }
-            ServerScreen(screens, onBack = if (under) back else null, onGetModels = { models("") })
+            ServerScreen(
+                screens,
+                onBack = if (under) back else null,
+                onGetModels = { models("") },
+                onDock = { nav.navigate(Routes.SERVER_DOCKED) { launchSingleTop = true } },
+            )
         }
+        composable(Routes.SERVER_DOCKED) { DockedScreen(screens, back) }
         composable(Routes.SETTINGS) {
             SettingsHome(back, onOpen = { route ->
                 nav.navigate(route) { launchSingleTop = true }

@@ -61,6 +61,7 @@ class ServerActions(
     /** Puts the text on the clipboard, marked sensitive: most of what the page copies holds the key. */
     val onCopy: (String) -> Unit = {},
     val onGetModels: () -> Unit = {},
+    val onDock: () -> Unit = {},
     val onBack: (() -> Unit)? = null,
 )
 
@@ -69,14 +70,14 @@ class ServerActions(
  * the connect tab shown and the question a new key asks. [onBack] is null where the page is a tab.
  */
 @Composable
-fun ServerScreen(screens: Screens, onBack: (() -> Unit)?, onGetModels: () -> Unit) {
+fun ServerScreen(screens: Screens, onBack: (() -> Unit)?, onGetModels: () -> Unit, onDock: () -> Unit) {
     val vm = viewModel(key = "server") { screens.serverViewModel() }
     val page by vm.page.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var askingNewKey by rememberSaveable { mutableStateOf(false) }
     val actions =
-        remember(vm, context, onBack, onGetModels) {
+        remember(vm, context, onBack, onGetModels, onDock) {
             ServerActions(
                 onChoose = vm::choose,
                 onSlots = vm::setSlots,
@@ -87,6 +88,7 @@ fun ServerScreen(screens: Screens, onBack: (() -> Unit)?, onGetModels: () -> Uni
                 onNewKey = { askingNewKey = true },
                 onCopy = { copySecret(context, it) },
                 onGetModels = onGetModels,
+                onDock = onDock,
                 onBack = onBack,
             )
         }
@@ -256,7 +258,7 @@ private fun ServingPage(page: ServerPage.Serving, actions: ServerActions, tab: I
     }
     if (page.urls.isNotEmpty()) Address(page, actions)
     Key(page.key, actions)
-    Now(page)
+    Now(page, actions)
     if (page.snippets.isNotEmpty()) Connect(page.snippets, tab, onTab, actions)
     Log(page.log)
 }
@@ -326,13 +328,22 @@ private fun Key(key: KeyView, actions: ServerActions) {
 
 /** Live status: the model, its slots, the last request's speed and the phone's heat. */
 @Composable
-private fun Now(page: ServerPage.Serving) {
+private fun Now(page: ServerPage.Serving, actions: ServerActions) {
     Section("Now") {
         GroupedList(Modifier.testTag("server_now")) {
             row { ListRow("Serving", trailing = page.name) }
             row { ListRow("Requests at once", trailing = ServerFormat.busy(page.busy, page.slots)) }
             row { ListRow("Speed", trailing = page.speed ?: "No requests yet") }
             page.heat?.let { heat -> row { ListRow("Heat", subtitle = heat) } }
+            row {
+                ListRow(
+                    "Docked view",
+                    subtitle = "Full screen and dim, for a phone on a charger",
+                    chevron = true,
+                    onClick = actions.onDock,
+                    modifier = Modifier.testTag("server_dock"),
+                )
+            }
         }
     }
 }

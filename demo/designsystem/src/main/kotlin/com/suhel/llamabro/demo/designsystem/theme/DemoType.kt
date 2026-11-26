@@ -88,6 +88,8 @@ private val Figtree =
  * | [quietLabel] | 13 / 20 | Regular | sans, no tracking |
  * | [pageBody] | 13 / 24 | Regular | sans |
  *
+ * The docked view's number: [glance] | 64 / 72 | Light | sans.
+ *
  * The sidebar's quiet roles (D126): [sidebarTitle] | 22 / 28 | Regular | serif; [rowLine] | 15 / 20 | Regular | sans.
  */
 object DemoType {
@@ -196,6 +198,13 @@ object DemoType {
      * without the weight of a title. Chosen; Material has no role for live captions.
      */
     val voiceCaption = sans(FontWeight.Normal, size = 22, line = 28, tracking = 0.0)
+
+    /**
+     * A number read across a desk, the docked view's tokens per second: the scale's largest role, Light so its size
+     * doesn't shout, on the sans's digits. Chosen; the scale's next step down is
+     * [displayHero] at 28 sp, too small to read from a charger across a desk.
+     */
+    val glance = sans(FontWeight.Light, size = 64, line = 72, tracking = 0.0)
 
     /** A reply's thoughts when opened: [bodyMedium] in italics. */
     val thought = bodyMedium.copy(fontStyle = FontStyle.Italic)

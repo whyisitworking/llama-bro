@@ -84,6 +84,23 @@ sealed interface ServerPage {
     data class Failed(val reason: String) : ServerPage
 }
 
+/**
+ * The docked view (docs/design/server.md §3): [Ended] once serving has, so the view goes back; else [Showing] what a
+ * glance wants. [speed] is the last finished request's tokens per second, "—" before any; [temperature] and [url] are
+ * null when the phone gives none.
+ */
+sealed interface Docked {
+    data object Ended : Docked
+
+    data class Showing(
+        val speed: String,
+        val busy: String,
+        val temperature: String?,
+        val last: String?,
+        val url: String?,
+    ) : Docked
+}
+
 /** A downloaded model the server can serve: its [name] and the quantisation and size telling its files apart. */
 data class ServeChoice(val key: HfModel, val name: String, val detail: String)
 
@@ -130,6 +147,11 @@ class ServerViewModel(
     /** The page; null until its sources are read. */
     val page: StateFlow<ServerPage?> =
         combine(serverNow, library, choices, phoneNow) { s, models, c, p -> pageOf(s, models, c, p) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), null)
+
+    /** The docked view; null until its sources are read. */
+    val docked: StateFlow<Docked?> =
+        combine(serverNow, phoneNow) { s, p -> dockedOf(s, p) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), null)
 
     fun choose(model: HfModel) {
@@ -186,6 +208,17 @@ class ServerViewModel(
             }
         }
 
+    private fun dockedOf(s: Server, p: Phone): Docked {
+        val state = s.state as? ServingState.Serving ?: return Docked.Ended
+        return Docked.Showing(
+            speed = ServerFormat.tokensPerSecond(s.log, locale) ?: NO_SPEED,
+            busy = ServerFormat.slots(s.busy, state.slots),
+            temperature = p.thermal?.let(ServerFormat::temperature),
+            last = s.log.firstOrNull()?.let { ServerFormat.lastRequest(it, zone, locale) },
+            url = p.addresses.firstOrNull()?.let { ServerFormat.url(it, state.port) },
+        )
+    }
+
     private fun serving(state: ServingState.Serving, s: Server, revealed: Boolean, p: Phone): ServerPage.Serving {
         val key = s.key.orEmpty()
         val shownKey = if (revealed) key else ServerFormat.MASK
@@ -235,5 +268,8 @@ class ServerViewModel(
 
         /** The log's newest rows the page lists; the server keeps more. */
         const val LOG_ROWS = 20
+
+        /** The docked view's speed before a request has finished. */
+        const val NO_SPEED = "—"
     }
 }

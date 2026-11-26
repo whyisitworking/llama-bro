@@ -1,6 +1,6 @@
 # Serving on Wi-Fi: `llamabro-server` and the demo's server mode
 
-Status: **being built**; the SDK part (plan Tasks 1-8: core `exchange`, `llamabro-server`, its tests and these docs) is done, the demo part is not (2026-11-26); plan in [docs/superpowers/plans/2026-11-26-llamabro-server.md](../superpowers/plans/2026-11-26-llamabro-server.md). Decisions are recorded in
+Status: **built, phone run pending**; the SDK part (plan Tasks 1-8: core `exchange`, `llamabro-server`, its tests and these docs) and the demo part (the Server page and the docked view) are built; the phone run that verifies them is still to do (2026-11-26); plan in [docs/superpowers/plans/2026-11-26-llamabro-server.md](../superpowers/plans/2026-11-26-llamabro-server.md). Decisions are recorded in
 [decisions.md](../decisions.md) as they are taken; the module's are D155-D157 and F189.
 
 ## Intent
@@ -173,7 +173,7 @@ module depends on `llamabro`, plus `llamabro-testing` for its tests.
 Off       "Serve a model to the computers on this Wi-Fi"  [model picker: one of the downloaded models]
           [slots: 1 | 2 | 4]  [Start serving]   (explains: plain HTTP, a key, the phone should be charging)
 Starting  loading progress (ModelHost's Waking)
-Serving   http://192.168.1.20:8080  ·  llama-bro.local      [QR]   key ••••••  [copy] [new key]
+Serving   http://192.168.1.20:8080      [QR]   key ••••••  [copy] [new key]
           ── now ──  2 of 2 slots busy · 18.4 tok/s · 41 °C, thermal: light
           ── clients ──  192.168.1.12 (Claude Code) · 3 requests
           ── log ──  12:04:51  POST /v1/messages  200  1,912 in / 233 out  14.1 s

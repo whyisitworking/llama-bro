@@ -13,6 +13,9 @@ object Routes {
 
     /** Server mode's page (docs/design/server.md §3): a mode the phone is in, beside Models, not a setting. */
     const val SERVER = "server"
+
+    /** Server mode's docked view: full screen and dim, for a phone serving from a charger. */
+    const val SERVER_DOCKED = "server/docked"
     const val APPEARANCE = "settings/appearance"
     const val INSTRUCTIONS = "settings/instructions"
     const val DEFAULT_MODEL = "settings/default_model"

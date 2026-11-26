@@ -1,9 +1,12 @@
 package com.suhel.llamabro.demo.journey
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performSemanticsAction
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.server.ServingState
 import kotlinx.coroutines.runBlocking
@@ -54,9 +57,21 @@ class ServerJourneys : Journey() {
             shot("2-serving")
         }
 
+        // the docked view: big numbers, no key; Back returns to the page, still serving
+        // the row can sit under the Stop bar, which would take a tap on it: ask the row itself
+        seeTag("server_dock")
+        compose.onNodeWithTag("server_dock").performSemanticsAction(SemanticsActions.OnClick)
+        seeTag("docked_page")
+        seeTag("docked_speed")
+        seeTag("docked_busy")
+        goneTag("server_key")
+        shot("4-docked")
+        tapDescription("Back")
+        seeTag("server_stop")
+
         tapTag("server_stop")
         seeTag("server_start")
         compose.waitUntil(WAIT) { app.container.server.state.value == ServingState.Off }
-        shot("4-stopped")
+        shot("5-stopped")
     }
 }

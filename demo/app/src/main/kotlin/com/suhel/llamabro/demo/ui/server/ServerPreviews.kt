@@ -121,3 +121,22 @@ internal fun StopServingDialogPreview() {
         )
     }
 }
+
+private val docked =
+    Docked.Showing("16.5", "1 of 2", "Light", "POST /v1/messages · 200 · 12:04:51", "http://192.168.1.20:8080")
+
+// The docked view (docs/design/server.md §3). It follows the app's theme rather than forcing a dark look: the window's
+// brightness is what dims it, and the status bar's icons follow the theme, so a forced dark would hide them.
+@DemoScreenPreviews
+@Composable
+internal fun DockedPreview() {
+    PreviewFrame { DockedContent(docked, onBack = {}) }
+}
+
+@DemoScreenPreviews
+@Composable
+internal fun DockedNoRequestsPreview() {
+    PreviewFrame {
+        DockedContent(Docked.Showing("—", "0 of 2", null, null, "http://192.168.1.20:8080"), onBack = {})
+    }
+}

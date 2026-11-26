@@ -69,8 +69,9 @@ edge this list forbids, on any domain package that names `ui` or the design syst
 | `models` | The catalog, the hub and its cache, downloads, the library, fit; `ModelInUse`, which the chat's model host implements | `data`, `data.settings` |
 | `audio` | The microphone and its capture, `VoiceRecorder`, `VoicePlayer`, `SpeechOutput`, WAV, pause detection | `data`, `data.settings` |
 | `chat` | `ChatEngine`, `ModelHost`, history, limits, sampling, `Think`, the reply draft, `BackgroundRelease` | `data`, `models`, `audio` |
+| `server` | Server mode: `ServerMode` (the SDK's server over a served model), its key, settings, request log, Wi-Fi addresses and thermal readings (`HostServedModels`, `ServerLog`, `NetworkState`, `Thermal`); `ServerService`, its foreground service, is in the root | `data`, `data.settings`, `models`, `audio`, `chat` |
 | `voice` | Voice mode (`VoiceConversation`), `Dictation`, `ReadAloud`, captions, transcripts, `Steps` | `chat`, `audio`, `models`, `data` |
-| `ui` | Screens and view models by feature (`ui.chat`, `ui.models`, `ui.settings`, `ui.shell`), `Screens`, the Markdown parser; domain enums (`Theme`, `Think`, `VoiceStage`) are mapped to the design system's at this edge | all, and `designsystem` |
+| `ui` | Screens and view models by feature (`ui.chat`, `ui.models`, `ui.server`, `ui.settings`, `ui.shell`), `Screens`, the Markdown parser; domain enums (`Theme`, `Think`, `VoiceStage`) are mapped to the design system's at this edge | all, and `designsystem` |
 | root | `DemoApp`, `MainActivity`, `ReplyService`, `AppContainer`, `ContainerFactory`: the Android entry points and the composition root | all |
 
 The design system (`:demo:designsystem`) knows no domain type, and no domain package knows it.
@@ -96,8 +97,8 @@ on a top bar is its own raised circle, the model switcher a raised pill, over th
   - **Chats grouped by date** (Today, This week, Earlier). A group's label is quiet (13 sp, soft, sentence case), 24 dp under the group above (8 dp under the search for the first) and close on its rows.
   - **A chat** is one line, at least 48 dp tall: the title (15 sp Regular, `rowLine`, ellipsized) and the chat's time at the end (12 sp, soft: the time today, the weekday this week, else the date). The row is 12 dp inside and 12 dp from the drawer's edges, so the labels and the titles start on one 24 dp line. The open chat lies on the soft accent fill with 12 dp corners, no outline and no tick. Long press opens Rename and Delete.
   - **No chats at all**: the head, the search and the foot stay, and "No chats yet. Start one." stands where the list would be.
-  - **Foot**, under a hairline: two labelled 48 dp rows, Models (its icon, "Models", and "N on this phone" soft at the end) and Settings.
-  - **Screen reader**: each place is one button, "Models, 2 on this phone" (or "Models" before the library is read) and "Settings". The drawer is one traversal group with the head and the foot first, so they are reached before the chats.
+  - **Foot**, under a hairline: three labelled 48 dp rows, Models (its icon, "Models", and "N on this phone" soft at the end), Server (its `Serve` icon and "Serving" soft at the end while the phone serves or loads a model) and Settings.
+  - **Screen reader**: each place is one button, "Models, 2 on this phone" (or "Models" before the library is read), "Server" and "Settings". The drawer is one traversal group with the head and the foot first, so they are reached before the chats.
 - A new chat opens with the default model: the last model used, unless one was pinned with "Use for new chats". An empty chat shows the small orb, "What's on your mind?" and starter chips.
 - Tapping the model's name in the top bar opens the model switcher: the models on the phone as the Models page's rows
   (§4.3), "Current" on the chat's model and "Default" on the one for new chats as line 2's small soft mark, the fit as
@@ -109,8 +110,14 @@ on a top bar is its own raised circle, the model switcher a raised pill, over th
 **Chat list.**
 
 - Home is the list of chats, newest first, under a sans "Chats" title and a search box. A row shows an avatar with the model's initial, the title, the time or day, and the last message prefixed by its sender.
-- New chat is a floating button. Bottom tabs hold Chats, Models and Settings.
+- New chat is a floating button. Bottom tabs hold Chats, Models, Server and Settings; Server is a tab of its own, so its page has no back arrow there.
 - A conversation screen has a back arrow, the avatar, the title and the model's name under it (tap to switch). Both sides are in bubbles, the model's on a raised surface; the time sits in each bubble's corner, with the speed on the model's, and quiet day labels separate days. Back from a chat reached after a layout switch goes to the list.
+
+**Server** (docs/design/server.md §3; `ui.server`). A mode the phone is in, beside Models and not a setting: the drawer's Server row (Sidebar) and the Server tab (Chat list) open one page whose state decides what it shows.
+
+- **Off** names what serving is (plain HTTP on this Wi-Fi, a key only this page shows, keep the phone charging), lists the downloaded models to pick one (the default model is chosen until the person picks), offers 1, 2 or 4 requests at once, and has Start serving in the bar at its foot. **Starting** shows the loading hairline; **Failed** says why and offers Try again.
+- **Serving** lists each Wi-Fi address with Copy, the key masked until Show (the QR code of the first address and the key shows only with the key), New key (it asks first: computers using the old key are dropped), a Now group (model, "1 of 2 busy", the last request's tokens per second, the phone's heat) with the Docked view row, the connect snippets as tabs (curl, OpenAI Python, Claude Code, llama-chat; Copy copies them with the key in), and the newest 20 requests. Notices say when the phone has no Wi-Fi address or is not charging.
+- **Docked view** (route `server/docked`, from the Docked view row; back or the end of serving returns to the page). Full screen under a top bar with Back: tokens per second of the last finished request ("—" before any), requests at once ("1 of 2"), the phone's temperature in a word (Normal, Light, Moderate, Severe, Critical, Emergency, Shutdown), then the last request (method, path, status, time) and the first address in small muted text. The numbers are `glance` (64 / 72 Light), the scale's largest role. No key and no QR code, so a glance or a photo of a docked phone shows neither. While it is shown the window keeps the screen on and sets its brightness to 0.1; both are restored on leaving. It follows the app's theme: the brightness dims it, and a forced dark look would hide the status bar's icons, which follow the theme. The system bars stay (the app has no immersive helper).
 
 Thinking folds, code, images, edit, regenerate, share, copy and the model divider work the same in both layouts.
 
@@ -374,6 +381,7 @@ Material 3 roles, a screen naming a role and never a size. Each role carries siz
 | `label` | 14 / 20 | Medium | Figtree | a button's or chip's text |
 | `labelSmall` | 12 / 16 | Medium | Figtree | an upper-case section label, a status pill |
 | `voiceCaption` | 22 / 28 | Regular | Figtree | the reply's caption in voice mode, read at arm's length (D100) |
+| `glance` | 64 / 72 | Light | Figtree | a number read across a desk: the docked view's (docs/design/server.md §3) |
 | `code` | 14 / 20 | Regular | Monospace | code blocks and inline code |
 
 The serif is for the hero roles only (the empty-chat line and a sheet's title), a model card's name (D123) and the sidebar's title (D126); every screen title, row and label is Geist. There is no role below 12 sp. Body text is 16 sp.
