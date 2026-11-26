@@ -4,6 +4,7 @@ import com.suhel.llamabro.rag.Chunk
 import com.suhel.llamabro.rag.EmbedderIdentity
 import com.suhel.llamabro.rag.IndexMismatch
 import com.suhel.llamabro.rag.VectorStore
+import com.suhel.llamabro.rag.search.Bm25
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.Json
@@ -42,6 +43,10 @@ internal class LibraryStore(private val fs: FileSystem, private val dir: Path) {
     private lateinit var manifest: Manifest
     private lateinit var flat: FlatVectors
     private val chunks = mutableListOf<Chunk>()
+
+    /** Keyword search over the live rows, kept in step with [chunks] and the tombstones by every write. */
+    var bm25 = Bm25()
+        private set
     private var tombstones = listOf<Tombstone>()
 
     /** A write that failed; the files are whole, but which state they hold is known only by opening them again. */
@@ -107,6 +112,11 @@ internal class LibraryStore(private val fs: FileSystem, private val dir: Path) {
         if (chunks.size != manifest.rows) throw IOException("chunks.jsonl has ${chunks.size} of ${manifest.rows} rows")
         tombstones = if (manifest.tombstones > 0) readTombstones().take(manifest.tombstones) else emptyList()
         tombstones.forEach { flat.kill(it.firstRow, it.rowCount) }
+        bm25 =
+            Bm25().apply {
+                add(chunks)
+                tombstones.forEach { kill(it.firstRow, it.rowCount) }
+            }
     }
 
     private fun readTombstones(): List<Tombstone> =
@@ -167,8 +177,12 @@ internal class LibraryStore(private val fs: FileSystem, private val dir: Path) {
         manifest = next
         this.chunks += chunks
         flat.append(halves)
+        bm25.add(chunks)
         tombstones = nextTombstones
-        replaced?.let { flat.kill(it.firstRow, it.rowCount) }
+        replaced?.let {
+            flat.kill(it.firstRow, it.rowCount)
+            bm25.kill(it.firstRow, it.rowCount)
+        }
         if (pastAQuarter(tombstones)) compactAfterCommit()
     }
 
@@ -202,6 +216,7 @@ internal class LibraryStore(private val fs: FileSystem, private val dir: Path) {
         manifest = next
         tombstones = nextTombstones
         flat.kill(removed.firstRow, removed.rowCount)
+        bm25.kill(removed.firstRow, removed.rowCount)
     }
 
     /** Runs a write, unless the caller is cancelled: a write once started runs to its end, or to a failure. */
@@ -255,6 +270,7 @@ internal class LibraryStore(private val fs: FileSystem, private val dir: Path) {
 
         manifest = next
         flat.retain(kept)
+        bm25.retain(kept)
         val keptChunks = kept.map { chunks[it] }
         chunks.clear()
         chunks += keptChunks

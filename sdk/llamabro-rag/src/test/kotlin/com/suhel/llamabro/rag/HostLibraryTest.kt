@@ -24,7 +24,8 @@ import java.nio.file.Files
 /**
  * A library over the real core on this machine (CPU) with bge-small, run by sdk/scripts/check.sh's e2e step: a document
  * is chunked by the model's own tokenizer, embedded in batches, committed, and read back after reopening. Skipped
- * without `-Pllamabro.host.lib` and `-Pllamabro.host.models`. Task 5 adds search to it.
+ * without `-Pllamabro.host.lib` and `-Pllamabro.host.models`. It also searches: two documents on different topics,
+ * the right one on top before and after reopening, and a reranker (jina-reranker-tiny) over the same library.
  */
 class HostLibraryTest {
     @Test
@@ -78,7 +79,85 @@ class HostLibraryTest {
             tmp.deleteRecursively()
         }
 
+    @Test
+    fun addSearchReopenOnBgeSmall() =
+        runBlocking<Unit> {
+            val (lib, models) = hostProperties()
+            val tmp = Files.createTempDirectory("llamabro-rag").toFile()
+            val dir = File(tmp, "library").toOkioPath()
+            hostLlamaBro(lib, tmp)
+                .loadModel(ModelSource.file(File(models, "bge-small-f16.gguf").path)) {
+                    task = ModelTask.Embedding(Pooling.Mean)
+                }.use { model ->
+                    val format = EmbeddingFormat.of(model.info)
+                    val library = Library.open(FileSystem.SYSTEM, dir, model, format, pooling = Pooling.Mean)
+                    topics.forEach { (id, text) -> library.add(Document(id, id, text)).toList() }
+                    assertEquals("volcano", library.search(VOLCANO_QUERY, limit = 2).first().documentId)
+                    library.close()
+
+                    val reopened = Library.open(FileSystem.SYSTEM, dir, model, format, pooling = Pooling.Mean)
+                    val hits = reopened.search(VOLCANO_QUERY, limit = 2)
+                    println("hits after reopen: $hits")
+                    assertEquals("volcano", hits.first().documentId)
+                    assertEquals(listOf(1, 2), hits.map { it.rank })
+                    reopened.close()
+                }
+            tmp.deleteRecursively()
+        }
+
+    @Test
+    fun rerankOnJinaTiny() =
+        runBlocking<Unit> {
+            val (lib, models) = hostProperties()
+            val tmp = Files.createTempDirectory("llamabro-rag").toFile()
+            val dir = File(tmp, "library").toOkioPath()
+            val llamaBro = hostLlamaBro(lib, tmp)
+            llamaBro
+                .loadModel(ModelSource.file(File(models, "bge-small-f16.gguf").path)) {
+                    task = ModelTask.Embedding(Pooling.Mean)
+                }.use { embedder ->
+                    llamaBro
+                        .loadModel(ModelSource.file(File(models, "jina-reranker-tiny-f16.gguf").path)) {
+                            task = ModelTask.Rerank
+                        }.use { reranker ->
+                            val library =
+                                Library.open(
+                                    FileSystem.SYSTEM,
+                                    dir,
+                                    embedder,
+                                    EmbeddingFormat.of(embedder.info),
+                                    pooling = Pooling.Mean,
+                                )
+                            topics.forEach { (id, text) -> library.add(Document(id, id, text)).toList() }
+                            val hits = library.search(VOLCANO_QUERY, limit = 2, reranker = reranker)
+                            println("reranked: $hits")
+                            assertEquals("volcano", hits.first().documentId)
+                            assertEquals(listOf(1, 2), hits.map { it.rank })
+                            assertTrue("scores fall: $hits", hits[0].score >= hits[1].score)
+                            library.close()
+                        }
+                }
+            tmp.deleteRecursively()
+        }
+
+    private fun hostProperties(): Pair<String, String> {
+        val lib = System.getProperty("llamabro.host.lib")
+        val models = System.getProperty("llamabro.host.models")
+        assumeTrue("host end-to-end runs from sdk/scripts/check.sh", lib != null && models != null)
+        return lib!! to models!!
+    }
+
     private companion object {
+        const val VOLCANO_QUERY = "how does lava erupt from a volcano?"
+        val topics =
+            mapOf(
+                "volcano" to
+                    "A volcano erupts when molten rock, called magma, rises through cracks in the crust. Pressure " +
+                    "from dissolved gases drives lava and ash out of the vent.",
+                "bread" to
+                    "To bake sourdough bread, mix flour, water and starter, let the dough rise overnight, then bake " +
+                    "it in a hot oven until the crust turns golden brown.",
+            )
         val guide =
             buildString {
                 append("# Field guide\n\n")

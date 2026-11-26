@@ -76,6 +76,12 @@ public class Library internal constructor(
     public suspend fun documents(): List<DocumentInfo> =
         locked { store.documents.map { DocumentInfo(it.id, it.title, it.source, it.rowCount) } }
 
+    // the store for [block], under the mutex: search reads it as one consistent state (Search.kt)
+    internal suspend fun <T> reading(block: suspend (LibraryStore) -> T): T = locked { block(store) }
+
+    internal suspend fun embedQuery(query: String): FloatArray =
+        embedder.embed(identity.format.queryPrefix + query, Normalization.Euclidean)
+
     /** Closes the library; later calls throw [IllegalStateException]. Its files are already whole on disk. */
     override fun close() {
         closed = true

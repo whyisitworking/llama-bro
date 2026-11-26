@@ -101,6 +101,31 @@ public final class com/suhel/llamabro/rag/EmbeddingFormat$Companion {
 	public final fun of (Lcom/suhel/llamabro/ModelInfo;)Lcom/suhel/llamabro/rag/EmbeddingFormat;
 }
 
+public final class com/suhel/llamabro/rag/Hit {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IILjava/util/List;FI)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()Ljava/util/List;
+	public final fun component7 ()F
+	public final fun component8 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IILjava/util/List;FI)Lcom/suhel/llamabro/rag/Hit;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/Hit;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IILjava/util/List;FIILjava/lang/Object;)Lcom/suhel/llamabro/rag/Hit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDocumentId ()Ljava/lang/String;
+	public final fun getEnd ()I
+	public final fun getHeadings ()Ljava/util/List;
+	public final fun getRank ()I
+	public final fun getScore ()F
+	public final fun getStart ()I
+	public final fun getText ()Ljava/lang/String;
+	public final fun getTitle ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/suhel/llamabro/rag/IndexMismatch : java/lang/Exception {
 	public final fun getBuilt ()Lcom/suhel/llamabro/rag/EmbedderIdentity;
 	public final fun getWanted ()Lcom/suhel/llamabro/rag/EmbedderIdentity;
@@ -151,6 +176,11 @@ public final class com/suhel/llamabro/rag/Library : java/lang/AutoCloseable {
 public final class com/suhel/llamabro/rag/Library$Companion {
 	public final fun open (Lokio/FileSystem;Lokio/Path;Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/rag/EmbeddingFormat;Lcom/suhel/llamabro/rag/Chunker;Lcom/suhel/llamabro/Pooling;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun open$default (Lcom/suhel/llamabro/rag/Library$Companion;Lokio/FileSystem;Lokio/Path;Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/rag/EmbeddingFormat;Lcom/suhel/llamabro/rag/Chunker;Lcom/suhel/llamabro/Pooling;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class com/suhel/llamabro/rag/SearchKt {
+	public static final fun search (Lcom/suhel/llamabro/rag/Library;Ljava/lang/String;ILcom/suhel/llamabro/Model;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun search$default (Lcom/suhel/llamabro/rag/Library;Ljava/lang/String;ILcom/suhel/llamabro/Model;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
 public abstract interface class com/suhel/llamabro/rag/TokenCounter {
