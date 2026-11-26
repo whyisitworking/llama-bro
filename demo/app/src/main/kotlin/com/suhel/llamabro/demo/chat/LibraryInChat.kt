@@ -2,7 +2,9 @@ package com.suhel.llamabro.demo.chat
 
 import com.suhel.llamabro.ModelInfo
 import com.suhel.llamabro.demo.data.ChatRepository
+import com.suhel.llamabro.demo.data.MessageChange
 import com.suhel.llamabro.demo.data.Source
+import com.suhel.llamabro.demo.data.StoredMessage
 import com.suhel.llamabro.rag.Hit
 import com.suhel.llamabro.rag.Library
 import com.suhel.llamabro.rag.SearchArgs
@@ -43,14 +45,15 @@ interface ChatLibrary {
 fun callsTools(templateCaps: Map<String, Boolean>): Boolean = templateCaps["supports_tool_calls"] == true
 
 /**
- * The passages a model without tools gets in its turn, after the chat's instructions in the system prompt, so the
- * person's own message stays as they wrote it.
+ * The passages a model without tools gets in its turn: before the person's words in the message the model reads, kept
+ * with the question for the history after (never shown), so the system prompt and every earlier turn stay as they were
+ * and the server's prompt cache keeps the chat's prefix.
  */
 internal fun passagesPrompt(hits: List<Hit>): String = PASSAGES_INTRO + "\n\n" + hits.asContext()
 
 /**
  * What a turn asks with from the library: the SDK's search [tool] (made for this turn, so its numbers start at [1] and
- * go on across its calls, D172), or the [passages] for its system prompt.
+ * go on across its calls, D172), or the [passages] that go before the person's words.
  */
 internal class TurnLibrary(val tool: TypedTool<SearchArgs, String>?, val passages: String?) {
     companion object {
@@ -122,6 +125,16 @@ internal class ChatLibraryUse(
         }
     }
 
+    /**
+     * [user]'s question as [turn] asks it: with its passages, which ride before the words and are kept on its row for
+     * the history; a question asked again without them (a regenerate with the library off) loses the old ones.
+     */
+    suspend fun ask(user: StoredMessage, turn: TurnLibrary): StoredMessage {
+        val passages = turn.passages.orEmpty()
+        if (passages != user.passages.orEmpty()) chats.update(user.id, MessageChange(passages = passages))
+        return user.copy(passages = passages.ifEmpty { null })
+    }
+
     private suspend fun passages(library: ChatLibrary, question: String, onFailure: (Exception) -> Unit): String? {
         if (question.isBlank()) return null
         val hits =
@@ -160,5 +173,5 @@ internal class TurnSources {
 }
 
 private const val PASSAGES_INTRO =
-    "Passages from the person's library that may help with their next message. Answer from them where they help, " +
-        "and cite the passages you used by number, as [n]."
+    "Passages from my library that may help with my message below. Answer from them where they help, and cite the " +
+        "passages you used by number, as [n]."

@@ -224,8 +224,11 @@ record the choices. Where it differs from the text above, the code is right:
 - **The demo's chat use (step 10):** "Use my library" is a switch in the message bar's **+** menu, which is a menu only
   while the library has a document (else the **+** opens the photo picker as before); it is saved per chat (database
   version 8, `chats.useLibrary`). A model whose load reports `supports_tool_calls` gets the search tool; any other gets
-  the top six passages (`search`, no reranker, F191) after the chat's instructions in the turn's system prompt, so the
-  person's message is stored and sent as written. The tool is the SDK's `searchTool`, made for each turn so its
+  the top six passages (`search`, no reranker, F191) before the person's words in the message the model reads. They
+  are kept with the question (`messages.passages`) and sent again in its history, but never shown: the bubble, the
+  title and the saved text are the person's words. The system prompt and every earlier turn stay as they were, so the
+  server's prompt cache keeps the chat's prefix (passages in the system prompt changed it every turn, and the whole
+  chat was read again each time). The tool is the SDK's `searchTool`, made for each turn so its
   numbers start at [1] and go on across its calls (D172); its `onHits` hands the demo the passages as the model saw
   them, which are saved with the reply (`messages.sources`, the passage's text included), so every `[n]` is one chip.
   For a tool turn the embedder stays leased until the turn ends (`LibraryRepository.leased`, the repository's lock held

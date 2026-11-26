@@ -49,6 +49,11 @@ data class StoredMessage(
     val voice: StoredVoice? = null,
     /** The library's passages a reply used, numbered as it cites them; empty for any other message. */
     val sources: List<Source> = emptyList(),
+    /**
+     * The library's passages a question was asked with (rag.md): the model reads them before its words, in its turn and
+     * in the history after; the chat never shows them. Null for none.
+     */
+    val passages: String? = null,
 )
 
 /** A row to append; [images] are file names in the [ImageStore]; [sentAt] defaults to the repository's clock. */
@@ -78,6 +83,8 @@ data class MessageChange(
     val stats: ReplyStats? = null,
     /** The library's passages the reply used; null leaves them as they were. */
     val sources: List<Source>? = null,
+    /** A question's library passages; empty takes them away, null leaves them as they were. */
+    val passages: String? = null,
 )
 
 /** Room is the source of truth for chats (demo design §3). Every call runs on Room's own threads. */
@@ -171,6 +178,7 @@ class ChatRepository(
                 wordsPerSecond = change.wordsPerSecond ?: old.wordsPerSecond,
                 stats = change.stats ?: old.stats,
                 sources = change.sources?.let(SourcesColumn::encode) ?: old.sources,
+                passages = if (change.passages == null) old.passages else change.passages.ifEmpty { null },
                 state = change.state?.key ?: old.state,
                 failure =
                     change.failure
@@ -277,6 +285,7 @@ class ChatRepository(
                     StoredVoice(audioStore?.file(name) ?: File(name), audioMillis ?: 0, Levels.decode(audioLevels))
                 },
             sources = SourcesColumn.decode(sources),
+            passages = passages,
         )
 
     private companion object {

@@ -20,6 +20,7 @@ import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.data.TokenStore
 import com.suhel.llamabro.demo.data.settings.LoadConfig
 import com.suhel.llamabro.demo.eventually
+import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.DeviceFacts
 import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
@@ -108,6 +109,15 @@ class SettingsViewModelChipTest {
             SamplingStore(settings, chats),
             facts,
         ).also { viewModels += it }
+
+    @Test fun defaultModelChoicesExcludeTheEmbedder() =
+        runBlocking {
+            testHub.install(Catalog.embedder.key)
+            models.changed()
+            val choices = viewModel { DeviceFacts.Fallback }.library.keepAlive(collectors)
+            eventually("the chat model is offered") { choices.value.any { it.key == swift } }
+            assertTrue(choices.value.none { it.key == Catalog.embedder.key })
+        }
 
     @Test fun theChipsAreThePhonesOnceTheSdkAnswers() =
         runBlocking {

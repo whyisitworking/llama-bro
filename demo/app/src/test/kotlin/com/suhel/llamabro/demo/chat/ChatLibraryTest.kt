@@ -17,7 +17,11 @@ import com.suhel.llamabro.demo.models.FakeScheduler
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.models.installedModel
+import com.suhel.llamabro.demo.ui.chat.ChatItems
+import com.suhel.llamabro.demo.ui.chat.Markdown
+import com.suhel.llamabro.demo.ui.chat.MessageStyle
 import com.suhel.llamabro.demo.ui.chat.Passages
+import com.suhel.llamabro.demo.ui.chat.UserItem
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.rag.Chunker
 import com.suhel.llamabro.rag.Document
@@ -195,6 +199,8 @@ class ChatLibraryTest {
             assertEquals("the choice was saved with the new chat", true, dao.chat(chat.chatId.value)?.useLibrary)
         }
 
+    private val passages = "[1] Llamas\nLlamas hum softly.\n\n[2] Llamas\nThey spit at foes."
+
     @Test fun noToolModelGetsPassagesInTheTurn() =
         runBlocking {
             fake.reply { content("Out of curiosity [1].") }
@@ -206,11 +212,76 @@ class ChatLibraryTest {
 
             assertFalse("no tools", request(0).containsKey("tools"))
             assertTrue(searches().toString(), searches().single().contains("Why do llamas hum?"))
-            val messages = request(0).messages()
-            val system = messages.first { it.getValue("role").jsonPrimitive.content == "system" }.text()
-            assertTrue(system, "[1] Llamas\nLlamas hum softly.\n\n[2] Llamas\nThey spit at foes." in system)
-            assertEquals("the passages stay out of the person's message", "Why do llamas hum?", messages.last().text())
+            val asked = request(0).messages().last().text()
+            assertTrue(asked, passages in asked)
+            assertTrue("the passages, then the person's words", asked.endsWith(passages + "\n\nWhy do llamas hum?"))
             assertEquals(listOf(source(1, hum), source(2, spit)), reply.sources)
+        }
+
+    @Test fun passagesGoIntoTheTurnNotTheSystemPrompt() =
+        runBlocking {
+            settings.setInstructions("about me", "")
+            fake.reply { content("Out of curiosity [1].") }
+            fake.reply { content("At foes [2].") }
+            val chat = newChat(engine(tools = false))
+            eventually("the toggle is offered") { chat.useLibrary.value == false }
+            chat.setUseLibrary(true)
+            chat.send("Why do llamas hum?")
+            answered(chat)
+            chat.send("And spit?")
+            eventually("two replies") {
+                chat.messages.value.count { it.kind == MessageKind.Assistant && it.state == MessageState.Done } == 2
+            }
+
+            val first = request(0).messages()
+            val second = request(1).messages()
+            assertEquals("the system prompt is the same in both turns", first.first(), second.first())
+            assertEquals(
+                "system",
+                first
+                    .first()
+                    .getValue("role")
+                    .jsonPrimitive.content,
+            )
+            assertFalse(passages in first.first().text())
+            assertEquals("the first turn is sent again as it was, passages and all", first, second.take(first.size))
+            assertTrue(second.last().text().endsWith("And spit?"))
+        }
+
+    @Test fun visibleMessageHasNoPassageText() =
+        runBlocking {
+            fake.reply { content("Out of curiosity [1].") }
+            val chat = newChat(engine(tools = false))
+            eventually("the toggle is offered") { chat.useLibrary.value == false }
+            chat.setUseLibrary(true)
+            chat.send("Why do llamas hum?")
+            answered(chat)
+
+            val question = chat.messages.value.first { it.kind == MessageKind.User }
+            assertEquals("its saved text is what the person wrote", "Why do llamas hum?", question.text)
+            assertTrue("its passages are kept for the history", question.passages.orEmpty().endsWith(passages))
+            val shown =
+                ChatItems(
+                    MessageStyle.Open,
+                ) { _, text -> Markdown.parse(text) }.build(chat.messages.value, null)
+            assertEquals("Why do llamas hum?", shown.filterIsInstance<UserItem>().single().text)
+            assertEquals(
+                "the chat list's preview",
+                "Out of curiosity [1].",
+                repository()
+                    .chats()
+                    .first()
+                    .single()
+                    .lastText,
+            )
+            assertFalse(
+                repository()
+                    .chats()
+                    .first()
+                    .single()
+                    .title
+                    .contains("Passages"),
+            )
         }
 
     @Test fun toggleOffUsesNothing() =

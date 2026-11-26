@@ -712,8 +712,8 @@ class ChatEngine(
                 // the library: the search tool on a model that calls tools, else the passages in the turn
                 val notSearched: (Exception) -> Unit = { _limit.value = Limits.libraryNotSearched() }
                 libraryUse.forTurn(id, loaded.info, user.text, notSearched) { library ->
-                    val system = listOfNotNull(systemPrompt(), library.passages).joinToString("\n\n").ifEmpty { null }
-                    val convo = conversationFor(loaded, key, rows, user, hears, system, library.tool)
+                    val asked = libraryUse.ask(user, library)
+                    val convo = conversationFor(loaded, key, rows, asked, hears, systemPrompt(), library.tool)
                     val replyId =
                         chats.append(
                             id,
@@ -730,7 +730,7 @@ class ChatEngine(
                     if (!hears && rows.any { it.voice != null && it.position <= user.position }) {
                         _limit.value = Limits.cantHear(currentName())
                     }
-                    val parts = (History.userMessage(user, hears) as Message.User).content
+                    val parts = (History.userMessage(asked, hears) as Message.User).content
                     val text = parts.filterIsInstance<Content.Text>().joinToString("") { it.text }
                     val media = parts.filterNot { it is Content.Text }.toTypedArray()
                     val report = loaded.loadReport
@@ -780,7 +780,7 @@ class ChatEngine(
 
         /**
          * The conversation for [user]'s turn: the one kept from the last turn while the model, its load, the system
-         * prompt ([system]: the instructions, and the library's passages for a model without tools) and its tools are
+         * prompt ([system], the instructions) and its tools are
          * the same, else a new one from [rows]. A turn with the library's search [tool] always gets a new one: the tool
          * is made for the turn, so its numbers start at [1] (D172).
          */
@@ -1009,8 +1009,7 @@ class ChatEngine(
      * What a chat's conversation was made for: the model's [key]; its [loaded] model (a conversation lives inside one
      * load: after a release the same key loads a new model and the old conversation is closed with the old one, so it
      * is rebuilt from the stored rows); the [system] prompt (Settings › Instructions opens over the chat, which stays
-     * open, so a changed setting applies at the next turn; and a model without tools gets the library's passages
-     * there); and whether it has the library's search [tools].
+     * open, so a changed setting applies at the next turn); and whether it has the library's search [tools].
      */
     private data class MadeFor(val key: HfModel, val loaded: Model, val system: String?, val tools: Boolean)
 

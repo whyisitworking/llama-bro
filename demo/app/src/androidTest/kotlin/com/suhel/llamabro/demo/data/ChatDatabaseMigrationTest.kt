@@ -204,6 +204,7 @@ class ChatDatabaseMigrationTest {
                 val message = dao.messages(1).first().single()
                 assertEquals("Hello!", message.text)
                 assertNull("a reply from version 7 has no sources", message.sources)
+                assertNull("nor passages", message.passages)
                 assertEquals(false, dao.useLibrary(1).first())
                 assertEquals(false, dao.chat(1)!!.useLibrary)
             }
