@@ -56,4 +56,21 @@ class Bm25Test {
         assertEquals(emptyList<Pair<Int, Float>>(), index("alpha").search("omega", 3))
         assertEquals(emptyList<Pair<Int, Float>>(), Bm25().search("alpha", 3))
     }
+
+    @Test
+    fun memoryIsBoundedByTheVocabularyAndTheTermsHeld() {
+        // 50,000 rows of 12 distinct terms drawn from a vocabulary of 2,000: one String per term, not per row
+        val bm25 = Bm25()
+        bm25.add(List(50_000) { r -> chunk((0 until 12).joinToString(" ") { "term${(r * 7 + it * 131) % 2_000}" }) })
+        assertEquals(2_000, bm25.vocabularySize)
+        // ints for the rows (12 terms x 2 + length) and the postings (12 x 2) per row, plus the vocabulary
+        val ints = 50_000L * (12 * 2 + 1 + 12 * 2)
+        val budget = ints * 4 + 2_000 * (10 * 2 + 64) + 2_000_000 // postings arrays grow by doubling: allow slack
+        assertTrue("${bm25.estimatedBytes} of $budget", bm25.estimatedBytes <= budget * 2)
+        assertTrue("${bm25.estimatedBytes}", bm25.estimatedBytes < 30_000_000)
+        bm25.kill(0, 49_990)
+        bm25.retain((49_990 until 50_000).toList())
+        assertTrue(9 in bm25.search("term${(49_999 * 7) % 2_000}", 50).map { it.first })
+        assertTrue(bm25.vocabularySize <= 120)
+    }
 }

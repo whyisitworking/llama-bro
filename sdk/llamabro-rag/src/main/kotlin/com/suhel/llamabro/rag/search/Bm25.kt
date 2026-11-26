@@ -12,48 +12,89 @@ import kotlin.math.ln
  * Not thread-safe: the library's mutex guards it with the rest of the store.
  */
 internal class Bm25 {
-    private val postings = HashMap<String, Postings>()
+    // one String per distinct term; everything else refers to a term by its id
+    private val ids = HashMap<String, Int>()
+    private val terms = mutableListOf<String>()
+    private val postings = mutableListOf<Postings>()
 
-    // a row's term frequencies, null once the row is dead
-    private val rows = mutableListOf<Map<String, Int>?>()
+    // a row's distinct term ids and their frequencies, null once the row is dead
+    private val rowTerms = mutableListOf<IntArray?>()
+    private val rowFrequencies = mutableListOf<IntArray?>()
     private val lengths = mutableListOf<Int>()
     private var live = 0
     private var totalLength = 0L
+
+    /** Distinct terms held (dead rows' terms stay until [retain]). */
+    val vocabularySize: Int get() = terms.size
+
+    /** A deterministic heap estimate in bytes: 4 per int held, 2 per vocabulary character, 64 per term. */
+    val estimatedBytes: Long
+        get() {
+            val rowInts = rowTerms.sumOf { (it?.size ?: 0) * 2L } + lengths.size
+            val postingInts = postings.sumOf { it.rows.size * 2L }
+            return (rowInts + postingInts) * Int.SIZE_BYTES + terms.sumOf { it.length * 2L + TERM_OVERHEAD }
+        }
 
     fun add(chunks: List<Chunk>) {
         for (chunk in chunks) index(tokens(chunk.text).groupingBy { it }.eachCount())
     }
 
     private fun index(frequencies: Map<String, Int>) {
-        val row = rows.size
-        rows += frequencies
-        val length = frequencies.values.sum()
+        val row = rowTerms.size
+        val ofRow = IntArray(frequencies.size)
+        val tfs = IntArray(frequencies.size)
+        var length = 0
+        var i = 0
+        for ((term, tf) in frequencies) {
+            val id =
+                ids.getOrPut(term) {
+                    terms.size.also {
+                        terms += term
+                        postings += Postings()
+                    }
+                }
+            postings[id].add(row, tf)
+            ofRow[i] = id
+            tfs[i++] = tf
+            length += tf
+        }
+        rowTerms += ofRow
+        rowFrequencies += tfs
         lengths += length
         live++
         totalLength += length
-        for ((term, tf) in frequencies) postings.getOrPut(term) { Postings() }.add(row, tf)
     }
 
     /** Drops [count] rows from [first]. */
     fun kill(first: Int, count: Int) {
         for (row in first until first + count) {
-            val frequencies = rows[row] ?: continue
-            for (term in frequencies.keys) postings.getValue(term).df--
-            rows[row] = null
+            val ofRow = rowTerms[row] ?: continue
+            for (id in ofRow) postings[id].df--
+            rowTerms[row] = null
+            rowFrequencies[row] = null
             live--
             totalLength -= lengths[row]
         }
     }
 
-    /** Keeps only the live rows [kept] (ascending), renumbered from 0. */
+    /** Keeps only the live rows [kept] (ascending), renumbered from 0; terms only dead rows used are dropped. */
     fun retain(kept: List<Int>) {
-        val frequencies = kept.map { checkNotNull(rows[it]) { "row $it is dead" } }
+        val oldTerms = terms.toList()
+        val rows =
+            kept.map { row ->
+                val ofRow = checkNotNull(rowTerms[row]) { "row $row is dead" }
+                val tfs = checkNotNull(rowFrequencies[row])
+                ofRow.indices.associate { oldTerms[ofRow[it]] to tfs[it] }
+            }
+        ids.clear()
+        terms.clear()
         postings.clear()
-        rows.clear()
+        rowTerms.clear()
+        rowFrequencies.clear()
         lengths.clear()
         live = 0
         totalLength = 0
-        frequencies.forEach { index(it) }
+        rows.forEach { index(it) }
     }
 
     /** The [k] best live rows for [query], best first, as (row, score); rows sharing no token with it don't appear. */
@@ -62,11 +103,11 @@ internal class Bm25 {
         val average = totalLength.toDouble() / live
         val scores = HashMap<Int, Double>()
         for (term in tokens(query).distinct()) {
-            val list = postings[term] ?: continue
+            val list = ids[term]?.let { postings[it] } ?: continue
             val idf = ln(1 + (live - list.df + HALF) / (list.df + HALF))
             for (i in 0 until list.size) {
                 val row = list.rows[i]
-                if (rows[row] == null) continue
+                if (rowTerms[row] == null) continue
                 val tf = list.frequencies[i]
                 val norm = K1 * (1 - B + B * lengths[row] / average)
                 scores[row] = (scores[row] ?: 0.0) + idf * tf * (K1 + 1) / (tf + norm)
@@ -100,6 +141,7 @@ internal class Bm25 {
         private const val B = 0.75
         private const val HALF = 0.5
         private const val INITIAL = 4
+        private const val TERM_OVERHEAD = 64L
 
         /**
          * Lowercase runs of letters and digits; each Han character and kana is a token of its own (those scripts have
