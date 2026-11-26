@@ -95,6 +95,8 @@ fun FloatingFrame(
     /** The colour the page is drawn on (the canvas; the drawer's panel), under the blurred copy of the page. */
     pageColor: Color = LocalDemoColors.current.canvas,
     overlay: @Composable BoxScope.(PaddingValues) -> Unit = {},
+    /** Whether the bottom bar rides above the keyboard (a message bar) or stays put under it (the drawer's places). */
+    bottomOverKeyboard: Boolean = true,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val below = LocalBottomOverlay.current
@@ -110,7 +112,7 @@ fun FloatingFrame(
         contents =
             listOf(
                 { FloatingLayer(Edge.Top, ground, backdrop, content = top) },
-                { FloatingLayer(Edge.Bottom, ground, backdrop, content = bottom) },
+                { FloatingLayer(Edge.Bottom, ground, backdrop, overKeyboard = bottomOverKeyboard, content = bottom) },
                 { Box(Modifier.fillMaxSize().backdropSource(backdrop)) { content(padding) } },
                 {
                     // over the content and outside it, so its glass never draws itself; clear of the bars whole, fade

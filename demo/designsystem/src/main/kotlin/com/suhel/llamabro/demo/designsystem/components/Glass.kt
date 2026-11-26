@@ -194,14 +194,17 @@ internal val LocalGlassChips = staticCompositionLocalOf { false }
  * It answers a finger (D158, [GlassPress]): it swells, a light gathers on its rim around the finger and its edge
  * bends more, and dragged it stretches after it, then all of it eases back. With the [interactions] of what makes it
  * pressable (a clickable on the same bounds) it answers a key's press and a keyboard's focus too, and is the press's
- * indication, so the clickable needs no ripple of its own.
+ * indication, so the clickable needs no ripple of its own. Without [answersTouch] it stays as it is under a finger:
+ * glass that is a surface to work on rather than a thing to press (a sheet's, D176), whose swell, sized for a chip,
+ * would push its edge out of the sheet's clip.
  */
 fun Modifier.glass(
     backdrop: Backdrop?,
     style: GlassStyle,
     corner: Dp? = null,
     interactions: InteractionSource? = null,
-): Modifier = this then GlassElement(backdrop, corner, style, interactions)
+    answersTouch: Boolean = true,
+): Modifier = this then GlassElement(backdrop, corner, style, interactions, answersTouch)
 
 /**
  * [content] on a piece of glass ([glass]) over the page under it ([LocalBackdrop]), clipped to its shape: corners
@@ -264,11 +267,12 @@ private data class GlassElement(
     val corner: Dp?,
     val style: GlassStyle,
     val interactions: InteractionSource?,
+    val answersTouch: Boolean,
 ) : ModifierNodeElement<GlassNode>() {
-    override fun create() = GlassNode(backdrop, corner, style, interactions)
+    override fun create() = GlassNode(backdrop, corner, style, interactions, answersTouch)
 
     override fun update(node: GlassNode) {
-        node.update(backdrop, corner, style, interactions)
+        node.update(backdrop, corner, style, interactions, answersTouch)
     }
 }
 
@@ -277,6 +281,7 @@ private class GlassNode(
     var corner: Dp?,
     var style: GlassStyle,
     var interactions: InteractionSource?,
+    var answersTouch: Boolean,
 ) : DelegatingNode(),
     DrawModifierNode,
     GlobalPositionAwareModifierNode,
@@ -331,13 +336,20 @@ private class GlassNode(
     private var watching: Job? = null
     private var releasing: Job? = null
 
-    fun update(backdrop: Backdrop?, corner: Dp?, style: GlassStyle, interactions: InteractionSource?) {
+    fun update(
+        backdrop: Backdrop?,
+        corner: Dp?,
+        style: GlassStyle,
+        interactions: InteractionSource?,
+        answersTouch: Boolean,
+    ) {
         val lensChanged = (backdrop?.page != null) != (this.backdrop?.page != null)
         val sourceChanged = interactions !== this.interactions
         this.backdrop = backdrop
         this.corner = corner
         this.style = style
         this.interactions = interactions
+        this.answersTouch = answersTouch
         if (lensChanged && isAttached) {
             release()
             prepare()
@@ -370,6 +382,7 @@ private class GlassNode(
     private suspend fun PointerInputScope.follow() {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            if (!answersTouch) return@awaitEachGesture
             touched(down.position)
             try {
                 while (true) {

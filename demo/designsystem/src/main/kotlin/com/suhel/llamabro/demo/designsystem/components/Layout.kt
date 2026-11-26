@@ -59,6 +59,8 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -405,6 +407,18 @@ fun DemoDrawer(
             if (still) state.snapTo(target) else state.animateTo(target, tween(DemoMotion.STANDARD_MILLIS))
         }
         LaunchedEffect(state) { snapshotFlow { state.settledValue }.collect { reportOpen(it == DrawerValue.Open) } }
+        // a keyboard left up by the page (the message bar) closes as the drawer opens: the drawer's places were pushed
+        // up over its list, and the page's field it served is out of reach under the scrim
+        val focus = LocalFocusManager.current
+        val keyboard = LocalSoftwareKeyboardController.current
+        LaunchedEffect(state) {
+            snapshotFlow { state.targetValue == DrawerValue.Open }.collect { opening ->
+                if (opening) {
+                    focus.clearFocus()
+                    keyboard?.hide()
+                }
+            }
+        }
         val shown by remember { derivedStateOf { state.offset.let { !it.isNaN() && it > 0f } } }
         if (shown || state.targetValue == DrawerValue.Open) {
             DrawerPanel(state, width, still, drawerContent)

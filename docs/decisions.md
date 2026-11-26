@@ -2973,8 +2973,10 @@ Decision: `WindowGlass` at the app's root records the whole window as a page (`L
 design system, so glass in the app's window, which lies inside that page, can't read it and draw itself). A
 `DemoSheet` over it draws a lens in `GlassTheme.sheet` (the chip's glass with a 0.6 veil and a 20 dp blur: text is read
 on it at length), rounded as the sheet's top, its bottom corners below the sheet's clip so it meets the screen square.
-Glass and pages find each other by their place on the screen, not in their window, so glass in any window lines up
-with the page; in the app's own window the two are the same. Before Android 13, or on a Light phone (D153), the sheet
+The sheet's glass doesn't answer a finger as pressed glass does (D158): a chip's swell, a tenth of the sheet's width,
+pushed its curved edge out of the sheet's clip and left it flat while touched. Glass and pages find each other by their
+place on the screen, not in their window, so glass in any window lines up with the page; in the app's own window the two
+are the same. Before Android 13, or on a Light phone (D153), the sheet
 keeps the plain surface: a fill, or a lens without its own blur, shows the page sharp under the sheet's text (seen on
 the emulator). Settings › Appearance › Glass has a Sheets section on phones that draw it.
 Consequences: A sheet is two more passes over half the screen or more. A still sheet costs nothing (no frame is

@@ -133,6 +133,8 @@ fun DrawerContent(
         },
         // the drawer's page is drawn on its panel, which the bars blur with it
         pageColor = LocalDemoColors.current.panel,
+        // the places stay at the drawer's foot, under a keyboard the search raises, not pushed up over the chats
+        bottomOverKeyboard = false,
         modifier =
             modifier
                 .fillMaxSize()

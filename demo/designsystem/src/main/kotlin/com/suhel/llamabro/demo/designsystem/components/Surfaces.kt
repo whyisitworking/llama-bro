@@ -263,7 +263,9 @@ private fun sheetGlass(): Pair<Backdrop, GlassStyle>? {
 
 /**
  * A sheet's glass (D176): a lens over [backdrop]'s page, rounded as the sheet's top. Its bottom corners lie a corner's
- * height below the sheet, where the sheet's clip cuts them off, so the glass meets the screen's bottom square.
+ * height below the sheet, where the sheet's clip cuts them off, so the glass meets the screen's bottom square. It
+ * doesn't answer a finger: a surface to work on, not a thing to press, and a chip's swell would push its edge out of
+ * the sheet's clip.
  */
 @Composable
 private fun SheetGlass(backdrop: Backdrop, style: GlassStyle, modifier: Modifier = Modifier) {
@@ -273,7 +275,7 @@ private fun SheetGlass(backdrop: Backdrop, style: GlassStyle, modifier: Modifier
                 val below = DemoShapes.sheetRadius.roundToPx()
                 val grown = measurable.measure(Constraints.fixed(constraints.maxWidth, constraints.maxHeight + below))
                 layout(constraints.maxWidth, constraints.maxHeight) { grown.place(0, 0) }
-            }.glass(backdrop, style, DemoShapes.sheetRadius),
+            }.glass(backdrop, style, DemoShapes.sheetRadius, answersTouch = false),
     )
 }
 
