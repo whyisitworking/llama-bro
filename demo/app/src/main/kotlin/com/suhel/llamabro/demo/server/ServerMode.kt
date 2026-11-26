@@ -52,6 +52,8 @@ sealed interface ServingState {
  * loaded; a chat on the same model shares it, and a chat that would switch to another asks first ([blocksSwitch]).
  * Calls are taken one at a time; [stop] cancels a start still loading. A computer can pair from its browser: the
  * server asks this mode ([Pairing]), which puts each request in front of the person ([pairing], [answerPairing]).
+ * [onStopped] runs once the server is off and [served] is cleared, after a [stop] or a start that failed (not after a
+ * key renewal's restart): the app uses it to unload the model when nothing else uses it.
  */
 class ServerMode(
     private val host: ModelHost,
@@ -62,6 +64,7 @@ class ServerMode(
     private val advertise: Advertise? = null,
     private val clock: () -> Long = System::currentTimeMillis,
     private val approvals: PairingApprovals = PairingApprovals(),
+    private val onStopped: suspend () -> Unit = {},
 ) : Pairing by approvals {
     private val _state = MutableStateFlow<ServingState>(ServingState.Off)
     val state: StateFlow<ServingState> = _state.asStateFlow()
@@ -120,11 +123,17 @@ class ServerMode(
                 scope.async(start = CoroutineStart.UNDISPATCHED) { open(model, slots) }.also { starting = it }
             }
         work.join()
+        if (_state.value is ServingState.Failed) onStopped()
     }
 
-    /** Stops answering (requests in flight are cancelled) and releases the model; cancels a start still loading. */
+    /**
+     * Stops answering (requests in flight are cancelled) and releases the model; cancels a start still loading. Then
+     * [onStopped] runs, which unloads the model right away unless a chat turn is generating from it (D164): that one
+     * finishes first, and the idle release (leaving the app, Keep loaded) frees the model later.
+     */
     suspend fun stop() {
         control.withLock { shutDown() }
+        onStopped()
     }
 
     /**

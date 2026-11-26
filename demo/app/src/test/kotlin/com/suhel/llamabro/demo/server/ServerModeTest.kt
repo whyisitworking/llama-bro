@@ -87,7 +87,8 @@ class ServerModeTest {
     }
 
     private var port = 0
-    private val server by lazy { ServerMode(host, settings, keys, scope, port = port) }
+    private var onStopped: suspend () -> Unit = {}
+    private val server by lazy { ServerMode(host, settings, keys, scope, port = port, onStopped = { onStopped() }) }
 
     @After fun stop() {
         runBlocking {
@@ -366,6 +367,56 @@ class ServerModeTest {
             } finally {
                 hub.close()
             }
+        }
+
+    @Test fun stopUnloadsTheModelWhenNoChatIsGenerating() =
+        runBlocking {
+            val hub = TestHub()
+            try {
+                val engine = engine(hub)
+                onStopped = { engine.releaseModelIfIdle() }
+                server.start(a, 1)
+                serving()
+                server.stop()
+                assertEquals(HostState.Idle, host.state.value)
+                assertEquals(0, fake.openModels)
+            } finally {
+                hub.close()
+            }
+        }
+
+    @Test fun stopKeepsTheModelWhileAChatTurnRuns() =
+        runBlocking {
+            val hub = TestHub()
+            try {
+                val engine = engine(hub)
+                onStopped = { engine.releaseModelIfIdle() }
+                server.start(a, 1)
+                serving()
+                val hold = withTimeout(10_000) { engine.holdModel(a, "A", 1, MutableStateFlow<Limit?>(null)) }
+                server.stop()
+                assertEquals(ServingState.Off, server.state.value)
+                assertTrue(host.state.value is HostState.Ready)
+                assertEquals(1, fake.openModels)
+                hold?.release()
+                assertTrue(engine.releaseModelIfIdle())
+                assertEquals(0, fake.openModels)
+            } finally {
+                hub.close()
+            }
+        }
+
+    @Test fun renewKeyDoesNotUnload() =
+        runBlocking {
+            var stopped = 0
+            onStopped = { stopped++ }
+            server.start(a, 1)
+            serving()
+            server.renewKey()
+            serving()
+            assertEquals(0, stopped)
+            assertTrue(host.state.value is HostState.Ready)
+            assertEquals(1, fake.openModels)
         }
 
     @Test fun switchingTheChatModelWhileServingAsksFirst() =

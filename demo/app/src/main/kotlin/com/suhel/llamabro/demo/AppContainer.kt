@@ -223,6 +223,8 @@ class AppContainer(
             scope,
             advertise = Advertise("Llama Bro", app),
             clock = clock,
+            // engine is built below; the hook runs only after a stop, long after construction
+            onStopped = { engine.releaseModelIfIdle() },
         )
 
     /** The phone's Wi-Fi addresses and charger, for the Server page and the serving notification. */

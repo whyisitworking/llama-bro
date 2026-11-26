@@ -198,7 +198,9 @@ Failed    no Wi-Fi · port in use · the model didn't load   [Try again]
   every request is answered from that lease's model, never a hold of its own. A chat on the same model uses it too and
   takes a slot like any client. Deleting the served model asks "Stop serving <model> to delete it?" first. Choosing another model in a chat asks first: "Stop
   serving <model> to use <other>?". Voice mode's second slot (D99) is honoured when the served model was loaded with
-  two or more.
+  two or more. Stopping unloads the model right away, unless a chat turn is generating from it: that turn finishes
+  first, and the idle release (leaving the app, Keep loaded) frees the model later. A failed start unloads too; a key
+  renewal's restart does not.
 - **Temperature:** `PowerManager.currentThermalStatus` and `getThermalHeadroom`, shown, not acted on (the throttle is
   a separate piece of work).
 - **One model in v1.** `/v1/models` lists the served model, and every request is answered by it whatever its
