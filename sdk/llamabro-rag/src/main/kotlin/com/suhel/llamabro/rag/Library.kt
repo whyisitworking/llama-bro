@@ -9,6 +9,7 @@ import com.suhel.llamabro.rag.store.LibraryStore
 import com.suhel.llamabro.rag.store.embedderIdentity
 import com.suhel.llamabro.rag.store.readManifest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
@@ -175,8 +176,9 @@ public class Library internal constructor(
          *
          * A cold flow: [IngestProgress.Chunked] with the passages in the library, [IngestProgress.Embedded] over all
          * of them, then [IngestProgress.Saved] once the new library is in place. Until then [dir] holds the old one:
-         * cancelling, a failure or a crash leaves it as it was (the next [open] deletes the half-written new one), and
-         * a crash in the moment of the swap is finished by the next [open]. Close every [Library] open on [dir] first,
+         * cancelling or a failure leaves it as it was and deletes the half-written new one, a crash leaves it as it was
+         * (the next [open] deletes the half-written new one), and a crash in the moment of the swap is finished by the
+         * next [open]. Close every [Library] open on [dir] first,
          * and run one rebuild of a folder at a time.
          */
         public fun rebuild(
@@ -196,6 +198,7 @@ public class Library internal constructor(
                         LibraryStore(fs, dir).passages()
                     }
                 val next = sibling(dir, REBUILDING)
+                var committed = false
                 try {
                     val documents = old?.documents.orEmpty()
                     var left = documents.sumOf { it.rowCount }
@@ -220,15 +223,25 @@ public class Library internal constructor(
                     } finally {
                         library.close()
                     }
+                    withContext(Dispatchers.IO) { fs.atomicMove(next, sibling(dir, REBUILT)) }
+                    committed = true
                 } finally {
                     old?.close()
+                    // cancelled or failed before the commit: the half-written library goes now, not at the next open
+                    if (!committed) withContext(NonCancellable + Dispatchers.IO) { deleteQuietly(fs, next) }
                 }
-                withContext(Dispatchers.IO) {
-                    fs.atomicMove(next, sibling(dir, REBUILT))
-                    finishRebuild(fs, dir)
-                }
+                withContext(Dispatchers.IO) { finishRebuild(fs, dir) }
                 emit(IngestProgress.Saved)
             }
+
+        // a folder the next open deletes anyway, so a failure here changes nothing
+        private fun deleteQuietly(fs: FileSystem, folder: Path) {
+            try {
+                fs.deleteRecursively(folder)
+            } catch (_: IOException) {
+                // the next open deletes it
+            }
+        }
 
         private const val PROBE = "a"
     }
