@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Pair with Llama Bro</title>
+<style>
+  :root {
+    --canvas: #ebebee; --surface: #f4f4f6; --ink: #1d1d1f; --muted: #606065; --hairline: #dcdce1;
+    --accent: #3a3a3d; --on-accent: #f4f4f6; --danger: #a23b2f;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --canvas: #0b0b0c; --surface: #161618; --ink: #d5d5d9; --muted: #98989d; --hairline: #242426;
+      --accent: #bbbbc0; --on-accent: #161618; --danger: #e08a7e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--canvas); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 40rem; margin: 0 auto; padding: 3rem 1rem; }
+  h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 0.25rem; }
+  p { margin: 0.5rem 0; }
+  .muted { color: var(--muted); }
+  .card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; padding: 1.5rem; margin-top: 1.5rem; }
+  .code {
+    font: 600 4rem/1.1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: 0.2em;
+    margin: 0.5rem 0 1rem; font-variant-numeric: tabular-nums;
+  }
+  .error { color: var(--danger); }
+  button {
+    font: inherit; font-size: 0.875rem; cursor: pointer; border-radius: 8px; padding: 0.375rem 0.875rem;
+    border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent);
+  }
+  button.quiet { background: transparent; color: var(--ink); border-color: var(--hairline); }
+  .snippet { border-top: 1px solid var(--hairline); padding-top: 1rem; margin-top: 1rem; }
+  .snippet:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+  .snippet header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+  .snippet h2 { font-size: 0.9375rem; font-weight: 600; margin: 0; }
+  pre {
+    margin: 0; padding: 0.75rem; background: var(--canvas); border: 1px solid var(--hairline); border-radius: 8px;
+    font: 0.8125rem/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-all;
+  }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Pair with Llama Bro</h1>
+  <p class="muted">This computer asks the phone for its key. Nothing is shared until you approve on the phone.</p>
+
+  <section class="card" id="waiting">
+    <p class="muted">Code</p>
+    <div class="code" id="code">····</div>
+    <p><strong>Approve on your phone</strong> if it shows the same code.</p>
+    <p class="muted" id="status">Asking the phone…</p>
+    <button class="quiet" id="again" hidden>Ask again</button>
+  </section>
+
+  <section class="card" id="approved" hidden>
+    <p><strong>Paired.</strong> <span class="muted">The key is shown once; copy what you need before you leave this page.</span></p>
+    <div id="snippets"></div>
+  </section>
+</main>
+<script>
+(function () {
+  "use strict";
+  var POLL_MS = 1500;
+  var codeEl = document.getElementById("code");
+  var statusEl = document.getElementById("status");
+  var againEl = document.getElementById("again");
+  var waitingEl = document.getElementById("waiting");
+  var approvedEl = document.getElementById("approved");
+  var snippetsEl = document.getElementById("snippets");
+  var timer = null;
+
+  function say(text, isError) {
+    statusEl.textContent = text;
+    statusEl.className = isError ? "error" : "muted";
+  }
+
+  function stopped(text) {
+    say(text, true);
+    againEl.hidden = false;
+  }
+
+  function start() {
+    againEl.hidden = true;
+    codeEl.textContent = "····";
+    say("Asking the phone…", false);
+    fetch("/pair", { method: "POST", cache: "no-store" }).then(function (reply) {
+      if (reply.status === 429) {
+        var wait = reply.headers.get("Retry-After");
+        stopped("Too many tries. Try again" + (wait ? " in " + wait + " s." : " later."));
+        return null;
+      }
+      if (!reply.ok) { stopped("The phone refused to pair (" + reply.status + ")."); return null; }
+      return reply.json();
+    }).then(function (started) {
+      if (!started) return;
+      codeEl.textContent = started.code;
+      say("Waiting for the phone…", false);
+      poll(started.id);
+    }).catch(function () { stopped("The phone can't be reached."); });
+  }
+
+  function poll(id) {
+    timer = setTimeout(function () {
+      fetch("/pair/" + encodeURIComponent(id), { cache: "no-store" }).then(function (reply) {
+        if (reply.status === 404) return { state: "expired" };
+        if (reply.status === 429) return { state: "throttled", wait: reply.headers.get("Retry-After") };
+        if (!reply.ok) return { state: "failed", status: reply.status };
+        return reply.json();
+      }).then(function (answer) {
+        if (answer.state === "pending") poll(id);
+        else if (answer.state === "approved") show(answer.baseUrl, answer.key);
+        else if (answer.state === "denied") stopped("Denied on the phone.");
+        else if (answer.state === "expired") stopped("No answer in two minutes, so the phone didn't pair.");
+        else if (answer.state === "throttled") stopped("Too many tries. Try again in " + answer.wait + " s.");
+        else stopped("The phone refused to pair (" + answer.status + ").");
+      }).catch(function () { stopped("The phone can't be reached."); });
+    }, POLL_MS);
+  }
+
+  function snippets(url, key, model) {
+    return [
+      ["curl", "curl " + url + "/v1/chat/completions -H \"Authorization: Bearer " + key + "\" " +
+        "-H \"Content-Type: application/json\" -d '{\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}'"],
+      ["OpenAI Python", [
+        "from openai import OpenAI",
+        "client = OpenAI(base_url=\"" + url + "/v1\", api_key=\"" + key + "\")",
+        "print(client.chat.completions.create(model=\"" + model + "\", " +
+          "messages=[{\"role\": \"user\", \"content\": \"Hello\"}]).choices[0].message.content)"
+      ].join("\n")],
+      ["Claude Code", "ANTHROPIC_BASE_URL=" + url + " ANTHROPIC_AUTH_TOKEN=" + key + " claude"],
+      ["Key", key]
+    ];
+  }
+
+  function show(url, key) {
+    waitingEl.hidden = true;
+    approvedEl.hidden = false;
+    /* the served model's name, for the Python snippet; the single-model server answers any */
+    fetch("/v1/models", { cache: "no-store" }).then(function (reply) { return reply.json(); })
+      .then(function (list) { return (list.data && list.data[0] && list.data[0].id) || "default"; })
+      .catch(function () { return "default"; })
+      .then(function (model) { render(snippets(url, key, model)); });
+  }
+
+  function render(list) {
+    snippetsEl.textContent = "";
+    list.forEach(function (item) {
+      var box = document.createElement("div");
+      box.className = "snippet";
+      var head = document.createElement("header");
+      var title = document.createElement("h2");
+      title.textContent = item[0];
+      var copy = document.createElement("button");
+      copy.className = "quiet";
+      copy.textContent = "Copy";
+      var pre = document.createElement("pre");
+      pre.textContent = item[1];
+      copy.addEventListener("click", function () { copyText(pre, copy); });
+      head.appendChild(title);
+      head.appendChild(copy);
+      box.appendChild(head);
+      box.appendChild(pre);
+      snippetsEl.appendChild(box);
+    });
+  }
+
+  function selectAll(el) {
+    var range = document.createRange();
+    range.selectNodeContents(el);
+    var selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  function copied(button, text) {
+    button.textContent = text;
+    setTimeout(function () { button.textContent = "Copy"; }, 2000);
+  }
+
+  /* plain HTTP isn't a secure context, where the clipboard API is missing: select the text and copy it the old way */
+  function copyText(pre, button) {
+    if (window.isSecureContext && navigator.clipboard) {
+      navigator.clipboard.writeText(pre.textContent).then(function () { copied(button, "Copied"); },
+        function () { fallback(pre, button); });
+    } else {
+      fallback(pre, button);
+    }
+  }
+
+  function fallback(pre, button) {
+    selectAll(pre);
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    copied(button, ok ? "Copied" : "Selected: press ⌘C or Ctrl+C");
+  }
+
+  againEl.addEventListener("click", function () { clearTimeout(timer); start(); });
+  start();
+})();
+</script>
+</body>
+</html>

@@ -94,6 +94,7 @@ import com.suhel.llamabro.hub.LlamaBroHub
 import com.suhel.llamabro.hub.work.LlamaBroWorkerFactory
 import com.suhel.llamabro.rag.Library
 import com.suhel.llamabro.server.Advertise
+import com.suhel.llamabro.server.PairingRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -243,6 +244,11 @@ class AppContainer(
             override suspend fun renewKey() {
                 server.renewKey()
             }
+
+            override val pairing = server.pairing
+
+            override fun answerPairing(request: PairingRequest, approved: Boolean) =
+                server.answerPairing(request, approved)
         }
 
     /**

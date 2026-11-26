@@ -43,6 +43,7 @@ fun DockedScreen(screens: Screens, onBack: () -> Unit) {
     val vm = viewModel(key = "server") { screens.serverViewModel() }
     val docked by vm.docked.collectAsStateWithLifecycle()
     docked?.let { DockedHost(it, onBack) }
+    PairingQuestion(vm)
 }
 
 /**

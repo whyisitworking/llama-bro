@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D173 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D174 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -70,6 +70,7 @@ its amendments to know what holds now.
 | [D171](#d171) The library's search tool returns numbered passages, answers failures safely and lets cancellation through | 2026-11-26 | [D172](#d172) |
 | [D172](#d172) The search tool numbers passages on across its calls and tells the app what the model saw (`onHits`) | 2026-11-26 | |
 | [D173](#d173) The server can match a typable key and throttles wrong keys per address; the demo's key is 16 Crockford characters and its QR code goes | 2026-11-26 | |
+| [D174](#d174) A computer pairs from its browser and the phone approves it; the key goes to that page once | 2026-11-26 | |
 
 **Hub**
 
@@ -2892,4 +2893,48 @@ with many addresses (IPv6 privacy addresses) gets 5 guesses per address, and eno
 the 1,024 tracked. Anyone paired with an old demo key must enter the new one. The module's defaults change in one
 way: a server with a key now throttles unless the app sets `Throttle.Off`.
 
-Next free IDs: D174, F192.
+<a id="d174"></a>
+### D174. A computer pairs from its browser and the phone approves it; the key goes to that page once
+
+Status: Decided (2026-11-26)
+
+Context: Even typable (D173), the key is 16 characters to read off a phone and type on a laptop, and the laptop can't
+scan a code. The laptop has a browser, and the phone is in reach while it is set up (docs/design/server.md §6).
+Upstream's llama-server has nothing like it: its web UI asks for the key.
+Decision: In `llamabro-server`, `ServerConfig.pairing: Pairing?` (null by default, as upstream; it needs `apiKey`).
+`Pairing` is the app's `fun interface` with `suspend fun approve(PairingRequest): Boolean`, where `PairingRequest` has
+`code`, `client` (the address) and `userAgent`. With it set, three routes need no key:
+- `GET /` serves one self-contained HTML page (a resource in the module: inline CSS and script, no external script,
+  font, image or link; light and dark from `prefers-color-scheme`), with `Cache-Control: no-store`, a CSP that allows
+  only itself and requests to the server, and `X-Frame-Options: DENY`.
+- `POST /pair` answers `{"id", "code"}`: a 128-bit random id (base64url) and a 4-digit code (`SecureRandom`,
+  0000-9999). An address has at most one pairing waiting (a second POST gets the same one) and three wait in all (a
+  fourth gets 429 with `Retry-After` until the oldest expires). The server calls `approve` once per pairing, on the
+  running server's scope, never twice at once for an address, and cancels it after 2 minutes: an expiry is a deny, as
+  is an `approve` that throws.
+- `GET /pair/{id}` answers `pending`, `denied`, `expired`, or `approved` with `key` and `baseUrl` (`http://` and the
+  `Host` the page used). A final answer is given once and the id is then gone (404); an answer no one polls is
+  forgotten 2 minutes after it. Only the address that started a pairing may poll it; another gets 404.
+- All three sit behind the key's throttle (D173), in its one locked step: a wrong or unknown id is a wrong guess, and
+  a throttled address gets 429 on every pairing route. They answer only the page's own origin: a request with an
+  `Origin` other than `http://<Host>` gets 403 whatever the server's CORS (the demo's is `Cors.Any`, for the API), and
+  so does a `Host` that isn't an address, `localhost`, a single label or a `.local`, `.lan`, `.home.arpa` or
+  `.internal` name, which stops another site from rebinding its name to the phone (DNS rebinding) to read the key.
+The page shows the code large and "Approve on your phone", polls every 1.5 s, and after an approval shows the curl,
+OpenAI Python and Claude Code snippets and the key, each with Copy (the clipboard API where the browser allows it,
+else select and `execCommand`, since plain HTTP is not a secure context).
+In the demo, `ServerMode` is the `Pairing`: each request waits in line (`PairingApprovals`) and the first is shown as
+a dialog over the Server page and the docked view ("Pair a computer?", the code in `glance`, the address with the
+system and browser from the user agent, "192.168.1.12 · Mac · Chrome", Approve and Deny). While the app is behind
+another, `ServerService` posts a high-importance notification with the code, the address and Approve and Deny actions,
+withdrawn once it is answered, expires or the app comes to the front. No answer within 2 minutes is a deny.
+Consequences: Security, for a LAN over plain HTTP: the key travels in the clear to the page, as it does in every API
+request, so pairing adds no exposure that using the key doesn't. The 4-digit code is not a secret to guess, since it
+is never typed: the person checks it by eye against the phone, so it guards against another device's pairing racing
+this one and being approved by mistake. What protects the key is that the phone must approve each pairing, on the
+device, and a pairing nobody approves expires. Another site in the laptop's browser can't pair (Origin and Host
+checks), and a stranger on the Wi-Fi can only ask, at most three at a time and throttled. A LAN whose DNS names end in
+something else than the suffixes above must use the address or `.local`. The module's defaults are unchanged: without
+`pairing`, `/` and `/pair` are ordinary unknown routes behind the key.
+
+Next free IDs: D175, F192.

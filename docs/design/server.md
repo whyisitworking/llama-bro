@@ -1,6 +1,7 @@
 # Serving on Wi-Fi: `llamabro-server` and the demo's server mode
 
-Status: **built, phone run pending**; the SDK part (plan Tasks 1-8: core `exchange`, `llamabro-server`, its tests and these docs) and the demo part (the Server page and the docked view) are built; the phone run that verifies them is still to do (2026-11-26); plan in [docs/superpowers/plans/2026-11-26-llamabro-server.md](../superpowers/plans/2026-11-26-llamabro-server.md). Decisions are recorded in
+Status: **built, phone run pending**; §6 (a typable key, throttling and browser pairing, D173-D174) is built too and
+waits for the same phone run; the SDK part (plan Tasks 1-8: core `exchange`, `llamabro-server`, its tests and these docs) and the demo part (the Server page and the docked view) are built; the phone run that verifies them is still to do (2026-11-26); plan in [docs/superpowers/plans/2026-11-26-llamabro-server.md](../superpowers/plans/2026-11-26-llamabro-server.md). Decisions are recorded in
 [decisions.md](../decisions.md) as they are taken; the module's are D163-D165 and F189, the demo's D166.
 
 ## Intent
@@ -253,6 +254,9 @@ The client is almost always a laptop, which can't scan a QR code, and a 43-chara
     delivered once, after which the pairing is gone.
   - The page then shows the curl, OpenAI Python and Claude Code snippets with the key filled in, ready to copy on the
     laptop. The pairing routes share the throttle.
+- **Built (D174).** The pairing routes also answer only the page's own origin and a LAN host name (no DNS rebinding),
+  and a computer's request is "Pair a computer?" with the code large, the address and "Mac · Chrome" from its user
+  agent.
 - **Approving on the phone (demo).** A dialog over the Server page or the docked view showing the code and the
   client's address, with Approve and Deny; when the app is in the background, the serving notification shows the
   request with Approve and Deny actions. No answer within the 2 minutes is a deny.

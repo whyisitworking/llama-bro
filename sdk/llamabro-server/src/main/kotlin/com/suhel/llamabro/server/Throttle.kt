@@ -26,7 +26,7 @@ public class Throttle internal constructor(
     }
 }
 
-private fun monotonicMillis(): () -> Long {
+internal fun monotonicMillis(): () -> Long {
     val origin = TimeSource.Monotonic.markNow()
     return { origin.elapsedNow().inWholeMilliseconds }
 }

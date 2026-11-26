@@ -43,6 +43,9 @@ internal class AuthConfig {
 
     /** The running server's throttle, shared with any other route that counts failures; null when it is off. */
     var wrongKeys: WrongKeys? = null
+
+    /** Whether the pairing routes are served: they need no key, and judge their own requests. */
+    var pairing: Boolean = false
     var onRejected: (client: String, path: String, status: Int, reason: String) -> Unit = { _, _, _, _ -> }
 }
 
@@ -64,10 +67,12 @@ internal val ApiKeyAuth =
         val matching = pluginConfig.keyMatching
         val wrongKeys = pluginConfig.wrongKeys
         val onRejected = pluginConfig.onRejected
+        val pairing = pluginConfig.pairing
 
         onCall { call ->
             if (key == null) return@onCall
             if (call.request.httpMethod == HttpMethod.Options || call.request.path() in openPaths) return@onCall
+            if (pairing && isPairingPath(call.request.path())) return@onCall
             val authorization = call.request.headers[HttpHeaders.Authorization]
             val xApiKey = call.request.headers["x-api-key"]
             // the key is judged first, in constant time, and the throttle then decides and records in one step, so

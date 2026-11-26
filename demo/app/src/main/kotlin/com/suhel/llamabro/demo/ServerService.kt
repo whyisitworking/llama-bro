@@ -17,10 +17,15 @@ import android.util.Log
 import androidx.annotation.VisibleForTesting
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.demo.server.NetworkState
+import com.suhel.llamabro.demo.server.PairingApprovals
 import com.suhel.llamabro.demo.server.ServingState
+import com.suhel.llamabro.demo.ui.server.ServerFormat
 import com.suhel.llamabro.hub.HfModel
+import com.suhel.llamabro.server.PairingRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,12 +39,18 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
-/** What the service reads: where serving is, the model served, the network and the battery, and how to stop it. */
+/**
+ * What the service reads: where serving is, the model served, the network and the battery, and how to stop it; and
+ * the computer asking to pair, whether the app is [inFront] (where its dialog asks instead), and how to answer.
+ */
 class ServingFeed(
     val state: StateFlow<ServingState>,
     val served: StateFlow<HfModel?>,
     val network: NetworkState,
     val stop: suspend () -> Unit,
+    val pairing: StateFlow<PairingRequest?>,
+    val inFront: Flow<Boolean>,
+    val answerPairing: (PairingRequest, Boolean) -> Unit,
 )
 
 /**
@@ -50,6 +61,8 @@ class ServingFeed(
  * started from the background); there is no time limit, as the notification and Stop are the person's control. When
  * the Wi-Fi goes the server goes on (it is bound to every address) and the notification says so until it is back.
  * It holds no model itself: [com.suhel.llamabro.demo.chat.BackgroundRelease] frees nothing while serving.
+ * A computer asking to pair while the app is behind another gets a high-importance notification of its own, with the
+ * code, the address and Approve and Deny (docs/design/server.md §6, D174); in front, the app's dialog asks instead.
  */
 class ServerService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -63,6 +76,11 @@ class ServerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_APPROVE || intent?.action == ACTION_DENY) {
+            answer(intent, approved = intent.action == ACTION_APPROVE)
+            if (!watching) stopSelf()
+            return START_NOT_STICKY
+        }
         if (intent?.action == ACTION_STOP) {
             scope.launch {
                 feed.stop()
@@ -77,6 +95,7 @@ class ServerService : Service() {
             holdLocks()
             scope.launch { watch() }
             scope.launch { endWithServing() }
+            scope.launch { askToPair() }
         }
         return START_NOT_STICKY
     }
@@ -88,6 +107,77 @@ class ServerService : Service() {
                 getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(facts))
             }
         }
+    }
+
+    /** The pairing question, posted while the app is behind another and withdrawn once answered or in front. */
+    private suspend fun askToPair() {
+        val manager = getSystemService(NotificationManager::class.java)
+        combine(feed.pairing, feed.inFront) { request, front -> request.takeIf { !front } }
+            .distinctUntilChanged()
+            .collect { request ->
+                if (request ==
+                    null
+                ) {
+                    manager.cancel(PAIRING_ID)
+                } else {
+                    manager.notify(PAIRING_ID, pairingNotification(request))
+                }
+            }
+    }
+
+    /** An action's answer, for the request it was posted for only: one that has expired since answers nothing. */
+    private fun answer(intent: Intent, approved: Boolean) {
+        val asked = feed.pairing.value ?: return
+        if (asked.code == intent.getStringExtra(EXTRA_CODE) && asked.client == intent.getStringExtra(EXTRA_CLIENT)) {
+            feed.answerPairing(asked, approved)
+        }
+    }
+
+    private fun pairingNotification(request: PairingRequest): Notification {
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(
+                PAIRING_CHANNEL,
+                getString(R.string.pairing_channel),
+                NotificationManager.IMPORTANCE_HIGH,
+            ),
+        )
+
+        fun action(action: String, label: Int) =
+            NotificationCompat.Action(
+                0,
+                getString(label),
+                PendingIntent.getService(
+                    this,
+                    // one per request, so a new request never rewrites the extras of an old one's actions
+                    (action + request.code + request.client).hashCode(),
+                    Intent(this, ServerService::class.java)
+                        .setAction(action)
+                        .putExtra(EXTRA_CODE, request.code)
+                        .putExtra(EXTRA_CLIENT, request.client),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                ),
+            )
+        val open =
+            PendingIntent.getActivity(
+                this,
+                PAIRING_ID,
+                Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        val client = listOfNotNull(request.client, ServerFormat.device(request.userAgent)).joinToString(" · ")
+        return NotificationCompat
+            .Builder(this, PAIRING_CHANNEL)
+            .setSmallIcon(android.R.drawable.stat_sys_upload)
+            .setContentTitle(getString(R.string.pairing_title, request.code))
+            .setContentText(getString(R.string.pairing_text, client))
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(open)
+            .addAction(action(ACTION_APPROVE, R.string.pairing_approve))
+            .addAction(action(ACTION_DENY, R.string.pairing_deny))
+            // the question lasts two minutes at most; the server withdraws it then, and this goes with it
+            .setTimeoutAfter(PairingApprovals.EXPIRY_MILLIS)
+            .build()
     }
 
     /**
@@ -105,6 +195,7 @@ class ServerService : Service() {
 
     override fun onDestroy() {
         scope.cancel()
+        getSystemService(NotificationManager::class.java).cancel(PAIRING_ID)
         releaseLocks()
         super.onDestroy()
     }
@@ -199,6 +290,12 @@ class ServerService : Service() {
         private const val NOTIFICATION_ID = 7_300
         private const val ACTION_STOP = "com.suhel.llamabro.demo.STOP_SERVING"
         private const val LOCK_TAG = "LlamaBro:serving"
+        private const val PAIRING_CHANNEL = "pairing"
+        private const val PAIRING_ID = 7_301
+        private const val ACTION_APPROVE = "com.suhel.llamabro.demo.APPROVE_PAIRING"
+        private const val ACTION_DENY = "com.suhel.llamabro.demo.DENY_PAIRING"
+        private const val EXTRA_CODE = "code"
+        private const val EXTRA_CLIENT = "client"
 
         /** How long Off or Failed must last to count as the end of serving, not the middle of a restart. */
         const val SETTLE_MILLIS = 1_000L
@@ -213,6 +310,13 @@ class ServerService : Service() {
                 container.server.served,
                 container.network,
                 container.server::stop,
+                container.server.pairing,
+                // started or resumed: a window of the app is on screen, where the dialog asks
+                ProcessLifecycleOwner
+                    .get()
+                    .lifecycle.currentStateFlow
+                    .map { it.isAtLeast(Lifecycle.State.STARTED) },
+                container.server::answerPairing,
             )
         }
 

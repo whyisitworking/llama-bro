@@ -16,10 +16,11 @@ import com.suhel.llamabro.demo.ui.preview.DemoPreviews
 import com.suhel.llamabro.demo.ui.preview.DemoScreenPreviews
 import com.suhel.llamabro.demo.ui.preview.PreviewFrame
 import com.suhel.llamabro.hub.HfModel
+import com.suhel.llamabro.server.PairingRequest
 import java.time.ZoneOffset
 import java.util.Locale
 
-// The Server page in each state a person can find it in (docs/design/server.md §3), and its two questions.
+// The Server page in each state a person can find it in (docs/design/server.md §3), and its three questions.
 
 private val qwen = HfModel.parse("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")
 private val gemma = HfModel.parse("unsloth/gemma-3-4b-it-qat-GGUF:Q4_K_M")
@@ -120,6 +121,13 @@ internal fun StopServingDialogPreview() {
             "Cancel",
         )
     }
+}
+
+@DemoPreviews
+@Composable
+internal fun PairingDialogPreview() {
+    val request = PairingRequest("4821", "192.168.1.12", null)
+    PreviewFrame { PairingCard(Approval("4821", "192.168.1.12 · Mac · Chrome", request), Modifier.gutterPadding()) }
 }
 
 private val docked =

@@ -9,6 +9,8 @@ import com.suhel.llamabro.server.Advertise
 import com.suhel.llamabro.server.Cors
 import com.suhel.llamabro.server.KeyMatching
 import com.suhel.llamabro.server.LlamaBroServer
+import com.suhel.llamabro.server.Pairing
+import com.suhel.llamabro.server.PairingRequest
 import com.suhel.llamabro.server.ServerConfig
 import com.suhel.llamabro.server.ServerState
 import kotlinx.coroutines.CancellationException
@@ -48,7 +50,8 @@ sealed interface ServingState {
  * is taken), always behind the [keys]' key, with CORS open so a laptop's browser (`npx llama-chat`) can call it, and
  * announced through [advertise]. From [start] to [stop] it holds a [ModelHost] lease on the model, so the model stays
  * loaded; a chat on the same model shares it, and a chat that would switch to another asks first ([blocksSwitch]).
- * Calls are taken one at a time; [stop] cancels a start still loading.
+ * Calls are taken one at a time; [stop] cancels a start still loading. A computer can pair from its browser: the
+ * server asks this mode ([Pairing]), which puts each request in front of the person ([pairing], [answerPairing]).
  */
 class ServerMode(
     private val host: ModelHost,
@@ -58,7 +61,8 @@ class ServerMode(
     private val port: Int = DEFAULT_PORT,
     private val advertise: Advertise? = null,
     private val clock: () -> Long = System::currentTimeMillis,
-) {
+    private val approvals: PairingApprovals = PairingApprovals(),
+) : Pairing by approvals {
     private val _state = MutableStateFlow<ServingState>(ServingState.Off)
     val state: StateFlow<ServingState> = _state.asStateFlow()
 
@@ -74,6 +78,12 @@ class ServerMode(
 
     /** The requests being answered now, of the slots the model was loaded with. */
     val busy: StateFlow<Int> = book.busy
+
+    /** The computer asking to pair now, for the dialog and the notification; null when none asks. */
+    val pairing: StateFlow<PairingRequest?> = approvals.shown
+
+    /** The person's answer to [request], the one [pairing] shows; a stop or a restart cancels the questions. */
+    fun answerPairing(request: PairingRequest, approved: Boolean) = approvals.answer(request, approved)
 
     /** start, stop and renew, one at a time. */
     private val control = Mutex()
@@ -251,6 +261,8 @@ class ServerMode(
             keyMatching = KeyMatching.Typable
             cors = Cors.Any
             advertise = this@ServerMode.advertise
+            // a laptop's browser asks for the key at the server's address, and the person approves it here (D174)
+            pairing = this@ServerMode
         }
 
     private fun fail(reason: String) {

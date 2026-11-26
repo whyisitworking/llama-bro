@@ -137,15 +137,26 @@ public class LlamaBroServer(private val config: ServerConfig, private val models
         }
         // a client that hangs up cancels its call, so the model stops even while it has nothing to write (prefill)
         install(HttpRequestLifecycle) { cancelCallOnClose = true }
+        // one throttle for the key and the pairing routes, for as long as this server runs
+        val wrongKeys = config.throttle.takeIf { it.enabled && config.apiKey != null }?.let { WrongKeys(it.clock) }
+        val onRejected = { client: String, path: String, status: Int, reason: String ->
+            mutableEvents.tryEmit(ServerEvent.Rejected(client, path, status, reason))
+            Unit
+        }
         install(ApiKeyAuth) {
             apiKey = config.apiKey
             keyMatching = config.keyMatching
-            wrongKeys = config.throttle.takeIf { it.enabled && config.apiKey != null }?.let { WrongKeys(it.clock) }
-            onRejected = { client, path, status, reason ->
-                mutableEvents.tryEmit(ServerEvent.Rejected(client, path, status, reason))
-            }
+            this.wrongKeys = wrongKeys
+            pairing = config.pairing != null
+            this.onRejected = onRejected
         }
+        val pairing =
+            config.pairing?.let { approve ->
+                // the approvals run on the application's scope, so a stop cancels them
+                PairingRoutes(Pairings(approve, this, checkNotNull(config.apiKey)), wrongKeys, onRejected)
+            }
         routing {
+            pairing?.let { with(it) { pairing() } }
             // as upstream answers a load balancer's probe
             get("/health") { call.respondText("""{"status":"ok"}""", ContentType.Application.Json) }
             get("/v1/models") {

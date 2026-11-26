@@ -91,6 +91,7 @@ fun ServerScreen(screens: Screens, onBack: (() -> Unit)?, onGetModels: () -> Uni
             )
         }
     ServerContent(page, actions, tab, { tab = it })
+    PairingQuestion(vm)
     if (askingNewKey) {
         NewKeyDialog(
             onConfirm = {
@@ -99,6 +100,15 @@ fun ServerScreen(screens: Screens, onBack: (() -> Unit)?, onGetModels: () -> Uni
             },
             onDismiss = { askingNewKey = false },
         )
+    }
+}
+
+/** The pairing a computer asks for, over whichever page shows: the Server page or the docked view. */
+@Composable
+internal fun PairingQuestion(vm: ServerViewModel) {
+    val approval by vm.approval.collectAsStateWithLifecycle()
+    approval?.let { asked ->
+        PairingDialog(asked, { vm.approvePairing(asked.request) }, { vm.denyPairing(asked.request) })
     }
 }
 

@@ -12,6 +12,7 @@ import com.suhel.llamabro.demo.ServingFeed
 import com.suhel.llamabro.demo.keepServing
 import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.hub.HfModel
+import com.suhel.llamabro.server.PairingRequest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -42,16 +43,30 @@ class ServerServiceTest {
     private val served = MutableStateFlow<HfModel?>(model)
     private val network = NetworkState().apply { setAddresses(listOf("192.168.1.20")) }
     private var stops = 0
+    private val pairing = MutableStateFlow<PairingRequest?>(null)
+    private val inFront = MutableStateFlow(false)
+    private val answers = mutableListOf<Pair<PairingRequest, Boolean>>()
     private lateinit var controller: ServiceController<ServerService>
 
     @Before fun feed() {
         network.setCharging(true)
         ServerService.feedOf = {
-            ServingFeed(state, served, network) {
-                stops++
-                served.value = null
-                state.value = ServingState.Off
-            }
+            ServingFeed(
+                state,
+                served,
+                network,
+                stop = {
+                    stops++
+                    served.value = null
+                    state.value = ServingState.Off
+                },
+                pairing = pairing,
+                inFront = inFront,
+                answerPairing = { request, approved ->
+                    answers += request to approved
+                    pairing.value = null
+                },
+            )
         }
     }
 
@@ -80,6 +95,58 @@ class ServerServiceTest {
             .allNotifications
             .last()
             .also { assertEquals(1, shadowOf(context.getSystemService(NotificationManager::class.java)).size()) }
+
+    private val manager get() = shadowOf(context.getSystemService(NotificationManager::class.java))
+
+    private fun asking(): Notification? = manager.allNotifications.firstOrNull { it.channelId == "pairing" }
+
+    @Test fun backgroundShowsNotificationActions() {
+        val service = running()
+        val mac = PairingRequest("4821", "192.168.1.12", "Mozilla/5.0 (Macintosh) Chrome/131.0.0.0")
+        pairing.value = mac
+        idle()
+        val note = asking()!!
+        assertEquals("Pair a computer? Code 4821", note.title())
+        assertEquals("192.168.1.12 · Mac · Chrome asks for the key", note.text())
+        assertEquals(listOf("Approve", "Deny"), note.actions.map { it.title.toString() })
+        assertEquals(
+            NotificationManager.IMPORTANCE_HIGH,
+            context.getSystemService(NotificationManager::class.java).getNotificationChannel("pairing").importance,
+        )
+        // Approve, delivered to the service as Android would; the request answered goes away, and its notification
+        controller.get().onStartCommand(shadowOf(note.actions[0].actionIntent).savedIntent, 0, 4)
+        idle()
+        assertEquals(listOf(mac to true), answers)
+        assertNull(asking())
+
+        // Deny answers the one it was posted for
+        val pc = PairingRequest("0937", "192.168.1.31", null)
+        pairing.value = pc
+        idle()
+        controller.get().onStartCommand(shadowOf(asking()!!.actions[1].actionIntent).savedIntent, 0, 5)
+        idle()
+        assertEquals(listOf(mac to true, pc to false), answers)
+        assertFalse(shadowOf(service).isStoppedBySelf)
+    }
+
+    @Test fun inFrontTheDialogAsksNotTheNotification() {
+        running()
+        inFront.value = true
+        pairing.value = PairingRequest("4821", "192.168.1.12", null)
+        idle()
+        assertNull(asking())
+        // leaving the app with the question open posts it
+        inFront.value = false
+        idle()
+        assertNotNull(asking())
+        // a stale action, for a request no longer asked, answers nothing
+        val stale = asking()!!.actions[0].actionIntent
+        pairing.value = PairingRequest("0937", "192.168.1.31", null)
+        idle()
+        controller.get().onStartCommand(shadowOf(stale).savedIntent, 0, 6)
+        idle()
+        assertTrue(answers.isEmpty())
+    }
 
     @Test fun runsForAsLongAsServing() =
         runTest(StandardTestDispatcher()) {

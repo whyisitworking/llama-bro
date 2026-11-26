@@ -18,6 +18,17 @@ object ServerFormat {
 
     fun url(address: String, port: Int) = "http://$address:$port"
 
+    /**
+     * "Mac · Chrome": a browser's user agent as the pairing question names the computer, its system and its browser;
+     * null when the agent names neither. Only the common ones: anything else is left out rather than guessed.
+     */
+    fun device(userAgent: String?): String? {
+        val agent = userAgent.orEmpty()
+        val system = SYSTEMS.firstOrNull { (mark, _) -> mark in agent }?.second
+        val browser = BROWSERS.firstOrNull { (mark, _) -> mark in agent }?.second
+        return listOfNotNull(system, browser).joinToString(" · ").ifEmpty { null }
+    }
+
     /** "1 of 2 busy": the requests being answered of the ones the model takes at once. */
     fun busy(busy: Int, slots: Int) = "$busy of $slots busy"
 
@@ -98,6 +109,28 @@ object ServerFormat {
         )
 
     private val TEMPERATURE = listOf("Normal", "Light", "Moderate", "Severe", "Critical", "Emergency", "Shutdown")
+
+    // first match wins: Android's agent says Linux too, and Edge's and Opera's say Chrome
+    private val SYSTEMS =
+        listOf(
+            "iPhone" to "iPhone",
+            "iPad" to "iPad",
+            "Android" to "Android",
+            "CrOS" to "ChromeOS",
+            "Macintosh" to "Mac",
+            "Windows" to "Windows",
+            "Linux" to "Linux",
+        )
+    private val BROWSERS =
+        listOf(
+            "Edg/" to "Edge",
+            "OPR/" to "Opera",
+            "Firefox/" to "Firefox",
+            "CriOS/" to "Chrome",
+            "Chrome/" to "Chrome",
+            "Safari/" to "Safari",
+            "curl/" to "curl",
+        )
 
     private const val MILLIS_PER_SECOND = 1_000.0
     private const val PERCENT = 100

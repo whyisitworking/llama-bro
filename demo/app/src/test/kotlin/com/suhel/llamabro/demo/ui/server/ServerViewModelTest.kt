@@ -9,6 +9,7 @@ import com.suhel.llamabro.demo.server.Thermal
 import com.suhel.llamabro.demo.ui.keepAlive
 import com.suhel.llamabro.demo.ui.shutDown
 import com.suhel.llamabro.hub.HfModel
+import com.suhel.llamabro.server.PairingRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -62,6 +63,8 @@ class ServerViewModelTest {
         override val log = MutableStateFlow<List<LogLine>>(emptyList())
         override val key = MutableStateFlow<String?>("K7QM4RTX9HCD2WNB")
         override val busy = MutableStateFlow(0)
+        override val pairing = MutableStateFlow<PairingRequest?>(null)
+        val answers = mutableListOf<Pair<PairingRequest, Boolean>>()
         val started = mutableListOf<Pair<HfModel, Int>>()
         var stops = 0
         var renewals = 0
@@ -72,6 +75,10 @@ class ServerViewModelTest {
 
         override suspend fun stop() {
             stops++
+        }
+
+        override fun answerPairing(request: PairingRequest, approved: Boolean) {
+            answers += request to approved
         }
 
         override suspend fun renewKey() {
@@ -100,6 +107,23 @@ class ServerViewModelTest {
     private val grouped = "K7QM-4RTX-9HCD-2WNB"
 
     private val noon = LocalDateTime.of(2026, 11, 26, 12, 4, 51).toInstant(ZoneOffset.UTC).toEpochMilli()
+
+    @Test fun aPairingRequestBecomesTheApproval() {
+        val vm = viewModel()
+        val approval = vm.approval.keepAlive(background)
+        assertNull(approval.value)
+        val mac = PairingRequest("4821", "192.168.1.12", "Mozilla/5.0 (Macintosh) Chrome/131.0.0.0 Safari/537.36")
+        server.pairing.value = mac
+        assertEquals(Approval("4821", "192.168.1.12 · Mac · Chrome", mac), approval.value)
+        vm.approvePairing(mac)
+        vm.denyPairing(mac)
+        assertEquals(listOf(mac to true, mac to false), server.answers)
+        // an agent it can't name leaves the address alone
+        server.pairing.value = PairingRequest("0937", "192.168.1.31", null)
+        assertEquals("192.168.1.31", approval.value?.client)
+        server.pairing.value = null
+        assertNull(approval.value)
+    }
 
     @Test fun offShowsDownloadedModels() {
         val off = viewModel().page() as ServerPage.Off

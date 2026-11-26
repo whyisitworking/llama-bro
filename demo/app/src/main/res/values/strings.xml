@@ -8,4 +8,9 @@
     <string name="serving_charging">Charging</string>
     <string name="serving_not_charging">Not charging</string>
     <string name="serving_stop">Stop</string>
+    <string name="pairing_channel">Pairing requests</string>
+    <string name="pairing_title">Pair a computer? Code %1$s</string>
+    <string name="pairing_text">%1$s asks for the key</string>
+    <string name="pairing_approve">Approve</string>
+    <string name="pairing_deny">Deny</string>
 </resources>

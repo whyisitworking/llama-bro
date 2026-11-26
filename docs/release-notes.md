@@ -6,6 +6,14 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
 
 ## Unreleased
 
+- **`llamabro-server`: pairing from a browser** (D174). `ServerConfig.pairing = Pairing { request -> … }` serves a page
+  at `GET /` from which a computer asks for the key; the app approves each request (`PairingRequest` has the 4-digit
+  `code` the page shows, the `client` address and the `userAgent`), and the page then shows the key and the curl,
+  OpenAI Python and Claude Code snippets. Off by default; it needs `apiKey`. Typable keys now also accept Crockford's
+  O, I and L for 0, 1 and 1, and parallel wrong keys can no longer get past the throttle's 5 per wait (D173).
+- **Demo: pair a laptop from its browser** (D174). Open the phone's address in the laptop's browser and approve the
+  request on the phone: a dialog over the Server page or the docked view, or a notification with Approve and Deny
+  when the app is in the background. The key is filled into the laptop's snippets.
 - **`llamabro-server`: typable keys and throttling** (D173). `ServerConfig.keyMatching = KeyMatching.Typable` ignores
   case, spaces and dashes on both sides before the constant-time compare (`Exact`, the default, is unchanged).
   `ServerConfig.throttle` is on (`Throttle.Default`) whenever a key is set: after 5 wrong keys within a minute an

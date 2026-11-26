@@ -34,13 +34,18 @@ public class ServerConfig internal constructor(
     public val keyMatching: KeyMatching,
     /** Whether wrong keys are throttled, when [apiKey] is set. */
     public val throttle: Throttle,
+    /**
+     * Null serves no pairing, as upstream. Else `GET /` serves a page a computer's browser pairs from, and the app
+     * approves each pairing, which hands that page [apiKey] (D174). It needs a key.
+     */
+    public val pairing: Pairing?,
 ) {
     public fun copy(configure: Builder.() -> Unit): ServerConfig = Builder(this).apply(configure).build()
 
     override fun toString(): String =
         "ServerConfig(host=$host, port=$port, apiKey=${apiKey?.let { "***" }}, cors=$cors, routes=$routes, " +
             "maxBodyBytes=$maxBodyBytes, workDir=$workDir, advertise=$advertise, keyMatching=$keyMatching, " +
-            "throttle=$throttle)"
+            "throttle=$throttle, pairing=${pairing?.let { "on" } ?: "off"})"
 
     /** Mutable scope of `ServerConfig { }` and [copy]. */
     public class Builder internal constructor(from: ServerConfig) {
@@ -54,6 +59,7 @@ public class ServerConfig internal constructor(
         public var advertise: Advertise? = from.advertise
         public var keyMatching: KeyMatching = from.keyMatching
         public var throttle: Throttle = from.throttle
+        public var pairing: Pairing? = from.pairing
 
         internal fun build(): ServerConfig {
             require(port in 0..MAX_PORT) { "port $port is not 0..$MAX_PORT" }
@@ -61,6 +67,7 @@ public class ServerConfig internal constructor(
             require(apiKey.isNullOrEmpty() || keyMatching.normalise(apiKey.orEmpty()).isNotEmpty()) {
                 "apiKey is only spaces and dashes, which Typable matching ignores"
             }
+            require(pairing == null || !apiKey.isNullOrEmpty()) { "pairing hands out the key, so it needs apiKey" }
             return ServerConfig(
                 host,
                 port,
@@ -72,6 +79,7 @@ public class ServerConfig internal constructor(
                 advertise,
                 keyMatching,
                 throttle,
+                pairing,
             )
         }
     }
@@ -79,7 +87,7 @@ public class ServerConfig internal constructor(
     public companion object {
         /**
          * `127.0.0.1:8080`, no key, no CORS, the default routes, 32 MiB bodies, uploads in the temporary directory,
-         * keys matched exactly, wrong keys throttled once a key is set.
+         * keys matched exactly, wrong keys throttled once a key is set, no pairing.
          */
         public val Default: ServerConfig =
             ServerConfig(
@@ -93,6 +101,7 @@ public class ServerConfig internal constructor(
                 null,
                 KeyMatching.Exact,
                 Throttle.Default,
+                null,
             )
 
         private const val MAX_PORT = 65535

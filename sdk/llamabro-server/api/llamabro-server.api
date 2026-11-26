@@ -33,6 +33,25 @@ public final class com/suhel/llamabro/server/ModelUnavailable : java/lang/Except
 	public final fun getId ()Ljava/lang/String;
 }
 
+public abstract interface class com/suhel/llamabro/server/Pairing {
+	public abstract fun approve (Lcom/suhel/llamabro/server/PairingRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/suhel/llamabro/server/PairingRequest {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/suhel/llamabro/server/PairingRequest;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/server/PairingRequest;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/server/PairingRequest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getClient ()Ljava/lang/String;
+	public final fun getCode ()Ljava/lang/String;
+	public final fun getUserAgent ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/suhel/llamabro/server/Routes {
 	public static final field Companion Lcom/suhel/llamabro/server/Routes$Companion;
 	public final fun enable (Lcom/suhel/llamabro/Endpoint;)Lcom/suhel/llamabro/server/Routes;
@@ -75,6 +94,7 @@ public final class com/suhel/llamabro/server/ServerConfig {
 	public final fun getHost ()Ljava/lang/String;
 	public final fun getKeyMatching ()Lcom/suhel/llamabro/server/KeyMatching;
 	public final fun getMaxBodyBytes ()J
+	public final fun getPairing ()Lcom/suhel/llamabro/server/Pairing;
 	public final fun getPort ()I
 	public final fun getRoutes ()Lcom/suhel/llamabro/server/Routes;
 	public final fun getThrottle ()Lcom/suhel/llamabro/server/Throttle;
@@ -89,6 +109,7 @@ public final class com/suhel/llamabro/server/ServerConfig$Builder {
 	public final fun getHost ()Ljava/lang/String;
 	public final fun getKeyMatching ()Lcom/suhel/llamabro/server/KeyMatching;
 	public final fun getMaxBodyBytes ()J
+	public final fun getPairing ()Lcom/suhel/llamabro/server/Pairing;
 	public final fun getPort ()I
 	public final fun getRoutes ()Lcom/suhel/llamabro/server/Routes;
 	public final fun getThrottle ()Lcom/suhel/llamabro/server/Throttle;
@@ -99,6 +120,7 @@ public final class com/suhel/llamabro/server/ServerConfig$Builder {
 	public final fun setHost (Ljava/lang/String;)V
 	public final fun setKeyMatching (Lcom/suhel/llamabro/server/KeyMatching;)V
 	public final fun setMaxBodyBytes (J)V
+	public final fun setPairing (Lcom/suhel/llamabro/server/Pairing;)V
 	public final fun setPort (I)V
 	public final fun setRoutes (Lcom/suhel/llamabro/server/Routes;)V
 	public final fun setThrottle (Lcom/suhel/llamabro/server/Throttle;)V

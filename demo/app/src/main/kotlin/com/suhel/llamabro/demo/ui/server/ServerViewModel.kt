@@ -12,6 +12,7 @@ import com.suhel.llamabro.demo.server.ServerMode
 import com.suhel.llamabro.demo.server.ServingState
 import com.suhel.llamabro.demo.server.Thermal
 import com.suhel.llamabro.hub.HfModel
+import com.suhel.llamabro.server.PairingRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +46,12 @@ interface ServerControl {
 
     /** A new key: clients connected with the old one are dropped. */
     suspend fun renewKey()
+
+    /** The computer asking to pair now; null when none asks. */
+    val pairing: Flow<PairingRequest?>
+
+    /** The person's answer to [request]. */
+    fun answerPairing(request: PairingRequest, approved: Boolean)
 }
 
 /** What the page says about the phone: its Wi-Fi [addresses], whether it is [charging], and its [thermal] state. */
@@ -100,6 +107,12 @@ sealed interface Docked {
         val url: String?,
     ) : Docked
 }
+
+/**
+ * A computer asking to pair, as its dialog shows it: the [code] its page shows, and [client], its address with its
+ * system and browser when the user agent names them ("192.168.1.12 · Mac · Chrome").
+ */
+data class Approval(val code: String, val client: String, val request: PairingRequest)
 
 /** A downloaded model the server can serve: its [name] and the quantisation and size telling its files apart. */
 data class ServeChoice(val key: HfModel, val name: String, val detail: String)
@@ -157,6 +170,12 @@ class ServerViewModel(
         combine(serverNow, phoneNow) { s, p -> dockedOf(s, p) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), null)
 
+    /** The pairing to approve or deny, over the Server page and the docked view; null when none asks. */
+    val approval: StateFlow<Approval?> =
+        server.pairing
+            .map { request -> request?.let(::approvalOf) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), null)
+
     init {
         // a revealed key belongs to the session it was revealed in: once serving stops or starts again, the next
         // session opens masked
@@ -195,6 +214,10 @@ class ServerViewModel(
     fun renewKey() {
         background.launch { server.renewKey() }
     }
+
+    fun approvePairing(request: PairingRequest) = server.answerPairing(request, approved = true)
+
+    fun denyPairing(request: PairingRequest) = server.answerPairing(request, approved = false)
 
     private fun pageOf(s: Server, models: List<LibraryModel>, c: Choices, p: Phone): ServerPage =
         when (val state = s.state) {
@@ -257,6 +280,13 @@ class ServerViewModel(
             snippets = snippets,
         )
     }
+
+    private fun approvalOf(request: PairingRequest) =
+        Approval(
+            request.code,
+            listOfNotNull(request.client, ServerFormat.device(request.userAgent)).joinToString(" · "),
+            request,
+        )
 
     private fun choiceOf(model: LibraryModel) =
         ServeChoice(

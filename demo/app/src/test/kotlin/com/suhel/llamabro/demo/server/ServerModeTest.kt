@@ -131,6 +131,32 @@ class ServerModeTest {
             }
         }
 
+    @Test fun aComputerPairsThroughServerMode() =
+        runBlocking {
+            server.start(a, 1)
+            val port = serving().port
+            // the page's POST: the code comes to the phone, and Approve hands the page the key
+            val started = call(port, "/pair", body = "")
+            assertEquals(200, started.status)
+            val code = Regex("\"code\":\"(\\d{4})\"").find(started.body)!!.groupValues[1]
+            val id = Regex("\"id\":\"([^\"]+)\"").find(started.body)!!.groupValues[1]
+            val asked = withTimeout(5_000) { server.pairing.first { it != null } }!!
+            assertEquals(code, asked.code)
+            assertEquals("127.0.0.1", asked.client)
+            server.answerPairing(asked, approved = true)
+            val answer =
+                withContext(Dispatchers.Default) {
+                    var body = ""
+                    eventually("the page hears the answer") {
+                        body = call(port, "/pair/$id").body
+                        !body.contains("pending")
+                    }
+                    body
+                }
+            assertTrue(answer, answer.contains("\"key\":\"${keys.current()}\""))
+            assertNull(server.pairing.value)
+        }
+
     @Test fun anyModelNameIsServed() =
         runBlocking {
             server.start(a, 1)
