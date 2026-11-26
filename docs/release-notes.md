@@ -6,6 +6,14 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
 
 ## Unreleased
 
+- **`llamabro-server`: typable keys and throttling** (D173). `ServerConfig.keyMatching = KeyMatching.Typable` ignores
+  case, spaces and dashes on both sides before the constant-time compare (`Exact`, the default, is unchanged).
+  `ServerConfig.throttle` is on (`Throttle.Default`) whenever a key is set: after 5 wrong keys within a minute an
+  address gets 429 with `Retry-After`, the wait doubling from 30 s to 5 min, until a right key; `Throttle.Off` turns
+  it off. Behaviour change: a server with a key throttled nothing before.
+- **Demo: a key you can type, and no QR code** (D173). The Server page's key is now 16 characters in four groups
+  (`K7QM-4RTX-9HCD-2WNB`), and the QR code is gone. The old key is replaced on first use after the update, so every
+  computer connected to the phone's server must enter the new key.
 - **`llamabro-rag`** (D167-D172), a new optional module for asking your own documents: `Library.open` a folder,
   `add` a `Document` (a flow of progress: chunked, embedded n of m, saved), `remove`, `search` for `Hit`s with their
   document, offsets and headings, and `searchTool()` for a `Conversation`, which numbers passages on across its calls and hands the app what

@@ -139,6 +139,8 @@ public class LlamaBroServer(private val config: ServerConfig, private val models
         install(HttpRequestLifecycle) { cancelCallOnClose = true }
         install(ApiKeyAuth) {
             apiKey = config.apiKey
+            keyMatching = config.keyMatching
+            throttle = config.throttle
             onRejected = { client, path, status, reason ->
                 mutableEvents.tryEmit(ServerEvent.Rejected(client, path, status, reason))
             }

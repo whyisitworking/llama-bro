@@ -12,6 +12,14 @@ public final class com/suhel/llamabro/server/Cors : java/lang/Enum {
 	public static fun values ()[Lcom/suhel/llamabro/server/Cors;
 }
 
+public final class com/suhel/llamabro/server/KeyMatching : java/lang/Enum {
+	public static final field Exact Lcom/suhel/llamabro/server/KeyMatching;
+	public static final field Typable Lcom/suhel/llamabro/server/KeyMatching;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/suhel/llamabro/server/KeyMatching;
+	public static fun values ()[Lcom/suhel/llamabro/server/KeyMatching;
+}
+
 public final class com/suhel/llamabro/server/LlamaBroServer {
 	public fun <init> (Lcom/suhel/llamabro/server/ServerConfig;Lcom/suhel/llamabro/server/ServedModels;)V
 	public final fun getEvents ()Lkotlinx/coroutines/flow/SharedFlow;
@@ -65,9 +73,11 @@ public final class com/suhel/llamabro/server/ServerConfig {
 	public final fun getApiKey ()Ljava/lang/String;
 	public final fun getCors ()Lcom/suhel/llamabro/server/Cors;
 	public final fun getHost ()Ljava/lang/String;
+	public final fun getKeyMatching ()Lcom/suhel/llamabro/server/KeyMatching;
 	public final fun getMaxBodyBytes ()J
 	public final fun getPort ()I
 	public final fun getRoutes ()Lcom/suhel/llamabro/server/Routes;
+	public final fun getThrottle ()Lcom/suhel/llamabro/server/Throttle;
 	public final fun getWorkDir ()Lkotlinx/io/files/Path;
 	public fun toString ()Ljava/lang/String;
 }
@@ -77,17 +87,21 @@ public final class com/suhel/llamabro/server/ServerConfig$Builder {
 	public final fun getApiKey ()Ljava/lang/String;
 	public final fun getCors ()Lcom/suhel/llamabro/server/Cors;
 	public final fun getHost ()Ljava/lang/String;
+	public final fun getKeyMatching ()Lcom/suhel/llamabro/server/KeyMatching;
 	public final fun getMaxBodyBytes ()J
 	public final fun getPort ()I
 	public final fun getRoutes ()Lcom/suhel/llamabro/server/Routes;
+	public final fun getThrottle ()Lcom/suhel/llamabro/server/Throttle;
 	public final fun getWorkDir ()Lkotlinx/io/files/Path;
 	public final fun setAdvertise (Lcom/suhel/llamabro/server/Advertise;)V
 	public final fun setApiKey (Ljava/lang/String;)V
 	public final fun setCors (Lcom/suhel/llamabro/server/Cors;)V
 	public final fun setHost (Ljava/lang/String;)V
+	public final fun setKeyMatching (Lcom/suhel/llamabro/server/KeyMatching;)V
 	public final fun setMaxBodyBytes (J)V
 	public final fun setPort (I)V
 	public final fun setRoutes (Lcom/suhel/llamabro/server/Routes;)V
+	public final fun setThrottle (Lcom/suhel/llamabro/server/Throttle;)V
 	public final fun setWorkDir (Lkotlinx/io/files/Path;)V
 }
 
@@ -194,5 +208,15 @@ public final class com/suhel/llamabro/server/ServerState$Stopped : com/suhel/lla
 	public fun equals (Ljava/lang/Object;)Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/server/Throttle {
+	public static final field Companion Lcom/suhel/llamabro/server/Throttle$Companion;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/server/Throttle$Companion {
+	public final fun getDefault ()Lcom/suhel/llamabro/server/Throttle;
+	public final fun getOff ()Lcom/suhel/llamabro/server/Throttle;
 }
 

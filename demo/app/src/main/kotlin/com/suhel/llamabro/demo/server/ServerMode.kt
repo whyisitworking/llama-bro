@@ -7,6 +7,7 @@ import com.suhel.llamabro.demo.data.loadConfig
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.server.Advertise
 import com.suhel.llamabro.server.Cors
+import com.suhel.llamabro.server.KeyMatching
 import com.suhel.llamabro.server.LlamaBroServer
 import com.suhel.llamabro.server.ServerConfig
 import com.suhel.llamabro.server.ServerState
@@ -246,6 +247,8 @@ class ServerMode(
             host = ANY_ADDRESS
             this.port = port
             apiKey = key
+            // the key is typed on a laptop: case, spaces and dashes don't matter (D173)
+            keyMatching = KeyMatching.Typable
             cors = Cors.Any
             advertise = this@ServerMode.advertise
         }

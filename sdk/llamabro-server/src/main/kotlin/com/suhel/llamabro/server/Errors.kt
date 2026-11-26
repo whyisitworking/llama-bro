@@ -28,6 +28,9 @@ internal object ErrorType {
     const val AUTHENTICATION = "authentication_error"
     const val INVALID_REQUEST = "invalid_request_error"
     const val NOT_FOUND = "not_found_error"
+
+    /** Not llama-server's, which has no throttle (D173): Anthropic's name, which OpenAI's clients also read as 429. */
+    const val RATE_LIMIT = "rate_limit_error"
     const val SERVER = "server_error"
     const val UNAVAILABLE = "unavailable_error"
 }

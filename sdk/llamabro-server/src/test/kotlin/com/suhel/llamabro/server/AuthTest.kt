@@ -10,6 +10,7 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -69,6 +70,54 @@ class AuthTest {
                 )
             }
         }
+
+    @Test
+    fun typableMatchingIgnoresCaseSpacesAndDashes() =
+        withServer(
+            ServerConfig {
+                port = 0
+                apiKey = "K7QM4RTX9HCD2WNB"
+                keyMatching = KeyMatching.Typable
+            },
+        ) { _, port ->
+            listOf("K7QM4RTX9HCD2WNB", "K7QM-4RTX-9HCD-2WNB", "k7qm-4rtx-9hcd-2wnb", "k7qm 4rtx 9hcd 2wnb").forEach {
+                assertEquals(it, 404, guarded(port, mapOf("Authorization" to "Bearer $it")))
+            }
+            assertEquals(404, guarded(port, mapOf("x-api-key" to "k7Qm-4rTx-9hCd-2wNb")))
+            // normalising is all it does: one wrong character is still a wrong key
+            assertEquals(401, guarded(port, mapOf("Authorization" to "Bearer K7QM-4RTX-9HCD-2WNC")))
+            assertEquals(401, guarded(port, mapOf("Authorization" to "Bearer K7QM-4RTX-9HCD")))
+        }
+
+    @Test
+    fun typableMatchingNormalisesTheConfiguredKeyToo() =
+        withServer(
+            ServerConfig {
+                port = 0
+                apiKey = "k7qm-4rtx-9hcd-2wnb"
+                keyMatching = KeyMatching.Typable
+            },
+        ) { _, port -> assertEquals(404, guarded(port, mapOf("Authorization" to "Bearer K7QM4RTX9HCD2WNB"))) }
+
+    @Test
+    fun exactMatchingIsTheDefault() {
+        assertEquals(KeyMatching.Exact, ServerConfig.Default.keyMatching)
+        withServer(keyed) { _, port ->
+            assertEquals(401, guarded(port, mapOf("Authorization" to "Bearer SESAME")))
+            assertEquals(401, guarded(port, mapOf("Authorization" to "Bearer ses-ame")))
+            assertEquals(404, guarded(port, mapOf("Authorization" to "Bearer sesame")))
+        }
+    }
+
+    @Test
+    fun aTypableKeyOfOnlyDashesIsRefused() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ServerConfig {
+                apiKey = "- -"
+                keyMatching = KeyMatching.Typable
+            }
+        }
+    }
 
     @Test
     fun healthAndModelsNeedNoKey() =

@@ -59,15 +59,4 @@ class ConnectSnippetsTest {
         masked.forEach { assertFalse(it.code, key in it.code) }
         assertEquals(1, Regex(Regex.escape(key)).findAll(snippets.getValue(ConnectTool.Curl)).count())
     }
-
-    @Test fun theQrHoldsTheUrlAndTheKeyAsJson() {
-        assertEquals(
-            "{\"url\":\"http://192.168.1.20:8080\",\"key\":\"k3y_-AbC\"}",
-            ConnectSnippets.qrPayload(url, key),
-        )
-    }
-
-    @Test fun theQrEscapesWhatJsonWouldMisread() {
-        assertEquals("{\"url\":\"a\\\"b\",\"key\":\"c\\\\d\"}", ConnectSnippets.qrPayload("a\"b", "c\\d"))
-    }
 }

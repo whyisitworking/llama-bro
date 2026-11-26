@@ -44,14 +44,12 @@ class ServerJourneys : Journey() {
         compose.waitUntilAtLeastOneExists(hasText("••••••••") and hasAnyAncestor(hasTestTag("server_key")), WAIT)
         if (address != null) {
             see("http://$address:$port")
-            // the QR code holds the key: hidden with it until the person shows it
-            seeTag("server_qr_hidden")
+            // no QR code (a laptop can't scan one); the key shows in four groups once the person asks
             goneTag("server_qr")
             shot("2-serving")
-            tap("Show QR code")
-            seeTag("server_qr")
+            tap("Show")
             gone("••••••••")
-            shot("3-qr-shown")
+            shot("3-key-shown")
         } else {
             seeTag("server_no_address")
             shot("2-serving")

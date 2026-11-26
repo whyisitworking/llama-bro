@@ -15,7 +15,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -33,7 +32,6 @@ import com.suhel.llamabro.demo.designsystem.components.Inline
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.Notice
 import com.suhel.llamabro.demo.designsystem.components.PrimaryButton
-import com.suhel.llamabro.demo.designsystem.components.QrCode
 import com.suhel.llamabro.demo.designsystem.components.QuietButton
 import com.suhel.llamabro.demo.designsystem.components.Screen
 import com.suhel.llamabro.demo.designsystem.components.Section
@@ -263,10 +261,7 @@ private fun ServingPage(page: ServerPage.Serving, actions: ServerActions, tab: I
     Log(page.log)
 }
 
-/**
- * Each address the server answers on, with Copy, and the QR code of the first and the key, shown only while the key
- * is: Show QR code reveals both.
- */
+/** Each address the server answers on, with Copy. */
 @Composable
 private fun Address(page: ServerPage.Serving, actions: ServerActions) {
     Section("Address") {
@@ -280,21 +275,6 @@ private fun Address(page: ServerPage.Serving, actions: ServerActions) {
                     )
                 }
             }
-        }
-        val payload = page.qr
-        if (payload != null) {
-            Stack(Gap.Block, Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                QrCode(payload, "QR code of the address and key", Modifier.testTag("server_qr"))
-            }
-            SectionNote("The QR code holds the address and the key. Hide the key to hide it.")
-        } else if (page.canShowQr) {
-            // hidden with the key: a camera, or a screenshot of a docked phone, would read what the mask hides
-            Notice(
-                "The QR code holds the key, so it shows with the key.",
-                Modifier.testTag("server_qr_hidden"),
-                action = "Show QR code",
-                onAction = { actions.onReveal(true) },
-            )
         }
     }
 }

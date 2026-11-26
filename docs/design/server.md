@@ -21,8 +21,8 @@ with the same statuses and bodies (F189), because it *is* llama-server's core (D
 - An explicit, visible opt-in: off by default, an API key always set by the demo, and a screen that shows who is
   connected and what they ask.
 - A docked dashboard worth looking at: live tokens per second, slots in use, the phone's thermal status, the last
-  request and the URL. It shows no key and no QR code, so a glance or a photo of a docked phone shows neither; the QR
-  code and the full request log are on the Server page, the QR only while the key is revealed.
+  request and the URL. It shows no key, so a glance or a photo of a docked phone shows none; the key and the full
+  request log are on the Server page, the key only while it is revealed.
 - Reusable: the HTTP part is an SDK module (`llamabro-server`) other apps can embed; the demo adds the UI and the
   Android lifecycle.
 
@@ -174,7 +174,7 @@ module depends on `llamabro`, plus `llamabro-testing` for its tests.
 Off       "Serve a model to the computers on this Wi-Fi"  [model picker: one of the downloaded models]
           [slots: 1 | 2 | 4]  [Start serving]   (explains: plain HTTP, a key, the phone should be charging)
 Starting  loading progress (ModelHost's Waking)
-Serving   http://192.168.1.20:8080      [QR]   key ••••••  [copy] [new key]
+Serving   http://192.168.1.20:8080      key ••••••  [copy] [new key]   (no QR code since §6)
           ── now ──  2 of 2 slots busy · 18.4 tok/s · 41 °C, thermal: light
           ── clients ──  192.168.1.12 (Claude Code) · 3 requests
           ── log ──  12:04:51  POST /v1/messages  200  1,912 in / 233 out  14.1 s
@@ -190,9 +190,9 @@ Failed    no Wi-Fi · port in use · the model didn't load   [Try again]
   (`PROPERTY_SPECIAL_USE_FGS_SUBTYPE`: "local model server") with a "Serving <model> on <URL>" notification and a
   Stop action. It holds a partial wake lock and a Wi-Fi lock (`WIFI_MODE_FULL_LOW_LATENCY`), without which Wi-Fi
   naps with the screen off. If the phone is not charging, the notification and the Server page say so.
-- **The key:** generated on first start (32 random bytes, base64url), stored with the demo's settings, shown masked,
-  copyable, renewable (renewing drops connected clients). The QR holds the base URL and key, so the page shows it
-  only while the key is revealed; leaving serving masks the key again.
+- **The key:** generated on first start, stored with the demo's settings, shown masked, copyable, renewable (renewing
+  drops connected clients); leaving serving masks the key again. Since §6 it is 16 typable characters shown in four
+  groups, and there is no QR code (it was 32 random bytes in base64url, with a QR code of the URL and key).
 - **Sharing with the chat:** serving holds a `ModelHost` lease on the chosen model for as long as it serves, and
   every request is answered from that lease's model, never a hold of its own. A chat on the same model uses it too and
   takes a slot like any client. Deleting the served model asks "Stop serving <model> to delete it?" first. Choosing another model in a chat asks first: "Stop

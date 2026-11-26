@@ -93,13 +93,6 @@ internal val DemoColors.onPhotoScrim: Color get() = Color.White
 internal val DemoColors.photoBackdrop: Color get() = Color.Black
 
 /**
- * A QR code's modules and the tile under them: the light theme's ink on its surface in both themes, since a scanner
- * reads dark modules on a light ground and many refuse an inverted code.
- */
-internal val DemoColors.qrInk: Color get() = LightDemoColors.ink
-internal val DemoColors.qrPaper: Color get() = LightDemoColors.surface
-
-/**
  * Every Material text style mapped onto the [DemoType] roles, all sans: the serif is only for the two hero roles
  * (`displayHero`, `sheetTitle`), which the app's own components use, so a Material widget (a dialog's title) never
  * turns serif.

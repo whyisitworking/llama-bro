@@ -24,7 +24,7 @@ import java.util.Locale
 private val qwen = HfModel.parse("unsloth/Qwen3.5-4B-GGUF:Q4_K_M")
 private val gemma = HfModel.parse("unsloth/gemma-3-4b-it-qat-GGUF:Q4_K_M")
 private const val URL = "http://192.168.1.20:8080"
-private const val KEY = "q8Vw3nX0dJk2LmP5sT7uY9zA1bC4eF6gH8iK0lM2nO4"
+private const val KEY = "K7QM-4RTX-9HCD-2WNB"
 private const val NOON = 1_795_000_000_000L
 
 private val models =
@@ -63,8 +63,6 @@ private fun serving(
     return ServerPage.Serving(
         name = "Qwen3.5 4B",
         urls = urls,
-        qr = first?.takeIf { revealed }?.let { ConnectSnippets.qrPayload(it, KEY) },
-        canShowQr = first != null,
         key = KeyView(shown, KEY, revealed),
         slots = 2,
         busy = if (rows.isEmpty()) 0 else 1,
@@ -87,7 +85,7 @@ internal class ServerStates : PreviewParameterProvider<ServerPreview> {
             ServerPreview("Off, no models", ServerPage.Off(emptyList(), null, 1)),
             ServerPreview("Starting", ServerPage.Starting("Qwen3.5 4B", 0.4f)),
             ServerPreview("Serving, key masked", serving()),
-            ServerPreview("Serving, key and QR code shown", serving(revealed = true)),
+            ServerPreview("Serving, key shown", serving(revealed = true)),
             ServerPreview("Serving, key shown, Claude Code", serving(revealed = true, rows = emptyList()), tab = 2),
             ServerPreview("Serving, no Wi-Fi, not charging", serving(urls = emptyList(), charging = false)),
             ServerPreview("Failed", ServerPage.Failed("Address already in use")),

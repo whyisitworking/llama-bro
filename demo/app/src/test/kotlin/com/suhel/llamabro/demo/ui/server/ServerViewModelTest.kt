@@ -60,7 +60,7 @@ class ServerViewModelTest {
         override val state = MutableStateFlow<ServingState>(ServingState.Off)
         override val served = MutableStateFlow<HfModel?>(null)
         override val log = MutableStateFlow<List<LogLine>>(emptyList())
-        override val key = MutableStateFlow<String?>("k3y_-AbC")
+        override val key = MutableStateFlow<String?>("K7QM4RTX9HCD2WNB")
         override val busy = MutableStateFlow(0)
         val started = mutableListOf<Pair<HfModel, Int>>()
         var stops = 0
@@ -76,7 +76,7 @@ class ServerViewModelTest {
 
         override suspend fun renewKey() {
             renewals++
-            key.value = "n3w-k3y"
+            key.value = "N3WK3YN3WK3YN3WK"
         }
     }
 
@@ -96,6 +96,8 @@ class ServerViewModelTest {
         server.served.value = qwen
         server.state.value = ServingState.Serving(qwen, 8080, slots)
     }
+
+    private val grouped = "K7QM-4RTX-9HCD-2WNB"
 
     private val noon = LocalDateTime.of(2026, 11, 26, 12, 4, 51).toInstant(ZoneOffset.UTC).toEpochMilli()
 
@@ -158,7 +160,7 @@ class ServerViewModelTest {
         assertEquals("Qwen3.5 4B", page.name)
         assertEquals(listOf("http://10.0.0.7:8080", "http://192.168.1.20:8080"), page.urls)
         assertEquals(ServerFormat.MASK, page.key.shown)
-        assertEquals("k3y_-AbC", page.key.copy)
+        assertEquals(grouped, page.key.copy)
         assertEquals(2, page.slots)
         assertEquals(0, page.busy)
         // the last request's predicted tokens over its time
@@ -182,13 +184,12 @@ class ServerViewModelTest {
         assertNull((vm.page() as ServerPage.Serving).speed)
     }
 
-    @Test fun servingWithNoWifiAddressHasNoUrlOrQr() {
+    @Test fun servingWithNoWifiAddressHasNoUrlOrSnippets() {
         val vm = viewModel()
         serving()
         addresses.value = emptyList()
         val page = vm.page() as ServerPage.Serving
         assertTrue(page.urls.isEmpty())
-        assertNull(page.qr)
         assertTrue(page.snippets.isEmpty())
     }
 
@@ -215,16 +216,16 @@ class ServerViewModelTest {
         assertFalse(masked.key.revealed)
         assertEquals(ServerFormat.MASK, masked.key.shown)
         masked.snippets.forEach { snippet ->
-            assertFalse(snippet.shown, "k3y_-AbC" in snippet.shown)
+            assertFalse(snippet.shown, grouped in snippet.shown)
             // copying a snippet copies the key itself
-            assertTrue(snippet.copy, "k3y_-AbC" in snippet.copy)
+            assertTrue(snippet.copy, grouped in snippet.copy)
         }
 
         vm.reveal(true)
         val revealed = vm.page() as ServerPage.Serving
         assertTrue(revealed.key.revealed)
-        assertEquals("k3y_-AbC", revealed.key.shown)
-        revealed.snippets.forEach { assertTrue(it.shown, "k3y_-AbC" in it.shown) }
+        assertEquals(grouped, revealed.key.shown)
+        revealed.snippets.forEach { assertTrue(it.shown, grouped in it.shown) }
 
         vm.reveal(false)
         assertEquals(ServerFormat.MASK, (vm.page() as ServerPage.Serving).key.shown)
@@ -235,7 +236,7 @@ class ServerViewModelTest {
         serving()
         vm.renewKey()
         assertEquals(1, server.renewals)
-        assertEquals("n3w-k3y", (vm.page() as ServerPage.Serving).key.copy)
+        assertEquals("N3WK-3YN3-WK3Y-N3WK", (vm.page() as ServerPage.Serving).key.copy)
         vm.stop()
         assertEquals(1, server.stops)
     }
@@ -268,15 +269,6 @@ class ServerViewModelTest {
         assertEquals("1 of 2 busy", ServerFormat.busy(page.busy, page.slots))
     }
 
-    @Test fun qrHiddenWhileKeyMasked() {
-        val vm = viewModel()
-        serving()
-        val page = vm.page() as ServerPage.Serving
-        // the code holds the key itself: a camera or a screenshot would read what the mask hides
-        assertNull(page.qr)
-        assertTrue(page.canShowQr)
-    }
-
     @Test fun revealResetsWhenServingStops() {
         val vm = viewModel()
         serving()
@@ -287,7 +279,6 @@ class ServerViewModelTest {
         serving()
         val next = vm.page() as ServerPage.Serving
         assertFalse("the next session opens with the key masked", next.key.revealed)
-        assertNull(next.qr)
         // and a restart (Starting again) masks it too
         vm.reveal(true)
         server.state.value = ServingState.Starting()
@@ -295,18 +286,16 @@ class ServerViewModelTest {
         assertFalse((vm.page() as ServerPage.Serving).key.revealed)
     }
 
-    @Test fun revealShowsKeyAndQr() {
+    @Test fun keyShowsInFourGroups() {
         val vm = viewModel()
         serving()
         vm.reveal(true)
         val shown = vm.page() as ServerPage.Serving
-        assertEquals("k3y_-AbC", shown.key.shown)
-        assertEquals("{\"url\":\"http://192.168.1.20:8080\",\"key\":\"k3y_-AbC\"}", shown.qr)
-        // hiding the key hides the code with it
-        vm.reveal(false)
-        val hidden = vm.page() as ServerPage.Serving
-        assertEquals(ServerFormat.MASK, hidden.key.shown)
-        assertNull(hidden.qr)
+        // stored without dashes; shown, copied and put in the snippets in four groups, which Typable matching takes
+        assertEquals(grouped, shown.key.shown)
+        assertEquals(grouped, shown.key.copy)
+        shown.snippets.forEach { assertTrue(it.copy, grouped in it.copy) }
+        assertTrue(shown.snippets.none { "K7QM4RTX9HCD2WNB" in it.copy })
     }
 
     @Test fun dockedShowsTokensPerSecondTemperatureSlotsAndLastRequest() {

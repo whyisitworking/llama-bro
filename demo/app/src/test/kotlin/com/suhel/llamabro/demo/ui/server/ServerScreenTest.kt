@@ -1,0 +1,40 @@
+package com.suhel.llamabro.demo.ui.server
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
+import com.suhel.llamabro.demo.designsystem.theme.ThemeMode
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+
+/** The Server page as its previews show it (docs/design/server.md §6). */
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [35], qualifiers = "w411dp-h891dp")
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class ServerScreenTest {
+    @get:Rule val rule = createComposeRule()
+
+    @Test fun noQrOnTheServerPage() {
+        // a laptop can't scan one: the Address section is the URLs with Copy, and nothing else
+        val serving = ServerStates().values.filter { it.page is ServerPage.Serving }.toList()
+        var shown by mutableStateOf(serving.first())
+        rule.setContent { DemoTheme(ThemeMode.Light) { ServerContent(shown.page, ServerActions(), shown.tab, {}) } }
+        serving.forEach { preview ->
+            shown = preview
+            rule.waitForIdle()
+            rule.onNodeWithTag("server_page").assertExists()
+            rule.onNodeWithTag("server_qr").assertDoesNotExist()
+            rule.onNodeWithTag("server_qr_hidden").assertDoesNotExist()
+            rule.onAllNodesWithText("QR", substring = true).assertCountEquals(0)
+        }
+    }
+}

@@ -7,6 +7,7 @@ import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.demo.models.forChat
 import com.suhel.llamabro.demo.server.LogLine
+import com.suhel.llamabro.demo.server.ServerKey
 import com.suhel.llamabro.demo.server.ServerMode
 import com.suhel.llamabro.demo.server.ServingState
 import com.suhel.llamabro.demo.server.Thermal
@@ -64,14 +65,11 @@ sealed interface ServerPage {
 
     /**
      * [name] answers at each of [urls] (none when the phone has no Wi-Fi address); [busy] of its [slots] answer a
-     * request now. [qr] holds the first URL and the key, so it is there only while the key is revealed; [canShowQr]
-     * says a reveal would show it. [speed] is the last request's, [heat] the phone's thermal state.
+     * request now. [speed] is the last request's, [heat] the phone's thermal state.
      */
     data class Serving(
         val name: String,
         val urls: List<String>,
-        val qr: String?,
-        val canShowQr: Boolean,
         val key: KeyView,
         val slots: Int,
         val busy: Int,
@@ -160,8 +158,8 @@ class ServerViewModel(
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), null)
 
     init {
-        // a revealed key, and its QR, belong to the session they were revealed in: once serving stops or starts again,
-        // the next session opens masked
+        // a revealed key belongs to the session it was revealed in: once serving stops or starts again, the next
+        // session opens masked
         viewModelScope.launch {
             server.state.collect { if (it !is ServingState.Serving) revealed.value = false }
         }
@@ -233,7 +231,8 @@ class ServerViewModel(
     }
 
     private fun serving(state: ServingState.Serving, s: Server, revealed: Boolean, p: Phone): ServerPage.Serving {
-        val key = s.key.orEmpty()
+        // in four groups wherever a person reads or pastes it; Typable matching takes it with or without the dashes
+        val key = s.key?.let(ServerKey::grouped).orEmpty()
         val shownKey = if (revealed) key else ServerFormat.MASK
         val urls = p.addresses.map { ServerFormat.url(it, state.port) }
         val first = urls.firstOrNull()
@@ -248,9 +247,6 @@ class ServerViewModel(
         return ServerPage.Serving(
             name = Names.of(state.model),
             urls = urls,
-            // the code holds the key itself: shown with it, hidden with it, one reveal for both
-            qr = first?.takeIf { revealed }?.let { ConnectSnippets.qrPayload(it, key) },
-            canShowQr = first != null,
             key = KeyView(shownKey, key, revealed),
             slots = state.slots,
             busy = s.busy,

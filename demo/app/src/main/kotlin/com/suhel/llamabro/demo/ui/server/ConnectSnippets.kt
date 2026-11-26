@@ -1,7 +1,5 @@
 package com.suhel.llamabro.demo.ui.server
 
-import java.util.Locale
-
 /** The tools the Server page shows how to connect, in its tabs' order (docs/design/server.md §3). */
 enum class ConnectTool(val label: String) {
     Curl("curl"),
@@ -14,7 +12,7 @@ enum class ConnectTool(val label: String) {
 data class Snippet(val tool: ConnectTool, val code: String)
 
 /**
- * The connect snippets with the server's URL and key filled in, and what the QR code holds. Each is the tool's own
+ * The connect snippets with the server's URL and key filled in. Each is the tool's own
  * plain form, so a person who knows it recognises it; the key goes where that tool takes it.
  */
 object ConnectSnippets {
@@ -54,25 +52,4 @@ object ConnectSnippets {
             "# then, in Llama Chat, connect to $url",
             "# with the API Key $key (Settings)",
         ).joinToString("\n")
-
-    /**
-     * What the QR code holds: `{"url":"http://ip:port","key":"…"}`. JSON rather than a URL with the key in its
-     * fragment: no client reads either form yet, and a URL invites a phone's camera to open the server's root in a
-     * browser, where there is no page to show and the key would stay in the browser's history. Two named fields say
-     * what each part is, to a person reading the scan and to an app that later reads it.
-     */
-    fun qrPayload(url: String, key: String): String = "{\"url\":${json(url)},\"key\":${json(key)}}"
-
-    private fun json(value: String): String =
-        buildString {
-            append('"')
-            value.forEach { c ->
-                when {
-                    c == '"' || c == '\\' -> append('\\').append(c)
-                    c < ' ' -> append(String.format(Locale.ROOT, "\\u%04x", c.code))
-                    else -> append(c)
-                }
-            }
-            append('"')
-        }
 }

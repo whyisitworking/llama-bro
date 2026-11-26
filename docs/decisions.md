@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D172 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D173 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -69,6 +69,7 @@ its amendments to know what holds now.
 | [D170](#d170) Search is BM25 and dense search fused by rank, with an optional rerank; reranking is not on by default | 2026-11-26 | |
 | [D171](#d171) The library's search tool returns numbered passages, answers failures safely and lets cancellation through | 2026-11-26 | [D172](#d172) |
 | [D172](#d172) The search tool numbers passages on across its calls and tells the app what the model saw (`onHits`) | 2026-11-26 | |
+| [D173](#d173) The server can match a typable key and throttles wrong keys per address; the demo's key is 16 Crockford characters and its QR code goes | 2026-11-26 | |
 
 **Hub**
 
@@ -2856,4 +2857,36 @@ Consequences: A source chip and the `[n]` the model cites always agree within a 
 tool across turns sees numbers grow across them; its `[n]`s still name one passage each. `onHits` runs inside the
 tool's call: what it throws reaches the model as `Error: the tool failed` (D62), so an app keeps it to recording.
 
-Next free IDs: D173, F192.
+<a id="d173"></a>
+### D173. The server can match a typable key and throttles wrong keys per address; the demo's key is 16 Crockford characters and its QR code goes
+
+Status: Decided (2026-11-26)
+
+Context: The client of a phone server is almost always a laptop, which can't scan the Server page's QR code, and the
+demo's key (32 random bytes, 43 characters of base64url) is painful to type (docs/design/server.md §6). A shorter key
+is only safe if guessing it is slow, and upstream's llama-server has no throttle: every wrong key gets its 401.
+Decision: In `llamabro-server`:
+- `ServerConfig.keyMatching`: `KeyMatching.Exact` (the default, as upstream: byte for byte) or `Typable`, which upper
+  cases both keys and drops their spaces and dashes before the same constant-time compare. It only normalises: every
+  other character must still be right. A key that is only spaces and dashes is refused with `Typable`, so it can't
+  match an empty one.
+- `ServerConfig.throttle`: `Throttle.Default` (on) or `Throttle.Off`; it applies only when a key is set, and never to
+  `/health`, `/v1/models` or a preflight. Per client address, the fifth wrong key within a minute starts a wait:
+  further requests get 429 in OpenAI's error shape (type `rate_limit_error`, Anthropic's name) with `Retry-After` in
+  whole seconds, and `ServerEvent.Rejected` with status 429. The wait is 30 s, doubling with each one after, up to
+  5 min; a right key clears the address's record, doubling included. While an address waits, its requests are refused
+  before their key is read, so no answer tells a right guess from a wrong one. A request with no key guesses nothing
+  and does not count. The state is bounded: an address idle for 10 minutes is forgotten (its doubling with it), and at
+  most 1,024 addresses are tracked, the one idle longest going first. It lives with the running server, so a restart
+  starts it over. This is a deviation from upstream, which has no throttle.
+In the demo: the key is 16 random characters of Crockford base32 (0-9 and A-Z without I, L, O, U: 80 bits), stored
+upper case without dashes and shown, copied and put in the snippets in four groups (`K7QM-4RTX-9HCD-2WNB`); the server
+uses `Typable`. A key stored in the old format is replaced on first use. The QR code is removed from the Server page,
+and the design system's `QrCode` and the ZXing dependency with it.
+Consequences: Guessing goes through the phone one address at a time, at most 5 guesses per wait, so 80 bits is ample
+for a key on a home or office Wi-Fi; over plain HTTP its length protects only against guessing, as before. A client
+with many addresses (IPv6 privacy addresses) gets 5 guesses per address, and enough of them can push others out of
+the 1,024 tracked. Anyone paired with an old demo key must enter the new one. The module's defaults change in one
+way: a server with a key now throttles unless the app sets `Throttle.Off`.
+
+Next free IDs: D174, F192.
