@@ -1,25 +1,42 @@
 package com.suhel.llamabro.rag
 
+import com.suhel.llamabro.LlamaBroException
 import com.suhel.llamabro.ModelSource
 import com.suhel.llamabro.ModelTask
 import com.suhel.llamabro.chat.ChatEvent
 import com.suhel.llamabro.conversation
+import com.suhel.llamabro.conversation.LbToolError
+import com.suhel.llamabro.rag.store.CrashingFileSystem
 import com.suhel.llamabro.testing.FakeLlamaBro
+import com.suhel.llamabro.typed.LbToolCallContext
 import com.suhel.llamabro.typed.TypedTool
 import com.suhel.llamabro.typed.tool
 import com.suhel.llamabro.typed.typedSchema
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okio.FileHandle
+import okio.FileMetadata
+import okio.ForwardingFileSystem
+import okio.IOException
+import okio.Path
 import okio.Path.Companion.toPath
+import okio.Source
 import okio.fakefilesystem.FakeFileSystem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
+import kotlin.coroutines.cancellation.CancellationException
 
 class LibraryToolTest {
     private val fake = FakeLlamaBro()
@@ -134,5 +151,87 @@ class LibraryToolTest {
             assertEquals(setOf("query"), properties.keys)
             assertEquals("string", properties["query"]!!.jsonObject["type"]!!.jsonPrimitive.content)
             assertEquals(listOf("query"), schema["required"]!!.jsonArray.map { it.jsonPrimitive.content })
+        }
+
+    private suspend fun errorFor(library: Library): ChatEvent.ToolResult {
+        fake.reply { toolCall("search_library", """{"query":"leave"}""", id = "c1") }
+        fake.reply { content("Sorry.") }
+        return chat(library.searchTool())
+            .send("?")
+            .toList()
+            .filterIsInstance<ChatEvent.ToolResult>()
+            .single()
+    }
+
+    @Test
+    fun ioFailureBecomesSafeError() =
+        runBlocking {
+            val crashing = CrashingFileSystem(FakeFileSystem())
+            var broken = false
+            val files =
+                object : ForwardingFileSystem(crashing) {
+                    override fun source(file: Path): Source =
+                        if (broken) throw IOException("cannot read /secret/path/chunks.jsonl") else super.source(file)
+
+                    override fun openReadOnly(file: Path): FileHandle =
+                        if (broken) throw IOException("cannot read /secret/path") else super.openReadOnly(file)
+
+                    override fun metadataOrNull(path: Path): FileMetadata? =
+                        if (broken) throw IOException("cannot read /secret/path") else super.metadataOrNull(path)
+                }
+            val embedder = fake.llamaBro.loadModel(ModelSource.file("/e.gguf")) { task = ModelTask.Embedding() }
+            fake.embeddings(unit(0))
+            val library = Library.open(files, "/library".toPath(), embedder, EmbeddingFormat.None, chunker)
+            library.addHandbook()
+            crashing.crashAt = "manifest.json"
+            fake.embeddings(unit(0))
+            try {
+                library.add(Document("b", "B", "text")).toList()
+                fail("the commit should have failed")
+            } catch (expected: IOException) {
+            }
+            crashing.recover()
+            broken = true // the next call opens the folder again and cannot read it
+            val result = errorFor(library)
+            assertEquals("Error: the library could not be read", result.result)
+            assertFalse(result.result.contains("secret"))
+            assertTrue(result.error is IOException)
+        }
+
+    @Test
+    fun embedFailureBecomesSafeError() =
+        runBlocking {
+            val library = library()
+            library.addHandbook()
+            fake.inputTooLong(600, 512) // the embedder rejects the query
+            val result = errorFor(library)
+            assertEquals("Error: the search failed", result.result)
+            assertTrue(result.error is LlamaBroException)
+        }
+
+    @Test
+    fun cancellationPropagates() =
+        runBlocking {
+            val library = library()
+            library.addHandbook()
+            val tool = library.searchTool()
+            fake.raw(200, "", holdOpen = true) // the query's embedding never finishes
+            var thrown: Throwable? = null
+            val job =
+                launch(Dispatchers.Default) {
+                    try {
+                        tool.handler(LbToolCallContext("c1", tool.name, ""), SearchArgs("leave"))
+                    } catch (e: Throwable) {
+                        thrown = e
+                        throw e
+                    }
+                }
+            withTimeout(10_000) { while (fake.rawRequests.isEmpty()) delay(10) } // the tool is inside the held embed
+            job.cancelAndJoin()
+            assertTrue(job.isCancelled)
+            // the tool let the cancellation through: it is not an LbToolError the loop would send to the model
+            assertTrue(thrown is CancellationException)
+            assertFalse(thrown is LbToolError)
+            assertEquals(1, fake.cancelledRequests)
         }
 }

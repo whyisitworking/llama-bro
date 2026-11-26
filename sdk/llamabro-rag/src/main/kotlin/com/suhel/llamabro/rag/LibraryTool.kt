@@ -8,6 +8,7 @@ import com.suhel.llamabro.typed.tool
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.serializer
 import okio.IOException
+import kotlin.coroutines.cancellation.CancellationException
 
 /** The arguments of the library's search tool: what the model wants to find. */
 @Serializable
@@ -37,6 +38,8 @@ public fun Library.searchTool(
         val hits =
             try {
                 search(args.query, limit, reranker)
+            } catch (e: CancellationException) {
+                throw e // before the next catch: on the JVM it is an IllegalStateException
             } catch (e: IllegalStateException) {
                 throw LbToolError("the library is not available", e)
             } catch (e: IOException) {
