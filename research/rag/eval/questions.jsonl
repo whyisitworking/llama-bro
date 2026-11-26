@@ -1,0 +1,47 @@
+{"question": "Which llama.cpp build is the SDK pinned to?", "doc": "docs/architecture.md", "answer_span": "upstream llama.cpp at the pinned build `b12653` (D137)"}
+{"question": "Why does the core not open a localhost port for other apps to use?", "doc": "docs/architecture.md", "answer_span": "a localhost port would be reachable by any other app on the phone"}
+{"question": "What is the largest context ContextSize.Auto will choose?", "doc": "docs/architecture.md", "answer_span": "`Auto` stops at 16 384 tokens."}
+{"question": "What is the default memory reserve in MiB?", "doc": "docs/architecture.md", "answer_span": "a reserve (`memoryReserveMib`, default 512 MiB)"}
+{"question": "How much longer does a load take without mmap?", "doc": "docs/architecture.md", "answer_span": "Loading without mmap is about 1.2 s slower but never exceeds its final footprint"}
+{"question": "How many parallel slots does the SDK use compared with llama-server?", "doc": "docs/architecture.md", "answer_span": "| `n_parallel` | 4 slots (unified KV) | 1 | A phone app generates one reply at a time |"}
+{"question": "Which n-gram settings does Speculative.Ngram take from upstream's spec-default?", "doc": "docs/architecture.md", "answer_span": "ngram-mod, n_match 24, n_min 48, n_max 64"}
+{"question": "Does the bridge talk to llama-server's route handlers over HTTP?", "doc": "docs/architecture.md", "answer_span": "so the SDK calls the handlers directly with no socket (D12)"}
+{"question": "What is the difference between close and closeAndJoin on a model?", "doc": "docs/architecture.md", "answer_span": "`close()` returns immediately and frees the model in the background; `closeAndJoin()` waits for the memory."}
+{"question": "Where do log lines go when the app passes no logger?", "doc": "docs/architecture.md", "answer_span": "With no logger the core logs to logcat under the tag `llamabro`"}
+{"question": "Why are idle models never put to sleep?", "doc": "docs/architecture.md", "answer_span": "Idle models are not put to sleep, because a failed reload aborts the process"}
+{"question": "How long does native initialisation take on the test phone?", "doc": "docs/architecture.md", "answer_span": "native initialisation (about 13 ms on the test phone, F48)"}
+{"question": "Which decision says there is one runtime per process?", "doc": "docs/decisions.md", "answer_span": "There is one runtime per process, and models are independent handles created from it."}
+{"question": "What is the default directory of the model cache?", "doc": "docs/decisions.md", "answer_span": "The default cache is `noBackupFilesDir/llamabro/hub`; the app may choose another directory."}
+{"question": "Why was Vulkan dropped from 1.0?", "doc": "docs/decisions.md", "answer_span": "aborts the process on every Q4_K model load on the test phone's Adreno 830"}
+{"question": "Which decision made DFlash an opt-in?", "doc": "docs/decisions.md", "answer_span": "DFlash is an opt-in once the hub can fetch a draft file next to the model"}
+{"question": "What happens to a streaming reply when the user leaves its chat?", "doc": "docs/decisions.md", "answer_span": "Leaving a chat (its screen's view model is cleared) closes its handle and stops its reply"}
+{"question": "How much of the phone's RAM does the demo count as the budget for its fit label?", "doc": "docs/decisions.md", "answer_span": "against half the phone's total RAM (the CPU device's `memoryTotal`)"}
+{"question": "Which save format versions can Conversation.fromJson read?", "doc": "docs/decisions.md", "answer_span": "`fromJson` reads version 3 only and refuses the others as unsupported."}
+{"question": "Does swiping the app away from Recents stop server mode?", "doc": "docs/decisions.md", "answer_span": "The swipe does not stop serving. A docked phone serving the Wi-Fi is a dedicated server"}
+{"question": "Does Maven Central accept a placeholder javadoc jar?", "doc": "docs/decisions.md", "answer_span": "for every artifact, a sources jar and a javadoc jar (a placeholder is accepted)"}
+{"question": "When did Sonatype shut down the old OSSRH staging host?", "doc": "docs/decisions.md", "answer_span": "Sonatype shut the old OSSRH staging host down on 2025-06-30"}
+{"question": "Does the SDK have a permission system for approving tool calls?", "doc": "docs/decisions.md", "answer_span": "an app can wait for its own approval step inside it; the SDK has no permission system"}
+{"question": "What does the model get back when it calls a tool that does not exist?", "doc": "docs/decisions.md", "answer_span": "A call to an unknown name gets `Error: Unknown tool: <name>` as its result and the loop goes on"}
+{"question": "Why does the memory check only warn by default instead of refusing the load?", "doc": "docs/decisions.md", "answer_span": "Qwen3.5 4B was refused with 5.7 GB available and then loaded and answered (F128)"}
+{"question": "Which decision makes the hub download files one at a time?", "doc": "docs/decisions.md", "answer_span": "Files download one at a time by default, as measured in F89 and F91."}
+{"question": "Does running llama-server's handlers in-process change the output compared with the binary?", "doc": "docs/research/findings.md", "answer_span": "Calling llama-server's route handlers in-process (no HTTP) produced byte-identical output"}
+{"question": "How long did freeing the slot take on the NPU with n_batch 2048?", "doc": "docs/research/findings.md", "answer_span": "At the upstream 2048, freeing the slot took 1.7-2.6 s on the NPU"}
+{"question": "How large is one context checkpoint for Qwen3.5-4B?", "doc": "docs/research/findings.md", "answer_span": "One checkpoint is 50.25 MiB for Qwen3.5-4B, and a chat creates 2 per turn."}
+{"question": "How much did PSS fall for Qwen3.5 4B when weights were read instead of mapped?", "doc": "docs/research/findings.md", "answer_span": "PSS drops from 5426–5494 to 3391–3395 MiB for Qwen3.5 4B"}
+{"question": "Which phones besides the test phone hit the Adreno 830 Vulkan pipeline failure?", "doc": "docs/research/findings.md", "answer_span": "reports the same failure on two other Adreno 830 phones (RedMagic 10 Pro, Honor, driver 0.800.74)"}
+{"question": "Why is ActivityManager availMem too low on the OnePlus phone?", "doc": "docs/research/findings.md", "answer_span": "consistent with leaving out `KReclaimable` (4383 MiB, mostly GPU and NPU driver page pools"}
+{"question": "How fast do code edits decode on the NPU with ngram-mod?", "doc": "docs/research/findings.md", "answer_span": "NPU 14.6 → **105 t/s** with ngram-mod and **138** with ngram-mod + MTP"}
+{"question": "How many tokens does a second of audio cost in speech input?", "doc": "docs/research/findings.md", "answer_span": "Audio costs 12.6 tokens per second (383 tokens for 30.47 s)"}
+{"question": "Which finding explains the crash when two fit estimates ran at once?", "doc": "docs/research/findings.md", "answer_span": "the scope saves llama.cpp's log callback, installs its own"}
+{"question": "How many bits per weight does a Q4_K_M file take?", "doc": "docs/research/findings.md", "answer_span": "averages 5.200 bits per weight (5.03 to 5.66)"}
+{"question": "Why could a derivedStateOf read from another thread return a stale composer state?", "doc": "docs/research/findings.md", "answer_span": "In the demo, `ChatViewModel.composerState` was such a `derivedStateOf`"}
+{"question": "How much GPU time per frame does the demo's glass cost while a chat scrolls?", "doc": "docs/research/findings.md", "answer_span": "costs 8 ms of GPU per frame at the median and 10 ms at the 99th percentile"}
+{"question": "Which fixed port did the host contract use before ports were picked by the OS?", "doc": "docs/research/findings.md", "answer_span": "18181 for the host contract (`LB_CONTRACT_PORT`)"}
+{"question": "What length are bge-small's embedding vectors?", "doc": "docs/research/findings.md", "answer_span": "the embedder returns 384-float vectors before and after the generator completes eight tokens"}
+{"question": "What exit code does a demo check step use when it could not run in full?", "doc": "docs/testing.md", "answer_span": "for a step that could not run in full (exit code 77)"}
+{"question": "Where do monkey runs take place?", "doc": "docs/testing.md", "answer_span": "where they can reach system settings. Monkey runs on the emulator (F117)"}
+{"question": "What line coverage floor applies to every ViewModel?", "doc": "docs/testing.md", "answer_span": "| every `*ViewModel` | 85% | none |"}
+{"question": "What is the budget for cold start to the first frame?", "doc": "docs/testing.md", "answer_span": "| Cold start to the first frame | time to initial display, median | 450 ms | 116 ms"}
+{"question": "How large is the download of the small test models?", "doc": "docs/testing.md", "answer_span": "fetch them once with `sdk/scripts/fetch-test-models.sh`, about 265 MB"}
+{"question": "What gutter does the WalkJourneys walk check on every screen?", "doc": "docs/testing.md", "answer_span": "starts 16 dp from the left edge and ends 16 dp from the right"}
+{"question": "Where is the lock file that keeps two checks off one phone?", "doc": "docs/testing.md", "answer_span": "another check holding the phone's lock (`/tmp/llamabro-device-<serial>.lock`, or `LB_DEVICE_LOCK_DIR`)"}

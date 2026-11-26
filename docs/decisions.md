@@ -2693,4 +2693,4 @@ The manifest sets `android:stopWithTask="false"` on the service, Android's defau
 Consequences: The notification is the control once the app is swiped away: it names the model and the address and
 carries Stop. A person who swipes the app away expecting serving to end finds the notification still there, which is
 the one place that says the phone still serves.
-Next free IDs: D167, F191.
+Next free IDs: D167, F192.
