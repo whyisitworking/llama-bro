@@ -18,6 +18,9 @@ object ServerFormat {
 
     fun url(address: String, port: Int) = "http://$address:$port"
 
+    /** "1 of 2 busy": the requests being answered of the ones the model takes at once. */
+    fun busy(busy: Int, slots: Int) = "$busy of $slots busy"
+
     /**
      * "12:04:51 · 192.168.1.12 · 1,912 in / 233 out · 14.1 s" under "POST /v1/messages"; a request turned away before
      * the model is "turned away" under its path.

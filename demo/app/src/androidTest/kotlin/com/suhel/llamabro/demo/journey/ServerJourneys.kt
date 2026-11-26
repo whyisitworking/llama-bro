@@ -38,18 +38,25 @@ class ServerJourneys : Journey() {
         val address =
             app.container.network.addresses.value
                 .firstOrNull()
+        compose.waitUntilAtLeastOneExists(hasText("••••••••") and hasAnyAncestor(hasTestTag("server_key")), WAIT)
         if (address != null) {
             see("http://$address:$port")
+            // the QR code holds the key: hidden with it until the person shows it
+            seeTag("server_qr_hidden")
+            goneTag("server_qr")
+            shot("2-serving")
+            tap("Show QR code")
             seeTag("server_qr")
+            gone("••••••••")
+            shot("3-qr-shown")
         } else {
             seeTag("server_no_address")
+            shot("2-serving")
         }
-        compose.waitUntilAtLeastOneExists(hasText("••••••••") and hasAnyAncestor(hasTestTag("server_key")), WAIT)
-        shot("2-serving")
 
         tapTag("server_stop")
         seeTag("server_start")
         compose.waitUntil(WAIT) { app.container.server.state.value == ServingState.Off }
-        shot("3-stopped")
+        shot("4-stopped")
     }
 }

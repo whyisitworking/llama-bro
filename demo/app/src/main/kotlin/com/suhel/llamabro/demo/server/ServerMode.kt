@@ -71,6 +71,9 @@ class ServerMode(
     /** The requests served and refused, newest first, at most 200. */
     val log: StateFlow<List<LogLine>> = book.lines
 
+    /** The requests being answered now, of the slots the model was loaded with. */
+    val busy: StateFlow<Int> = book.busy
+
     /** start, stop and renew, one at a time. */
     private val control = Mutex()
     private var starting: Deferred<Unit>? = null

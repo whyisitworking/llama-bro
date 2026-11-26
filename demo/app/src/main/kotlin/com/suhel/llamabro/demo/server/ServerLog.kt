@@ -31,14 +31,21 @@ class ServerLog(private val clock: () -> Long) {
     private val _lines = MutableStateFlow<List<LogLine>>(emptyList())
     val lines: StateFlow<List<LogLine>> = _lines.asStateFlow()
 
+    private val _busy = MutableStateFlow(0)
+
+    /** The requests under way now: started and not yet ended. A refusal never reached the model, so it is none. */
+    val busy: StateFlow<Int> = _busy.asStateFlow()
+
     fun record(event: ServerEvent) {
         when (event) {
             is ServerEvent.RequestStarted -> {
                 started[event.id] = clock() to event
+                _busy.value = started.size
             }
 
             is ServerEvent.RequestEnded -> {
                 val (time, start) = started.remove(event.id) ?: return
+                _busy.value = started.size
                 add(
                     LogLine(
                         time,
@@ -60,7 +67,10 @@ class ServerLog(private val clock: () -> Long) {
     }
 
     /** Forgets the requests still open: a stopped server ends none of them in its events. */
-    fun forgetOpen() = started.clear()
+    fun forgetOpen() {
+        started.clear()
+        _busy.value = 0
+    }
 
     private fun add(line: LogLine) = _lines.update { (listOf(line) + it).take(MAX_LINES) }
 

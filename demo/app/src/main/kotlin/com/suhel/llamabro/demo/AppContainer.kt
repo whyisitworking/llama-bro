@@ -212,6 +212,7 @@ class AppContainer(
             override val served = server.served
             override val log = server.log
             override val key = serverKey.value
+            override val busy = server.busy
 
             override suspend fun start(model: HfModel, slots: Int) = server.start(model, slots)
 

@@ -60,6 +60,7 @@ class ServerViewModelTest {
         override val served = MutableStateFlow<HfModel?>(null)
         override val log = MutableStateFlow<List<LogLine>>(emptyList())
         override val key = MutableStateFlow<String?>("k3y_-AbC")
+        override val busy = MutableStateFlow(0)
         val started = mutableListOf<Pair<HfModel, Int>>()
         var stops = 0
         var renewals = 0
@@ -149,10 +150,10 @@ class ServerViewModelTest {
         val page = vm.page() as ServerPage.Serving
         assertEquals("Qwen3.5 4B", page.name)
         assertEquals(listOf("http://10.0.0.7:8080", "http://192.168.1.20:8080"), page.urls)
-        assertEquals("{\"url\":\"http://10.0.0.7:8080\",\"key\":\"k3y_-AbC\"}", page.qr)
         assertEquals(ServerFormat.MASK, page.key.shown)
         assertEquals("k3y_-AbC", page.key.copy)
         assertEquals(2, page.slots)
+        assertEquals(0, page.busy)
         // the last request's predicted tokens over its time
         assertEquals("16.5 tok/s", page.speed)
         assertEquals(
@@ -249,5 +250,37 @@ class ServerViewModelTest {
         server.served.value = null
         server.state.value = ServingState.Off
         assertTrue(vm.page() is ServerPage.Off)
+    }
+
+    @Test fun busyFollowsTheRequestsUnderWay() {
+        val vm = viewModel()
+        serving()
+        server.busy.value = 1
+        val page = vm.page() as ServerPage.Serving
+        assertEquals(1, page.busy)
+        assertEquals("1 of 2 busy", ServerFormat.busy(page.busy, page.slots))
+    }
+
+    @Test fun qrHiddenWhileKeyMasked() {
+        val vm = viewModel()
+        serving()
+        val page = vm.page() as ServerPage.Serving
+        // the code holds the key itself: a camera or a screenshot would read what the mask hides
+        assertNull(page.qr)
+        assertTrue(page.canShowQr)
+    }
+
+    @Test fun revealShowsKeyAndQr() {
+        val vm = viewModel()
+        serving()
+        vm.reveal(true)
+        val shown = vm.page() as ServerPage.Serving
+        assertEquals("k3y_-AbC", shown.key.shown)
+        assertEquals("{\"url\":\"http://192.168.1.20:8080\",\"key\":\"k3y_-AbC\"}", shown.qr)
+        // hiding the key hides the code with it
+        vm.reveal(false)
+        val hidden = vm.page() as ServerPage.Serving
+        assertEquals(ServerFormat.MASK, hidden.key.shown)
+        assertNull(hidden.qr)
     }
 }

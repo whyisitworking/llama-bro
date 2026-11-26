@@ -33,6 +33,9 @@ interface ServerControl {
     /** The key clients send; null until the first start makes one. */
     val key: Flow<String?>
 
+    /** The requests being answered now. */
+    val busy: Flow<Int>
+
     suspend fun start(model: HfModel, slots: Int)
 
     suspend fun stop()
@@ -58,15 +61,18 @@ sealed interface ServerPage {
     data class Starting(val name: String, val progress: Float?) : ServerPage
 
     /**
-     * [name] answers at each of [urls] (none when the phone has no Wi-Fi address); [qr] holds the
-     * first URL and the key; [speed] is the last request's, [heat] the phone's thermal state.
+     * [name] answers at each of [urls] (none when the phone has no Wi-Fi address); [busy] of its [slots] answer a
+     * request now. [qr] holds the first URL and the key, so it is there only while the key is revealed; [canShowQr]
+     * says a reveal would show it. [speed] is the last request's, [heat] the phone's thermal state.
      */
     data class Serving(
         val name: String,
         val urls: List<String>,
         val qr: String?,
+        val canShowQr: Boolean,
         val key: KeyView,
         val slots: Int,
+        val busy: Int,
         val speed: String?,
         val heat: String?,
         val charging: Boolean,
@@ -109,9 +115,15 @@ class ServerViewModel(
 
     private class Phone(val addresses: List<String>, val charging: Boolean, val thermal: Thermal?)
 
-    private class Server(val state: ServingState, val served: HfModel?, val log: List<LogLine>, val key: String?)
+    private class Server(
+        val state: ServingState,
+        val served: HfModel?,
+        val log: List<LogLine>,
+        val key: String?,
+        val busy: Int,
+    )
 
-    private val serverNow = combine(server.state, server.served, server.log, server.key, ::Server)
+    private val serverNow = combine(server.state, server.served, server.log, server.key, server.busy, ::Server)
     private val choices = combine(chosen, slots, revealed, ::Choices)
     private val phoneNow = combine(phone.addresses, phone.charging, phone.thermal, ::Phone)
 
@@ -190,9 +202,12 @@ class ServerViewModel(
         return ServerPage.Serving(
             name = Names.of(state.model),
             urls = urls,
-            qr = first?.let { ConnectSnippets.qrPayload(it, key) },
+            // the code holds the key itself: shown with it, hidden with it, one reveal for both
+            qr = first?.takeIf { revealed }?.let { ConnectSnippets.qrPayload(it, key) },
+            canShowQr = first != null,
             key = KeyView(shownKey, key, revealed),
             slots = state.slots,
+            busy = s.busy,
             speed = ServerFormat.speed(s.log, locale),
             heat = p.thermal?.let(ServerFormat::heat),
             charging = p.charging,

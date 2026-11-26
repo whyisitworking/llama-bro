@@ -261,7 +261,10 @@ private fun ServingPage(page: ServerPage.Serving, actions: ServerActions, tab: I
     Log(page.log)
 }
 
-/** Each address the server answers on, with Copy, and the QR code of the first and the key. */
+/**
+ * Each address the server answers on, with Copy, and the QR code of the first and the key, shown only while the key
+ * is: Show QR code reveals both.
+ */
 @Composable
 private fun Address(page: ServerPage.Serving, actions: ServerActions) {
     Section("Address") {
@@ -276,11 +279,20 @@ private fun Address(page: ServerPage.Serving, actions: ServerActions) {
                 }
             }
         }
-        page.qr?.let { payload ->
+        val payload = page.qr
+        if (payload != null) {
             Stack(Gap.Block, Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 QrCode(payload, "QR code of the address and key", Modifier.testTag("server_qr"))
             }
-            SectionNote("The QR code holds the address and the key.")
+            SectionNote("The QR code holds the address and the key. Hide the key to hide it.")
+        } else if (page.canShowQr) {
+            // hidden with the key: a camera, or a screenshot of a docked phone, would read what the mask hides
+            Notice(
+                "The QR code holds the key, so it shows with the key.",
+                Modifier.testTag("server_qr_hidden"),
+                action = "Show QR code",
+                onAction = { actions.onReveal(true) },
+            )
         }
     }
 }
@@ -318,7 +330,7 @@ private fun Now(page: ServerPage.Serving) {
     Section("Now") {
         GroupedList(Modifier.testTag("server_now")) {
             row { ListRow("Serving", trailing = page.name) }
-            row { ListRow("Requests at once", trailing = page.slots.toString()) }
+            row { ListRow("Requests at once", trailing = ServerFormat.busy(page.busy, page.slots)) }
             row { ListRow("Speed", trailing = page.speed ?: "No requests yet") }
             page.heat?.let { heat -> row { ListRow("Heat", subtitle = heat) } }
         }
