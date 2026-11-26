@@ -4,7 +4,7 @@ import com.suhel.llamabro.demo.chat.ChatLibrary
 import com.suhel.llamabro.demo.data.Source
 import com.suhel.llamabro.demo.eventually
 import com.suhel.llamabro.demo.ui.keepAlive
-import com.suhel.llamabro.rag.Hit
+import com.suhel.llamabro.rag.Library
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
@@ -20,7 +20,7 @@ class ChatViewModelLibraryTest : ChatViewModelFixture() {
         object : ChatLibrary {
             override val hasDocuments = MutableStateFlow(false)
 
-            override suspend fun search(query: String): List<Hit> = emptyList()
+            override suspend fun <T> use(block: suspend (Library) -> T): T = error("no search in this test")
 
             override suspend fun documentText(documentId: String): String? = text.takeIf { documentId == "llamas" }
         }

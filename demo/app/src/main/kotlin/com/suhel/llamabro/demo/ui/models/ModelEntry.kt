@@ -114,7 +114,7 @@ data class ModelEntry(
                 // the one size: the file on the phone and its image reader; the model file alone for the fit's speed
                 size = SizeText.Exact(model.totalBytes, model.sizeBytes),
                 key = model.key,
-                canChat = isChatModel(model.key),
+                canChat = model.chats,
                 lastUsed = model.lastUsed,
                 isDefault = model.isDefault,
                 onPhone = true,

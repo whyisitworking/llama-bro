@@ -354,8 +354,11 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     }
 }
 
-/** What a model can do: think (the Think chip), see pictures, hear voice messages (D76, D155). */
-data class ModelSenses(val thinks: Boolean, val sees: Boolean, val hears: Boolean)
+/**
+ * What a model can do: think (the Think chip), see pictures, hear voice messages (D76, D155), and [chats]: its header
+ * has a chat template, which an embedding or rerank model's has not ([com.suhel.llamabro.demo.models.isChatModel]).
+ */
+data class ModelSenses(val thinks: Boolean, val sees: Boolean, val hears: Boolean, val chats: Boolean = true)
 
 /** A model's senses as stored: the names of those it has, separated by commas. */
 private fun encodeSenses(senses: ModelSenses): String =
@@ -363,9 +366,16 @@ private fun encodeSenses(senses: ModelSenses): String =
         "thinks".takeIf { senses.thinks },
         "sees".takeIf { senses.sees },
         "hears".takeIf { senses.hears },
+        // stored as its absence, so every model stored before it was read chats, as it did
+        "nochat".takeIf { !senses.chats },
     ).joinToString(",")
 
 private fun decodeSenses(stored: String?): ModelSenses {
     val names = stored.orEmpty().split(",")
-    return ModelSenses(thinks = "thinks" in names, sees = "sees" in names, hears = "hears" in names)
+    return ModelSenses(
+        thinks = "thinks" in names,
+        sees = "sees" in names,
+        hears = "hears" in names,
+        chats = "nochat" !in names,
+    )
 }

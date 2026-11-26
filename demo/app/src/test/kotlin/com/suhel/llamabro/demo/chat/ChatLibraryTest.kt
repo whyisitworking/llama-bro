@@ -2,6 +2,8 @@ package com.suhel.llamabro.demo.chat
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.suhel.llamabro.ModelInfo
+import com.suhel.llamabro.ModelSource
+import com.suhel.llamabro.ModelTask
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ImageStore
 import com.suhel.llamabro.demo.data.MessageKind
@@ -17,7 +19,11 @@ import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.models.installedModel
 import com.suhel.llamabro.demo.ui.chat.Passages
 import com.suhel.llamabro.hub.HfModel
+import com.suhel.llamabro.rag.Chunker
+import com.suhel.llamabro.rag.Document
+import com.suhel.llamabro.rag.EmbeddingFormat
 import com.suhel.llamabro.rag.Hit
+import com.suhel.llamabro.rag.Library
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,12 +31,15 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okio.Path.Companion.toPath
+import okio.fakefilesystem.FakeFileSystem
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -40,7 +49,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
-import java.util.Collections
 
 /**
  * A chat that answers from the person's library (docs/design/rag.md): the search tool on a model that calls tools,
@@ -63,32 +71,52 @@ class ChatLibraryTest {
     private val host by lazy { ModelHost(fake.llamaBro, { testHub.hub.installedModel(it) }, scope) }
     private val models by lazy { ModelRepository(testHub.hub, settings, FakeScheduler(), scope, host) }
 
-    private class FakeLibrary : ChatLibrary {
-        val documents = MutableStateFlow(listOf("llamas.md"))
-        val texts = mutableMapOf<String, String>()
-        var hits: List<Hit> = emptyList()
-        val queries: MutableList<String> = Collections.synchronizedList(mutableListOf())
-
-        override val hasDocuments = MutableStateFlow(true)
-
-        override suspend fun search(query: String): List<Hit> {
-            queries += query
-            return hits
-        }
-
-        override suspend fun documentText(documentId: String): String? = texts[documentId]
-    }
-
-    private val library = FakeLibrary()
-
-    private val llamaText = "# Llamas\n\n## Sounds\n\nLlamas hum when they are curious. They also click.\n\nThey spit."
-    private val hum = hit(1, "Llamas hum when they are curious.")
-    private val spit = hit(2, "They spit.")
+    private val llamaText = "Llamas hum softly.\n\nThey spit at foes."
+    private val hum = hit(1, "Llamas hum softly.")
+    private val spit = hit(2, "They spit at foes.")
 
     private fun hit(rank: Int, text: String): Hit {
         val start = llamaText.indexOf(text)
-        return Hit("llamas.md", "Llamas", text, start, start + text.length, listOf("Llamas", "Sounds"), 0.03f, rank)
+        return Hit("llamas.md", "Llamas", text, start, start + text.length, emptyList(), 0f, rank)
     }
+
+    private fun unit(i: Int): FloatArray = FloatArray(4) { if (it == i) 1f else 0f }
+
+    /**
+     * A real library over the fake engine's embedder, holding [llamaText] as two passages: the hum passage's vector is
+     * the one every query is embedded to, so it comes first. [uses] counts each time a chat opened it.
+     */
+    private inner class TestLibrary : ChatLibrary {
+        private var open: Library? = null
+        var uses = 0
+
+        override val hasDocuments = MutableStateFlow(true)
+
+        override suspend fun <T> use(block: suspend (Library) -> T): T {
+            uses++
+            val library =
+                open ?: run {
+                    val embedder = fake.llamaBro.loadModel(ModelSource.file("/e.gguf")) { task = ModelTask.Embedding() }
+                    fake.embeddings(unit(3)) // the library's probe
+                    val opened =
+                        Library.open(FakeFileSystem(), "/library".toPath(), embedder, EmbeddingFormat.None, chunker)
+                    fake.embeddings(unit(0), unit(1))
+                    opened.add(Document("llamas.md", "Llamas", llamaText)).toList()
+                    opened.also { open = it }
+                }
+            fake.embeddings(unit(0)) // the query, for a search
+            return block(library)
+        }
+
+        override suspend fun documentText(documentId: String): String? = llamaText
+    }
+
+    private val chunker = Chunker(maxTokens = 8, overlap = 0f)
+    private val library = TestLibrary()
+
+    /** The query text of every search the library ran. */
+    private fun searches(): List<String> =
+        fake.embedRequests.filter { "llamas hum" in it.lowercase() && "softly" !in it }
 
     private fun engine(tools: Boolean, chats: ChatRepository = repository()) =
         ChatEngine(
@@ -135,7 +163,6 @@ class ChatLibraryTest {
 
     @Test fun toolModelGetsTheTool() =
         runBlocking {
-            library.hits = listOf(hum, spit)
             fake.reply { toolCall("search_library", """{"query":"why llamas hum"}""") }
             fake.reply { content("Out of curiosity [1].") }
             val chat = newChat(engine(tools = true))
@@ -161,16 +188,15 @@ class ChatLibraryTest {
                 "Why do llamas hum?",
                 request(0).messages().last().text(),
             )
-            assertEquals(listOf("why llamas hum"), library.queries)
+            assertTrue(searches().toString(), searches().single().contains("why llamas hum"))
             val result = request(1).messages().last { it.getValue("role").jsonPrimitive.content == "tool" }.text()
-            assertTrue(result, result.startsWith("[1] Llamas › Llamas › Sounds\nLlamas hum when they are curious."))
+            assertEquals("[1] Llamas\nLlamas hum softly.\n\n[2] Llamas\nThey spit at foes.", result)
             assertEquals(listOf(source(1, hum), source(2, spit)), reply.sources)
             assertEquals("the choice was saved with the new chat", true, dao.chat(chat.chatId.value)?.useLibrary)
         }
 
     @Test fun noToolModelGetsPassagesInTheTurn() =
         runBlocking {
-            library.hits = listOf(hum, spit)
             fake.reply { content("Out of curiosity [1].") }
             val chat = newChat(engine(tools = false))
             eventually("the toggle is offered") { chat.useLibrary.value == false }
@@ -179,18 +205,16 @@ class ChatLibraryTest {
             val reply = answered(chat)
 
             assertFalse("no tools", request(0).containsKey("tools"))
-            assertEquals(listOf("Why do llamas hum?"), library.queries)
+            assertTrue(searches().toString(), searches().single().contains("Why do llamas hum?"))
             val messages = request(0).messages()
             val system = messages.first { it.getValue("role").jsonPrimitive.content == "system" }.text()
-            assertTrue(system, "[1] Llamas › Llamas › Sounds\nLlamas hum when they are curious." in system)
-            assertTrue(system, "[2] Llamas › Llamas › Sounds\nThey spit." in system)
+            assertTrue(system, "[1] Llamas\nLlamas hum softly.\n\n[2] Llamas\nThey spit at foes." in system)
             assertEquals("the passages stay out of the person's message", "Why do llamas hum?", messages.last().text())
             assertEquals(listOf(source(1, hum), source(2, spit)), reply.sources)
         }
 
     @Test fun toggleOffUsesNothing() =
         runBlocking {
-            library.hits = listOf(hum)
             fake.reply { content("Hello.") }
             val chat = newChat(engine(tools = true))
             eventually("the toggle is offered, off") { chat.useLibrary.value == false }
@@ -198,7 +222,7 @@ class ChatLibraryTest {
             val reply = answered(chat)
             assertFalse(request(0).containsKey("tools"))
             assertTrue(request(0).messages().none { it.getValue("role").jsonPrimitive.content == "system" })
-            assertEquals(emptyList<String>(), library.queries)
+            assertEquals(0, library.uses)
             assertEquals(emptyList<Source>(), reply.sources)
 
             // a library with no document is not offered at all, and a chat that had it on uses nothing
@@ -212,7 +236,7 @@ class ChatLibraryTest {
                 chat.messages.value.count { it.kind == MessageKind.Assistant && it.state == MessageState.Done } == 2
             }
             letAWrongActionLand()
-            assertEquals(emptyList<String>(), library.queries)
+            assertEquals(0, library.uses)
             assertFalse(request(1).containsKey("tools"))
         }
 
@@ -230,7 +254,6 @@ class ChatLibraryTest {
 
     @Test fun chipsSurviveRestart() =
         runBlocking {
-            library.hits = listOf(hum)
             fake.reply { content("Out of curiosity [1].") }
             val first = newChat(engine(tools = false))
             eventually("offered") { first.useLibrary.value == false }
@@ -245,7 +268,7 @@ class ChatLibraryTest {
             val again = engine(tools = false, chats = repository()).open(id)
             eventually("the chat is read") { again.messages.value.isNotEmpty() }
             assertEquals(
-                listOf(source(1, hum)),
+                listOf(source(1, hum), source(2, spit)),
                 again.messages.value
                     .last()
                     .sources,
@@ -254,6 +277,10 @@ class ChatLibraryTest {
         }
 
     @Test fun passageSheetHighlightsTheSpan() {
+        val llamaText = "# Llamas\n\n## Sounds\n\nLlamas hum when they are curious. They also click.\n\nThey spit."
+        val text = "Llamas hum when they are curious."
+        val start = llamaText.indexOf(text)
+        val hum = Hit("llamas.md", "Llamas", text, start, start + text.length, listOf("Llamas", "Sounds"), 0f, 1)
         val view = Passages.view(source(1, hum), llamaText)
         assertEquals("Llamas", view.title)
         assertEquals("Llamas › Sounds", view.path)

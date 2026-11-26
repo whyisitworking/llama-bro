@@ -1,5 +1,6 @@
 package com.suhel.llamabro.demo.models
 
+import com.suhel.llamabro.demo.data.ModelSenses
 import com.suhel.llamabro.hub.HfModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,6 +23,18 @@ class ChatModelsTest {
         assertFalse(isChatModel(HfModel.parse("nomic-ai/nomic-embed-text-v1.5-GGUF:Q8_0")))
         assertFalse(isChatModel(HfModel.parse("Qwen/Qwen3-Embedding-0.6B-GGUF:Q8_0")))
         assertFalse(isChatModel(HfModel.parse("gpustack/jina-reranker-v1-tiny-en-GGUF:Q8_0")))
+    }
+
+    @Test fun aReadHeaderDecidesAndTheNameIsTheFallback() {
+        val plain = HfModel.parse("someone/Some-Model-GGUF:Q4_K_M")
+        val named = HfModel.parse("Qwen/Qwen3-Embedding-0.6B-GGUF:Q8_0")
+        val noTemplate = ModelSenses(thinks = false, sees = false, hears = false, chats = false)
+        val template = ModelSenses(thinks = false, sees = false, hears = false, chats = true)
+        assertFalse("its header has no chat template", isChatModel(plain, noTemplate))
+        assertTrue("unread, its name says nothing", isChatModel(plain))
+        assertTrue("its header has a chat template, whatever its name", isChatModel(named, template))
+        assertFalse("unread, its name says it embeds", isChatModel(named))
+        assertFalse("the Library's embedder, whatever its header", isChatModel(Catalog.embedder.key, template))
     }
 
     @Test fun everyCatalogChatModelIsOne() {

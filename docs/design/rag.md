@@ -2,7 +2,7 @@
 
 Status: **SDK part built (Tasks 1-8); the demo's Library page (step 9) and chat use (step 10) built, the phone run pending** (2026-11-26); the sections below describe the design, and where the
 built module differs the note says so (see "As built" at the end). Plan in [docs/superpowers/plans/2026-11-26-llamabro-rag.md](../superpowers/plans/2026-11-26-llamabro-rag.md). Decisions are recorded in
-[decisions.md](../decisions.md): D167 to D171 for the SDK part.
+[decisions.md](../decisions.md): D167 to D172 for the SDK part.
 
 ## Intent
 
@@ -195,7 +195,7 @@ progress events, and the passage sheet's layout within the design system.
 
 ## As built (SDK part)
 
-The module is in `sdk/llamabro-rag`; [architecture.md](../architecture.md) section 5.10 describes it and D167 to D171
+The module is in `sdk/llamabro-rag`; [architecture.md](../architecture.md) section 5.10 describes it and D167 to D172
 record the choices. Where it differs from the text above, the code is right:
 
 - **Tokens are counted, not estimated.** F190 found that `/tokenize` answers on an embedding load, so the chunker counts
@@ -210,7 +210,8 @@ record the choices. Where it differs from the text above, the code is right:
 - **`add` is one commit** for a document and the removal of any older one with its id; a compaction that fails
   afterwards does not fail the `add`.
 - **Search** is as designed (D170). `Hit.score` is the fusion's score, or the reranker's with one.
-- **The tool** is `Library.searchTool(name, limit, reranker, description)`, and `asContext()` is `List<Hit>.asContext()`
+- **The tool** is `Library.searchTool(name, limit, reranker, description, onHits)` (D171; `onHits` and numbering
+  that goes on across a tool's calls, D172), and `asContext()` is `List<Hit>.asContext()`
   (D171).
 - **Evaluation (F191):** the defaults of 256 tokens, 15% overlap, top 50 each, k 60, rerank 20 and limit 6 stayed.
   Reranking with jina-reranker-tiny did not help on the question set, so the demo has no evidence for turning it on. The
@@ -224,12 +225,14 @@ record the choices. Where it differs from the text above, the code is right:
   while the library has a document (else the **+** opens the photo picker as before); it is saved per chat (database
   version 8, `chats.useLibrary`). A model whose load reports `supports_tool_calls` gets the search tool; any other gets
   the top six passages (`search`, no reranker, F191) after the chat's instructions in the turn's system prompt, so the
-  person's message is stored and sent as written. The tool is the demo's own, with `searchTool`'s name, `SearchArgs`,
-  `asContext()` text and D171's failure messages, because the app must see the hits to save them and the embedder is
-  leased per search rather than held for the turn. The hits a reply used are saved with it (`messages.sources`, the
-  passage's text included), numbered from 1 in the order found, so one search's numbers are the `[n]` the reply cites;
-  chips show the cited ones (all of them when none is cited), and a chip opens the passage highlighted in its document's
-  text, which the demo keeps beside the library (`library-texts/`), or alone once the document is removed. The
-  Library's embedder (and any model named for embedding or reranking) is never offered as a chat model.
+  person's message is stored and sent as written. The tool is the SDK's `searchTool`, made for each turn so its
+  numbers start at [1] and go on across its calls (D172); its `onHits` hands the demo the passages as the model saw
+  them, which are saved with the reply (`messages.sources`, the passage's text included), so every `[n]` is one chip.
+  For a tool turn the embedder stays leased until the turn ends (`LibraryRepository.leased`, the repository's lock held
+  only to open the library), and the conversation is built anew, since its tool is the turn's. Chips show the cited
+  passages (all of them when none is cited), and a chip opens the passage highlighted in its document's text, which
+  the demo keeps beside the library (`library-texts/`), or alone once the document is removed. The Library's embedder
+  is never offered as a chat model, nor is a model whose header (read before a load, D155) has no chat template, or,
+  with its header unread, a model named for embedding or reranking.
 - **Still pending:** the PDF text spike (needs the phone), the phone run (step 11) and
   the phone measurements.

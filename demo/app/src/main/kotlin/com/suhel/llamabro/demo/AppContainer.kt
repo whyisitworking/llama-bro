@@ -92,6 +92,7 @@ import com.suhel.llamabro.demo.voice.VoiceConversation
 import com.suhel.llamabro.hub.HfModel
 import com.suhel.llamabro.hub.LlamaBroHub
 import com.suhel.llamabro.hub.work.LlamaBroWorkerFactory
+import com.suhel.llamabro.rag.Library
 import com.suhel.llamabro.server.Advertise
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -304,7 +305,7 @@ class AppContainer(
         chatLibraryOverride ?: object : ChatLibrary {
             override val hasDocuments = library.documents.map { it.isNotEmpty() }.distinctUntilChanged()
 
-            override suspend fun search(query: String) = library.search(query)
+            override suspend fun <T> use(block: suspend (Library) -> T): T = library.leased(block)
 
             override suspend fun documentText(documentId: String) = library.documentText(documentId)
         }

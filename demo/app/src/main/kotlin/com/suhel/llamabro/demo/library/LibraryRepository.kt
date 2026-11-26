@@ -148,6 +148,18 @@ class LibraryRepository(
     // a document id is a content URI: its hash names the file
     private fun textName(id: String) = id.encodeUtf8().sha256().hex() + ".txt"
 
+    /**
+     * Runs [block] with the library open on the embedder, which stays leased until [block] ends: a chat's turn, whose
+     * model may search through the SDK's tool (D172) while it writes. The repository's lock is held only to open the
+     * library, so an import or a removal can run meanwhile (the library takes one write at a time itself); a rebuild
+     * closes it, and a search after that fails as a closed library does.
+     */
+    suspend fun <T> leased(block: suspend (Library) -> T): T =
+        embedders.use(embedder) { model ->
+            val library = lock.withLock { open?.takeIf { it.first === model }?.second ?: openOn(model) }
+            block(library)
+        }
+
     /** The passages that best answer [query] (the library's defaults, F191). */
     suspend fun search(query: String): List<Hit> = withLibrary { it.search(query) }
 

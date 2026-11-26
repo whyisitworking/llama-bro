@@ -196,8 +196,8 @@ public final class com/suhel/llamabro/rag/LibraryContents {
 
 public final class com/suhel/llamabro/rag/LibraryToolKt {
 	public static final fun asContext (Ljava/util/List;)Ljava/lang/String;
-	public static final fun searchTool (Lcom/suhel/llamabro/rag/Library;Ljava/lang/String;ILcom/suhel/llamabro/Model;Ljava/lang/String;)Lcom/suhel/llamabro/typed/TypedTool;
-	public static synthetic fun searchTool$default (Lcom/suhel/llamabro/rag/Library;Ljava/lang/String;ILcom/suhel/llamabro/Model;Ljava/lang/String;ILjava/lang/Object;)Lcom/suhel/llamabro/typed/TypedTool;
+	public static final fun searchTool (Lcom/suhel/llamabro/rag/Library;Ljava/lang/String;ILcom/suhel/llamabro/Model;Ljava/lang/String;Lkotlin/jvm/functions/Function2;)Lcom/suhel/llamabro/typed/TypedTool;
+	public static synthetic fun searchTool$default (Lcom/suhel/llamabro/rag/Library;Ljava/lang/String;ILcom/suhel/llamabro/Model;Ljava/lang/String;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)Lcom/suhel/llamabro/typed/TypedTool;
 }
 
 public final class com/suhel/llamabro/rag/SearchArgs {

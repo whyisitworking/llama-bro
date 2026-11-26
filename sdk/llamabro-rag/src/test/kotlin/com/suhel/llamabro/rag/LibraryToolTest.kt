@@ -85,6 +85,44 @@ class LibraryToolTest {
         }
 
     @Test
+    fun onHitsReceivesWhatTheModelSaw() =
+        runBlocking {
+            val library = library()
+            library.addHandbook()
+            fake.reply { toolCall("search_library", """{"query":"twenty days"}""", id = "c1") }
+            fake.reply { content("Twenty days [1].") }
+            fake.embeddings(unit(2))
+            val seen = mutableListOf<List<Hit>>()
+            val events = chat(library.searchTool(limit = 2, onHits = { seen += it })).send("How much leave?").toList()
+            val result = events.filterIsInstance<ChatEvent.ToolResult>().single().result
+            val shown = seen.single()
+            assertEquals(2, shown.size)
+            assertEquals("numbered as shown", listOf(1, 2), shown.map { it.rank })
+            assertEquals("the same passages, in the order shown", shown.asContext(), result)
+        }
+
+    @Test
+    fun numberingContinuesAcrossCalls() =
+        runBlocking {
+            val library = library()
+            library.addHandbook()
+            fake.reply {
+                toolCall("search_library", """{"query":"twenty days"}""", id = "c1")
+            }
+            fake.reply { toolCall("search_library", """{"query":"leave"}""", id = "c2") }
+            fake.reply { content("Twenty days [1], see [3].") }
+            fake.embeddings(unit(2))
+            fake.embeddings(unit(1))
+            val seen = mutableListOf<List<Hit>>()
+            val events = chat(library.searchTool(limit = 2, onHits = { seen += it })).send("How much leave?").toList()
+            val results = events.filterIsInstance<ChatEvent.ToolResult>().map { it.result }
+            assertEquals(listOf(listOf(1, 2), listOf(3, 4)), seen.map { hits -> hits.map { it.rank } })
+            assertTrue(results[0], results[0].startsWith("[1] "))
+            assertTrue(results[1], results[1].startsWith("[3] ") && "\n\n[4] " in results[1])
+            assertEquals("[3] " + seen[1][0].title, results[1].lines().first().substringBefore(" › "))
+        }
+
+    @Test
     fun emptyResultSaysNothingFound() =
         runBlocking {
             val library = library()

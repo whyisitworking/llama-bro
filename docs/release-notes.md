@@ -6,9 +6,10 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
 
 ## Unreleased
 
-- **`llamabro-rag`** (D167-D171), a new optional module for asking your own documents: `Library.open` a folder,
+- **`llamabro-rag`** (D167-D172), a new optional module for asking your own documents: `Library.open` a folder,
   `add` a `Document` (a flow of progress: chunked, embedded n of m, saved), `remove`, `search` for `Hit`s with their
-  document, offsets and headings, and `searchTool()` for a `Conversation` (or `asContext()` for a prompt). Chunks are
+  document, offsets and headings, and `searchTool()` for a `Conversation`, which numbers passages on across its calls and hands the app what
+  the model saw through `onHits` (or `asContext()` for a prompt). Chunks are
   cut at headings, paragraphs and sentences and counted with the embedder's own tokenizer; search is keyword (BM25) and
   vector search fused, with an optional rerank (F191 set the defaults). The folder survives a crash (D168), and opening
   it with another embedder throws `IndexMismatch`. Pure Kotlin; core is unchanged.

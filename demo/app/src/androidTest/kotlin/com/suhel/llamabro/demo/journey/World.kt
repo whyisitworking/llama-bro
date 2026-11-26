@@ -1,5 +1,7 @@
 package com.suhel.llamabro.demo.journey
 
+import com.suhel.llamabro.ModelSource
+import com.suhel.llamabro.ModelTask
 import com.suhel.llamabro.demo.chat.ChatLibrary
 import com.suhel.llamabro.demo.chat.sdkStream
 import com.suhel.llamabro.demo.models.Catalog
@@ -10,15 +12,22 @@ import com.suhel.llamabro.demo.models.TestHub
 import com.suhel.llamabro.demo.testing.FakeDiscovery
 import com.suhel.llamabro.demo.testing.TestConfig
 import com.suhel.llamabro.hub.HfModel
-import com.suhel.llamabro.rag.Hit
+import com.suhel.llamabro.rag.Chunker
+import com.suhel.llamabro.rag.Document
+import com.suhel.llamabro.rag.EmbeddingFormat
+import com.suhel.llamabro.rag.Library
 import com.suhel.llamabro.testing.FakeLlamaBro
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.flow.update
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import java.io.Closeable
+import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -39,7 +48,7 @@ class World(private val realDownloads: Boolean = false) : Closeable {
     val holdReplies = MutableStateFlow(false)
 
     /** The person's library (docs/design/rag.md): empty, so the **+** is the photo picker, until a journey fills it. */
-    val library = JourneyLibrary()
+    val library = JourneyLibrary(engine)
 
     init {
         // the catalog's models are online: each repo lists its file
@@ -74,19 +83,51 @@ class World(private val realDownloads: Boolean = false) : Closeable {
     override fun close() = hub.close()
 }
 
-/** A library over passages a journey chooses: no document until [documents] is set. */
-class JourneyLibrary : ChatLibrary {
+/**
+ * A real library over the fake engine's embedder, in a folder of its own: empty, so the **+** is the photo picker, until
+ * a journey [fill]s it. Every query is embedded to the first passage's vector, so that passage comes first.
+ */
+class JourneyLibrary(private val engine: FakeLlamaBro) : ChatLibrary {
     override val hasDocuments = MutableStateFlow(false)
+    private val texts = ConcurrentHashMap<String, String>()
+    private var document: Document? = null
+    private var open: Library? = null
 
-    /** What every search finds. */
-    @Volatile var hits: List<Hit> = emptyList()
+    /** Puts [document] in the library, to be cut and embedded when a chat first uses it. */
+    fun fill(document: Document) {
+        this.document = document
+        texts[document.id] = document.text
+        hasDocuments.value = true
+    }
 
-    /** Each document's text, for a source's surroundings. */
-    val texts: MutableMap<String, String> = ConcurrentHashMap()
+    override suspend fun <T> use(block: suspend (Library) -> T): T {
+        val library = open ?: openLibrary().also { open = it }
+        engine.embeddings(unit(0)) // a search's query
+        return block(library)
+    }
 
-    override suspend fun search(query: String): List<Hit> = hits
+    private suspend fun openLibrary(): Library {
+        val embedder = engine.llamaBro.loadModel(ModelSource.file("/embedder.gguf")) { task = ModelTask.Embedding() }
+        engine.embeddings(unit(DIMENSIONS - 1)) // the library's probe
+        val dir = Files.createTempDirectory("journey-library").toString().toPath()
+        // counted by the estimate: the fake engine has no tokenizer
+        val chunker = Chunker()
+        val library = Library.open(FileSystem.SYSTEM, dir, embedder, EmbeddingFormat.None, chunker)
+        document?.let { doc ->
+            val passages = chunker.chunks(doc).size
+            engine.embeddings(*Array(passages) { unit(it % DIMENSIONS) })
+            library.add(doc).toList()
+        }
+        return library
+    }
 
     override suspend fun documentText(documentId: String): String? = texts[documentId]
+
+    private fun unit(i: Int) = FloatArray(DIMENSIONS) { if (it == i) 1f else 0f }
+
+    private companion object {
+        const val DIMENSIONS = 8
+    }
 }
 
 /**

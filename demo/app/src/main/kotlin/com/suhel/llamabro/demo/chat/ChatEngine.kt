@@ -27,6 +27,8 @@ import com.suhel.llamabro.demo.models.LibraryModel
 import com.suhel.llamabro.demo.models.ModelRepository
 import com.suhel.llamabro.demo.models.Names
 import com.suhel.llamabro.hub.HfModel
+import com.suhel.llamabro.rag.SearchArgs
+import com.suhel.llamabro.typed.TypedTool
 import com.suhel.llamabro.typed.tool
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -708,40 +710,41 @@ class ChatEngine(
                 rememberSenses(settings, key, loaded.info)
                 val rows = chats.messages(id).first()
                 // the library: the search tool on a model that calls tools, else the passages in the turn
-                val library =
-                    libraryUse.forTurn(id, loaded.info, user.text) { _limit.value = Limits.libraryNotSearched() }
-                val system = listOfNotNull(systemPrompt(), library.passages).joinToString("\n\n").ifEmpty { null }
-                val convo = conversationFor(loaded, key, rows, user, hears, system, library.tool)
-                val replyId =
-                    chats.append(
-                        id,
-                        NewMessage(
-                            MessageKind.Assistant,
-                            "",
-                            modelKey = key.toString(),
-                            state = MessageState.Streaming,
-                            sentAt = clock(),
-                        ),
+                val notSearched: (Exception) -> Unit = { _limit.value = Limits.libraryNotSearched() }
+                libraryUse.forTurn(id, loaded.info, user.text, notSearched) { library ->
+                    val system = listOfNotNull(systemPrompt(), library.passages).joinToString("\n\n").ifEmpty { null }
+                    val convo = conversationFor(loaded, key, rows, user, hears, system, library.tool)
+                    val replyId =
+                        chats.append(
+                            id,
+                            NewMessage(
+                                MessageKind.Assistant,
+                                "",
+                                modelKey = key.toString(),
+                                state = MessageState.Streaming,
+                                sentAt = clock(),
+                            ),
+                        )
+                    onReply()
+                    // a model that can't hear gets a note for each voice message, and the line says so (D76)
+                    if (!hears && rows.any { it.voice != null && it.position <= user.position }) {
+                        _limit.value = Limits.cantHear(currentName())
+                    }
+                    val parts = (History.userMessage(user, hears) as Message.User).content
+                    val text = parts.filterIsInstance<Content.Text>().joinToString("") { it.text }
+                    val media = parts.filterNot { it is Content.Text }.toTypedArray()
+                    val report = loaded.loadReport
+                    val draft = ReplyDraft(clock, report.device.label, contextSize = report.contextSize)
+                    stream(
+                        convo,
+                        replyId,
+                        user,
+                        text,
+                        media,
+                        turnOptions(id, key, levelFor(key, loaded.info), continues = false),
+                        draft,
                     )
-                onReply()
-                // a model that can't hear gets a note for each voice message, and the line says so (D76)
-                if (!hears && rows.any { it.voice != null && it.position <= user.position }) {
-                    _limit.value = Limits.cantHear(currentName())
                 }
-                val parts = (History.userMessage(user, hears) as Message.User).content
-                val text = parts.filterIsInstance<Content.Text>().joinToString("") { it.text }
-                val media = parts.filterNot { it is Content.Text }.toTypedArray()
-                val report = loaded.loadReport
-                val draft = ReplyDraft(clock, report.device.label, contextSize = report.contextSize)
-                stream(
-                    convo,
-                    replyId,
-                    user,
-                    text,
-                    media,
-                    turnOptions(id, key, levelFor(key, loaded.info), continues = false),
-                    draft,
-                )
             }
 
         /**
@@ -778,7 +781,8 @@ class ChatEngine(
         /**
          * The conversation for [user]'s turn: the one kept from the last turn while the model, its load, the system
          * prompt ([system]: the instructions, and the library's passages for a model without tools) and its tools are
-         * the same, else a new one from [rows], with the library's search tool when [toolLibrary] is given.
+         * the same, else a new one from [rows]. A turn with the library's search [tool] always gets a new one: the tool
+         * is made for the turn, so its numbers start at [1] (D172).
          */
         @Suppress("LongParameterList") // the turn's model, rows and what it is asked with
         private fun conversationFor(
@@ -788,10 +792,10 @@ class ChatEngine(
             user: StoredMessage,
             hears: Boolean,
             system: String?,
-            toolLibrary: ChatLibrary?,
+            tool: TypedTool<SearchArgs, String>?,
         ): Conversation {
-            val madeFor = MadeFor(key, loaded, system, tools = toolLibrary != null)
-            conversation?.takeIf { conversationMadeFor == madeFor }?.let { return it }
+            val madeFor = MadeFor(key, loaded, system, tools = tool != null)
+            conversation?.takeIf { tool == null && conversationMadeFor == madeFor }?.let { return it }
             // what the model has seen: answered rows before this question, and replies; other held questions wait
             // their turn
             val seen =
@@ -801,7 +805,7 @@ class ChatEngine(
                 }
             return loaded
                 .conversation(system, History.forModel(seen, hears = hears)) {
-                    if (toolLibrary != null) tool(libraryUse.tool(toolLibrary))
+                    if (tool != null) tool(tool)
                 }.also {
                     conversation = it
                     conversationMadeFor = madeFor

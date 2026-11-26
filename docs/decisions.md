@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D171 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D172 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -67,7 +67,8 @@ its amendments to know what holds now.
 | [D168](#d168) A library is a folder whose manifest is written last; a crash leaves the last good library | 2026-11-26 | |
 | [D169](#d169) Chunks are cut at headings, paragraphs, sentences and characters and counted with the embedder's tokenizer | 2026-11-26 | |
 | [D170](#d170) Search is BM25 and dense search fused by rank, with an optional rerank; reranking is not on by default | 2026-11-26 | |
-| [D171](#d171) The library's search tool returns numbered passages, answers failures safely and lets cancellation through | 2026-11-26 | |
+| [D171](#d171) The library's search tool returns numbered passages, answers failures safely and lets cancellation through | 2026-11-26 | [D172](#d172) |
+| [D172](#d172) The search tool numbers passages on across its calls and tells the app what the model saw (`onHits`) | 2026-11-26 | |
 
 **Hub**
 
@@ -2826,4 +2827,23 @@ Consequences: The module chooses no policy about when to search; the app adds th
 small chat model uses either is not measured here. The hit's offsets and headings let an app show its source, which the
 design's anti-goal needs; the tool's text carries only the title and headings.
 
-Next free IDs: D172, F192.
+<a id="d172"></a>
+### D172. The search tool numbers passages on across its calls and tells the app what the model saw (`onHits`)
+
+Status: Decided (2026-11-26). Amends D171.
+
+Context: An app that shows a reply's sources (the demo's chips, rag.md) must know which passages the model was shown
+and under which number. D171's tool returned only text, so the demo first wrapped `search` in a tool of its own to see
+the hits, duplicating the tool's text and failure messages. And each call numbered from [1], so a model that searched
+twice in one turn had two different [1]s, and a cited `[n]` didn't name one passage.
+Decision: `Library.searchTool` gains `onHits: suspend (List<Hit>) -> Unit = {}`, called once per call, before the model
+reads the result, with the passages as shown, in order, each `Hit.rank` set to its `[n]` (an empty list when nothing
+matched). One tool instance numbers on across its calls: after a call showed [1] to [6], the next call's first passage
+is [7]; parallel calls take their numbers one after another under a lock. An app wanting numbers that start at [1]
+each turn makes a tool per turn. `List<Hit>.asContext()` is unchanged (numbered from 1 by position). The demo uses the
+SDK tool with `onHits` and makes one per turn, so every `[n]` in a reply is one chip.
+Consequences: A source chip and the `[n]` the model cites always agree within a turn. A conversation that keeps one
+tool across turns sees numbers grow across them; its `[n]`s still name one passage each. `onHits` runs inside the
+tool's call: what it throws reaches the model as `Error: the tool failed` (D62), so an app keeps it to recording.
+
+Next free IDs: D173, F192.
