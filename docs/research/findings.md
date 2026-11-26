@@ -2425,7 +2425,7 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
 ## RAG evaluation (F191)
 
 <a id="f191"></a>
-### F191. On our own docs, hybrid search at 256 tokens finds 44 of 47 answers in the top 5; BM25 alone does as well at 512, dense alone is weakest, and jina-reranker-tiny lowers recall at every size
+### F191. On our own docs, hybrid search at 256 tokens finds 44 of 47 answers in the top 5; BM25 alone does as well at 512, dense alone is weakest, and on this set jina-reranker-tiny did not improve recall and added 0.3-1.0 s a query
 
 - **Finding:** 47 hand-written questions over the repo's docs (15 files, 1.09 million characters), each with the file
   and a verbatim span its answer sits in; a question is found when a returned passage overlaps the span. On bge-small
@@ -2447,12 +2447,12 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   | 512 | 1127 | hybrid + rerank | 48.9% (23) | 87.2% (41) | 1011 |
 
   The current defaults (256 tokens, hybrid) share the best recall at 5 with BM25 alone at 512; hybrid at 512 is one
-  question behind at 5 and four ahead at 1. Below 512, hybrid is never worse than its better half at 5. BM25 beats
-  dense at 256 and 512 (the docs are full of exact names, IDs and numbers); dense beats BM25 only at 128. Reranking the
-  fused top 20 with jina-reranker-tiny lowers recall at 5 by one to four questions and recall at 1 by one to seven, and
-  costs 0.3-1.0 s a query on the CPU. The questions most often missed ask for one short fact inside a long paragraph:
-  the largest context `Auto` chooses (missed by 10 of the 12 runs), the build llama.cpp is pinned at (8) and what the
-  model gets back for an unknown tool (8).
+  question behind at 5 and four ahead at 1. Below 512, hybrid is never worse than its better half at 5. BM25 beats dense
+  at 256 and 512 (the docs are full of exact names, IDs and numbers); dense beats BM25 only at 128. Reranking the fused
+  top 20 with jina-reranker-tiny raised recall at no size: at 5 it found one to four questions fewer (one at 256, within
+  noise), at 1 one to seven fewer, and it added 0.3-1.0 s a query on the CPU. The questions most often missed ask for
+  one short fact inside a long paragraph: the largest context `Auto` chooses (missed by 10 of the 12 runs), the build
+  llama.cpp is pinned at (8) and what the model gets back for an unknown tool (8).
 - **Evidence:** `HostRagEvalTest` (`sdk/llamabro-rag`), run as
   [research/rag/eval/README.md](../../research/rag/eval/README.md) says, with the questions in
   [`questions.jsonl`](../../research/rag/eval/questions.jsonl) (12 on architecture, 14 on decisions, 14 on findings, 7
@@ -2470,18 +2470,19 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   passages twice as long. Hybrid is kept over BM25 alone because it is never far from the better list at any size, while
   each list alone has a size where it falls behind (dense 17 points at 512, BM25 6 at 128), and a person's question in
   other words than the docs' is where dense helps; this question set, written by someone who had just read the passages,
-  shares their words more than a stranger's would, which favours BM25. jina-reranker-tiny should not be on by default in
-  the demo: it costs time and recall here. A larger reranker, top-k and RRF k were not varied. No multilingual embedder
-  was in the test models folder, so the comparison the design asked for (bge-small against a multilingual one) is still
-  open; the corpus is English.
+  shares their words more than a stranger's would, which favours BM25. On this set this one tiny reranker did not
+  improve recall and added 0.3-1.0 s a query, so there is no evidence yet for turning reranking on by default in the
+  demo; measure a larger reranker before deciding. Top-k and RRF k were not varied. No multilingual embedder was in the
+  test models folder, so the comparison the design asked for (bge-small against a multilingual one) is still open; the
+  corpus is English.
 - **Feeds:** design `rag.md` (Tests and evaluation), `Chunker` and `search` defaults (kept), the demo's reranking
-  default (off).
+  default (no evidence yet for on).
 
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
-| F191 | Retrieval on our docs: hybrid at 256 tokens finds 44 of 47 in the top 5 (tied by BM25 at 512); dense weakest; jina-reranker-tiny lowers recall; defaults kept | rag.md, Chunker, search |
+| F191 | Retrieval on our docs: hybrid at 256 tokens finds 44 of 47 in the top 5 (tied by BM25 at 512); dense weakest; jina-reranker-tiny did not improve recall on this set; defaults kept | rag.md, Chunker, search |
 | F190 | A Generate model and bge-small load at once and both answer; `/tokenize` answers on an embedding load in upstream and the SDK | `llamabro-rag` plan, ModelTask |
 | F189 | `llamabro-server` answers as upstream `llama-server` does; the official OpenAI and Anthropic clients work against it | D163, D165, server.md §4 |
 | F188 | A message sent as an edit ends could land between the edited message and its reply | ChatEngine |
