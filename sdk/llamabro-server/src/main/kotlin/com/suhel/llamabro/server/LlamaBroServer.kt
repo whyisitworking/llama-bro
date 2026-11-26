@@ -15,6 +15,7 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -79,7 +81,8 @@ public class LlamaBroServer(private val config: ServerConfig, private val models
                 mutableState.value = ServerState.Serving(port)
                 announce(port)
             } catch (e: CancellationException) {
-                runCatching { server.stopSuspend(0, 0) }
+                // this coroutine is cancelled, so the stop must not be, or the engine stays bound with nobody holding it
+                withContext(NonCancellable) { runCatching { server.stopSuspend(0, 0) } }
                 mutableState.value = ServerState.Stopped
                 throw e
             } catch (

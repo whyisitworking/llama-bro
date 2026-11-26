@@ -1,5 +1,7 @@
 package com.suhel.llamabro.server
 
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -118,5 +120,25 @@ class LifecycleTest {
             assertEquals(ServerState.Serving(port), server.state.value)
             assertEquals(200, call(port, "/health").status)
             server.stop()
+        }
+
+    @Test
+    fun startCancelledMidBindLeavesNothingListening() =
+        runBlocking {
+            val port = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
+            val server = LlamaBroServer(ServerConfig { this.port = port }, ListedModels())
+            // runBlocking has one thread, so start() runs until its first suspension, the wait for the bind, and the
+            // cancel lands there
+            val starting = launch(start = CoroutineStart.UNDISPATCHED) { server.start() }
+            assertTrue("start() finished without suspending", starting.isActive)
+            starting.cancel()
+            starting.join()
+            assertEquals(ServerState.Stopped, server.state.value)
+            try {
+                call(port, "/health")
+                fail("a cancelled start left the port answering")
+            } catch (_: ConnectException) {
+                // nothing listening
+            }
         }
 }
