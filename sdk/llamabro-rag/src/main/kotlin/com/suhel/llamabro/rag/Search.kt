@@ -15,7 +15,8 @@ import com.suhel.llamabro.rerank
  * @property score the reranker's relevance score when one was used, else the fused rank score (a sum of
  * `1 / (60 + rank)` over the dense and keyword lists, so a passage both lists put first scores about 0.033 and one
  * only a list found, at most 0.0164). Higher is better; scores of different searches aren't comparable.
- * @property rank 1 for the best hit, in the order returned.
+ * @property rank 1 for the best hit, in the order returned. In the hits [searchTool] passes to its `onHits` it is the
+ * passage's `[n]` instead, which goes on across the tool's calls (D172), so it isn't the hit's rank in that one search.
  */
 public data class Hit(
     val documentId: String,
