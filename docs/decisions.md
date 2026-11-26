@@ -2459,6 +2459,12 @@ CORS is off (`Cors.None`) unless the app sets `Cors.Any`. Discovery is opt-in: w
 registration is carried out when it does, since NSD refuses to unregister one it hasn't confirmed.
 Consequences: Out of the box the module serves this device only; reaching the Wi-Fi is the app's explicit choice, and
 so is changing the shared model. An app that wants the three routes opts in per route.
+Amended (2026-11-26): the 404 for an id the app doesn't serve is the module's behaviour, and `ServedModels` is the
+app's policy. The demo serves its one model whatever a request's `model` names, as upstream's llama-server does with
+one model loaded: outside router mode it never reads `model` beyond echoing it in the reply
+(`server-common.cpp`), which is why F189's contract passes with any id. Claude Code always sends its own model's
+name (and a second one for its background calls), so a 404 would refuse every call it makes; with this its snippet
+needs no `ANTHROPIC_MODEL`. `/v1/models` still lists the served model alone.
 
 <a id="d157"></a>
 ### D157. Media in a served request must be a `data:` URL or raw base64; a body must be JSON and under `maxBodyBytes`

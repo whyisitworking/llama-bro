@@ -197,7 +197,9 @@ Failed    no Wi-Fi · port in use · the model didn't load   [Try again]
   two or more.
 - **Temperature:** `PowerManager.currentThermalStatus` and `getThermalHeadroom`, shown, not acted on (the throttle is
   a separate piece of work).
-- **One model in v1.** `/v1/models` lists the served model; a request naming another id gets 404 `model_not_found`.
+- **One model in v1.** `/v1/models` lists the served model, and every request is answered by it whatever its
+  `model` names, as upstream's single-model llama-server answers (D156, amended): Claude Code sends its own model's
+  name. The module's own `ModelUnavailable` 404 stays for an app whose `ServedModels` refuses an id.
 
 ### 4. Tests
 

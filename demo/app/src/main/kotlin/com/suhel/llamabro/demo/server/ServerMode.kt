@@ -79,7 +79,13 @@ class ServerMode(
     private var starting: Deferred<Unit>? = null
     private var session: Session? = null
 
-    private class Session(val lease: ModelHost.Lease, val model: HfModel, val created: Long, var running: Running)
+    /** [models] answers every request from [lease]'s model, through each server [running] in turn (a renew rebinds). */
+    private class Session(
+        val lease: ModelHost.Lease,
+        val model: HfModel,
+        val models: HostServedModels,
+        var running: Running,
+    )
 
     private class Running(val server: LlamaBroServer, val log: Job, val port: Int)
 
@@ -119,8 +125,9 @@ class ServerMode(
             val key = keys.renew()
             val current = session ?: return@withLock key
             withContext(NonCancellable) { current.running.close() }
-            val running = bind(current.model, current.lease.config.slots, current.served(), key)
+            val running = bind(current.model, current.lease.config.slots, current.models, key)
             if (running == null) {
+                withContext(NonCancellable) { current.models.drained() }
                 current.lease.release()
                 session = null
                 _served.value = null
@@ -134,7 +141,11 @@ class ServerMode(
         starting?.cancelAndJoin()
         starting = null
         session?.let { current ->
-            withContext(NonCancellable) { current.running.close() }
+            withContext(NonCancellable) {
+                current.running.close()
+                // the stop cancelled the requests in flight; the model stays leased until each has let go of it
+                current.models.drained()
+            }
             current.lease.release()
         }
         session = null
@@ -165,13 +176,12 @@ class ServerMode(
                 progress.cancel()
             }
         try {
-            val created = clock() / MILLIS_PER_SECOND
-            val models = HostServedModels(host, model, lease.config, created)
+            val models = HostServedModels(lease.model, model, clock() / MILLIS_PER_SECOND)
             val running = bind(model, lease.config.slots, models, keys.current())
             if (running == null) {
                 lease.release()
             } else {
-                session = Session(lease, model, created, running)
+                session = Session(lease, model, models, running)
             }
         } catch (e: CancellationException) {
             lease.release()
@@ -229,8 +239,6 @@ class ServerMode(
         fail(reason)
         return null
     }
-
-    private fun Session.served() = HostServedModels(host, model, lease.config, created)
 
     private fun serverConfig(port: Int, key: String) =
         ServerConfig {

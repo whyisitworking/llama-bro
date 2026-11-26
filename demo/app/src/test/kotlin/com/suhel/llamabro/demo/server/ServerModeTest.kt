@@ -131,6 +131,41 @@ class ServerModeTest {
             }
         }
 
+    @Test fun anyModelNameIsServed() =
+        runBlocking {
+            server.start(a, 1)
+            val port = serving().port
+            val key = keys.current()
+            // Claude Code names its own model; as upstream's llama-server with one model loaded, the phone serves its
+            // one model whatever the name (D156)
+            fake.raw(200, "{}")
+            assertEquals(200, call(port, chat, key = key, body = """{"model":"claude-sonnet-4-5"}""").status)
+            fake.raw(200, "{}")
+            assertEquals(200, call(port, "/v1/messages", key = key, body = """{"model":"claude-haiku-4-5"}""").status)
+            // the listing still names the served model alone
+            val listed = call(port, "/v1/models").body
+            assertTrue(listed, listed.contains("\"id\":\"$a\"") && !listed.contains("claude"))
+        }
+
+    @Test fun requestsUseTheServingLeaseAndNeverHold() =
+        runBlocking {
+            server.start(a, 1)
+            val port = serving().port
+            // a close of the served model (a delete) lets go of the host's current load and waits for the serving
+            // lease; a request that held the host itself would start a new load behind it and hang
+            val closing = scope.launch { host.close(a) }
+            withContext(Dispatchers.Default) {
+                eventually("the host let go of the served model") { host.state.value == HostState.Idle }
+            }
+            fake.raw(200, "{}")
+            assertEquals(200, withTimeout(10_000) { call(port, chat, key = keys.current(), body = "{}") }.status)
+            assertEquals("no second load", 1, fake.openModels)
+            assertFalse(closing.isCompleted)
+            server.stop()
+            withTimeout(10_000) { closing.join() }
+            assertEquals(0, fake.openModels)
+        }
+
     @Test fun stopReleasesTheLease() =
         runBlocking {
             server.start(a, 1)
@@ -373,10 +408,14 @@ class ServerModeTest {
 
 private class Reply(val status: Int, val body: String)
 
+private const val READ_TIMEOUT_MILLIS = 10_000
+
 /** A plain HTTP call, as a client on the Wi-Fi makes one; a [body] makes it a POST. */
 private suspend fun call(port: Int, path: String, key: String? = null, body: String? = null): Reply =
     withContext(Dispatchers.IO) {
         val connection = URL("http://127.0.0.1:$port$path").openConnection() as HttpURLConnection
+        // a bound, so a request that hangs fails the test rather than holding it: a blocking read ignores a cancel
+        connection.readTimeout = READ_TIMEOUT_MILLIS
         try {
             key?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
             if (body != null) {
