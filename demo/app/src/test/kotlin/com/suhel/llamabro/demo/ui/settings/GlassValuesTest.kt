@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * What Settings › Appearance › Glass copies (D151, D152, D158, D176): every value of the glass, as the Kotlin that sets it.
+ * What Settings › Appearance › Glass copies (D151, D152, D158, D176, D177): every value of the glass, as the Kotlin that sets it.
  */
 class GlassValuesTest {
     @Test fun theCopiedValuesAreTheGlassesAsKotlin() {
@@ -18,6 +18,8 @@ class GlassValuesTest {
             "dispersion = 1.25f",
             "panel = GlassStyle(",
             "sheet = GlassStyle(",
+            "dome = ${GlassTheme.Default.chip.dome}f",
+            "vibrancy = ${GlassTheme.Default.chip.vibrancy}f",
         )) {
             assertTrue("$part in $text", part in text)
         }

@@ -750,6 +750,8 @@ private class Lens {
             shader.setFloatUniform("bezel", minOf(style.bezel.toPx(), radius))
             shader.setFloatUniform("refraction", style.refraction.toPx() * bend)
             shader.setFloatUniform("dispersion", style.dispersion)
+            shader.setFloatUniform("dome", style.dome)
+            shader.setFloatUniform("vibrancy", style.vibrancy)
             val bent = android.graphics.RenderEffect.createRuntimeShaderEffect(shader, "content")
             val soft = style.blur.toPx()
             if (light || soft < 1f) return bent.asComposeRenderEffect()
@@ -767,13 +769,35 @@ private class Lens {
 }
 
 /**
+ * What the inside of a piece of glass does to the page (D177), shared by a lens ([LENS]) and the glass a bar draws in
+ * its own passes (D154): `domed` reads the page from nearer the glass's spine the deeper inside it, by up to 30% of the
+ * way at the core, so the middle magnifies as a thick pane's dome does while a long pill bulges across its height only;
+ * `vivid` makes the colours read through it richer, more saturated and a touch brighter.
+ */
+internal const val GLASS_INSIDE = """
+float2 domed(float2 p, float2 centre, float2 halfSize, float depth, float dome) {
+    float m = min(halfSize.x, halfSize.y);
+    float2 spine = centre + clamp(p - centre, -(halfSize - m), halfSize - m);
+    float t = clamp(depth / max(m, 1.0), 0.0, 1.0);
+    return spine + (p - spine) * (1.0 - dome * 0.3 * smoothstep(0.0, 1.0, t));
+}
+
+half3 vivid(half3 c, float vibrancy) {
+    half l = dot(c, half3(0.2126, 0.7152, 0.0722));
+    return clamp(mix(half3(l), c, half(1.0 + vibrancy * 0.8)) * half(1.0 + vibrancy * 0.1), 0.0, 1.0);
+}
+"""
+
+/**
  * A rounded rectangle of glass (`size`, corner `radius`; a circle or a pill): within `bezel` of the rim the page is
  * read from further in, by up to `refraction` at the rim on a squared curve, as a convex edge bends light toward the
  * middle; red bends `dispersion` more and blue as much less, so edges inside the rim fringe with colour. The middle is
- * the page as is. Everywhere the `tint` (the surface) is overlay-blended in by the `veil` share: the page's lights and
- * darks pulled toward the surface, not a film over it.
+ * domed by `dome` and its colours made richer by `vibrancy` ([GLASS_INSIDE], D177). Everywhere the `tint` (the
+ * surface) is overlay-blended in by the `veil` share: the page's lights and darks pulled toward the surface, not a film
+ * over it.
  */
-private const val LENS = """
+private const val LENS =
+    GLASS_INSIDE + """
 uniform shader content;
 uniform float2 size;
 uniform float radius;
@@ -782,12 +806,15 @@ uniform float refraction;
 uniform float dispersion;
 uniform float3 tint;
 uniform float veil;
+uniform float dome;
+uniform float vibrancy;
 
 half3 overlay(half3 base, half3 over) {
     return mix(2.0 * base * over, 1.0 - 2.0 * (1.0 - base) * (1.0 - over), step(0.5, base));
 }
 
 half4 veiled(half4 c) {
+    c.rgb = vivid(c.rgb, vibrancy);
     c.rgb = mix(c.rgb, overlay(c.rgb, half3(tint)), half(veil));
     return c;
 }
@@ -798,8 +825,12 @@ half4 main(float2 p) {
     float2 q = abs(rel) - (c - radius);
     float2 outer = max(q, 0.0);
     float depth = radius - length(outer) - min(max(q.x, q.y), 0.0);
+    // read inside the glass only: a strong bend at a tight corner can reach past the far side
+    float2 lo = float2(0.5);
+    float2 hi = size - 0.5;
+    float2 at = domed(p, c, c, depth, dome);
     if (depth >= bezel || depth <= 0.0) {
-        return veiled(content.eval(p));
+        return veiled(content.eval(clamp(at, lo, hi)));
     }
     float2 n;
     if (q.x > 0.0 && q.y > 0.0) {
@@ -812,12 +843,9 @@ half4 main(float2 p) {
     n *= float2(rel.x < 0.0 ? -1.0 : 1.0, rel.y < 0.0 ? -1.0 : 1.0);
     float k = 1.0 - depth / bezel;
     float bend = refraction * k * k;
-    // read inside the glass only: a strong bend at a tight corner can reach past the far side
-    float2 lo = float2(0.5);
-    float2 hi = size - 0.5;
-    half4 g = content.eval(clamp(p - n * bend, lo, hi));
-    half r = content.eval(clamp(p - n * bend * (1.0 + dispersion), lo, hi)).r;
-    half b = content.eval(clamp(p - n * bend * (1.0 - dispersion), lo, hi)).b;
+    half4 g = content.eval(clamp(at - n * bend, lo, hi));
+    half r = content.eval(clamp(at - n * bend * (1.0 + dispersion), lo, hi)).r;
+    half b = content.eval(clamp(at - n * bend * (1.0 - dispersion), lo, hi)).b;
     return veiled(half4(r, g.g, b, g.a));
 }
 """

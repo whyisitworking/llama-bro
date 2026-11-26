@@ -37,6 +37,14 @@ data class GlassStyle(
     val rim: Dp,
     /** How opaque the glass is where it can't be a lens (before Android 13, or with no page under it). */
     val bareVeil: Float,
+    /**
+     * How much the glass's middle magnifies the page, 0 to 1 (D177): a thick pane's dome, toward its spine (the line
+     * through a pill's length, a circle's centre), so a long bar bulges across its height and not toward its middle.
+     * At 1 the core reads the page a third larger.
+     */
+    val dome: Float = 0f,
+    /** How much richer the colours through the glass are, 0 to 1 (D177): more saturated and a touch brighter. */
+    val vibrancy: Float = 0f,
 )
 
 /**
@@ -216,19 +224,22 @@ data class GlassTheme(
         val Default =
             GlassStyle(
                 bezel = 9.dp,
-                refraction = 14.dp,
-                dispersion = 0.9f,
-                blur = 6.dp,
-                veil = 0.35f,
+                refraction = 22.dp,
+                dispersion = 0.2f,
+                blur = 2.dp,
+                veil = 0.15f,
                 rimLight = 0.22f,
                 rim = 1.dp,
                 bareVeil = 0.7f,
+                // thick, clear glass (D177): the page magnified under a domed middle, its colours richer, a light
+                // blur and a faint veil, the colours split only a little at the rim
+                dome = 1f,
+                vibrancy = 0.6f,
             ).let { chip ->
                 GlassTheme(
                     chip = chip,
-                    // under text: a denser veil and a stronger blur, so what is typed and read on it stays calm
-                    // over what passes under (the veil is blended into the glass, keeping its lights and darks)
-                    panel = chip.copy(veil = 0.45f, blur = 10.dp),
+                    // under text: a touch more blur, so what is typed and read on it stays calm over what passes under
+                    panel = chip.copy(blur = 3.dp),
                     bar =
                         BarGlass(
                             blur = 24.dp,
@@ -246,7 +257,18 @@ data class GlassTheme(
                         ),
                     // a sheet is read at length over half the screen: the densest veil and the strongest blur, so
                     // its text sits on calm glass, the page under it a soft play of colour
-                    sheet = chip.copy(veil = 0.6f, blur = 20.dp),
+                    // as the glass was before D177: a sheet keeps a calm, frosted read
+                    sheet =
+                        GlassStyle(
+                            bezel = 9.dp,
+                            refraction = 14.dp,
+                            dispersion = 0.9f,
+                            blur = 20.dp,
+                            veil = 0.6f,
+                            rimLight = 0.22f,
+                            rim = 1.dp,
+                            bareVeil = 0.7f,
+                        ),
                 )
             }
     }

@@ -382,11 +382,11 @@ private class ProgressiveBlur {
         val glass = pass.glass.take(MAX_BAR_GLASS)
         val rects = FloatArray(MAX_BAR_GLASS * 4)
         val lenses = FloatArray(MAX_BAR_GLASS * 4)
-        val looks = FloatArray(MAX_BAR_GLASS * 2)
+        val looks = FloatArray(MAX_BAR_GLASS * 4)
         glass.forEachIndexed { i, g ->
             floatArrayOf(g.rect.left, g.rect.top, g.rect.right, g.rect.bottom).copyInto(rects, i * 4)
             floatArrayOf(g.corner, g.bezel, g.refraction, g.dispersion).copyInto(lenses, i * 4)
-            floatArrayOf(g.reach, g.veil).copyInto(looks, i * 2)
+            floatArrayOf(g.reach, g.veil, g.dome, g.vibrancy).copyInto(looks, i * 4)
         }
         for ((shader, dir) in listOf(across to (1f to 0f), down to (0f to 1f))) {
             shader.setFloatUniform("tint", pass.tint.red, pass.tint.green, pass.tint.blue)
@@ -419,7 +419,8 @@ private class ProgressiveBlur {
  * finished blur by that share times the strength: the blur's own lights and darks pulled toward the surface, not a
  * flat film laid over it.
  */
-private const val PROGRESSIVE_BLUR = """
+private const val PROGRESSIVE_BLUR =
+    GLASS_INSIDE + """
 uniform shader content;
 uniform float2 dir;
 uniform float2 size;
@@ -436,7 +437,7 @@ uniform float last;
 uniform float count;
 uniform float4 shapeRect[8];
 uniform float4 shapeLens[8];
-uniform float2 shapeLook[8];
+uniform float4 shapeLook[8];
 
 half3 overlay(half3 base, half3 over) {
     return mix(2.0 * base * over, 1.0 - 2.0 * (1.0 - base) * (1.0 - over), step(0.5, base));
@@ -502,19 +503,20 @@ half4 bar(float2 p, float strength) {
     return c * keep;
 }
 
-// a piece of glass on the bar at p, depth inside its rim (D154): its own blur, and on the last pass its lens, bent and
-// split toward the rim as a convex edge bends light, and its veil
-half4 glass(float2 p, float4 rect, float4 lens, float2 look, float depth) {
+// a piece of glass on the bar at p, depth inside its rim (D154): its own blur, and on the last pass its lens, domed
+// (D177), bent and split toward the rim as a convex edge bends light, its colours made richer, and its veil
+half4 glass(float2 p, float4 rect, float4 lens, float4 look, float depth) {
     float r = look.x;
     if (last < 0.5) {
         return along(p, r);
     }
     half4 c;
     float bezel = lens.y;
+    float2 centre = (rect.xy + rect.zw) * 0.5;
+    float2 at = domed(p, centre, (rect.zw - rect.xy) * 0.5, depth, look.z);
     if (depth >= bezel) {
-        c = along(p, r);
+        c = along(at, r);
     } else {
-        float2 centre = (rect.xy + rect.zw) * 0.5;
         float2 rel = p - centre;
         float2 q = abs(rel) - ((rect.zw - rect.xy) * 0.5 - lens.x);
         float2 outer = max(q, 0.0);
@@ -529,11 +531,12 @@ half4 glass(float2 p, float4 rect, float4 lens, float2 look, float depth) {
         n *= float2(rel.x < 0.0 ? -1.0 : 1.0, rel.y < 0.0 ? -1.0 : 1.0);
         float k = 1.0 - max(depth, 0.0) / bezel;
         float bend = lens.z * k * k;
-        half4 g = along(p - n * bend, r);
-        half red = along(p - n * bend * (1.0 + lens.w), r).r;
-        half blue = along(p - n * bend * (1.0 - lens.w), r).b;
+        half4 g = along(at - n * bend, r);
+        half red = along(at - n * bend * (1.0 + lens.w), r).r;
+        half blue = along(at - n * bend * (1.0 - lens.w), r).b;
         c = half4(red, g.g, blue, g.a);
     }
+    c.rgb = vivid(c.rgb, look.w);
     c.rgb = mix(c.rgb, overlay(c.rgb, half3(tint)), half(look.y));
     return c;
 }
@@ -546,7 +549,7 @@ half4 main(float2 p) {
     float depth = -1.0;
     float4 rect = float4(0.0);
     float4 lens = float4(0.0);
-    float2 look = float2(0.0);
+    float4 look = float4(0.0);
     for (int i = 0; i < 8; i++) {
         if (float(i) >= count) {
             break;
@@ -621,7 +624,7 @@ private class BarPass(
 /**
  * A piece of glass as the bar's shader draws it (D154), in the bar's layer's pixels: its [rect], [corner] radius,
  * the lens's [bezel], [refraction] and [dispersion], its blur's [reach] (twice the blur, a Gaussian's sigma, as
- * Android's blur takes it) and [veil].
+ * Android's blur takes it), [veil], and its inside's [dome] and [vibrancy] (D177).
  */
 private class BarLens(
     val rect: Rect,
@@ -631,6 +634,8 @@ private class BarLens(
     val dispersion: Float,
     val reach: Float,
     val veil: Float,
+    val dome: Float,
+    val vibrancy: Float,
 )
 
 /** This shape as a bar at [bar] on the screen, drawn [scale] times smaller, draws it. */
@@ -645,5 +650,7 @@ private fun MergedShape.onBar(bar: Offset, scale: Float, density: Density): BarL
             dispersion = style.dispersion,
             reach = 2f * style.blur.toPx() / scale,
             veil = style.veil,
+            dome = style.dome,
+            vibrancy = style.vibrancy,
         )
     }

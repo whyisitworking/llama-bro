@@ -73,6 +73,8 @@ object SavedGlass {
             val rimLight: Float? = null,
             val rim: Float? = null,
             val bareVeil: Float? = null,
+            val dome: Float? = null,
+            val vibrancy: Float? = null,
         ) {
             fun over(base: GlassStyle) =
                 GlassStyle(
@@ -84,6 +86,8 @@ object SavedGlass {
                     rimLight = rimLight ?: base.rimLight,
                     rim = rim.dpOr(base.rim),
                     bareVeil = bareVeil ?: base.bareVeil,
+                    dome = dome ?: base.dome,
+                    vibrancy = vibrancy ?: base.vibrancy,
                 )
 
             companion object {
@@ -97,6 +101,8 @@ object SavedGlass {
                         s.rimLight,
                         s.rim.value,
                         s.bareVeil,
+                        s.dome,
+                        s.vibrancy,
                     )
             }
         }

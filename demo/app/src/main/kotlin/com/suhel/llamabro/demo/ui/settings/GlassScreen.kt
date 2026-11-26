@@ -117,6 +117,8 @@ private fun GroupScope.styleSliders(kind: String, style: GlassStyle, onChange: (
     share("$kind-dispersion", "Colour split", style.dispersion, MAX_SPLIT) { onChange(style.copy(dispersion = it)) }
     dp("$kind-blur", "Blur", style.blur, MAX_BLUR) { onChange(style.copy(blur = it)) }
     share("$kind-veil", "Tint", style.veil) { onChange(style.copy(veil = it)) }
+    share("$kind-dome", "Domed middle", style.dome) { onChange(style.copy(dome = it)) }
+    share("$kind-vibrancy", "Vibrancy", style.vibrancy) { onChange(style.copy(vibrancy = it)) }
     share("$kind-rim-light", "Rim light", style.rimLight) { onChange(style.copy(rimLight = it)) }
     dp("$kind-rim", "Rim width", style.rim, MAX_RIM, step = HALF) { onChange(style.copy(rim = it)) }
     // the fill drawn where a lens can't be: only a phone that draws it gets its slider
@@ -206,7 +208,8 @@ internal fun describe(glass: GlassTheme): String {
     fun style(s: GlassStyle) =
         "GlassStyle(bezel = ${trim(s.bezel.value)}.dp, refraction = ${trim(s.refraction.value)}.dp, " +
             "dispersion = ${s.dispersion}f, blur = ${trim(s.blur.value)}.dp, veil = ${s.veil}f, " +
-            "rimLight = ${s.rimLight}f, rim = ${trim(s.rim.value)}.dp, bareVeil = ${s.bareVeil}f)"
+            "rimLight = ${s.rimLight}f, rim = ${trim(s.rim.value)}.dp, bareVeil = ${s.bareVeil}f, dome = ${s.dome}f, " +
+            "vibrancy = ${s.vibrancy}f)"
     val b = glass.bar
     val p = glass.press
     return "mergedLens = ${glass.mergedLens}\n" +

@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D176 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D177 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -206,6 +206,7 @@ its amendments to know what holds now.
 | [D162](#d162-a-bars-copy-of-the-page-is-as-much-smaller-as-its-blur-can-hide) A bar's copy of the page is as much smaller as its blur can hide | 2026-11-26 | |
 | [D175](#d175-a-bars-blur-lingers-as-a-light-blur-before-the-page-turns-sharp) A bar's blur lingers as a light blur before the page turns sharp | 2026-11-26 | |
 | [D176](#d176-the-bottom-sheets-are-glass-over-the-whole-window) The bottom sheets are glass over the whole window | 2026-11-26 | |
+| [D177](#d177) The inside of chips and panels is a domed, vivid lens | 2026-11-27 | |
 
 **Repository and process**
 
@@ -2984,4 +2985,24 @@ drawn); while it slides or scrolls, the page under it is drawn again, including 
 blurs twice). Measured (F192): about 1.5 ms more CPU a frame while a sheet slides, every budget still met. The scrim
 still dims only the page around the sheet; the glass reads the page undimmed.
 
-Next free IDs: D177, F193.
+<a id="d177"></a>
+### D177. The inside of chips and panels is a domed, vivid lens
+
+Status: Decided (2026-11-27). Amends D148's glass for chips and panels.
+
+Context: The glass bent and split the page at its rim, but its middle was a flat, blurred and tinted sheet. In a
+WebGL copy of the lens (built for this, not kept in the repository) the owner tried a domed middle, vibrancy and a
+sheen that moves with scrolling, chose the first two without the sheen, and set the look: a strong dome, richer
+colour, a light blur, little colour split and a faint tint. A dome that magnifies toward the glass's centre pulled a
+long bar's ends toward its middle; one that magnifies toward its spine (the line through a pill's length) bulges a
+bar across its height only and leaves a chip or a circle as before.
+Decision: `GlassStyle` gains `dome` and `vibrancy`, 0 to 1, off unless set. `domed` reads the page from nearer the
+spine the deeper inside the glass, up to 30% of the way at the core; `vivid` saturates and brightens what is read. Both
+run in the shaders the glass already runs, the lens's and the bar's merged glass (D154), so they add no pass. Chips and
+panels default to dome 1, vibrancy 0.6, refraction 22 dp, colour split 0.2, blur 2 dp (3 dp for panels) and a 0.15
+veil; sheets keep the earlier values. Settings › Appearance › Glass has Domed middle and Vibrancy sliders beside Tint,
+which stays adjustable.
+Consequences: Text on a panel sits on a clearer glass than before, with the page more visible behind it. A few more
+reads per pixel inside the glass, no extra pass; not yet measured on the phone.
+
+Next free IDs: D178, F193.
