@@ -20,19 +20,23 @@ internal class Bm25 {
     // a row's distinct term ids and their frequencies, null once the row is dead
     private val rowTerms = mutableListOf<IntArray?>()
     private val rowFrequencies = mutableListOf<IntArray?>()
-    private val lengths = mutableListOf<Int>()
+    private var lengths = IntArray(INITIAL)
     private var live = 0
     private var totalLength = 0L
 
     /** Distinct terms held (dead rows' terms stay until [retain]). */
     val vocabularySize: Int get() = terms.size
 
-    /** A deterministic heap estimate in bytes: 4 per int held, 2 per vocabulary character, 64 per term. */
+    /**
+     * A deterministic heap estimate in bytes: 4 per int held (arrays at their capacity), 16 per array for its header
+     * and length, 2 per vocabulary character and 64 per term for its String and map entry.
+     */
     val estimatedBytes: Long
         get() {
-            val rowInts = rowTerms.sumOf { (it?.size ?: 0) * 2L } + lengths.size
-            val postingInts = postings.sumOf { it.rows.size * 2L }
-            return (rowInts + postingInts) * Int.SIZE_BYTES + terms.sumOf { it.length * 2L + TERM_OVERHEAD }
+            val rows = rowTerms.sumOf { (it?.size ?: 0) * 2L * Int.SIZE_BYTES + 2 * ARRAY_HEADER }
+            val lists = postings.sumOf { it.rows.size * 2L * Int.SIZE_BYTES + 2 * ARRAY_HEADER }
+            val vocabulary = terms.sumOf { it.length * 2L + TERM_OVERHEAD }
+            return rows + lists + vocabulary + lengths.size.toLong() * Int.SIZE_BYTES
         }
 
     fun add(chunks: List<Chunk>) {
@@ -60,7 +64,8 @@ internal class Bm25 {
         }
         rowTerms += ofRow
         rowFrequencies += tfs
-        lengths += length
+        if (row == lengths.size) lengths = lengths.copyOf(row * 2)
+        lengths[row] = length
         live++
         totalLength += length
     }
@@ -91,7 +96,7 @@ internal class Bm25 {
         postings.clear()
         rowTerms.clear()
         rowFrequencies.clear()
-        lengths.clear()
+        lengths = IntArray(INITIAL)
         live = 0
         totalLength = 0
         rows.forEach { index(it) }
@@ -142,6 +147,7 @@ internal class Bm25 {
         private const val HALF = 0.5
         private const val INITIAL = 4
         private const val TERM_OVERHEAD = 64L
+        private const val ARRAY_HEADER = 16L
 
         /**
          * Lowercase runs of letters and digits; each Han character and kana is a token of its own (those scripts have

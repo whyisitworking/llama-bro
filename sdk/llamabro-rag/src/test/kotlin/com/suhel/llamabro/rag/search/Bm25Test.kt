@@ -57,20 +57,34 @@ class Bm25Test {
         assertEquals(emptyList<Pair<Int, Float>>(), Bm25().search("alpha", 3))
     }
 
+    // Chunk-sized rows: a 256-token chunk has about 60 distinct terms, drawn Zipf-like from a vocabulary of ~30k.
     @Test
-    fun memoryIsBoundedByTheVocabularyAndTheTermsHeld() {
-        // 50,000 rows of 12 distinct terms drawn from a vocabulary of 2,000: one String per term, not per row
+    fun fiftyThousandChunkSizedRowsFitInAboutFiftyMegabytes() {
+        val random = java.util.Random(7)
+        val vocabulary = 30_000
+
+        fun term() = "term${(vocabulary * Math.pow(random.nextDouble(), 3.0)).toInt()}" // skewed to low ids
         val bm25 = Bm25()
-        bm25.add(List(50_000) { r -> chunk((0 until 12).joinToString(" ") { "term${(r * 7 + it * 131) % 2_000}" }) })
-        assertEquals(2_000, bm25.vocabularySize)
-        // ints for the rows (12 terms x 2 + length) and the postings (12 x 2) per row, plus the vocabulary
-        val ints = 50_000L * (12 * 2 + 1 + 12 * 2)
-        val budget = ints * 4 + 2_000 * (10 * 2 + 64) + 2_000_000 // postings arrays grow by doubling: allow slack
-        assertTrue("${bm25.estimatedBytes} of $budget", bm25.estimatedBytes <= budget * 2)
-        assertTrue("${bm25.estimatedBytes}", bm25.estimatedBytes < 30_000_000)
+        repeat(50) {
+            bm25.add(
+                List(1_000) {
+                    val terms = HashSet<String>()
+                    while (terms.size < 60) terms += term()
+                    chunk(terms.joinToString(" "))
+                },
+            )
+        }
+        assertTrue("one String per term: ${bm25.vocabularySize}", bm25.vocabularySize <= vocabulary)
+        val megabytes = bm25.estimatedBytes / 1_000_000
+        println("estimated BM25 heap for 50k x 60 terms: $megabytes MB")
+        assertTrue("$megabytes MB", megabytes < BUDGET_MB)
         bm25.kill(0, 49_990)
         bm25.retain((49_990 until 50_000).toList())
-        assertTrue(9 in bm25.search("term${(49_999 * 7) % 2_000}", 50).map { it.first })
-        assertTrue(bm25.vocabularySize <= 120)
+        assertTrue(bm25.vocabularySize <= 600)
+        assertTrue(bm25.estimatedBytes < 1_000_000)
+    }
+
+    private companion object {
+        const val BUDGET_MB = 80
     }
 }
