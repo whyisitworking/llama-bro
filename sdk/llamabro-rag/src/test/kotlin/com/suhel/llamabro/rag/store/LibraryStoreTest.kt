@@ -3,7 +3,9 @@ package com.suhel.llamabro.rag.store
 import com.suhel.llamabro.Normalization
 import com.suhel.llamabro.Pooling
 import com.suhel.llamabro.rag.Chunk
+import com.suhel.llamabro.rag.EmbedderIdentity
 import com.suhel.llamabro.rag.EmbeddingFormat
+import com.suhel.llamabro.rag.IndexMismatch
 import kotlinx.coroutines.runBlocking
 import okio.FileSystem
 import okio.IOException
@@ -269,6 +271,32 @@ class LibraryStoreTest {
 
         store.add("e")
         assertEquals(listOf("c", "d", "e"), store().documents.map { it.id })
+    }
+
+    @Test
+    fun openAndCompactionNeverHoldTheIndexTwice() {
+        val segment = FlatVectors.SEGMENT_ROWS
+        val store = store()
+        // 2.5 segments in five documents
+        repeat(5) { d -> store.add("d$d", rows = segment / 2) }
+        val reopened = store()
+        val loaded = reopened.vectors as FlatVectors
+        // open reads straight into three segments: no array of the whole index beside them
+        assertEquals(3, loaded.segmentsAllocated)
+        assertEquals(3L * segment * dims, loaded.capacity)
+
+        val before = reopened.snapshot()
+        reopened.runRemove("d0")
+        reopened.runRemove("d1") // two of five documents: past a quarter, compacts
+        assertEquals(3 * segment / 2, reopened.rowCount)
+        // compaction moved rows down in place, allocating nothing, and let the emptied segment go
+        assertEquals(3, loaded.segmentsAllocated)
+        assertEquals(2L * segment * dims, loaded.capacity)
+        val keptRows = before.rows.drop(segment)
+        assertEquals(keptRows.map { it.first }, List(reopened.rowCount) { reopened.chunk(it) })
+        val keptNearest = before.nearest.filter { it.first >= segment }.map { it.first - segment to it.second }
+        assertEquals(keptNearest, runBlocking { reopened.vectors.nearest(probe, reopened.rowCount + 1) })
+        assertEquals(reopened.snapshot(), store().snapshot())
     }
 
     @Test

@@ -1,13 +1,19 @@
 package com.suhel.llamabro.rag.store
 
 import com.suhel.llamabro.rag.Chunk
+import com.suhel.llamabro.rag.EmbedderIdentity
+import com.suhel.llamabro.rag.IndexMismatch
+import com.suhel.llamabro.rag.VectorStore
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.Json
 import okio.Buffer
+import okio.BufferedSink
 import okio.FileSystem
 import okio.IOException
 import okio.Path
+import okio.buffer
+import okio.utf8Size
 
 /**
  * A library's folder on disk, and its contents in memory once [open]ed.
@@ -87,9 +93,7 @@ internal class LibraryStore(private val fs: FileSystem, private val dir: Path) {
 
     private fun load() {
         flat = FlatVectors(dimensions)
-        val halves = ShortArray(manifest.rows * dimensions)
-        if (halves.isNotEmpty()) fs.read(vectorsPath) { for (i in halves.indices) halves[i] = readShortLe() }
-        flat.append(halves)
+        if (manifest.rows > 0) fs.read(vectorsPath) { flat.read(this, manifest.rows) }
         chunks.clear()
         if (manifest.chunkBytes > 0) {
             fs.read(chunksPath) {
@@ -200,26 +204,43 @@ internal class LibraryStore(private val fs: FileSystem, private val dir: Path) {
     private fun pastAQuarter(tombstones: List<Tombstone>): Boolean =
         tombstones.sumOf { it.rowCount } * QUARTERS > manifest.rows
 
-    /** Rewrites the library holding only [documents]' rows, renumbered in their order. */
+    /**
+     * Rewrites the library holding only [documents]' rows, renumbered in their order. The kept rows stream from the old
+     * files to the new ones, and memory is compacted in place once the new files are committed, so the index is never
+     * held twice.
+     */
     private fun compact(documents: List<StoredDocument>) {
         val kept = documents.flatMap { d -> d.firstRow until d.firstRow + d.rowCount }
-        val keptHalves = ShortArray(kept.size * dimensions)
-        kept.forEachIndexed { i, row -> flat.row(row).copyInto(keptHalves, i * dimensions) }
-        val compacted = FlatVectors(dimensions).apply { append(keptHalves) }
-        val keptChunks = kept.map { chunks[it] }
-        val vectorBytes = halvesBytes(keptHalves)
-        val chunkBytes = chunkLines(keptChunks)
+        // documents are appended in commit order, so their rows ascend: each kept row moves down, never up
+        check(kept.zipWithNext().all { (a, b) -> a < b }) { "documents' rows must ascend" }
+        val rowBytes = dimensions.toLong() * Short.SIZE_BYTES
+        writeFile(vectorsPath.tmp()) { sink ->
+            fs.read(vectorsPath) {
+                var next = 0
+                for (row in kept) {
+                    skip((row - next) * rowBytes)
+                    sink.write(this, rowBytes)
+                    next = row + 1
+                }
+            }
+        }
+        var chunkBytes = 0L
+        writeFile(chunksPath.tmp()) { sink ->
+            for (row in kept) {
+                val line = json.encodeToString(chunkJson(chunks[row])) + "\n"
+                sink.writeUtf8(line)
+                chunkBytes += line.utf8Size()
+            }
+        }
         var firstRow = 0
         val renumbered = documents.map { d -> d.copy(firstRow = firstRow).also { firstRow += d.rowCount } }
-        val next = manifest.copy(rows = kept.size, chunkBytes = chunkBytes.size, tombstones = 0, documents = renumbered)
-
-        writeFile(vectorsPath.tmp(), vectorBytes)
-        writeFile(chunksPath.tmp(), chunkBytes)
+        val next = manifest.copy(rows = kept.size, chunkBytes = chunkBytes, tombstones = 0, documents = renumbered)
         writeWhole(nextManifestPath, manifestBytes(next))
         finishCompaction()
 
         manifest = next
-        flat = compacted
+        flat.retain(kept)
+        val keptChunks = kept.map { chunks[it] }
         chunks.clear()
         chunks += keptChunks
         tombstones = emptyList()
@@ -246,9 +267,14 @@ internal class LibraryStore(private val fs: FileSystem, private val dir: Path) {
     }
 
     private fun writeFile(path: Path, bytes: Buffer) {
+        writeFile(path) { it.writeAll(bytes) }
+    }
+
+    /** Writes [path] afresh through a buffered sink, then flushes it to the disk. */
+    private fun writeFile(path: Path, write: (BufferedSink) -> Unit) {
         fs.openReadWrite(path).use { handle ->
             handle.resize(0)
-            handle.write(0, bytes, bytes.size)
+            handle.sink().buffer().use(write)
             handle.flush()
         }
     }

@@ -44,6 +44,27 @@ public final class com/suhel/llamabro/rag/Document {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/suhel/llamabro/rag/EmbedderIdentity {
+	public fun <init> (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;Lcom/suhel/llamabro/rag/EmbeddingFormat;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Lcom/suhel/llamabro/rag/EmbeddingFormat;
+	public final fun copy (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;Lcom/suhel/llamabro/rag/EmbeddingFormat;)Lcom/suhel/llamabro/rag/EmbedderIdentity;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/EmbedderIdentity;Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;Lcom/suhel/llamabro/rag/EmbeddingFormat;ILjava/lang/Object;)Lcom/suhel/llamabro/rag/EmbedderIdentity;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDimensions ()I
+	public final fun getFileBytes ()J
+	public final fun getFormat ()Lcom/suhel/llamabro/rag/EmbeddingFormat;
+	public final fun getModelName ()Ljava/lang/String;
+	public final fun getNormalization ()Ljava/lang/String;
+	public final fun getPooling ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/suhel/llamabro/rag/EmbeddingFormat {
 	public static final field Companion Lcom/suhel/llamabro/rag/EmbeddingFormat$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
@@ -61,6 +82,11 @@ public final class com/suhel/llamabro/rag/EmbeddingFormat {
 public final class com/suhel/llamabro/rag/EmbeddingFormat$Companion {
 	public final fun getNone ()Lcom/suhel/llamabro/rag/EmbeddingFormat;
 	public final fun of (Lcom/suhel/llamabro/ModelInfo;)Lcom/suhel/llamabro/rag/EmbeddingFormat;
+}
+
+public final class com/suhel/llamabro/rag/IndexMismatch : java/lang/Exception {
+	public final fun getBuilt ()Lcom/suhel/llamabro/rag/EmbedderIdentity;
+	public final fun getWanted ()Lcom/suhel/llamabro/rag/EmbedderIdentity;
 }
 
 public abstract interface class com/suhel/llamabro/rag/TokenCounter {
@@ -81,34 +107,7 @@ public final class com/suhel/llamabro/rag/TokenCounter$Model : com/suhel/llamabr
 	public fun count (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
-public final class com/suhel/llamabro/rag/store/EmbedderIdentity {
-	public fun <init> (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;Lcom/suhel/llamabro/rag/EmbeddingFormat;)V
-	public final fun component1 ()Ljava/lang/String;
-	public final fun component2 ()J
-	public final fun component3 ()I
-	public final fun component4 ()Ljava/lang/String;
-	public final fun component5 ()Ljava/lang/String;
-	public final fun component6 ()Lcom/suhel/llamabro/rag/EmbeddingFormat;
-	public final fun copy (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;Lcom/suhel/llamabro/rag/EmbeddingFormat;)Lcom/suhel/llamabro/rag/store/EmbedderIdentity;
-	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/store/EmbedderIdentity;Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;Lcom/suhel/llamabro/rag/EmbeddingFormat;ILjava/lang/Object;)Lcom/suhel/llamabro/rag/store/EmbedderIdentity;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getDimensions ()I
-	public final fun getFileBytes ()J
-	public final fun getFormat ()Lcom/suhel/llamabro/rag/EmbeddingFormat;
-	public final fun getModelName ()Ljava/lang/String;
-	public final fun getNormalization ()Ljava/lang/String;
-	public final fun getPooling ()Ljava/lang/String;
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
-}
-
-public final class com/suhel/llamabro/rag/store/IndexMismatch : java/lang/Exception {
-	public fun <init> (Lcom/suhel/llamabro/rag/store/EmbedderIdentity;Lcom/suhel/llamabro/rag/store/EmbedderIdentity;)V
-	public final fun getBuilt ()Lcom/suhel/llamabro/rag/store/EmbedderIdentity;
-	public final fun getWanted ()Lcom/suhel/llamabro/rag/store/EmbedderIdentity;
-}
-
-public abstract interface class com/suhel/llamabro/rag/store/VectorStore {
+public abstract interface class com/suhel/llamabro/rag/VectorStore {
 	public abstract fun nearest ([FILkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
