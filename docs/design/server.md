@@ -228,6 +228,34 @@ Failed    no Wi-Fi · port in use · the model didn't load   [Try again]
 - **Heat.** Sustained serving is exactly the workload the throttle idea is for; the dashboard shows it first.
 - **Play.** `specialUse` needs a short justification in the Play Console.
 
+
+### 6. A key you can type, throttling, and pairing from a browser (added 2026-11-26)
+
+The client is almost always a laptop, which can't scan a QR code, and a 43-character key is painful to type. So:
+
+- **The QR code goes.** The Address section lists the URLs with Copy; nothing else.
+- **A typable key (demo).** 16 characters of Crockford base32 (no 0/O, 1/I/L, U), 80 bits, shown as
+  `K7QM-4RTX-9HCD-2WNB` and stored without dashes, upper case. Over plain HTTP length protects only against guessing,
+  which goes through the phone one request at a time, so 80 bits with throttling is ample.
+- **Key matching (module).** `ServerConfig.keyMatching`: `Exact` (default, as upstream) or `Typable`, which ignores
+  case, spaces and dashes on both sides before the constant-time compare. The demo sets `Typable`.
+- **Throttling (module, on by default when a key is set).** Per client address: after 5 wrong keys within a minute,
+  further requests from that address get 429 with `Retry-After`, the wait doubling from 30 s up to 5 min; a right key
+  resets it. `ServerConfig.throttle` can turn it off. A deviation from upstream (which has none), recorded as a
+  decision.
+- **Pairing (module, off by default; the demo turns it on).** `ServerConfig.pairing: Pairing?`, where the app supplies
+  `suspend fun approve(request: PairingRequest): Boolean` (`code`, `client`, `userAgent`). With it set:
+  - `GET /` (no key) serves a small self-contained page: no external resources, the demo's look in plain CSS.
+  - The page `POST /pair` gets `{id, code}`, a 4-digit code, at most one pending pairing per address and three in
+    all, expiring after 2 minutes; the server asks the app to approve, showing the same code.
+  - The page polls `GET /pair/{id}`: `pending`, `denied`, `expired`, or `approved` with the key and the base URL,
+    delivered once, after which the pairing is gone.
+  - The page then shows the curl, OpenAI Python and Claude Code snippets with the key filled in, ready to copy on the
+    laptop. The pairing routes share the throttle.
+- **Approving on the phone (demo).** A dialog over the Server page or the docked view showing the code and the
+  client's address, with Approve and Deny; when the app is in the background, the serving notification shows the
+  request with Approve and Deny actions. No answer within the 2 minutes is a deny.
+
 ## Plan
 
 Each step ends with its checks passing and a commit (`sdk/scripts/check.sh` for SDK steps, `demo/scripts/check.sh`
