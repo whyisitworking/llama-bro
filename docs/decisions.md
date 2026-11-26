@@ -2634,7 +2634,7 @@ keeps the plain surface: a fill, or a lens without its own blur, shows the page 
 the emulator). Settings › Appearance › Glass has a Sheets section on phones that draw it.
 Consequences: A sheet is two more passes over half the screen or more. A still sheet costs nothing (no frame is
 drawn); while it slides or scrolls, the page under it is drawn again, including any glass there (a bar under the sheet
-blurs twice). Not yet measured on the phone (`SheetAndLayoutBenchmark`, a long sheet's scroll). The scrim still dims
-only the page around the sheet; the glass reads the page undimmed.
+blurs twice). Measured (F189): about 1.5 ms more CPU a frame while a sheet slides, every budget still met. The scrim
+still dims only the page around the sheet; the glass reads the page undimmed.
 
-Next free IDs: D165, F189.
+Next free IDs: D165, F190.

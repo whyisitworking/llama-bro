@@ -99,16 +99,28 @@ fun MacrobenchmarkScope.backToTheChatList() {
     check(device.hasObject(By.res("chat_list"))) { "Back never reached the Chat list" }
 }
 
-/** Models tab → the first model's sheet: the Models page lists the phone's and the Hub's models on one page. */
+/**
+ * Models tab → the first suggested model's sheet: the Models page lists the phone's and the Hub's models on one page.
+ */
 fun MacrobenchmarkScope.openAModelSheet() {
     check(device.wait(Until.hasObject(By.text("Models")), WAIT_MILLIS)) { "the Models tab never showed" }
     device.findObject(By.text("Models")).click()
-    check(device.wait(Until.hasObject(By.res("model_row")), WAIT_MILLIS)) { "the Models page showed no model" }
-    device.findObject(By.res("model_row")).click()
-    device.wait(Until.hasObject(By.text("Advanced")), WAIT_MILLIS)
+    openTheSuggestedModel()
+}
+
+/**
+ * The first suggested model's sheet, from the Models page: a model to get, not one on the phone, as only a model to get
+ * has the sheet's Basic and Advanced.
+ */
+fun MacrobenchmarkScope.openTheSuggestedModel() {
+    check(device.wait(Until.hasObject(By.text(SUGGESTED)), WAIT_MILLIS)) { "the Models page suggested no model" }
+    val suggested = device.findObject(By.text(SUGGESTED)).visibleBounds.bottom
+    device.findObjects(By.res("model_row")).first { it.visibleBounds.top > suggested }.click()
+    check(device.wait(Until.hasObject(By.text("Advanced")), WAIT_MILLIS)) { "the model sheet never showed" }
     device.waitForIdle()
 }
 
+private const val SUGGESTED = "Suggested for this phone"
 private const val STREAM_MILLIS = 20_000L
 private const val MAX_FLINGS_TO_TOP = 8
 private const val MAX_BACKS = 3

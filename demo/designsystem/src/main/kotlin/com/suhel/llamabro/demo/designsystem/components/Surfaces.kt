@@ -77,6 +77,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -233,7 +234,9 @@ fun DemoSheet(
             }
         },
     ) {
-        Box {
+        // the sheet's window is its own: the app root's tags-as-ids don't reach it, so the benchmarks couldn't find a
+        // part of the sheet by its tag
+        Box(Modifier.semantics { testTagsAsResourceId = true }) {
             if (glass != null) SheetGlass(glass.first, glass.second, Modifier.matchParentSize())
             Column {
                 GrabHandle(

@@ -14,7 +14,10 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** The model sheet switching between Basic and Advanced, and the layout switching between Sidebar and Chat list. */
+/**
+ * The model sheet switching between Basic and Advanced, and opened and closed; the layout switching between Sidebar
+ * and Chat list.
+ */
 @RunWith(AndroidJUnit4::class)
 class SheetAndLayoutBenchmark {
     @get:Rule val rule = MacrobenchmarkRule()
@@ -37,6 +40,28 @@ class SheetAndLayoutBenchmark {
                 device.wait(Until.hasObject(By.text("Basic")), WAIT)
                 device.waitForIdle()
                 device.findObject(By.text("Basic")).click()
+                device.waitForIdle()
+            }
+        }
+
+    /** The model sheet opened and slid away: with glass sheets (D164), the page under it is drawn again each frame. */
+    @Test fun openAndCloseTheModelSheet() =
+        rule.measureRepeated(
+            packageName = PACKAGE,
+            metrics = listOf(FrameTimingMetric()),
+            iterations = StartupBenchmark.ITERATIONS,
+            startupMode = StartupMode.WARM,
+            compilationMode = CompilationMode.Partial(),
+            setupBlock = {
+                startActivityAndWait()
+                waitForHome()
+                device.findObject(By.text("Models")).click()
+            },
+        ) {
+            repeat(OPENINGS) {
+                openTheSuggestedModel()
+                device.pressBack()
+                check(device.wait(Until.gone(By.text("Advanced")), WAIT)) { "the model sheet never closed" }
                 device.waitForIdle()
             }
         }
@@ -82,6 +107,7 @@ class SheetAndLayoutBenchmark {
             error("Could not click $resourceId")
         }
 
+        private const val OPENINGS = 5
         private const val CLICK_ATTEMPTS = 3
         private const val SWITCHES = 10
         private const val WAIT = 10_000L

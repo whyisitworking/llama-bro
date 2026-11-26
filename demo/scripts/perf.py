@@ -25,10 +25,12 @@ BUDGETS = [
     ("StreamingBenchmark", "streamAReply", "ChatEngine.onDelta per call (median, ms)", ("per_call", "ChatEngine.onDeltaSumMs", "onDeltaCountCount"), 0.5),
     ("StreamingBenchmark", "streamAReply", "Markdown.parse per call (median, ms)", ("per_call", "Markdown.parseSumMs", "parseCountCount"), 0.5),
     ("SheetAndLayoutBenchmark", "switchTheModelSheetBetweenBasicAndAdvanced", "model sheet Basic/Advanced x10, frameOverrunMs P90", ("sampled", "frameOverrunMs", "P90"), 0),
+    ("SheetAndLayoutBenchmark", "openAndCloseTheModelSheet", "model sheet opened and closed x5, frameOverrunMs P90", ("sampled", "frameOverrunMs", "P90"), 0),
     ("SheetAndLayoutBenchmark", "switchTheLayoutBackAndForth", "layout switch x10, frameOverrunMs P90", ("sampled", "frameOverrunMs", "P90"), 0),
     ("StreamingBenchmark", "memoryWhileStreaming", "Java heap held while streaming in 300 messages (median of the run peaks, MB)", ("heap_alloc_mb", None, None), 64),
 ]
 INFO = [
+    ("SheetAndLayoutBenchmark", "openAndCloseTheModelSheet", "model sheet opened and closed x5, frameDurationCpuMs P90", ("sampled", "frameDurationCpuMs", "P90")),
     ("StreamingBenchmark", "memoryWhileStreaming", "Java heap footprint ART set aside while streaming (median, MB)", ("heap_mb", "memoryHeapSizeMaxKb", None)),
     ("StartupBenchmark", "coldWithoutTheBaselineProfile", "cold start without the profile, time to initial display (median)", ("metric", "timeToInitialDisplayMs", "median")),
     ("StartupBenchmark", "coldWithoutTheBaselineProfile", "cold start without the profile, time to full display (median)", ("metric", "timeToFullDisplayMs", "median")),
