@@ -2476,7 +2476,8 @@ Context: Upstream's `handle_media` (`server-common.cpp`) fetches what starts wit
 remote client read another chat's pictures and make the phone fetch URLs on the LAN. Three behaviours differ from
 upstream because of it.
 Decision: The deviations, each with its reason:
-1. A media value must be a `data:` URL or raw base64 (a string with no `:`, which OpenAI's `input_audio` sends).
+1. A media value must be a `data:` URL or raw base64 (a string with no `:` that doesn't start with `http`, which
+   upstream would fetch; OpenAI's `input_audio` sends raw base64).
    Anything else is a 400 in `invalid_request_error` shape. It is checked on every media key (`image_url`,
    `video_url`, `audio_url`, `file_url`, `file_data`, `image`, and the `url` or `data` of `input_audio`,
    `input_video` and Anthropic's `source`) wherever it appears in the body, so a nesting upstream adds can't pass. Text

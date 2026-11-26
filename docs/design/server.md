@@ -1,7 +1,7 @@
 # Serving on Wi-Fi: `llamabro-server` and the demo's server mode
 
 Status: **built, phone run pending**; the SDK part (plan Tasks 1-8: core `exchange`, `llamabro-server`, its tests and these docs) and the demo part (the Server page and the docked view) are built; the phone run that verifies them is still to do (2026-11-26); plan in [docs/superpowers/plans/2026-11-26-llamabro-server.md](../superpowers/plans/2026-11-26-llamabro-server.md). Decisions are recorded in
-[decisions.md](../decisions.md) as they are taken; the module's are D155-D157 and F189.
+[decisions.md](../decisions.md) as they are taken; the module's are D155-D157 and F189, the demo's D158.
 
 ## Intent
 
@@ -20,8 +20,9 @@ with the same statuses and bodies (F189), because it *is* llama-server's core (D
   Codex, the OpenAI SDKs, Open WebUI, aider and `npx llama-chat` (upstream's web UI) work unchanged.
 - An explicit, visible opt-in: off by default, an API key always set by the demo, and a screen that shows who is
   connected and what they ask.
-- A docked dashboard worth looking at: the URL and a QR code, live tokens per second, slots in use, the phone's
-  temperature and thermal status, and a request log.
+- A docked dashboard worth looking at: live tokens per second, slots in use, the phone's thermal status, the last
+  request and the URL. It shows no key and no QR code, so a glance or a photo of a docked phone shows neither; the QR
+  code and the full request log are on the Server page, the QR only while the key is revealed.
 - Reusable: the HTTP part is an SDK module (`llamabro-server`) other apps can embed; the demo adds the UI and the
   Android lifecycle.
 
@@ -188,11 +189,13 @@ Failed    no Wi-Fi · port in use · the model didn't load   [Try again]
 - **Leaving the app while serving:** a foreground service of type `specialUse`
   (`PROPERTY_SPECIAL_USE_FGS_SUBTYPE`: "local model server") with a "Serving <model> on <URL>" notification and a
   Stop action. It holds a partial wake lock and a Wi-Fi lock (`WIFI_MODE_FULL_LOW_LATENCY`), without which Wi-Fi
-  naps with the screen off. If the phone is not charging, the notification and the dashboard say so.
+  naps with the screen off. If the phone is not charging, the notification and the Server page say so.
 - **The key:** generated on first start (32 random bytes, base64url), stored with the demo's settings, shown masked,
-  copyable, renewable (renewing drops connected clients). The QR holds the base URL and key.
-- **Sharing with the chat:** serving holds a `ModelHost` lease on the chosen model for as long as it serves. A chat on
-  the same model uses it too and takes a slot like any client. Choosing another model in a chat asks first: "Stop
+  copyable, renewable (renewing drops connected clients). The QR holds the base URL and key, so the page shows it
+  only while the key is revealed; leaving serving masks the key again.
+- **Sharing with the chat:** serving holds a `ModelHost` lease on the chosen model for as long as it serves, and
+  every request is answered from that lease's model, never a hold of its own. A chat on the same model uses it too and
+  takes a slot like any client. Deleting the served model asks "Stop serving <model> to delete it?" first. Choosing another model in a chat asks first: "Stop
   serving <model> to use <other>?". Voice mode's second slot (D99) is honoured when the served model was loaded with
   two or more.
 - **Temperature:** `PowerManager.currentThermalStatus` and `getThermalHeadroom`, shown, not acted on (the throttle is
