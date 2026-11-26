@@ -44,7 +44,7 @@ class SheetAndLayoutBenchmark {
             }
         }
 
-    /** The model sheet opened and slid away: with glass sheets (D164), the page under it is drawn again each frame. */
+    /** The model sheet opened and slid away: with glass sheets (D176), the page under it is drawn again each frame. */
     @Test fun openAndCloseTheModelSheet() =
         rule.measureRepeated(
             packageName = PACKAGE,

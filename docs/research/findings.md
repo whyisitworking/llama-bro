@@ -1,7 +1,7 @@
 # Findings
 
 > **Related:** the [decision records](../decisions.md) (`D<n>`), the [research history](history.md), which summarises each phase, and the experiments under [`research/`](../../research/).
-> **Status:** living document, updated 2026-11-26 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183–F188; glass sheets: F189)
+> **Status:** living document, updated 2026-11-26 (P1: F22–F31; P2 planning: F32–F35; API review: F37–F44; PA: F45–F54, F57; P4 reading: F55–F56; P2: F36, F58–F69, F71, F75–F80; PF: F70, F72–F74; P3: F81–F95, F98–F99; PD: F96–F97, F100–F119; after PD: F120–F138; PH: F139–F162; voice mode: F163–F173; Vulkan retry: F174; models screen: F175, F177; models search: F176; README benchmark: F178; Hexagon licence: F179; b12653 upgrade: F180; live transcription and speech: F181; test determinism: F182; glass performance: F183–F188; glass sheets: F192)
 
 Labels such as P1, PA, PF, PD and PH name the project's phases, and W1 to W9 the workstreams of a phase; the
 [research history](history.md#summary-of-the-phases) summarises each. "Task <n>", "T<n>" and "Feeds:" name the steps
@@ -2365,10 +2365,10 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   waited for a rewrite waits for that turn too before it stores its message; a send at any other time is as before.
 - **Feeds:** `ChatEngine` (`take`, `rewriting`).
 
-<a id="f189"></a>
-### F189. A glass sheet costs about 1.5 ms of CPU a frame while it slides, and stays inside every budget
+<a id="f192"></a>
+### F192. A glass sheet costs about 1.5 ms of CPU a frame while it slides, and stays inside every budget
 
-- **Finding:** With the bottom sheets as glass (D164), opening and closing the model sheet took 4.6 ms of CPU a frame
+- **Finding:** With the bottom sheets as glass (D176), opening and closing the model sheet took 4.6 ms of CPU a frame
   at the median and 7.4 ms at P90, against 3.1 and 5.5 ms with the plain sheet; frame overrun P90 was -2.6 ms against
   -3.8 ms. Switching the open sheet between Basic and Advanced cost 5.1 ms at P90 against 4.3 ms (overrun -4.8 against
   -7.1 ms): the glass is drawn again whenever the sheet's content changes, though the page under it stands still. The
@@ -2379,14 +2379,14 @@ A review of the public Kotlin API before P2 added to it, each claim checked agai
   build otherwise the same (2026-11-26); `openAndCloseTheModelSheet` opens a suggested model's sheet and closes it with
   Back five times an iteration.
 - **Means:** The glass sheet is kept on a Full phone: every budget holds with room to spare (overrun P90 below 0). A
-  Light phone keeps the plain sheet (D153, D164), which also spares it these 1.5 to 2 ms.
-- **Feeds:** D164; the budgets in docs/testing.md.
+  Light phone keeps the plain sheet (D153, D176), which also spares it these 1.5 to 2 ms.
+- **Feeds:** D176; the budgets in docs/testing.md.
 
 ## Index by ID
 
 | ID | Short name | Feeds |
 |---|---|---|
-| F189 | A glass sheet costs about 1.5 ms of CPU a frame while it slides, and stays inside every budget | D164 |
+| F192 | A glass sheet costs about 1.5 ms of CPU a frame while it slides, and stays inside every budget | D176 |
 | F188 | A message sent as an edit ends could land between the edited message and its reply | ChatEngine |
 | F187 | A bar drawing the glass on it saves a quarter of a chat's CPU time per frame, a touch softer | D154 |
 | F186 | The glass's CPU cost is its render passes; one pass blurs cleanly only below about 4 dp | D153, F185 |

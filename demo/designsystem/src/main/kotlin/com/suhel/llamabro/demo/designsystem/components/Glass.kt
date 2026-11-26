@@ -122,7 +122,7 @@ fun rememberBackdrop(pageColor: Color = LocalDemoColors.current.canvas): Backdro
  */
 fun Modifier.backdropSource(backdrop: Backdrop): Modifier {
     val page = backdrop.page ?: return this
-    // on the screen, as glass finds itself: glass in another window (a sheet's, D164) lines up with the page too
+    // on the screen, as glass finds itself: glass in another window (a sheet's, D176) lines up with the page too
     return onGloballyPositioned { backdrop.origin = it.positionOnScreen() }
         .drawWithContent {
             page.record { this@drawWithContent.drawContent() }
@@ -137,14 +137,14 @@ fun Modifier.backdropSource(backdrop: Backdrop): Modifier {
 val LocalBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
 /**
- * The whole window's page, for the bottom sheets' glass (D164), provided by [WindowGlass]. Only glass in a window of
+ * The whole window's page, for the bottom sheets' glass (D176), provided by [WindowGlass]. Only glass in a window of
  * its own (a sheet's) may read it: everything in the app's window is inside this page, so glass there drawing it would
  * draw itself. Internal, so the app can't. Null leaves the sheets plain.
  */
 internal val LocalWindowBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
 /**
- * The app's window as the page under its bottom sheets' glass (D164): [content] fills the window and is recorded once a
+ * The app's window as the page under its bottom sheets' glass (D176): [content] fills the window and is recorded once a
  * frame, for the sheets, which open in windows of their own, to draw it as any glass does. Put it at the app's root,
  * around everything a sheet can open over.
  */

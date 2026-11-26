@@ -331,7 +331,7 @@ private fun strength(fraction: Float, hold: Float): Float {
 
 /**
  * [color] over a layer [height] tall, at [strength] from its screen edge ([edge]) inward, in even steps; a blur's
- * mask passes its [shape] of that strength (D163), so it eases out as the shader's does.
+ * mask passes its [shape] of that strength (D175), so it eases out as the shader's does.
  */
 private fun eased(
     edge: Edge,
@@ -410,7 +410,7 @@ private class ProgressiveBlur {
 
 /**
  * One pass of the progressive blur, along [dir]: a Gaussian of `radius` times the strength at this row (full to
- * `hold`, then smoothstep to none at the layer's inner end) raised to `easing` (D163, [BarGlass.blurAt]), in a fixed
+ * `hold`, then smoothstep to none at the layer's inner end) raised to `easing` (D175, [BarGlass.blurAt]), in a fixed
  * number of taps; at no radius, the page as is. With a `spread`, red is read that far ahead along [dir] and blue as
  * far behind, scaled by the same eased strength: the
  * colour fringes of light through glass (D148). With a `veil`, the `tint` (the surface) is overlay-blended into the
@@ -466,7 +466,7 @@ half4 along(float2 q, float r) {
 
 // the bar's own blur at p, of the given strength: split and veiled on the last pass
 half4 bar(float2 p, float strength) {
-    // the radius eases out slower than the veil as it gets small, where the eye sees it most (D163)
+    // the radius eases out slower than the veil as it gets small, where the eye sees it most (D175)
     float blur = pow(strength, easing);
     float r = radius * blur;
     // a reduced copy fades out over the last tenth of the blur, where it is all but the page: the page shows sharp

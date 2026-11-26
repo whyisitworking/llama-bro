@@ -58,7 +58,7 @@ data class BarGlass(
     /** How far from the screen's edge, as a share of the bar's layer, the blur and the veil stay full. */
     val hold: Float,
     /**
-     * How gently the blur gives way to the sharp page, 0 to 1 (D163): at 0 its radius follows the fade's strength;
+     * How gently the blur gives way to the sharp page, 0 to 1 (D175): at 0 its radius follows the fade's strength;
      * higher, it lingers longer as a light blur before the page turns sharp, as the eye sees a small blur far more
      * than the difference between two large ones.
      */
@@ -192,7 +192,7 @@ data class GlassPose(val topLeft: Offset, val size: Size, val scaleX: Float, val
 
 /**
  * The glass of every kind the app draws: [chip] (icon buttons, the title), [panel] (fields, tabs, a FAB), [bar],
- * [sheet] (the bottom sheets, D164), and how a pressed one answers ([press]). With [mergedLens], a floating bar draws
+ * [sheet] (the bottom sheets, D176), and how a pressed one answers ([press]). With [mergedLens], a floating bar draws
  * the chips and panels on it in its own blur passes, instead of each drawing its lens in two passes of its own: a
  * quarter less CPU, a touch softer (D154, F187). Null leaves it to the phone's [GlassTier] ([merges]).
  */

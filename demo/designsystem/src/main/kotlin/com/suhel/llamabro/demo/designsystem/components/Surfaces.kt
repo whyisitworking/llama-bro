@@ -158,7 +158,7 @@ fun EdgeChip(text: String, modifier: Modifier = Modifier) {
  * through [state]'s [DemoSheetState.hideThenDismiss], so the sheet slides down first. The scrim's shade follows the
  * sheet's own position, so it is still there while the sheet slides away, not gone before the sheet is.
  *
- * Over the window's page ([LocalWindowBackdrop]) the sheet is glass (D164) in the glass's sheet style, from Android
+ * Over the window's page ([LocalWindowBackdrop]) the sheet is glass (D176) in the glass's sheet style, from Android
  * 13 on a [GlassTier.Full] phone; elsewhere it is the plain surface: a fill instead of a lens would show the page
  * sharp through the sheet's text, and a Light phone spares the passes over half its screen.
  *
@@ -253,7 +253,7 @@ fun DemoSheet(
     }
 }
 
-/** The page a sheet's glass is drawn over and its style (D164), or null where the sheet is the plain surface. */
+/** The page a sheet's glass is drawn over and its style (D176), or null where the sheet is the plain surface. */
 @Composable
 private fun sheetGlass(): Pair<Backdrop, GlassStyle>? {
     val backdrop = LocalWindowBackdrop.current ?: return null
@@ -262,7 +262,7 @@ private fun sheetGlass(): Pair<Backdrop, GlassStyle>? {
 }
 
 /**
- * A sheet's glass (D164): a lens over [backdrop]'s page, rounded as the sheet's top. Its bottom corners lie a corner's
+ * A sheet's glass (D176): a lens over [backdrop]'s page, rounded as the sheet's top. Its bottom corners lie a corner's
  * height below the sheet, where the sheet's clip cuts them off, so the glass meets the screen's bottom square.
  */
 @Composable

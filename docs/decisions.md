@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D164 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D176 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -196,8 +196,8 @@ its amendments to know what holds now.
 | [D160](#d160-screens-move-along-one-axis-as-they-fade-through) Screens move along one axis as they fade through | 2026-11-25 | |
 | [D161](#d161-the-logo-replaces-the-orb) The logo replaces the orb | 2026-11-26 | |
 | [D162](#d162-a-bars-copy-of-the-page-is-as-much-smaller-as-its-blur-can-hide) A bar's copy of the page is as much smaller as its blur can hide | 2026-11-26 | |
-| [D163](#d163-a-bars-blur-lingers-as-a-light-blur-before-the-page-turns-sharp) A bar's blur lingers as a light blur before the page turns sharp | 2026-11-26 | |
-| [D164](#d164-the-bottom-sheets-are-glass-over-the-whole-window) The bottom sheets are glass over the whole window | 2026-11-26 | |
+| [D175](#d175-a-bars-blur-lingers-as-a-light-blur-before-the-page-turns-sharp) A bar's blur lingers as a light blur before the page turns sharp | 2026-11-26 | |
+| [D176](#d176-the-bottom-sheets-are-glass-over-the-whole-window) The bottom sheets are glass over the whole window | 2026-11-26 | |
 
 **Repository and process**
 
@@ -2597,8 +2597,8 @@ Consequences: At the app's 24 dp nothing changes (F185's measurement holds). A b
 larger copy than before, more pixels to blur, and 12 dp the whole page; its cost on the phone is not yet measured.
 A Light phone at 12 dp reads a half-size copy, not a quarter.
 
-<a id="d163"></a>
-### D163. A bar's blur lingers as a light blur before the page turns sharp
+<a id="d175"></a>
+### D175. A bar's blur lingers as a light blur before the page turns sharp
 
 Status: Decided (2026-11-26). Amends D148's fade.
 
@@ -2614,8 +2614,8 @@ square; Settings › Appearance › Glass › Bars has a "Fade softness" slider,
 Consequences: At 0 the bars look as before. A softer fade blurs less across the fade's middle, so the bar's frost
 looks a little shallower unless "Full blur over" is raised. It costs one `pow` a pixel a pass, no taps.
 
-<a id="d164"></a>
-### D164. The bottom sheets are glass over the whole window
+<a id="d176"></a>
+### D176. The bottom sheets are glass over the whole window
 
 Status: Decided (2026-11-26). Builds on D148, D153 and D154.
 
@@ -2634,7 +2634,7 @@ keeps the plain surface: a fill, or a lens without its own blur, shows the page 
 the emulator). Settings › Appearance › Glass has a Sheets section on phones that draw it.
 Consequences: A sheet is two more passes over half the screen or more. A still sheet costs nothing (no frame is
 drawn); while it slides or scrolls, the page under it is drawn again, including any glass there (a bar under the sheet
-blurs twice). Measured (F189): about 1.5 ms more CPU a frame while a sheet slides, every budget still met. The scrim
+blurs twice). Measured (F192): about 1.5 ms more CPU a frame while a sheet slides, every budget still met. The scrim
 still dims only the page around the sheet; the glass reads the page undimmed.
 
 Next free IDs: D165, F190.

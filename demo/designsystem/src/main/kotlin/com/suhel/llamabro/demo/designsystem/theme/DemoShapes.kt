@@ -24,7 +24,7 @@ object DemoShapes {
     /** A model row (D123): a step rounder than a card, as the "ultra subtle" design draws it. */
     val row = RoundedCornerShape(radiusLarge)
 
-    /** A sheet's top corners, also for what draws it without a shape (its glass, D164). */
+    /** A sheet's top corners, also for what draws it without a shape (its glass, D176). */
     val sheetRadius = radiusExtraLarge
 
     val sheet = RoundedCornerShape(topStart = sheetRadius, topEnd = sheetRadius)

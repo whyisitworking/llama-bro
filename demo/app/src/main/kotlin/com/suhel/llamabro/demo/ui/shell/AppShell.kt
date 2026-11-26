@@ -139,7 +139,7 @@ fun AppShell(
             LocalGlass provides (glass ?: LocalGlass.current),
             LocalGlassTier provides tier,
         ) {
-            // the whole window is the page under the bottom sheets' glass (D164), which open in windows of their own
+            // the whole window is the page under the bottom sheets' glass (D176), which open in windows of their own
             WindowGlass {
                 Box(
                     Modifier

@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** How a bar's blur eases out toward the sharp page, as its softness says (D163). */
+/** How a bar's blur eases out toward the sharp page, as its softness says (D175). */
 class BarFadeTest {
     private fun softness(of: Float) = GlassTheme.Default.bar.copy(softness = of)
 
