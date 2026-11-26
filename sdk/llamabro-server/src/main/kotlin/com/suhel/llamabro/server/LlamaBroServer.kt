@@ -81,7 +81,7 @@ public class LlamaBroServer(private val config: ServerConfig, private val models
                 mutableState.value = ServerState.Serving(port)
                 announce(port)
             } catch (e: CancellationException) {
-                // this coroutine is cancelled, so the stop must not be, or the engine stays bound with nobody holding it
+                // this coroutine is cancelled; the stop must not be, or the engine stays bound with no one to stop it
                 withContext(NonCancellable) { runCatching { server.stopSuspend(0, 0) } }
                 mutableState.value = ServerState.Stopped
                 throw e
