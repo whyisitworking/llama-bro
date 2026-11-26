@@ -18,15 +18,19 @@ package com.suhel.llamabro.rag
  * without stops is, gets none.
  */
 public class Chunker(
-    private val maxTokens: Int = 256,
+    internal val maxTokens: Int = 256,
     private val overlap: Float = 0.15f,
     private val counter: TokenCounter = TokenCounter.Estimate,
-    private val prefix: String = "",
+    internal val prefix: String = "",
 ) {
     init {
         require(maxTokens >= 1) { "maxTokens must be at least 1, was $maxTokens" }
         require(overlap >= 0f && overlap < 1f) { "overlap must be from 0 up to 1, was $overlap" }
     }
+
+    /** This chunker with another limit or prefix; the [Library] sets the prefix and lowers the limit with it. */
+    internal fun copy(maxTokens: Int = this.maxTokens, prefix: String = this.prefix): Chunker =
+        Chunker(maxTokens, overlap, counter, prefix)
 
     /** The passages of [document], in order; none for a blank text. `start` and `end` are offsets into its text. */
     public suspend fun chunks(document: Document): List<Chunk> {

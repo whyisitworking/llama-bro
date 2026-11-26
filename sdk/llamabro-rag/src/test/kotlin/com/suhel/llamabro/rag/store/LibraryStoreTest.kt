@@ -316,6 +316,37 @@ class LibraryStoreTest {
     }
 
     @Test
+    fun crashDuringReplaceLeavesOneVersion() {
+        // the new rows and the old ones' tombstone are committed by one manifest write: a crash before it keeps the old
+        val targets =
+            listOf("vectors.f16", "chunks.jsonl", "deleted.tmp", "deleted", "manifest.json.tmp", "manifest.json")
+        for (target in targets) {
+            val fs = FakeFileSystem()
+            val crashing = CrashingFileSystem(fs)
+            val store = runBlocking { LibraryStore(crashing, dir).apply { open(identity) } }
+            store.add("a", rows = 3)
+            // three tombstoned rows of nineteen stay under a quarter: no compaction
+            ('b'..'h').forEach { store.add(it.toString()) }
+            val before = store.snapshot()
+
+            crashing.crashAt = target
+            try {
+                store.add("a", rows = 2)
+                fail("the replace should have crashed at $target")
+            } catch (expected: IOException) {
+            }
+            val reopened = store(fs)
+            assertEquals("after a crash at $target", before, reopened.snapshot())
+
+            reopened.add("a", rows = 2)
+            val after = store(fs)
+            assertEquals(1, after.documents.count { it.id == "a" })
+            assertEquals(2, after.documents.last().rowCount)
+            assertEquals(16, (0 until after.rowCount).count { after.isLive(it) })
+        }
+    }
+
+    @Test
     fun commitChecksItsInput() {
         val store = store()
         for (bad in listOf(listOf(unit()), listOf(unit(), unit(dims + 1)))) {

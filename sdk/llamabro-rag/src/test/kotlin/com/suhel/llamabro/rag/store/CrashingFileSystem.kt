@@ -16,6 +16,12 @@ internal class CrashingFileSystem(delegate: FileSystem) : ForwardingFileSystem(d
     var crashed: Boolean = false
         private set
 
+    /** The disk is back: writes work again, and nothing crashes until [crashAt] is set again. */
+    fun recover() {
+        crashed = false
+        crashAt = null
+    }
+
     private fun dies(path: Path): Boolean = crashed || path.name == crashAt
 
     private fun crash(): Nothing {

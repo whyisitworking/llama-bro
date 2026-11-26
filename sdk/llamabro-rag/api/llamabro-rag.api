@@ -44,6 +44,23 @@ public final class com/suhel/llamabro/rag/Document {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class com/suhel/llamabro/rag/DocumentInfo {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Lcom/suhel/llamabro/rag/DocumentInfo;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/DocumentInfo;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IILjava/lang/Object;)Lcom/suhel/llamabro/rag/DocumentInfo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getChunks ()I
+	public final fun getId ()Ljava/lang/String;
+	public final fun getSource ()Ljava/lang/String;
+	public final fun getTitle ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class com/suhel/llamabro/rag/EmbedderIdentity {
 	public fun <init> (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;Lcom/suhel/llamabro/rag/EmbeddingFormat;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -87,6 +104,53 @@ public final class com/suhel/llamabro/rag/EmbeddingFormat$Companion {
 public final class com/suhel/llamabro/rag/IndexMismatch : java/lang/Exception {
 	public final fun getBuilt ()Lcom/suhel/llamabro/rag/EmbedderIdentity;
 	public final fun getWanted ()Lcom/suhel/llamabro/rag/EmbedderIdentity;
+}
+
+public abstract interface class com/suhel/llamabro/rag/IngestProgress {
+}
+
+public final class com/suhel/llamabro/rag/IngestProgress$Chunked : com/suhel/llamabro/rag/IngestProgress {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lcom/suhel/llamabro/rag/IngestProgress$Chunked;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/IngestProgress$Chunked;IILjava/lang/Object;)Lcom/suhel/llamabro/rag/IngestProgress$Chunked;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getChunks ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/rag/IngestProgress$Embedded : com/suhel/llamabro/rag/IngestProgress {
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lcom/suhel/llamabro/rag/IngestProgress$Embedded;
+	public static synthetic fun copy$default (Lcom/suhel/llamabro/rag/IngestProgress$Embedded;IIILjava/lang/Object;)Lcom/suhel/llamabro/rag/IngestProgress$Embedded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDone ()I
+	public final fun getOf ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/rag/IngestProgress$Saved : com/suhel/llamabro/rag/IngestProgress {
+	public static final field INSTANCE Lcom/suhel/llamabro/rag/IngestProgress$Saved;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class com/suhel/llamabro/rag/Library : java/lang/AutoCloseable {
+	public static final field Companion Lcom/suhel/llamabro/rag/Library$Companion;
+	public final fun add (Lcom/suhel/llamabro/rag/Document;)Lkotlinx/coroutines/flow/Flow;
+	public fun close ()V
+	public final fun documents (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun remove (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class com/suhel/llamabro/rag/Library$Companion {
+	public final fun open (Lokio/FileSystem;Lokio/Path;Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/rag/EmbeddingFormat;Lcom/suhel/llamabro/rag/Chunker;Lcom/suhel/llamabro/Pooling;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun open$default (Lcom/suhel/llamabro/rag/Library$Companion;Lokio/FileSystem;Lokio/Path;Lcom/suhel/llamabro/Model;Lcom/suhel/llamabro/rag/EmbeddingFormat;Lcom/suhel/llamabro/rag/Chunker;Lcom/suhel/llamabro/Pooling;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
 public abstract interface class com/suhel/llamabro/rag/TokenCounter {

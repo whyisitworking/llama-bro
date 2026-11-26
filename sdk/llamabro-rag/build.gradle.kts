@@ -22,6 +22,16 @@ kotlin {
     explicitApi()
 }
 
+// Host end-to-end (HostLibraryTest), run by sdk/scripts/check.sh's e2e step: a library over the real core on this
+// machine with bge-small. -Pllamabro.host.lib=<host bin dir> -Pllamabro.host.models=<test models dir>; without them
+// the test is skipped.
+tasks.withType<Test>().configureEach {
+    listOf("lib", "models").forEach { key ->
+        providers.gradleProperty("llamabro.host.$key").orNull?.let { systemProperty("llamabro.host.$key", it) }
+    }
+    providers.gradleProperty("llamabro.host.lib").orNull?.let { jvmArgs("-Djava.library.path=$it") }
+}
+
 dependencies {
     api(project(":llamabro"))
     api(project(":llamabro-typed"))

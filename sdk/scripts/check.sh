@@ -20,7 +20,8 @@
 #   e2e            Kotlin + JNI + native on this machine vs upstream llama-server (HostNativeTest), load cancel;
 #                  typed output on the same model, Think off and on (HostTypedTest); speech input from a file, a
 #                  descriptor and bytes on upstream's audio test model (HostAudioTest); a voice session over the
-#                  in-memory /v1/realtime on the same model (HostVoiceTest)
+#                  in-memory /v1/realtime on the same model (HostVoiceTest); a retrieval library on bge-small: add,
+#                  reopen (HostLibraryTest)
 #   aar            release AAR: libraries, names, exports, 16 KB alignment (check-aar.sh); hub, hub-work and typed carry
 #                  no native code, and hub-work's manifest declares the dataSync foreground service
 #   scripts        the host scripts against stubs, no phone: device-preflight.sh (tests/device-preflight-test.sh), installed-guard.sh
@@ -250,12 +251,16 @@ step_e2e() {
     # typed output over the same core and model, Think off and on (D63, F143); it needs no server
     gradle :llamabro-typed:testDebugUnitTest --tests 'com.suhel.llamabro.typed.HostTyped*' --rerun-tasks -i \
         -Pllamabro.host.lib="$native/build/host/bin" -Pllamabro.host.model="$model" || status=1
+    # a retrieval library over bge-small: add, reopen (llamabro-rag); it needs no server
+    gradle :llamabro-rag:testDebugUnitTest --tests 'com.suhel.llamabro.rag.HostLibrary*' --rerun-tasks -i \
+        -Pllamabro.host.lib="$native/build/host/bin" -Pllamabro.host.models="$LB_TEST_MODELS_DIR" || status=1
     local t
     for t in HostNativeTest HostNativeLogTest HostNativeFailedInitTest HostNativeLoadCancelTest HostNativeAttachmentTest \
         HostEmbeddingTest HostAudioTest HostVoiceTest; do
         grep -q 'skipped="0"' "$sdk/llamabro/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.$t.xml" || { echo "$t was skipped or has no result"; return 1; }
     done
     grep -q 'skipped="0"' "$sdk/llamabro-typed/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.typed.HostTypedTest.xml" || { echo "HostTypedTest was skipped or has no result"; return 1; }
+    grep -q 'skipped="0"' "$sdk/llamabro-rag/build/test-results/testDebugUnitTest/TEST-com.suhel.llamabro.rag.HostLibraryTest.xml" || { echo "HostLibraryTest was skipped or has no result"; return 1; }
     return $status
 }
 
