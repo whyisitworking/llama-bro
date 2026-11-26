@@ -257,6 +257,22 @@ public class LlamaBroHub internal constructor(
         }
 
     /**
+     * What the installed copy of [model] can do, read from its GGUF headers on the phone: the chat template, and
+     * whether an installed projector takes images and audio
+     * ([D155](https://github.com/whyisitworking/llama-bro/blob/main/docs/decisions.md#d155)). Offline: it never
+     * touches the network, and is null when no complete copy of [model] is on the phone. Whether the template can
+     * think is the app's to judge from [ModelCapabilities.chatTemplate]; a load's `ModelInfo` corrects any guess.
+     *
+     * @throws IllegalArgumentException when an installed header isn't a valid GGUF: reported, not guessed at.
+     * @throws java.io.IOException when an installed file can't be read.
+     */
+    public suspend fun capabilities(model: HfModel): ModelCapabilities? =
+        withContext(Dispatchers.IO) {
+            val file = copies.installedModelFile(model) ?: return@withContext null
+            searches.capabilitiesOf(file, copies.installedProjectorFile(model))
+        }
+
+    /**
      * Resolves [model] online, falling back to the cache only when the Hub can't be reached: a look that changes
      * nothing on the phone (no ref moves, no record is written), so what [progress], [cached] and [source] report
      * stays as it was. Only [download] records a selection.

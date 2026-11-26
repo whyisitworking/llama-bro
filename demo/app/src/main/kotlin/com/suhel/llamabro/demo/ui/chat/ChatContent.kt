@@ -132,7 +132,7 @@ private fun ChatTopBar(bar: ChatBar, layout: AppLayout, actions: ChatScreenActio
     TopBar(
         title = {
             if (sidebar) {
-                SidebarTitle(bar.header, actions.onSwitcher)
+                SidebarTitle(bar, actions.onSwitcher)
             } else {
                 ChatListTitle(bar, actions.onSwitcher)
             }
@@ -154,19 +154,25 @@ private fun ChatTopBar(bar: ChatBar, layout: AppLayout, actions: ChatScreenActio
     )
 }
 
-/** The model's name with the download's ring and words right beside it (while the model arrives). */
+/**
+ * The Sidebar layout's title, small (D159): the chat's name on one line over its model's, dimmer, with the download's
+ * ring and words right beside it (while the model arrives). A chat not yet named shows its model's name alone, on two
+ * lines if it needs them: which model answers must be read, not guessed (D150).
+ */
 @Composable
-private fun SidebarTitle(header: ChatHeader, onSwitcher: () -> Unit) {
+private fun SidebarTitle(bar: ChatBar, onSwitcher: () -> Unit) {
+    val modelName = bar.header.name
     Inline(Gap.Block) {
-        // the model's whole name, on two lines if it needs them: which model answers must be read, not guessed (D150)
         TopBarTitle(
-            header.name,
+            bar.title.ifEmpty { modelName },
+            subtitle = modelName.takeIf { bar.title.isNotEmpty() },
             chevron = true,
             onClick = onSwitcher,
-            lines = 2,
+            lines = if (bar.title.isEmpty()) 2 else 1,
+            compact = true,
             modifier = Modifier.weight(1f, fill = false).testTag("model_title"),
         )
-        DownloadIndicator(header)
+        DownloadIndicator(bar.header)
     }
 }
 

@@ -12,6 +12,7 @@ import com.suhel.llamabro.demo.chat.VoiceChat
 import com.suhel.llamabro.demo.data.AudioStore
 import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.ImageStore
+import com.suhel.llamabro.demo.data.ModelSenses
 import com.suhel.llamabro.demo.data.SettingsRepository
 import com.suhel.llamabro.demo.models.Catalog
 import com.suhel.llamabro.demo.models.FakeScheduler
@@ -88,8 +89,19 @@ abstract class ChatViewModelFixture {
     /** How many times a chat stopped serving. */
     protected val serverStops = AtomicInteger()
 
+    /** What the engine reads from a model's header before it loads (D155); set it before the first [viewModel]. */
+    protected var readSenses: suspend (HfModel) -> ModelSenses? = { null }
     protected val engine by lazy {
-        ChatEngine(chats, host, models, settings, System::currentTimeMillis, scope, served = { served.value })
+        ChatEngine(
+            chats,
+            host,
+            models,
+            settings,
+            System::currentTimeMillis,
+            scope,
+            readSenses = { readSenses(it) },
+            served = { served.value },
+        )
     }
     protected val viewModels = mutableListOf<ChatViewModel>()
 
@@ -161,6 +173,12 @@ abstract class ChatViewModelFixture {
                     },
                 ),
         ).also(viewModels::add)
+    }
+
+    /** Remembers that [model] heard on its last load (D76); the rest as its catalog entry says. */
+    protected suspend fun rememberHearing(model: HfModel) {
+        val catalog = Catalog.byRepo(model.repo)
+        settings.setSenses(model.toString(), ModelSenses(catalog?.thinks == true, catalog?.sees == true, hears = true))
     }
 
     /** A source that hears a steady voice for [blocks] reads of 50 ms, after a moment of quiet, then stops. */

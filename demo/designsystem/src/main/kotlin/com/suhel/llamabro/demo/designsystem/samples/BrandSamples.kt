@@ -11,19 +11,19 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.suhel.llamabro.demo.designsystem.components.EmptyLine
 import com.suhel.llamabro.demo.designsystem.components.Greeting
+import com.suhel.llamabro.demo.designsystem.components.Logo
 import com.suhel.llamabro.demo.designsystem.components.ModelName
-import com.suhel.llamabro.demo.designsystem.components.Orb
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 import com.suhel.llamabro.demo.designsystem.theme.DemoType
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 
-/** The first run's head (56 dp orb), an empty chat's (40 dp), a model's name and a screen title. */
+/** The first run's head (56 dp logo), an empty chat's (72 dp), a model's name and a screen title. */
 @Composable
 internal fun BrandSamples() {
     val c = LocalDemoColors.current
     SampleFrame {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Orb(56.dp, Modifier.padding(top = 8.dp, bottom = 10.dp))
+            Logo(56.dp, Modifier.padding(top = 8.dp, bottom = 10.dp))
             Greeting("Good evening")
             Text(
                 "Pick a mind to talk to. It lives on this phone: private, and it works offline.",
@@ -34,7 +34,7 @@ internal fun BrandSamples() {
             )
         }
         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Orb(40.dp, Modifier.padding(bottom = 12.dp))
+            Logo(72.dp, Modifier.padding(bottom = 12.dp))
             EmptyLine("What's on your mind?")
         }
         ModelName("Qwen3.5 0.8B", realName = "by Alibaba · by Alibaba Qwen")

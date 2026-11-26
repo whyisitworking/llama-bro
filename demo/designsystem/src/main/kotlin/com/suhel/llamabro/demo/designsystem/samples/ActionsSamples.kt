@@ -18,8 +18,8 @@ import com.suhel.llamabro.demo.designsystem.components.SheetFrame
 import com.suhel.llamabro.demo.designsystem.theme.DemoTheme
 
 /**
- * Every action: the strong button (on and off), quiet ones, icons (one with its mark), the FAB, the Think chip, the
- * Basic/Advanced switch and a few choices as chips.
+ * Every action: the strong button (on and off), quiet ones, icons (one with its mark), a card's top row, the FAB, the
+ * Think chip, the Basic/Advanced switch and a few choices as chips.
  */
 @Composable
 internal fun ActionsSamples() {
@@ -41,6 +41,11 @@ internal fun ActionsSamples() {
             // a search's filters, plain and changed from their defaults (the dot)
             IconAction(DemoIcons.Filter, "Search filters", onClick = {}, muted = true)
             IconAction(DemoIcons.Filter, "Search filters", onClick = {}, muted = true, mark = "Changed")
+        }
+        // a model card's top row: Back on a card a link opened, and the card's page on Hugging Face at its end
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            IconAction(DemoIcons.Back, "Back", onClick = {}, small = true)
+            IconAction(DemoIcons.OpenExternal, "Open on Hugging Face", onClick = {}, small = true)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             DemoFab("New chat", DemoIcons.NewChat, onClick = {})

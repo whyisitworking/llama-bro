@@ -6,6 +6,11 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
 
 ## Unreleased
 
+- **`SearchOptions.quantizedFrom`**: only the GGUF uploads quantized from one original (`Qwen/Qwen3-8B`), through the
+  Hub's `base_model:quantized:` filter; an id that is not `owner/name` is refused.
+- **`LlamaBroHub.capabilities`** (D155): what an installed model can do before it loads, read from its GGUF headers
+  on the phone with no request: the chat template and whether an installed projector takes images and audio, or null
+  when no complete copy is installed. `FakeLlamaBroHub`'s `gguf` takes `chatTemplate` and `metadata`.
 - **`llamabro-server`** (D163-D165), a new opt-in module: serves a loaded `Model` over HTTP with llama-server's API
   (OpenAI chat, completions, embeddings and audio, Anthropic messages, Responses, token counts, `/health`, `/props`,
   `/metrics`), streaming included, so Claude Code, Codex, the OpenAI SDKs and `npx llama-chat` work against it.
@@ -92,6 +97,8 @@ What changed for apps. Decisions are cited as `D<n>` ([decisions](decisions.md))
     `NativeError.CANCELLED`.
 - **Demo:** a tap on the mic dictates into the message bar, a hold records a voice message (D140); a typed reply on a
   model that speaks can be read aloud (D141).
+- **Demo:** pages scroll edge to edge under frosted glass bars (D148), a setting under Appearance (D152) that scales to
+  what the phone can draw smoothly (D153, D154) and swells under the finger when pressed (D158).
 
 ## 2.0.0-alpha
 

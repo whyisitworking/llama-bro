@@ -45,7 +45,7 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * The chip chosen in Settings › Memory (D72): the load's policy, the note on a fallback, and the reload on a change.
+ * The chip chosen in Settings › Processor (D72): the load's policy, the note on a fallback, and the reload on a change.
  */
 class ChatEngineChipTest {
     @get:Rule val folder = TemporaryFolder()
@@ -119,11 +119,11 @@ class ChatEngineChipTest {
             val note = Limits.chipFallback("Qwen3.5 0.8B", fallback)
             assertEquals("Qwen3.5 0.8B is running on the CPU: this phone has no GPU.", note.line)
             assertEquals(note, chat.limit.value)
-            assertEquals(LimitAction.OpenMemorySettings, note.action)
+            assertEquals(LimitAction.OpenProcessorSettings, note.action)
             assertTrue(note.dismissible)
             assertEquals(DevicePolicy.Prefer(DeviceKind.Gpu), ready().config.policy)
             assertEquals(DeviceKind.Cpu, ready().model.loadReport.device)
-            // Settings › Memory says it too, under the choice it was loaded for
+            // Settings › Processor says it too, under the choice it was loaded for
             assertEquals(fallback, ready().model.loadReport.fallbackFrom(ready().config.policy))
             assertEquals("Running on the CPU: this phone has no GPU.", runsOnLine(ready(), ChipChoice.Gpu, false))
             // a turn on the model already loaded doesn't say it again

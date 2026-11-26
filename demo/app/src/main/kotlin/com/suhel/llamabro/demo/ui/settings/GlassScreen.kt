@@ -18,14 +18,17 @@ import com.suhel.llamabro.demo.designsystem.components.GroupedList
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.Notice
 import com.suhel.llamabro.demo.designsystem.components.Section
+import com.suhel.llamabro.demo.designsystem.components.SectionNote
 import com.suhel.llamabro.demo.designsystem.components.SegmentedSwitch
 import com.suhel.llamabro.demo.designsystem.components.SliderRow
 import com.suhel.llamabro.demo.designsystem.theme.BarGlass
+import com.suhel.llamabro.demo.designsystem.theme.GlassPress
 import com.suhel.llamabro.demo.designsystem.theme.GlassStyle
 import com.suhel.llamabro.demo.designsystem.theme.GlassTheme
 import com.suhel.llamabro.demo.designsystem.theme.GlassTier
 import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
 import com.suhel.llamabro.demo.designsystem.theme.LocalGlassTier
+import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -33,7 +36,8 @@ import kotlin.math.roundToInt
  * Settings › Appearance › Glass (D152): a slider for every value of the app's glass (the chips', the panels' and the
  * bars'), each saved and applied across the app as it is let go ([onChange]), so the look is tuned by eye; a sample
  * chip and panel float at the bottom ([GlassPreview]) over the sliders as they scroll. Copy values puts them on the
- * clipboard as the Kotlin of [GlassTheme.Default], and Reset forgets them ([onChange] with null).
+ * clipboard as the Kotlin of [GlassTheme.Default], and Reset forgets them ([onChange] with null). How glass answers a
+ * finger (D158) comes first, with its own Reset, since the sample is there to press and drag while it is tuned.
  */
 @Composable
 fun GlassScreen(onChange: (GlassTheme?) -> Unit, onBack: () -> Unit) {
@@ -60,6 +64,22 @@ fun GlassScreen(onChange: (GlassTheme?) -> Unit, onBack: () -> Unit) {
                 { onChange(glass.copy(mergedLens = choices[it])) },
                 Modifier.fillMaxWidth().testTag("glass_merged"),
             )
+        }
+        // first among the values: the sample at the bottom is right there to press and drag while tuning them (D158)
+        Section(
+            "Press: how glass answers a finger",
+            action = "Reset".takeIf { glass.press != GlassPress.Default },
+            onAction = { onChange(glass.copy(press = GlassPress.Default)) },
+        ) {
+            SectionNote(
+                if (animationsDisabled()) {
+                    "Animations are off on this phone, so pressed glass only lights up: it doesn't swell or move."
+                } else {
+                    "Press and drag the chip or the panel at the bottom: it swells, lights up under your finger and " +
+                        "stretches after it, then eases back when you let go. Every panel of glass does the same."
+                },
+            )
+            GroupedList { pressSliders(glass.press) { onChange(glass.copy(press = it)) } }
         }
         Section("Chips: icon buttons, the title") {
             GroupedList { styleSliders("chip", glass.chip) { onChange(glass.copy(chip = it)) } }
@@ -109,6 +129,22 @@ private fun GroupScope.barSliders(bar: BarGlass, onChange: (BarGlass) -> Unit) {
     if (BarsVeilInstead) share("bar-bare", "Tint without blur", bar.bareVeil) { onChange(bar.copy(bareVeil = it)) }
     dp("bar-fade", "Reach past the bar", bar.fade, MAX_FADE) { onChange(bar.copy(fade = it)) }
     share("bar-hold", "Full blur over", bar.hold) { onChange(bar.copy(hold = it)) }
+}
+
+/**
+ * Sliders for how pressed glass answers ([press], D158): the swell as the share it grows by, so 0 is none and the
+ * slider's travel is all in the range worth trying.
+ */
+private fun GroupScope.pressSliders(press: GlassPress, onChange: (GlassPress) -> Unit) {
+    share("press-swell", "Swell", press.swell - 1f, MAX_SWELL) { onChange(press.copy(swell = 1f + it)) }
+    share("press-light", "Light at the finger", press.light) { onChange(press.copy(light = it)) }
+    dp("press-reach", "Light's reach", press.reach, MAX_REACH) { onChange(press.copy(reach = it)) }
+    share("press-bend", "Extra refraction", press.bend, MAX_PRESS_BEND) { onChange(press.copy(bend = it)) }
+    dp("press-pull", "Pull when dragged", press.pull, MAX_PULL) { onChange(press.copy(pull = it)) }
+    share("press-stretch", "Stretch when dragged", press.stretch, MAX_STRETCH) { onChange(press.copy(stretch = it)) }
+    dp("press-resistance", "Drag for half the stretch", press.resistance, MAX_RESISTANCE) {
+        onChange(press.copy(resistance = it))
+    }
 }
 
 /** A length from 0 to [max] in steps of [step] dp. */
@@ -165,11 +201,15 @@ internal fun describe(glass: GlassTheme): String {
             "dispersion = ${s.dispersion}f, blur = ${trim(s.blur.value)}.dp, veil = ${s.veil}f, " +
             "rimLight = ${s.rimLight}f, rim = ${trim(s.rim.value)}.dp, bareVeil = ${s.bareVeil}f)"
     val b = glass.bar
+    val p = glass.press
     return "mergedLens = ${glass.mergedLens}\n" +
         "chip = ${style(glass.chip)}\n" +
         "panel = ${style(glass.panel)}\n" +
         "bar = BarGlass(blur = ${trim(b.blur.value)}.dp, dispersion = ${trim(b.dispersion.value)}.dp, " +
-        "veil = ${b.veil}f, bareVeil = ${b.bareVeil}f, fade = ${trim(b.fade.value)}.dp, hold = ${b.hold}f)"
+        "veil = ${b.veil}f, bareVeil = ${b.bareVeil}f, fade = ${trim(b.fade.value)}.dp, hold = ${b.hold}f)\n" +
+        "press = GlassPress(swell = ${p.swell}f, light = ${p.light}f, reach = ${trim(p.reach.value)}.dp, " +
+        "bend = ${p.bend}f, pull = ${trim(p.pull.value)}.dp, stretch = ${p.stretch}f, " +
+        "resistance = ${trim(p.resistance.value)}.dp)"
 }
 
 private const val MAX_EDGE = 24f
@@ -180,5 +220,13 @@ private const val MAX_RIM = 4f
 private const val MAX_BAR_BLUR = 48f
 private const val MAX_BAR_SPLIT = 20f
 private const val MAX_FADE = 64f
+
+// past a quarter, swollen glass crowds what sits beside it: it draws past its bounds (D158)
+private const val MAX_SWELL = 0.25f
+private const val MAX_PULL = 16f
+private const val MAX_RESISTANCE = 160f
+private const val MAX_STRETCH = 0.3f
+private const val MAX_REACH = 96f
+private const val MAX_PRESS_BEND = 2f
 private const val HALF = 0.5f
 private const val HUNDREDTH = 0.01f

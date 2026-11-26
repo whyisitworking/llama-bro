@@ -351,6 +351,26 @@ class MarkdownTest {
         assertEquals("a b c d e f g h", s.joinToString("") { it.text })
     }
 
+    @Test fun aPagesRelativeLinksPointIntoItsRepoAndAReplysStayText() {
+        // words between the links: a paragraph of links alone is a page's noise, left out
+        val text = "See [a](/Qwen/Qwen3.5-4B), [b](LICENSE), [c](intent://x), [d](https://hf.co/x/y) and [e](#usage)."
+        val page = Markdown.parsePage(text, pageRepo = "Qwen/Qwen3.5-4B").blocks
+        assertEquals(
+            listOf(
+                "https://huggingface.co/Qwen/Qwen3.5-4B",
+                "https://huggingface.co/Qwen/Qwen3.5-4B/blob/main/LICENSE",
+                "https://hf.co/x/y",
+            ),
+            (page.single() as MarkdownBlock.Paragraph).spans.mapNotNull { it.link },
+        )
+        // a page with no repo given, as a reply, keeps only links that need no base
+        val bare = Markdown.parsePage(text).blocks
+        assertEquals(
+            listOf("https://hf.co/x/y"),
+            (bare.single() as MarkdownBlock.Paragraph).spans.mapNotNull { it.link },
+        )
+    }
+
     @Test fun aDefinitionInsideAQuoteOrListIsFound() {
         val first = Markdown.parseKeeping("see [x]\n\nmore\n\n", null)
         val second = Markdown.parseKeeping("see [x]\n\nmore\n\n- [x]: https://x.dev\n", first)

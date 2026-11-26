@@ -45,15 +45,33 @@ object DemoMotion {
     const val SWAP_MILLIS = 200
     const val SWEEP_MILLIS = 1_400
 
-    /** Voice mode's thinking: the orb's highlight turns once in this time (D100). */
-    const val ORB_TURN_MILLIS = 2_400
+    /** Voice mode's thinking: the glow behind the logo comes and goes once in this time (D100, D161). */
+    const val LOGO_BREATH_MILLIS = 2_400
 
     /** One wave across the three typing dots, each a fifth of the cycle after the one before. */
     const val DOTS_MILLIS = 1_200
     const val DOTS_STAGGER = 0.2f
 
+    /**
+     * A screen arriving slides in this share of the screen's width along the navigation's axis (D160): a fifth, more
+     * than Material's 30 dp shared axis, so a navigation reads as one.
+     */
+    const val SCREEN_SLIDE_SHARE = 0.2f
+
     /** A button arriving grows from this share of its size while it fades in (Material's FAB). */
     const val POP_SCALE = 0.8f
+
+    /**
+     * Pressed glass (D158) is a heavy pane: it eases in over [PRESS_IN_MILLIS] and back out over [PRESS_OUT_MILLIS],
+     * both on [standard]'s curve (slow to start, as a mass is, then settling), with no spring: a spring's overshoot
+     * read as a cartoon on the owner's phone. Dragged, it trails the finger, catching up over [PANE_LAG_MILLIS] on
+     * [enter]'s curve. A tap holds the press [PRESS_HOLD_MILLIS] at least, or a quick one, released the frame it lands,
+     * would show nothing.
+     */
+    const val PRESS_IN_MILLIS = 220
+    const val PRESS_OUT_MILLIS = 450
+    const val PANE_LAG_MILLIS = 140
+    const val PRESS_HOLD_MILLIS = 90L
 
     /** The sweep's gradient covers this share of the width. */
     const val SWEEP_WIDTH_FRACTION = 0.30f
@@ -96,5 +114,6 @@ fun animationsDisabled(): Boolean {
     return (override ?: scale) == 0f
 }
 
-private fun ContentResolver.animatorDurationScale(): Float =
+/** The system's animator duration scale; 0 when the person turned animations off. */
+internal fun ContentResolver.animatorDurationScale(): Float =
     Settings.Global.getFloat(this, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)

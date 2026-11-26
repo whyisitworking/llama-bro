@@ -7,6 +7,7 @@ import com.suhel.llamabro.demo.designsystem.components.MarkdownAlignment
 import com.suhel.llamabro.demo.designsystem.components.MarkdownBlock
 import com.suhel.llamabro.demo.designsystem.components.MarkdownBlocks
 import com.suhel.llamabro.demo.designsystem.components.MarkdownSpan
+import com.suhel.llamabro.demo.models.HubLinks
 import com.suhel.llamabro.demo.models.Names
 import org.commonmark.ext.autolink.AutolinkExtension
 import org.commonmark.ext.gfm.strikethrough.Strikethrough
@@ -68,9 +69,11 @@ object Markdown {
      * first heading before any text of the page's own, after the HTML logos and badges many pages open with, read as
      * [Names.key] reads a repo's name and without separators, so "# Qwen3.5-4B-GGUF" goes under "Qwen3.5 4B" (models
      * audit S5). What a page carries for GitHub rather than for a reader is left out first ([PageNoise], D123): its
-     * note and warning boxes, and paragraphs or HTML blocks that are only links or badge images.
+     * note and warning boxes, and paragraphs or HTML blocks that are only links or badge images. Given the [pageRepo]
+     * the page is from, its relative links point into that repo on Hugging Face ([HubLinks.absolute], D156); a reply's
+     * stay dropped.
      */
-    fun parsePage(text: String, dropHeading: String? = null): MarkdownBlocks =
+    fun parsePage(text: String, dropHeading: String? = null, pageRepo: String? = null): MarkdownBlocks =
         trace("Markdown.parsePage") {
             val document = parser.parse(text)
             PageNoise.strip(document)
@@ -79,7 +82,8 @@ object Markdown {
                     generateSequence(document.firstChild) { it.next }.firstOrNull { it !is HtmlBlock } as? Heading
                 if (first != null && bare(MarkdownTree.Page.plainText(first)) == bare(dropHeading)) first.unlink()
             }
-            MarkdownBlocks(MarkdownTree.Page.children(document))
+            val tree = if (pageRepo == null) MarkdownTree.Page else MarkdownTree(page = true, pageRepo = pageRepo)
+            MarkdownBlocks(tree.children(document))
         }
 
     /** [name] as a model's key, without separators: "Qwen3.5-4B-GGUF" and "qwen3.5 4b" read alike. */
@@ -182,8 +186,11 @@ private fun lineStart(node: Node): Int {
     return span.inputIndex - span.columnIndex
 }
 
-/** Maps commonmark's tree into the design system's blocks: a reply's HTML as typed, a [page]'s flattened to text. */
-private class MarkdownTree(private val page: Boolean) {
+/**
+ * Maps commonmark's tree into the design system's blocks: a reply's HTML as typed, a [page]'s flattened to text. A page
+ * from [pageRepo] keeps its relative links, resolved into that repo.
+ */
+private class MarkdownTree(private val page: Boolean, private val pageRepo: String? = null) {
     companion object {
         val Reply = MarkdownTree(page = false)
         val Page = MarkdownTree(page = true)
@@ -365,7 +372,7 @@ private class MarkdownTree(private val page: Boolean) {
                 }
 
                 is Link -> {
-                    inline(node, marks.copy(link = node.destination.takeIf(::safe)), out)
+                    inline(node, marks.copy(link = target(node.destination)), out)
                 }
 
                 // an image shows its alt text, the image's children, plainly
@@ -378,6 +385,10 @@ private class MarkdownTree(private val page: Boolean) {
     }
 
     private fun safe(url: String): Boolean = url.substringBefore(':', "").lowercase() in safeSchemes
+
+    /** Where a link goes: a safe one as written, else on a model's page a relative one resolved into its repo. */
+    private fun target(destination: String): String? =
+        destination.takeIf(::safe) ?: pageRepo?.let { HubLinks.absolute(destination, it) }
 
     private fun add(out: MutableList<MarkdownSpan>, text: String, marks: Marks, code: Boolean) {
         if (text.isEmpty()) return

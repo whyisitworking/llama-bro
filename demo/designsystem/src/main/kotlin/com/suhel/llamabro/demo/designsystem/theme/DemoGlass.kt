@@ -2,6 +2,8 @@ package com.suhel.llamabro.demo.designsystem.theme
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -55,19 +57,125 @@ data class BarGlass(
     /** How far from the screen's edge, as a share of the bar's layer, the blur and the veil stay full. */
     val hold: Float,
 ) {
-    /** Whether [blur] is strong enough to run on a half-resolution copy of the page, its softness hidden (F185). */
-    val heavy: Boolean get() = blur >= HeavyBlur
+    /**
+     * How many times smaller than the screen the page is copied for this blur (F185, D162): [blur] over [SharpCopy],
+     * so a copied pixel stays as small a share of the blur at every setting and the copy's softness never shows. The
+     * app's 24 dp reads a copy at half size; 12 dp and less, the page itself; between, sizes between. A [GlassTier.Light]
+     * phone copies twice as small, to a quarter at most.
+     */
+    fun reduction(tier: GlassTier): Float {
+        val share = blur / SharpCopy
+        return if (tier == GlassTier.Light) (share * 2f).coerceIn(1f, LIGHT_MOST) else share.coerceIn(1f, FULL_MOST)
+    }
 
     private companion object {
-        val HeavyBlur = 12.dp
+        /** The strongest blur read from the page itself, at full resolution. */
+        val SharpCopy = 12.dp
+        const val FULL_MOST = 2f
+        const val LIGHT_MOST = 4f
     }
 }
 
 /**
- * The glass of every kind the app draws: [chip] (icon buttons, the title), [panel] (fields, tabs, a FAB), [bar].
- * With [mergedLens], a floating bar draws the chips and panels on it in its own blur passes, instead of each drawing
- * its lens in two passes of its own: a quarter less CPU, a touch softer (D154, F187). Null leaves it to the phone's
- * [GlassTier] ([merges]).
+ * How a piece of glass answers a finger (D158): pressed, it swells, a light gathers on its rim around the finger, out
+ * to [reach] at [light]'s strength, and its edge bends the page [bend] more (a share of its refraction). Dragged, it
+ * stretches along the drag and narrows across it, and moves after the finger only a little, on an elastic limited to
+ * [pull]; both give slowly at first and more as the drag goes on, half of each at a drag of [resistance], as a heavy
+ * pane would, not a jelly. Let go, swell, stretch and movement all ease back together. The swell and the stretch
+ * are lengths measured on the glass's shorter side, so a wide panel grows by as much as a chip, not by a share of its
+ * width. With animations off it neither swells nor moves; the light still comes and goes, and follows the finger.
+ */
+@Immutable
+data class GlassPress(
+    /** How much bigger pressed glass is drawn, as its shorter side sees it: 1 for not at all. */
+    val swell: Float,
+    /** How bright the light around the finger is, 0 to 1. */
+    val light: Float,
+    /** How far from the finger that light reaches. */
+    val reach: Dp,
+    /** How much more the pressed glass's edge bends the page, as a share of its refraction. */
+    val bend: Float,
+    /** How far dragged glass can be pulled from its place, however far the finger goes: the elastic's limit. */
+    val pull: Dp = Default.pull,
+    /** How much longer dragged glass grows along the drag, at most, as a share of its shorter side; narrower across. */
+    val stretch: Float = Default.stretch,
+    /** How far a finger drags glass for half its stretch and half its pull: longer is stiffer. */
+    val resistance: Dp = Default.resistance,
+) {
+    /** How strongly the edge bends at [press], as a factor of the glass's refraction. */
+    fun bendAt(press: Float): Float = 1f + bend * press.coerceAtLeast(0f)
+
+    /** How bright the light around the finger is at [press]: never past [light]. */
+    fun lightAt(press: Float): Float = (light * press).coerceIn(0f, light)
+
+    /**
+     * Where glass of [base] size is drawn, in its own bounds' pixels, [press] of the way in and dragged [drag] pixels
+     * by the finger, its pull limit [pullPx] pixels: grown by the swell on every side alike, stretched along the drag
+     * and moved that little toward it as the elastic gives, half at a drag of [resistancePx]. [still] (animations
+     * off), it stays as it is.
+     */
+    @Suppress("LongParameterList") // the press, the drag and the lengths it is measured against
+    fun pose(
+        base: Size,
+        press: Float,
+        drag: Offset,
+        still: Boolean,
+        pullPx: Float,
+        resistancePx: Float,
+    ): GlassPose {
+        val side = base.minDimension
+        val grow = (swell - 1f) * side * press.coerceIn(0f, 1f)
+        // at rest exactly so, not a negative zero's offset: the glass then draws its content as is
+        if (still || (grow == 0f && drag == Offset.Zero)) return GlassPose(Offset.Zero, base, 1f, 1f)
+        val swollen = Size(base.width + grow, base.height + grow)
+        // the content grows as the glass's longer side does: a chip's with it, a wide panel's text barely
+        val content = 1f + grow / base.maxDimension.coerceAtLeast(1f)
+        val far = drag.getDistance()
+        if (far == 0f) {
+            return GlassPose(Offset(-grow / 2f, -grow / 2f), swollen, content, content)
+        }
+        // squared, the elastic resists the first of a drag and gives more as it goes on, never past its limits
+        val give = if (resistancePx > 0f) far * far / (resistancePx * resistancePx + far * far) else 1f
+        val toward = drag / far
+        // along the drag longer, across it narrower: how much of the drag is across, less how much is down
+        val lean = toward.x * toward.x - toward.y * toward.y
+        val reach = stretch * side * give
+        val size = Size(swollen.width + reach * lean, swollen.height - reach * lean)
+        val moved = toward * (pullPx * give)
+        val topLeft = Offset((base.width - size.width) / 2f + moved.x, (base.height - size.height) / 2f + moved.y)
+        return GlassPose(topLeft, size, content * size.width / swollen.width, content * size.height / swollen.height)
+    }
+
+    companion object {
+        val Default =
+            GlassPress(
+                swell = 1.1f,
+                light = 0.6f,
+                reach = 64.dp,
+                bend = 0.35f,
+                pull = 2.dp,
+                stretch = 0.05f,
+                resistance = 64.dp,
+            )
+    }
+}
+
+/**
+ * Where pressed glass is drawn (D158), in its bounds' pixels: its swollen, moved and stretched rectangle ([topLeft],
+ * [size]), and the scale its content is drawn at across ([scaleX]) and down ([scaleY]).
+ */
+@Immutable
+data class GlassPose(val topLeft: Offset, val size: Size, val scaleX: Float, val scaleY: Float) {
+    /** How far the glass's middle has moved from its bounds' middle. */
+    fun moved(base: Size): Offset =
+        Offset(topLeft.x + size.width / 2f - base.width / 2f, topLeft.y + size.height / 2f - base.height / 2f)
+}
+
+/**
+ * The glass of every kind the app draws: [chip] (icon buttons, the title), [panel] (fields, tabs, a FAB), [bar],
+ * and how a pressed one answers ([press]). With [mergedLens], a floating bar draws the chips and panels on it in its
+ * own blur passes, instead of each drawing its lens in two passes of its own: a quarter less CPU, a touch softer (D154,
+ * F187). Null leaves it to the phone's [GlassTier] ([merges]).
  */
 @Immutable
 data class GlassTheme(
@@ -75,6 +183,7 @@ data class GlassTheme(
     val panel: GlassStyle,
     val bar: BarGlass,
     val mergedLens: Boolean? = null,
+    val press: GlassPress = GlassPress.Default,
 ) {
     /**
      * Whether the bars draw the glass on them (D154): as [mergedLens] says, else on a [GlassTier.Light] phone only,
@@ -120,8 +229,8 @@ data class GlassTheme(
 
 /**
  * How much glass a phone can afford to draw (D153), measured on a flagship only (F183, F185, F186). [Full]: every
- * pass. [Light], for a weaker phone: a chip's or a panel's lens bends the page without its own blur pass, and a heavy
- * bar blur runs at a quarter of the resolution instead of half; the look is the same glass, a little plainer.
+ * pass. [Light], for a weaker phone: a chip's or a panel's lens bends the page without its own blur pass, and a bar's
+ * blur reads a copy of the page twice as small ([BarGlass.reduction]); the look is the same glass, a little plainer.
  */
 enum class GlassTier { Full, Light }
 

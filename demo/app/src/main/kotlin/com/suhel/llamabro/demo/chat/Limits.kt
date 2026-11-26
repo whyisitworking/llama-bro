@@ -18,7 +18,7 @@ enum class LimitAction {
     Retry,
     AddToken,
     SwitchModel,
-    OpenMemorySettings,
+    OpenProcessorSettings,
     OpenAppSettings,
 
     /** Server mode holds another model: stop serving it, then the chat's turn goes on (docs/design/server.md §3). */
@@ -68,13 +68,13 @@ object Limits {
         )
 
     /**
-     * The model runs on another chip than the one chosen in Settings › Memory (D72), with the gist of why. A note: the
-     * reply goes on, on the chip that loaded it. **Settings** opens the choice.
+     * The model runs on another chip than the one chosen in Settings › Processor (D72, D157), with the gist of why. A
+     * note: the reply goes on, on the chip that loaded it. **Settings** opens the choice.
      */
     fun chipFallback(name: String, fallback: ChipFallback) =
         Limit(
             "$name is running on the ${fallback.runsOn.label}: ${fallback.why}.",
-            LimitAction.OpenMemorySettings,
+            LimitAction.OpenProcessorSettings,
             "Settings",
             dismissible = true,
         )

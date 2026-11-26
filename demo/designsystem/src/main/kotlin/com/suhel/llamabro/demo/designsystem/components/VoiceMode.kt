@@ -98,7 +98,7 @@ data class VoiceViewActions(
 
 /**
  * Voice mode's full-screen view (demo design §4.8, D100). A top bar with close at the start and the model and its
- * voice centred; the [VoiceOrb] in the upper middle with one muted state line under it; the person's last words and
+ * voice centred; the [VoiceLogo] in the upper middle with one muted state line under it; the person's last words and
  * the reply's caption under that, the caption's older sentences muted and fading at the top; and at the bottom the
  * hold-to-talk button, centred, with Stop at its start while a reply is coming, and a hint under them. A [notice] (a
  * limit line: the model didn't load, the microphone was refused) sits on the gutter above the controls.
@@ -121,7 +121,7 @@ fun VoiceView(
     ) {
         VoiceTopBar(state.model, state.voice, actions.onClose)
         Spacer(Modifier.weight(1f))
-        VoiceOrb(state.phase, state.level)
+        VoiceLogo(state.phase, state.level)
         Spacer(Modifier.height(DemoSpacing.hero))
         Text(
             stringResource(state.phase.line()),

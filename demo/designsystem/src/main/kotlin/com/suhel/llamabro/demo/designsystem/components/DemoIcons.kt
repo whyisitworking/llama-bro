@@ -16,6 +16,14 @@ object DemoIcons {
     val Menu = icon("Menu", "M3,18h18v-2H3v2zM3,13h18v-2H3v2zM3,6v2h18V6H3z")
     val Back = icon("Back", "M20,11H7.83l5.59,-5.59L12,4l-8,8 8,8 1.41,-1.41L7.83,13H20v-2z", autoMirror = true)
 
+    /** A box with an arrow leaving it (Material's open_in_new): opens a page outside the app. */
+    val OpenExternal =
+        icon(
+            "OpenExternal",
+            "M19,19H5V5h7V3H5c-1.11,0 -2,0.9 -2,2v14c0,1.1 0.89,2 2,2h14c1.1,0 2,-0.9 2,-2v-7h-2v7z" +
+                "M14,3v2h3.59l-9.83,9.83 1.41,1.41L19,6.41V10h2V3h-7z",
+        )
+
     /** A speech bubble with a plus (Material's add_comment): a new conversation, as messaging apps show it. */
     val NewChat =
         icon(

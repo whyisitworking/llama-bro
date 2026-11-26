@@ -148,6 +148,12 @@ internal class LocalCopies(private val cacheDir: File, storage: Storage, private
             pathsOf(model, record)?.firstOrNull { it.first == HubFile.Role.Model }?.second?.let(::File)
         }
 
+    /** The projector GGUF of any complete installed copy of [model], from disk only, or null when none has one. */
+    fun installedProjectorFile(model: HfModel): File? =
+        installed.readAll(model).firstNotNullOfOrNull { record ->
+            pathsOf(model, record)?.firstOrNull { it.first == HubFile.Role.Mmproj }?.second?.let(::File)
+        }
+
     /** Each installed file's role and path when every one is on disk at its recorded size, else null. */
     private fun installedPaths(model: HfModel, options: PlanOptions): List<Pair<HubFile.Role, String>>? =
         installed.read(model, options)?.let { pathsOf(model, it) }

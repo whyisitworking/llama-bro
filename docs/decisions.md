@@ -1,6 +1,6 @@
 # Decision records
 
-The design decisions of the SDK and its demo app, numbered D1 to D154 in the order they were made. Each record has a
+The design decisions of the SDK and its demo app, numbered D1 to D162 in the order they were made. Each record has a
 status line with its date, the context that forced the choice, the decision itself and its consequences. Decisions are
 cited elsewhere as `D<n>`, and the measurements that justify them as `F<n>` (see the
 [findings register](./research/findings.md)). The [architecture guide](./architecture.md) describes the resulting design.
@@ -148,14 +148,14 @@ its amendments to know what holds now.
 | [D58](#d58-the-chat-moves-with-material-3s-motion) The chat moves with Material 3's motion | 2026-11-14 | |
 | [D59](#d59-the-person-controls-the-models-memory-a-notification-only-while-a-reply-runs-in-the-background) The person controls the model's memory; a notification only while a reply runs in the background | 2026-11-14 | |
 | [D60](#d60-each-model-starts-from-its-cards-sampling-a-chat-can-change-it-again-and-a-reply-has-a-length-limit-with-continue) Each model starts from its card's sampling, a chat can change it again, and a reply has a length… | 2026-11-14 | [D78](#d78-the-demo-lets-the-person-choose-the-context-length-and-the-reply-length) |
-| [D69](#d69-the-demo-goes-neutral-near-black-on-amoled-with-the-new-icons-warmth-only-in-the-orb) The demo goes neutral, near-black on AMOLED, with the new icon's warmth only in the orb | 2026-11-15 | [D73](#d73-indigo-smaller-send-and-think-circles), [D117](#d117-the-demos-shared-components-take-the-models-pages-visual-system-colour-roles-notices-large-text-one-button-height), [D125](#d125-geist-type-one-monochrome-accent-and-one-selection-outline) |
+| [D69](#d69-the-demo-goes-neutral-near-black-on-amoled-with-the-new-icons-warmth-only-in-the-orb) The demo goes neutral, near-black on AMOLED, with the new icon's warmth only in the orb | 2026-11-15 | [D73](#d73-indigo-smaller-send-and-think-circles), [D117](#d117-the-demos-shared-components-take-the-models-pages-visual-system-colour-roles-notices-large-text-one-button-height), [D125](#d125-geist-type-one-monochrome-accent-and-one-selection-outline), [D161](#d161-the-logo-replaces-the-orb) |
 | [D72](#d72-the-demo-offers-a-choice-of-chip-in-settings--memory) The demo offers a choice of chip in Settings › Memory | 2026-11-15 | |
 | [D73](#d73-indigo-smaller-send-and-think-circles) Indigo, smaller send and Think circles | 2026-11-15 | [D125](#d125-geist-type-one-monochrome-accent-and-one-selection-outline) |
 | [D74](#d74-the-demo-parses-markdown-with-commonmark-java-and-its-gfm-extensions) The demo parses markdown with commonmark-java and its GFM extensions | 2026-11-15 | [D108](#d108-streaming-markdown-re-parses-from-the-last-top-level-block-lists-and-tables-are-not-resumed-row-by-row) |
 | [D76](#d76-the-demo-takes-voice-messages-for-models-that-hear-sent-as-audio-with-no-transcription) The demo takes voice messages for models that hear, sent as audio with no transcription | 2026-11-15 | [D140](#d140-the-demo-dictates-a-tap-on-the-mic-writes-speech-into-the-message-bar-a-hold-records-a-voice-message) |
 | [D77](#d77-section-labels-line-up-with-the-text-under-them-the-sidebars-actions-move-to-one-row-of-icons-its-chats-to-48-dp-rows) Section labels line up with the text under them; the sidebar's actions move to one row of icons,… | 2026-11-15 | [D126](#d126-the-sidebar-is-a-quiet-list-a-name-a-search-timed-rows-and-labelled-places) |
 | [D78](#d78-the-demo-lets-the-person-choose-the-context-length-and-the-reply-length) The demo lets the person choose the context length and the reply length | 2026-11-15 | |
-| [D100](#d100-the-demos-voice-mode-a-full-screen-view-entered-from-the-message-bar-hold-to-talk-saved-as-an-ordinary-chat) The demo's voice mode: a full-screen view entered from the message bar, hold to talk, saved as… | 2026-11-18 | [D109](#d109-captions-of-the-users-words-move-to-the-app-it-transcribes-its-own-recording-of-each-turn), [D147](#d147-hands-free-voice-mode-ends-a-turn-at-a-pause-and-talking-can-interrupt-a-reply) |
+| [D100](#d100-the-demos-voice-mode-a-full-screen-view-entered-from-the-message-bar-hold-to-talk-saved-as-an-ordinary-chat) The demo's voice mode: a full-screen view entered from the message bar, hold to talk, saved as… | 2026-11-18 | [D109](#d109-captions-of-the-users-words-move-to-the-app-it-transcribes-its-own-recording-of-each-turn), [D147](#d147-hands-free-voice-mode-ends-a-turn-at-a-pause-and-talking-can-interrupt-a-reply), [D161](#d161-the-logo-replaces-the-orb) |
 | [D140](#d140-the-demo-dictates-a-tap-on-the-mic-writes-speech-into-the-message-bar-a-hold-records-a-voice-message) The demo dictates: a tap on the mic writes speech into the message bar, a hold records a voice message | 2026-11-23 | |
 | [D141](#d141-the-demo-reads-a-typed-reply-aloud-on-a-model-that-speaks) The demo reads a typed reply aloud on a model that speaks | 2026-11-23 | |
 | [D101](#d101-the-demos-fit-is-a-formula-on-file-sizes-against-half-the-phones-total-ram-no-network-read-no-free-memory-reading) The demo's fit is a formula on file sizes against half the phone's total RAM; no network read,… | 2026-11-19 | [D116](#d116-one-models-screen-replaces-get-models-and-the-library-a-rows-fit-is-guessed-from-the-search-list-and-drawn-as-a-pace-figure) |
@@ -164,7 +164,7 @@ its amendments to know what holds now.
 | [D116](#d116-one-models-screen-replaces-get-models-and-the-library-a-rows-fit-is-guessed-from-the-search-list-and-drawn-as-a-pace-figure) One Models screen replaces Get models and the library; a row's fit is guessed from the search list and drawn as a pace figure | 2026-11-20 | [D130](#d130-the-models-page-is-one-page-offline-first-first-run-is-its-empty-state-labels-name-the-quant-a-download-is-the-pinned-ring-panel) |
 | [D117](#d117-the-demos-shared-components-take-the-models-pages-visual-system-colour-roles-notices-large-text-one-button-height) The demo's shared components take the Models page's visual system: colour roles, notices, large text, one button height | 2026-11-20 | [D122](#d122-the-cards-original-look-is-back-no-edges-the-original-surfaces-and-selection) |
 | [D118](#d118-the-model-card-is-one-view-drawn-from-local-data-shown-once-every-local-read-has-answered-its-foot-one-button-tall) The model card is one view drawn from local data, shown once every local read has answered, its foot one button tall | 2026-11-20 | [D119](#d119-text-fades-through-the-models-page-is-one-list-the-expandable-sheet-has-one-owner-of-its-height) |
-| [D119](#d119-text-fades-through-the-models-page-is-one-list-the-expandable-sheet-has-one-owner-of-its-height) Text fades through; the Models page is one list; the expandable sheet has one owner of its height | 2026-11-20 | [D120](#d120-lists-move-in-one-order-exit-then-place-then-enter-one-function-per-fact-on-the-models-page), [D122](#d122-the-cards-original-look-is-back-no-edges-the-original-surfaces-and-selection) |
+| [D119](#d119-text-fades-through-the-models-page-is-one-list-the-expandable-sheet-has-one-owner-of-its-height) Text fades through; the Models page is one list; the expandable sheet has one owner of its height | 2026-11-20 | [D120](#d120-lists-move-in-one-order-exit-then-place-then-enter-one-function-per-fact-on-the-models-page), [D122](#d122-the-cards-original-look-is-back-no-edges-the-original-surfaces-and-selection), [D160](#d160-screens-move-along-one-axis-as-they-fade-through) |
 | [D120](#d120-lists-move-in-one-order-exit-then-place-then-enter-one-function-per-fact-on-the-models-page) Lists move in one order, exit then place then enter; one function per fact on the Models page | 2026-11-20 | [D121](#d121-one-file-has-one-fit-a-download-records-its-model-bytes-a-sheets-growth-is-one-motion), [D122](#d122-the-cards-original-look-is-back-no-edges-the-original-surfaces-and-selection) |
 | [D121](#d121-one-file-has-one-fit-a-download-records-its-model-bytes-a-sheets-growth-is-one-motion) One file has one fit; a download records its model bytes; a sheet's growth is one motion | 2026-11-20 | [D122](#d122-the-cards-original-look-is-back-no-edges-the-original-surfaces-and-selection), [D123](#d123-the-models-pages-rows-and-card-are-ultra-subtle) |
 | [D122](#d122-the-cards-original-look-is-back-no-edges-the-original-surfaces-and-selection) The cards' original look is back: no edges, the original surfaces and selection | 2026-11-21 | |
@@ -181,13 +181,21 @@ its amendments to know what holds now.
 | [D145](#d145-the-sidebar-pushes-the-chat-aside-and-dims-it-and-its-head-is-as-tall-as-the-top-bar) The sidebar pushes the chat aside and dims it, and its head is as tall as the top bar | 2026-11-24 |[D148](#d148-pages-scroll-edge-to-edge-under-floating-bars-the-drawer-holds-still-under-the-page) |
 | [D146](#d146-a-reply-is-one-row-while-it-is-written-and-once-it-is-saved-and-its-actions-ease-in) A reply is one row while it is written and once it is saved, and its actions ease in | 2026-11-24 | |
 | [D147](#d147-hands-free-voice-mode-ends-a-turn-at-a-pause-and-talking-can-interrupt-a-reply) Hands-free voice mode ends a turn at a pause, and talking can interrupt a reply | 2026-11-24 | |
-| [D148](#d148-pages-scroll-edge-to-edge-under-floating-bars-the-drawer-holds-still-under-the-page) Pages scroll edge to edge under floating bars; the drawer holds still under the page | 2026-11-24 | |
+| [D148](#d148-pages-scroll-edge-to-edge-under-floating-bars-the-drawer-holds-still-under-the-page) Pages scroll edge to edge under floating bars; the drawer holds still under the page | 2026-11-24 | [D158](#d158-pressed-glass-swells-and-lights-up-under-the-finger) |
 | [D149](#d149-the-demos-debug-build-installs-beside-the-release-with-its-own-name-and-icon) The demo's debug build installs beside the release, with its own name and icon | 2026-11-24 | |
-| [D150](#d150-replies-in-the-serif-the-rest-in-figtree) Replies in the serif, the rest in Figtree | 2026-11-25 | |
+| [D150](#d150-replies-in-the-serif-the-rest-in-figtree) Replies in the serif, the rest in Figtree | 2026-11-25 | [D159](#d159-the-sidebar-chats-title-is-small-its-name-over-its-model) |
 | [D151](#d151-a-debug-build-tunes-the-glass-on-the-phone) A debug build tunes the glass on the phone | 2026-11-25 | D152 |
 | [D152](#d152-the-glass-is-a-setting-under-appearance-saved-with-a-sample-at-the-bottom) The glass is a setting under Appearance, saved, with a sample at the bottom | 2026-11-25 | |
-| [D153](#d153-the-glass-scales-to-the-phone-lighter-where-the-phone-doesnt-vouch-for-itself) The glass scales to the phone: lighter where the phone doesn't vouch for itself | 2026-11-25 | D154 |
+| [D153](#d153-the-glass-scales-to-the-phone-lighter-where-the-phone-doesnt-vouch-for-itself) The glass scales to the phone: lighter where the phone doesn't vouch for itself | 2026-11-25 | D154, [D162](#d162-a-bars-copy-of-the-page-is-as-much-smaller-as-its-blur-can-hide) |
 | [D154](#d154-a-bar-can-draw-the-glass-on-it-in-its-own-passes-a-lighter-phone-does-by-default) A bar can draw the glass on it in its own passes; a lighter phone does by default | 2026-11-25 | |
+| [D155](#d155-a-chat-knows-what-its-model-can-do-before-it-loads-the-hub-reads-the-installed-headers-each-load-corrects-it) A chat knows what its model can do before it loads: the hub reads the installed headers; each load corrects it | 2026-11-25 | |
+| [D156](#d156-a-link-on-a-models-page-to-another-gguf-model-opens-its-card-in-the-same-sheet-every-card-opens-on-hugging-face-from-its-top-row) A link on a model's page to another GGUF model opens its card in the same sheet; every card opens on Hugging Face from its top row | 2026-11-25 | |
+| [D157](#d157-settings-groups-options-by-what-they-change-inference-what-the-model-reads-and-writes-processor-where-it-runs-memory-how-long-it-stays) Settings groups options by what they change: Inference (what the model reads and writes), Processor (where it runs), Memory (how long it stays) | 2026-11-25 | |
+| [D158](#d158-pressed-glass-swells-and-lights-up-under-the-finger) Pressed glass swells and lights up under the finger | 2026-11-25 | |
+| [D159](#d159-the-sidebar-chats-title-is-small-its-name-over-its-model) The Sidebar chat's title is small: its name over its model | 2026-11-25 | |
+| [D160](#d160-screens-move-along-one-axis-as-they-fade-through) Screens move along one axis as they fade through | 2026-11-25 | |
+| [D161](#d161-the-logo-replaces-the-orb) The logo replaces the orb | 2026-11-26 | |
+| [D162](#d162-a-bars-copy-of-the-page-is-as-much-smaller-as-its-blur-can-hide) A bar's copy of the page is as much smaller as its blur can hide | 2026-11-26 | |
 
 **Repository and process**
 
@@ -2412,6 +2420,184 @@ chips are a touch softer, drawn at the bar's half resolution and with the bar's 
 into their edge, so a Full phone keeps the sharper glass by default. A Light phone keeps the chips' and panels' blur.
 
 <a id="d155"></a>
+### D155. A chat knows what its model can do before it loads: the hub reads the installed headers; each load corrects it
+
+Status: Decided (2026-11-25)
+
+Context: The demo learns that a model hears or speaks only once it has loaded and remembers it for the next load (D76,
+D100); a new chat, a picker or a message bar can't tell before then, and whether a model thinks isn't in `/props` at all
+(F97). The facts are in files already on the phone: the model's `tokenizer.chat_template` and, in a projector,
+`clip.has_vision_encoder` and `clip.has_audio_encoder`.
+Decision: `LlamaBroHub.capabilities(model)` reads the installed model GGUF's header and its installed projector's, from
+disk with no request, and returns `ModelCapabilities` (`chatTemplate`, `takesImages`, `takesAudio`), or null when no
+complete installed copy is on the phone. Whether a template thinks is the app's to judge; the SDK reports the text. A
+header that isn't GGUF throws `IllegalArgumentException` rather than a guess. A load's `ModelInfo` stays the final word
+and the app corrects what it showed. `installedProjectorFile` finds the projector as `installedModelFile` finds the
+model, from any complete installed copy.
+Consequences: A model that was never loaded can show its senses offline. A copy made without its projector takes no
+images or audio as far as this call knows; a projector's `has_*` flags are the file's claim, not a loaded model's.
+In the demo, the chip, photos and mic show from the header before a load; the load corrects them. One stored
+`ModelSenses` per model (thinks, sees, hears) replaces the hearing-only set of D76: the header's is written once the
+model is on the phone and only when nothing is known yet, a load's always. A turn takes its Think level from the model
+it loaded, not from the chip, so a model whose load says it can't think gets no reasoning settings.
+Next free IDs: D156, F189.
+
+<a id="d156"></a>
+### D156. A link on a model's page to another GGUF model opens its card in the same sheet; every card opens on Hugging Face from its top row
+
+Status: Decided (2026-11-25)
+
+Context: A model's page links its original, its siblings and other uploads. Every link opened the browser, out of the
+app, though the app can show and get those models itself; and a card had no way to the model's own page on Hugging
+Face, where its files, discussions and licence are.
+Decision: A tap on a link in a card's page asks the Hub what it opens (`ModelDiscovery.related`): a link to a repo's
+own page (`/<owner>/<name>` with an optional trailing slash, query or fragment, or its bare `/tree/main`) whose repo
+has GGUF uploads, its own or those quantized from it, opens that model's card over the one shown; anything else opens
+the browser, including a file, folder or discussion inside a repo (`/blob/`, `/resolve/`, `/raw/`, `/discussions`,
+`/tree/<branch>/<path>`), which is not the repo's card, and a link that resolves to the card already shown. While it is asked, "Opening <repo>…" sits where the card's problem line does; a newer tap cancels the older
+lookup, so only the latest acts. The cards are a stack (`CardStack`, a view model of the screen's back-stack entry):
+Back, in the card's new top row or the system's, slides the card down and the one under it rises; only the root's Back
+closes the sheet. A link to a model already in the stack pops back to its card. Each card's view model lives in a store
+keyed by its depth and repo, cleared when the card is popped or the sheet closes, not when its composition goes, so a
+rotation keeps the stack and each card's state. The top row's end carries "Open on Hugging Face" (the card's repo) on
+every card. A page's relative links now resolve into the repo the page is from (`HubLinks.absolute`); a chat reply's
+still stay text. A related card opened from a chat's card has no "Start a chat" either, and only a size of the chat's
+own model moves the chat.
+Consequences: Moving between cards is the sheet sliding down and the next card rising, the motion every closing action
+already has, rather than one sheet morphing in place; each card opens final from local data as the first does (D118).
+A related card's lookup is one or two Hub searches, so it waits on the network; offline, or when the Hub can't say, the
+link opens the browser. Cards deep in a stack hold their view models (and their refreshes' results) until popped.
+
+<a id="d157"></a>
+### D157. Settings groups options by what they change: Inference (what the model reads and writes), Processor (where it runs), Memory (how long it stays)
+
+Status: Decided (2026-11-25)
+
+Context: Settings › Memory had grown to hold the model in memory, the chip it runs on (D72), the context length (D78) and how long the model stays (D59), and Sampling held the reply length beside each model's values (D60). A person looking for the context length or the chip had to guess it lived under "Memory"; the reply length and the context length, which both bound what the model reads and writes, sat on different pages. Storage only opened the Models page, which the app already reaches from its own navigation.
+Decision: Settings › Models lists, in order, Default model, Hugging Face token, **Inference** ("Context, reply length and each model's values"), **Processor** ("Where models run: NPU, GPU or CPU"), **Memory** ("The model in memory, and when it's freed") and Voice. Inference holds the context length, the reply length and the models on the phone with their values, as Sampling held them, and its context length says "Changing it reloads the model." Processor holds "Runs on" (D72) and says the same. Memory keeps "In memory now" with Unload and "After you leave the app", and no longer says anything about a reload. The chat's "chip fell back" note opens Processor, and the model sheet's per-chat row, "This chat › Sampling", reads "This chat › Inference" and opens "Inference for this chat". The Storage row goes. Settings › Voice reads in two ruled parts: "Voice mode" (Its voice, Talking, Captions) and "In the message bar" (Dictation), and Captions says that changing it reloads the model. Each option behaves as before; only its page, route (`settings/inference`, `settings/processor`), test tags (`inference_settings`, `inference_model`, `processor_settings`) and titles change.
+Consequences: Amends D59 (the keep time and Unload stay in Memory; the chip and context length, which D59's page held, do not), D60 (Settings › Sampling is Settings › Inference, and the reply length shares its page with the context length) and D72 (the chip is chosen in Settings › Processor, and the note's Settings action opens it). Amends demo design §4.5 and §4.7. Old routes and tags are gone; nothing outside the app links to them.
+Next free IDs: D158, F189.
+
+<a id="d158"></a>
+### D158. Pressed glass swells and lights up under the finger
+
+Status: Decided (2026-11-25). Amends D148 and D154.
+
+Context: The glass chips and panels (D148) answered a press with Material's ripple, a grey wash laid over a lens that
+otherwise behaves like a piece of glass. Apple's Liquid Glass answers a touch by swelling and gathering light where the
+finger is; the demo wants an answer of its own in that spirit, cheap enough for the chat's 7 ms budget (F186).
+Decision: Every piece of glass follows the finger that touches it, from down to up, watching pointer events on their way
+in without consuming them, so a click or a text field on it still gets them all: a click's press reports only where the
+finger came down and is cancelled as it slides off, while the glass must follow it until it lifts (the click still
+cancels as usual). Glass given the `InteractionSource` of its click (`Modifier.glass(..., interactions)`,
+`GlassSurface(onClick)`, the bar's icon chips, a tappable title, the FAB, the jump button) also answers a key's press
+and a keyboard's focus, the focus lighting it in the middle without a swell. The glass is a heavy pane: the press eases
+in over 220 ms and out over 450 ms on the standard curve, slow to start as a mass is (`DemoMotion.PRESS_*`), with no
+spring, a tap held at least 90 ms so a quick one still shows. Pressed, the glass grows by `swell` (1.10) of its shorter
+side on every side alike, so the message bar grows by as much as a chip rather than by a share of its width; its content
+grows as its longer side does (a chip's with it, a wide panel's text barely); its bounds and layout are unchanged, the
+lens reads the page under the grown shape, and its edge bends the page `bend` (0.35) of its refraction more. A press
+lights the glass as light through a pane does, at `light` (0.6): a sheen across the whole pane, brightest under the
+finger and fading over it but never to nothing; the whole rim catching the light; and the rim brightest near the finger,
+out to `reach` (64 dp) or the pane's shorter side, whichever is more. The light follows the finger and stays within the
+glass: a finger that slides off leaves it at the nearest point of the outline. A first tuning lit only a small spot on
+the rim and a faint glow around the finger, which read as a point, not lit glass, and followed the finger off the pane. The
+rim's light lies over the hairline, its outer side on the hairline's, so a pressed rim's wider light grows into the
+glass as one lit edge: drawn under the hairline, it was split into two thin lines.
+Dragged, the glass stretches along the drag by up to `stretch` (0.05) of its shorter side, as much narrower across, and
+moves toward the finger only a little, on an elastic limited to `pull` (2 dp); the elastic gives as the drag's square,
+half at a drag of `resistance` (64 dp), so the first of a drag barely moves it and the stretch comes on gradually; the
+pane trails the finger, catching up over 140 ms (`PANE_LAG_MILLIS`), while the light follows the finger at once: a
+stretch on the axes, not a shear, so the lens's rounded-rectangle maths holds unchanged. Let go, the swell, the stretch
+and the movement ease back together on the press's one curve. Tunings tried on the owner's phone and dropped: a swell of
+1.05 (too subtle); a pull of 8 to 10 dp, a stretch of 0.08 of each side's length, and springs that overshot and wobbled
+(cartoonish, iOS's glass hardly moves and eases rather than bounces); the swell returning before the pull (the glass
+shrank, then moved); an elastic that gave half within the pull's 3 dp (the stretch came on at once, with no resistance).
+Everything moves by draw alone: a press redraws the node frame by frame and recomposes nothing, and no pass is added. On
+a bar that draws its glass (D154) the posed shape and bend go into its `MergedShape`, so the bar's shader agrees with
+the rim the node draws. The glass is the press's indication, so these clicks draw no ripple; buttons off glass keep it.
+With animations off the glass neither swells nor moves, but the light still comes and goes and follows the finger. A
+phone with no lens (before Android 13) or a Light tier one (D153) swells, stretches and lights its fill or its plainer
+lens the same way. The seven values are `GlassTheme.press` (`GlassPress`), saved with the rest and tuned first under
+Settings › Appearance › Glass (the swell up to 1.25, the pull up to 16 dp, the resistance up to 160 dp), with its own
+Reset and a note to press and drag the sample chip and panel at the bottom.
+Consequences: A pressed piece of glass costs a redraw per frame while it moves, its lens re-recorded and, on a merged
+bar (a Light phone's default), the bar's effect rebuilt and its page re-recorded; a still screen costs nothing more.
+That cost is unmeasured: the chat's budget is for a fling, not a press, and a benchmark is the owner's call. The swell
+draws past the glass's bounds, so glass inside something that clips it, or pulled toward the edge of a bar that draws
+it, loses its edge; the tap target stays where the glass sits at rest. Its look is tuned by eye on the owner's phone; a
+host test checks the press still clicks with animations on and off, not what it draws.
+Next free IDs: D159, F189.
+
+<a id="d159"></a>
+### D159. The Sidebar chat's title is small: its name over its model
+
+Status: Decided (2026-11-25). Amends D150.
+
+Context: In the Sidebar layout a chat's top bar showed only its model's name, in the screen title's 18 sp, wrapping to
+two lines (D150): too big for a bar over a chat, and it never said which chat was open.
+Decision: The Sidebar chat's title is the chat's name on one line in `titleSmall` (14 sp) over its model's name,
+dimmer, in `bodySmall` (12 sp), the model's on two lines at a large font so it is still read whole; a chat not yet
+named shows its model's name alone, small, on up to two lines. `TopBarTitle(compact = true)` draws it. The Chat list
+layout's title (the chat's name over its model, beside the initial) is unchanged.
+Consequences: The bar is quieter and names the chat; a long chat name is cut at one line, as its row in the sidebar is.
+
+<a id="d160"></a>
+### D160. Screens move along one axis as they fade through
+
+Status: Decided (2026-11-25). Amends D119.
+
+Context: Screens only faded through (D119): out, then in, with nothing to say where a navigation went; the owner found
+it too plain.
+Decision: Material's shared axis, stronger: a screen arriving slides in a fifth of the screen's width from the end
+(`DemoMotion.SCREEN_SLIDE_SHARE`) over 300 ms on the emphasized-decelerate curve, and the one leaving slides half as
+far toward the start as it fades out; going back, both run the other way. The fade-through timing stays, so two
+screens' text still never draw over each other. The slide follows the layout's direction; with animations off it is
+instant.
+Consequences: Every navigation in the app's `NavHost` reads as forward or back. A Back that navigates rather than pops
+(the Chat list layout's Back from a chat with nothing under it) slides as a forward step.
+
+<a id="d161"></a>
+### D161. The logo replaces the orb
+
+Status: Decided (2026-11-26). Amends D69 and D100.
+
+Context: The app's one spark of colour was an orb (D69), a radial gradient from the icon's amber to rose, in an empty
+chat, on the first run and, alive, in voice mode (D100). The owner wants the app's own logo there instead: the icon's
+llama, a white outline glowing violet and amber, drawn for its night background.
+Decision: `Logo` draws the icon's llama alone, scaled so the llama (68 of the icon's 108 units) fills its size: in the
+dark theme the icon's own artwork (`logo_llama_glow`, the launcher foreground), in the light theme, where its white
+glow would vanish on the canvas, the icon's traced outline (`logo_llama_outline`, the monochrome layer) tinted with the
+ink. It takes the orb's places (`LogoSize.Hero` 56 dp on the first run; `LogoSize.Empty` 72 dp in an empty chat, up
+from the orb's 40 since the llama is narrow). In voice mode `VoiceLogo` keeps the orb's life: it swells with the
+voice's or the reply's level; while it listens a warm amber glow behind it brightens with the voice, eased over 250 ms
+so it never flickers, in place of the orb's hairline ring, whose radius jittered with each level sample; while it
+thinks that glow breathes (`LOGO_BREATH_MILLIS`) in place of the orb's turning highlight; with animations off it holds
+still and does not glow. The design system keeps its own copies of the two icon layers, since the launcher's live in
+the app's resources. `DemoBrand` keeps only the amber.
+Consequences: The violet comes into the app in the dark theme with the logo; the light theme's logo has no colour,
+only the ink. A change to the icon's artwork must be copied to the design system's two drawables.
+<a id="d162"></a>
+### D162. A bar's copy of the page is as much smaller as its blur can hide
+
+Status: Decided (2026-11-26). Amends D153 and F185's rule.
+
+Context: A bar's blur of 12 dp or more ran on a copy of the page at half its width and height (F185), and on a Light
+phone at a quarter (D153); a lighter one on the page itself. At the low end of that range, as the owner turned the
+blur down in Settings, the copy's coarseness showed through: a 12 dp blur hides a half-size copy far less than 24 dp
+does. Two ways to cut the glass's render time were weighed and dropped: the colour split in a third pass after the
+blur (measured slower in its slow frames, F183), and taps read in pairs between pixels (13 instead of 25 a pass), which
+a model of the shader on a page of text showed visibly coarser at the app's blur (a mean error of about 10 in 255).
+Decision: `BarGlass.reduction` makes the copy as many times smaller as the blur over 12 dp, from 1 (the page itself, at
+12 dp and less) to 2 (the app's 24 dp and more), so a copied pixel is as small a share of the blur at every setting;
+a Light phone's copy is twice as small, from 1 at 6 dp to 4 at 24 dp and more. The scale is continuous, not a switch.
+Consequences: At the app's 24 dp nothing changes (F185's measurement holds). A blur between 12 and 24 dp now reads a
+larger copy than before, more pixels to blur, and 12 dp the whole page; its cost on the phone is not yet measured.
+A Light phone at 12 dp reads a half-size copy, not a quarter.
+
+Next free IDs: D163, F189.
+
+<a id="d163"></a>
 ### D163. Serving over the network is a separate, opt-in module, `llamabro-server`; core stays socket-free
 
 Status: Decided (2026-11-26)
@@ -2435,7 +2621,7 @@ Consequences: An app that doesn't depend on `llamabro-server` has no listening c
 adds Ktor, and Android's NSD for discovery, at its edge. Router mode, MCP, the CORS proxy and upstream's `/models`
 management routes are not served. F189 shows that what the module answers is what the core answers.
 
-<a id="d156"></a>
+<a id="d164"></a>
 ### D164. `llamabro-server`'s defaults follow upstream; the routes that change the shared model are off
 
 Status: Decided (2026-11-26)
@@ -2466,7 +2652,7 @@ one model loaded: outside router mode it never reads `model` beyond echoing it i
 name (and a second one for its background calls), so a 404 would refuse every call it makes; with this its snippet
 needs no `ANTHROPIC_MODEL`. `/v1/models` still lists the served model alone.
 
-<a id="d157"></a>
+<a id="d165"></a>
 ### D165. Media in a served request must be a `data:` URL or raw base64; a body must be JSON and under `maxBodyBytes`
 
 Status: Decided (2026-11-26)
@@ -2490,7 +2676,7 @@ Decision: The deviations, each with its reason:
 Consequences: A client can't read the phone's files or reach its network through a request. A client that sends an
 image by URL must send it as `data:`. Every other request and answer is upstream's (F189).
 
-<a id="d158"></a>
+<a id="d166"></a>
 ### D166. Swiping the app away from Recents keeps the phone serving; Stop ends it
 
 Status: Decided (2026-11-26)

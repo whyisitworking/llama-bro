@@ -43,16 +43,25 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
     private val endpoint = endpoint.trimEnd('/') + "/"
     private val origin = URL(this.endpoint)
 
-    fun firstPage(query: String, options: SearchOptions): String {
+    private fun checkRanges(options: SearchOptions) {
         require(options.limit in 1..MAX_LIMIT) { "limit must be 1 to $MAX_LIMIT, was ${options.limit}" }
         val min = options.minParameters
         val max = options.maxParameters
         require(min == null || min >= 0) { "minParameters must not be negative, was $min" }
         require(max == null || max > 0) { "maxParameters must be positive, was $max" }
         require(min == null || max == null || min <= max) { "minParameters $min is above maxParameters $max" }
+    }
+
+    fun firstPage(query: String, options: SearchOptions): String {
+        checkRanges(options)
+        val original = options.quantizedFrom
+        require(original == null || isValidRepoId(original)) { "invalid HF repo id: $original" }
+        val min = options.minParameters
+        val max = options.maxParameters
         val params = mutableListOf<String>()
         query.trim().takeIf { it.isNotEmpty() }?.let { params += "search=${encode(it)}" }
         params += "filter=gguf"
+        original?.let { params += "filter=" + encode("$QUANTIZED$it") }
         params += "sort=${sortKey(options.sort)}"
         params += "direction=-1"
         params += "limit=${options.limit}"
@@ -180,10 +189,22 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
     }
 
     /** A GGUF's `general.sampling.*` (F17) from a file on the phone: no request at all (D79). */
-    fun fromLocalFile(file: File): Sampling? =
+    fun fromLocalFile(file: File): Sampling? = samplingOf(header(file) { it.startsWith(GGUF_SAMPLING) })
+
+    /**
+     * [model]'s chat template and, from [projector] (null when none is installed), whether it takes images and audio
+     * (D155): headers mapped read-only, no request. Throws [IllegalArgumentException] on a header that isn't GGUF.
+     */
+    fun capabilitiesOf(model: File, projector: File?): ModelCapabilities {
+        val template = header(model) { it == CHAT_TEMPLATE }[CHAT_TEMPLATE] as? String
+        val clip = projector?.let { header(it) { key -> key == HAS_VISION || key == HAS_AUDIO } }.orEmpty()
+        return ModelCapabilities(template, clip[HAS_VISION] == true, clip[HAS_AUDIO] == true)
+    }
+
+    private fun header(file: File, wanted: (String) -> Boolean): Map<String, Any> =
         RandomAccessFile(file, "r").use { raf ->
             val bytes = raf.channel.map(FileChannel.MapMode.READ_ONLY, 0, minOf(raf.length(), HEADER_LIMIT_BYTES))
-            samplingOf(GgufHeader.metadata(bytes) { it.startsWith(GGUF_SAMPLING) })
+            GgufHeader.metadata(bytes, wanted)
         }
 
     /**
@@ -266,6 +287,9 @@ internal class HubSearch(endpoint: String, private val cacheDir: File, private v
         }
 
         private const val MAX_LIMIT = 100
+        private const val CHAT_TEMPLATE = "tokenizer.chat_template"
+        private const val HAS_VISION = "clip.has_vision_encoder"
+        private const val HAS_AUDIO = "clip.has_audio_encoder"
         private const val HEADER_LIMIT_BYTES = 256L shl 20 // HeaderFetch's bound on a GGUF header
         private const val IMAGE_TASK = "image-text-to-text"
         private val EXPANDED_FIELDS =

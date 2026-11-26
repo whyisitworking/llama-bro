@@ -2,34 +2,30 @@
   <img src="assets/llama-bro-banner.webp" width="100%" alt="Llama Bro: the name beside a llama's head drawn in one violet-to-orange line">
 </p>
 
+<h3 align="center">Run open models inside your Android app.</h3>
+
 <p align="center">
-  <b>Run GGUF models on Android with llama.cpp's own <code>llama-server</code>,<br>inside your app's process, from Kotlin, with no HTTP and no port.</b>
+  A Kotlin SDK built on llama.cpp. Load any GGUF model and chat, call tools, read images, listen and speak,<br>
+  on the phone's NPU, GPU or CPU, with nothing sent off the device.
 </p>
 
 <p align="center">
   <a href="https://central.sonatype.com/namespace/io.github.whyisitworking"><img src="https://img.shields.io/maven-central/v/io.github.whyisitworking/llamabro?color=7B44F6&label=Maven%20Central" alt="Maven Central"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-7B44F6" alt="License: Apache-2.0"></a>
-  <a href="sdk/build-logic/src/main/kotlin/llamabro.library.gradle.kts"><img src="https://img.shields.io/badge/Android-API%2029%2B-7B44F6" alt="Android API 29 and up"></a>
-  <a href="sdk/llamabro/build.gradle.kts"><img src="https://img.shields.io/badge/ABI-arm64--v8a-7B44F6" alt="ABI: arm64-v8a"></a>
-  <a href="docs/decisions.md#d137-llamacpp-is-pinned-at-b12653-upstream-master-on-2026-11-23"><img src="https://img.shields.io/badge/llama.cpp-b12653-7B44F6" alt="llama.cpp build b12653"></a>
+  <a href="#requirements"><img src="https://img.shields.io/badge/Android-10%2B%20%C2%B7%20arm64-7B44F6" alt="Android 10 and up, arm64"></a>
+  <a href="docs/decisions.md#d137"><img src="https://img.shields.io/badge/llama.cpp-b12653-7B44F6" alt="llama.cpp build b12653"></a>
 </p>
 
 <p align="center">
-  <a href="#the-numbers">The numbers</a> ·
-  <a href="#why-llama-bro">Why Llama Bro</a> ·
-  <a href="#get-started">Get started</a> ·
-  <a href="#modules">Modules</a> ·
-  <a href="#the-demo-app">The demo app</a> ·
-  <a href="#documentation">Docs</a>
-</p>
-
-<p align="center">
-  <picture>
-    <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="assets/readme/stats-narrow-dark.svg">
-    <source media="(max-width: 600px)" srcset="assets/readme/stats-narrow-light.svg">
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/stats-dark.svg">
-    <img src="assets/readme/stats-light.svg" width="760" alt="Four headline figures: how fast Qwen3.5 4B reads a prompt on the NPU, how fast Qwen3.5 4B writes a code edit on the NPU with drafting, the time to the first spoken audio with LFM3-Omni 2B, and 76 of 76 contract cases answered exactly as upstream llama-server answers them">
-  </picture>
+  <a href="#highlights">Highlights</a> ·
+  <a href="#what-it-can-do">What it can do</a> ·
+  <a href="#the-demo-app">Demo app</a> ·
+  <a href="#installation">Installation</a> ·
+  <a href="#supported-hardware">Hardware</a> ·
+  <a href="#performance">Performance</a> ·
+  <a href="#under-the-hood">Under the hood</a> ·
+  <a href="#roadmap">Roadmap</a> ·
+  <a href="#how-it-started">How it started</a>
 </p>
 
 <p align="center">
@@ -44,269 +40,407 @@
   <br>
   <a href="https://github.com/whyisitworking/llama-bro/releases/latest/download/llama-bro-demo.apk"><img src="https://img.shields.io/badge/Download-the%20demo%20APK-F7883F?style=for-the-badge&logo=android&logoColor=white" alt="Download the demo APK"></a>
   <br>
-  <sub>The <a href="demo/README.md">demo app</a>, shown over the SDK's fake engine. The APK is the latest release's, for arm64 phones on Android 10 and up.</sub>
+  <sub>The <a href="demo/README.md">demo app</a>, built on the SDK. For arm64 phones on Android 10 and up.</sub>
 </p>
 
-## The numbers
+## Highlights
 
-One run of 37 benchmarks on a OnePlus 13 (Snapdragon 8 Elite), every one through the SDK's public API, none failed.
-A script checks each figure on this page against the run's results
-([F178](docs/research/findings.md#f178-the-readmes-benchmark-run-37-arms-on-the-oneplus-13)).
+- Qwen3.5 4B reads a 2,048-token prompt at **<!-- bench:qwen-npu.promptTps -->934<!-- /bench --> tokens a second** on
+  the Snapdragon 8 Elite's NPU, more than 14× its CPU speed. That's llama.cpp's Hexagon backend, which Llama Bro runs
+  inside an ordinary app.
+- A spoken conversation with LFM3-Omni 2B answers in
+  **<!-- bench:voice.extra.firstAudioMs/1000 -->0.38<!-- /bench --> s**, entirely on the phone.
+- The engine runs inside your app's process: no server, no port, no API key, and nothing leaves the phone.
+- **76 of 76** test requests on the phone's NPU get the same answer, byte for byte, as upstream's `llama-server`.
 
-- ⚡ **<!-- bench:ladder-lfm230m-npu.promptTps -->7,299<!-- /bench --> tokens a second** reading a prompt with LFM2.5 230M on the NPU; Qwen3.5 4B reads a
-  2,048-token document at **<!-- bench:qwen-npu.promptTps -->934<!-- /bench -->**, more than 14× its CPU speed.
-- 🧠 **Six models from 230M to 4B run on all three chips**, the NPU fastest for each: from
-  <!-- bench:ladder-lfm230m-npu.predictedTps -->171<!-- /bench --> tokens a second written (LFM2.5 230M) to <!-- bench:ladder-qwen4b-npu.predictedTps -->15.3<!-- /bench --> (Qwen3.5 4B).
-- ✍️ **<!-- bench:edit-ngram-mtp.predictedTps -->120<!-- /bench --> tokens a second** writing a code edit with n-gram drafting and MTP, 8× the
-  <!-- bench:edit-off.predictedTps -->14.9<!-- /bench --> without.
-- 🗣️ **<!-- bench:voice.extra.firstAudioMs/1000 -->0.38<!-- /bench --> s to the first spoken audio** in a realtime voice session with LFM3-Omni 2B, which speaks
-  <!-- bench:voice.extra.realtimeFactor -->1.4<!-- /bench -->× faster than real time.
-- 🔎 **<!-- bench:rerank-npu.extra.itemsPerSecond -->227<!-- /bench --> sentences a second reranked**, <!-- bench:embed-npu.extra.itemsPerSecond -->108<!-- /bench --> embedded, on the NPU.
-- 🛑 **<!-- bench:stop.extra.stopMs -->85<!-- /bench --> ms** from cancel to an idle engine; a 3,000-token chat back in **<!-- bench:restore.extra.restoreMs/1000 -->5.1<!-- /bench --> s** from its saved
-  slot, against <!-- bench:restore.extra.readAgainMs/1000 -->8.3<!-- /bench --> s read again.
+## What's new
 
-<p align="center">
-  <picture>
-    <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="assets/readme/board-narrow-dark.svg">
-    <source media="(max-width: 600px)" srcset="assets/readme/board-narrow-light.svg">
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/board-dark.svg">
-    <img src="assets/readme/board-light.svg" width="100%" alt="The benchmark in four charts. Every size, every chip: six models from LFM2.5 230M to Qwen3.5 4B writing and reading on the NPU, GPU and CPU, the fastest chip of each marked, with bge-small embeddings and jina-reranker-tiny reranking. Speed on each chip: Qwen3.5 4B and LFM3-Omni 2B reading a 2,048-token prompt and writing up to 128 tokens. Drafting: Qwen3.5 4B on the NPU with and without drafting, for a JSON extraction with DFlash and a code edit with n-gram drafting and MTP. Waiting times: model load per chip, stopping a reply, the first spoken audio, and coming back to a 3,000-token chat by reading it again or restoring its saved slot">
-  </picture>
-</p>
+<!-- the last two releases; older ones live in the release notes -->
 
-<details>
-<summary>Every number as a table</summary>
+- **Next release** (on `main`): live dictation with `transcriptionSession`, text to speech with `speak`, llama.cpp
+  b12653, and a demo app with glass bars, dictation and read-aloud.
+- **2.0.0-alpha** (November 23, 2026): a rewrite on llama-server's own engine, with NPU and GPU backends, on Maven
+  Central.
 
-Reading a 2,048-token prompt and writing a reply of up to 128 tokens, in tokens per second; loading, in seconds.
+Every change is in the [release notes](docs/release-notes.md).
 
-| Model | Chip | Reading | Writing | Loading |
-|---|---|--:|--:|--:|
-| Qwen3.5 4B | NPU | <!-- bench:qwen-npu.promptTps -->934<!-- /bench --> | <!-- bench:qwen-npu.predictedTps -->15.3<!-- /bench --> | <!-- bench:qwen-npu.loadMs/1000 -->5.2<!-- /bench --> |
-| Qwen3.5 4B | GPU | <!-- bench:qwen-gpu.promptTps -->188<!-- /bench --> | <!-- bench:qwen-gpu.predictedTps -->15.1<!-- /bench --> | <!-- bench:qwen-gpu.loadMs/1000 -->40.3<!-- /bench --> |
-| Qwen3.5 4B | CPU | <!-- bench:qwen-cpu.promptTps -->64.5<!-- /bench --> | <!-- bench:qwen-cpu.predictedTps -->12.1<!-- /bench --> | <!-- bench:qwen-cpu.loadMs/1000 -->7.9<!-- /bench --> |
-| LFM3-Omni 2B | NPU | <!-- bench:lfm-npu.promptTps -->2,358<!-- /bench --> | <!-- bench:lfm-npu.predictedTps -->36.3<!-- /bench --> | <!-- bench:lfm-npu.loadMs/1000 -->2.2<!-- /bench --> |
-| LFM3-Omni 2B | GPU | <!-- bench:lfm-gpu.promptTps -->490<!-- /bench --> | <!-- bench:lfm-gpu.predictedTps -->38.4<!-- /bench --> | <!-- bench:lfm-gpu.loadMs/1000 -->9.6<!-- /bench --> |
-| LFM3-Omni 2B | CPU | <!-- bench:lfm-cpu.promptTps -->167<!-- /bench --> | <!-- bench:lfm-cpu.predictedTps -->33.0<!-- /bench --> | <!-- bench:lfm-cpu.loadMs/1000 -->2.8<!-- /bench --> |
+## What it can do
 
-The model ladder: a 512-token prompt and a reply of up to 64 tokens, in tokens per second; loading, in seconds.
+Each snippet assumes `llama = LlamaBro.create(context)`, `hub = LlamaBroHub.create(context)`, a loaded `model` and
+`chat = model.conversation()`. The modules each one needs are under [Installation](#installation), and every group
+links to its full guide.
 
-| Model | Chip | Reading | Writing | Loading |
-|---|---|--:|--:|--:|
-| LFM2.5 230M | NPU | <!-- bench:ladder-lfm230m-npu.promptTps -->7,299<!-- /bench --> | <!-- bench:ladder-lfm230m-npu.predictedTps -->171<!-- /bench --> | <!-- bench:ladder-lfm230m-npu.loadMs/1000 -->0.58<!-- /bench --> |
-| LFM2.5 230M | GPU | <!-- bench:ladder-lfm230m-gpu.promptTps -->2,243<!-- /bench --> | <!-- bench:ladder-lfm230m-gpu.predictedTps -->136<!-- /bench --> | <!-- bench:ladder-lfm230m-gpu.loadMs/1000 -->4.9<!-- /bench --> |
-| LFM2.5 230M | CPU | <!-- bench:ladder-lfm230m-cpu.promptTps -->168<!-- /bench --> | <!-- bench:ladder-lfm230m-cpu.predictedTps -->149<!-- /bench --> | <!-- bench:ladder-lfm230m-cpu.loadMs/1000 -->0.80<!-- /bench --> |
-| Qwen3.5 0.8B | NPU | <!-- bench:ladder-qwen08b-npu.promptTps -->2,174<!-- /bench --> | <!-- bench:ladder-qwen08b-npu.predictedTps -->53.4<!-- /bench --> | <!-- bench:ladder-qwen08b-npu.loadMs/1000 -->1.7<!-- /bench --> |
-| Qwen3.5 0.8B | GPU | <!-- bench:ladder-qwen08b-gpu.promptTps -->531<!-- /bench --> | <!-- bench:ladder-qwen08b-gpu.predictedTps -->48.6<!-- /bench --> | <!-- bench:ladder-qwen08b-gpu.loadMs/1000 -->8.5<!-- /bench --> |
-| Qwen3.5 0.8B | CPU | <!-- bench:ladder-qwen08b-cpu.promptTps -->259<!-- /bench --> | <!-- bench:ladder-qwen08b-cpu.predictedTps -->46.8<!-- /bench --> | <!-- bench:ladder-qwen08b-cpu.loadMs/1000 -->6.7<!-- /bench --> |
-| LFM3 1.7B | NPU | <!-- bench:ladder-lfm17b-npu.promptTps -->1,682<!-- /bench --> | <!-- bench:ladder-lfm17b-npu.predictedTps -->34.1<!-- /bench --> | <!-- bench:ladder-lfm17b-npu.loadMs/1000 -->2.1<!-- /bench --> |
-| LFM3 1.7B | GPU | <!-- bench:ladder-lfm17b-gpu.promptTps -->348<!-- /bench --> | <!-- bench:ladder-lfm17b-gpu.predictedTps -->33.5<!-- /bench --> | <!-- bench:ladder-lfm17b-gpu.loadMs/1000 -->11.9<!-- /bench --> |
-| LFM3 1.7B | CPU | <!-- bench:ladder-lfm17b-cpu.promptTps -->143<!-- /bench --> | <!-- bench:ladder-lfm17b-cpu.predictedTps -->32.6<!-- /bench --> | <!-- bench:ladder-lfm17b-cpu.loadMs/1000 -->3.2<!-- /bench --> |
-| Llama 3.2 3B | NPU | <!-- bench:ladder-llama3b-npu.promptTps -->1,392<!-- /bench --> | <!-- bench:ladder-llama3b-npu.predictedTps -->21.2<!-- /bench --> | <!-- bench:ladder-llama3b-npu.loadMs/1000 -->4.0<!-- /bench --> |
-| Llama 3.2 3B | GPU | <!-- bench:ladder-llama3b-gpu.promptTps -->202<!-- /bench --> | <!-- bench:ladder-llama3b-gpu.predictedTps -->17.0<!-- /bench --> | <!-- bench:ladder-llama3b-gpu.loadMs/1000 -->16.4<!-- /bench --> |
-| Llama 3.2 3B | CPU | <!-- bench:ladder-llama3b-cpu.promptTps -->69.2<!-- /bench --> | <!-- bench:ladder-llama3b-cpu.predictedTps -->6.3<!-- /bench --> | <!-- bench:ladder-llama3b-cpu.loadMs/1000 -->12.2<!-- /bench --> |
-| Gemma 3 4B (QAT) | NPU | <!-- bench:ladder-gemma4b-npu.promptTps -->172<!-- /bench --> | <!-- bench:ladder-gemma4b-npu.predictedTps -->14.2<!-- /bench --> | <!-- bench:ladder-gemma4b-npu.loadMs/1000 -->5.1<!-- /bench --> |
-| Gemma 3 4B (QAT) | GPU | <!-- bench:ladder-gemma4b-gpu.promptTps -->152<!-- /bench --> | <!-- bench:ladder-gemma4b-gpu.predictedTps -->12.5<!-- /bench --> | <!-- bench:ladder-gemma4b-gpu.loadMs/1000 -->19.0<!-- /bench --> |
-| Gemma 3 4B (QAT) | CPU | <!-- bench:ladder-gemma4b-cpu.promptTps -->48.6<!-- /bench --> | <!-- bench:ladder-gemma4b-cpu.predictedTps -->7.9<!-- /bench --> | <!-- bench:ladder-gemma4b-cpu.loadMs/1000 -->9.8<!-- /bench --> |
-| Qwen3.5 4B | NPU | <!-- bench:ladder-qwen4b-npu.promptTps -->646<!-- /bench --> | <!-- bench:ladder-qwen4b-npu.predictedTps -->15.3<!-- /bench --> | <!-- bench:ladder-qwen4b-npu.loadMs/1000 -->5.4<!-- /bench --> |
-| Qwen3.5 4B | GPU | <!-- bench:ladder-qwen4b-gpu.promptTps -->126<!-- /bench --> | <!-- bench:ladder-qwen4b-gpu.predictedTps -->14.1<!-- /bench --> | <!-- bench:ladder-qwen4b-gpu.loadMs/1000 -->19.9<!-- /bench --> |
-| Qwen3.5 4B | CPU | <!-- bench:ladder-qwen4b-cpu.promptTps -->45.0<!-- /bench --> | <!-- bench:ladder-qwen4b-cpu.predictedTps -->11.5<!-- /bench --> | <!-- bench:ladder-qwen4b-cpu.loadMs/1000 -->9.9<!-- /bench --> |
+### Get a model
 
-Search models: 32 sentences in one request, after one request to warm up, in sentences per second.
+```kotlin
+// by its Hugging Face name: downloads once, resumes if cut off, verifies every file, then loads offline
+val model = llama.loadModel(hub.model("unsloth/Qwen3.5-4B-GGUF:Q4_K_M"))
 
-| Model | NPU | GPU | CPU |
-|---|--:|--:|--:|
-| bge-small (embeddings) | <!-- bench:embed-npu.extra.itemsPerSecond -->108<!-- /bench --> | <!-- bench:embed-gpu.extra.itemsPerSecond -->46.2<!-- /bench --> | <!-- bench:embed-cpu.extra.itemsPerSecond -->41.6<!-- /bench --> |
-| jina-reranker-tiny (rerank) | <!-- bench:rerank-npu.extra.itemsPerSecond -->227<!-- /bench --> | <!-- bench:rerank-gpu.extra.itemsPerSecond -->106<!-- /bench --> | <!-- bench:rerank-cpu.extra.itemsPerSecond -->69.4<!-- /bench --> |
+// or a file already on the phone
+val local = llama.loadModel(ModelSource.file(path))
+```
 
-Drafting, Qwen3.5 4B on the NPU, writing at most 256 tokens, in tokens per second.
+```kotlin
+val page = hub.search("qwen")                                       // browse Hugging Face
+val fit = llama.estimateFit(hub.model("unsloth/Qwen3.5-4B-GGUF:Q4_K_M"))   // will it fit? reads only the headers
 
-| Request | Drafting off | Drafting on |
-|---|--:|--:|
-| JSON extraction, with a DFlash draft model | <!-- bench:json-off.predictedTps -->15.4<!-- /bench --> | <!-- bench:json-dflash.predictedTps -->14.0<!-- /bench --> |
-| Code edit, with n-gram drafting and MTP | <!-- bench:edit-off.predictedTps -->14.9<!-- /bench --> | <!-- bench:edit-ngram-mtp.predictedTps -->120<!-- /bench --> |
+WorkManager.getInstance(context).enqueueDownload(HfModel("unsloth/Qwen3.5-4B-GGUF:Q4_K_M"))   // outlives your app
+```
 
-Waiting times.
+```kotlin
+model.loadReport.device     // Npu: it tried the NPU, then the GPU, then the CPU, and took the first that worked
+model.loadReport.attempts   // every chip it tried, and why it passed over the others
+```
 
-| Moment | Time |
-|---|--:|
-| Stopping a reply: the cancel until every slot is idle | <!-- bench:stop.extra.stopMs -->85<!-- /bench --> ms |
-| Stopping a reply: the cancel call's return, the app's side | <!-- bench:stop.extra.cancelReturnMs -->3<!-- /bench --> ms |
-| Voice, LFM3-Omni 2B: the app's commit of the user's turn until the first reply audio | <!-- bench:voice.extra.firstAudioMs/1000 -->0.38<!-- /bench --> s |
-| Voice, LFM3-Omni 2B: seconds of reply audio per second from the commit to the end of the reply | <!-- bench:voice.extra.realtimeFactor -->1.4<!-- /bench --> |
-| A 3,000-token chat after the model was freed, from loading to the next answer: read again | <!-- bench:restore.extra.readAgainMs/1000 -->8.3<!-- /bench --> s |
-| The same, with its saved slot restored before the question | <!-- bench:restore.extra.restoreMs/1000 -->5.1<!-- /bench --> s |
+[Loading](sdk/README.md#loading) · [Hugging Face](sdk/README.md#downloading-from-hugging-face) ·
+[Background downloads](sdk/README.md#background-downloads) · [Faster chips](sdk/README.md#faster-chips)
 
-</details>
+### Chat
 
-<details>
-<summary>How they were measured</summary>
+```kotlin
+chat.send("Explain Kotlin coroutines in one paragraph.").collect()   // streams into chat.reply as it's written
+val answer = chat.ask("Now show me one.").valueOrNull()             // or wait for the whole reply
+```
 
-- Each benchmark is a fresh process and a fresh load on one chip: context 8,192 tokens, no prompt cache, thinking off,
-  greedy sampling, and llama-server's own timings
-  ([`BenchDeviceTest`](sdk/acceptance/backends/src/androidTest/kotlin/com/suhel/llamabro/sample/BenchDeviceTest.kt)).
-  The voice benchmark feeds a recorded question at microphone pace; the restore benchmark
-  ([`SlotCacheDeviceTest`](sdk/acceptance/backends/src/androidTest/kotlin/com/suhel/llamabro/sample/SlotCacheDeviceTest.kt))
-  lets the SDK pick the chip. The code edit's reply is mostly copied from its prompt, where n-gram drafting gains most.
-- Q4_K_M models, except Gemma 3 4B (Unsloth's UD-Q4_K_XL of Google's QAT release) and the F16 search models; the
-  DFlash draft and LFM3-Omni's projector are Q8_0. Each ran once, on a phone at thermal status 1 or lower.
-- [`bench.sh`](sdk/scripts/bench.sh) runs it and [`bench.py`](sdk/scripts/bench.py) draws the charts; the requests
-  and what the numbers do not cover are in [research/bench](research/bench/README.md#what-each-arm-asks).
+```kotlin
+val long = model.conversation { autoCompact = true }   // older turns are summarised when the context fills up
+chat.endReasoning()                                     // stop thinking and answer now
 
-</details>
+val saved = chat.toJson()                               // store it anywhere
+val restored = model.restoreConversation(saved)         // and carry on later
+```
 
-## Why Llama Bro
+[A chat screen in five minutes](sdk/README.md#five-minutes-a-chat-screen) ·
+[Every conversation call](sdk/README.md#what-each-call-does)
 
-**llama-server, in your process.** The SDK links llama-server's `server-context` library and calls its route handlers
-directly ([architecture §3](docs/architecture.md#3-the-engine-llama-server-in-process),
-[D12](docs/decisions.md#d12-inference-engine)). There is no localhost port that another app on the phone could reach,
-no second process and no IPC ([§1.3](docs/architecture.md#13-in-process-one-runtime),
-[D5](docs/decisions.md#d5-process-model)). Kotlin sees coroutines and `Flow`.
+### Structured output and tools
 
-**Answers as llama-server answers.** Chat templates, tool calls, reasoning, the prompt cache, sampling, speculative
-decoding, pictures and audio in, embeddings and rerank are upstream's code, not a reimplementation
-([§3.3](docs/architecture.md#33-what-this-provides)). The SDK's contract check sends the same requests to the SDK and to
-the `llama-server` binary built from the same tree and requires identical answers
-([docs/testing.md](docs/testing.md#host-steps)). On the phone's NPU, 76 of 76 contract cases are identical
-([F163](docs/research/findings.md#voice-mode-f163f173)). Where the SDK departs from upstream, a measurement says why
-([§1.2](docs/architecture.md#12-the-baseline-is-upstream)).
+```kotlin
+@Serializable data class Event(val title: String, val day: String, val time: String?)
 
-**Picks the chip and fits the memory.** Add `llamabro-hexagon` or `llamabro-opencl` and a model loads on the NPU, else
-the GPU, else the CPU, skipping any that fails; `loadReport` says where it runs and why the others were passed over
-([§8.2](docs/architecture.md#82-selection-and-fallback), [D24](docs/decisions.md#d24-backend-discovery-and-device-choice)).
-`ContextSize.Auto` picks the largest context up to 16,384 tokens that fits the memory the phone has free, measured by
-llama.cpp's own dry run ([§9](docs/architecture.md#9-memory-fit-and-contextsizeauto),
-[D33](docs/decisions.md#d33-contextsizeauto-fits-all-memory)).
+val event = model.generate<Event>("Dinner with Priya at Olive, Friday 8pm").valueOrNull()
+```
 
-## Get started
+llama.cpp's grammar holds the reply to the class's JSON schema, so the model can't write JSON that doesn't fit.
 
-Android 10 (API 29) and up, arm64-v8a, Kotlin 2.2 or later
-([D82](docs/decisions.md#d82-the-sdk-compiles-with-the-catalogs-kotlin-apps-need-kotlin-22-or-later)).
-What changed in each version is in the [release notes](docs/release-notes.md).
+```kotlin
+val assistant = model.conversation {
+    tool<NoteQuery, List<Note>>("search_notes", "Searches the user's notes") { notes.search(it.text) }
+    tool<Reminder, Unit>("add_reminder", "Adds a reminder", requiresApproval = true) { reminders.add(it) }
+}
+assistant.ask("What did my landlord say about the deposit? Remind me to reply tomorrow.")
+```
 
-### 1. Add the SDK
+The conversation calls your function, sends the result back, and keeps going until the model answers. A tool marked
+`requiresApproval` stops the turn at `pendingApproval` instead, and `approve` or `deny` carries on.
 
-Import the BOM once, then list the modules you use without a version. The BOM adds no code: it keeps every Llama Bro
-module at the same version, which the backends need, since they load native libraries built with the core's.
+[Typed output and tools](sdk/README.md#typed-output-and-tools) · [Annotated toolboxes](sdk/README.md#annotated-toolboxes)
+
+### Search
+
+```kotlin
+val embedder = llama.loadModel(ModelSource.file(bgePath)) { task = ModelTask.Embedding() }
+val reranker = llama.loadModel(ModelSource.file(rerankerPath)) { task = ModelTask.Rerank }
+
+val vectors = embedder.embed(paragraphs)                     // one vector per paragraph
+val best = reranker.rerank(question, candidates, topN = 3)   // the closest matches, best first
+```
+
+On the NPU it computes <!-- bench:embed-npu.extra.itemsPerSecond -->108<!-- /bench --> embeddings or
+<!-- bench:rerank-npu.extra.itemsPerSecond -->227<!-- /bench --> reranks a second, without the text leaving the phone.
+
+[Embeddings and rerank](sdk/README.md#embeddings-and-rerank)
+
+### See and hear
+
+```kotlin
+chat.ask("What's the total on this receipt?", Content.Image(photoBytes))
+chat.ask("Reply to this voice note.", Content.Audio(clipBytes))
+
+val text = model.transcribe(MediaSource.file(recording.path)).text
+```
+
+```kotlin
+val dictation = model.transcriptionSession { language = "en" }
+dictation.append(pcm, 0, read)   // the words stream back on dictation.events as they're spoken
+```
+
+Live dictation and `speak` below are in the next release, on `main`.
+
+[Pictures and speech](sdk/README.md#pictures-and-speech) · [Live transcription](sdk/README.md#live-transcription)
+
+### Speak
+
+```kotlin
+model.speak("Your order has shipped.") { voice = "female" }
+    .collect { audio -> track.write(audio.pcm, 0, audio.pcm.size) }
+```
+
+```kotlin
+val voice = model.voiceSession { voice = "female"; language = "en"; instructions = "Answer briefly." }
+voice.append(pcm, 0, read)   // while the mic button is held
+voice.commit()               // on release: the reply plays as it's spoken, with captions
+```
+
+[Speech](sdk/README.md#speech) · [A spoken conversation](sdk/README.md#a-spoken-conversation)
+
+### Go faster
+
+```kotlin
+// drafting: code edits and rewrites that copy their input are written up to 8× faster
+llama.loadModel(source) { speculative = Speculative.Ngram(then = Speculative.Mtp(draftMax = 4)) }
+
+// the largest context this phone's free memory can hold (the default), or one you choose
+llama.loadModel(source) { contextSize = ContextSize.Auto }
+```
+
+[Faster chips](sdk/README.md#faster-chips) · [Context size](sdk/README.md#context-size)
+
+### Ship it
+
+```kotlin
+// your real Conversation, tool loop included, in a JVM unit test: no phone, no model
+val fake = FakeLlamaBro { reply { content("Hello!") } }
+val viewModel = ChatViewModel(fake.llamaBro)
+```
+
+```kotlin
+// and everything else llama-server does, with the JSON its docs describe
+val completion = model.rawRequest(Endpoint.Infill, """{"input_prefix": "fun add(a: Int, b: Int) = ", "input_suffix": ""}""")
+    .first()
+```
+
+`Endpoint` covers llama-server's routes: completion, infill, tokenizing, LoRA adapters, metrics, and the OpenAI Responses and
+Anthropic Messages formats.
+
+[Testing your app](sdk/README.md#testing-your-app) · [Without a conversation](sdk/README.md#without-a-conversation)
+
+## The demo app
+
+The [demo app](demo/README.md) is a full chat app built on the SDK, and the quickest way to see what it can do on your
+phone. [Download the APK](https://github.com/whyisitworking/llama-bro/releases/latest/download/llama-bro-demo.apk), or
+build `:demo:app` from source.
+
+- **Models.** Six suggested models that fit your phone, Hugging Face search that shows how each file will run before
+  you download it, and downloads that carry on in the background and resume where they stopped.
+- **Chat.** Streaming replies with markdown and code, a fold for the model's thinking, four think levels, pictures, and
+  edit and regenerate.
+- **Voice.** Hold to talk and hear a spoken reply with captions. Tap the mic to dictate, or hold it to send a voice
+  message, and have a reply read aloud.
+- **Glass.** Frosted bars that blur the chat scrolling beneath them and light up under your finger, scaled to what your
+  phone can draw smoothly.
+- **Your setup.** Choose the chip under Settings › Processor, a sidebar of chats or a messaging-style list, and a light
+  or dark theme.
+
+The APK is the latest release. Glass, dictation and read-aloud arrive with the next one.
+
+## Installation
+
+### Requirements
+
+- Android 10 (API 29) or later, on arm64-v8a
+- Kotlin 2.2 or later, and KSP 2.3 or later for `llamabro-typed-ksp`
+- The NPU backend runs on Snapdragon's Hexagon NPU and the GPU backend on Adreno. Without them, or on any other phone,
+  models run on the CPU.
+
+### With a version catalog
+
+Llama Bro is on Maven Central. The BOM keeps every module on one version, which the backends need, since they load
+native libraries built alongside the core's.
+
+```toml
+# gradle/libs.versions.toml
+[versions]
+llamabro = "2.0.0-alpha"
+
+[libraries]
+llamabro-bom        = { module = "io.github.whyisitworking:llamabro-bom", version.ref = "llamabro" }
+llamabro-core       = { module = "io.github.whyisitworking:llamabro" }
+llamabro-hexagon    = { module = "io.github.whyisitworking:llamabro-hexagon" }
+llamabro-opencl     = { module = "io.github.whyisitworking:llamabro-opencl" }
+llamabro-hub        = { module = "io.github.whyisitworking:llamabro-hub" }
+llamabro-hubWork    = { module = "io.github.whyisitworking:llamabro-hub-work" }
+llamabro-typed      = { module = "io.github.whyisitworking:llamabro-typed" }
+llamabro-typedKsp   = { module = "io.github.whyisitworking:llamabro-typed-ksp" }
+llamabro-testing    = { module = "io.github.whyisitworking:llamabro-testing" }
+llamabro-hubTesting = { module = "io.github.whyisitworking:llamabro-hub-testing" }
+
+[bundles]
+llamabro = ["llamabro-core", "llamabro-hexagon", "llamabro-opencl"]
+```
 
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    // the BOM: one version for every Llama Bro module
-    implementation(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))
+    implementation(platform(libs.llamabro.bom))
+    implementation(libs.bundles.llamabro)   // the engine, the NPU and the GPU
+    implementation(libs.llamabro.hub)       // optional: Hugging Face search and downloads
+    implementation(libs.llamabro.typed)     // optional: typed replies and tools
 
-    // the modules, without versions
-    implementation("io.github.whyisitworking:llamabro")           // the engine, always
-    implementation("io.github.whyisitworking:llamabro-hexagon")   // optional: the Snapdragon NPU
-    implementation("io.github.whyisitworking:llamabro-opencl")    // optional: the Adreno GPU
+    testImplementation(platform(libs.llamabro.bom))
+    testImplementation(libs.llamabro.testing)
 }
 ```
 
 <details>
-<summary>Without the BOM</summary>
-
-Give every module the same version:
+<summary>Without a version catalog</summary>
 
 ```kotlin
-implementation("io.github.whyisitworking:llamabro:2.0.0-alpha")
-implementation("io.github.whyisitworking:llamabro-hexagon:2.0.0-alpha")
+// app/build.gradle.kts
+dependencies {
+    implementation(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))
+    implementation("io.github.whyisitworking:llamabro")
+    implementation("io.github.whyisitworking:llamabro-hexagon")
+    implementation("io.github.whyisitworking:llamabro-opencl")
+}
+```
+
+Or give every module the same version and leave out the BOM:
+`implementation("io.github.whyisitworking:llamabro:2.0.0-alpha")`.
+
+</details>
+
+<details>
+<summary>Annotated toolboxes with KSP</summary>
+
+`ksp` is a configuration of its own, so the BOM on `implementation` doesn't reach it. Apply the KSP and
+`org.jetbrains.kotlin.plugin.serialization` plugins, then:
+
+```kotlin
+ksp(platform(libs.llamabro.bom))
+ksp(libs.llamabro.typedKsp)
 ```
 
 </details>
 
-### 2. Chat with a model
+### Modules
 
-```kotlin
-val llama = LlamaBro.create(application)
-val model = llama.loadModel(ModelSource.file(path))   // a .gguf file on the phone
-val chat = model.conversation(system = "You are a helpful assistant.")
-
-chat.send("Hello").collect()   // streams the reply: chat.reply while it is written, chat.messages after
-val answer = chat.ask("Now say it in French.").valueOrNull()   // or wait for the whole reply
-
-model.close()
-```
-
-### 3. Load by name, get a typed reply
-
-With `llamabro-hub` and `llamabro-typed` added, and the `org.jetbrains.kotlin.plugin.serialization` plugin applied:
-
-```kotlin
-val hub = LlamaBroHub.create(application)
-val model = llama.loadModel(hub.model("unsloth/Qwen3.5-4B-GGUF:Q4_K_M"))   // downloads once, then loads offline
-
-@Serializable data class Review(val stars: Int, val summary: String)
-val review = model.generate<Review>("The battery lasts two days, but the screen scratches.").valueOrNull()
-```
-
-The [SDK guide](sdk/README.md) goes on from here: a full chat screen, tools, voice, embeddings, the Hub, backends and
-errors.
-
-## Modules
-
-All under `io.github.whyisitworking`, all versioned by `llamabro-bom`.
-
-| Module | Add it for | Configuration |
+| Module | What it adds | Configuration |
 |---|---|---|
-| `llamabro` | The core: load a model, chat, `Conversation` with the tool loop and compaction, embeddings, rerank, transcription, a realtime voice session, and every llama-server route as raw JSON | `implementation` |
-| `llamabro-hexagon` | The Snapdragon Hexagon NPU backend | `implementation` |
-| `llamabro-opencl` | The Adreno GPU backend | `implementation` |
-| `llamabro-hub` | Hugging Face search, and downloads that resume and are checked against the published SHA-256 ([D40](docs/decisions.md#d40-every-download-is-hashed)); a model loads by name, and offline once on the phone ([D64](docs/decisions.md#d64-one-call-from-a-hugging-face-name-to-a-loaded-model-through-an-open-modelsource-what-is-on-the-phone-loads-without-the-network)) | `implementation` |
-| `llamabro-hub-work` | A WorkManager download that outlives the app's process | `implementation` |
-| `llamabro-server` | Serve a loaded model to other devices over HTTP with llama-server's API (OpenAI chat, completions, embeddings, Anthropic messages, Responses, audio), opt-in and off the network by default ([D163](docs/decisions.md#d163-serving-over-the-network-is-a-separate-opt-in-module-llamabro-server-core-stays-socket-free)) | `implementation` |
-| `llamabro-typed` | Replies and tools typed by `@Serializable` classes, held to their JSON schema by llama.cpp's grammar ([D63](docs/decisions.md#d63-typed-output-and-typed-tools-share-one-module-llamabro-typed-a-typed-reply-is-a-typedt)) | `implementation` |
-| `llamabro-typed-ksp` | Annotated toolboxes, checked when the app builds | `ksp`, with the BOM again as `ksp(platform(…))` |
-| `llamabro-testing`, `llamabro-hub-testing` | `FakeLlamaBro` and `FakeLlamaBroHub`: the real API over a scripted engine and Hub, for your JVM tests | `testImplementation` |
+| `llamabro` | The engine: chat, conversations with tools and compaction, images, transcription, speech, voice conversations, embeddings, rerank, and every llama-server route | `implementation` |
+| `llamabro-hexagon` | The Snapdragon Hexagon NPU | `implementation` |
+| `llamabro-opencl` | The Adreno GPU | `implementation` |
+| `llamabro-hub` | Hugging Face search, and downloads that resume and verify each file's SHA-256 | `implementation` |
+| `llamabro-hub-work` | Downloads that run in WorkManager and outlive your app's process | `implementation` |
+| `llamabro-server` | Serving a loaded model to other devices over HTTP with llama-server's API, off the network until the app opts in (in the next release) | `implementation` |
+| `llamabro-typed` | Replies and tools typed by `@Serializable` classes | `implementation` |
+| `llamabro-typed-ksp` | Annotated toolboxes, checked when the app builds | `ksp` |
+| `llamabro-testing`, `llamabro-hub-testing` | `FakeLlamaBro` and `FakeLlamaBroHub`: the real API over a scripted engine and Hub | `testImplementation` |
 
-`ksp` is a configuration of its own, so the BOM on `implementation` doesn't reach it:
+## Supported hardware
 
-```kotlin
-ksp(platform("io.github.whyisitworking:llamabro-bom:2.0.0-alpha"))
-ksp("io.github.whyisitworking:llamabro-typed-ksp")
-```
+| Phone | Chip | NPU | GPU | CPU |
+|---|---|:-:|:-:|:-:|
+| OnePlus 13 | Snapdragon 8 Elite (Hexagon v79, Adreno 830) | Tested | Tested | Tested |
+| Other Snapdragon phones | Hexagon v73, v75, v81, v85 | Ships, not yet tested | Ships, not yet tested | Yes |
+| Any other arm64 phone | | | | Yes |
 
-## The demo app
+On a chip that hasn't been tested, a backend that gives wrong output isn't caught by the fallback, so test your target
+phones or pin them to the CPU ([Faster chips](sdk/README.md#faster-chips)). A report from your phone is the most useful
+issue you can open.
 
-A [chat app](demo/README.md) built on the SDK: it finds, downloads and runs models, with pictures, voice notes, a
-captioned voice mode, thinking levels, and two layouts (a sidebar of chats, or a messaging-style list). Install the
-[latest APK](https://github.com/whyisitworking/llama-bro/releases/latest/download/llama-bro-demo.apk), or build
-`:demo:app` from source.
+## Performance
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/speed-dark.svg">
+    <img src="assets/readme/speed-light.svg" width="100%" alt="Speed on each chip, in tokens a second: Qwen3.5 4B and LFM3-Omni 2B reading a 2,048-token prompt and writing up to 128 tokens on the NPU, GPU and CPU of a OnePlus 13">
+  </picture>
+</p>
+
+Measured on a OnePlus 13 through the SDK's public API. Six models from 230M to 4B parameters, drafting, voice,
+search and waiting times are in [BENCHMARKS.md](BENCHMARKS.md), with how each number was measured.
+
+## Under the hood
+
+The speed comes from llama.cpp's backends. Llama Bro's work is getting them into an app, and fixing what broke on
+the way.
+
+- **The NPU, inside an ordinary app.** llama.cpp's Hexagon backend ran from a shell. Llama Bro ships its NPU programs
+  in an AAR and loads them in a normal release build, with no root and no special signing
+  ([F36](docs/research/findings.md#f36), [F62](docs/research/findings.md#f62)).
+- **One line, +67% prompt speed.** With multi-token prediction on, the NPU fell back to a slow kernel. A one-line gate
+  in the Hexagon backend lets it keep the fast one ([F163](docs/research/findings.md#f163)).
+- **The GPU said "8888888…" to every question.** On the Adreno 830, Qwen3.5 answered with eights and Gemma 3 with
+  nothing. Six rounds of bisecting traced it to one OpenCL kernel, which the SDK now turns off ([F75](docs/research/findings.md#f75)).
+- **Speech entirely on the NPU.** LFM3-Omni's speech step hopped between the NPU and the CPU for every audio frame.
+  Rewriting part of its graph keeps it on the NPU, halves that step from 30 ms to 16 ms per frame, and speech runs
+  more than twice as fast as real time ([F156](docs/research/findings.md#f156)).
+- **A voice that knows when to stop.** In about 1 reply in 60, the voice model kept talking long after it had finished.
+  A guard tuned on 600 replies ends those, and leaves every clean reply untouched
+  ([F167](docs/research/findings.md#f167)).
+- **A context that fits.** llama.cpp's own memory check sees all of a phone's RAM as free. The SDK sizes the context
+  against the memory Android actually has available ([F33](docs/research/findings.md#f33),
+  [D33](docs/decisions.md#d33)).
+- **Same answers as the server.** Every build is checked against the `llama-server` binary from the same source, request
+  by request ([testing](docs/testing.md#host-steps)).
+
+Every change to llama.cpp is a patch with its own measurement, listed in [`sdk/native/patches`](sdk/native/patches/README.md).
+The design is in the [architecture](docs/architecture.md), and every choice and measurement behind it is in the
+[decisions](docs/decisions.md) and [findings](docs/research/findings.md).
+
+## Roadmap
+
+- **Now:** serving a loaded model to other devices on your Wi-Fi, and search over your own documents (RAG).
+- **Next:** testing on more phones, starting with other Snapdragon generations.
+- **Later:** Kotlin Multiplatform, then iOS and Flutter.
+
+More in [ROADMAP.md](ROADMAP.md).
+
+## Known issues
+
+<!-- at most four; the rest stay in the findings -->
+
+- A DFlash draft model no longer speeds up JSON on the NPU, measured at llama.cpp b12479 and not re-checked since
+  ([F178](docs/research/findings.md#f178)).
+- Llama 3.2 3B repeats a tool call until the turn limit, as it does on upstream ([F27](docs/research/findings.md#f27)).
+- Any drafting aborts the OpenCL GPU backend, so the SDK never drafts on the GPU ([F80](docs/research/findings.md#f80)).
+- Vulkan runs on the Adreno 830 only with patches, and slower there than the CPU, so it isn't built
+  ([F174](docs/research/findings.md#f174)).
+
+## How it started
+
+<!-- one row per milestone; newest at the bottom -->
+
+| | |
+|--:|---|
+| **Early 2026** | **Hooked.** I was pulling open models from Hugging Face and running them on my Mac, and every road led to llama.cpp: almost every architecture, on almost every chip. I build Android apps for a living, and phones are powerful now. Could mine do this too? |
+| **March 11** | **Into an app.** Guides showed llama.cpp running on a phone through Termux or adb. They proved it could be done, but no normal person opens a terminal to talk to a model. I wanted it inside an app, so I wired llama.cpp in through the NDK. |
+| **Days later** | **The first reply.** A build loaded a model and printed an answer. I couldn't believe the phone in my hand could do that. |
+| **March 13–26** | **0.1 to 1.2.3.** Seventeen releases in two weeks. |
+| **April onward** | **Stalled.** The layer I'd written around llama.cpp was too thin to grow past the basics, and I'd started a new job. The project sat on my GitHub. |
+| **Later that year** | **An interview.** An interviewer lit up when I showed it to them, and it reminded me the project existed. I remembered exactly where v1 had broken down, so first I built a small proof of concept, NPUFun, to answer one question: can a phone's NPU run these models? On my OnePlus 13, it could. |
+| **November 3** | **Rebuilt.** Not a wrapper this time: llama-server's own engine runs inside the app's process and answers exactly as the server does. |
+| **November 5** | **The NPU, from an app.** The first answer from the NPU in an ordinary app, not a shell. |
+| **November 6** | **"8888888…"** The GPU's answer to every question, until I found the kernel behind it. |
+| **November 13** | **The cooler.** The phone ran so hot during benchmarks that it has worn a cooler on its back for every run since. |
+| **November 18** | **600 replies.** The voice model sometimes wouldn't stop talking. Going through 600 replies found the pattern. |
+| **November 23** | **2.0.0-alpha.** On Maven Central. |
+| **Next** | The [roadmap](#roadmap). |
 
 ## Documentation
 
 - [SDK guide](sdk/README.md): the API, task by task.
-- [Architecture](docs/architecture.md): how the engine, backends and memory fit work.
-- [Decisions](docs/decisions.md) (`D<n>`) and [findings](docs/research/findings.md) (`F<n>`): every choice and the
-  measurement behind it. The code cites them.
+- [Architecture](docs/architecture.md): how the engine, the backends and the memory fit work.
+- [Decisions](docs/decisions.md) and [findings](docs/research/findings.md): every choice, and the measurement behind it.
 - [Testing](docs/testing.md): what each check proves. [`research/`](research/README.md) holds the experiments.
+- [Release notes](docs/release-notes.md) and [benchmarks](BENCHMARKS.md).
 
-## Known issues
-
-- At llama.cpp b12479 a DFlash draft model no longer speeds up JSON on the NPU: it writes 14.0 tokens a second against
-  15.4 without, where b12052 gave 2.3× ([F178](docs/research/findings.md#f178-the-readmes-benchmark-run-37-arms-on-the-oneplus-13),
-  [F73](docs/research/findings.md#f73-draft-models-for-qwen35-4b-dflash-decodes-json-23-faster-than-off-and-15-faster-than-mtp-on-the-npu-but-loses-on-prose-and-the-cpu-and-needs-about-29-gb-more-memory-eagle-3-and-dspark-lose-everywhere)).
-- Llama 3.2 3B repeats a tool call until the turn limit, as it does on upstream
-  ([F27](docs/research/findings.md#f27-p1-device-acceptance-qwen35-passes-everything-gemma-3-has-no-tools-llama-32-3b-loops-on-tool-calls)).
-- Speculative decoding aborts the OpenCL GPU backend, so the SDK never drafts on the GPU
-  ([F80](docs/research/findings.md#f80-any-drafting-aborts-the-gpu-backend-f75s-switch-on-or-not-the-p2-reviews-findings-and-what-changed)).
-- Vulkan runs on the Adreno 830 only with patches and is slower there than the CPU and OpenCL, so it is not built
-  ([F174](docs/research/findings.md#vulkan-on-the-adreno-830-retried-f174)).
-
-## Build and contribute
+## Contributing
 
 Open the repository root in Android Studio and run `:demo:app`. It needs the Android SDK, NDK 29, CMake 4.1.2 and the
-llama.cpp submodule (`git submodule update --init sdk/native/third_party/llama.cpp`). The checks:
+llama.cpp submodule (`git submodule update --init sdk/native/third_party/llama.cpp`).
 
 ```bash
-sdk/scripts/check.sh              # the SDK on the host; must print ALL PASS
-sdk/scripts/check.sh --device     # plus tests on an attached device
-demo/scripts/check.sh             # the demo app (add --device for the instrumented tests and journeys)
+sdk/scripts/check.sh            # the SDK on the host; must print ALL PASS
+sdk/scripts/check.sh --device   # plus tests on an attached phone
+demo/scripts/check.sh           # the demo app
 ```
 
-[CONTRIBUTING.md](CONTRIBUTING.md) has the setup and the change workflow, and [docs/testing.md](docs/testing.md) what
-each check proves.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the setup and the workflow for a change.
 
 ## License
 
-Apache License 2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE). Built on
-[llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT). The demo bundles Figtree and Source Serif 4 under the SIL Open
-Font License.
+Apache License 2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Built on
+[llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT) by Georgi Gerganov and its contributors. The demo bundles
+Figtree and Source Serif 4 under the SIL Open Font License.

@@ -68,10 +68,11 @@ import com.suhel.llamabro.demo.ui.settings.AboutScreen
 import com.suhel.llamabro.demo.ui.settings.AppearanceScreen
 import com.suhel.llamabro.demo.ui.settings.DefaultModelScreen
 import com.suhel.llamabro.demo.ui.settings.GlassScreen
+import com.suhel.llamabro.demo.ui.settings.InferenceModelScreen
+import com.suhel.llamabro.demo.ui.settings.InferenceScreen
 import com.suhel.llamabro.demo.ui.settings.InstructionsScreen
 import com.suhel.llamabro.demo.ui.settings.MemoryScreen
-import com.suhel.llamabro.demo.ui.settings.SamplingModelScreen
-import com.suhel.llamabro.demo.ui.settings.SamplingModelsScreen
+import com.suhel.llamabro.demo.ui.settings.ProcessorScreen
 import com.suhel.llamabro.demo.ui.settings.SettingsHome
 import com.suhel.llamabro.demo.ui.settings.SettingsRoutes
 import com.suhel.llamabro.demo.ui.settings.SettingsViewModel
@@ -90,8 +91,8 @@ class ChatChrome(
     val onNewChat: () -> Unit,
     val onGetModels: () -> Unit = {},
     val onToken: () -> Unit = {},
-    /** Settings › Memory, where the chip is chosen (D72). */
-    val onMemory: () -> Unit = {},
+    /** Settings › Processor, where the chip is chosen (D72, D157). */
+    val onProcessor: () -> Unit = {},
     /** The id of the chat on screen once it has one: a new chat is made with its first message. */
     val onChatResolved: (Long) -> Unit = {},
     /** The model a new chat starts on, chosen on a model's card ("Chat with"); null for the usual one. */
@@ -104,11 +105,11 @@ private val settingsRoutes =
         instructions = Routes.INSTRUCTIONS,
         defaultModel = Routes.DEFAULT_MODEL,
         token = Routes.TOKEN,
-        storage = Routes.models(),
+        inference = Routes.INFERENCE,
+        processor = Routes.PROCESSOR,
         memory = Routes.MEMORY,
-        sampling = Routes.SAMPLING,
-        about = Routes.ABOUT,
         voice = Routes.VOICE,
+        about = Routes.ABOUT,
     )
 
 /**
@@ -333,16 +334,17 @@ private fun Graph(
             if (layout == AppLayout.Sidebar) popUpTo(Routes.CHAT_PATTERN) { inclusive = true }
         }
     }
-    // screens fade through, never crossfade: the chat's greeting, orb and chips drew over
-    // the Models rows for 300 ms. The one leaving fades out, then the one arriving fades in, on the text motion tokens
+    // screens fade through, never crossfade: the chat's greeting, orb and chips drew over the Models rows for 300 ms.
+    // The one leaving fades out, then the one arriving fades in, on the text motion tokens, both along one axis (D160):
+    // forward from the end, back from the start
     val still = animationsDisabled()
     NavHost(
         nav,
         startDestination = start,
         enterTransition = { screenEnter(still) },
         exitTransition = { screenExit(still) },
-        popEnterTransition = { screenEnter(still) },
-        popExitTransition = { screenExit(still) },
+        popEnterTransition = { screenEnter(still, back = true) },
+        popExitTransition = { screenExit(still, back = true) },
     ) {
         composable(Routes.CHATS) {
             ChatListHome(shell, openChat, onNewChat = { openChat(Routes.NEW_CHAT_ID) }, onDelete = deleteChat)
@@ -373,7 +375,7 @@ private fun Graph(
                     { openChat(Routes.NEW_CHAT_ID) },
                     { models("") },
                     { nav.navigate(Routes.TOKEN) { launchSingleTop = true } },
-                    onMemory = { nav.navigate(Routes.MEMORY) { launchSingleTop = true } },
+                    onProcessor = { nav.navigate(Routes.PROCESSOR) { launchSingleTop = true } },
                     onChatResolved = { onChatResolved(entry.id, it) },
                     startModel = startModel,
                 ),
@@ -424,21 +426,22 @@ private fun Graph(
         composable(Routes.TOKEN) { TokenScreen(settings, back) }
         composable(Routes.MEMORY) { MemoryScreen(settings, back) }
         composable(Routes.VOICE) { VoiceScreen(settings, back) }
-        composable(Routes.SAMPLING) {
-            SamplingModelsScreen(settings, back) { key ->
-                nav.navigate(Routes.samplingModel(key.toString())) { launchSingleTop = true }
+        composable(Routes.PROCESSOR) { ProcessorScreen(settings, back) }
+        composable(Routes.INFERENCE) {
+            InferenceScreen(settings, back) { key ->
+                nav.navigate(Routes.inferenceModel(key.toString())) { launchSingleTop = true }
             }
         }
         composable(
-            Routes.SAMPLING_MODEL,
-            arguments = listOf(navArgument(Routes.SAMPLING_KEY_ARG) { type = NavType.StringType }),
+            Routes.INFERENCE_MODEL,
+            arguments = listOf(navArgument(Routes.INFERENCE_KEY_ARG) { type = NavType.StringType }),
         ) { entry ->
             val key =
                 entry.arguments
                     ?.getString(
-                        Routes.SAMPLING_KEY_ARG,
+                        Routes.INFERENCE_KEY_ARG,
                     )?.let { runCatching { HfModel.parse(it) }.getOrNull() }
-            if (key != null) SamplingModelScreen(settings, key, back)
+            if (key != null) InferenceModelScreen(settings, key, back)
         }
         composable(Routes.ABOUT) { AboutScreen(back) }
         composable(Routes.GLASS) { GlassScreen(settings::setGlass, back) }

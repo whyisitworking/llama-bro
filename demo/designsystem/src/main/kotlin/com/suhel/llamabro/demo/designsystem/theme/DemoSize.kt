@@ -70,7 +70,7 @@ object DemoSize {
 
     /** The brand mark in a hero, and in an empty state. */
     val markHero = 56.dp
-    val markEmpty = 40.dp
+    val markEmpty = 72.dp
 
     /** A starter chip (Material's 32 dp chip). */
     val chip = 32.dp
@@ -116,11 +116,11 @@ object DemoSize {
     val voiceWaveWidth = 136.dp
 
     /**
-     * Voice mode (D100): the orb at the voice view's size, the hold-to-talk button and its glyph, and how far the
-     * caption's older lines fade at its top. Chosen: the orb leads the view as the hero orb leads the first run, and
-     * the talk button is Material's large floating button rounded to a circle.
+     * Voice mode (D100): the logo at the voice view's size, the hold-to-talk button and its glyph, and how far the
+     * caption's older lines fade at its top. Chosen: the logo leads the view as the hero logo leads the first run
+     * (D161), and the talk button is Material's large floating button rounded to a circle.
      */
-    val orbVoice = 152.dp
+    val logoVoice = 152.dp
     val talkButton = 80.dp
     val talkGlyph = 32.dp
     val captionFade = 36.dp

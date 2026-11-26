@@ -95,8 +95,9 @@ class ServerMode(
     fun blocksSwitch(to: HfModel): Boolean = _served.value.let { it != null && it != to }
 
     /**
-     * Loads [model] with [slots] requests at once (1, 2 or 4) on the chip and context chosen in Settings › Memory,
-     * and serves it; returns once it serves or failed ([state]). A server already on stops first.
+     * Loads [model] with [slots] requests at once (1, 2 or 4) on the chip chosen in Settings › Processor and the
+     * context in Settings › Inference (D157), and serves it; returns once it serves or failed ([state]). A server
+     * already on stops first.
      */
     suspend fun start(model: HfModel, slots: Int) {
         require(slots in SLOTS) { "slots $slots is not one of $SLOTS" }

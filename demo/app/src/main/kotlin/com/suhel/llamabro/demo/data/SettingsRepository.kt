@@ -32,7 +32,7 @@ enum class KeepLoaded(val millis: Long?) {
 }
 
 /**
- * The chip the person chose in Settings › Memory (D72). [Automatic] is the SDK's `Auto`; a chip is `Prefer`, so a
+ * The chip the person chose in Settings › Processor (D72). [Automatic] is the SDK's `Auto`; a chip is `Prefer`, so a
  * chip that can't load the model, or that this phone doesn't have, falls back in `Auto`'s order instead of failing.
  */
 enum class ChipChoice(val kind: DeviceKind?) {
@@ -46,8 +46,8 @@ enum class ChipChoice(val kind: DeviceKind?) {
 }
 
 /**
- * The context length chosen in Settings › Memory: [Automatic] is the SDK's `Auto` (the most that fits in memory, up to
- * 16k); the others are `UpTo`, a ceiling the SDK still shrinks to fit memory, so a load never fails for it.
+ * The context length chosen in Settings › Inference: [Automatic] is the SDK's `Auto` (the most that fits in memory, up
+ * to 16k); the others are `UpTo`, a ceiling the SDK still shrinks to fit memory, so a load never fails for it.
  */
 enum class ContextChoice(val tokens: Int?) {
     Automatic(null),
@@ -61,7 +61,7 @@ enum class ContextChoice(val tokens: Int?) {
 }
 
 /**
- * The reply length chosen in Settings › Sampling, for every model and chat: [Automatic] is the Think level's limit
+ * The reply length chosen in Settings › Inference, for every model and chat: [Automatic] is the Think level's limit
  * (D60); [Short] and [Long] are a fixed limit, thinking and answer together; [NoLimit] sends none, so a reply runs
  * until the model stops or the context is full.
  */
@@ -72,7 +72,7 @@ enum class ReplyLength {
     NoLimit,
 }
 
-/** What the next load asks for: the chip choice and the context length (Settings › Memory). */
+/** What the next load asks for: the chip choice and the context length (Settings › Processor and Inference). */
 val AppSettings.loadConfig: LoadConfig get() = LoadConfig(chip.policy, context.size)
 
 data class AppSettings(
@@ -213,16 +213,29 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     }
 
     /**
-     * The models (by key) that heard on their last load (`ModelInfo.supportsAudio`), so a chat shows the mic before
-     * its model is loaded again (D76): the SDK can only say once a model is loaded.
+     * What each model (by key) can do, so a chat shows the Think chip, photos and the mic before its model loads: read
+     * from its header once it is on the phone (D155), then corrected by each load (D76).
      */
-    val hearingModels: Flow<Set<String>> = store.data.map { it[HEARING_MODELS].orEmpty() }
+    val modelSenses: Flow<Map<String, ModelSenses>> =
+        store.data.map { p ->
+            p
+                .asMap()
+                .mapNotNull { (k, v) ->
+                    k.name.takeIf { it.startsWith(SENSES_PREFIX) }?.let { name ->
+                        name.removePrefix(SENSES_PREFIX) to decodeSenses(v as? String)
+                    }
+                }.toMap()
+        }
 
-    /** Records whether [modelKey] heard when it loaded. */
-    suspend fun setHears(modelKey: String, hears: Boolean) {
+    /**
+     * Records what [modelKey] can do; [ifUnknown] writes only when nothing is recorded yet, so a header read never
+     * overwrites what a load said meanwhile. The first write drops the hearing-only set it replaces.
+     */
+    suspend fun setSenses(modelKey: String, senses: ModelSenses, ifUnknown: Boolean = false) {
+        val key = stringPreferencesKey(SENSES_PREFIX + modelKey)
         store.edit {
-            val now = it[HEARING_MODELS].orEmpty()
-            if ((modelKey in now) != hears) it[HEARING_MODELS] = if (hears) now + modelKey else now - modelKey
+            if (!ifUnknown || it[key] == null) it[key] = encodeSenses(senses)
+            it.remove(HEARING_MODELS)
         }
     }
 
@@ -311,9 +324,12 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     private companion object {
         const val SAMPLING_PREFIX = "sampling:"
+        const val SENSES_PREFIX = "senses:"
         val PENDING_DOWNLOADS = stringSetPreferencesKey("pending_downloads")
         val PAUSED_DOWNLOADS = stringSetPreferencesKey("paused_downloads")
         val DOWNLOADS_NEEDING_TOKEN = stringSetPreferencesKey("downloads_needing_token")
+
+        /** Before D155: the models that heard on their last load. Each model's senses hold it now. */
         val HEARING_MODELS = stringSetPreferencesKey("hearing_models")
         val TALKING_MODELS = stringSetPreferencesKey("talking_models")
 
@@ -336,4 +352,20 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val SEARCH_SIZE = stringPreferencesKey("search_size")
         val SEARCH_SEES_IMAGES = booleanPreferencesKey("search_sees_images")
     }
+}
+
+/** What a model can do: think (the Think chip), see pictures, hear voice messages (D76, D155). */
+data class ModelSenses(val thinks: Boolean, val sees: Boolean, val hears: Boolean)
+
+/** A model's senses as stored: the names of those it has, separated by commas. */
+private fun encodeSenses(senses: ModelSenses): String =
+    listOfNotNull(
+        "thinks".takeIf { senses.thinks },
+        "sees".takeIf { senses.sees },
+        "hears".takeIf { senses.hears },
+    ).joinToString(",")
+
+private fun decodeSenses(stored: String?): ModelSenses {
+    val names = stored.orEmpty().split(",")
+    return ModelSenses(thinks = "thinks" in names, sees = "sees" in names, hears = "hears" in names)
 }

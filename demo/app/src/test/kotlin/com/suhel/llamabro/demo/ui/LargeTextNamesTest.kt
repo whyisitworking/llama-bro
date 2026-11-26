@@ -15,7 +15,7 @@ import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.suhel.llamabro.demo.ui.chat.ChatContentPreview
 import com.suhel.llamabro.demo.ui.chat.ChatScreenStates
-import com.suhel.llamabro.demo.ui.settings.SamplingModelPreview
+import com.suhel.llamabro.demo.ui.settings.InferenceModelPreview
 import com.suhel.llamabro.demo.ui.settings.SamplingStates
 import org.junit.Assert.assertFalse
 import org.junit.Rule
@@ -60,7 +60,7 @@ class LargeTextNamesTest {
     }
 
     @Test fun atTwiceTheFontASegmentsLabelIsWhole() {
-        showLarge { SamplingModelPreview(SamplingStates().values.first()) }
+        showLarge { InferenceModelPreview(SamplingStates().values.first()) }
         assertWhole(hasText("Not thinking"), "\"Not thinking\"")
     }
 }

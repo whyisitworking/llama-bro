@@ -59,7 +59,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import com.suhel.llamabro.demo.designsystem.theme.BarGlass
 import com.suhel.llamabro.demo.designsystem.theme.FadeMask
-import com.suhel.llamabro.demo.designsystem.theme.GlassTier
 import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.LocalGlass
 import com.suhel.llamabro.demo.designsystem.theme.LocalGlassTier
@@ -269,15 +268,10 @@ private fun BoxScope.ShaderBlur(
 ) {
     val page = backdrop.page ?: return
     val style = LocalGlass.current.bar
-    // a heavy blur runs on a copy of the page at half its resolution, a quarter of the pixels (F185): drawn back up,
-    // the blur hides the copy's softness, and where the blur eases out the copy fades into the page
+    // the blur runs on a copy of the page as much smaller as the blur can hide (F185, D162): drawn back up, the blur
+    // hides the copy's softness, and where the blur eases out the copy fades into the page
     val small = rememberGraphicsLayer()
-    val scale =
-        when {
-            !style.heavy -> 1f
-            LocalGlassTier.current == GlassTier.Light -> QUARTER_RESOLUTION
-            else -> HALF_RESOLUTION
-        }
+    val scale = style.reduction(LocalGlassTier.current)
     Box(
         Modifier.matchParentSize().drawWithCache {
             val reduced = IntSize(ceil(size.width / scale).toInt(), ceil(size.height / scale).toInt())
@@ -347,15 +341,6 @@ private fun eased(edge: Edge, height: Float, hold: Float, color: Color): Brush {
 }
 
 private const val EASE_STEPS = 12
-
-/**
- * How much smaller than the screen a heavy bar blur ([BarGlass.heavy]) is drawn: half across and down, a quarter of the
- * pixels (F185).
- */
-private const val HALF_RESOLUTION = 2f
-
-/** How much smaller a heavy bar blur is drawn on a weaker phone ([GlassTier.Light], D153): a 16th of the pixels. */
-private const val QUARTER_RESOLUTION = 4f
 
 /**
  * The progressive blur (Android 13 and up): a separable Gaussian whose radius follows [strength] from the screen's
@@ -640,7 +625,7 @@ private fun MergedShape.onBar(bar: Offset, scale: Float, density: Density): BarL
             rect = Rect(at.left / scale, at.top / scale, at.right / scale, at.bottom / scale),
             corner = corner / scale,
             bezel = minOf(style.bezel.toPx(), corner) / scale,
-            refraction = style.refraction.toPx() / scale,
+            refraction = style.refraction.toPx() * bend / scale,
             dispersion = style.dispersion,
             reach = 2f * style.blur.toPx() / scale,
             veil = style.veil,

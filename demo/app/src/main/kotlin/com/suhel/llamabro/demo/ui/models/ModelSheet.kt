@@ -1,8 +1,10 @@
 package com.suhel.llamabro.demo.ui.models
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -15,14 +17,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.suhel.llamabro.demo.designsystem.components.DemoDialog
+import com.suhel.llamabro.demo.designsystem.components.DemoIcons
 import com.suhel.llamabro.demo.designsystem.components.DemoSheet
 import com.suhel.llamabro.demo.designsystem.components.DemoSheetState
 import com.suhel.llamabro.demo.designsystem.components.DownloadPanel
@@ -31,6 +37,7 @@ import com.suhel.llamabro.demo.designsystem.components.DownloadView
 import com.suhel.llamabro.demo.designsystem.components.FadeThrough
 import com.suhel.llamabro.demo.designsystem.components.FitSymbol
 import com.suhel.llamabro.demo.designsystem.components.Gap
+import com.suhel.llamabro.demo.designsystem.components.IconAction
 import com.suhel.llamabro.demo.designsystem.components.Inline
 import com.suhel.llamabro.demo.designsystem.components.ListRow
 import com.suhel.llamabro.demo.designsystem.components.MarkdownText
@@ -59,6 +66,7 @@ import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 import com.suhel.llamabro.demo.designsystem.theme.animationsDisabled
 import com.suhel.llamabro.demo.models.FitView
 import com.suhel.llamabro.demo.models.Format
+import com.suhel.llamabro.demo.models.LinkTarget
 import com.suhel.llamabro.demo.models.SizeTier
 import com.suhel.llamabro.demo.ui.Screens
 import com.suhel.llamabro.hub.HfModel
@@ -66,16 +74,19 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
- * A model's card: the stateful end. Its view model lives in a store that is cleared when the card closes, which stops
- * its work, and kept across a rotation. Every action that closes the card slides it down first (models audit S9): Get
- * asks about notifications, starts the download and closes; "Start a chat" opens a new chat on the model and closes;
- * a null [onChatWith] (a card opened from a chat, on the model it runs) offers none. [onExactFit] hears the
+ * One card of a [ModelCardStack]: the stateful end. Its view model lives in the store of its [place] in the stack,
+ * cleared when the card is popped or the sheet closes, which stops its work, and kept across a rotation. Every action
+ * that closes the card slides it down first (models audit S9): Get asks about notifications, starts the download and
+ * closes; "Start a chat" opens a new chat on the model and closes; a null [onChatWith] (a card opened from a chat, on
+ * the model it runs) offers none. Back, and a link on the page to another model, slide it down too before the next
+ * card rises (D156); any other link, and the top row's "Open on Hugging Face", open the browser. [onExactFit] hears the
  * Recommended file's measured fit once.
  */
 @Composable
-fun ModelSheetRoute(
+internal fun ModelSheetRoute(
     screens: Screens,
     row: ModelEntry,
+    place: CardPlace,
     onStarted: (HfModel) -> Unit,
     onDismiss: () -> Unit,
     onChatWith: ((HfModel) -> Unit)?,
@@ -83,23 +94,49 @@ fun ModelSheetRoute(
     startTier: SizeTier? = null,
 ) {
     val viewModel =
-        viewModel(viewModelStoreOwner = rememberSheetViewModelOwner("sheet:${row.repo}")) {
+        viewModel(viewModelStoreOwner = place.owner) {
             screens.modelSheetViewModel(row, onExactFit, startTier)
         }
     val view by viewModel.view.collectAsStateWithLifecycle()
     val problem by viewModel.problem.collectAsStateWithLifecycle()
     val asking by viewModel.asking.collectAsStateWithLifecycle()
+    val opening by viewModel.opening.collectAsStateWithLifecycle()
     val sheet = rememberDemoSheetState()
     val scope = rememberCoroutineScope()
     val closer = remember(sheet, scope) { CardCloser(sheet, scope) }
-    val close = { then: () -> Unit -> closer.close(view, then) }
+    val close = { then: () -> Unit -> closer.close(view, then = then) }
+    // a close that moves to another card: the card stops taking links until it is shown again (only the latest tap
+    // acts, and nothing stays queued for when Back returns here)
+    val leave = { then: () -> Unit ->
+        viewModel.leave()
+        closer.close(view, onCaught = viewModel::stay, then = then)
+    }
+    // shown (again, after Back from a card over it): its links work
+    LaunchedEffect(viewModel) { viewModel.stay() }
     val get =
         rememberAskNotificationsThen(viewModel.asksForNotifications) {
             viewModel.get()?.let(onStarted)
             close(onDismiss)
         }
+    val uri = LocalUriHandler.current
+    val related by rememberUpdatedState(place.onRelated)
+    LaunchedEffect(viewModel) {
+        viewModel.opened.collect { target ->
+            when (target) {
+                // a link to this very card arrives as the browser (ModelSheetViewModel.openLink)
+                is LinkTarget.Card -> {
+                    val entry = ModelEntry.of(target.model)
+                    leave { related(entry) }
+                }
+
+                is LinkTarget.Browser -> {
+                    openOutside(uri, target.url)
+                }
+            }
+        }
+    }
     val actions =
-        remember(viewModel, get, onChatWith, onDismiss) {
+        remember(viewModel, get, onChatWith, onDismiss, place, uri) {
             CardActions(
                 onMode = viewModel::setMode,
                 onSelect = viewModel::select,
@@ -120,6 +157,9 @@ fun ModelSheetRoute(
                         }
                     }
                 },
+                onBack = place.onBack?.let { back -> { leave(back) } },
+                onOpenInBrowser = { openOutside(uri, "$HUB_ORIGIN/${row.repo}") },
+                onLink = viewModel::openLink,
             )
         }
     // the sheet opens once every local read has answered, so its first frame is final (D118)
@@ -131,9 +171,18 @@ fun ModelSheetRoute(
             sheet,
             problem,
             asking,
-            chatWith =
-                onChatWith != null,
+            chatWith = onChatWith != null,
+            opening = opening,
         )
+    }
+}
+
+/** Opens [url] outside the app; a phone with nothing to open it leaves the tap without effect. */
+private fun openOutside(uri: UriHandler, url: String) {
+    try {
+        uri.openUri(url)
+    } catch (_: IllegalArgumentException) {
+        Unit // no browser: the card stays as it was
     }
 }
 
@@ -149,14 +198,24 @@ internal class CardCloser(private val sheet: DemoSheetState, private val scope: 
     /** The card to draw: the one it had while it closes, else [live]. */
     fun shown(live: CardView?): CardView? = frozen ?: live
 
-    fun close(now: CardView?, then: () -> Unit) {
+    // a close under way: a second (a tap during the slide) is ignored, so its action never runs after the first's
+    private var closing = false
+
+    /** Slides the sheet down, then [then]; [onCaught] if a drag catches it and it stays up. */
+    fun close(now: CardView?, onCaught: () -> Unit = {}, then: () -> Unit) {
+        if (closing) return
+        closing = true
         frozen = now
         scope.launch {
             try {
                 sheet.hideThenDismiss(then)
             } finally {
+                closing = false
                 // the hide was caught (or cancelled) and the sheet is still up: it is live again
-                if (sheet.isVisible) frozen = null
+                if (sheet.isVisible) {
+                    frozen = null
+                    onCaught()
+                }
             }
         }
     }
@@ -177,12 +236,19 @@ class CardActions(
     val onDoneChoosing: () -> Unit = {},
     val onDismissProblem: () -> Unit = {},
     val onStartChat: () -> Unit = {},
+    /** Back to the card under this one; null on the root card, which has no Back. */
+    val onBack: (() -> Unit)? = null,
+    val onOpenInBrowser: () -> Unit = {},
+    /** A link on the page was tapped. */
+    val onLink: (String) -> Unit = {},
 )
 
 /**
  * The card, stateless (docs/design/models-page.md §4): the expandable sheet with the [view]'s parts in its one scroll
  * and its foot pinned under it, 64 dp in every state. [problem] (a cancel that couldn't stop the work) sits under the
- * state line; [asking] is the question a Cancel past 300 MB asks, in a dialog whose confirm is in danger.
+ * state line, and [opening] (the repo a tapped link names, while it is looked up) where it would; [asking] is the
+ * question a Cancel past 300 MB asks, in a dialog whose confirm is in danger. On a card with [CardActions.onBack],
+ * the system's Back goes back a card before it closes the sheet.
  */
 @Composable
 fun ModelCardSheet(
@@ -193,6 +259,7 @@ fun ModelCardSheet(
     problem: String? = null,
     asking: String? = null,
     chatWith: Boolean = true,
+    opening: String? = null,
 ) {
     DemoSheet(
         onDismissRequest = onDismiss,
@@ -200,7 +267,10 @@ fun ModelCardSheet(
         state = state,
         pinned = { CardFootView(view.foot, actions, chatWith) },
     ) {
-        CardBody(view, actions, problem)
+        // registered inside the sheet, after its own, so it is asked first
+        val back = actions.onBack
+        BackHandler(enabled = back != null) { back?.invoke() }
+        CardBody(view, actions, problem, opening)
     }
     if (asking != null) {
         DemoDialog(
@@ -222,8 +292,8 @@ fun ModelCardSheet(
  * (the line, the choice) unfold and fold, fading, never in one frame.
  */
 @Composable
-fun ColumnScope.CardBody(view: CardView, actions: CardActions, problem: String? = null) {
-    HeaderPart(view.header)
+fun ColumnScope.CardBody(view: CardView, actions: CardActions, problem: String? = null, opening: String? = null) {
+    HeaderPart(view.header, actions)
     Unfold(view.state.text) { text ->
         FadeThrough(text, Modifier.fillMaxWidth().padding(top = DemoSpacing.block)) { shown ->
             Text(
@@ -244,8 +314,11 @@ fun ColumnScope.CardBody(view: CardView, actions: CardActions, problem: String? 
             failure = true,
         )
     }
+    if (opening != null) {
+        Notice("Opening $opening…", Modifier.testTag("sheet_opening"), inset = false)
+    }
     ShownChoice(view.choice, actions)
-    PagePart(view.page, view.header.repo)
+    PagePart(view.page, view.header.repo, actions.onLink)
 }
 
 /**
@@ -370,14 +443,15 @@ private fun FootLine(text: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * The name in the serif, Regular, and one quiet line under it (D123): the maker, what the model can do as icons with
- * no words (a screen reader hears them), and the fit symbol in its colour. The line is held from the first frame, so
- * a maker or a fit arriving moves nothing. The repo is the page's source, at its end.
+ * The card's top row (D156), then the name in the serif, Regular, and one quiet line under it (D123): the maker, what
+ * the model can do as icons with no words (a screen reader hears them), and the fit symbol in its colour. The line is
+ * held from the first frame, so a maker or a fit arriving moves nothing. The repo is the page's source, at its end.
  */
 @Composable
-private fun HeaderPart(header: CardHeader) {
+private fun HeaderPart(header: CardHeader, actions: CardActions) {
     val colors = LocalDemoColors.current
     Stack(Gap.Inline, Modifier.fillMaxWidth().testTag("card_header")) {
+        CardTopRow(actions)
         Text(header.name, color = colors.ink, style = DemoType.cardTitle)
         ModelFactsLine(
             header.maker,
@@ -400,6 +474,27 @@ private fun HeaderPart(header: CardHeader) {
                     ?.label
                     ?.text()
                     .orEmpty(),
+        )
+    }
+}
+
+/**
+ * Back, on a card a link opened over another, and at the end the card's model on Hugging Face, in every card: small
+ * icons, so the row stays quieter than the name under it.
+ */
+@Composable
+private fun CardTopRow(actions: CardActions) {
+    Row(Modifier.fillMaxWidth().testTag("card_top_row"), verticalAlignment = Alignment.CenterVertically) {
+        actions.onBack?.let { back ->
+            IconAction(DemoIcons.Back, "Back", back, Modifier.testTag("card_back"), small = true)
+        }
+        Spacer(Modifier.weight(1f))
+        IconAction(
+            DemoIcons.OpenExternal,
+            "Open on Hugging Face",
+            actions.onOpenInBrowser,
+            Modifier.testTag("card_open_hub"),
+            small = true,
         )
     }
 }
@@ -603,10 +698,10 @@ private fun AdvancedQuants(choice: ChoiceView, actions: CardActions, reveal: She
  * The model's page under the card's own parts, after a larger gap: a quiet "About" that says whose words follow
  * (models audit S6), the page in page mode, muted and small (D123), and its source, the [repo], at its end; nothing
  * while it isn't known (no bar, S4), and nothing when it couldn't be read: the choice's one notice and its Try again
- * cover it (S20).
+ * cover it (S20). A tapped link goes to [onLink], which opens a linked model's card or the browser (D156).
  */
 @Composable
-private fun PagePart(page: PageView, repo: String) {
+private fun PagePart(page: PageView, repo: String, onLink: (String) -> Unit) {
     when (page) {
         PageView.Unknown, PageView.None, is PageView.Failed -> {
             Unit
@@ -623,6 +718,7 @@ private fun PagePart(page: PageView, repo: String) {
                     onCopyCode = {},
                     Modifier.fillMaxWidth().testTag("model_page"),
                     page = true,
+                    onLink = onLink,
                 )
                 Text(
                     "Source: $repo",
@@ -639,4 +735,5 @@ private fun PagePart(page: PageView, repo: String) {
 
 internal const val PAGE_OVERLINE = "About"
 internal const val ANOTHER_SIZE = "Another size"
+private const val HUB_ORIGIN = "https://huggingface.co"
 private const val ON_PHONE = "On this phone"

@@ -14,6 +14,7 @@ import com.suhel.llamabro.demo.data.ChatRepository
 import com.suhel.llamabro.demo.data.MessageChange
 import com.suhel.llamabro.demo.data.MessageKind
 import com.suhel.llamabro.demo.data.MessageState
+import com.suhel.llamabro.demo.data.ModelSenses
 import com.suhel.llamabro.demo.data.NewMessage
 import com.suhel.llamabro.demo.data.NewVoice
 import com.suhel.llamabro.demo.data.SettingsRepository
@@ -42,6 +43,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
@@ -134,12 +136,20 @@ class ChatEngine(
      */
     private val card: (HfModel) -> CardSampling? = { Catalog.byRepo(it.repo)?.sampling },
     /**
+     * What a model on the phone can do, read from its header before it loads (D155); null when it can't be told. The
+     * app reads the hub's; tests answer for it.
+     */
+    private val readSenses: suspend (HfModel) -> ModelSenses? = { null },
+    /**
      * The model server mode serves, if any (docs/design/server.md §3): a turn on it shares the load whatever its
      * config, and the model is not freed while it is served.
      */
     private val served: () -> HfModel? = { null },
 ) {
     private val leases = ModelLeases(host, settings, served)
+
+    /** Stores each model's header senses once it is on the phone, for every chat (D155). */
+    private val sensesReader = SensesReader(settings, readSenses)
     private val activeTurns get() = leases.activeTurns
 
     /**
@@ -254,12 +264,6 @@ class ChatEngine(
         private val _limit = MutableStateFlow<Limit?>(null)
         val limit: StateFlow<Limit?> = _limit.asStateFlow()
 
-        // user input and engine: the Think level chosen, null for a model that can't think
-        private val _think = MutableStateFlow<Think?>(null)
-
-        /** Null when the model can't think. */
-        val think: StateFlow<Think?> = _think.asStateFlow()
-
         // the engine's own source: written by the lookup, the first send and a switch
         private val choice = MutableStateFlow<ModelChoice>(ModelChoice.Unknown)
         private val library: StateFlow<List<LibraryModel>?> =
@@ -286,15 +290,37 @@ class ChatEngine(
                     }
                 }.stateIn(hs, SharingStarted.Eagerly, "")
 
+        /** What the chat's model can do as the chat shows it ([sensesOf]); nothing while no model is chosen. */
+        private val senses: StateFlow<Senses> =
+            combine(
+                choice,
+                host.state,
+                settings.modelSenses,
+                settings.talkingModels,
+            ) { chosen, hostState, known, talk ->
+                chosen.key?.let { sensesOf(it, hostState, known[it.toString()], talk.keys) } ?: NO_MODEL_SENSES
+            }.stateIn(hs, SharingStarted.Eagerly, NO_MODEL_SENSES)
+
+        // user input: the Think level chosen; it outlives a switch to a model that can't think and back
+        private val thinkLevel = MutableStateFlow(Think.Off)
+
+        /**
+         * The Think chip: the level chosen, or null when the model can't think. Shown from the header before a load,
+         * corrected by the load (D155). A turn never reads it ([levelFor]).
+         */
+        val think: StateFlow<Think?> =
+            combine(senses.map { it.thinks }, thinkLevel) { can, level -> if (can) level else null }
+                .stateIn(hs, SharingStarted.Eagerly, null)
+
         val model: StateFlow<ChatModelState> =
             combine(
                 choice,
                 library,
                 host.state,
-                settings.hearingModels,
+                settings.modelSenses,
                 settings.talkingModels,
-            ) { chosen, lib, hostState, heard, talking ->
-                ModelInputs(chosen, lib, hostState, heard, talking.keys)
+            ) { chosen, lib, hostState, known, talking ->
+                ModelInputs(chosen, lib, hostState, known, talking.keys)
             }.flatMapLatest { inputs ->
                 val key = inputs.choice.key
                 val lib = inputs.library
@@ -314,7 +340,7 @@ class ChatEngine(
                         if (lib.none { it.key == key }) {
                             models.state(key).map { missingOrDownloading(name, it) }
                         } else {
-                            flowOf(readyOrWaking(key, name, hostState, inputs.heard, inputs.talking))
+                            flowOf(readyOrWaking(key, name, hostState, inputs.senses, inputs.talking))
                         }
                     }
                 }
@@ -346,7 +372,6 @@ class ChatEngine(
             hs.launch {
                 val found = initialModelKey()
                 choice.update { it.lookedUp(found) }
-                syncThink()
             }
             // a model that arrives (a download finishes) answers what was held
             hs.launch { library.collect { if (it != null) pump() } }
@@ -359,6 +384,15 @@ class ChatEngine(
                 }.filterNotNull()
                     .distinctUntilChanged()
                     .collect { card(it) }
+            }
+            // the header's word on what a model can do, once it is on the phone: the chip, photos and the mic show
+            // before the first load (D155); read once, on the phone, never over the network. The latest model's read
+            // starts at once: a slow one for the model left behind is cancelled, and read again when it is chosen
+            hs.launch {
+                combine(choice, library) { chosen, lib -> chosen.key?.takeIf { k -> lib?.any { it.key == k } == true } }
+                    .filterNotNull()
+                    .distinctUntilChanged()
+                    .collectLatest { sensesReader.ensure(it) }
             }
         }
 
@@ -417,13 +451,15 @@ class ChatEngine(
 
         /**
          * Whether [key]'s model refuses the message's [pictures] or [voice] message; the limit line then says why. Its
-         * own answer once it is loaded, else what the catalog says about it.
+         * own answer once it is loaded, else what its header or last load said, else the catalog ([sensesOf]).
          */
-        private fun refuses(key: HfModel, pictures: Boolean, voice: Boolean): Boolean {
-            val ready = (model.value as? ChatModelState.Ready)?.takeIf { it.name == Names.of(key) }
-            val sees = ready?.sees ?: Catalog.byKey(key)?.sees ?: false
-            val hears = ready?.hears == true
-            val refused = refusal(sees, hears, pictures, voice, Names.of(key), visionModelName()) ?: return false
+        private suspend fun refuses(key: HfModel, pictures: Boolean, voice: Boolean): Boolean {
+            val known = settings.modelSenses.first()
+            val talking = settings.talkingModels.first().keys
+            val senses = sensesOf(key, host.state.value, known[key.toString()], talking)
+            val refused =
+                refusal(senses.sees, senses.hears, pictures, voice, Names.of(key), visionModelName(known))
+                    ?: return false
             _limit.value = refused
             return true
         }
@@ -525,7 +561,6 @@ class ChatEngine(
                 _limit.value = null
                 choice.value = ModelChoice.Chosen(key)
                 val id = ensureChat() ?: return@rewriting false
-                syncThink()
                 if (switching) chats.append(id, switchNotice(key, Names.of(key), clock()))
                 chats.setModel(id, key.toString())
                 settings.setLastModel(key.toString())
@@ -534,7 +569,7 @@ class ChatEngine(
         }
 
         fun setThink(level: Think) {
-            if (_think.value != null) _think.value = level
+            thinkLevel.value = level
         }
 
         // ---- the engine ----------------------------------------------------------------------------------
@@ -693,7 +728,7 @@ class ChatEngine(
                     user,
                     text,
                     media,
-                    turnOptions(id, key, _think.value, continues = false),
+                    turnOptions(id, key, levelFor(key, loaded.info), continues = false),
                     draft,
                 )
             }
@@ -710,7 +745,6 @@ class ChatEngine(
                 beforeTurn()
                 val held = leases.load(key, Names.of(key), _limit) ?: return
                 lease = held
-                syncThink(held.model.info)
                 block(held.model)
             } finally {
                 lease?.release()
@@ -810,7 +844,7 @@ class ChatEngine(
                 user,
                 "",
                 emptyArray(),
-                turnOptions(id, key, _think.value, continues = true),
+                turnOptions(id, key, levelFor(key, loaded.info), continues = true),
                 draft,
             )
             invalidate()
@@ -923,12 +957,18 @@ class ChatEngine(
                 chats.createChat(key.toString()).also { _chatId.value = it }
             }
 
-        private fun syncThink(info: ModelInfo? = null) {
-            val key = choice.value.key ?: return
-            val catalog = Catalog.byKey(key)
-            val can = if (info != null) Thinking.canThink(info, catalog) else catalog?.thinks == true
-            _think.update { current -> if (can) current ?: Think.Off else null }
-        }
+        /**
+         * A turn's Think level, by the model it loaded rather than by [think]: a send right after the load can't race
+         * the chip's flow, and a model whose load says it can't think gets no reasoning settings (D155).
+         */
+        private fun levelFor(key: HfModel, info: ModelInfo): Think? =
+            thinkLevel.value.takeIf {
+                Thinking.canThink(
+                    info.chatTemplate,
+                    info.templateCaps,
+                    Catalog.byRepo(key.repo),
+                )
+            }
 
         private fun currentName(): String = choice.value.key?.let(Names::of) ?: "This model"
 
@@ -937,12 +977,17 @@ class ChatEngine(
             choice.value.key?.let(models::get)
         }
 
-        private fun visionModelName(): String? =
-            library.value?.firstOrNull { Catalog.byKey(it.key)?.sees == true }?.name
+        /** A model on the phone that sees, by what is [known] of each (D155), else the catalog. */
+        private fun visionModelName(known: Map<String, ModelSenses>): String? =
+            library.value
+                ?.firstOrNull { sensesOf(it.key, host.state.value, known[it.key.toString()], emptySet()).sees }
+                ?.name
     }
 
     companion object {
         /** Builder's call, settled here: at most four images per message. */
         const val MAX_IMAGES = 4
+
+        private val NO_MODEL_SENSES = Senses(thinks = false, sees = false, hears = false, talks = false)
     }
 }

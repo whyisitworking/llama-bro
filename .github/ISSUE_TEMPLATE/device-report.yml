@@ -1,0 +1,70 @@
+name: Device report
+description: How Llama Bro ran on your phone, good or bad.
+title: "Device report: "
+labels: ["device report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Only one phone is verified so far. Reports where everything worked help too.
+        Use the [demo APK](https://github.com/whyisitworking/llama-bro/releases/latest/download/llama-bro-demo.apk),
+        or your own app. Please leave out anything personal, such as serial numbers or account names.
+  - type: input
+    id: phone
+    attributes:
+      label: Phone
+      placeholder: Samsung Galaxy S24, Pixel 9, ...
+    validations:
+      required: true
+  - type: input
+    id: chip
+    attributes:
+      label: Chip
+      description: The phone's spec sheet, or a device-info app.
+      placeholder: Snapdragon 8 Gen 3, Tensor G4, Dimensity 9300, ...
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: Android version
+      placeholder: "15"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Llama Bro version
+      description: The demo's About screen, or the SDK version in your build.
+      placeholder: 2.0.0-alpha
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model and quantization
+      placeholder: unsloth/Qwen3.5-0.8B-GGUF Q4_K_M
+    validations:
+      required: true
+  - type: checkboxes
+    id: chips
+    attributes:
+      label: Which chips gave correct replies?
+      description: In the demo, pick each one under Settings › Processor, where the phone offers a choice. In an app, `Model.loadReport.device` says where a model runs.
+      options:
+        - label: NPU
+        - label: GPU
+        - label: CPU
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened on each chip
+      description: Did it load, how fast did it feel, were the replies right? Note any chip that crashed, gave garbage or was skipped, and the reason shown.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: "Optional: `adb logcat -s llamabro llamabro-hub llamabro-hub-work` while it ran."
+      render: text

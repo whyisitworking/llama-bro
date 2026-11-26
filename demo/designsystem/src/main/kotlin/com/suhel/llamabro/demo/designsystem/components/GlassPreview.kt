@@ -20,7 +20,8 @@ import com.suhel.llamabro.demo.designsystem.theme.LocalDemoColors
 /**
  * A sample of the app's glass to tune it by (Settings › Appearance › Glass, D152), for a screen's bottom bar: a chip
  * beside a panel shaped like the message bar, over the page as it scrolls, so the chips', the panels' and the bar's
- * glass all answer each change at once. Its buttons do nothing; they are there to be seen.
+ * glass all answer each change at once. Its chip and its panel answer a press as glass does (D158); they do nothing
+ * else, being there to be seen and pressed.
  */
 @Composable
 fun GlassPreview(modifier: Modifier = Modifier) {
@@ -32,7 +33,7 @@ fun GlassPreview(modifier: Modifier = Modifier) {
         CompositionLocalProvider(LocalGlassChips provides true) {
             IconAction(DemoIcons.Plus, "A chip of glass", onClick = {})
         }
-        GlassSurface(Modifier.weight(1f), corner = DemoShapes.composerRadius) {
+        GlassSurface(Modifier.weight(1f), corner = DemoShapes.composerRadius, onClick = {}) {
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -41,7 +42,7 @@ fun GlassPreview(modifier: Modifier = Modifier) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "A panel of glass",
+                    "Press and drag the glass",
                     Modifier.weight(1f),
                     color = LocalDemoColors.current.muted,
                     style = DemoType.body,
